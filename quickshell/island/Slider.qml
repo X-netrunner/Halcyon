@@ -7,7 +7,9 @@ Item {
     property string glyph: ""
     property real value: 0
     property bool dimmed: false
+    property string readout: ""        // text shown instead of the percentage (e.g. "18 px")
     signal moved(real v)
+    signal glyphClicked()          // click the icon (mute / unmute)
 
     property bool dragging: false
     property real local: 0
@@ -24,14 +26,15 @@ Item {
         color: root.dimmed ? root.pal.muted : root.pal.accent
         font.family: root.pal.font
         font.pixelSize: 17
+        MouseArea { anchors.fill: parent; anchors.margins: -4; onClicked: root.glyphClicked() }
     }
     Text {
         id: pct
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: 36
+        width: 44
         horizontalAlignment: Text.AlignRight
-        text: Math.round(root.shown * 100) + "%"
+        text: root.readout !== "" ? root.readout : Math.round(root.shown * 100) + "%"
         color: root.pal.muted
         font.family: root.pal.uiFont
         font.pixelSize: root.pal.tCap

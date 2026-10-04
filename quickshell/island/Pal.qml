@@ -18,10 +18,13 @@ Scope {
     property color muted: "#9496a8"
 
     // how see-through the glass is (the compositor blurs what is behind it)
-    readonly property real glass: 0.80
-    readonly property real glassSolid: 0.94  // for things that must stay legible over anything (overlays)
-    readonly property real glassBar: 0.58     // the top bar at rest: lighter = more wallpaper shows through
-    readonly property real glassBarOpen: 0.74 // the bar once it has grown into media / perf / the launcher
+    // Settings > Transparency moves all four together by glassShift (-0.15 .. +0.05; keep the bar above the
+    // compositor's blur threshold, see hyprland/rules.lua)
+    property real glassShift: 0
+    readonly property real glass: 0.80 + glassShift
+    readonly property real glassSolid: Math.min(1, 0.94 + glassShift)  // for things that must stay legible over anything (overlays)
+    readonly property real glassBar: 0.58 + glassShift      // the top bar at rest: lighter = more wallpaper shows through
+    readonly property real glassBarOpen: 0.74 + glassShift  // the bar once it has grown into media / perf / the launcher
     // hairlines are neutral, never tinted: they work with every wallpaper
     readonly property color line: Qt.alpha(text, 0.09)
     readonly property color lineSoft: Qt.alpha(text, 0.05)
@@ -63,9 +66,11 @@ Scope {
     // ---------- motion ----------
     // one signature curve (easeOutQuint): fast start, long soft landing, never bounces
     readonly property var curve: [0.22, 1, 0.36, 1, 1, 1]
-    readonly property int dFast: 160
-    readonly property int dMed: 300
-    readonly property int dSlow: 520
+    // motion scales every island animation: 1 = normal, 0.5 = fast, 0 = instant (Gaming mode uses 0.25)
+    property real motion: 1.0
+    readonly property int dFast: Math.round(160 * motion)
+    readonly property int dMed: Math.round(300 * motion)
+    readonly property int dSlow: Math.round(520 * motion)
 
     Behavior on bg { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
     Behavior on surface { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }

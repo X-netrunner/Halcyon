@@ -1,4 +1,4 @@
-//! `hx ctl`: volume / mute / brightness as one JSON line, printed the moment something changes.
+//! `hx ctl`: volume / mute / microphone / brightness as one JSON line, printed the moment something changes.
 //! Replaces the 2-second `ctl.sh` poll, so the sliders in the utilities panel follow touchpad gestures,
 //! media keys and other apps with no visible delay.
 //!   brightness  /sys/class/backlight is read every 60 ms (one tiny file read), `brightnessctl` is the fallback
@@ -33,8 +33,8 @@ fn bright(bl: &Option<(String, f64)>) -> i32 {
     o.lines().next().and_then(|l| l.split(',').nth(3)).map(|s| s.trim_end_matches('%').parse().unwrap_or(0)).unwrap_or(0)
 }
 
-fn volume() -> (i32, bool) {
-    let o = util::run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"], 2);
+fn volume(target: &str) -> (i32, bool) {
+    let o = util::run("wpctl", &["get-volume", target], 2);
     let v = o.split_whitespace().nth(1).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
     ((v * 100.0).round() as i32, o.contains("MUTED"))
 }
@@ -49,7 +49,7 @@ pub fn run() {
                 std::thread::spawn(move || {
                     if let Some(o) = out {
                         for line in BufReader::new(o).lines().map_while(Result::ok) {
-                            if line.contains(" sink ") || line.contains("server") {
+                            if line.contains(" sink ") || line.contains(" source ") || line.contains("server") {
                                 d.store(true, Ordering::Relaxed);
                             }
                         }
@@ -65,6 +65,7 @@ pub fn run() {
     let bl = backlight();
     let mut last = String::new();
     let mut vol = (0, false);
+    let mut mic = (0, false);
     let mut b = bright(&bl);
     let mut last_poll = Instant::now() - Duration::from_secs(1);
     let stdout = std::io::stdout();
@@ -73,11 +74,12 @@ pub fn run() {
         let poll = !have_pactl && last_poll.elapsed() > Duration::from_millis(250);
         let slow = last_poll.elapsed() > Duration::from_secs(3); // safety net if an event was missed
         if dirty.swap(false, Ordering::Relaxed) || poll || slow {
-            vol = volume();
+            vol = volume("@DEFAULT_AUDIO_SINK@");
+            mic = volume("@DEFAULT_AUDIO_SOURCE@");
             last_poll = Instant::now();
         }
         b = if nb != b || last.is_empty() { nb } else { b };
-        let line = format!("{{\"vol\":{},\"muted\":{},\"bright\":{}}}", vol.0, vol.1, b);
+        let line = format!("{{\"vol\":{},\"muted\":{},\"mic\":{},\"micMuted\":{},\"bright\":{}}}", vol.0, vol.1, mic.0, mic.1, b);
         if line != last {
             let mut o = stdout.lock();
             if writeln!(o, "{}", line).is_err() || o.flush().is_err() {

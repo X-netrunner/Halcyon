@@ -67,14 +67,21 @@ Every helper the island used to run through `python3` is now a subcommand of the
 ## Touchpad edge gestures not working?
 `journalctl --user -u touchpad-gestures -e` says why. Usual causes: not in the `input` group (`sudo usermod -aG input $USER`, then log in again), an old binary still installed (re-run `./install.sh`; an old build called `qs -c caelestia ... brightness`, which does nothing without caelestia), or `brightnessctl` / `playerctl` / `wpctl` missing. Left edge up/down = next/previous track (SUPER+ALT+G disables it), right edge up/down = volume, top edge right/left = brightness.
 
-## Edge boxes: hover or drag
-The three edge boxes (notifications on the right edge, console top-left, utilities bottom-right) share one toggle: **Edge: hover / drag** in the utilities panel (RICE row), `>edge boxes` in the launcher, or `quickshell ipc ... call island edgemode`. Saved in settings.json.
-- **hover**: touch the edge/corner to open, move away to close.
-- **drag**: hold the edge/corner (a faint tab marks it) and pull the box out; to close, drag the little handle at the top of the box back towards its edge/corner, or press Esc / the keybind. Release past ~35% to open, below ~60% to close.
+## Edge boxes: hover or click
+The three edge boxes (notifications on the right edge, console top-left, utilities bottom-right) share one toggle: **Edge: Hover / Click** in Settings, `>edge boxes` in the launcher, or `quickshell ipc ... call island edgemode`.
+- **hover**: touch the edge/corner to open, move away to close. Corner and box share one hover zone, so nothing flickers when the box slides in under a resting pointer.
+- **click**: click the edge/corner (a faint tab marks it) to open, click it again to close; Esc closes the console too.
 - **Auto-hide on**: in both modes every box closes as soon as the pointer leaves it (the console waits while you have text typed or a password prompt open).
 
+## Settings (gear) and power button
+The utilities panel is now: wifi / bluetooth / audio chips, sliders for **volume, microphone (click the icon to mute) and brightness**, power mode, and one row with **Settings**, **Gaming** and a round **power button**.
+- **Settings** (`SUPER+F11`, `>settings`): a centred window in the tree style: wallpaper, transparency, corner rounding, gaps, blur, shadows, island and window animations, auto-hide, do-not-disturb, edge mode, profile constellation, gaming mode, edit config, cheatsheet, reload Hyprland. Values are remembered in settings.json; the Hyprland ones are pushed with `hyprctl eval` and re-applied at island start (only once you have changed one, otherwise your Lua config rules).
+- **Power button** (`>power options`): blurs everything and shows Lock / Sleep / Log out / Restart / Shut down in the middle of the screen (L S O R P keys, Esc cancels, destructive ones ask "Sure?").
+- **Gaming mode** (`SUPER+F10`, `scripts/gamemode.sh on|off`): performance power profile (Auto power paused), Hyprland animations / blur / shadows / gaps / rounding off, island animations instant, visualizer off, and the helpers listed in `~/.config/Halcyon/gamemode.conf` stopped (default: cava, baloo, tracker). Off restores the profile, Auto power and reloads Hyprland. Sysmode / honeypot / IDS are never touched.
+- The performance page no longer has the wifi / bluetooth chips (they live in the utilities panel).
+
 ## Flagship sysmode art
-`lockdown` draws a faded shield, `stealth` a coiled dragon (original artwork, `ModeArt.qml`) behind the SUPER+TAB tree, the notification centre and the console, in the wallpaper accent colour with light along the edges. Other modes show nothing.
+Constellations in the wallpaper accent colour (twinkling stars joined by hairlines, `ModeArt.qml`, layouts in `StarData.js`): `lockdown` is a shield, `stealth` a coiled dragon (original), behind the SUPER+TAB tree, the notification centre, the console, settings and the power menu. In any other mode the tree shows **your profile picture as a constellation** (`hx stars <image>`: stars land on the outline and bright features, each joined to its two nearest neighbours; switch it off in Settings).
 
 ## Slider lag
 `hx ctl` replaces the 2-second `ctl.sh` poll: brightness is read from sysfs every 60 ms and volume is event-driven (`pactl subscribe`), so the utilities sliders follow touchpad gestures and media keys immediately.

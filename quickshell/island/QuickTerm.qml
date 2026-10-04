@@ -7,9 +7,9 @@ import Quickshell.Wayland
 
 // Top-left pop-out console for one-shot commands (sysmode switches, ls, ip a, ...).
 //
-//  open     hover mode: touch the top-left corner.  drag mode: hold the corner and pull it out.
+//  open     hover mode: touch the top-left corner.  click mode: click the corner.
 //           Either way SUPER+SHIFT+Enter opens it focused (and again closes it), or click the box to type.
-//  close    hover mode: move the pointer away.  drag mode: push the handle back into the corner.  Esc always works.
+//  close    hover mode: move the pointer away.  click mode: click the corner again.  Esc always works.
 //           Auto-hide on = it closes whenever the pointer leaves, in both modes (never while you have text typed).
 //  idle     empty input and nothing run yet: shows the sysmode / honeypot status (`hx status`) as plain console lines;
 //           they fade away the moment you type
@@ -23,7 +23,7 @@ Scope {
     id: root
     property var pal
     property string sysmode: ""
-    property bool dragMode: false
+    property bool clickMode: false
     property bool autoHide: false
 
     readonly property int boxW: 520
@@ -42,10 +42,8 @@ Scope {
     property bool pinned: false                      // opened from the keyboard: stays until closed (unless auto-hide)
     property bool focused: false                     // box has the keyboard
     property bool grabKeys: false                    // first moments after a keybind: Exclusive, then normal on-demand focus
-    property bool pulling: false
-    property real pullAmt: 0
-    readonly property real reveal: pulling ? pullAmt : (open ? 1 : 0)
-    readonly property bool shown: open || pulling
+    readonly property real reveal: open ? 1 : 0
+    readonly property bool shown: open
 
     property string cwd: Quickshell.env("HOME")
     property var st: ({})
@@ -57,11 +55,12 @@ Scope {
     ListModel { id: out }
 
     // ---------- open / close ----------
-    readonly property bool mayAutoClose: !askPass && input.text === "" && (autoHide || (!dragMode && !pinned))
+    readonly property bool mayAutoClose: !askPass && input.text === "" && (autoHide || (!clickMode && !pinned))
     function setHover(on) {
-        if (on) { closeT.stop(); if (!dragMode) open = true }
+        if (on) { closeT.stop(); if (!clickMode) open = true }
         else if (mayAutoClose) { closeT.interval = 550; closeT.restart() }
     }
+    function cornerTap() { if (open) close(); else { closeT.stop(); open = true } }
     function toggle() {
         if (open && focused) { close(); return }
         closeT.stop()
@@ -242,34 +241,32 @@ Scope {
         WlrLayershell.keyboardFocus: !root.focused ? WlrKeyboardFocus.None
                                    : (root.grabKeys ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
 
-        mask: root.shown ? maskOpen : maskClosed
-        Region { id: maskClosed; item: hot }
-        Region { id: maskOpen; regions: [ Region { item: hot }, Region { item: box } ] }
+        mask: Region { item: zone }
 
-        // corner trigger (the island is centred, so the top-left is free)
-        EdgeGrab {
-            id: hot
+        // ONE hover zone covers the corner trigger, the gap and the whole box, so moving from the corner onto the
+        // box (or the box sliding in under a resting pointer) never counts as "left": no more flicker in and out
+        Item {
+            id: zone
             anchors.top: parent.top
             anchors.left: parent.left
-            width: root.dragMode ? 36 : 14
-            height: root.dragMode ? 36 : 14
-            dragMode: root.dragMode
-            dx: 0.7; dy: 0.7; span: 170
-            onHoverChanged: on => root.setHover(on)
-            onPullChanged: if (pulling) root.pullAmt = pull
-            onPullingChanged: root.pulling = pulling
-            onReleased: open => {
-                root.pulling = false
-                root.open = open
-                if (open) root.takeFocus()
-            }
-            // drag mode: a faint tab in the corner says "pull me"
+            width: root.shown ? root.boxW + 40 : (root.clickMode ? 28 : 14)
+            height: root.shown ? box.y + box.height + 24 : (root.clickMode ? 28 : 14)
+            HoverHandler { onHoveredChanged: root.setHover(hovered) }
+
+            // click mode: a faint tab marks the corner
             Rectangle {
-                visible: root.dragMode && !root.shown
+                visible: root.clickMode && !root.shown
                 x: 3; y: 3; width: 12; height: 12; radius: 6
                 color: Qt.alpha(root.pal.accent, 0.35)
             }
-        }
+            Item {
+                width: 20; height: 14
+                TapHandler {
+                    enabled: root.clickMode
+                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                    onTapped: root.cornerTap()
+                }
+            }
 
         Glass {
             id: box
@@ -283,12 +280,11 @@ Scope {
             opacity: Math.min(1, root.reveal * 1.6)
             visible: opacity > 0.01
             border.color: root.focused ? root.pal.lineFocus : Qt.alpha(root.pal.accent, 0.30)
-            Behavior on x { enabled: !root.pulling; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-            Behavior on y { enabled: !root.pulling; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-            Behavior on opacity { enabled: !root.pulling; NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+            Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            Behavior on y { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
 
-            HoverHandler { onHoveredChanged: root.setHover(hovered) }
             MouseArea {
                 anchors.fill: parent
                 onClicked: root.takeFocus()
@@ -306,20 +302,6 @@ Scope {
                 artShift: 90
             }
 
-            // drag mode: push this handle back into the corner to close
-            EdgeGrab {
-                visible: root.dragMode
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.top: parent.top
-                width: 64; height: 16
-                dragMode: root.dragMode
-                closing: true
-                dx: 0.7; dy: 0.7; span: 170
-                onPullChanged: if (pulling) root.pullAmt = pull
-                onPullingChanged: root.pulling = pulling
-                onReleased: open => { root.pulling = false; if (!open) root.close(); else root.open = true }
-                Rectangle { anchors.centerIn: parent; width: 30; height: 4; radius: 2; color: Qt.alpha(root.pal.muted, 0.5) }
-            }
 
             // ---------- title line ----------
             Item {
@@ -481,6 +463,7 @@ Scope {
                     font.pixelSize: 11
                 }
             }
+        }
         }
     }
 }

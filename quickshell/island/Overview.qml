@@ -17,7 +17,9 @@ Item {
     property bool compactSpecial: true
     property string profileName: ""
     property string profileAvatar: ""
-    property string sysmode: ""         // lockdown / stealth show their art behind the tree
+    property string sysmode: ""         // lockdown / stealth show their constellation behind the tree
+    property bool profileStars: true    // other modes: your profile picture as a constellation
+    property var starData: null
 
     signal closeRequested()
     signal workspaceClicked(int wsId)
@@ -528,6 +530,7 @@ Item {
             refreshHypr()
             ov.rebuild()
             editing = false
+            if (profileStars && starData === null) starProc.running = true
             Qt.callLater(function () { ov.forceActiveFocus() })
         }
     }
@@ -564,12 +567,22 @@ Item {
 
     Rectangle { anchors.fill: parent; color: Qt.alpha(ov.pal.bg, 0.72) }
 
-    // flagship sysmodes: a faded shield (lockdown) / dragon (stealth) behind the tree, lit along its edges in the wallpaper colour
+    // your profile picture, turned into a constellation (`hx stars`); redone when the avatar or the tree changes
+    Process {
+        id: starProc
+        command: [Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "stars", ov.avatarPath, "70"]
+        stdout: StdioCollector { onStreamFinished: { try { ov.starData = JSON.parse(text) } catch (e) { ov.starData = null } } }
+    }
+    onAvatarPathChanged: if (open && profileStars) starProc.running = true
+
+    // flagship sysmodes: a constellation shield (lockdown) / dragon (stealth) behind the tree; any other mode shows your
+    // profile picture as one. Stars in the wallpaper accent colour.
     ModeArt {
         anchors.fill: parent
         anchors.margins: 60
         pal: ov.pal
-        mode: ov.sysmode
+        mode: (ov.sysmode === "lockdown" || ov.sysmode === "stealth") ? ov.sysmode : (ov.profileStars && ov.starData ? "avatar" : "")
+        custom: ov.starData
         strength: ov.open ? 1 : 0
         fit: 0.82
         Behavior on strength { NumberAnimation { duration: 500 } }
