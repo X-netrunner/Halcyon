@@ -5,8 +5,20 @@
 set -euo pipefail
 
 # --- Configuration (overridable via /etc/sysmode.conf) ---
-SYS_USER="${SYS_USER:-netrunner}"
-SYS_HOME="${SYS_HOME:-/home/netrunner}"
+# /etc/sysmode.conf first, so a SYS_USER / SYS_HOME set there wins; then fill in what is still unset. The old default was
+# the hard-coded user "netrunner": on any other account SCRIPTS_DIR pointed at a folder that does not exist, so the
+# honeypot and IDS scripts were never found. Now: sudo's caller, else the login user, else the first normal account.
+[[ -f /etc/sysmode.conf ]] && source /etc/sysmode.conf
+if [[ -z "${SYS_USER:-}" ]]; then
+    SYS_USER="${SUDO_USER:-}"
+    [[ -n "$SYS_USER" && "$SYS_USER" != root ]] || SYS_USER="$(logname 2>/dev/null || true)"
+    [[ -n "$SYS_USER" && "$SYS_USER" != root ]] || SYS_USER="$(getent passwd | awk -F: '$3>=1000 && $3<60000 {print $1; exit}')"
+    [[ -n "$SYS_USER" ]] || SYS_USER=netrunner
+fi
+if [[ -z "${SYS_HOME:-}" ]]; then
+    SYS_HOME="$(getent passwd "$SYS_USER" | cut -d: -f6)"
+    [[ -n "$SYS_HOME" ]] || SYS_HOME="/home/$SYS_USER"
+fi
 # helper scripts (recon-deceiver.py, log-analyst.py, attacker-dossier.py) ship next to this file in the rice
 
 # `hx` (Rust, installed by install.sh) replaces the Python dossier / IDS; the .py files stay as a fallback
@@ -73,6 +85,25 @@ on_ac_power() {
         return 1
     fi
     return 0
+}
+
+# Start a daemon detached from this shell (it must outlive the console / terminal that ran sysmode), keep its output in
+# $LOGS_DIR/<name>.out instead of /dev/null, and say plainly if it died on start.
+#   start_bg <name> <pidfile> <command...>
+start_bg() {
+    local name="$1" pidfile="$2"; shift 2
+    local logf="$LOGS_DIR/$name.out" pid
+    mkdir -p "$LOGS_DIR"
+    setsid nohup "$@" >>"$logf" 2>&1 </dev/null &
+    pid=$!
+    echo "$pid" > "$pidfile"
+    sleep 1
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "[+] $name started (pid $pid, log: $logf)"
+    else
+        echo "[!] $name exited right after starting. Last lines of $logf:"
+        tail -n 8 "$logf" 2>/dev/null | sed 's/^/      /'
+    fi
 }
 
 stop_pidfile() {
@@ -1738,13 +1769,16 @@ EOF
     # Free port 22 for the Cowrie SSH honeypot, then start Cowrie before the
     # banner decoy so the decoy can skip binding 22 while Cowrie owns it.
     systemctl stop recon-deceiver.service 2>/dev/null || true
-    start_cowrie
-    if systemctl restart recon-deceiver.service >/dev/null 2>&1; then
-        :
+    # start_cowrie returns 1 when docker is missing / not running; under `set -e` that used to END this whole function
+    # right here, so the honeypot, the IDS and the MAC logger below were never started (and the mode file already said stealth)
+    start_cowrie || true
+    if systemctl restart recon-deceiver.service >/dev/null 2>&1 && sleep 1 && pgrep -f recon-deceiver.py >/dev/null; then
+        echo "[+] recon-deceiver.service running"
+    elif [[ ! -f "$SCRIPTS_DIR/recon-deceiver.py" ]]; then
+        echo "[!] $SCRIPTS_DIR/recon-deceiver.py not found (is the rice in $SYS_HOME/.config/Halcyon? set SYS_HOME in /etc/sysmode.conf)"
     else
-        echo "[!] recon-deceiver.service unavailable; falling back to background process..."
-        python3 "$SCRIPTS_DIR/recon-deceiver.py" 3 >/dev/null 2>&1 &
-        echo $! > /var/run/recon-deceiver.pid
+        echo "[!] recon-deceiver.service unavailable or not running; starting the script directly..."
+        start_bg recon-deceiver /var/run/recon-deceiver.pid python3 "$SCRIPTS_DIR/recon-deceiver.py" 3
     fi
 
     # Start log analyst daemon (IDS) via systemd
@@ -1752,12 +1786,17 @@ EOF
     stop_pidfile /var/run/log-analyst.pid
     pkill -f log-analyst.py 2>/dev/null || true
     pkill -f "hx ids" 2>/dev/null || true
-    if systemctl restart log-analyst.service >/dev/null 2>&1; then
-        :
+    if systemctl restart log-analyst.service >/dev/null 2>&1 && sleep 1 && pgrep -f "log-analyst.py|hx ids" >/dev/null; then
+        echo "[+] log-analyst.service running"
     else
-        echo "[!] log-analyst.service unavailable; falling back to background process..."
-        if command -v hx >/dev/null; then hx ids; else python3 "$SCRIPTS_DIR/log-analyst.py"; fi >/dev/null 2>&1 &
-        echo $! > /var/run/log-analyst.pid
+        echo "[!] log-analyst.service unavailable or not running; starting the IDS directly..."
+        if command -v hx >/dev/null; then
+            start_bg log-analyst /var/run/log-analyst.pid hx ids
+        elif [[ -f "$SCRIPTS_DIR/log-analyst.py" ]]; then
+            start_bg log-analyst /var/run/log-analyst.pid python3 "$SCRIPTS_DIR/log-analyst.py"
+        else
+            echo "[!] neither hx nor $SCRIPTS_DIR/log-analyst.py found"
+        fi
     fi
 
     # Start tcpdump MAC scanner logging if tcpdump is installed

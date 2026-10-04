@@ -19,7 +19,8 @@ Item {
     property string profileAvatar: ""
     property string sysmode: ""         // lockdown / stealth show their constellation behind the tree
     property bool profileStars: true    // other modes: your profile picture as a constellation
-    property var starData: null
+    property var starData: null         // owned by shell.qml (picture constellation, or a sky from your name)
+    property string avatarFile: ""      // the picture shell.qml found (scripts/avatar.sh); "" = none
 
     signal closeRequested()
     signal workspaceClicked(int wsId)
@@ -39,10 +40,7 @@ Item {
     property string osName: "Arch Linux"
     property string model: ""
     readonly property string shownName: profileName !== "" ? profileName : (fullName !== "" ? fullName : userName)
-    readonly property string avatarPath: {
-        var p = profileAvatar !== "" ? profileAvatar : "~/.face"
-        return p.indexOf("~") === 0 ? home + p.substring(1) : p
-    }
+    readonly property string avatarPath: avatarFile
 
     Process {
         id: idProc
@@ -530,7 +528,6 @@ Item {
             refreshHypr()
             ov.rebuild()
             editing = false
-            if (profileStars && starData === null) starProc.running = true
             Qt.callLater(function () { ov.forceActiveFocus() })
         }
     }
@@ -568,12 +565,6 @@ Item {
     Rectangle { anchors.fill: parent; color: Qt.alpha(ov.pal.bg, 0.72) }
 
     // your profile picture, turned into a constellation (`hx stars`); redone when the avatar or the tree changes
-    Process {
-        id: starProc
-        command: [Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "stars", ov.avatarPath, "70"]
-        stdout: StdioCollector { onStreamFinished: { try { ov.starData = JSON.parse(text) } catch (e) { ov.starData = null } } }
-    }
-    onAvatarPathChanged: if (open && profileStars) starProc.running = true
 
     // flagship sysmodes: a constellation shield (lockdown) / dragon (stealth) behind the tree; any other mode shows your
     // profile picture as one. Stars in the wallpaper accent colour.

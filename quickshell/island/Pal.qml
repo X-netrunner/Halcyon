@@ -44,6 +44,12 @@ Scope {
     readonly property int s5: 20
     readonly property int s6: 28
 
+    // ---------- edge boxes: the utilities panel (bottom-right) and the notification centre (right edge) share these,
+    // so their width, inner padding and distance from the screen edge always match ----------
+    readonly property int boxW: 392
+    readonly property int boxPad: 18
+    readonly property int boxEdge: 22
+
     // ---------- type ----------
     // icons / glyphs (Nerd Font)
     readonly property string font: "JetBrainsMono Nerd Font"

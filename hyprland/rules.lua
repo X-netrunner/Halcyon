@@ -16,13 +16,16 @@ hl.layer_rule({ match = { namespace = "notification" }, blur = true })
 -- glass 0.80, glassSolid 0.94). The bar is the lightest, so it needs the lowest threshold.
 local glass = { island = 0.40, ["island-panel"] = 0.55, ["island-notifs"] = 0.55, ["island-term"] = 0.55, ["island-overview"] = 0.55,
     -- full-screen overlays (power menu, settings): a dim sheet over everything, blurred behind it
-    ["island-power"] = 0.2, ["island-settings"] = 0.2 }
+    ["island-power"] = 0.2, ["island-settings"] = 0.2,
+    -- bottom-left background-apps box
+    ["island-apps"] = 0.55 }
 for ns, a in pairs(glass) do
     hl.layer_rule({ match = { namespace = ns }, blur = true, ignore_alpha = a })
 end
 
--- Special workspaces: launch the app the first time the workspace is opened empty
-hl.workspace_rule({ workspace = "special:music", on_created_empty = vars.musicCmd })
+-- Special workspaces: launch the app the first time the workspace is opened empty.
+-- music and communication are NOT here any more: SUPER+M / SUPER+D run scripts/special.sh, which starts the app whenever
+-- the workspace has no window (not only the first time). Which app: MUSIC_CMD / COMM_CMD at the top of that script,
+-- or in ~/.config/Halcyon/special.conf. The island moves Spotify / Discord windows there when they open (island/Routes.js).
 hl.workspace_rule({ workspace = "special:sysmon", on_created_empty = vars.sysmonCmd })
-hl.workspace_rule({ workspace = "special:communication", on_created_empty = vars.communicationCmd })
 hl.workspace_rule({ workspace = "special:todo", on_created_empty = vars.todoCmd })

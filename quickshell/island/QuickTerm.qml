@@ -23,6 +23,8 @@ Scope {
     id: root
     property var pal
     property string sysmode: ""
+    property var starData: null
+    property bool profileStars: true
     property bool clickMode: false
     property bool autoHide: false
 
@@ -290,12 +292,19 @@ Scope {
                 onClicked: root.takeFocus()
             }
 
+            // hover mode: resting the pointer on the box itself (not just the corner) is enough to type, no click needed.
+            // Leaving with an empty prompt closes it and hands the keyboard straight back.
+            HoverHandler { onHoveredChanged: { if (hovered && root.open && !root.focused && !root.clickMode) dwellT.restart(); else dwellT.stop() } }
+            Timer { id: dwellT; interval: 250; onTriggered: if (root.open && !root.focused) root.takeFocus() }
+
             // same quiet look as the tree: drifting dots, and the shield / dragon for lockdown / stealth
             Backdrop {
                 anchors.fill: parent
                 anchors.margins: 14
                 pal: root.pal
                 mode: root.sysmode
+                avatarStars: root.starData
+                profileStars: root.profileStars
                 dots: 8
                 artStrength: 1
                 artFit: 0.95
@@ -381,6 +390,7 @@ Scope {
                     opacity: body.idle ? 0 : 1
                     visible: opacity > 0.01
                     boundsBehavior: Flickable.StopAtBounds
+                    TapHandler { onTapped: root.takeFocus() }
                     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
                     delegate: Text {
                         required property string t
@@ -404,6 +414,7 @@ Scope {
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 20; rightMargin: 20; bottomMargin: 16 }
                 height: 22
 
+                TapHandler { onTapped: root.takeFocus() }
                 Text {
                     id: prompt
                     anchors.verticalCenter: parent.verticalCenter
@@ -426,6 +437,8 @@ Scope {
                     echoMode: root.askPass ? TextInput.Password : TextInput.Normal
                     passwordCharacter: "•"
                     onTextEdited: root.histIdx = -1
+                    // the field swallows the click, so ask for the keyboard here too (passive: the cursor still moves)
+                    TapHandler { onTapped: root.takeFocus() }
 
                     Keys.onPressed: e => {
                         if (e.key === Qt.Key_Escape) {
@@ -457,7 +470,7 @@ Scope {
                     anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     visible: input.text === "" && !root.focused
-                    text: "click, or SUPER+SHIFT+Enter, to type"
+                    text: "rest the pointer here, or SUPER+SHIFT+Enter, to type"
                     color: Qt.alpha(root.pal.muted, 0.7)
                     font.family: root.mono
                     font.pixelSize: 11

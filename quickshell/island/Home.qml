@@ -11,6 +11,7 @@ RowLayout {
     property var cava: []
     property bool playing: false
     property string activeSpecial: ""
+    property bool caffeine: false
     signal statusClicked()
     signal workspaceClicked(int wsId)
     signal specialClicked(string name)
@@ -151,6 +152,20 @@ RowLayout {
             id: status
             spacing: 10
 
+            // caffeine is on: the screen will not sleep or lock
+            Text {
+                visible: row.caffeine
+                text: String.fromCodePoint(0xF0176)
+                color: row.pal.accent2
+                font.family: row.pal.font
+                font.pixelSize: 14
+                anchors.verticalCenter: parent.verticalCenter
+                SequentialAnimation on opacity {
+                    loops: Animation.Infinite; running: row.caffeine && row.pal.motion > 0.3
+                    NumberAnimation { to: 0.55; duration: 1600; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 1.0; duration: 1600; easing.type: Easing.InOutSine }
+                }
+            }
             Text {
                 text: row.net.eth ? row.icoEth : row.icoWifi
                 color: (row.net.wifi === "on" && row.net.ssid !== "") || row.net.eth ? row.pal.accent : Qt.alpha(row.pal.muted, 0.5)

@@ -18,6 +18,17 @@ fn fire_s(cmd: &'static str, args: &[&str]) {
     fire(cmd, args.iter().map(|a| a.to_string()).collect());
 }
 
+/// Brightness goes through scripts/brightness.sh: this daemon is a systemd user service, outside the login session,
+/// where a bare `brightnessctl` often cannot write the backlight. The script tries brightnessctl, a direct sysfs write
+/// and logind, and prints why it failed (journalctl --user -u touchpad-gestures -e).
+fn brightness(dir: &str) {
+    let home = std::env::var("HOME").unwrap_or_default();
+    fire(
+        "bash",
+        vec![format!("{}/.config/Halcyon/scripts/brightness.sh", home), dir.to_string(), "5".to_string()],
+    );
+}
+
 /// A touchpad is a device that reports multitouch X/Y and is named like one. Reports why it found
 /// nothing (the usual cause is not being in the `input` group) instead of silently exiting.
 fn find_touchpad() -> Option<Device> {
@@ -108,13 +119,16 @@ fn main() {
 
     let left_edge = (0.04 * max_x as f64) as i32;
     let right_edge = (0.96 * max_x as f64) as i32;
-    let top_edge = (0.04 * max_y as f64) as i32;
+    // the top strip is a bit taller than the side strips: a finger rarely starts in the first 3 mm of a touchpad
+    let top_edge = (0.10 * max_y as f64) as i32;
 
     let v_threshold = (0.025 * max_y as f64) as i32;
     let h_threshold = (0.08 * max_x as f64) as i32;
+    // brightness steps are small (5 %), so it needs a shorter slide per step than the other gestures
+    let b_threshold = (0.04 * max_x as f64) as i32;
 
     println!("Left Edge (< {}), Right Edge (> {}), Top Edge (< {})", left_edge, right_edge, top_edge);
-    println!("Thresholds: Vertical Delta={}, Horizontal Delta={}", v_threshold, h_threshold);
+    println!("Thresholds: Vertical Delta={}, Horizontal Delta={}, Brightness Delta={}", v_threshold, h_threshold, b_threshold);
 
     let mut active_slots: HashMap<i32, SlotState> = HashMap::new();
     let mut current_slot: i32 = 0;
@@ -199,13 +213,13 @@ fn main() {
                                     if is_top_edge {
                                         if let Some(lx) = last_trigger_x {
                                             let delta_x = x - lx;
-                                            if delta_x.abs() >= h_threshold {
+                                            if delta_x.abs() >= b_threshold {
                                                 if delta_x > 0 {
                                                     println!("Gesture: Brightness Up");
-                                                    fire_s("brightnessctl", &["-q", "--min-value=1", "set", "5%+"]);
+                                                    brightness("up");
                                                 } else {
                                                     println!("Gesture: Brightness Down");
-                                                    fire_s("brightnessctl", &["-q", "--min-value=1", "set", "5%-"]);
+                                                    brightness("down");
                                                 }
                                                 last_trigger_x = Some(x);
                                             }
