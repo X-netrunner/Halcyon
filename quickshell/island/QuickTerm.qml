@@ -274,7 +274,7 @@ Scope {
             id: box
             pal: root.pal
             x: 22 - (1 - root.reveal) * (root.boxW * 0.5)
-            y: 16 - (1 - root.reveal) * (height + 30)
+            y: root.pal.boxTop - (1 - root.reveal) * (height + root.pal.boxTop + 14)
             width: root.boxW
             height: Math.min(520, 40 + body.implicitHeight + 76)
             radius: root.pal.rLg

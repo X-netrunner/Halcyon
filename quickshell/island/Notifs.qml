@@ -187,7 +187,7 @@ Scope {
             id: hot
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.topMargin: 90
+            anchors.topMargin: root.pal.boxTop
             width: root.clickMode ? 16 : 12
             height: 260
             clickMode: root.clickMode
@@ -246,7 +246,7 @@ Scope {
             id: panel
             pal: root.pal
             x: win.width - width - root.pal.boxEdge + (1 - root.reveal) * (width + 40)
-            y: root.topY + 74
+            y: root.pal.boxTop
             width: root.cardW
             height: col.implicitHeight + 2 * root.pal.boxPad
             radius: root.pal.rXl

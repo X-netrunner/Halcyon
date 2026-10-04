@@ -1,19 +1,33 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Io
-import "Routes.js" as Routes
+import Quickshell.Services.SystemTray
 
-// Bottom-left box: the apps that keep running after you close their window (Spotify, Discord, ...).
-// Each running app shows whether it still has a window or only lives in the background, with Open and Quit.
-// Apps that are not running are offered as small "start" chips. The list of known apps is Routes.js.
+// Bottom-left box: the apps that are open in the background right now, i.e. the ones that sit in the system tray
+// after their window is closed (Spotify, Discord, Telegram, ...). Nothing else is listed.
+// Each app gets its own options: "Open" raises it, "Options" expands the menu the app itself offers (Settings, Quit, ...).
+// The list comes straight from the StatusNotifier tray, so any app that lives in the background shows up without
+// being added anywhere. Apps that only run for the shell itself (network / bluetooth applets) are left out: `hiddenIds`.
 Glass {
     id: root
-    property bool active: false             // the box is open (set by shell.qml); polls faster then
-    readonly property int count: running.length
-    property var rows: []                    // [{ app, running, wins, ws }]
-    readonly property var running: rows.filter(function (r) { return r.running })
-    readonly property var stopped: rows.filter(function (r) { return !r.running })
+    property bool active: false             // the box is open (set by shell.qml)
+    property var hiddenIds: ["nm-applet", "blueman", "blueman-applet", "network-manager-applet", "nm-tray"]
+
+    function isHidden(it) {
+        var id = String(it.id || "").toLowerCase()
+        for (var i = 0; i < hiddenIds.length; i++) if (id === hiddenIds[i]) return true
+        return false
+    }
+    function name(it) {
+        var t = String(it.tooltipTitle || it.title || "")
+        if (t === "") t = String(it.id || "App")
+        return t
+    }
+    readonly property int count: {
+        var v = SystemTray.items.values, n = 0
+        for (var i = 0; i < v.length; i++) if (!isHidden(v[i])) n++
+        return n
+    }
 
     width: pal.boxW
     height: implicitHeight
@@ -22,66 +36,9 @@ Glass {
     radius: pal.rXl
     opacityBody: pal.glassSolid - 0.06
 
-    readonly property string home: Quickshell.env("HOME")
-    property var procLines: []
-    property var clients: []
-
-    function refresh() {
-        if (!psProc.running) psProc.running = true
-        if (!clientsProc.running) clientsProc.running = true
-    }
-    function rebuild() {
-        var out = []
-        for (var i = 0; i < Routes.apps.length; i++) {
-            var app = Routes.apps[i]
-            var re = new RegExp(app.match)
-            var run = false
-            for (var k = 0; k < procLines.length; k++) if (re.test(procLines[k])) { run = true; break }
-            var wins = [], ws = ""
-            for (var j = 0; j < clients.length; j++) {
-                var c = clients[j]
-                if (app.classes.indexOf(String(c["class"] || "").toLowerCase()) >= 0) {
-                    wins.push(c)
-                    if (ws === "" && c.workspace) ws = c.workspace.name
-                }
-            }
-            out.push({ app: app, running: run || wins.length > 0, wins: wins.length, ws: ws })
-        }
-        rows = out
-    }
-    Process {
-        id: psProc
-        command: ["ps", "-u", Quickshell.env("USER"), "-o", "args="]
-        stdout: StdioCollector { onStreamFinished: { root.procLines = text.split("\n").filter(function (l) { return l.indexOf("--type=") < 0 }); root.rebuild() } }
-    }
-    Process {
-        id: clientsProc
-        command: ["hyprctl", "clients", "-j"]
-        stdout: StdioCollector { onStreamFinished: { try { root.clients = JSON.parse(text) } catch (e) { root.clients = [] } root.rebuild() } }
-    }
-    // quick while the box is open, slow in the background (it feeds the little count on the corner)
-    Timer { interval: root.active ? 2000 : 8000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.refresh() }
-    onActiveChanged: if (active) refresh()
-
-    function openApp(app) {
-        Quickshell.execDetached(["env", "SPECIAL_CMD=" + app.cmd, "bash", home + "/.config/Halcyon/scripts/special.sh", app.ws, "--show"])
-        later.restart()
-    }
-    function quitApp(app) {
-        Quickshell.execDetached(["pkill", "-f", app.match])
-        later.restart()
-    }
-    function startApp(app) {
-        Quickshell.execDetached(["env", "SPECIAL_CMD=" + app.cmd, "bash", home + "/.config/Halcyon/scripts/special.sh", app.ws, "--show"])
-        later.restart()
-    }
-    Timer { id: later; interval: 1400; onTriggered: root.refresh() }
-
-    function where(r) {
-        if (r.wins === 0) return "Running in the background"
-        var w = r.ws.indexOf("special:") === 0 ? r.ws.substring(8) : "workspace " + r.ws
-        return (r.wins > 1 ? r.wins + " windows" : "Window open") + " · " + w
-    }
+    onActiveChanged: if (!active) closeAll.restart()
+    Timer { id: closeAll; interval: 1; onTriggered: root.collapseAll() }
+    signal collapseAll()
 
     MouseArea { anchors.fill: parent }      // swallow clicks
 
@@ -100,7 +57,7 @@ Glass {
         }
 
         Text {
-            visible: root.running.length === 0
+            visible: root.count === 0
             Layout.fillWidth: true
             Layout.topMargin: 4; Layout.bottomMargin: 4
             text: "Nothing is running in the background"
@@ -109,88 +66,89 @@ Glass {
         }
 
         Repeater {
-            model: root.running
-            delegate: Rectangle {
-                id: rowItem
+            model: SystemTray.items
+            delegate: ColumnLayout {
+                id: appRow
                 required property var modelData
+                visible: !root.isHidden(modelData)
                 Layout.fillWidth: true
-                implicitHeight: 56
-                radius: root.pal.rMd
-                color: Qt.alpha(root.pal.surface, 0.8)
-                border.width: 1
-                border.color: root.pal.lineSoft
+                spacing: 6
+                property bool showMenu: false
+                Connections { target: root; function onCollapseAll() { appRow.showMenu = false } }
 
-                // alive dot: breathes while the app is up
                 Rectangle {
-                    id: dot
-                    x: 14; anchors.verticalCenter: parent.verticalCenter
-                    width: 8; height: 8; radius: 4
-                    color: rowItem.modelData.wins > 0 ? root.pal.accent : root.pal.accent2
-                    SequentialAnimation on opacity {
-                        loops: Animation.Infinite; running: root.active && root.pal.motion > 0.3
-                        NumberAnimation { to: 0.35; duration: 1400; easing.type: Easing.InOutSine }
-                        NumberAnimation { to: 1.0; duration: 1400; easing.type: Easing.InOutSine }
+                    Layout.fillWidth: true
+                    implicitHeight: 56
+                    radius: root.pal.rMd
+                    color: Qt.alpha(root.pal.surface, 0.8)
+                    border.width: 1
+                    border.color: appRow.showMenu ? Qt.alpha(root.pal.accent, 0.40) : root.pal.lineSoft
+
+                    // alive dot: breathes while the box is open
+                    Rectangle {
+                        id: dot
+                        x: 14; anchors.verticalCenter: parent.verticalCenter
+                        width: 8; height: 8; radius: 4
+                        color: appRow.modelData.status === 2   // 2 = NeedsAttention ? root.pal.accent2 : root.pal.accent
+                        SequentialAnimation on opacity {
+                            loops: Animation.Infinite; running: root.active && root.pal.motion > 0.3
+                            NumberAnimation { to: 0.35; duration: 1400; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1.0; duration: 1400; easing.type: Easing.InOutSine }
+                        }
                     }
-                }
-                Text {
-                    id: gl
-                    anchors.left: dot.right; anchors.leftMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: String.fromCodePoint(rowItem.modelData.app.glyph)
-                    color: root.pal.text
-                    font.family: root.pal.font; font.pixelSize: 20
-                }
-                Column {
-                    anchors.left: gl.right; anchors.leftMargin: 10
-                    anchors.right: btns.left; anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 1
+                    Image {
+                        id: ico
+                        anchors.left: dot.right; anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 24; height: 24
+                        sourceSize.width: 48; sourceSize.height: 48
+                        source: appRow.modelData.icon
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                    }
                     Text {
-                        width: parent.width; elide: Text.ElideRight
-                        text: rowItem.modelData.app.name
+                        anchors.left: ico.right; anchors.leftMargin: 10
+                        anchors.right: btns.left; anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        elide: Text.ElideRight
+                        text: root.name(appRow.modelData)
                         color: root.pal.text
                         font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold
                     }
-                    Text {
-                        width: parent.width; elide: Text.ElideRight
-                        text: root.where(rowItem.modelData)
-                        color: root.pal.muted
-                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                    Row {
+                        id: btns
+                        anchors.right: parent.right; anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+                        Chip {
+                            pal: root.pal; implicitHeight: 28; label: "Open"; on: true
+                            onClicked: appRow.modelData.activate()
+                        }
+                        Chip {
+                            visible: appRow.modelData.hasMenu
+                            pal: root.pal; implicitHeight: 28; label: "Options"; on: appRow.showMenu
+                            onClicked: appRow.showMenu = !appRow.showMenu
+                            onRightClicked: appRow.modelData.secondaryActivate()
+                        }
                     }
                 }
-                Row {
-                    id: btns
-                    anchors.right: parent.right; anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-                    Chip { pal: root.pal; implicitHeight: 28; label: "Open"; on: true; onClicked: root.openApp(rowItem.modelData.app) }
-                    Chip { pal: root.pal; implicitHeight: 28; label: "Quit"; onClicked: root.quitApp(rowItem.modelData.app) }
-                }
-            }
-        }
 
-        // apps that are not running: one tap starts them in their own workspace
-        Flow {
-            visible: root.stopped.length > 0
-            Layout.fillWidth: true
-            Layout.topMargin: 4
-            spacing: 6
-            Text {
-                text: "START"
-                color: root.pal.muted
-                font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4
-                height: 28; verticalAlignment: Text.AlignVCenter
-                rightPadding: 4
-            }
-            Repeater {
-                model: root.stopped
-                delegate: Chip {
-                    required property var modelData
-                    pal: root.pal
-                    implicitHeight: 28
-                    glyph: String.fromCodePoint(modelData.app.glyph)
-                    label: modelData.app.name
-                    onClicked: root.startApp(modelData.app)
+                // the app's own menu (includes its Quit)
+                Rectangle {
+                    visible: appRow.showMenu && appRow.modelData.hasMenu
+                    Layout.fillWidth: true
+                    implicitHeight: menu.implicitHeight + 12
+                    radius: root.pal.rMd
+                    color: Qt.alpha(root.pal.surface, 0.55)
+                    border.width: 1
+                    border.color: root.pal.lineSoft
+                    TrayMenu {
+                        id: menu
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 6 }
+                        pal: root.pal
+                        handle: appRow.showMenu ? appRow.modelData.menu : null
+                        onDone: appRow.showMenu = false
+                    }
                 }
             }
         }

@@ -35,17 +35,21 @@ if [ "${SKIP_SYSMODE:-0}" != 1 ]; then
   sudo install -Dm755 "$RICE/sysmode/sysmode" /usr/local/bin/sysmode
   sudo install -Dm755 "$BIN/hx" /usr/local/bin/hx     # sysmode uses it for `dossier` and the IDS daemon
   sudo install -Dm644 "$RICE/sysmode/sysmode.8" /usr/local/share/man/man8/sysmode.8
+  # brings the honeypot / IDS back after every reboot while the saved mode is stealth
+  sudo install -Dm644 "$RICE/sysmode/sysmode-daemons.service" /etc/systemd/system/sysmode-daemons.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable sysmode-daemons.service >/dev/null 2>&1 || echo "   could not enable sysmode-daemons.service"
   sudo install -Dm644 "$RICE/sysmode/sysmode.bash-completion" /usr/share/bash-completion/completions/sysmode
   echo "   sysmode doctor  checks its own dependencies"
 fi
 
 # RAM type / speed / channels for the performance page: dmidecode needs root, so save its output once
+# (an empty / failed read no longer overwrites a good cache file; re-run scripts/refresh-ram.sh any time)
 if command -v dmidecode >/dev/null; then
-  mkdir -p "$HOME/.cache/island"
   echo "== reading RAM info (sudo dmidecode)"
-  sudo dmidecode -t memory > "$HOME/.cache/island/dmi-memory.txt" 2>/dev/null || echo "   skipped (no sudo?); the page will show size only"
+  bash "$RICE/scripts/refresh-ram.sh" >/dev/null 2>&1 || echo "   skipped (no sudo?); the page will show size only. Try: ~/.config/Halcyon/scripts/refresh-ram.sh"
 else
-  echo "note: dmidecode not installed (pacman -S dmidecode), so the RAM card shows size only"
+  echo "note: dmidecode not installed (sudo pacman -S dmidecode), then run ~/.config/Halcyon/scripts/refresh-ram.sh; until then the RAM card shows size only"
 fi
 
 id -nG | tr ' ' '\n' | grep -qx input || echo "note: you are not in the 'input' group; gestures and idle detection read /dev/input (sudo usermod -aG input \$USER, then re-login)"

@@ -1,0 +1,12 @@
+[Unit]
+Description=sysmode: start the honeypot and IDS for the saved mode (stealth)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/sysmode daemons
+
+[Install]
+WantedBy=multi-user.target

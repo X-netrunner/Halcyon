@@ -49,6 +49,7 @@ Scope {
     readonly property int boxW: 392
     readonly property int boxPad: 18
     readonly property int boxEdge: 22
+    readonly property int boxTop: 90         // top of the notification centre AND the console, so they line up
 
     // ---------- type ----------
     // icons / glyphs (Nerd Font)
