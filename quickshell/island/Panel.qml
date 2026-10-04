@@ -14,6 +14,7 @@ Glass {
     property bool autoPower: false
     property bool autoHide: false
     property bool gaming: false
+    property bool caffeine: false
     property real mic: 0
     property bool micMuted: false
     property real vol: 0
@@ -122,6 +123,9 @@ Glass {
     signal setAuto()
     signal openSettings()
     signal toggleGaming()
+    signal toggleCaffeine()
+    signal caffeineHour()
+    signal openApps()
     signal openPower()
     signal micMoved(real v)
     signal toggleMic()
@@ -129,10 +133,10 @@ Glass {
     signal volumeMoved(real v)
     signal brightnessMoved(real v)
 
-    width: 368
+    width: pal.boxW
     height: implicitHeight
     implicitHeight: col.implicitHeight + 2 * pad
-    readonly property int pad: 22
+    readonly property int pad: pal.boxPad
     radius: pal.rXl
     opacityBody: pal.glassSolid - 0.06
 
@@ -282,6 +286,22 @@ Glass {
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Saver"; on: root.profile === "power-saver"; onClicked: root.setProfile("power-saver") }
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Balanced"; on: root.profile === "balanced"; onClicked: root.setProfile("balanced") }
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Perf"; on: root.profile === "performance"; onClicked: root.setProfile("performance") }
+        }
+
+        // caffeine (click = on / off, right-click = on for one hour) and the background-apps box (bottom-left corner)
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: 10
+            spacing: 8
+            Chip {
+                Layout.fillWidth: true; pal: root.pal
+                glyph: String.fromCodePoint(0xF0176)
+                label: root.caffeine ? "Caffeine on" : "Caffeine"
+                on: root.caffeine
+                onClicked: root.toggleCaffeine()
+                onRightClicked: root.caffeineHour()
+            }
+            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF003B); label: "Background apps"; onClicked: root.openApps() }
         }
 
         // one quiet row: settings gear, gaming mode, power button

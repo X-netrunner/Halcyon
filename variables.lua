@@ -11,9 +11,8 @@ return {
     editor                     = "codium",
     fileExplorer               = "foot -e yazi",
     audioSettings              = "pavucontrol",
-    musicCmd                   = "foot -e ncmpcpp",   -- SUPER+M special workspace
+    -- (SUPER+M music and SUPER+D communication start their apps from scripts/special.sh, see MUSIC_CMD / COMM_CMD there)
     sysmonCmd                  = "foot -e btop",      -- CTRL+SHIFT+ESC special workspace
-    communicationCmd           = "sh -c 'command -v vesktop >/dev/null && exec vesktop || exec discord'",   -- SUPER+D special workspace
     todoCmd                    = "sh -c 'command -v todoist >/dev/null && exec todoist || exec firefox --new-window https://app.todoist.com'",  -- SUPER+R special workspace
 
     -- Touchpad

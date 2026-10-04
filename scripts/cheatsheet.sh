@@ -27,9 +27,9 @@ cat << 'LIST' | fuzzel --dmenu --prompt="Keys > " --lines=18 --width=72
 󰌌  Super + Alt + 1..9        Move window to workspace
 󰌌  Super + S                 Scratch workspace (overlay)
 󰌌  Super + Alt + S           Send window to scratch
-󰌌  Super + M                 Music (ncmpcpp)
+󰌌  Super + M                 Music (starts Spotify if nothing is there; ncmpcpp if no Spotify)
 󰌌  Ctrl + Shift + Esc        System monitor (btop)
-󰌌  Super + D                 Communication (Discord)
+󰌌  Super + D                 Communication (starts Vesktop / Discord if nothing is there)
 󰌌  Super + R                 Tasks (Todoist)
 
  ISLAND
@@ -44,10 +44,13 @@ cat << 'LIST' | fuzzel --dmenu --prompt="Keys > " --lines=18 --width=72
 󰌌  Ctrl + Alt + C            Clear all notifications
 󰌌  Click / right-click popup Dismiss it / hide all popups (centre keeps them)
 󰌌  Drag bar left / right     Performance page / media page
-󰌌  Hover bottom-right corner Wi-Fi, Bluetooth, volume, brightness, power mode
+󰌌  Hover bottom-right corner Wi-Fi, Bluetooth, volume, brightness, power mode, caffeine
+󰌌  Hover bottom-left corner  Background apps: what keeps running without a window
 
  TOGGLES
 󰌌  Super + Alt + P           Auto power manager on / off
+󰅶  Super + Alt + C           Caffeine on / off (screen stays awake, no idle lock / sleep)
+󰀻  Super + Shift + A         Background apps box (Spotify, Discord ... open / quit)
 󰌌  Super + Alt + G           Touchpad music gestures on / off
 󰌌  Super + Alt + W           Live wallpaper on / off
 󰌌  Super + Alt + N           Nightlight on / off

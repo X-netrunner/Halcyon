@@ -29,8 +29,10 @@ Scope {
     property bool clickMode: false          // Edge toggle: false = hover opens it, true = click the edge to open / close it
     property bool autoHide: false           // auto-hide on: it closes as soon as the pointer leaves, in either mode
     property string sysmode: ""             // lockdown / stealth get their background art
+    property var starData: null             // other modes: the profile picture as a constellation
+    property bool profileStars: true
     property var coalesceApps: ["notify-send"]
-    readonly property int cardW: 392
+    readonly property int cardW: pal ? pal.boxW : 392
     readonly property int topY: 16          // popups and the centre line up with the top of the island
 
     property bool centerOpen: false
@@ -168,7 +170,7 @@ Scope {
         id: win
         anchors { top: true; right: true; bottom: true }
         // extra room around the cards so their shadows are not cut off by the window edge
-        implicitWidth: root.cardW + 30 + 22
+        implicitWidth: root.cardW + 30 + root.pal.boxEdge
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-notifs"
@@ -243,10 +245,10 @@ Scope {
         Glass {
             id: panel
             pal: root.pal
-            x: win.width - width - 22 + (1 - root.reveal) * (width + 40)
+            x: win.width - width - root.pal.boxEdge + (1 - root.reveal) * (width + 40)
             y: root.topY + 74
             width: root.cardW
-            height: col.implicitHeight + 36
+            height: col.implicitHeight + 2 * root.pal.boxPad
             radius: root.pal.rXl
             opacityBody: root.pal.glassSolid - 0.06
             opacity: Math.min(1, root.reveal * 1.6)
@@ -261,6 +263,8 @@ Scope {
                 anchors.margins: 14
                 pal: root.pal
                 mode: root.sysmode
+                avatarStars: root.starData
+                profileStars: root.profileStars
                 dots: 10
                 artStrength: 1
                 artFit: 0.78
@@ -272,7 +276,7 @@ Scope {
 
             ColumnLayout {
                 id: col
-                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 18 }
+                anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.pal.boxPad }
                 spacing: 12
 
                 RowLayout {

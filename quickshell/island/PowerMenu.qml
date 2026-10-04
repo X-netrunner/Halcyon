@@ -9,6 +9,8 @@ Scope {
     id: root
     property var pal
     property string sysmode: ""
+    property var starData: null
+    property bool profileStars: true
     property bool open: false
     property string pending: ""
     signal session(string action)
@@ -57,7 +59,7 @@ Scope {
             Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.55) }
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
 
-            Backdrop { anchors.fill: parent; pal: root.pal; mode: root.sysmode; dots: 26; artStrength: 0.8; artFit: 0.7 }
+            Backdrop { anchors.fill: parent; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 26; artStrength: 0.8; artFit: 0.7 }
 
             Column {
                 anchors.centerIn: parent

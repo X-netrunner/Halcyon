@@ -21,15 +21,15 @@ end
 
 -- Special workspaces (overlay on top of the current workspace)
 --   SUPER+S            scratch workspace   (SUPER+ALT+S sends the focused window there)
---   SUPER+M            music               (opens vars.musicCmd the first time)
+--   SUPER+M            music               (starts Spotify the first time / when it has no window: scripts/special.sh)
 --   CTRL+SHIFT+ESC     system monitor      (opens vars.sysmonCmd the first time)
---   SUPER+D            communication       (opens vars.communicationCmd the first time)
+--   SUPER+D            communication       (starts Vesktop / Discord the first time: scripts/special.sh)
 --   SUPER+R            todo                (opens vars.todoCmd the first time)
 hl.bind(vars.kbSpecialWs, hl.dsp.workspace.toggle_special("special"))
 hl.bind("SUPER + ALT + S", hl.dsp.window.move({ workspace = "special:special" }))
-hl.bind(vars.kbMusicWs, hl.dsp.workspace.toggle_special("music"))
+hl.bind(vars.kbMusicWs, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/special.sh music"))
 hl.bind(vars.kbSystemMonitorWs, hl.dsp.workspace.toggle_special("sysmon"))
-hl.bind(vars.kbCommunicationWs, hl.dsp.workspace.toggle_special("communication"))
+hl.bind(vars.kbCommunicationWs, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/special.sh communication"))
 hl.bind(vars.kbTodoWs, hl.dsp.workspace.toggle_special("todo"))
 
 -- Media/Volume/Brightness
@@ -59,7 +59,7 @@ hl.bind("SUPER + V", hl.dsp.exec_cmd("cliphist list | fuzzel -d | cliphist decod
 hl.bind("SUPER + ALT + slash", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/cheatsheet.sh"))
 
 -- Lock / Session
-hl.bind(vars.kbLock, hl.dsp.exec_cmd("hyprlock"))
+hl.bind(vars.kbLock, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/lock.sh"))
 hl.bind(vars.kbSession, hl.dsp.exec_cmd("wlogout"))
 
 -- Custom Toggles
@@ -71,6 +71,7 @@ hl.bind("SUPER + period", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/emoj
 hl.bind("SUPER + ALT + W", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_livewallpaper.sh"))
 hl.bind("SUPER + ALT + G", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_gestures.sh"))
 hl.bind("SUPER + ALT + P", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_power.sh"))
+hl.bind("SUPER + ALT + C", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/caffeine.sh toggle"))   -- caffeine: screen stays awake
 
 -- Island
 local ipc = "quickshell ipc -p " .. home .. "/.config/Halcyon/quickshell/island call island "
@@ -78,6 +79,7 @@ hl.bind("SUPER + SHIFT + Return", hl.dsp.exec_cmd(ipc .. "quickterm"))   -- top-
 hl.bind("SUPER + F10", hl.dsp.exec_cmd(ipc .. "gaming"))                 -- gaming mode on / off
 hl.bind("SUPER + F11", hl.dsp.exec_cmd(ipc .. "settings"))               -- rice settings window
 hl.bind(vars.kbClearNotifs, hl.dsp.exec_cmd(ipc .. "clearnotifs"))
+hl.bind("SUPER + SHIFT + A", hl.dsp.exec_cmd(ipc .. "apps"))              -- background apps box (bottom-left)
 hl.bind("SUPER + SHIFT + N", hl.dsp.exec_cmd(ipc .. "notifcenter"))   -- notification centre
 hl.bind("SUPER + SHIFT + D", hl.dsp.exec_cmd(ipc .. "dnd"))           -- do not disturb
 

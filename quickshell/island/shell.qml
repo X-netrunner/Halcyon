@@ -5,6 +5,8 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Services.Mpris
+import "StarData.js" as Stars
+import "Routes.js" as Routes
 
 ShellRoot {
     id: root
@@ -36,6 +38,14 @@ ShellRoot {
     property real mic: 0
     property bool micMuted: false
     property bool gaming: false
+    property bool caffeine: false       // keep the screen awake (scripts/caffeine.sh); the unit is the truth, polled every 5 s
+    property double caffeineGuard: 0
+
+    // app routing: Spotify / Discord ... go to their special workspace when they open (Routes.js)
+    property bool routeApps: true
+    property var routed: ({})           // window addresses already handled, so a window you move yourself is left alone
+    property bool routeSeeded: false    // the first pass only notes what is already open
+    readonly property double startedAt: Date.now()
 
     // persisted in ~/.local/state/island/settings.json
     property bool autoHide: false
@@ -62,6 +72,22 @@ ShellRoot {
     property string profileName: ""
     property string profileAvatar: ""
     property bool settingsLoaded: false
+    // the profile picture as a constellation (secure / cyber backdrops everywhere); redone when the picture changes
+    property var starData: null
+    property string avatarPath: ""      // the picture actually found (scripts/avatar.sh); "" = none
+    readonly property string starName: profileName !== "" ? profileName : Quickshell.env("USER")
+    function refreshAvatar() { avatarProc.running = true }
+    // picture -> `hx stars`; no picture, or a flat one that gives (almost) no stars -> a sky made from your name,
+    // so the constellation is never just blank
+    function makeStars() {
+        if (!profileStars) return
+        if (avatarPath === "") starData = Stars.fromName(starName)
+        else starProc.running = true
+    }
+    onProfileAvatarChanged: if (settingsLoaded) refreshAvatar()
+    onProfileNameChanged: if (settingsLoaded && avatarPath === "" && profileStars) starData = Stars.fromName(starName)
+    onProfileStarsChanged: if (settingsLoaded && profileStars && starData === null) makeStars()
+    onSettingsLoadedChanged: if (settingsLoaded) refreshAvatar()
 
     // SUPER+TAB tree overview
     property bool overviewOpen: false
@@ -95,6 +121,7 @@ ShellRoot {
         dnd: root.dnd
         gaming: root.gaming
         profileStars: root.profileStars
+        starData: root.starData
         glassShift: root.glassShift
         motion: root.motion
         rounding: root.rounding
@@ -110,10 +137,22 @@ ShellRoot {
             else if (id === "reload") { Quickshell.execDetached(["hyprctl", "reload"]); hyprKick.restart() }
         }
     }
+    // our own lock screen (replaces hyprlock): SUPER+L, power menu > Lock, `>lock`, scripts/lock.sh
+    Lock {
+        id: lockScreen
+        pal: pal
+        sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
+        name: root.profileName !== "" ? root.profileName : Quickshell.env("USER")
+        avatarPath: root.avatarPath
+    }
     PowerMenu {
         id: powerMenu
         pal: pal
         sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
         onSession: a => root.session(a)
     }
 
@@ -127,6 +166,8 @@ ShellRoot {
         clickMode: root.clickMode
         autoHide: root.autoHide
         sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
         onDndRequested: v => root.setDnd(v)
     }
 
@@ -137,6 +178,8 @@ ShellRoot {
         sysmode: root.sysmode
         clickMode: root.clickMode
         autoHide: root.autoHide
+        starData: root.starData
+        profileStars: root.profileStars
     }
 
     // ---------- actions ----------
@@ -171,7 +214,7 @@ ShellRoot {
         Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && printf '%s\\n' \"$2\" > \"$1/settings.json\"", "sh", stateDir,
                                  JSON.stringify({ autoHide: autoHide, autoPower: autoPower, compactSpecial: compactSpecial, dnd: dnd, edgeMode: edgeMode, glassShift: glassShift, motion: motion, rounding: rounding, gaps: gaps, blur: blur, shadows: shadows,
                                                   hyprAnim: hyprAnim, profileStars: profileStars, hyprTouched: hyprTouched,
-                                                  profileName: profileName, profileAvatar: profileAvatar })])
+                                                  profileName: profileName, profileAvatar: profileAvatar, routeApps: routeApps })])
     }
     function setAutoHide(v) { autoHide = v; saveSettings() }
     function setCompactSpecial(v) { compactSpecial = v; saveSettings() }
@@ -207,13 +250,83 @@ ShellRoot {
     }
     Timer { id: hyprKick; interval: 250; onTriggered: root.applyHypr() }
 
+    property double gamingGuard: 0      // ignore the state-file poll until this time (ms): the script needs a moment
     function setGaming(on) {
         gaming = on
+        gamingGuard = Date.now() + 1400
         Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/gamemode.sh", on ? "on" : "off"])
         if (!on) { hyprKick.interval = 1200; hyprKick.restart() }   // the script reloads Hyprland; put our tweaks back on top
+        gamingCheck.restart()
     }
+    // the state file is the truth: re-read it shortly after a click and every few seconds, so the chip can never
+    // disagree with the script (a toggle from SUPER+F10 / a terminal / a failed run all end up shown correctly)
+    Timer { id: gamingCheck; interval: 1700; onTriggered: gamingProc.running = true }
+    Timer { interval: 5000; running: true; repeat: true; onTriggered: gamingProc.running = true }
     function toggleEdgeMode() { setEdgeMode(clickMode ? "hover" : "click") }
     function setProfileInfo(name, avatar) { profileName = name; profileAvatar = avatar; saveSettings() }
+
+    // ---- caffeine: screen stays awake, no idle lock / suspend (scripts/caffeine.sh holds a systemd-inhibit lock)
+    function setCaffeine(on, mins) {
+        caffeine = on
+        caffeineGuard = Date.now() + 2200
+        var args = ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/caffeine.sh", on ? "on" : "off"]
+        if (on && mins) args.push(String(mins))
+        Quickshell.execDetached(args)
+        caffeineCheck.restart()
+    }
+    Timer { id: caffeineCheck; interval: 2400; onTriggered: caffeineProc.running = true }
+    Timer { interval: 5000; running: true; repeat: true; onTriggered: caffeineProc.running = true }
+    Process {
+        id: caffeineProc
+        running: true
+        command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/caffeine.sh", "status"]
+        stdout: StdioCollector { onStreamFinished: { if (Date.now() > root.caffeineGuard) root.caffeine = text.trim() === "on" } }
+    }
+
+    // ---- special workspaces: music / communication start their app the first time (scripts/special.sh)
+    function toggleSpecial(name) {
+        if (name === "music" || name === "communication")
+            Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/special.sh", name])
+        else
+            hypr("hl.dsp.workspace.toggle_special(\"" + name + "\")")
+    }
+
+    // ---- app routing: when a window of a known app (Routes.js) opens, move it to its special workspace and show it.
+    // `hyprctl clients` is read shortly after every new window (the class of some apps is set a moment late), and again
+    // a little later. Windows that were open when the island started are left alone, and so is a window you move yourself.
+    function routeSoon() { routeT.restart(); routeT2.restart() }
+    function pollClients() { if (!clientsProc.running) clientsProc.running = true }
+    Timer { id: routeT; interval: 700; onTriggered: root.pollClients() }
+    Timer { id: routeT2; interval: 2800; onTriggered: root.pollClients() }
+    Timer { interval: 1500; running: true; onTriggered: root.pollClients() }      // seeds the list at start
+    Process {
+        id: clientsProc
+        command: ["hyprctl", "clients", "-j"]
+        stdout: StdioCollector { onStreamFinished: root.routeClients(text) }
+    }
+    property string showWs: ""
+    Timer { id: showT; interval: 220; onTriggered: if (root.showWs !== "" && root.activeSpecial !== root.showWs) root.toggleSpecial(root.showWs) }
+    function routeClients(text) {
+        var cl = []
+        try { cl = JSON.parse(text) } catch (e) { return }
+        var keep = {}
+        // do not pop a workspace over your work while the session is still starting (autostarted apps)
+        var quiet = (Date.now() - startedAt) < 45000
+        for (var i = 0; i < cl.length; i++) {
+            var c = cl[i]
+            if (routed[c.address]) { keep[c.address] = true; continue }
+            var app = Routes.appForClass(c["class"])
+            if (!app) continue
+            keep[c.address] = true
+            if (!routeSeeded || !routeApps) continue
+            var wsName = c.workspace ? c.workspace.name : ""
+            if (wsName === "special:" + app.ws) continue
+            hypr("hl.dsp.window.move({ workspace = \"special:" + app.ws + "\", window = \"address:" + c.address + "\" })")
+            if (!quiet) { showWs = app.ws; showT.restart() }
+        }
+        routed = keep
+        routeSeeded = true
+    }
 
     function toggleWifi() {
         var on = net.wifi === "on"
@@ -253,7 +366,7 @@ ShellRoot {
 
     function session(action) {
         switch (action) {
-        case "lock": Quickshell.execDetached(["hyprlock"]); break
+        case "lock": lockScreen.lock(); break
         case "suspend": Quickshell.execDetached(["systemctl", "suspend"]); break
         case "logout": hypr("hl.dsp.exit()"); break
         case "reboot": Quickshell.execDetached(["systemctl", "reboot"]); break
@@ -274,6 +387,9 @@ ShellRoot {
         case "settings": settingsWin.show(); break
         case "power": powerMenu.show(); break
         case "gaming": setGaming(!gaming); break
+        case "caffeine": setCaffeine(!caffeine, 0); break
+        case "apps": appsWin.pinFor(9000); break
+        case "routing": routeApps = !routeApps; saveSettings(); break
         case "autohide": setAutoHide(!autoHide); break
         case "notifications": notifs.toggleCenter(); break
         case "quickterm": quickTerm.toggle(); break
@@ -313,6 +429,7 @@ ShellRoot {
                         Quickshell.execDetached(["systemctl", "--user", "start", root.powerService])
                     }
                     root.compactSpecial = s.compactSpecial !== false
+                    root.routeApps = s.routeApps !== false
                     root.profileName = s.profileName || ""
                     root.profileAvatar = s.profileAvatar || ""
                 } catch (e) {}
@@ -321,14 +438,31 @@ ShellRoot {
         }
     }
     Process {
+        id: gamingProc
         running: true
         command: ["sh", "-c", "test -f /dev/shm/halcyon-gamemode && echo on || echo off"]
-        stdout: StdioCollector { onStreamFinished: root.gaming = text.trim() === "on" }
+        stdout: StdioCollector { onStreamFinished: { if (Date.now() > root.gamingGuard) root.gaming = text.trim() === "on" } }
     }
     Process {
         running: true
         command: ["bash", root.cfg + "/island/scripts/stats.sh", "2"]
         stdout: SplitParser { onRead: d => { try { root.stats = JSON.parse(d) } catch (e) {} } }
+    }
+    Process {
+        id: avatarProc
+        command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/avatar.sh", root.profileAvatar]
+        stdout: StdioCollector { onStreamFinished: { root.avatarPath = text.trim(); root.makeStars() } }
+    }
+    Process {
+        id: starProc
+        command: [root.hx, "stars", root.avatarPath, "70"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var d = null
+                try { d = JSON.parse(text) } catch (e) {}
+                root.starData = (d && d.stars && d.stars.length >= 8) ? d : Stars.fromName(root.starName)
+            }
+        }
     }
     Process {
         running: true
@@ -414,6 +548,8 @@ ShellRoot {
         function onRawEvent(event) {
             if (event.name === "activespecial")
                 root.activeSpecial = event.data.split(",")[0].replace("special:", "")
+            else if (event.name === "openwindow")
+                root.routeSoon()
         }
     }
 
@@ -436,6 +572,10 @@ ShellRoot {
         function settings(): void { settingsWin.toggle() }
         function power(): void { powerMenu.show() }
         function gaming(): void { root.setGaming(!root.gaming) }
+        function caffeine(): void { root.setCaffeine(!root.caffeine, 0) }
+        function apps(): void { appsWin.pinFor(9000) }
+        function routing(): void { root.runCommand("routing") }
+        function lock(): void { lockScreen.lock() }
     }
 
     // =====================================================================
@@ -586,12 +726,13 @@ ShellRoot {
                     cava: root.cava
                     playing: root.playing
                     activeSpecial: root.activeSpecial
+                    caffeine: root.caffeine
                     opacity: root.page === "home" ? 1 : 0
                     visible: opacity > 0.01
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
                     onStatusClicked: root.page = "perf"
                     onWorkspaceClicked: n => root.hypr("hl.dsp.focus({ workspace = " + n + " })")
-                    onSpecialClicked: name => root.hypr("hl.dsp.workspace.toggle_special(\"" + name + "\")")
+                    onSpecialClicked: name => root.toggleSpecial(name)
                 }
 
                 MediaPage {
@@ -664,6 +805,8 @@ ShellRoot {
             compactSpecial: root.compactSpecial
             profileName: root.profileName
             profileAvatar: root.profileAvatar
+            avatarFile: root.avatarPath
+            starData: root.starData
             sysmode: root.sysmode
             profileStars: root.profileStars
 
@@ -688,7 +831,7 @@ ShellRoot {
         id: corner
 
         anchors { bottom: true; right: true }
-        implicitWidth: 436
+        implicitWidth: pal.boxW + pal.boxEdge + 30     // same box width / edge gap as the notification centre
         implicitHeight: 900
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
@@ -699,6 +842,9 @@ ShellRoot {
         WlrLayershell.keyboardFocus: panel.wantsKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
         property bool hovering: false
+        property bool zoneHover: false      // pointer in the corner / gap zone
+        property bool panelHover: false     // pointer on the panel itself (its chips and sliders take hover away from the zone)
+        function syncHover() { setHover(zoneHover || panelHover) }
         readonly property bool open: hovering
         readonly property real reveal: hovering ? 1 : 0
         // hover mode: touching the corner opens it and leaving closes it. click mode: click the corner to open / close it.
@@ -717,9 +863,9 @@ ShellRoot {
             id: zone
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            width: corner.open ? panel.width + 34 + 30 : (root.clickMode ? 28 : 12)
-            height: corner.open ? panel.height + 34 + 30 : (root.clickMode ? 28 : 12)
-            HoverHandler { onHoveredChanged: corner.setHover(hovered) }
+            width: corner.open ? panel.width + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
+            height: corner.open ? panel.height + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
+            HoverHandler { onHoveredChanged: { corner.zoneHover = hovered; corner.syncHover() } }
             Rectangle {
                 visible: root.clickMode && !corner.open
                 anchors.right: parent.right; anchors.bottom: parent.bottom
@@ -742,8 +888,8 @@ ShellRoot {
             id: panel
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.rightMargin: 34
-            anchors.bottomMargin: 34
+            anchors.rightMargin: pal.boxEdge
+            anchors.bottomMargin: pal.boxEdge
             pal: pal
             active: corner.open
             stats: root.stats
@@ -752,11 +898,15 @@ ShellRoot {
             autoPower: root.autoPower
             autoHide: root.autoHide
             gaming: root.gaming
+            caffeine: root.caffeine
             mic: root.mic
             micMuted: root.micMuted
             vol: root.vol
             muted: root.muted
             bright: root.bright
+
+            // hovering anything inside the panel keeps the whole box open (same idea as the notification centre)
+            HoverHandler { onHoveredChanged: { corner.panelHover = hovered; corner.syncHover() } }
 
             opacity: corner.reveal
             visible: opacity > 0.01
@@ -771,12 +921,106 @@ ShellRoot {
             onSetAuto: root.setAuto()
             onOpenSettings: settingsWin.show()
             onToggleGaming: root.setGaming(!root.gaming)
+            onToggleCaffeine: root.setCaffeine(!root.caffeine, 0)
+            onCaffeineHour: root.setCaffeine(true, 60)
+            onOpenApps: appsWin.pinFor(9000)
             onOpenPower: powerMenu.show()
             onToggleMute: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
             onToggleMic: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
             onMicMoved: v => { root.pendMic = v; root.mic = v * 100; if (!sliderT.running) sliderT.start() }
             onVolumeMoved: v => { root.pendVol = v; root.vol = v * 100; if (!sliderT.running) sliderT.start() }
             onBrightnessMoved: v => { root.pendBright = v; root.bright = v * 100; if (!sliderT.running) sliderT.start() }
+        }
+    }
+
+    // =====================================================================
+    //  BOTTOM-LEFT: background apps (Spotify, Discord ... that keep running without a window): open / quit them
+    // =====================================================================
+    PanelWindow {
+        id: appsWin
+
+        anchors { bottom: true; left: true }
+        implicitWidth: pal.boxW + pal.boxEdge + 30
+        implicitHeight: 700
+        exclusionMode: ExclusionMode.Ignore
+        color: "transparent"
+
+        WlrLayershell.namespace: "island-apps"
+        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+        // same open / close behaviour as the utilities box in the opposite corner (hover or click, see Edge boxes)
+        property bool hovering: false
+        property bool zoneHover: false
+        property bool panelHover: false
+        function syncHover() { setHover(zoneHover || panelHover) }
+        readonly property bool open: hovering
+        readonly property real reveal: hovering ? 1 : 0
+        function setHover(on) {
+            if (on) { aClose.stop(); if (!root.clickMode) hovering = true }
+            else if (!root.clickMode || root.autoHide) { aClose.interval = 450; aClose.restart() }
+        }
+        function pinFor(ms) { hovering = true; aClose.interval = ms; aClose.restart() }
+        Timer { id: aClose; interval: 450; onTriggered: appsWin.hovering = false }
+
+        mask: Region { item: aZone }
+        Item {
+            id: aZone
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
+            height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
+            HoverHandler { onHoveredChanged: { appsWin.zoneHover = hovered; appsWin.syncHover() } }
+            Rectangle {
+                visible: root.clickMode && !appsWin.open
+                anchors.left: parent.left; anchors.bottom: parent.bottom
+                anchors.leftMargin: 3; anchors.bottomMargin: 3
+                width: 12; height: 12; radius: 6
+                color: Qt.alpha(pal.accent, 0.35)
+            }
+            Item {
+                anchors.left: parent.left; anchors.bottom: parent.bottom
+                width: 20; height: 20
+                TapHandler {
+                    enabled: root.clickMode
+                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                    onTapped: { aClose.stop(); appsWin.hovering = !appsWin.hovering }
+                }
+            }
+        }
+
+        // how many apps are alive in the background: a small count on the corner while the box is closed
+        Rectangle {
+            visible: bgPanel.count > 0 && !appsWin.open
+            anchors.left: parent.left; anchors.bottom: parent.bottom
+            anchors.leftMargin: 6; anchors.bottomMargin: 6
+            width: 18; height: 18; radius: 9
+            color: Qt.alpha(pal.accent, 0.9)
+            Text {
+                anchors.centerIn: parent
+                text: bgPanel.count
+                color: pal.bg
+                font.family: pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold
+            }
+        }
+
+        BgApps {
+            id: bgPanel
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: pal.boxEdge
+            anchors.bottomMargin: pal.boxEdge
+            pal: pal
+            active: appsWin.open
+
+            HoverHandler { onHoveredChanged: { appsWin.panelHover = hovered; appsWin.syncHover() } }
+
+            opacity: appsWin.reveal
+            visible: opacity > 0.01
+            scale: 0.94 + 0.06 * appsWin.reveal
+            transformOrigin: Item.BottomLeft
+            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+            Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
         }
     }
 }

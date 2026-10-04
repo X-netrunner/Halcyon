@@ -13,16 +13,18 @@ KILL="cava baloo_file baloo_file_extractor tracker-miner-fs-3 tracker-extract-3"
 STOP_SERVICES=""
 [ -f "$CONF" ] && . "$CONF"
 
-note() { command -v notify-send >/dev/null && notify-send -a Halcyon -i applications-games "Gaming mode" "$1"; }
+# never block on the notification daemon (that is the island itself) or on hyprctl: run them in the background / with a timeout
+note() { command -v notify-send >/dev/null && ( timeout 3 notify-send -a Halcyon -i applications-games -t 3000 "Gaming mode" "$1" >/dev/null 2>&1 & ); }
+hl() { timeout 4 hyprctl "$@" >/dev/null 2>&1; }
 
 on() {
-  [ -f "$STATE" ] && return 0
+  [ -f "$STATE" ] && return 0     # already on
   prof=$(powerprofilesctl get 2>/dev/null || echo balanced)
   auto=no; systemctl --user is-active --quiet power-manager.service && auto=yes
   { echo "profile=$prof"; echo "auto=$auto"; echo "stopped=$(for s in $STOP_SERVICES; do systemctl --user is-active --quiet "$s" && printf '%s ' "$s"; done)"; } > "$STATE"
-  systemctl --user stop power-manager.service 2>/dev/null
-  powerprofilesctl set performance 2>/dev/null
-  hyprctl eval "hl.config({ animations = { enabled = false }, decoration = { blur = { enabled = false }, shadow = { enabled = false }, rounding = 0, dim_inactive = false }, general = { gaps_in = 0, gaps_out = 0 } })" >/dev/null 2>&1
+  timeout 4 systemctl --user stop power-manager.service 2>/dev/null
+  timeout 4 powerprofilesctl set performance 2>/dev/null
+  hl eval "hl.config({ animations = { enabled = false }, decoration = { blur = { enabled = false }, shadow = { enabled = false }, rounding = 0, dim_inactive = false }, general = { gaps_in = 0, gaps_out = 0 } })"
   for s in $STOP_SERVICES; do systemctl --user stop "$s" 2>/dev/null; done
   for p in $KILL; do pkill -x "$p" 2>/dev/null; done
   note "On: performance profile, effects off, helpers stopped"
@@ -32,10 +34,10 @@ off() {
   [ -f "$STATE" ] || return 0
   . "$STATE"
   rm -f "$STATE"
-  powerprofilesctl set "${profile:-balanced}" 2>/dev/null
-  [ "$auto" = yes ] && systemctl --user start power-manager.service 2>/dev/null
+  timeout 4 powerprofilesctl set "${profile:-balanced}" 2>/dev/null
+  [ "$auto" = yes ] && timeout 4 systemctl --user start power-manager.service 2>/dev/null
   for s in $stopped; do systemctl --user start "$s" 2>/dev/null; done
-  hyprctl reload >/dev/null 2>&1
+  hl reload
   note "Off: everything back as it was"
 }
 

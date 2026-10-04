@@ -18,6 +18,7 @@ Scope {
     property bool dnd: false
     property bool gaming: false
     property bool profileStars: true
+    property var starData: null
     property real glassShift: 0
     property real motion: 1
     property int rounding: 18
@@ -92,7 +93,7 @@ Scope {
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
 
-                Backdrop { anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; dots: 14; artStrength: 0.8; artFit: 0.85 }
+                Backdrop { anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.8; artFit: 0.85 }
 
                 RowLayout {
                     id: head

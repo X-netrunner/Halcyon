@@ -49,6 +49,7 @@ else
 fi
 
 id -nG | tr ' ' '\n' | grep -qx input || echo "note: you are not in the 'input' group; gestures and idle detection read /dev/input (sudo usermod -aG input \$USER, then re-login)"
+id -nG | tr ' ' '\n' | grep -qx video || echo "note: you are not in the 'video' group; the top-edge brightness gesture runs as a background service and brightnessctl may not be allowed to write the backlight there (sudo usermod -aG video \$USER, then re-login)"
 
 missing=""
 for c in python3 foot pkexec fuzzel brightnessctl playerctl grim slurp wl-copy pactl nmcli bluetoothctl lspci lsblk hyprsunset bemoji wayfreeze; do
