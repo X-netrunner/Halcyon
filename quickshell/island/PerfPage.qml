@@ -145,25 +145,6 @@ Item {
             Layout.fillWidth: true
             spacing: 8
 
-            Chip {
-                pal: root.pal
-                maxLabel: 64
-                glyph: String.fromCodePoint(root.net.eth ? 0xF0200 : 0xF0928)
-                label: root.net.wifi === "on" ? (root.net.ssid || (root.net.eth ? "Ethernet" : "On")) : "Off"
-                on: root.net.wifi === "on"
-                onClicked: root.toggleWifi()
-                onRightClicked: Quickshell.execDetached(["nm-connection-editor"])
-            }
-            Chip {
-                pal: root.pal
-                maxLabel: 64
-                glyph: String.fromCodePoint(0xF00AF)
-                label: root.net.bt === "on" ? (root.net.btdev || "On") : "Off"
-                on: root.net.bt === "on"
-                onClicked: root.toggleBt()
-                onRightClicked: Quickshell.execDetached(["blueman-manager"])
-            }
-
             Item { Layout.fillWidth: true }
 
             Chip { pal: root.pal; label: "Auto"; on: root.autoPower; onClicked: root.setAuto() }

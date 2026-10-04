@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 
-// Bottom-right utilities panel (wifi, bluetooth, audio, volume, brightness, power mode, rice, session).
+// Bottom-right utilities panel (wifi, bluetooth, audio, volume, mic, brightness, power mode; gear = Settings, gaming toggle, power button = PowerMenu).
 // Wi-Fi / Bluetooth / Audio chips: click opens a drawn list to pick from, right-click is the quick action
 // (radio on/off, mute). The lists come from `hx wifi`, `hx bt` and `hx audio`.
 Glass {
@@ -13,7 +13,9 @@ Glass {
     property string profile: "balanced"
     property bool autoPower: false
     property bool autoHide: false
-    property bool dragMode: false           // Edge toggle (hover | drag)
+    property bool gaming: false
+    property real mic: 0
+    property bool micMuted: false
     property real vol: 0
     property bool muted: false
     property real bright: 0
@@ -118,23 +120,14 @@ Glass {
     signal toggleBt()
     signal setProfile(string p)
     signal setAuto()
-    signal toggleAutoHide()
-    signal toggleEdgeMode()
-    signal closeDragged(real pull, bool release)
-    signal randomWallpaper()
-    signal editConfig()
+    signal openSettings()
+    signal toggleGaming()
+    signal openPower()
+    signal micMoved(real v)
+    signal toggleMic()
+    signal toggleMute()
     signal volumeMoved(real v)
     signal brightnessMoved(real v)
-    signal session(string action)
-
-    // reboot / shutdown / logout need a second click
-    property string pending: ""
-    function sessionClick(id, confirm) {
-        if (confirm && pending !== id) { pending = id; confirmT.restart(); return }
-        pending = ""
-        root.session(id)
-    }
-    Timer { id: confirmT; interval: 3000; onTriggered: root.pending = "" }
 
     width: 368
     height: implicitHeight
@@ -146,19 +139,6 @@ Glass {
     // swallow clicks
     MouseArea { anchors.fill: parent }
 
-    // drag mode: push this handle back into the corner to close the box
-    EdgeGrab {
-        visible: root.dragMode
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.top
-        width: 64; height: 16
-        dragMode: root.dragMode
-        closing: true
-        dx: -0.7; dy: -0.7; span: 260
-        onPullChanged: if (pulling) root.closeDragged(pull, false)
-        onReleased: open => root.closeDragged(open ? 1 : 0, true)
-        Rectangle { anchors.centerIn: parent; width: 30; height: 4; radius: 2; color: Qt.alpha(root.pal.muted, 0.5) }
-    }
 
     ColumnLayout {
         id: col
@@ -273,6 +253,17 @@ Glass {
             value: root.vol / 100
             dimmed: root.muted
             onMoved: v => root.volumeMoved(v)
+            onGlyphClicked: root.toggleMute()
+        }
+        // microphone: slider for the input level, click the icon to mute / unmute it
+        Slider {
+            Layout.fillWidth: true
+            pal: root.pal
+            glyph: String.fromCodePoint(root.micMuted ? 0xF036D : 0xF036C)
+            value: root.mic / 100
+            dimmed: root.micMuted
+            onMoved: v => root.micMoved(v)
+            onGlyphClicked: root.toggleMic()
         }
         Slider {
             Layout.fillWidth: true
@@ -293,31 +284,14 @@ Glass {
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Perf"; on: root.profile === "performance"; onClicked: root.setProfile("performance") }
         }
 
-        // rice
-        Text { text: "RICE"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4; Layout.topMargin: 10 }
+        // one quiet row: settings gear, gaming mode, power button
         RowLayout {
             Layout.fillWidth: true
+            Layout.topMargin: 10
             spacing: 8
-            Chip { Layout.fillWidth: true; pal: root.pal; label: "Auto-hide"; on: root.autoHide; onClicked: root.toggleAutoHide() }
-            Chip { Layout.fillWidth: true; pal: root.pal; label: root.dragMode ? "Edge: drag" : "Edge: hover"; on: root.dragMode; onClicked: root.toggleEdgeMode() }
-            Chip { Layout.fillWidth: true; pal: root.pal; label: "Wallpaper"; onClicked: root.randomWallpaper() }
-            Chip { Layout.fillWidth: true; pal: root.pal; label: "Config"; onClicked: root.editConfig() }
-        }
-
-        // session
-        Text { text: "POWER"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4; Layout.topMargin: 10 }
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF033E); label: "Lock"; onClicked: root.sessionClick("lock", false) }
-            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF04B2); label: "Sleep"; onClicked: root.sessionClick("suspend", false) }
-            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0343); label: root.pending === "logout" ? "Sure?" : "Log out"; on: root.pending === "logout"; onClicked: root.sessionClick("logout", true) }
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0709); label: root.pending === "reboot" ? "Sure?" : "Restart"; on: root.pending === "reboot"; onClicked: root.sessionClick("reboot", true) }
-            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0425); label: root.pending === "shutdown" ? "Sure?" : "Shut down"; on: root.pending === "shutdown"; onClicked: root.sessionClick("shutdown", true) }
+            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0493); label: "Settings"; onClicked: root.openSettings() }
+            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0297); label: root.gaming ? "Gaming on" : "Gaming"; on: root.gaming; onClicked: root.toggleGaming() }
+            RoundBtn { pal: root.pal; glyph: String.fromCodePoint(0xF0425); primary: true; size: 36; onClicked: root.openPower() }
         }
     }
 }

@@ -38,7 +38,9 @@ cat << 'LIST' | fuzzel --dmenu --prompt="Keys > " --lines=18 --width=72
 󰌌  Super + Alt + /           This cheatsheet
 󰌌  Super + Shift + N         Notification centre (or hover the right edge)
 󰌌  Super + Shift + D         Do not disturb on / off (or the DND chip in the panel)
-󰌌  Super + Shift + Enter     Quick console (hover / drag the top-left corner)
+󰌌  Super + Shift + Enter     Quick console (hover / click the top-left corner)
+󰊖  Super + F10               Gaming mode on / off
+󰒓  Super + F11               Rice settings
 󰌌  Ctrl + Alt + C            Clear all notifications
 󰌌  Click / right-click popup Dismiss it / hide all popups (centre keeps them)
 󰌌  Drag bar left / right     Performance page / media page

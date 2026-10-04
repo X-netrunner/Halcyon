@@ -75,6 +75,8 @@ hl.bind("SUPER + ALT + P", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/tog
 -- Island
 local ipc = "quickshell ipc -p " .. home .. "/.config/Halcyon/quickshell/island call island "
 hl.bind("SUPER + SHIFT + Return", hl.dsp.exec_cmd(ipc .. "quickterm"))   -- top-left quick terminal
+hl.bind("SUPER + F10", hl.dsp.exec_cmd(ipc .. "gaming"))                 -- gaming mode on / off
+hl.bind("SUPER + F11", hl.dsp.exec_cmd(ipc .. "settings"))               -- rice settings window
 hl.bind(vars.kbClearNotifs, hl.dsp.exec_cmd(ipc .. "clearnotifs"))
 hl.bind("SUPER + SHIFT + N", hl.dsp.exec_cmd(ipc .. "notifcenter"))   -- notification centre
 hl.bind("SUPER + SHIFT + D", hl.dsp.exec_cmd(ipc .. "dnd"))           -- do not disturb

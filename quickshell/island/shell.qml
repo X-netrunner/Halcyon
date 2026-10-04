@@ -33,14 +33,27 @@ ShellRoot {
     property real vol: 0
     property bool muted: false
     property real bright: 0
+    property real mic: 0
+    property bool micMuted: false
+    property bool gaming: false
 
     // persisted in ~/.local/state/island/settings.json
     property bool autoHide: false
     property bool autoPower: false
     property bool dnd: false            // do not disturb: no popups, everything is still stored
-    property string edgeMode: "hover"   // hover | drag: how the edge boxes (notifications, console, utilities) open and close
-    readonly property bool dragMode: edgeMode === "drag"
+    property string edgeMode: "hover"   // hover | click: how the edge boxes (notifications, console, utilities) open and close
+    readonly property bool clickMode: edgeMode === "click"
     readonly property string sysmode: stats.sysmode || ""
+    // Settings window (all remembered): look + motion + behaviour
+    property real glassShift: 0
+    property real motion: 1
+    property int rounding: 18
+    property int gaps: 8
+    property bool blur: true
+    property bool shadows: true
+    property bool hyprAnim: true
+    property bool profileStars: true
+    property bool hyprTouched: false    // only push Hyprland values once the user changed one (otherwise the Lua config rules)
     property var gpu: ({ gpu: 0, state: "none" })   // gpu.sh, only polled while the performance page is open
     property var specs: ({})                         // hx specs, once at start
     property var disks: ({ disks: [] })              // disk.py, only polled while the performance page is open
@@ -70,7 +83,39 @@ ShellRoot {
     }
     readonly property bool playing: player !== null && player !== undefined && player.isPlaying
 
-    Pal { id: pal }
+    Pal { id: pal; glassShift: root.glassShift; motion: root.gaming ? 0.25 : root.motion }
+
+    // rice settings window (gear in the utilities panel, >settings, SUPER+F11) and the power menu (power button)
+    Settings {
+        id: settingsWin
+        pal: pal
+        sysmode: root.sysmode
+        autoHide: root.autoHide
+        clickMode: root.clickMode
+        dnd: root.dnd
+        gaming: root.gaming
+        profileStars: root.profileStars
+        glassShift: root.glassShift
+        motion: root.motion
+        rounding: root.rounding
+        gaps: root.gaps
+        blur: root.blur
+        shadows: root.shadows
+        hyprAnim: root.hyprAnim
+        onSetting: (k, v) => root.setSetting(k, v)
+        onAction: id => {
+            if (id === "wallpaper") root.randomWallpaper()
+            else if (id === "config") Quickshell.execDetached(["codium", Quickshell.env("HOME") + "/.config/Halcyon"])
+            else if (id === "cheatsheet") root.runCommand("cheatsheet")
+            else if (id === "reload") { Quickshell.execDetached(["hyprctl", "reload"]); hyprKick.restart() }
+        }
+    }
+    PowerMenu {
+        id: powerMenu
+        pal: pal
+        sysmode: root.sysmode
+        onSession: a => root.session(a)
+    }
 
     // notification daemon + top-right bell, popups and centre (replaces dunst)
     Notifs {
@@ -79,7 +124,7 @@ ShellRoot {
         maxToasts: root.notifMax
         maxHistory: root.notifHistoryMax
         dnd: root.dnd
-        dragMode: root.dragMode
+        clickMode: root.clickMode
         autoHide: root.autoHide
         sysmode: root.sysmode
         onDndRequested: v => root.setDnd(v)
@@ -90,7 +135,7 @@ ShellRoot {
         id: quickTerm
         pal: pal
         sysmode: root.sysmode
-        dragMode: root.dragMode
+        clickMode: root.clickMode
         autoHide: root.autoHide
     }
 
@@ -124,14 +169,50 @@ ShellRoot {
     function saveSettings() {
         if (!settingsLoaded) return
         Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && printf '%s\\n' \"$2\" > \"$1/settings.json\"", "sh", stateDir,
-                                 JSON.stringify({ autoHide: autoHide, autoPower: autoPower, compactSpecial: compactSpecial, dnd: dnd, edgeMode: edgeMode,
+                                 JSON.stringify({ autoHide: autoHide, autoPower: autoPower, compactSpecial: compactSpecial, dnd: dnd, edgeMode: edgeMode, glassShift: glassShift, motion: motion, rounding: rounding, gaps: gaps, blur: blur, shadows: shadows,
+                                                  hyprAnim: hyprAnim, profileStars: profileStars, hyprTouched: hyprTouched,
                                                   profileName: profileName, profileAvatar: profileAvatar })])
     }
     function setAutoHide(v) { autoHide = v; saveSettings() }
     function setCompactSpecial(v) { compactSpecial = v; saveSettings() }
     function setDnd(v) { dnd = v; saveSettings() }
     function setEdgeMode(m) { edgeMode = m; saveSettings() }
-    function toggleEdgeMode() { setEdgeMode(dragMode ? "hover" : "drag") }
+
+    // one entry point for every value the Settings window changes
+    function setSetting(k, v) {
+        switch (k) {
+        case "autoHide": setAutoHide(v); return
+        case "dnd": setDnd(v); return
+        case "clickMode": setEdgeMode(v ? "click" : "hover"); return
+        case "gaming": setGaming(v); return
+        case "profileStars": profileStars = v; break
+        case "glassShift": glassShift = v; break
+        case "motion": motion = v; break
+        case "rounding": rounding = v; hyprTouched = true; break
+        case "gaps": gaps = v; hyprTouched = true; break
+        case "blur": blur = v; hyprTouched = true; break
+        case "shadows": shadows = v; hyprTouched = true; break
+        case "hyprAnim": hyprAnim = v; hyprTouched = true; break
+        }
+        saveSettings()
+        if (hyprTouched && ["rounding", "gaps", "blur", "shadows", "hyprAnim"].indexOf(k) >= 0) hyprKick.restart()
+    }
+    // Hyprland values are pushed live with `hyprctl eval` (same mechanism as scripts/toggle_layout.sh), batched so a
+    // dragged slider does not spawn a process per pixel; not while Gaming mode owns them
+    function applyHypr() {
+        if (!hyprTouched || gaming) return
+        Quickshell.execDetached(["hyprctl", "eval", "hl.config({ general = { gaps_in = " + gaps + ", gaps_out = " + (gaps * 2) + " }, " +
+            "decoration = { rounding = " + rounding + ", blur = { enabled = " + blur + " }, shadow = { enabled = " + shadows + " } }, " +
+            "animations = { enabled = " + hyprAnim + " } })"])
+    }
+    Timer { id: hyprKick; interval: 250; onTriggered: root.applyHypr() }
+
+    function setGaming(on) {
+        gaming = on
+        Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/gamemode.sh", on ? "on" : "off"])
+        if (!on) { hyprKick.interval = 1200; hyprKick.restart() }   // the script reloads Hyprland; put our tweaks back on top
+    }
+    function toggleEdgeMode() { setEdgeMode(clickMode ? "hover" : "click") }
     function setProfileInfo(name, avatar) { profileName = name; profileAvatar = avatar; saveSettings() }
 
     function toggleWifi() {
@@ -190,8 +271,9 @@ ShellRoot {
         }
         switch (id) {
         case "wallpaper": randomWallpaper(); break
-        case "settings":
-        case "power": corner.pinFor(6000); break
+        case "settings": settingsWin.show(); break
+        case "power": powerMenu.show(); break
+        case "gaming": setGaming(!gaming); break
         case "autohide": setAutoHide(!autoHide); break
         case "notifications": notifs.toggleCenter(); break
         case "quickterm": quickTerm.toggle(); break
@@ -215,7 +297,17 @@ ShellRoot {
                     root.autoHide = !!s.autoHide
                     root.autoPower = !!s.autoPower
                     root.dnd = !!s.dnd
-                    root.edgeMode = s.edgeMode === "drag" ? "drag" : "hover"
+                    root.edgeMode = (s.edgeMode === "click" || s.edgeMode === "drag") ? "click" : "hover"
+                    if (s.glassShift !== undefined) root.glassShift = s.glassShift
+                    if (s.motion !== undefined) root.motion = s.motion
+                    if (s.rounding !== undefined) root.rounding = s.rounding
+                    if (s.gaps !== undefined) root.gaps = s.gaps
+                    root.blur = s.blur !== false
+                    root.shadows = s.shadows !== false
+                    root.hyprAnim = s.hyprAnim !== false
+                    root.profileStars = s.profileStars !== false
+                    root.hyprTouched = !!s.hyprTouched
+                    if (root.hyprTouched) hyprKick.restart()
                     if (root.autoPower) {
                         root.autoGuard = Date.now() + 10000
                         Quickshell.execDetached(["systemctl", "--user", "start", root.powerService])
@@ -227,6 +319,11 @@ ShellRoot {
                 root.settingsLoaded = true
             }
         }
+    }
+    Process {
+        running: true
+        command: ["sh", "-c", "test -f /dev/shm/halcyon-gamemode && echo on || echo off"]
+        stdout: StdioCollector { onStreamFinished: root.gaming = text.trim() === "on" }
     }
     Process {
         running: true
@@ -270,11 +367,13 @@ ShellRoot {
                 try {
                     var c = JSON.parse(d)
                     root.vol = c.vol; root.muted = c.muted; root.bright = c.bright
+                    root.mic = c.mic || 0; root.micMuted = !!c.micMuted
                 } catch (e) {}
             }
         }
     }
     property real pendVol: -1
+    property real pendMic: -1
     property real pendBright: -1
     Timer {
         id: sliderT
@@ -283,6 +382,10 @@ ShellRoot {
             if (root.pendVol >= 0) {
                 Quickshell.execDetached(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", Math.round(root.pendVol * 100) + "%"])
                 root.pendVol = -1
+            }
+            if (root.pendMic >= 0) {
+                Quickshell.execDetached(["wpctl", "set-volume", "@DEFAULT_AUDIO_SOURCE@", Math.round(root.pendMic * 100) + "%"])
+                root.pendMic = -1
             }
             if (root.pendBright >= 0) {
                 Quickshell.execDetached(["brightnessctl", "set", Math.max(1, Math.round(root.pendBright * 100)) + "%"])
@@ -293,7 +396,7 @@ ShellRoot {
 
     // visualizer feed, only runs while something is playing
     Process {
-        running: root.playing
+        running: root.playing && !root.gaming
         command: ["cava", "-p", Quickshell.shellPath("cava.conf")]
         stdout: SplitParser {
             onRead: d => {
@@ -330,6 +433,9 @@ ShellRoot {
         function cheatsheet(): void { root.runCommand("cheatsheet") }
         function quickterm(): void { quickTerm.toggle() }
         function edgemode(): void { root.toggleEdgeMode() }
+        function settings(): void { settingsWin.toggle() }
+        function power(): void { powerMenu.show() }
+        function gaming(): void { root.setGaming(!root.gaming) }
     }
 
     // =====================================================================
@@ -559,6 +665,7 @@ ShellRoot {
             profileName: root.profileName
             profileAvatar: root.profileAvatar
             sysmode: root.sysmode
+            profileStars: root.profileStars
 
             onCloseRequested: root.overviewOpen = false
             onCompactToggled: on => root.setCompactSpecial(on)
@@ -592,42 +699,42 @@ ShellRoot {
         WlrLayershell.keyboardFocus: panel.wantsKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
         property bool hovering: false
-        property bool pulling: false
-        property real pullAmt: 0
         readonly property bool open: hovering
-        readonly property real reveal: pulling ? pullAmt : (hovering ? 1 : 0)
-        // hover mode: touching the corner opens it and leaving closes it. drag mode: pull it out of the corner,
-        // push it back (handle at the top of the box) to close; auto-hide on closes it when the pointer leaves, in both modes
+        readonly property real reveal: hovering ? 1 : 0
+        // hover mode: touching the corner opens it and leaving closes it. click mode: click the corner to open / close it.
+        // auto-hide on closes it when the pointer leaves, in both modes
         function setHover(on) {
-            if (on) { closeT.stop(); if (!root.dragMode) hovering = true }
-            else if (!panel.wantsKeys && (!root.dragMode || root.autoHide)) { closeT.interval = 450; closeT.restart() }
+            if (on) { closeT.stop(); if (!root.clickMode) hovering = true }
+            else if (!panel.wantsKeys && (!root.clickMode || root.autoHide)) { closeT.interval = 450; closeT.restart() }
         }
-        // open it from the launcher (>settings / >power options); closes by itself if you don't touch it
+        // open it from the launcher / keybind; closes by itself if you don't touch it
         function pinFor(ms) { hovering = true; closeT.interval = ms; closeT.restart() }
         Timer { id: closeT; interval: 450; onTriggered: corner.hovering = false }
 
-        mask: (open || pulling) ? openMask : hotMask
-        Region { id: hotMask; item: hot }
-        Region { id: openMask; regions: [ Region { item: hot }, Region { item: panel } ] }
-
-        EdgeGrab {
-            id: hot
+        // one hover zone for corner + panel (see QuickTerm.qml): no flicker when the panel slides in under the pointer
+        mask: Region { item: zone }
+        Item {
+            id: zone
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            width: root.dragMode ? 36 : 12
-            height: root.dragMode ? 36 : 12
-            dragMode: root.dragMode
-            dx: -0.7; dy: -0.7; span: 260
-            onHoverChanged: on => corner.setHover(on)
-            onPullChanged: if (pulling) corner.pullAmt = pull
-            onPullingChanged: corner.pulling = pulling
-            onReleased: o => { corner.pulling = false; corner.hovering = o }
+            width: corner.open ? panel.width + 34 + 30 : (root.clickMode ? 28 : 12)
+            height: corner.open ? panel.height + 34 + 30 : (root.clickMode ? 28 : 12)
+            HoverHandler { onHoveredChanged: corner.setHover(hovered) }
             Rectangle {
-                visible: root.dragMode && !corner.open
+                visible: root.clickMode && !corner.open
                 anchors.right: parent.right; anchors.bottom: parent.bottom
                 anchors.rightMargin: 3; anchors.bottomMargin: 3
                 width: 12; height: 12; radius: 6
                 color: Qt.alpha(pal.accent, 0.35)
+            }
+            Item {
+                anchors.right: parent.right; anchors.bottom: parent.bottom
+                width: 20; height: 20
+                TapHandler {
+                    enabled: root.clickMode
+                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                    onTapped: { if (corner.hovering) { closeT.stop(); corner.hovering = false } else { closeT.stop(); corner.hovering = true } }
+                }
             }
         }
 
@@ -644,30 +751,30 @@ ShellRoot {
             profile: root.profile
             autoPower: root.autoPower
             autoHide: root.autoHide
-            dragMode: root.dragMode
+            gaming: root.gaming
+            mic: root.mic
+            micMuted: root.micMuted
             vol: root.vol
             muted: root.muted
             bright: root.bright
 
-            opacity: Math.min(1, corner.reveal * 1.6)
+            opacity: corner.reveal
             visible: opacity > 0.01
             scale: 0.94 + 0.06 * corner.reveal
             transformOrigin: Item.BottomRight
-            Behavior on opacity { enabled: !corner.pulling; NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
-            Behavior on scale { enabled: !corner.pulling; NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
-
-            HoverHandler { onHoveredChanged: corner.setHover(hovered) }
+            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+            Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
             onToggleWifi: root.toggleWifi()
             onToggleBt: root.toggleBt()
             onSetProfile: p => root.setProfile(p)
             onSetAuto: root.setAuto()
-            onToggleAutoHide: root.setAutoHide(!root.autoHide)
-            onToggleEdgeMode: root.toggleEdgeMode()
-            onCloseDragged: (pull, release) => { if (release) { corner.pulling = false; corner.hovering = pull > 0.6 } else { corner.pulling = true; corner.pullAmt = pull } }
-            onRandomWallpaper: root.randomWallpaper()
-            onEditConfig: Quickshell.execDetached(["codium", Quickshell.env("HOME") + "/.config/Halcyon"])
-            onSession: a => root.session(a)
+            onOpenSettings: settingsWin.show()
+            onToggleGaming: root.setGaming(!root.gaming)
+            onOpenPower: powerMenu.show()
+            onToggleMute: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+            onToggleMic: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
+            onMicMoved: v => { root.pendMic = v; root.mic = v * 100; if (!sliderT.running) sliderT.start() }
             onVolumeMoved: v => { root.pendVol = v; root.vol = v * 100; if (!sliderT.running) sliderT.start() }
             onBrightnessMoved: v => { root.pendBright = v; root.bright = v * 100; if (!sliderT.running) sliderT.start() }
         }

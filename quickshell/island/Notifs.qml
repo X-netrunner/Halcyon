@@ -26,7 +26,7 @@ Scope {
     property int maxToasts: 5
     property int maxHistory: 30
     property bool dnd: false
-    property bool dragMode: false           // Edge toggle: false = hover opens it, true = pull it out from the edge
+    property bool clickMode: false          // Edge toggle: false = hover opens it, true = click the edge to open / close it
     property bool autoHide: false           // auto-hide on: it closes as soon as the pointer leaves, in either mode
     property string sysmode: ""             // lockdown / stealth get their background art
     property var coalesceApps: ["notify-send"]
@@ -82,18 +82,16 @@ Scope {
         for (var j = 0; j < all.length; j++) all[j].dismiss()
     }
     // hover mode: touching the edge opens it, leaving closes it after a short grace period.
-    // drag mode: pull it out from the edge; it stays until you push it back (or auto-hide is on and the pointer leaves).
-    // opened from the keyboard it closes by itself a few seconds after the pointer is not on it.
-    property bool pulling: false
-    property real pullAmt: 0
-    readonly property real reveal: pulling ? pullAmt : (centerOpen ? 1 : 0)
+    // click mode: click the edge strip to open it, click it again (or Esc / the keybind) to close it.
+    // opened from the keyboard it closes by itself a few seconds after the pointer is not on it (hover mode / auto-hide).
+    readonly property real reveal: centerOpen ? 1 : 0
     function setHover(on) {
-        if (on) { closeT.stop(); if (!dragMode) centerOpen = true }
-        else if (!dragMode || autoHide) { closeT.interval = 450; closeT.restart() }
+        if (on) { closeT.stop(); if (!clickMode) centerOpen = true }
+        else if (!clickMode || autoHide) { closeT.interval = 450; closeT.restart() }
     }
     function toggleCenter() {
         if (centerOpen) { closeT.stop(); centerOpen = false }
-        else { centerOpen = true; if (!dragMode || autoHide) { closeT.interval = 6000; closeT.restart() } }
+        else { centerOpen = true; if (!clickMode || autoHide) { closeT.interval = 6000; closeT.restart() } }
     }
     Timer { id: closeT; interval: 450; onTriggered: root.centerOpen = false }
 
@@ -177,7 +175,7 @@ Scope {
         WlrLayershell.layer: WlrLayer.Top
 
         // only the edge trigger and the cards / centre take clicks; the rest of the strip is click-through
-        mask: (root.centerOpen || root.pulling) ? maskOpen : maskClosed
+        mask: root.centerOpen ? maskOpen : maskClosed
         Region { id: maskClosed; regions: [ Region { item: hot }, Region { item: stack } ] }
         Region { id: maskOpen; regions: [ Region { item: hot }, Region { item: panel } ] }
 
@@ -188,14 +186,11 @@ Scope {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.topMargin: 90
-            width: root.dragMode ? 16 : 12
+            width: root.clickMode ? 16 : 12
             height: 260
-            dragMode: root.dragMode
-            dx: -1; dy: 0; span: root.cardW * 0.8
+            clickMode: root.clickMode
             onHoverChanged: on => root.setHover(on)
-            onPullChanged: if (pulling) root.pullAmt = pull
-            onPullingChanged: root.pulling = pulling
-            onReleased: open => { root.pulling = false; root.centerOpen = open; if (open && root.autoHide) { closeT.interval = 6000; closeT.restart() } }
+            onTapped: root.toggleCenter()
 
             // unread / do-not-disturb hint: a soft bar on the very edge, only while it has something to say
             Rectangle {
@@ -207,7 +202,7 @@ Scope {
                 height: root.centerOpen ? 0 : 54
                 radius: 2
                 color: root.dnd ? root.pal.muted : root.pal.accent
-                opacity: (!root.centerOpen && (root.unread > 0 || root.dnd || root.dragMode)) ? (root.dnd ? 0.55 : (root.unread > 0 ? 0.95 : 0.22)) : 0
+                opacity: (!root.centerOpen && (root.unread > 0 || root.dnd || root.clickMode)) ? (root.dnd ? 0.55 : (root.unread > 0 ? 0.95 : 0.22)) : 0
                 Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
                 Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Behavior on color { ColorAnimation { duration: root.pal.dFast } }
@@ -256,8 +251,8 @@ Scope {
             opacityBody: root.pal.glassSolid - 0.06
             opacity: Math.min(1, root.reveal * 1.6)
             visible: opacity > 0.01
-            Behavior on x { enabled: !root.pulling; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-            Behavior on opacity { enabled: !root.pulling; NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+            Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             border.color: root.sysmode === "lockdown" || root.sysmode === "stealth" ? Qt.alpha(root.pal.accent, 0.30) : root.pal.line
 
             // tree-style backdrop: drifting dots + flagship-mode art
@@ -271,21 +266,6 @@ Scope {
                 artFit: 0.78
             }
 
-            // drag mode: handle on the box, pull it back to the edge to close it
-            EdgeGrab {
-                id: closer
-                visible: root.dragMode
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.top: parent.top
-                width: 64; height: 16
-                dragMode: root.dragMode
-                closing: true
-                dx: -1; dy: 0; span: root.cardW * 0.8
-                onPullChanged: if (pulling) root.pullAmt = pull
-                onPullingChanged: root.pulling = pulling
-                onReleased: open => { root.pulling = false; root.centerOpen = open }
-                Rectangle { anchors.centerIn: parent; width: 30; height: 4; radius: 2; color: Qt.alpha(root.pal.muted, 0.5) }
-            }
 
             HoverHandler { onHoveredChanged: root.setHover(hovered) }
             MouseArea { anchors.fill: parent }      // swallow clicks

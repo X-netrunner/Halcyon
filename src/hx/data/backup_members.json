@@ -5,7 +5,7 @@
  ],
  [
   "backup/credentials.txt",
-  "# Stored credentials - rotate on 30 day cycle\nvpn_primary    netadmin    test_password\nvpn_secondary  netadmin    test_password\nnas            admin       test_password\nrouter         cisco       test_password\nroot_db        sys_admin   UB_Admin_P@ss_2026_Secure\n"
+  "# Stored credentials - rotate on 30 day cycle\nvpn_primary    netadmin    7nQz!Pw2$KvR9xLm\nvpn_secondary  netadmin    xM4#LbT8@FcN6sVw\nnas            admin       S3rvice!T3am2026\nrouter         cisco       C1sc0.R0ut3r!2026\nroot_db        sys_admin   UB_Admin_P@ss_2026_Secure\n"
  ],
  [
   "backup/.bash_history",
