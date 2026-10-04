@@ -32,7 +32,7 @@ Item {
         var ch = r.channels === "soldered" ? "soldered" : (r.channels ? r.channels + "-channel" : "")
         var head = [r.type, ch].filter(function (x) { return x }).join(" · ")
         var tail = r.total + (r.modules > 1 ? " (" + r.detail + ")" : "") + (r.speed ? " · " + r.speed : "")
-        return head !== "" ? head + "\n" + tail : tail + "\ntype unknown: run install.sh once"
+        return head !== "" ? head + "\n" + tail : tail + "\ntype unknown: run scripts/refresh-ram.sh"
     }
     readonly property string diskText: {
         var d = specs.disks
@@ -92,15 +92,6 @@ Item {
                 Text {
                     text: "↑  " + root.rate(root.stats.up)
                     color: root.pal.muted
-                    font.family: root.pal.uiFont
-                    font.pixelSize: root.pal.tBody
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                }
-                Text {
-                    visible: root.stats.hasBat === true
-                    text: (root.stats.charging ? "⚡ " : "") + root.stats.bat + "% battery"
-                    color: root.pal.accent
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tBody
                     Layout.fillWidth: true

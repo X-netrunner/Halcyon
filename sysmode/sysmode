@@ -1762,6 +1762,17 @@ EOF
     set_home_perms stealth
     remove_lynis
 
+    start_stealth_daemons
+
+    echo "[+] Mode changed to: STEALTH (Relaxed & Stealthy)"
+    randomize_wallpaper
+}
+
+# Honeypot (recon-deceiver, Cowrie), IDS (log-analyst) and the MAC-scan logger of stealth mode.
+# Used by `set_stealth` and by `sysmode daemons`, which sysmode-daemons.service runs at every boot: the mode file
+# survives a reboot but the daemons do not, so without this a freshly booted stealth system showed honeypot / IDS "off"
+# until you switched mode again.
+start_stealth_daemons() {
     # Start recon deceiver daemon (honeypot) via systemd
     echo "[*] Starting recon deception daemon (Lure Mode: Threshold 3)..."
     stop_pidfile /var/run/recon-deceiver.pid
@@ -1819,9 +1830,6 @@ EOF
     else
         echo "[!] WARNING: tcpdump is not installed! Cannot start MAC scan logging."
     fi
-
-    echo "[+] Mode changed to: STEALTH (Relaxed & Stealthy)"
-    randomize_wallpaper
 }
 
 # ---------------------------------------------------------------------------
@@ -1902,6 +1910,16 @@ case "$action" in
     reapply)
         reapply
         ;;
+    daemons)
+        # boot: bring the honeypot / IDS back for the saved mode (does not touch anything else)
+        case "$(detect_mode)" in
+            stealth|hacking)
+                echo "[*] Boot: restoring stealth daemons..."
+                start_stealth_daemons
+                ;;
+            *) echo "[*] Mode $(detect_mode) has no daemons to start." ;;
+        esac
+        ;;
     boot-late)
         # Late boot target to lock module loading under lockdown mode
         if [[ -f "$SYSMODE_MODE" ]] && [[ "$(cat "$SYSMODE_MODE")" == "lockdown" ]]; then
@@ -1928,7 +1946,7 @@ case "$action" in
         show_help
         ;;
     *)
-        echo "Usage: $0 {secure|cyber|stealth [--persona cisco|synology|ubuntu] [--hotspot|--no-hotspot]|lockdown|reapply|boot-late|status|verify|doctor|logs|dossier [IP]|help}" >&2
+        echo "Usage: $0 {secure|cyber|stealth [--persona cisco|synology|ubuntu] [--hotspot|--no-hotspot]|lockdown|reapply|daemons|boot-late|status|verify|doctor|logs|dossier [IP]|help}" >&2
         exit 1
         ;;
 esac

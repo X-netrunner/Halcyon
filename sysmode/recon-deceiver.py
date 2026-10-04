@@ -747,9 +747,9 @@ def _fake_sql_dump():
         "  PRIMARY KEY (`id`)\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8;\n"
         "INSERT INTO `api_keys` VALUES "
-        "(1,'payment','test_key'),"
-        "(2,'cloud_sync','test_key'),"
-        "(3,'monitoring','test_key');\n"
+        "(1,'payment','sk_live_51NgH8tKQv2XcLm4Rp7SjW3bY6zF8dA1eC0'),"
+        "(2,'cloud_sync','AKIA4XBQ2Z9Y7M1CP3U'),"
+        "(3,'monitoring','mtr_8fd3k2Lx9Qa1Zv6Np4Wc7R');\n"
     )
     return gzip.compress(sql.encode("utf-8"))
 

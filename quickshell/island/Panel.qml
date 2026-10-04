@@ -23,7 +23,7 @@ Glass {
     property bool active: false             // the corner is open (set by shell.qml)
     readonly property bool wantsKeys: wifiMenu.askFor !== ""   // the Wi-Fi password field needs the keyboard
 
-    property string menu: ""                // "", "wifi", "bt" or "audio"
+    property string menu: ""                // "", "wifi", "bt", "audio" or "mic"
     property var wifi: ({ on: false, nets: [] })
     property var bt: ({ on: false, devs: [] })
     property var audio: ({ sinks: [], sources: [] })
@@ -33,7 +33,7 @@ Glass {
         menu = menu === name ? "" : name
         if (menu === "wifi") { wifiProc.running = true; wifiAgain.restart() }
         else if (menu === "bt") btProc.running = true
-        else if (menu === "audio") audioProc.running = true
+        else if (menu === "audio" || menu === "mic") audioProc.running = true
     }
     onActiveChanged: {
         if (active) audioProc.running = true      // fills the Audio chip
@@ -110,6 +110,19 @@ Glass {
         for (var j = 0; j < m.length; j++)
             out.push({ title: m[j].desc, sub: m[j].muted ? "Muted" : "", glyph: audioGlyph(m[j].kind), active: m[j].default, kind: "source", name: m[j].name })
         return out
+    }
+    // microphone picker: only the input devices
+    readonly property var micItems: {
+        var out = []
+        var m = audio.sources || []
+        for (var j = 0; j < m.length; j++)
+            out.push({ title: m[j].desc, sub: m[j].muted ? "Muted" : "", glyph: audioGlyph(m[j].kind), active: m[j].default, kind: "source", name: m[j].name })
+        return out
+    }
+    readonly property var defaultSource: {
+        var m = audio.sources || []
+        for (var i = 0; i < m.length; i++) if (m[i].default) return m[i]
+        return null
     }
     readonly property var defaultSink: {
         var s = audio.sinks || []
@@ -259,15 +272,42 @@ Glass {
             onMoved: v => root.volumeMoved(v)
             onGlyphClicked: root.toggleMute()
         }
-        // microphone: slider for the input level, click the icon to mute / unmute it
-        Slider {
+        // microphone: pick the input device (round button = mute / unmute, right-click the chip = mute too)
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            RoundBtn {
+                pal: root.pal
+                size: 36
+                glyph: String.fromCodePoint(root.micMuted ? 0xF036D : 0xF036C)
+                opacity: root.micMuted ? 0.55 : 1
+                onClicked: root.toggleMic()
+            }
+            Chip {
+                Layout.fillWidth: true
+                pal: root.pal
+                maxLabel: 230
+                glyph: String.fromCodePoint(0xF0140)
+                label: root.defaultSource ? root.defaultSource.desc : "Microphone"
+                on: root.menu === "mic"
+                onClicked: root.toggleMenu("mic")
+                onRightClicked: root.toggleMic()
+            }
+        }
+        DeviceMenu {
+            visible: root.menu === "mic"
             Layout.fillWidth: true
             pal: root.pal
-            glyph: String.fromCodePoint(root.micMuted ? 0xF036D : 0xF036C)
-            value: root.mic / 100
-            dimmed: root.micMuted
-            onMoved: v => root.micMoved(v)
-            onGlyphClicked: root.toggleMic()
+            title: "Microphone"
+            items: root.micItems
+            emptyText: "No input devices (is pactl installed?)"
+            footer: "Volume mixer"
+            onFooterClicked: Quickshell.execDetached(["pavucontrol"])
+            onPicked: i => {
+                var it = root.micItems[i]
+                root.sh("audio-set.sh", [it.kind, it.name])
+                root.later("audio", 500)
+            }
         }
         Slider {
             Layout.fillWidth: true

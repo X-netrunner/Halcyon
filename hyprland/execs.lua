@@ -11,10 +11,13 @@ hl.on("hyprland.start", function()
     -- touchpad edge gestures (volume / brightness / track skip); install.sh sets the service up
     hl.exec_cmd("systemctl --user start touchpad-gestures.service &")
     -- notifications: the island is the notification daemon now (quickshell/island/Notifs.qml), so no dunst/mako
-    hl.exec_cmd("nm-applet &")
-    hl.exec_cmd("blueman-applet &")
-    hl.exec_cmd("hypridle &")
+    -- free org.freedesktop.Notifications, start the island (it owns it) and only THEN the programs that may send
+    -- notifications; the other way round, D-Bus could start mako / dunst first and the island would get none
     hl.exec_cmd("mkdir -p ~/.cache/island ~/.local/state/island")
+    hl.exec_cmd("~/.config/Halcyon/scripts/notif-guard.sh")
     hl.exec_cmd("quickshell -p ~/.config/Halcyon/quickshell/island &")
     hl.exec_cmd("quickshell -p ~/.config/Halcyon/quickshell/wallpaper &")
+    hl.exec_cmd("sleep 2 && nm-applet &")
+    hl.exec_cmd("sleep 2 && blueman-applet &")
+    hl.exec_cmd("hypridle &")
 end)
