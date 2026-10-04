@@ -16,7 +16,12 @@ ShellRoot {
     // Its thresholds (load, battery, heat, idle) live in custom/power-manager/src/main.rs.
     readonly property string powerService: "power-manager.service"
     readonly property int notifMax: 5        // popups on screen at once; a new one past this hides the oldest popup (it stays in the centre)
-    readonly property int notifHistoryMax: 30 // notifications kept in the top-right centre; a new one past this replaces the oldest
+    // notifications kept in the notification centre (Settings > Notifications, remembered); a new one past this replaces the oldest
+    property int notifHistoryMax: 30
+    // idle: lock the screen after N minutes, sleep after N minutes (0 = never). Settings > Sleep & lock, applied by scripts/idle.sh
+    property int idleLock: 5
+    property int idleSleep: 30
+    property bool idleTouched: false
 
     readonly property string hx: Quickshell.env("HOME") + "/.config/Halcyon/bin/hx"
     readonly property string cfg: Quickshell.env("HOME") + "/.config/Halcyon/quickshell"
@@ -129,6 +134,9 @@ ShellRoot {
         blur: root.blur
         shadows: root.shadows
         hyprAnim: root.hyprAnim
+        notifHistoryMax: root.notifHistoryMax
+        idleLock: root.idleLock
+        idleSleep: root.idleSleep
         onSetting: (k, v) => root.setSetting(k, v)
         onAction: id => {
             if (id === "wallpaper") root.randomWallpaper()
@@ -214,7 +222,8 @@ ShellRoot {
         Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && printf '%s\\n' \"$2\" > \"$1/settings.json\"", "sh", stateDir,
                                  JSON.stringify({ autoHide: autoHide, autoPower: autoPower, compactSpecial: compactSpecial, dnd: dnd, edgeMode: edgeMode, glassShift: glassShift, motion: motion, rounding: rounding, gaps: gaps, blur: blur, shadows: shadows,
                                                   hyprAnim: hyprAnim, profileStars: profileStars, hyprTouched: hyprTouched,
-                                                  profileName: profileName, profileAvatar: profileAvatar, routeApps: routeApps })])
+                                                  profileName: profileName, profileAvatar: profileAvatar, routeApps: routeApps,
+                                                  notifHistoryMax: notifHistoryMax, idleLock: idleLock, idleSleep: idleSleep, idleTouched: idleTouched })])
     }
     function setAutoHide(v) { autoHide = v; saveSettings() }
     function setCompactSpecial(v) { compactSpecial = v; saveSettings() }
@@ -229,6 +238,9 @@ ShellRoot {
         case "clickMode": setEdgeMode(v ? "click" : "hover"); return
         case "gaming": setGaming(v); return
         case "profileStars": profileStars = v; break
+        case "notifHistoryMax": notifHistoryMax = v; break
+        case "idleLock": idleLock = v; idleTouched = true; applyIdle(); break
+        case "idleSleep": idleSleep = v; idleTouched = true; applyIdle(); break
         case "glassShift": glassShift = v; break
         case "motion": motion = v; break
         case "rounding": rounding = v; hyprTouched = true; break
@@ -239,6 +251,9 @@ ShellRoot {
         }
         saveSettings()
         if (hyprTouched && ["rounding", "gaps", "blur", "shadows", "hyprAnim"].indexOf(k) >= 0) hyprKick.restart()
+    }
+    function applyIdle() {
+        Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/idle.sh", "apply", String(idleLock), String(idleSleep)])
     }
     // Hyprland values are pushed live with `hyprctl eval` (same mechanism as scripts/toggle_layout.sh), batched so a
     // dragged slider does not spawn a process per pixel; not while Gaming mode owns them
@@ -432,6 +447,11 @@ ShellRoot {
                     root.routeApps = s.routeApps !== false
                     root.profileName = s.profileName || ""
                     root.profileAvatar = s.profileAvatar || ""
+                    if (s.notifHistoryMax !== undefined) root.notifHistoryMax = s.notifHistoryMax
+                    if (s.idleLock !== undefined) root.idleLock = s.idleLock
+                    if (s.idleSleep !== undefined) root.idleSleep = s.idleSleep
+                    root.idleTouched = !!s.idleTouched
+                    if (root.idleTouched) root.applyIdle()      // otherwise the autostart (idle.sh start) uses its defaults
                 } catch (e) {}
                 root.settingsLoaded = true
             }
@@ -655,7 +675,7 @@ ShellRoot {
                  : launcher.wantedWidth
             height: root.page === "home" ? 44
                   : root.page === "media" ? 156
-                  : root.page === "perf" ? 346
+                  : root.page === "perf" ? 296
                   : launcher.wantedHeight
             radius: root.page === "home" ? height / 2 : pal.rXl
 
@@ -769,13 +789,24 @@ ShellRoot {
 
             Launcher {
                 id: launcher
-                anchors.fill: parent
-                anchors.margins: 22
+                // fixed at the FINAL size and pinned to the top: the pill grows over it like a curtain. With
+                // anchors.fill the whole grid was re-laid out on every frame of the grow animation (that was the roughness).
+                anchors.top: parent.top
+                anchors.topMargin: 22
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: launcher.wantedWidth - 44
+                height: launcher.wantedHeight - 44
                 pal: pal
                 active: root.page === "launcher"
                 opacity: root.page === "launcher" ? 1 : 0
                 visible: opacity > 0.01
-                Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                // opening: wait a moment so the pill has started to grow, then fade in; closing: fade out at once
+                Behavior on opacity {
+                    SequentialAnimation {
+                        PauseAnimation { duration: root.page === "launcher" ? Math.round(pal.dMed * 0.3) : 0 }
+                        NumberAnimation { duration: root.page === "launcher" ? pal.dMed : pal.dFast; easing.type: Easing.OutCubic }
+                    }
+                }
                 onCloseRequested: root.page = "home"
                 onCommandRequested: c => root.runCommand(c)
             }

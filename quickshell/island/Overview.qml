@@ -813,16 +813,21 @@ Item {
                             anchors.fill: parent
                             visible: false
                             source: ov.avatarPath !== "" ? "file://" + ov.avatarPath : ""
-                            sourceSize: Qt.size(120, 120)
+                            sourceSize: Qt.size(240, 240)       // 4x the size it is drawn at, so the scale-down is clean
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
+                            smooth: true
+                            mipmap: true
                         }
+                        // anti-aliased round mask: multisampled, and the mask edge is softened over about a pixel
                         Item {
                             id: avatarMask
                             anchors.fill: parent
                             visible: false
                             layer.enabled: true
-                            Rectangle { anchors.fill: parent; radius: width / 2; color: "black" }
+                            layer.smooth: true
+                            layer.samples: 8
+                            Rectangle { anchors.fill: parent; radius: width / 2; color: "black"; antialiasing: true }
                         }
                         MultiEffect {
                             anchors.fill: parent
@@ -830,6 +835,17 @@ Item {
                             source: avatarImg
                             maskEnabled: true
                             maskSource: avatarMask
+                            maskThresholdMin: 0.5
+                            maskSpreadAtMin: 1.0
+                        }
+                        // the ring is drawn over the picture's edge, so the rim is as clean as the holder itself
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            antialiasing: true
+                            border.width: 1.5
+                            border.color: Qt.alpha(nd.tint, 0.7)
                         }
                     }
 

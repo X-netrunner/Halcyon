@@ -262,16 +262,6 @@ Glass {
             }
         }
 
-        // volume + brightness
-        Slider {
-            Layout.fillWidth: true
-            pal: root.pal
-            glyph: String.fromCodePoint(root.muted ? 0xF0581 : 0xF057E)
-            value: root.vol / 100
-            dimmed: root.muted
-            onMoved: v => root.volumeMoved(v)
-            onGlyphClicked: root.toggleMute()
-        }
         // microphone: pick the input device (round button = mute / unmute, right-click the chip = mute too)
         RowLayout {
             Layout.fillWidth: true
@@ -308,6 +298,17 @@ Glass {
                 root.sh("audio-set.sh", [it.kind, it.name])
                 root.later("audio", 500)
             }
+        }
+
+        // volume + brightness
+        Slider {
+            Layout.fillWidth: true
+            pal: root.pal
+            glyph: String.fromCodePoint(root.muted ? 0xF0581 : 0xF057E)
+            value: root.vol / 100
+            dimmed: root.muted
+            onMoved: v => root.volumeMoved(v)
+            onGlyphClicked: root.toggleMute()
         }
         Slider {
             Layout.fillWidth: true

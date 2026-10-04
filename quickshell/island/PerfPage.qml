@@ -97,15 +97,6 @@ Item {
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }
-                // the mode that is actually active, even when Auto is on
-                Text {
-                    text: root.profileLabel + (root.autoPower ? " · auto" + (root.autoNote !== "" ? " (" + root.autoNote + ")" : "") : "")
-                    color: root.pal.accent2
-                    font.family: root.pal.uiFont
-                    font.pixelSize: root.pal.tBody
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                }
                 // active sysmode profile (read-only; switch with the `sysmode` CLI). Colours match `sysmode status`.
                 Text {
                     text: "sysmode · " + (root.sysmode !== "" ? root.sysmode : "not set")
@@ -130,18 +121,6 @@ Item {
             SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF08AE); label: "Graphics"; value: root.gpuText }
             SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF035B); label: "Memory"; value: root.ramText }
             SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF02CA); label: "Storage"; value: root.diskText; usage: root.diskUsage }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-
-            Item { Layout.fillWidth: true }
-
-            Chip { pal: root.pal; label: "Auto"; on: root.autoPower; onClicked: root.setAuto() }
-            Chip { pal: root.pal; label: "Saver"; on: root.profile === "power-saver"; onClicked: root.setProfile("power-saver") }
-            Chip { pal: root.pal; label: "Balanced"; on: root.profile === "balanced"; onClicked: root.setProfile("balanced") }
-            Chip { pal: root.pal; label: "Perf"; on: root.profile === "performance"; onClicked: root.setProfile("performance") }
         }
     }
 }

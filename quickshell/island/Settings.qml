@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Io
 
 // Rice settings: one centred window, blurred backdrop, "node" cards in the same look as the SUPER+TAB tree.
 // Everything here is applied live and remembered (settings.json); Hyprland values are re-applied when the island starts.
@@ -26,6 +27,27 @@ Scope {
     property bool blur: true
     property bool shadows: true
     property bool hyprAnim: true
+    property int notifHistoryMax: 30
+    property int idleLock: 5
+    property int idleSleep: 30
+
+    // default apps (scripts/apps.sh): what is installed per kind, and the one in use
+    property var apps: ({ terminal: [], browser: [], files: [], current: ({ terminal: "", browser: "", files: "" }) })
+    readonly property string appsScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh"
+    function setApp(kind, id) {
+        Quickshell.execDetached(["bash", appsScript, "set", kind, id])
+        var a = JSON.parse(JSON.stringify(apps))
+        a.current[kind] = id
+        apps = a                     // show it at once; the list is re-read below
+        appsAgain.restart()
+    }
+    onOpenChanged: if (open && !appsProc.running) appsProc.running = true
+    Timer { id: appsAgain; interval: 600; onTriggered: if (!appsProc.running) appsProc.running = true }
+    Process {
+        id: appsProc
+        command: ["bash", root.appsScript, "list"]
+        stdout: StdioCollector { onStreamFinished: { try { root.apps = JSON.parse(text) } catch (e) {} } }
+    }
 
     signal setting(string key, var value)
     signal action(string id)          // wallpaper | config | cheatsheet | reload
@@ -202,6 +224,111 @@ Scope {
                                     Chip { Layout.fillWidth: true; pal: root.pal; label: "Click"; on: root.clickMode; onClicked: root.setting("clickMode", true) }
                                 }
                                 Chip { Layout.fillWidth: true; pal: root.pal; label: "Profile picture constellation in the tree"; on: root.profileStars; onClicked: root.setting("profileStars", !root.profileStars) }
+                            }
+
+                            Section {
+                                pal: root.pal
+                                title: "NOTIFICATIONS"
+                                Layout.fillWidth: true
+                                Text { text: "How many the notification centre keeps"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Repeater {
+                                        model: [10, 20, 30, 50, 100]
+                                        delegate: Chip {
+                                            required property int modelData
+                                            Layout.fillWidth: true; pal: root.pal
+                                            label: String(modelData)
+                                            on: root.notifHistoryMax === modelData
+                                            onClicked: root.setting("notifHistoryMax", modelData)
+                                        }
+                                    }
+                                }
+                                Text { text: "When it is full the oldest one goes. Lowering it removes the oldest straight away."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            }
+                        }
+
+                        // ---------------------------------------------------------------- sleep & lock
+                        Section {
+                            pal: root.pal
+                            title: "SLEEP & LOCK"
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Text { text: "Lock the screen when idle for"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Repeater {
+                                    model: [0, 2, 5, 10, 15, 30]
+                                    delegate: Chip {
+                                        required property int modelData
+                                        Layout.fillWidth: true; pal: root.pal
+                                        label: modelData === 0 ? "Never" : modelData + " min"
+                                        on: root.idleLock === modelData
+                                        onClicked: root.setting("idleLock", modelData)
+                                    }
+                                }
+                            }
+                            Text { text: "Go to sleep when idle for"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Repeater {
+                                    model: [0, 15, 30, 60, 120, 240]
+                                    delegate: Chip {
+                                        required property int modelData
+                                        Layout.fillWidth: true; pal: root.pal
+                                        label: modelData === 0 ? "Never" : (modelData >= 60 ? (modelData / 60) + " h" : modelData + " min")
+                                        on: root.idleSleep === modelData
+                                        onClicked: root.setting("idleSleep", modelData)
+                                    }
+                                }
+                            }
+                            Text {
+                                text: "Counted from when you last touched the computer, so sleep comes after the lock. Caffeine stops both. Needs hypridle."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                            }
+                        }
+
+                        // ---------------------------------------------------------------- default apps
+                        Section {
+                            pal: root.pal
+                            title: "DEFAULT APPS"
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Repeater {
+                                model: [ { kind: "terminal", title: "Terminal  (SUPER+T)" }, { kind: "browser", title: "Browser  (SUPER+W)" }, { kind: "files", title: "File manager  (SUPER+E)" } ]
+                                delegate: ColumnLayout {
+                                    id: appRow
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Text { text: appRow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                    Flow {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        Repeater {
+                                            model: root.apps[appRow.modelData.kind] || []
+                                            delegate: Chip {
+                                                required property var modelData
+                                                pal: root.pal
+                                                label: modelData.name
+                                                on: root.apps.current && root.apps.current[appRow.modelData.kind] === modelData.id
+                                                onClicked: root.setApp(appRow.modelData.kind, modelData.id)
+                                            }
+                                        }
+                                        Text {
+                                            visible: (root.apps[appRow.modelData.kind] || []).length === 0
+                                            text: "none installed"
+                                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                                        }
+                                    }
+                                }
+                            }
+                            Text {
+                                text: "Only installed apps are listed. A browser or file manager you pick also becomes the system default for links and folders."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
                             }
                         }
 

@@ -58,6 +58,13 @@ Scope {
         history = without(history, n)
         delete arrived[n.id]
     }
+    // the limit was lowered in Settings: drop the oldest ones now instead of at the next notification
+    onMaxHistoryChanged: {
+        if (history.length <= maxHistory) return
+        var over = history.slice(maxHistory)
+        history = history.slice(0, maxHistory)
+        for (var k = 0; k < over.length; k++) over[k].dismiss()
+    }
     // a popup that is no longer shown and was never stored (transient) has nothing left to live for
     function retire(n) {
         if (history.indexOf(n) < 0) n.expire()

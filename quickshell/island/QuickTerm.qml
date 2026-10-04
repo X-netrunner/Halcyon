@@ -147,7 +147,7 @@ Scope {
 
         var p = prepare(line)
         if (p.tui) {
-            Quickshell.execDetached({ command: ["foot", "-D", cwd, "bash", "-c", p.cmd + "; exec bash"], workingDirectory: cwd })
+            Quickshell.execDetached({ command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", p.cmd + "; exec bash"], workingDirectory: cwd })
             push("opened in a terminal window", "info")
             return
         }
