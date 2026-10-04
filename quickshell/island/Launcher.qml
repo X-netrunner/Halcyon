@@ -91,7 +91,9 @@ Item {
     }
 
     // ---- usage ranking (decayed launch count, log in ~/.local/state/island/usage.log)
+    property bool dirty: true           // the result list is out of date (usage changed); rebuilt on the next open
     function bumpScore(id) {
+        dirty = true
         serial++
         var u = usage[id]
         usage[id] = { s: (u ? u.s * Math.pow(decay, serial - u.n) : 0) + 1, n: serial }
@@ -126,6 +128,7 @@ Item {
     }
 
     function refresh() {
+        dirty = false
         if (mode === "cmd") {
             var cq = q0.substring(1).trim().toLowerCase()
             var outc = []
@@ -233,10 +236,12 @@ Item {
         if (active) {
             stagger = true
             staggerT.restart()
+            var had = query
             input.text = ""
             query = ""
             pendingConfirm = ""
-            refresh()
+            // rebuilding the grid while the island starts to grow is what made opening choppy: only do it when it is needed
+            if (had !== "" || dirty) refresh()
             Qt.callLater(function () { input.forceActiveFocus() })
         }
     }
@@ -425,14 +430,14 @@ Item {
                 // entrance: slide up + fade, staggered right after opening, quick otherwise
                 property real appear: 0
                 opacity: appear
-                transform: Translate { y: (1 - cell.appear) * (root.stagger ? 16 : 4) }
+                transform: Translate { y: (1 - cell.appear) * (root.stagger ? 10 : 3) }
                 Component.onCompleted: enterAnim.start()
                 SequentialAnimation {
                     id: enterAnim
-                    PauseAnimation { duration: root.stagger ? Math.min(cell.index, 17) * 22 : 0 }
+                    PauseAnimation { duration: root.stagger ? 70 + Math.min(cell.index, 17) * 14 : 0 }
                     NumberAnimation {
                         target: cell; property: "appear"; to: 1
-                        duration: root.stagger ? 280 : 120
+                        duration: root.stagger ? 240 : 120
                         easing.type: Easing.OutCubic
                     }
                 }

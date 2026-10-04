@@ -6,14 +6,16 @@ return {
     ------------------
 
     -- Apps
-    terminal                   = "foot",
-    browser                    = "firefox",
+    -- terminal / browser / file manager are chosen in Settings > Default apps (scripts/apps.sh, saved in
+    -- ~/.local/state/island/apps.env) and change live; the keybinds always go through it
+    terminal                   = "~/.config/Halcyon/scripts/apps.sh run terminal",
+    browser                    = "~/.config/Halcyon/scripts/apps.sh run browser",
     editor                     = "codium",
-    fileExplorer               = "foot -e yazi",
+    fileExplorer               = "~/.config/Halcyon/scripts/apps.sh run files",
     audioSettings              = "pavucontrol",
     -- (SUPER+M music and SUPER+D communication start their apps from scripts/special.sh, see MUSIC_CMD / COMM_CMD there)
-    sysmonCmd                  = "foot -e btop",      -- CTRL+SHIFT+ESC special workspace
-    todoCmd                    = "sh -c 'command -v todoist >/dev/null && exec todoist || exec firefox --new-window https://app.todoist.com'",  -- SUPER+R special workspace
+    sysmonCmd                  = "~/.config/Halcyon/scripts/apps.sh term-exec btop",      -- CTRL+SHIFT+ESC special workspace
+    todoCmd                    = "sh -c 'command -v todoist >/dev/null && exec todoist || exec xdg-open https://app.todoist.com'",  -- SUPER+R special workspace
 
     -- Touchpad
     touchpadDisableTyping      = true,

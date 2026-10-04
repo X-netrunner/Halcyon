@@ -9,7 +9,7 @@ pkill -f 'fuzzel.*--prompt=Keys' 2>/dev/null && exit 0
 
 cat << 'LIST' | fuzzel --dmenu --prompt="Keys > " --lines=18 --width=72
  APPS
-󰌌  Super + T                 Terminal (foot)
+󰌌  Super + T                 Terminal (your default app)
 󰌌  Super + E                 File explorer (yazi)
 󰌌  Super + W                 Browser (Firefox)
 󰌌  Super + C                 Code editor (Codium)

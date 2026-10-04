@@ -8,7 +8,7 @@
 # SPECIAL_CMD in the environment overrides both (the background-apps box uses it to open one specific app).
 name="${1:?usage: special.sh <name> [--show]}"; show=0; [ "$2" = "--show" ] && show=1
 
-MUSIC_CMD="sh -c 'command -v spotify >/dev/null && exec spotify; command -v spotify-launcher >/dev/null && exec spotify-launcher; exec foot -e ncmpcpp'"
+MUSIC_CMD="sh -c 'command -v spotify >/dev/null && exec spotify; command -v spotify-launcher >/dev/null && exec spotify-launcher; exec ~/.config/Halcyon/scripts/apps.sh term-exec ncmpcpp'"
 COMM_CMD="sh -c 'command -v vesktop >/dev/null && exec vesktop; exec discord'"
 [ -f "$HOME/.config/Halcyon/special.conf" ] && . "$HOME/.config/Halcyon/special.conf"
 
