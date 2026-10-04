@@ -1,0 +1,55 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 36,
+  "spacing": 8,
+  "margin-top": 6,
+  "margin-left": 8,
+  "margin-right": 8,
+  "margin-bottom": 0,
+  "modules-left": ["hyprland/workspaces"],
+  "modules-center": ["clock"],
+  "modules-right": ["network", "bluetooth", "custom/battery", "tray"],
+  "hyprland/workspaces": {
+    "disable-scroll": true,
+    "all-outputs": true,
+    "active-only": false,
+    "warp-on-scroll": false,
+    "format": "{icon}",
+    "format-icons": {
+      "default": "󰄰",
+      "active": "󰣖"
+    },
+    "persistent-workspaces": {
+      "*": 5
+    }
+  },
+  "clock": {
+    "format": "{:%a %d %b  %I:%M %p}",
+    "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"
+  },
+  "custom/battery": {
+    "exec": "~/.config/waybar/custom-battery.sh",
+    "interval": 30,
+    "format": "{}"
+  },
+  "network": {
+    "format-wifi": "󰤨  {essid}",
+    "format-ethernet": "󰈀  {ipaddr}",
+    "tooltip-format-wifi": "{essid} ({signalStrength}%)",
+    "format-disconnected": "",
+    "format-linked": "",
+    "format-alt": "{ipaddr}"
+  },
+  "bluetooth": {
+    "format": "",
+    "format-disabled": "",
+    "format-off": "",
+    "format-connected": "󰂯  {num_connections}",
+    "tooltip-format": "{num_connections} connected",
+    "tooltip-format-connected": "{device_alias}"
+  },
+  "tray": {
+    "spacing": 10
+  }
+}

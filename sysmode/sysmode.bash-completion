@@ -1,0 +1,26 @@
+# Bash completion for sysmode
+
+_sysmode_completions() {
+    local cur prev subcommands options
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    subcommands="secure cyber stealth hacking lockdown status verify check doctor reapply logs help"
+    options="--hotspot --no-hotspot --help -h"
+
+    if [[ ${COMP_CWORD} -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "${subcommands} ${options}" -- "${cur}") )
+        return 0
+    fi
+
+    case "${prev}" in
+        stealth|hacking)
+            COMPREPLY=( $(compgen -W "--hotspot --no-hotspot" -- "${cur}") )
+            ;;
+        *)
+            COMPREPLY=()
+            ;;
+    esac
+}
+
+complete -F _sysmode_completions sysmode

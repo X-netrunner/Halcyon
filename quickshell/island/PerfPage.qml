@@ -1,0 +1,175 @@
+import QtQuick
+import QtQuick.Layouts
+import Quickshell
+
+Item {
+    id: root
+    property var pal
+    property var stats
+    property var net
+    property var gpu: ({ gpu: 0, state: "none" })
+    property var specs: ({})                  // `hx specs`: cpu, gpus, ram, disks (static)
+    property var disks: ({ disks: [] })       // `hx disk`: mounted storage (live)
+    property string profile: "balanced"
+    property string profileLabel: "Balanced"
+    property bool autoPower: false
+    property string autoNote: ""      // why Auto picked it: "on battery", "heavy load", "thermal hold", ...
+    property string sysmode: ""       // /etc/sysmode.mode: secure | stealth | cyber | lockdown ("" = not set)
+    signal toggleWifi()
+    signal toggleBt()
+    signal setProfile(string p)
+    signal setAuto()
+
+    function bytes(b) {
+        var g = b / 1e9
+        return g >= 1000 ? (g / 1000).toFixed(1) + "T" : Math.round(g) + "G"
+    }
+    readonly property string cpuText: specs.cpu ? specs.cpu + "\n" + specs.cores + " cores · " + specs.threads + " threads" : "…"
+    readonly property string gpuText: (specs.gpus && specs.gpus.length > 0) ? specs.gpus.join("\n") : "No GPU found"
+    readonly property string ramText: {
+        var r = specs.ram
+        if (!r) return "…"
+        var ch = r.channels === "soldered" ? "soldered" : (r.channels ? r.channels + "-channel" : "")
+        var head = [r.type, ch].filter(function (x) { return x }).join(" · ")
+        var tail = r.total + (r.modules > 1 ? " (" + r.detail + ")" : "") + (r.speed ? " · " + r.speed : "")
+        return head !== "" ? head + "\n" + tail : tail + "\ntype unknown: run install.sh once"
+    }
+    readonly property string diskText: {
+        var d = specs.disks
+        if (!d || d.length === 0) return "…"
+        var t = (d[0].model ? d[0].model + " · " : "") + d[0].kind + " " + d[0].size
+        return d.length > 1 ? t + "  +" + (d.length - 1) + " more" : t
+    }
+    readonly property var diskUsage: {
+        var out = []
+        var d = disks.disks || []
+        for (var i = 0; i < d.length && i < 2; i++)
+            out.push({ label: d[i].mount, frac: d[i].used / Math.max(1, d[i].size), text: bytes(d[i].used) + " of " + bytes(d[i].size) })
+        return out
+    }
+
+    function rate(b) {
+        if (b >= 1048576) return (b / 1048576).toFixed(1) + " MB/s"
+        if (b >= 1024) return Math.round(b / 1024) + " KB/s"
+        return b + " B/s"
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 22
+        anchors.leftMargin: 34
+        anchors.rightMargin: 34
+        spacing: 12
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 20
+
+            Ring { pal: root.pal; label: "CPU"; text: root.stats.cpu + "%"; value: root.stats.cpu / 100 }
+            Ring { pal: root.pal; label: "RAM"; text: root.stats.memGb + "G"; value: root.stats.mem / 100 }
+            Ring { pal: root.pal; label: "TEMP"; text: root.stats.temp + "°"; value: (root.stats.temp - 30) / 70 }
+            // dGPU load; "off" while it is asleep (reading it never wakes it, see scripts/gpu.sh)
+            Ring {
+                visible: root.gpu.state !== "none"
+                pal: root.pal
+                label: "GPU"
+                text: root.gpu.state === "on" ? root.gpu.gpu + "%" : "off"
+                value: root.gpu.state === "on" ? root.gpu.gpu / 100 : 0
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 5
+                Text {
+                    text: "↓  " + root.rate(root.stats.down)
+                    color: root.pal.text
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tBody
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+                Text {
+                    text: "↑  " + root.rate(root.stats.up)
+                    color: root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tBody
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+                Text {
+                    visible: root.stats.hasBat === true
+                    text: (root.stats.charging ? "⚡ " : "") + root.stats.bat + "% battery"
+                    color: root.pal.accent
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tBody
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+                // the mode that is actually active, even when Auto is on
+                Text {
+                    text: root.profileLabel + (root.autoPower ? " · auto" + (root.autoNote !== "" ? " (" + root.autoNote + ")" : "") : "")
+                    color: root.pal.accent2
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tBody
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+                // active sysmode profile (read-only; switch with the `sysmode` CLI). Colours match `sysmode status`.
+                Text {
+                    text: "sysmode · " + (root.sysmode !== "" ? root.sysmode : "not set")
+                    color: ({ "secure": "#8fd19e", "stealth": "#56b6c2", "cyber": "#e5c07b", "lockdown": "#e06c75" })[root.sysmode] || root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tBody
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.pal.line }
+
+        // what this machine is made of
+        GridLayout {
+            Layout.fillWidth: true
+            columns: 2
+            columnSpacing: 26
+            rowSpacing: 12
+            SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF061A); label: "Processor"; value: root.cpuText }
+            SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF08AE); label: "Graphics"; value: root.gpuText }
+            SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF035B); label: "Memory"; value: root.ramText }
+            SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF02CA); label: "Storage"; value: root.diskText; usage: root.diskUsage }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            Chip {
+                pal: root.pal
+                maxLabel: 64
+                glyph: String.fromCodePoint(root.net.eth ? 0xF0200 : 0xF0928)
+                label: root.net.wifi === "on" ? (root.net.ssid || (root.net.eth ? "Ethernet" : "On")) : "Off"
+                on: root.net.wifi === "on"
+                onClicked: root.toggleWifi()
+                onRightClicked: Quickshell.execDetached(["nm-connection-editor"])
+            }
+            Chip {
+                pal: root.pal
+                maxLabel: 64
+                glyph: String.fromCodePoint(0xF00AF)
+                label: root.net.bt === "on" ? (root.net.btdev || "On") : "Off"
+                on: root.net.bt === "on"
+                onClicked: root.toggleBt()
+                onRightClicked: Quickshell.execDetached(["blueman-manager"])
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Chip { pal: root.pal; label: "Auto"; on: root.autoPower; onClicked: root.setAuto() }
+            Chip { pal: root.pal; label: "Saver"; on: root.profile === "power-saver"; onClicked: root.setProfile("power-saver") }
+            Chip { pal: root.pal; label: "Balanced"; on: root.profile === "balanced"; onClicked: root.setProfile("balanced") }
+            Chip { pal: root.pal; label: "Perf"; on: root.profile === "performance"; onClicked: root.setProfile("performance") }
+        }
+    }
+}

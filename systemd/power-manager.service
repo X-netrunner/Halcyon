@@ -1,0 +1,12 @@
+[Unit]
+Description=Halcyon Auto power manager (load / battery / heat aware)
+
+[Service]
+ExecStart=%h/.config/Halcyon/bin/power-manager
+Restart=on-failure
+RestartSec=5
+# Uncomment to bring back the old gslapper video wallpaper handling (Halcyon has its own wallpaper layer):
+# Environment=PM_LIVE_WALLPAPER=1
+
+# No [Install] section on purpose: the island starts it at login when Auto was left on,
+# and stops it when you pick Saver / Balanced / Perf by hand (SUPER+ALT+P toggles it too).

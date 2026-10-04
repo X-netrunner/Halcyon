@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cockpit System Console - ubuntu-server</title>
+    <style>
+        body { font-family: 'Outfit', Arial, sans-serif; background-color: #0b0c10; color: #c5c6c7; margin: 0; padding: 0; }
+        .header { background-color: #1f2833; color: #66fcf1; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #66fcf1; }
+        .header h1 { margin: 0; font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+        .container { max-width: 1200px; margin: 30px auto; padding: 0 25px; }
+        .card { background-color: #151922; border: 1px solid rgba(102,252,241,0.15); border-radius: 8px; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .card h3 { margin-top: 0; color: #66fcf1; border-bottom: 1px solid rgba(102,252,241,0.3); padding-bottom: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; }
+        .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .info-row:last-child { border-bottom: none; }
+        .label { font-weight: bold; color: #45f3ff; }
+        .value { color: #fff; }
+        .footer { text-align: center; margin-top: 40px; font-size: 12px; color: #666; padding: 20px 0; }
+        .badge { background-color: #1b4d3e; color: #2ecc71; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; border: 1px solid #2ecc71; }
+        code { background-color: #0b0c10; padding: 3px 8px; border-radius: 4px; color: #ff6b6b; font-family: monospace; border: 1px solid rgba(255,107,107,0.2); }
+        table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 15px; }
+        th { border-bottom: 2px solid rgba(102,252,241,0.3); padding: 12px 10px; color: #66fcf1; font-weight: 600; }
+        td { padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); color: #fff; }
+        tr:hover { background-color: rgba(102,252,241,0.02); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Cockpit System Control</h1>
+        <div><span>Server: ubuntu-server</span> | <a href="/logout" style="color: #66fcf1; text-decoration: none; font-weight: bold; border: 1px solid #66fcf1; padding: 5px 15px; border-radius: 4px; transition: 0.3s;">Logout</a></div>
+    </div>
+    <div class="container">
+        <div class="grid">
+            <div class="card">
+                <h3>System Status</h3>
+                <div class="info-row"><span class="label">System Name</span><span class="value">ubuntu-server</span></div>
+                <div class="info-row"><span class="label">Operating System</span><span class="value">Ubuntu 18.04.6 LTS (Bionic Beaver)</span></div>
+                <div class="info-row"><span class="label">System Uptime</span><span class="value">04:32:11</span></div>
+                <div class="info-row"><span class="label">Kernel Version</span><span class="value">4.15.0-142-generic</span></div>
+                <div class="info-row"><span class="label">CPU Usage</span><span class="value">8.2%</span></div>
+                <div class="info-row"><span class="label">Memory Usage</span><span class="value">31.4% (3.8 GB / 12.0 GB)</span></div>
+            </div>
+            <div class="card">
+                <h3>Network Configurations</h3>
+                <div class="info-row"><span class="label">Active Interfaces</span><span class="value">eth0, eth1, wlan0 <span class="badge">Online</span></span></div>
+                <div class="info-row"><span class="label">eth0 (WAN IP)</span><span class="value">192.168.100.15</span></div>
+                <div class="info-row"><span class="label">eth1 (LAN Gateway)</span><span class="value">192.168.1.1</span></div>
+                <div class="info-row"><span class="label">Primary DNS</span><span class="value">127.0.0.1 (dnscrypt-proxy)</span></div>
+                <div class="info-row"><span class="label">Active DHCP Leases</span><span class="value">3 Clients Active</span></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Enterprise VPN Gateway Service</h3>
+            <p style="color: #c5c6c7; font-size: 13px; margin-bottom: 20px;">Secure tunnel connecting remote data center instances.</p>
+            <div class="info-row"><span class="label">Connection Endpoint</span><span class="value">vpn.corp-internal-cloud.com</span></div>
+            <div class="info-row"><span class="label">Tunnel Status</span><span class="value"><span class="badge">Active</span></span></div>
+            <div class="info-row"><span class="label">Tunnel Encryption</span><span class="value">AES-256-GCM / SHA-256</span></div>
+            <div class="info-row"><span class="label">Pre-Shared Key (PSK)</span><span class="value"><code>UB_ServerCorp2026_Secure_Key!</code></span></div>
+            <div class="info-row"><span class="label">Admin Backup Username</span><span class="value"><code>sys_backup</code></span></div>
+            <div class="info-row"><span class="label">Admin Backup Password</span><span class="value"><code>Backup_Agent_8829_Pass!</code></span></div>
+        </div>
+
+        <div class="card">
+            <h3>Active Local LAN Client Directory</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>IP Address</th>
+                        <th>Device Name</th>
+                        <th>MAC Address</th>
+                        <th>Interface / Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>192.168.1.10</td>
+                        <td>CEO-Notebook</td>
+                        <td>3C:A9:F4:11:AA:BB</td>
+                        <td>Wireless (WPA2)</td>
+                    </tr>
+                    <tr>
+                        <td>192.168.1.50</td>
+                        <td>Corporate-DB-Server</td>
+                        <td>00:15:5D:01:23:45</td>
+                        <td>Wired (1Gbps)</td>
+                    </tr>
+                    <tr>
+                        <td>192.168.1.100</td>
+                        <td>Backup-NAS-01</td>
+                        <td>90:E2:BA:44:55:66</td>
+                        <td>Wired (1Gbps)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="footer">
+        &copy; 2026 Ubuntu Linux Server Administration Console. Confidential Device.
+    </div>
+</body>
+</html>

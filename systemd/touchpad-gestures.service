@@ -1,0 +1,12 @@
+[Unit]
+Description=Halcyon touchpad edge gestures (volume / brightness / track skip)
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.config/Halcyon/bin/touchpad-gestures
+Restart=always
+RestartSec=3
+# gestures run brightnessctl / wpctl / playerctl, so PATH must include them (pipewire user session needs XDG_RUNTIME_DIR)
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+# Started from hyprland/execs.lua. Needs read access to /dev/input (be in the `input` group, then log in again).

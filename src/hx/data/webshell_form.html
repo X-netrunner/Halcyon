@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Web Shell Console - {FILENAME}</title>
+    <style>
+        body { font-family: monospace; background-color: #121212; color: #00ff00; padding: 20px; }
+        input[type="text"] { width: 80%; background-color: #222; color: #00ff00; border: 1px solid #00ff00; padding: 5px; }
+        input[type="submit"] { background-color: #00ff00; color: #121212; border: none; padding: 5px 10px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>SafeShell v1.0 - Connected to {HOST}</h2>
+    <form method="GET">
+        <span>www-data@{HOST}:/var/www/html$ </span>
+        <input type="text" name="cmd" autofocus placeholder="Type command...">
+        <input type="submit" value="Run">
+    </form>
+</body>
+</html>

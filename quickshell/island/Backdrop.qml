@@ -1,0 +1,42 @@
+import QtQuick
+
+// Same quiet look as the SUPER+TAB tree: a few faint drifting dots, plus the flagship-mode art
+// (shield for lockdown, dragon for stealth) fading in behind the content. Put it first inside a box.
+Item {
+    id: root
+    property var pal
+    property string mode: ""
+    property int dots: 12
+    property real artStrength: 1.0
+    property real artFit: 0.9
+    property real artShift: 0          // push the art sideways (px), e.g. towards a corner
+    clip: true
+
+    property real tt: 0
+    NumberAnimation on tt { from: 0; to: 1000000; duration: 1000000000; loops: Animation.Infinite; running: root.visible }
+
+    ModeArt {
+        anchors.fill: parent
+        anchors.leftMargin: root.artShift
+        anchors.rightMargin: -root.artShift
+        pal: root.pal
+        mode: root.mode
+        strength: root.artStrength
+        fit: root.artFit
+    }
+
+    Repeater {
+        model: root.dots
+        delegate: Rectangle {
+            required property int index
+            readonly property real fx: ((index * 0.6180339) % 1)
+            readonly property real fy: ((index * 0.4142135 + 0.17) % 1)
+            width: 2 + index % 3
+            height: width
+            radius: width / 2
+            color: Qt.alpha(root.pal.accent, 0.10 + (index % 4) * 0.03)
+            x: root.width * fx + 8 * Math.sin(6.2832 * (40 + index * 11 % 50) * root.tt / 1000 + index)
+            y: root.height * fy + 8 * Math.cos(6.2832 * (40 + index * 17 % 50) * root.tt / 1000 + index * 2)
+        }
+    }
+}

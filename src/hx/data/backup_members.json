@@ -1,0 +1,18 @@
+[
+ [
+  "backup/config.php",
+  "<?php\n// Application database configuration (production)\ndefine('DB_HOST', 'localhost');\ndefine('DB_USER', 'sys_admin');\ndefine('DB_PASS', 'UB_Admin_P@ss_2026_Secure');\ndefine('DB_NAME', 'system_config');\ndefine('VPN_ENDPOINT', '10.8.0.1');\ndefine('VPN_PSK', '4f8e2b1a-9c3d-4e7f-b6a2-1d5c8e9f0a3b');\n?>\n"
+ ],
+ [
+  "backup/credentials.txt",
+  "# Stored credentials - rotate on 30 day cycle\nvpn_primary    netadmin    test_password\nvpn_secondary  netadmin    test_password\nnas            admin       test_password\nrouter         cisco       test_password\nroot_db        sys_admin   UB_Admin_P@ss_2026_Secure\n"
+ ],
+ [
+  "backup/.bash_history",
+  "mysql -u root -p'UB_Admin_P@ss_2026_Secure' system_config\nmysqldump system_config | gzip > /var/backups/db_dump_2026-06-30.sql.gz\nscp backup.tar.gz admin@10.0.0.5:/backups/\n"
+ ],
+ [
+  "backup/README.txt",
+  "Automated 0300 daily backup set (cron).\nShips to 10.0.0.5:/backups/ - contact sys_admin for access.\n"
+ ]
+]

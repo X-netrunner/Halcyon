@@ -1,0 +1,117 @@
+.TH SYSMODE 8 "August 2026" "sysmode 1.0" "System Administration Commands"
+.SH NAME
+sysmode \- Toggle hardening and decoy lab profiles for daily use vs. cybersecurity learning
+.SH SYNOPSIS
+.B sysmode
+.RI [ PROFILE " [--hotspot|--no-hotspot] " | " status " | " verify " | " doctor " | " reapply " | " boot-late " | " logs " | " help ]
+.SH DESCRIPTION
+.B sysmode
+is a command-line administration utility that switches the system between hardened and relaxed security profiles on Arch Linux. It transitions kernel parameters (sysctl), compiler permissions, network routing, firewall policy, host identity, and logging dynamically between the active profile.
+.SH PROFILES
+.TP
+.BR secure
+Standard dynamic hardening profile for daily use.
+.RS
+- Disables packet forwarding (net.ipv4.ip_forward=0)
+- Blocks ICMP redirects, source routing, and martian packets (with logging)
+- Restricts dmesg, kernel pointers, perf events, BPF JIT, and SysRq
+- Restricts compilers (gcc, clang, rustc, make, as, ld) to root only
+- Blacklists DCCP, SCTP, RDS, TIPC, FireWire, and Thunderbolt modules
+- Deploys a legal login warning banner to /etc/issue
+- Sets default umask 027, disables core dumps, and restricts the home directory
+- Enables sudo and auditd logging, plus Lynis profile overrides
+.RE
+.TP
+.BR stealth " | " hacking
+Virtual counter-recon decoy lab profile.
+.RS
+- Enables packet forwarding for NAT/hotspot routing
+- Randomizes the hostname to a decoy (e.g. ubuntu-web-srv-XXXX, netgear-gw-01) and binds a transient machine-id
+- Randomizes Ethernet and WiFi MAC addresses to Dell OUIs
+- Optionally broadcasts a decoy SSID on idle WiFi interfaces (--hotspot)
+- Starts the low-interaction honeypot (recon-deceiver.py) and a lightweight IDS (log-analyst.py)
+- Masquerades the TCP fingerprint (TTL 64, timestamps on) and ignores ICMP echo
+- Disables IPv6, isolates firewall subnets, and unlocks tun+/wg+ for reverse shells
+- Mounts a transient RAM-backed workspace at ~/Workspace/Stealth
+- Forces volatile (in-memory) journald logging
+.RE
+.TP
+.BR cyber
+Relaxed training lab profile.
+.RS
+- Enables forwarding and allows ICMP redirects/source routing for MITM and sniffing labs
+- Restores compiler access to all users and removes module blacklists
+- Relaxes dmesg, kptr, perf, BPF JIT, and SysRq restrictions
+- Restores default umask (022), login banners, and the auditd log location
+.RE
+.TP
+.BR lockdown
+Extreme fortress hardening profile.
+.RS
+- One-way kernel locks: modules_disabled (via a late-boot service), unprivileged_bpf_disabled, and ptrace_scope
+- Disables and masks sshd, denying all SSH logins
+- Applies hidepid=2 on /proc, 10-minute idle shell timeouts, and process accounting
+- Restricts the home directory, sets account expiry, and hardens sshd_config
+- Enforces strict UFW default-deny and denies port 22
+- Requires a reboot to fully exit
+.RE
+.SH ACTIONS
+.TP
+.BR status
+Display the active profile and key kernel metrics.
+.TP
+.BR verify " | " check
+Perform an automated audit verifying active profile settings against live kernel, firewall, and filesystem configurations.
+.TP
+.BR doctor
+Check system package dependencies and report missing requirements with pacman installation hints.
+.TP
+.BR dossier " [ " IP " ]"
+Display deep per-attacker threat intelligence (SSH sessions, logins, fake shell commands, decoy hits, counter-scan intel).
+.TP
+.BR reapply
+Re-detect and re-apply the active profile settings without rebooting.
+.TP
+.BR boot-late
+Internal late-boot hook that locks module loading after boot completes (used by sysmode-late.service).
+.TP
+.BR logs
+Summarize banned IPs and recent honeypot and IDS alerts.
+.TP
+.BR help " | " -h " | " --help
+Print the detailed built-in help manual.
+.SH OPTIONS
+.TP
+.BR --persona " [ " cisco " | " synology " | " ubuntu " ]"
+With stealth, set the active honeypot decoy persona profile (aligns service banners for FTP, SSH, Telnet, HTTP, SNMP).
+.TP
+.BR --hotspot
+With stealth, broadcast a decoy WiFi hotspot on an idle interface (persisted to /etc/sysmode.conf).
+.TP
+.BR --no-hotspot
+With stealth, disable the decoy hotspot and persist the setting.
+.SH FILES
+.I /etc/sysmode.mode
+- Name of the active profile.
+.I /etc/sysmode.conf
+- Persistent user configuration (e.g. DECOY_HOTSPOT).
+.I /etc/sysmode.orig-hostname
+- Original hostname captured before decoy spoofing.
+.I /etc/sysmode.decoy-wifi
+- WiFi interface used for the decoy hotspot.
+.I /etc/machine-id.orig
+- Original machine-id captured before transient spoofing.
+.I /etc/sysctl.d/99-sysmode.conf
+- Dynamic sysctl overrides for the active profile.
+.I /home/netrunner/Workspace/Stealth
+- RAM-backed (tmpfs) volatile workspace mounted in stealth mode.
+.I /home/netrunner/logs/recon-attempts.log
+- Honeypot connection attempts.
+.I /home/netrunner/logs/ids-alerts.log
+- IDS signature matches.
+.I /home/netrunner/logs/sudo.log
+- Sudo command log.
+.I /home/netrunner/logs/attacker-mac-scans.log
+- tcpdump MAC scanner output.
+.SH AUTHORS
+Antigravity

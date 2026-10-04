@@ -1,0 +1,8 @@
+[package]
+name = "touchpad-gestures"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+evdev = "0.12"
+
