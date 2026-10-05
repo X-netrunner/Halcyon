@@ -69,7 +69,7 @@ Item {
                     Rectangle {
                         width: parent.width * Math.min(1, Math.max(0.02, modelData.frac))
                         height: parent.height; radius: 2
-                        color: modelData.frac > 0.9 ? "#e58a8a" : (modelData.frac > 0.75 ? "#e5c07b" : root.pal.accent)
+                        color: modelData.frac > 0.9 ? root.pal.bad : (modelData.frac > 0.75 ? root.pal.warn : root.pal.accent)
                         Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
                     }
                 }

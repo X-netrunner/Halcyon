@@ -31,20 +31,39 @@ Item {
     readonly property real dh: art ? art.h : 100
     readonly property bool live: alive && visible && (pal ? pal.motion > 0.3 : true)
 
+    // ---- growth (0..1, Settings > Constellations): stars / edges with a birth value t appear as it passes t
+    readonly property real g: (pal && pal.growthOn) ? pal.growth : 0
+    function bornT(s) { return s.length > 3 ? s[3] : 0 }
+    // how far a star has travelled from where it started (0..1, eased): wings unfold, rims bloom
+    function grownAmt(s) {
+        var t = bornT(s)
+        if (t <= 0 || s.length < 6) return 1
+        var r = Math.max(0, Math.min(1, (g - t) / 0.12))
+        return r * r * (3 - 2 * r)
+    }
+    function sx(s) { var k = grownAmt(s); return k >= 1 ? s[0] : s[4] + (s[0] - s[4]) * k }
+    function sy(s) { var k = grownAmt(s); return k >= 1 ? s[1] : s[5] + (s[1] - s[5]) * k }
+    // fades in over a little growth after its birth value
+    function fadeIn(s) { var t = bornT(s); return t <= 0 ? 1 : Math.max(0, Math.min(1, (g - t) / 0.04)) }
+    function edgeOn(e) { return e.length < 3 || e[2] <= g }
+
     // edges as one path: "M x,y L x,y M ...", with the line segments kept for the travelling lights
     readonly property string edgePath: {
         if (!art) return ""
-        var p = "", s = art.stars, e = art.edges
+        var p = "", s = art.stars, e = art.edges, gg = g
         for (var i = 0; i < e.length; i++) {
+            if (!edgeOn(e[i])) continue
             var a = s[e[i][0]], b = s[e[i][1]]
-            if (a && b) p += "M" + a[0] + "," + a[1] + " L" + b[0] + "," + b[1] + " "
+            if (a && b) p += "M" + sx(a) + "," + sy(a) + " L" + sx(b) + "," + sy(b) + " "
         }
         return p
     }
     // up to 16 evenly spread edges carry a travelling light
     readonly property var pulseEdges: {
         if (!art) return []
-        var e = art.edges, out = [], step = Math.max(1, Math.floor(e.length / 16))
+        var e = [], all = art.edges, gg = g
+        for (var k = 0; k < all.length; k++) if (edgeOn(all[k])) e.push(all[k])
+        var out = [], step = Math.max(1, Math.floor(e.length / 16))
         for (var i = 0; i < e.length && out.length < 16; i += step) out.push(e[i])
         return out
     }
@@ -140,8 +159,8 @@ Item {
                         readonly property real t0: ((root.cyc * (1 + index % 2) + index * 0.137) % 1)
                         readonly property real t: index % 2 === 0 ? t0 : 1 - t0
                         visible: a !== undefined && b !== undefined
-                        x: a && b ? a[0] + (b[0] - a[0]) * t : 0
-                        y: a && b ? a[1] + (b[1] - a[1]) * t : 0
+                        x: a && b ? root.sx(a) + (root.sx(b) - root.sx(a)) * t : 0
+                        y: a && b ? root.sy(a) + (root.sy(b) - root.sy(a)) * t : 0
                         opacity: Math.sin(3.1416 * t0) * (0.75 + 0.25 * root.energy)
                         Rectangle {
                             anchors.centerIn: parent
@@ -164,8 +183,9 @@ Item {
                         required property int index
                         readonly property real r: modelData[2] || 1.5
                         readonly property real flick: 0.5 + 0.5 * Math.sin(root.ph * (1 + index % 3) + index * 0.9)
-                        x: modelData[0]; y: modelData[1]
-                        opacity: Math.min(1, 0.55 + 0.45 * flick * flick + 0.3 * root.energy)
+                        x: root.sx(modelData); y: root.sy(modelData)
+                        visible: root.fadeIn(modelData) > 0
+                        opacity: Math.min(1, 0.55 + 0.45 * flick * flick + 0.3 * root.energy) * root.fadeIn(modelData)
                         Rectangle {
                             anchors.centerIn: parent
                             width: r * (9 + 3 * flick + 9 * root.energy) * root.u; height: width; radius: width / 2

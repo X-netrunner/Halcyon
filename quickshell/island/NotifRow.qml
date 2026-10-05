@@ -15,7 +15,7 @@ Item {
     signal dismissRequested()
 
     readonly property bool critical: notif.urgency === NotificationUrgency.Critical
-    readonly property color tone: critical ? "#e58a8a" : pal.accent
+    readonly property color tone: critical ? pal.bad : pal.accent
     readonly property var extraActions: {
         var out = []
         var a = notif.actions
@@ -79,7 +79,7 @@ Item {
         radius: row.pal.rMd
         color: hov.hovered ? Qt.alpha(row.pal.surfaceHi, 0.9) : Qt.alpha(row.pal.surface, 0.7)
         border.width: 1
-        border.color: row.critical ? Qt.alpha("#e58a8a", 0.5) : row.pal.lineSoft
+        border.color: row.critical ? Qt.alpha(row.pal.bad, 0.5) : row.pal.lineSoft
         Behavior on color { ColorAnimation { duration: row.pal.dFast } }
 
         HoverHandler { id: hov }

@@ -10,16 +10,20 @@ return {
     -- ~/.local/state/island/apps.env) and change live; the keybinds always go through it
     terminal                   = "~/.config/Halcyon/scripts/apps.sh run terminal",
     browser                    = "~/.config/Halcyon/scripts/apps.sh run browser",
-    editor                     = "codium",
+    editor                     = "~/.config/Halcyon/scripts/apps.sh run editor",   -- Settings > Default apps > Code editor
     fileExplorer               = "~/.config/Halcyon/scripts/apps.sh run files",
     audioSettings              = "pavucontrol",
     -- (SUPER+M music and SUPER+D communication start their apps from scripts/special.sh, see MUSIC_CMD / COMM_CMD there)
+    -- size of windows on special workspaces: compact (Settings / SUPER+TAB tree switch ON) or full (OFF); the island applies it live
+    specialScaleCompact        = 0.84,
+    specialScaleFull           = 1.0,
     sysmonCmd                  = "~/.config/Halcyon/scripts/apps.sh term-exec btop",      -- CTRL+SHIFT+ESC special workspace
     todoCmd                    = "sh -c 'command -v todoist >/dev/null && exec todoist || exec xdg-open https://app.todoist.com'",  -- SUPER+R special workspace
 
     -- Touchpad
     touchpadDisableTyping      = true,
-    touchpadScrollFactor       = 0.3,
+    touchpadScrollFactor       = 0.3,   -- Settings > Scroll sensitivity changes these live
+    mouseScrollFactor          = 1.0,
     keyRepeatDelay             = 250,   -- ms before a held key starts repeating (Hyprland default 600)
     keyRepeatRate              = 35,    -- repeats per second once it does (Hyprland default 25)
     gestureFingers             = 3,

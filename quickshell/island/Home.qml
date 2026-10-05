@@ -9,9 +9,11 @@ RowLayout {
     property var stats
     property var net
     property var cava: []
+    property bool clock24: false
     property bool playing: false
     property string activeSpecial: ""
     property bool caffeine: false
+    property bool showStats: false       // Settings > Bar: CPU / memory / temperature slide out while the pointer is on the bar
     signal statusClicked()
     signal workspaceClicked(int wsId)
     signal specialClicked(string name)
@@ -121,7 +123,7 @@ RowLayout {
         Layout.alignment: Qt.AlignVCenter
         spacing: 10
         Text {
-            text: Qt.formatDateTime(clock.date, "hh:mm AP")
+            text: Qt.formatDateTime(clock.date, row.clock24 ? "HH:mm" : "hh:mm AP")
             color: row.pal.text
             font.family: row.pal.uiFont
             font.pixelSize: row.pal.tTitle
@@ -137,6 +139,37 @@ RowLayout {
             color: row.pal.muted
             font.family: row.pal.uiFont
             font.pixelSize: row.pal.tBody
+        }
+    }
+
+    // live stats (hover the bar): grows the pill, shrinks back when the pointer leaves
+    Item {
+        Layout.alignment: Qt.AlignVCenter
+        implicitHeight: 26
+        implicitWidth: row.showStats ? statsRow.implicitWidth + 18 : 0
+        clip: true
+        opacity: row.showStats ? 1 : 0
+        Behavior on implicitWidth { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve } }
+        Behavior on opacity { NumberAnimation { duration: row.pal.dMed } }
+        Row {
+            id: statsRow
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: 18
+            spacing: 14
+            Repeater {
+                model: [
+                    { k: "CPU", v: Math.round(row.stats.cpu || 0) + "%", frac: (row.stats.cpu || 0) / 100 },
+                    { k: "RAM", v: (row.stats.memGb || "0.0") + "G", frac: (row.stats.mem || 0) / 100 },
+                    { k: "TEMP", v: Math.round(row.stats.temp || 0) + "°", frac: (row.stats.temp || 0) / 100 }
+                ]
+                delegate: Row {
+                    required property var modelData
+                    spacing: 5
+                    Text { text: modelData.k; color: row.pal.muted; font.family: row.pal.uiFont; font.pixelSize: row.pal.tCap; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: modelData.v; color: modelData.frac > 0.9 ? row.pal.bad : (modelData.frac > 0.75 ? row.pal.warn : row.pal.text); font.family: row.pal.uiFont; font.pixelSize: row.pal.tBody; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                }
+            }
         }
     }
 
@@ -199,7 +232,7 @@ RowLayout {
                             height: parent.height - 4
                             width: Math.max(2, (parent.width - 4) * row.stats.bat / 100)
                             radius: 1.5
-                            color: row.stats.charging ? "#8fcfa0" : (row.stats.bat <= 20 ? "#e58a8a" : row.pal.accent)
+                            color: row.stats.charging ? row.pal.good : (row.stats.bat <= 20 ? row.pal.bad : row.pal.accent)
                         }
                     }
                     Rectangle { x: 21.5; y: 4; width: 2; height: 4; radius: 1; color: row.pal.text }

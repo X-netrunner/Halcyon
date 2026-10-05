@@ -1,0 +1,10 @@
+[Unit]
+Description=Halcyon: save RAM type / speed (dmidecode needs root) for the performance page
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'mkdir -p /var/lib/halcyon && dmidecode -t memory > /var/lib/halcyon/dmi-memory.txt.new && mv /var/lib/halcyon/dmi-memory.txt.new /var/lib/halcyon/dmi-memory.txt && chmod 644 /var/lib/halcyon/dmi-memory.txt'
+
+[Install]
+WantedBy=multi-user.target

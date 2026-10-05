@@ -37,7 +37,7 @@ Scope {
     readonly property var rootless: ["status", "logs", "dossier", "verify", "check", "doctor", "help", "-h", "--help"]
     readonly property var tuis: ["vim", "nvim", "vi", "nano", "emacs", "htop", "btop", "top", "less", "more", "man", "ssh",
                                  "mosh", "tmux", "screen", "ncmpcpp", "mutt", "ranger", "yazi", "fzf", "python", "python3", "node", "irb"]
-    readonly property var modeColor: ({ "secure": "#8fd19e", "stealth": "#56b6c2", "cyber": "#e5c07b", "lockdown": "#e06c75" })
+    readonly property var modeColor: pal.modeColor
     readonly property string mono: pal.mono
 
     property bool open: false
@@ -201,7 +201,7 @@ Scope {
 
     function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
     function dot(on, label) {
-        return "<font color='" + (on ? "#8fd19e" : pal.muted) + "'>" + (on ? "●" : "○") + "</font> " + esc(label)
+        return "<font color='" + (on ? pal.good : pal.muted) + "'>" + (on ? "●" : "○") + "</font> " + esc(label)
     }
     function row(k, v) { return "<font color='" + pal.muted + "'>" + esc(k.padEnd(12, " ")) + "</font>" + v }
     readonly property var statusRows: {
@@ -399,7 +399,7 @@ Scope {
                         text: t === "" ? " " : t
                         textFormat: Text.PlainText
                         wrapMode: Text.WrapAnywhere
-                        color: k === "cmd" ? root.pal.accent : k === "err" ? "#e06c75" : k === "info" ? root.pal.muted : root.pal.text
+                        color: k === "cmd" ? root.pal.accent : k === "err" ? root.pal.bad : k === "info" ? root.pal.muted : root.pal.text
                         font.family: root.mono
                         font.pixelSize: 12
                         font.weight: k === "cmd" ? Font.DemiBold : Font.Normal
@@ -419,7 +419,7 @@ Scope {
                     id: prompt
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.askPass ? "[sudo] password ❯" : root.cwdLabel() + " ❯"
-                    color: root.askPass ? "#e5c07b" : root.pal.accent
+                    color: root.askPass ? root.pal.warn : root.pal.accent
                     font.family: root.mono
                     font.pixelSize: 13
                 }

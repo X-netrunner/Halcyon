@@ -143,7 +143,11 @@ fn ram() -> Value {
     let total = if gb < 8.0 { gb.ceil() as i64 } else { ((gb / 2.0).ceil() * 2.0) as i64 };
     let mut info = json!({ "total": format!("{}G", total), "type": "", "speed": "", "modules": 0, "channels": "", "detail": "" });
 
-    let text = read(&format!("{}/.cache/island/dmi-memory.txt", home()));
+    // per-user cache first, then the system-wide one written at boot by halcyon-ram.service (see install.sh)
+    let mut text = read(&format!("{}/.cache/island/dmi-memory.txt", home()));
+    if !text.contains("Memory Device") {
+        text = read("/var/lib/halcyon/dmi-memory.txt");
+    }
     if text.is_empty() {
         return info;
     }

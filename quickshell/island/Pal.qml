@@ -8,7 +8,24 @@ import Quickshell.Io
 Scope {
     id: pal
 
-    // ---------- colour ----------
+    // ---------- theme ----------
+    // `light` flips every surface, line and text colour at once. The wallpaper palette (`hx palette`) is always made for the
+    // dark theme, so it is kept in the raw* values below and the light theme is derived from the same hues:
+    // the wallpaper still tints the island, only the lightness is turned around.
+    property bool light: false
+    onLightChanged: refresh()
+    Component.onCompleted: refresh()
+
+    // what `hx palette` last wrote (dark)
+    property color rawBg: "#14161f"
+    property color rawSurface: "#1e2130"
+    property color rawSurfaceHi: "#272b3d"
+    property color rawAccent: "#9aa9d4"
+    property color rawAccent2: "#c2add8"
+    property color rawText: "#dcdde8"
+    property color rawMuted: "#9496a8"
+
+    // ---------- colour (what every component uses) ----------
     property color bg: "#14161f"
     property color surface: "#1e2130"        // raised: chips, tracks, cards
     property color surfaceHi: "#272b3d"      // hovered / pressed surface
@@ -16,6 +33,40 @@ Scope {
     property color accent2: "#c2add8"
     property color text: "#dcdde8"
     property color muted: "#9496a8"
+
+    // status colours (battery, errors, sysmode): tuned separately for dark and light so they stay readable on both
+    readonly property color good: light ? "#2e8a4d" : "#8fcfa0"
+    readonly property color warn: light ? "#a8730f" : "#e5c07b"
+    readonly property color bad: light ? "#c43e3e" : "#e58a8a"
+    readonly property var modeColor: ({
+        "secure": light ? "#2e8a4d" : "#8fd19e",
+        "stealth": light ? "#0f7f8c" : "#56b6c2",
+        "cyber": light ? "#a8730f" : "#e5c07b",
+        "lockdown": light ? "#c2303c" : "#e06c75"
+    })
+
+    function hueOf(c, fallback) { var h = c.hslHue; return (h === undefined || h < 0 || isNaN(h)) ? fallback : h }
+
+    function refresh() {
+        if (!light) {
+            bg = rawBg; surface = rawSurface; surfaceHi = rawSurfaceHi
+            accent = rawAccent; accent2 = rawAccent2; text = rawText; muted = rawMuted
+            return
+        }
+        var h = hueOf(rawBg, hueOf(rawAccent, 0.62))
+        var ha = hueOf(rawAccent, h)
+        var ha2 = hueOf(rawAccent2, ha)
+        var s = Math.min(0.32, rawBg.hslSaturation * 0.8 + 0.06)
+        var sa = Math.max(0.30, Math.min(0.62, rawAccent.hslSaturation + 0.14))
+        var sa2 = Math.max(0.26, Math.min(0.58, rawAccent2.hslSaturation + 0.10))
+        bg = Qt.hsla(h, s, 0.955, 1)
+        surface = Qt.hsla(h, s, 0.905, 1)
+        surfaceHi = Qt.hsla(h, s, 0.86, 1)
+        accent = Qt.hsla(ha, sa, 0.40, 1)
+        accent2 = Qt.hsla(ha2, sa2, 0.44, 1)
+        text = Qt.hsla(h, 0.20, 0.13, 1)
+        muted = Qt.hsla(h, 0.10, 0.38, 1)
+    }
 
     // how see-through the glass is (the compositor blurs what is behind it)
     // Settings > Transparency moves all four together by glassShift (-0.15 .. +0.05; keep the bar above the
@@ -70,6 +121,12 @@ Scope {
     readonly property int tTitle: 15
     readonly property int tDisplay: 22
 
+    // ---------- growth ----------
+    // the flagship constellations (and the picture one) grow the longer the island has been running: shell.qml sets
+    // growth 0..1 from the saved total minutes (Settings > Constellations); off = the plain constellations
+    property real growth: 0
+    property bool growthOn: true
+
     // ---------- motion ----------
     // one signature curve (easeOutQuint): fast start, long soft landing, never bounces
     readonly property var curve: [0.22, 1, 0.36, 1, 1, 1]
@@ -90,14 +147,23 @@ Scope {
     function apply(data) {
         try {
             var p = JSON.parse(data)
-            if (p.bg) pal.bg = p.bg
-            if (p.surface) pal.surface = p.surface
-            if (p.surfaceHi) pal.surfaceHi = p.surfaceHi
-            if (p.accent) pal.accent = p.accent
-            if (p.accent2) pal.accent2 = p.accent2
-            if (p.text) pal.text = p.text
-            if (p.muted) pal.muted = p.muted
+            if (p.bg) pal.rawBg = p.bg
+            if (p.surface) pal.rawSurface = p.surface
+            if (p.surfaceHi) pal.rawSurfaceHi = p.surfaceHi
+            if (p.accent) pal.rawAccent = p.accent
+            if (p.accent2) pal.rawAccent2 = p.accent2
+            if (p.text) pal.rawText = p.text
+            if (p.muted) pal.rawMuted = p.muted
+            pal.refresh()
+            termColors.restart()          // terminals follow the wallpaper too (scripts/term-colors.sh)
         } catch (e) {}
+    }
+
+    // a moment after the last palette change: write the terminal colour files and repaint open terminals
+    Timer {
+        id: termColors
+        interval: 1500
+        onTriggered: Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/term-colors.sh"])
     }
 
     Process {

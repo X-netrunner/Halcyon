@@ -28,11 +28,27 @@ Scope {
     property bool shadows: true
     property bool hyprAnim: true
     property int notifHistoryMax: 30
+    property int notifMax: 5
+    property bool compactSpecial: true
+    property bool routeApps: true
+    property bool clock24: false
+    property bool growthOn: true
+    property double growthMin: 0
+    property real growthFullMin: 4320
+    readonly property real growth: Math.min(1, growthMin / growthFullMin)
     property int idleLock: 5
     property int idleSleep: 30
+    property int idleDim: 3
+    property bool osdOn: true
+    property string theme: "dark"          // dark | light
+    property bool compactWs: true          // windows on workspace 3 move to 1 when nothing is before them
+    property string hoverAction: "none"    // what hovering the bar does: none | perf | media | stats
+    property string barScroll: "medium"    // how far you scroll / swipe on the bar to change page: low | medium | high
+    property real scrollTouch: 0.3         // Hyprland touchpad scroll_factor
+    property real scrollMouse: 1.0         // Hyprland (mouse wheel) scroll_factor
 
     // default apps (scripts/apps.sh): what is installed per kind, and the one in use
-    property var apps: ({ terminal: [], browser: [], files: [], current: ({ terminal: "", browser: "", files: "" }) })
+    property var apps: ({ terminal: [], browser: [], files: [], editor: [], music: [], chat: [], current: ({ terminal: "", browser: "", files: "", editor: "", music: "", chat: "" }) })
     readonly property string appsScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh"
     function setApp(kind, id) {
         Quickshell.execDetached(["bash", appsScript, "set", kind, id])
@@ -41,6 +57,37 @@ Scope {
         apps = a                     // show it at once; the list is re-read below
         appsAgain.restart()
     }
+    // wallpaper folder (scripts/wallpapers.sh): the folder, the wallpaper in use, every image in it
+    property var wp: ({ dir: "", current: "", files: [] })
+    property string wpText: ""
+    readonly property string wpScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/wallpapers.sh"
+    function wpAct(a) {
+        // the file manager / picker window opens below this overlay, so get out of its way first
+        if (a === "open" || a === "add" || a === "choose-dir") hide()
+        Quickshell.execDetached(["bash", wpScript, a])
+        wpAgain.restart()
+    }
+    function pickWallpaper(path) {
+        var d = JSON.parse(JSON.stringify(wp))
+        d.current = path
+        wp = d                           // show the choice at once; the list is re-read below
+        wallpaperSet(path)
+        wpAgain.restart()
+    }
+    Timer { id: wpAgain; interval: 1500; onTriggered: if (!wpProc.running) wpProc.running = true }
+    Timer { id: wpPoll; interval: 4000; running: root.open; repeat: true; triggeredOnStart: true; onTriggered: if (!wpProc.running) wpProc.running = true }
+    Process {
+        id: wpProc
+        command: ["bash", root.wpScript, "list"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (text === root.wpText) return          // nothing changed: keep the thumbnails as they are
+                root.wpText = text
+                try { root.wp = JSON.parse(text) } catch (e) {}
+            }
+        }
+    }
+
     onOpenChanged: if (open && !appsProc.running) appsProc.running = true
     Timer { id: appsAgain; interval: 600; onTriggered: if (!appsProc.running) appsProc.running = true }
     Process {
@@ -50,11 +97,14 @@ Scope {
     }
 
     signal setting(string key, var value)
+    signal wallpaperSet(string path)  // a thumbnail was clicked
     signal action(string id)          // wallpaper | config | cheatsheet | reload
 
     function show() { open = true }
     function hide() { open = false }
     function toggle() { open = !open }
+
+    component SChip: Chip { maxLabel: 1000 }
 
     component Section: Rectangle {
         id: sec
@@ -147,11 +197,14 @@ Scope {
                             Layout.fillWidth: true
                             Layout.preferredWidth: 1
                             Layout.alignment: Qt.AlignTop
+                            Text { text: "Theme"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0976); label: "Next wallpaper"; onClicked: root.action("wallpaper") }
+                                SChip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0594); label: "Dark"; on: root.theme !== "light"; onClicked: root.setting("theme", "dark") }
+                                SChip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0599); label: "Light"; on: root.theme === "light"; onClicked: root.setting("theme", "light") }
                             }
+                            Text { text: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.topMargin: -6 }
                             Slider {
                                 Layout.fillWidth: true; pal: root.pal
                                 glyph: String.fromCodePoint(0xF0335)
@@ -159,7 +212,7 @@ Scope {
                                 readout: (root.glassShift >= 0 ? "+" : "") + Math.round(root.glassShift * 100)
                                 onMoved: v => root.setting("glassShift", Math.round((v * 0.20 - 0.15) * 100) / 100)
                             }
-                            Text { text: "Transparency of the island, panels and overlays"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; Layout.topMargin: -6 }
+                            Text { text: "Transparency of the island, panels and overlays"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; Layout.topMargin: -6; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             Slider {
                                 Layout.fillWidth: true; pal: root.pal
                                 glyph: String.fromCodePoint(0xF0A39)
@@ -167,7 +220,7 @@ Scope {
                                 readout: root.rounding + " px"
                                 onMoved: v => root.setting("rounding", Math.round(v * 28))
                             }
-                            Text { text: "Window corner rounding"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; Layout.topMargin: -6 }
+                            Text { text: "Window corner rounding"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; Layout.topMargin: -6; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             Slider {
                                 Layout.fillWidth: true; pal: root.pal
                                 glyph: String.fromCodePoint(0xF0B36)
@@ -175,12 +228,12 @@ Scope {
                                 readout: root.gaps + " px"
                                 onMoved: v => root.setting("gaps", Math.round(v * 20))
                             }
-                            Text { text: "Gap between windows (outer gap is double)"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; Layout.topMargin: -6 }
+                            Text { text: "Gap between windows (outer gap is double)"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; Layout.topMargin: -6; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                Chip { Layout.fillWidth: true; pal: root.pal; label: "Blur"; on: root.blur; onClicked: root.setting("blur", !root.blur) }
-                                Chip { Layout.fillWidth: true; pal: root.pal; label: "Shadows"; on: root.shadows; onClicked: root.setting("shadows", !root.shadows) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Blur"; on: root.blur; onClicked: root.setting("blur", !root.blur) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Shadows"; on: root.shadows; onClicked: root.setting("shadows", !root.shadows) }
                             }
                         }
 
@@ -199,11 +252,13 @@ Scope {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: 8
-                                    Chip { Layout.fillWidth: true; pal: root.pal; label: "Off"; on: root.motion === 0; onClicked: root.setting("motion", 0) }
-                                    Chip { Layout.fillWidth: true; pal: root.pal; label: "Fast"; on: root.motion === 0.5; onClicked: root.setting("motion", 0.5) }
-                                    Chip { Layout.fillWidth: true; pal: root.pal; label: "Normal"; on: root.motion === 1; onClicked: root.setting("motion", 1) }
+                                    SChip { Layout.fillWidth: true; pal: root.pal; label: "Off"; on: root.motion === 0; onClicked: root.setting("motion", 0) }
+                                    SChip { Layout.fillWidth: true; pal: root.pal; label: "Fast"; on: root.motion === 0.5; onClicked: root.setting("motion", 0.5) }
+                                    SChip { Layout.fillWidth: true; pal: root.pal; label: "Normal"; on: root.motion === 1; onClicked: root.setting("motion", 1) }
                                 }
-                                Chip { Layout.fillWidth: true; pal: root.pal; label: "Window animations"; on: root.hyprAnim; onClicked: root.setting("hyprAnim", !root.hyprAnim) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Window animations"; on: root.hyprAnim; onClicked: root.setting("hyprAnim", !root.hyprAnim) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Compact special workspaces"; on: root.compactSpecial; onClicked: root.setting("compactSpecial", !root.compactSpecial) }
+                                Text { text: "On: scratch / music / communication / monitor / tasks windows are smaller. Off: full size. Same switch as in the SUPER+TAB tree."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             }
 
                             Section {
@@ -213,17 +268,27 @@ Scope {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: 8
-                                    Chip { Layout.fillWidth: true; pal: root.pal; label: "Auto-hide bar"; on: root.autoHide; onClicked: root.setting("autoHide", !root.autoHide) }
-                                    Chip { Layout.fillWidth: true; pal: root.pal; label: "Do not disturb"; on: root.dnd; onClicked: root.setting("dnd", !root.dnd) }
+                                    SChip { Layout.fillWidth: true; pal: root.pal; label: "Auto-hide bar"; on: root.autoHide; onClicked: root.setting("autoHide", !root.autoHide) }
+                                    SChip { Layout.fillWidth: true; pal: root.pal; label: "Do not disturb"; on: root.dnd; onClicked: root.setting("dnd", !root.dnd) }
                                 }
                                 Text { text: "Edge boxes (notifications, console, utilities)"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: 8
-                                    Chip { Layout.fillWidth: true; pal: root.pal; label: "Hover"; on: !root.clickMode; onClicked: root.setting("clickMode", false) }
-                                    Chip { Layout.fillWidth: true; pal: root.pal; label: "Click"; on: root.clickMode; onClicked: root.setting("clickMode", true) }
+                                    SChip { Layout.fillWidth: true; pal: root.pal; label: "Hover"; on: !root.clickMode; onClicked: root.setting("clickMode", false) }
+                                    SChip { Layout.fillWidth: true; pal: root.pal; label: "Click"; on: root.clickMode; onClicked: root.setting("clickMode", true) }
                                 }
-                                Chip { Layout.fillWidth: true; pal: root.pal; label: "Profile picture constellation in the tree"; on: root.profileStars; onClicked: root.setting("profileStars", !root.profileStars) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Profile picture constellation in the tree"; on: root.profileStars; onClicked: root.setting("profileStars", !root.profileStars) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Send Spotify / Discord to their workspace"; on: root.routeApps; onClicked: root.setting("routeApps", !root.routeApps) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Keep workspaces compact"; on: root.compactWs; onClicked: root.setting("compactWs", !root.compactWs) }
+                                Text { text: "On workspace 3 with nothing on 1 and 2? Its windows move to workspace 1."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.topMargin: -4 }
+                                Text { text: "Clock in the bar"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    SChip { Layout.fillWidth: true; pal: root.pal; label: "12 hour"; on: !root.clock24; onClicked: root.setting("clock24", false) }
+                                    SChip { Layout.fillWidth: true; pal: root.pal; label: "24 hour"; on: root.clock24; onClicked: root.setting("clock24", true) }
+                                }
                             }
 
                             Section {
@@ -236,7 +301,7 @@ Scope {
                                     spacing: 8
                                     Repeater {
                                         model: [10, 20, 30, 50, 100]
-                                        delegate: Chip {
+                                        delegate: SChip {
                                             required property int modelData
                                             Layout.fillWidth: true; pal: root.pal
                                             label: String(modelData)
@@ -245,7 +310,224 @@ Scope {
                                         }
                                     }
                                 }
+                                Text { text: "Popups on screen at once"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Repeater {
+                                        model: [1, 2, 3, 5, 8]
+                                        delegate: SChip {
+                                            required property int modelData
+                                            Layout.fillWidth: true; pal: root.pal
+                                            label: String(modelData)
+                                            on: root.notifMax === modelData
+                                            onClicked: root.setting("notifMax", modelData)
+                                        }
+                                    }
+                                }
                                 Text { text: "When it is full the oldest one goes. Lowering it removes the oldest straight away."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            }
+                        }
+
+                        // ---------------------------------------------------------------- constellations
+                        Section {
+                            pal: root.pal
+                            title: "CONSTELLATIONS"
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Text {
+                                text: "They grow the longer the island runs: the dragon unfolds two wings, the shield gains a second rim, a crest and a crown, and the profile picture gets more and more stars until it looks like the picture. Fully grown after 72 hours of use."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                            }
+                            Slider {
+                                Layout.fillWidth: true; pal: root.pal
+                                glyph: String.fromCodePoint(0xF04CE)
+                                value: root.growth
+                                readout: Math.round(root.growth * 100) + " %"
+                                onMoved: v => root.setting("growthMin", Math.round(v * root.growthFullMin))
+                            }
+                            Text {
+                                text: "Grown for " + (root.growthMin >= 60 ? Math.floor(root.growthMin / 60) + " h " + Math.round(root.growthMin % 60) + " min" : Math.round(root.growthMin) + " min") + ".  Drag the bar to preview any stage."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.topMargin: -6
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: root.growthOn ? "Growing: on" : "Growing: off"; on: root.growthOn; onClicked: root.setting("growthOn", !root.growthOn) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Start over"; onClicked: root.setting("growthReset", true) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Fully grown"; onClicked: root.setting("growthMin", root.growthFullMin) }
+                            }
+                        }
+
+                        // ---------------------------------------------------------------- toggles + tools
+                        Section {
+                            pal: root.pal
+                            title: "TOOLS"
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Night light"; onClicked: root.action("nightlight") }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Touchpad on / off"; onClicked: root.action("touchpad") }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Edge gestures on / off"; onClicked: root.action("gestures") }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Terminal colours from wallpaper"; onClicked: root.action("termcolors") }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Detect RAM details"; onClicked: root.action("detect-ram") }
+                            }
+                            Text {
+                                text: "Terminal colours: your open terminals and new ones follow the wallpaper colours (also done on every wallpaper change). Detect RAM asks for your password once to read the memory type and speed."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                            }
+                        }
+
+                        // ---------------------------------------------------------------- wallpaper
+                        Section {
+                            pal: root.pal
+                            title: "WALLPAPER"
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Text { text: String.fromCodePoint(0xF024B); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 16 }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.wp.dir !== "" ? root.wp.dir : "~/Pictures/Wallpapers"
+                                    elide: Text.ElideMiddle
+                                    color: root.pal.text
+                                    font.family: root.pal.mono
+                                    font.pixelSize: root.pal.tBody
+                                }
+                                Text { text: (root.wp.files ? root.wp.files.length : 0) + " images"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                SChip { pal: root.pal; glyph: String.fromCodePoint(0xF0976); label: "Next wallpaper"; onClicked: root.action("wallpaper") }
+                                SChip { pal: root.pal; glyph: String.fromCodePoint(0xF0770); label: "Open folder"; onClicked: root.wpAct("open") }
+                                SChip { pal: root.pal; glyph: String.fromCodePoint(0xF0415); label: "Add wallpapers…"; onClicked: root.wpAct("add") }
+                                SChip { pal: root.pal; label: "Change folder…"; onClicked: root.wpAct("choose-dir") }
+                                SChip { pal: root.pal; label: "Default folder"; onClicked: root.wpAct("reset-dir") }
+                            }
+                            Flickable {
+                                id: thumbs
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 92
+                                visible: root.wp.files && root.wp.files.length > 0
+                                contentWidth: thumbRow.width
+                                contentHeight: height
+                                clip: true
+                                boundsBehavior: Flickable.StopAtBounds
+                                flickableDirection: Flickable.HorizontalFlick
+                                Row {
+                                    id: thumbRow
+                                    spacing: 10
+                                    Repeater {
+                                        model: root.wp.files || []
+                                        delegate: Rectangle {
+                                            id: th
+                                            required property var modelData
+                                            readonly property bool now: root.wp.current === th.modelData.path
+                                            width: 140; height: 86; radius: 12
+                                            color: root.pal.surface
+                                            border.width: th.now ? 2 : 1
+                                            border.color: th.now ? root.pal.accent : root.pal.line
+                                            Image {
+                                                anchors.fill: parent; anchors.margins: 3
+                                                source: "file://" + th.modelData.path
+                                                sourceSize.width: 280; sourceSize.height: 170
+                                                fillMode: Image.PreserveAspectCrop
+                                                asynchronous: true
+                                                cache: false
+                                                opacity: thMa.containsMouse ? 1 : 0.92
+                                            }
+                                            MouseArea { id: thMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.pickWallpaper(th.modelData.path) }
+                                        }
+                                    }
+                                }
+                            }
+                            Text {
+                                text: root.wp.files && root.wp.files.length > 0 ? "Click one to use it. Drop more images into the folder (or Add wallpapers) and they show up here." : "No images in that folder yet. Use Add wallpapers, or open the folder and drop .jpg / .png / .webp files in."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                            }
+                        }
+
+                        // ---------------------------------------------------------------- bar
+                        Section {
+                            pal: root.pal
+                            title: "BAR"
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            Layout.alignment: Qt.AlignTop
+                            Text { text: "When you hover the bar"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                SChip { pal: root.pal; label: "Nothing"; on: root.hoverAction === "none"; onClicked: root.setting("hoverAction", "none") }
+                                SChip { pal: root.pal; label: "Live stats"; on: root.hoverAction === "stats"; onClicked: root.setting("hoverAction", "stats") }
+                                SChip { pal: root.pal; label: "Performance"; on: root.hoverAction === "perf"; onClicked: root.setting("hoverAction", "perf") }
+                                SChip { pal: root.pal; label: "Media"; on: root.hoverAction === "media"; onClicked: root.setting("hoverAction", "media") }
+                            }
+                            Text {
+                                text: ({ "none": "Hovering does nothing; click the battery / Wi-Fi icons or drag the bar for the pages.",
+                                         "stats": "CPU, memory and temperature slide out inside the bar while the pointer is on it.",
+                                         "perf": "The performance page opens by itself when the pointer rests on the bar, and closes when it leaves.",
+                                         "media": "The media page opens by itself when the pointer rests on the bar, and closes when it leaves." })[root.hoverAction] || ""
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                            }
+                            Text { text: "Scroll / swipe on the bar to change page"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; Layout.topMargin: 4 }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Long swipe"; on: root.barScroll === "low"; onClicked: root.setting("barScroll", "low") }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Medium"; on: root.barScroll === "medium"; onClicked: root.setting("barScroll", "medium") }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Sensitive"; on: root.barScroll === "high"; onClicked: root.setting("barScroll", "high") }
+                            }
+                        }
+
+                        // ---------------------------------------------------------------- on-screen bar
+                        Section {
+                            pal: root.pal
+                            title: "VOLUME & BRIGHTNESS BAR"
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            SChip { Layout.fillWidth: true; pal: root.pal; label: root.osdOn ? "Slide in when volume / brightness / keyboard light changes: on" : "Slide in when volume / brightness / keyboard light changes: off"; on: root.osdOn; onClicked: root.setting("osdOn", !root.osdOn) }
+                            Text {
+                                text: "A bar slides up from the bottom of the screen for a moment, whether you used the keys, the touchpad edges, the panel sliders or another app. Keyboard light keys: XF86KbdBrightnessUp / Down."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                            }
+                        }
+
+                        // ---------------------------------------------------------------- scrolling
+                        Section {
+                            pal: root.pal
+                            title: "SCROLL SENSITIVITY"
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            Layout.alignment: Qt.AlignTop
+                            Text { text: "Touchpad scrolling"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            Slider {
+                                Layout.fillWidth: true; pal: root.pal
+                                glyph: String.fromCodePoint(0xF037D)
+                                value: (root.scrollTouch - 0.1) / 1.4
+                                readout: root.scrollTouch.toFixed(2) + "×"
+                                onMoved: v => root.setting("scrollTouch", Math.round((0.1 + v * 1.4) * 20) / 20)
+                            }
+                            Text { text: "Mouse wheel scrolling"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            Slider {
+                                Layout.fillWidth: true; pal: root.pal
+                                glyph: String.fromCodePoint(0xF037D)
+                                value: (root.scrollMouse - 0.25) / 2.75
+                                readout: root.scrollMouse.toFixed(2) + "×"
+                                onMoved: v => root.setting("scrollMouse", Math.round((0.25 + v * 2.75) * 20) / 20)
+                            }
+                            Text {
+                                text: "How far a page moves for each bit of scrolling, in every app (Hyprland scroll_factor). Higher is faster."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
                             }
                         }
 
@@ -255,13 +537,28 @@ Scope {
                             title: "SLEEP & LOCK"
                             Layout.columnSpan: 2
                             Layout.fillWidth: true
+                            Text { text: "Dim the screen and keyboard light when idle for"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Repeater {
+                                    model: [0, 1, 2, 3, 5, 10]
+                                    delegate: SChip {
+                                        required property int modelData
+                                        Layout.fillWidth: true; pal: root.pal
+                                        label: modelData === 0 ? "Never" : modelData + " min"
+                                        on: root.idleDim === modelData
+                                        onClicked: root.setting("idleDim", modelData)
+                                    }
+                                }
+                            }
                             Text { text: "Lock the screen when idle for"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
                                 Repeater {
                                     model: [0, 2, 5, 10, 15, 30]
-                                    delegate: Chip {
+                                    delegate: SChip {
                                         required property int modelData
                                         Layout.fillWidth: true; pal: root.pal
                                         label: modelData === 0 ? "Never" : modelData + " min"
@@ -276,7 +573,7 @@ Scope {
                                 spacing: 8
                                 Repeater {
                                     model: [0, 15, 30, 60, 120, 240]
-                                    delegate: Chip {
+                                    delegate: SChip {
                                         required property int modelData
                                         Layout.fillWidth: true; pal: root.pal
                                         label: modelData === 0 ? "Never" : (modelData >= 60 ? (modelData / 60) + " h" : modelData + " min")
@@ -286,7 +583,7 @@ Scope {
                                 }
                             }
                             Text {
-                                text: "Counted from when you last touched the computer, so sleep comes after the lock. Caffeine stops both. Needs hypridle."
+                                text: "Counted from when you last touched the computer. Dimming goes to the lowest screen brightness and switches the keyboard light off; any key or mouse move puts both back. Caffeine stops all three. Needs hypridle."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
                             }
                         }
@@ -298,7 +595,9 @@ Scope {
                             Layout.columnSpan: 2
                             Layout.fillWidth: true
                             Repeater {
-                                model: [ { kind: "terminal", title: "Terminal  (SUPER+T)" }, { kind: "browser", title: "Browser  (SUPER+W)" }, { kind: "files", title: "File manager  (SUPER+E)" } ]
+                                model: [ { kind: "terminal", title: "Terminal" }, { kind: "browser", title: "Browser" }, { kind: "files", title: "File manager" },
+                                         { kind: "editor", title: "Code editor  (also used by Edit config)" }, { kind: "music", title: "Music player  (opens on the music workspace)" },
+                                         { kind: "chat", title: "Chat  (opens on the communication workspace)" } ]
                                 delegate: ColumnLayout {
                                     id: appRow
                                     required property var modelData
@@ -310,7 +609,7 @@ Scope {
                                         spacing: 8
                                         Repeater {
                                             model: root.apps[appRow.modelData.kind] || []
-                                            delegate: Chip {
+                                            delegate: SChip {
                                                 required property var modelData
                                                 pal: root.pal
                                                 label: modelData.name
@@ -327,7 +626,7 @@ Scope {
                                 }
                             }
                             Text {
-                                text: "Only installed apps are listed. A browser or file manager you pick also becomes the system default for links and folders."
+                                text: "Only installed apps are listed. A browser or file manager you pick also becomes the system default for links and folders. Something missing? Add a line to ~/.config/Halcyon/apps.custom (see the top of scripts/apps.sh)."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true
                             }
                         }
@@ -341,10 +640,10 @@ Scope {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0297); label: root.gaming ? "Gaming mode: on" : "Gaming mode"; on: root.gaming; onClicked: root.setting("gaming", !root.gaming) }
-                                Chip { Layout.fillWidth: true; pal: root.pal; label: "Edit config"; onClicked: root.action("config") }
-                                Chip { Layout.fillWidth: true; pal: root.pal; label: "Cheatsheet"; onClicked: root.action("cheatsheet") }
-                                Chip { Layout.fillWidth: true; pal: root.pal; label: "Reload Hyprland"; onClicked: root.action("reload") }
+                                SChip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0297); label: root.gaming ? "Gaming mode: on" : "Gaming mode"; on: root.gaming; onClicked: root.setting("gaming", !root.gaming) }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Edit config"; onClicked: { root.action("config"); root.hide() } }
+                                SChip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF030C); label: "Shortcuts"; onClicked: { root.hide(); root.action("cheatsheet") } }
+                                SChip { Layout.fillWidth: true; pal: root.pal; label: "Reload Hyprland"; onClicked: root.action("reload") }
                             }
                             Text {
                                 text: "Gaming mode: performance profile, effects off, instant island animations, background helpers stopped (list in ~/.config/Halcyon/gamemode.conf). SUPER+F10 toggles it."

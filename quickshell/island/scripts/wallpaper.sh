@@ -2,10 +2,20 @@
 # Prints the wallpaper to show.
 #   wallpaper.sh          -> the wallpaper chosen for this boot (picks one on the first call after boot)
 #   wallpaper.sh next     -> force a new random one (and remember it for the rest of this boot)
+#   wallpaper.sh set <f>  -> use this file (and remember it for the rest of this boot)
+# The folder is ~/Pictures/Wallpapers unless Settings > Wallpaper > Change folder picked another one
+# (saved in ~/.local/state/island/wallpaper.dir, see scripts/wallpapers.sh).
 dir="$HOME/Pictures/Wallpapers"
+[ -s "$HOME/.local/state/island/wallpaper.dir" ] && dir=$(head -n1 "$HOME/.local/state/island/wallpaper.dir")
 state="$HOME/.local/state/island/wallpaper"
 boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 mkdir -p "$(dirname "$state")"
+
+if [ "$1" = "set" ]; then
+  [ -f "$2" ] || exit 1
+  printf '%s\n%s\n' "$boot" "$2" > "$state"
+  echo "$2"; exit 0
+fi
 
 saved_boot=""; saved=""
 if [ -f "$state" ]; then
