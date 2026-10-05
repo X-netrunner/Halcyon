@@ -271,6 +271,14 @@ ShellRoot {
         name: root.profileName !== "" ? root.profileName : Quickshell.env("USER")
         avatarPath: root.avatarPath
     }
+    // Login-screen mode (install.sh > "lock screen as login"): launch/halcyon-login.sh leaves a flag file before it starts
+    // Hyprland, and the first thing the island does is take it and lock. So after boot the Halcyon lock screen IS the login
+    // screen (your password is checked by PAM exactly like a normal login). No flag file = nothing happens.
+    Process {
+        running: true
+        command: ["sh", "-c", "f=\"$HOME/.cache/island/lock-on-start\"; if [ -f \"$f\" ]; then rm -f \"$f\"; echo yes; fi"]
+        stdout: StdioCollector { onStreamFinished: { if (text.trim() === "yes") lockScreen.lock() } }
+    }
     PowerMenu {
         id: powerMenu
         pal: pal
@@ -728,15 +736,22 @@ ShellRoot {
         command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/avatar.sh", root.profileAvatar]
         stdout: StdioCollector { onStreamFinished: { root.avatarPath = text.trim(); root.makeStars() } }
     }
-    // four calls (70 / 110 / 160 / 220 stars) merged into nested levels: the picture constellation shows more of
-    // the picture the longer the island has run (see StarData.fromLevels)
+    // The picture constellation: `scripts/portrait.sh` turns the profile picture into a high-detail sky whose stars and
+    // lines are born one after the other as the island is used, so at full growth it IS the picture (eyes, hair, outline).
+    // If that script is missing or gives nothing, the older route is used: four `hx stars` calls (70 / 110 / 160 / 220
+    // stars) merged into nested levels (see StarData.fromLevels).
     Process {
         id: starProc
-        command: ["sh", "-c", "for n in 70 110 160 220; do \"$1\" stars \"$2\" $n; done", "sh", root.hx, root.avatarPath]
+        command: ["sh", "-c", "bash \"$1\" \"$2\" || for n in 70 110 160 220; do \"$3\" stars \"$2\" $n; done",
+                  "sh", root.cfg + "/island/scripts/portrait.sh", root.avatarPath, root.hx]
         stdout: StdioCollector {
             onStreamFinished: {
+                var lines = text.split("\n").filter(function (l) { return l.trim() !== "" })
                 var d = null
-                try { d = Stars.fromLevels(text.split("\n").filter(function (l) { return l.trim() !== "" })) } catch (e) {}
+                try {
+                    if (lines.length === 1) d = Stars.fromPortrait(lines[0])
+                    else if (lines.length > 1) d = Stars.fromLevels(lines)
+                } catch (e) {}
                 root.starData = d ? d : Stars.fromName(root.starName)
             }
         }

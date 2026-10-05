@@ -137,7 +137,7 @@ Scope {
                 Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 104; height: 104
-                    // a slow ripple leaves the picture
+                    // a slow ripple leaves the picture while you are idle (dimmer once you start typing)
                     Rectangle {
                         id: ripple
                         anchors.fill: parent; radius: width / 2
@@ -150,10 +150,36 @@ Scope {
                             NumberAnimation { target: ripple; property: "opacity"; from: 0.55; to: 0; duration: 2800; easing.type: Easing.OutQuad }
                         }
                     }
+                    // ...and every key press sends a ring out of the picture, in step with the constellation: the same kick()
+                    // that flares the stars fires it, and a stronger flare (a wrong password: the strongest) makes it bigger,
+                    // brighter and red. Three rings take turns, so fast typing gives overlapping rings instead of restarts.
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            id: keyRing
+                            required property int index
+                            anchors.fill: parent; radius: width / 2
+                            color: "transparent"
+                            border.width: 2
+                            border.color: root.failure !== "" ? root.pal.bad : root.pal.accent
+                            opacity: 0
+                            ParallelAnimation {
+                                id: keyRingAnim
+                                NumberAnimation { target: keyRing; property: "scale"; from: 1.0; to: 1.45 + 0.45 * root.energy; duration: 820; easing.type: Easing.OutCubic }
+                                NumberAnimation { target: keyRing; property: "opacity"; from: 0.45 + 0.45 * root.energy; to: 0; duration: 820; easing.type: Easing.OutQuad }
+                            }
+                            Connections {
+                                target: root
+                                function onKickTickChanged() { if (root.kickTick % 3 === keyRing.index) keyRingAnim.restart() }
+                            }
+                        }
+                    }
+                    // the picture's own rim glows with the same flare as the constellation
                     Rectangle {
                         anchors.fill: parent; radius: width / 2
                         color: Qt.alpha(root.pal.surface, 0.9)
-                        border.width: 2; border.color: Qt.alpha(root.pal.accent, 0.55)
+                        border.width: 2
+                        border.color: Qt.alpha(root.failure !== "" ? root.pal.bad : root.pal.accent, 0.55 + 0.45 * root.energy)
                     }
                     Item {
                         id: avBox

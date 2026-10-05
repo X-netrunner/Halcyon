@@ -7,7 +7,9 @@
 #   1. copies the rice to ~/.config/Halcyon (backs up an older copy)           -> everything refers to that path
 #   2. installs the packages (Hyprland, Quickshell, fonts, audio, tools, ...) with pacman
 #   3. builds the Rust helpers (hx, power-manager, touchpad-gestures)
-#   4. makes Hyprland load Halcyon: ~/.config/hypr/hyprland.lua + a "Halcyon" login-screen session
+#   4. makes Hyprland load Halcyon: ~/.config/hypr/hyprland.lua + a "Halcyon" login-screen session.
+#      NO login manager (sddm, gdm, lightdm, greetd, ly ...) on this machine? Then the Halcyon LOCK SCREEN becomes the login
+#      screen: tty1 logs you in by itself and Halcyon starts already locked, so you type your password on it (see below)
 #   5. user services (gestures, auto power) and system services (sysmode, honeypot / IDS at boot, RAM info)
 #   6. wallpaper folder (a first wallpaper is made if it is empty) -> colours of the island AND your terminals
 #   7. terminal colour files for foot / kitty / alacritty / ghostty, included once in each terminal's config
@@ -16,16 +18,22 @@
 #
 # Options:  --yes  no prompts          --no-packages  skip pacman / AUR       --no-sysmode  skip the hardening CLI + sudo services
 #           --tty-autostart  start Halcyon automatically when you log in on tty1       -h  this help
+#           --lock-login     use the lock screen as login screen even if a login manager exists
+#           --no-lock-login  never set that up (you then log in on the text console and start Halcyon by hand)
+#           --remove-lock-login  undo it: no more auto-login on tty1, tty1 is an ordinary text login again
 set -uo pipefail
 
-YES=0; PACKAGES=1; SYSMODE=1; TTY_AUTOSTART=0
+YES=0; PACKAGES=1; SYSMODE=1; TTY_AUTOSTART=0; LOCK_LOGIN=auto; REMOVE_LOGIN=0
 for a in "$@"; do
   case "$a" in
     -y|--yes) YES=1 ;;
     --no-packages) PACKAGES=0 ;;
     --no-sysmode) SYSMODE=0 ;;
     --tty-autostart) TTY_AUTOSTART=1 ;;
-    -h|--help) sed -n 2,22p "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --lock-login) LOCK_LOGIN=1 ;;
+    --no-lock-login) LOCK_LOGIN=0 ;;
+    --remove-lock-login) REMOVE_LOGIN=1 ;;
+    -h|--help) sed -n 2,28p "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $a (try --help)"; exit 2 ;;
   esac
 done
@@ -45,6 +53,43 @@ ask()  { [ "$YES" = 1 ] && return 0; read -r -p "$1 [Y/n] " r; [[ ! "$r" =~ ^[nN
 
 [ "$(id -u)" -ne 0 ] || { echo "Run this as your normal user, not root (it uses sudo only where needed)."; exit 1; }
 command -v sudo >/dev/null || { echo "sudo is required (pacman -S sudo)."; exit 1; }
+
+# ---- lock screen as login screen: helpers (used by step 4, and by --remove-lock-login)
+GETTY_DROPIN=/etc/systemd/system/getty@tty1.service.d/halcyon-autologin.conf
+SNIP_MARK="# Halcyon: on tty1 start the desktop with the lock screen as the login screen"
+remove_lock_login() {
+  sudo rm -f "$GETTY_DROPIN" && sudo rmdir /etc/systemd/system/getty@tty1.service.d 2>/dev/null
+  sudo systemctl daemon-reload 2>/dev/null
+  for f in "$HOME/.bash_profile" "$HOME/.zprofile"; do
+    [ -f "$f" ] && sed -i "/$SNIP_MARK/,/^fi\$/d" "$f"
+  done
+  echo "   tty1 auto-login and the start-on-login lines are removed; from the next boot tty1 asks for a user name and password again."
+}
+if [ "$REMOVE_LOGIN" = 1 ]; then say "Removing the lock-screen login"; remove_lock_login; exit 0; fi
+have_dm() {   # is a display / login manager enabled?
+  local s
+  systemctl is-enabled display-manager.service >/dev/null 2>&1 && return 0
+  for s in sddm gdm gdm3 lightdm greetd ly lxdm slim xdm emptty cosmic-greeter plasmalogin; do
+    systemctl is-enabled "$s.service" >/dev/null 2>&1 && return 0
+  done
+  return 1
+}
+dm_name() { basename "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null; }
+# put the "start Halcyon locked" lines into the profile of the shell that tty1 will run (bash or zsh); 0 = done
+add_login_snippet() {
+  local sh f; sh=$(basename "$(getent passwd "$USER" | cut -d: -f7)")
+  case "$sh" in bash) f="$HOME/.bash_profile" ;; zsh) f="${ZDOTDIR:-$HOME}/.zprofile" ;; *) return 1 ;; esac
+  if ! grep -q "halcyon-login.sh" "$f" 2>/dev/null; then
+    # an older --tty-autostart line would start Halcyon WITHOUT the lock first: replace it
+    [ -f "$f" ] && sed -i '/# Halcyon: start the desktop on tty1/,+1d' "$f"
+    if [ ! -f "$f" ]; then   # a new .bash_profile hides ~/.profile and ~/.bashrc: keep loading them
+      : > "$f"
+      if [ "$sh" = bash ]; then { [ -f "$HOME/.profile" ] && echo '[ -f ~/.profile ] && . ~/.profile'; echo '[ -f ~/.bashrc ] && . ~/.bashrc'; } >> "$f"; fi
+    fi
+    printf '\n%s (install.sh; undo with ./install.sh --remove-lock-login)\nif [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ] && [ "$(tty)" = /dev/tty1 ] && [ ! -e "$HOME/.cache/island/no-autostart" ]; then\n  exec "%s/launch/halcyon-login.sh"\nfi\n' "$SNIP_MARK" "$RICE" >> "$f"
+  fi
+  grep -q "halcyon-login.sh" "$f" 2>/dev/null
+}
 
 # ------------------------------------------------------------------------------------------------ 1. rice folder
 say "1/8  Halcyon folder"
@@ -133,7 +178,7 @@ if command -v cargo >/dev/null; then
 else warn "cargo not found (sudo pacman -S rust): the island data feeds and power manager were not built"; fi
 
 # ------------------------------------------------------------------------------------------------ 4. hyprland entry
-say "4/8  Making Hyprland load Halcyon"
+say "4/8  Making Hyprland load Halcyon (and the login screen)"
 mkdir -p "$HOME/.config/hypr"
 HL="$HOME/.config/hypr/hyprland.lua"
 STUB='-- Halcyon: loads the whole rice from ~/.config/Halcyon (written by install.sh)
@@ -154,6 +199,39 @@ fi
 if [ "$TTY_AUTOSTART" = 1 ]; then
   P="$HOME/.bash_profile"
   grep -q "halcyon.sh" "$P" 2>/dev/null || { printf '\n# Halcyon: start the desktop on tty1\nif [ -z "$WAYLAND_DISPLAY" ] && [ "$(tty)" = /dev/tty1 ]; then exec %s/launch/halcyon.sh; fi\n' "$RICE" >> "$P"; ok "tty1 now starts Halcyon on login (~/.bash_profile)"; }
+fi
+
+# the lock screen as the login screen, when nothing else is the login screen
+WANT_LOCK_LOGIN=0
+if have_dm; then
+  ok "login manager found ($(dm_name)): pick the \"Halcyon\" session on its login screen; Halcyon's lock screen is used when you lock"
+  [ "$LOCK_LOGIN" = 1 ] && WANT_LOCK_LOGIN=1
+else
+  echo "   no login manager (sddm, gdm, ...) found: at boot you get a text console and have to start Halcyon by hand"
+  if [ "$LOCK_LOGIN" = 0 ]; then ok "lock-screen login skipped (--no-lock-login)"
+  else
+    echo "   Halcyon can use its own lock screen as the login screen: tty1 logs you in automatically, Halcyon starts ALREADY LOCKED,"
+    echo "   and you type your password on the lock screen (checked by PAM like any login). Undo: ./install.sh --remove-lock-login"
+    if ask "   set that up?"; then WANT_LOCK_LOGIN=1; fi
+  fi
+fi
+if [ "$WANT_LOCK_LOGIN" = 1 ]; then
+  if add_login_snippet; then
+    sudo mkdir -p "$(dirname "$GETTY_DROPIN")" && sudo tee "$GETTY_DROPIN" >/dev/null <<GETTY
+# written by Halcyon's install.sh: tty1 logs $USER in by itself; the profile then starts Halcyon with the lock screen on.
+# The auto-login only reaches a shell that immediately starts the locked desktop (launch/halcyon-login.sh); remove with ./install.sh --remove-lock-login
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --autologin $USER - \$TERM
+GETTY
+    if [ -s "$GETTY_DROPIN" ]; then
+      sudo systemctl daemon-reload
+      ok "lock screen is now the login screen: from the next boot tty1 logs in $USER and Halcyon starts locked"
+      ok "other consoles (Ctrl+Alt+F2) stay normal text logins: your way back in if something goes wrong"
+    else warn "could not write $GETTY_DROPIN: the lock-screen login is NOT active (nothing was changed on tty1)"; fi
+  else
+    warn "your login shell is not bash or zsh, so the lock-screen login was NOT set up (auto-login without it would leave an open shell). Start Halcyon with: $RICE/launch/halcyon-login.sh"
+  fi
 fi
 
 # ------------------------------------------------------------------------------------------------ 5. services
@@ -195,8 +273,11 @@ if [ -z "$(find "$WP" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -
   else warn "no wallpapers in $WP and ImageMagick is missing"; fi
 fi
 first=$(find "$WP" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) 2>/dev/null | head -n1)
-if [ -n "$first" ] && [ -x "$BIN/hx" ]; then
-  "$BIN/hx" palette "$first" && ok "colours made from $(basename "$first")"
+if [ -n "$first" ]; then
+  # palette.sh takes the wallpaper's own colours (needs ImageMagick); the Rust `hx palette` is only the fallback
+  if bash "$RICE/quickshell/island/scripts/palette.sh" "$first" || { [ -x "$BIN/hx" ] && "$BIN/hx" palette "$first"; }; then
+    ok "colours made from $(basename "$first")"
+  else warn "could not make colours from the wallpaper (is ImageMagick installed?)"; fi
 fi
 
 # ------------------------------------------------------------------------------------------------ 7. terminals
@@ -207,7 +288,10 @@ add_line() { # file, marker, line
   mkdir -p "$(dirname "$1")"; [ -f "$1" ] || : > "$1"
   grep -q "$2" "$1" 2>/dev/null || { { printf '%s\n' "$3"; cat "$1"; } > "$1.new" && mv "$1.new" "$1"; ok "$(basename "$(dirname "$1")"): colours included"; }
 }
-command -v foot >/dev/null && add_line "$HOME/.config/foot/foot.ini" "halcyon-colors" "include=$HOME/.config/foot/halcyon-colors.ini"
+if command -v foot >/dev/null; then
+  add_line "$HOME/.config/foot/foot.ini" "halcyon-colors" "include=$HOME/.config/foot/halcyon-colors.ini"
+  [ -f "$HOME/.config/foot/foot.ini" ] && sed -i '/^\(foreground\|background\|cursor\|selection-foreground\|selection-background\|regular[0-7]\|bright[0-7]\)=/d' "$HOME/.config/foot/foot.ini"
+fi
 command -v kitty >/dev/null && add_line "$HOME/.config/kitty/kitty.conf" "halcyon-colors" "include halcyon-colors.conf"
 command -v ghostty >/dev/null && add_line "$HOME/.config/ghostty/config" "halcyon-colors" "config-file = halcyon-colors"
 if command -v alacritty >/dev/null; then
@@ -251,6 +335,8 @@ cat <<MSG
 
 Start it:   log out, pick the "Halcyon" session on the login screen (or "Hyprland": it loads Halcyon too),
             or from a TTY run:  $RICE/launch/halcyon.sh
+            No login manager and you said yes to the lock-screen login? Just reboot: Halcyon starts locked, type your password.
+            (undo: ./install.sh --remove-lock-login  ·  switch it off for one boot: touch ~/.cache/island/no-autostart)
 Already inside a running Halcyon?  restart the island:  pkill quickshell; quickshell -p $RICE/quickshell/island &
 First keys: SUPER+ALT+/ cheatsheet · SUPER+TAB workspace tree · SUPER+SPACE launcher · Settings from the island
 Hardening:  sudo sysmode doctor   (checks its own tools),   sudo sysmode stealth   (honeypot + IDS)

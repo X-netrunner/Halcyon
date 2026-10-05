@@ -149,8 +149,10 @@ PanelWindow {
         incomingPath = ""
     }
 
+    // palette.sh reads the picture's own dominant colours (see island/scripts/palette.sh); the old `hx palette` is the fallback
     function runPalette(p) {
-        palProc.command = [Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "palette", p]
+        palProc.command = ["sh", "-c", "bash \"$1/scripts/palette.sh\" \"$2\" || \"$HOME/.config/Halcyon/bin/hx\" palette \"$2\"", "sh", wallpaper.island, p]
+        palProc.running = false
         palProc.running = true
     }
 
