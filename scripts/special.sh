@@ -2,14 +2,15 @@
 # special.sh <name> [--show]      SUPER+M (music), SUPER+D (communication) and the bar / background-apps "Open" buttons.
 #   - the special workspace <name> has no windows yet  ->  start its app, and show the workspace so the window lands in view
 #   - it has windows                                   ->  toggle it (--show: only ever show it, never hide)
-# Which app each workspace starts is set here, or in ~/.config/Halcyon/special.conf (plain shell, overrides these):
+# Which app each workspace starts is the "Music player" / "Chat" choice in Settings > Default apps (scripts/apps.sh).
+# To force something else, set it in ~/.config/Halcyon/special.conf (plain shell, overrides the setting):
 #   MUSIC_CMD='spotify'
 #   COMM_CMD='vesktop'
 # SPECIAL_CMD in the environment overrides both (the background-apps box uses it to open one specific app).
 name="${1:?usage: special.sh <name> [--show]}"; show=0; [ "$2" = "--show" ] && show=1
 
-MUSIC_CMD="sh -c 'command -v spotify >/dev/null && exec spotify; command -v spotify-launcher >/dev/null && exec spotify-launcher; exec ~/.config/Halcyon/scripts/apps.sh term-exec ncmpcpp'"
-COMM_CMD="sh -c 'command -v vesktop >/dev/null && exec vesktop; exec discord'"
+MUSIC_CMD="$HOME/.config/Halcyon/scripts/apps.sh run music"
+COMM_CMD="$HOME/.config/Halcyon/scripts/apps.sh run chat"
 [ -f "$HOME/.config/Halcyon/special.conf" ] && . "$HOME/.config/Halcyon/special.conf"
 
 case "$name" in

@@ -10,6 +10,7 @@ hl.config({
         float_switch_override_focus = 0,
         numlock_by_default          = true,
         sensitivity                 = 0,
+        scroll_factor               = vars.mouseScrollFactor,   -- mouse wheel (Settings > Scroll sensitivity)
         accel_profile               = "adaptive",
         left_handed                 = false,
         touchpad                    = {
@@ -25,12 +26,12 @@ hl.config({
         preserve_split              = true,
         smart_split                 = false,
         smart_resizing              = true,
-        special_scale_factor        = 0.95,
+        special_scale_factor        = vars.specialScaleCompact,   -- the island switches it to specialScaleFull when "compact special workspaces" is off
         use_active_for_splits       = true,
     },
     master = {
         mfact                       = 0.55,
         orientation                 = "left",
-        special_scale_factor        = 0.95,
+        special_scale_factor        = vars.specialScaleCompact,
     }
 })

@@ -20,7 +20,7 @@ Item {
     readonly property int dur: critical ? 0
         : Math.max(3000, Math.min(15000, notif.expireTimeout > 0 ? notif.expireTimeout * 1000
                                          : (notif.urgency === NotificationUrgency.Low ? 4000 : 6000)))
-    readonly property color tone: critical ? "#e58a8a" : pal.accent
+    readonly property color tone: critical ? pal.bad : pal.accent
 
     property real life: 1
     // swipe either way past ~half the card to dismiss it for good
@@ -100,7 +100,7 @@ Item {
         height: content.implicitHeight + 36
         radius: card.pal.rLg
         opacityBody: card.pal.glassSolid - 0.06
-        border.color: card.critical ? Qt.alpha("#e58a8a", 0.6) : card.pal.line
+        border.color: card.critical ? Qt.alpha(card.pal.bad, 0.6) : card.pal.line
 
         HoverHandler { id: hov }
 

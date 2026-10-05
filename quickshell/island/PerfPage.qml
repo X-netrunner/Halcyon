@@ -97,10 +97,19 @@ Item {
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }
+                // the power mode that is active right now (read-only; change it in the bottom-right panel)
+                Text {
+                    text: "power · " + root.profileLabel + (root.autoPower ? " (auto" + (root.autoNote !== "" ? ", " + root.autoNote : "") + ")" : "")
+                    color: root.pal.accent2
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tBody
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
                 // active sysmode profile (read-only; switch with the `sysmode` CLI). Colours match `sysmode status`.
                 Text {
                     text: "sysmode · " + (root.sysmode !== "" ? root.sysmode : "not set")
-                    color: ({ "secure": "#8fd19e", "stealth": "#56b6c2", "cyber": "#e5c07b", "lockdown": "#e06c75" })[root.sysmode] || root.pal.muted
+                    color: root.pal.modeColor[root.sysmode] || root.pal.muted
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tBody
                     Layout.fillWidth: true

@@ -198,7 +198,7 @@ Scope {
                     width: 340; height: 48; radius: height / 2
                     color: Qt.alpha(root.pal.surface, 0.85)
                     border.width: 1
-                    border.color: root.failure !== "" ? "#e07a7a" : (input.activeFocus ? root.pal.lineFocus : root.pal.line)
+                    border.color: root.failure !== "" ? root.pal.bad : (input.activeFocus ? root.pal.lineFocus : root.pal.line)
                     Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
 
                     SequentialAnimation {
@@ -216,7 +216,7 @@ Scope {
                         anchors.fill: parent; radius: parent.radius
                         color: "transparent"
                         border.width: 2
-                        border.color: root.failure !== "" ? "#e07a7a" : root.pal.accent
+                        border.color: root.failure !== "" ? root.pal.bad : root.pal.accent
                         opacity: 0
                         ParallelAnimation {
                             id: ringAnim
@@ -238,7 +238,7 @@ Scope {
                             delegate: Rectangle {
                                 required property int index
                                 width: 9; height: 9; radius: 4.5
-                                color: root.failure !== "" ? "#e07a7a" : root.pal.text
+                                color: root.failure !== "" ? root.pal.bad : root.pal.text
                                 NumberAnimation on scale { from: 0.2; to: 1; duration: 240; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
                                 NumberAnimation on opacity { from: 0; to: 1; duration: 150 }
                                 transform: Translate { y: root.busy ? -4 * Math.sin(pill.wave - index * 0.7) : 0 }
@@ -283,7 +283,7 @@ Scope {
                     anchors.horizontalCenter: parent.horizontalCenter
                     height: 18
                     text: root.busy ? "Checking…" : root.failure
-                    color: root.failure !== "" && !root.busy ? "#e07a7a" : root.pal.muted
+                    color: root.failure !== "" && !root.busy ? root.pal.bad : root.pal.muted
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tCap + 1
                 }

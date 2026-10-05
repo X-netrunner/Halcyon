@@ -75,7 +75,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             elide: Text.ElideRight
                             text: String(entryCol.modelData.text || "").replace(/_(.)/g, "$1")
-                            color: entryCol.quit ? Qt.lighter("#e06c75", 1.1) : root.pal.text
+                            color: entryCol.quit ? root.pal.bad : root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody
                         }

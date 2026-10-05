@@ -155,7 +155,16 @@ PanelWindow {
     }
 
     function next() {
-        wpProc.force = true
+        wpProc.mode = "next"
+        wpProc.arg = ""
+        wpProc.running = true
+    }
+
+    // a specific file (Settings > Wallpaper thumbnails)
+    function useFile(path) {
+        if (!path) return
+        wpProc.mode = "set"
+        wpProc.arg = path
         wpProc.running = true
     }
 
@@ -166,10 +175,11 @@ PanelWindow {
     // quickshell or reloading the config keeps the same one. "next" forces a new random pick.
     Process {
         id: wpProc
-        property bool force: false
-        command: ["bash", wallpaper.island + "/scripts/wallpaper.sh", force ? "next" : "current"]
+        property string mode: "current"
+        property string arg: ""
+        command: arg !== "" ? ["bash", wallpaper.island + "/scripts/wallpaper.sh", mode, arg] : ["bash", wallpaper.island + "/scripts/wallpaper.sh", mode]
         running: true
-        onExited: force = false
+        onExited: { mode = "current"; arg = "" }
         stdout: SplitParser {
             onRead: data => wallpaper.show(data.trim())
         }
@@ -179,5 +189,6 @@ PanelWindow {
     IpcHandler {
         target: "wallpaper"
         function next(): void { wallpaper.next() }
+        function set(path: string): void { wallpaper.useFile(path) }
     }
 }
