@@ -407,14 +407,25 @@ Item {
         var gap = 14, sepGap = specials.length > 0 && normal.length > 0 ? 26 : 0
         var slotN = 54, slotS = ov.compactSpecial ? 42 : 54
 
-        var total = sepGap
-        for (var a = 0; a < all.length; a++)
-            total += Math.max(1, all[a].wins.length) * (all[a].special ? slotS : slotN) + (a > 0 ? gap : 0)
-        var sc = Math.max(0.55, Math.min(1, availH / Math.max(1, total)))
+        // If every workspace's windows do not fit in one column, lay the windows out in 2 or 3 columns
+        // so all workspaces stay on screen (instead of running off the bottom).
+        function totalFor(cols) {
+            var t = sepGap
+            for (var a = 0; a < all.length; a++)
+                t += Math.max(1, Math.ceil(all[a].wins.length / cols)) * (all[a].special ? slotS : slotN) + (a > 0 ? gap : 0)
+            return t
+        }
+        var cols = 1
+        while (cols < 3 && availH / Math.max(1, totalFor(cols)) < 0.62) cols++
+        var total = totalFor(cols)
+        var sc = Math.max(0.5, Math.min(1, availH / Math.max(1, total)))
 
         var rootX = Math.max(170, W * 0.15)
         var wsX = W * 0.43
         var winX = Math.min(W - 170, W * 0.72)
+        // window columns: share the space right of the workspace nodes
+        var colLeft = wsX + 102 + 56, colRight = W - 28
+        var colW = cols > 1 ? Math.min(260, (colRight - colLeft - (cols - 1) * 10) / cols) : 260
 
         var out = []
         var eds = []
@@ -434,7 +445,7 @@ Item {
             var slot = (sp ? slotS : slotN) * sc
             if (gi > 0) cursor += gap * sc
             if (sp && gi === normal.length) cursor += sepGap * sc
-            var n = Math.max(1, gr.wins.length)
+            var n = Math.max(1, Math.ceil(gr.wins.length / cols))
             var gh = n * slot
             var info = sp ? (ov.specialInfo[spName] || { label: spName, glyph: 0xF04CE }) : null
 
@@ -458,8 +469,9 @@ Item {
                 var wi = out.length
                 out.push({
                     kind: "win", depth: 2, order: gi * 4 + k, par: wsIdx,
-                    x: winX, y: cursor + (k + 0.5) * slot,
-                    w: sp && ov.compactSpecial ? 214 : 260,
+                    x: cols > 1 ? colLeft + colW / 2 + (k % cols) * (colW + 10) : winX,
+                    y: cursor + (Math.floor(k / cols) + 0.5) * slot,
+                    w: Math.min(colW, sp && ov.compactSpecial ? 214 : 260),
                     h: (sp && ov.compactSpecial ? 34 : 42) * sc,
                     label: win.title, sub: win.cls, cls: win.cls,
                     address: win.address, ref: win.ref, focused: win.focused,
@@ -543,6 +555,24 @@ Item {
         } else {
             Qt.callLater(function () { ov.forceActiveFocus() })
         }
+    }
+    // graphical file browser for the avatar (zenity / kdialog / yad, see scripts/pick-image.sh)
+    Process {
+        id: pickProc
+        property string startAt: ""
+        command: ["bash", Quickshell.shellPath("scripts/pick-image.sh"), pickProc.startAt]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var p = text.trim()
+                if (p !== "") avIn.text = p
+                Qt.callLater(function () { avIn.forceActiveFocus() })
+            }
+        }
+    }
+    function browseAvatar() {
+        pickProc.startAt = avIn.text.trim() !== "" ? avIn.text.trim() : (ov.avatarFile !== "" ? ov.avatarFile : "")
+        pickProc.running = false
+        pickProc.running = true
     }
     function saveProfile() {
         ov.profileSaved(nameIn.text.trim(), avIn.text.trim())
@@ -1252,29 +1282,42 @@ Item {
                 }
             }
 
-            Text { text: "Avatar image (path, default ~/.face)"; color: ov.pal.muted; font.family: ov.pal.uiFont; font.pixelSize: 11 }
-            Rectangle {
-                width: parent.width; height: 38; radius: 19
-                color: ov.pal.surface
-                border.width: 1
-                border.color: avIn.activeFocus ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.25)
-                Behavior on border.color { ColorAnimation { duration: 140 } }
-                TextInput {
-                    id: avIn
-                    anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 16
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: ov.pal.text
-                    selectionColor: ov.pal.accent
-                    font.family: ov.pal.uiFont
-                    font.pixelSize: 13
-                    clip: true
-                    Keys.onPressed: e => {
-                        if (e.key === Qt.Key_Escape) { ov.editing = false; e.accepted = true }
-                        else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { ov.saveProfile(); e.accepted = true }
-                        else if (e.key === Qt.Key_Backtab) { nameIn.forceActiveFocus(); e.accepted = true }
+            Text { text: "Avatar image (default ~/.face)"; color: ov.pal.muted; font.family: ov.pal.uiFont; font.pixelSize: 11 }
+            Row {
+                width: parent.width
+                spacing: 8
+                Rectangle {
+                    width: parent.width - 86 - parent.spacing; height: 38; radius: 19
+                    color: ov.pal.surface
+                    border.width: 1
+                    border.color: avIn.activeFocus ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.25)
+                    Behavior on border.color { ColorAnimation { duration: 140 } }
+                    TextInput {
+                        id: avIn
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: ov.pal.text
+                        selectionColor: ov.pal.accent
+                        font.family: ov.pal.uiFont
+                        font.pixelSize: 13
+                        clip: true
+                        Keys.onPressed: e => {
+                            if (e.key === Qt.Key_Escape) { ov.editing = false; e.accepted = true }
+                            else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { ov.saveProfile(); e.accepted = true }
+                            else if (e.key === Qt.Key_Backtab) { nameIn.forceActiveFocus(); e.accepted = true }
+                        }
                     }
+                }
+                Rectangle {
+                    width: 86; height: 38; radius: 19
+                    color: browseMa.containsMouse ? Qt.alpha(ov.pal.accent, 0.28) : Qt.alpha(ov.pal.accent, 0.14)
+                    border.width: 1
+                    border.color: Qt.alpha(ov.pal.accent, 0.45)
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF024B) + "  Browse"; color: ov.pal.text; font.family: ov.pal.font; font.pixelSize: 12 }
+                    MouseArea { id: browseMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ov.browseAvatar() }
                 }
             }
 

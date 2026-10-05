@@ -20,8 +20,10 @@ hl.animation({ leaf = "fadeSwitch",       enabled = true, speed = 6,   bezier = 
 hl.animation({ leaf = "fadeShadow",       enabled = true, speed = 6,   bezier = "soft" })
 hl.animation({ leaf = "fadeDim",          enabled = true, speed = 6,   bezier = "soft" })
 
--- workspaces slide a short way while fading, which feels much calmer than a full-width slide
-hl.animation({ leaf = "workspaces",       enabled = true, speed = 7,   bezier = "glide",  style = "slidefade 8%" })
+-- workspaces: a real horizontal slide, so you can SEE the direction. Going to a higher workspace pushes the
+-- screen left (the new one comes in from the right); going to a lower one pushes it right. Same for the
+-- 3/4-finger swipes. For something softer use  style = "slidefade 30%"  (a shorter slide with a fade).
+hl.animation({ leaf = "workspaces",       enabled = true, speed = 6,   bezier = "glide",  style = "slide" })
 hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 7,   bezier = "glide",  style = "slidefadevert 12%" })
 
 hl.animation({ leaf = "layers",           enabled = true, speed = 5,   bezier = "soft",   style = "fade" })

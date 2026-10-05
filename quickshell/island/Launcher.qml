@@ -15,6 +15,43 @@ Item {
     signal closeRequested()
     signal commandRequested(string cmdId)
 
+    // ---- query history (Up / Down while typing). Newest last; saved in ~/.local/state/island/launcher-history.log
+    property var history: []
+    property int histIdx: -1            // -1 = what you are typing now, 0 = newest entry, 1 = the one before ...
+    property string histDraft: ""
+    property bool histBusy: false       // true while history itself is changing the text
+    property real hx: -1                // last REAL pointer position, so scrolling under a resting pointer does not move the selection
+    property real hy: -1
+    function pushHistory(q) {
+        q = (q || "").trim()
+        if (q === "") return false
+        var h = history.filter(function (x) { return x !== q })
+        h.push(q)
+        if (h.length > 100) h = h.slice(h.length - 100)
+        history = h
+        return true
+    }
+    function saveHistory(q) {
+        if (pushHistory(q))
+            Quickshell.execDetached(["sh", "-c", "mkdir -p ~/.local/state/island && printf '%s\\n' \"$0\" >> ~/.local/state/island/launcher-history.log", q.trim()])
+    }
+    function histStep(d) {                 // d = +1 older (Up), -1 newer (Down)
+        if (history.length === 0) return
+        var ni = Math.min(history.length - 1, histIdx + d)
+        if (ni < -1 || ni === histIdx) return
+        if (histIdx === -1) histDraft = input.text
+        histIdx = ni
+        histBusy = true
+        input.text = ni === -1 ? histDraft : history[history.length - 1 - ni]
+        input.cursorPosition = input.text.length
+        histBusy = false
+    }
+    function stepResult(d) {               // Tab / Shift+Tab: next / previous result, wraps around
+        var n = results.length
+        if (n === 0) return
+        grid.currentIndex = (grid.currentIndex + d + n) % n
+    }
+
     property var usage: ({})
     property int serial: 0
     property string query: ""
@@ -205,6 +242,7 @@ Item {
     function launch(i) {
         var e = results[i]
         if (!e) return
+        saveHistory(query)
         bumpScore(e.id)
         Quickshell.execDetached(["sh", "-c", "mkdir -p ~/.local/state/island && echo \"$0\" >> ~/.local/state/island/usage.log", e.id])
         e.execute()
@@ -216,6 +254,7 @@ Item {
         if (!c) return
         if (c.confirm && pendingConfirm !== c.id) { pendingConfirm = c.id; return }
         pendingConfirm = ""
+        saveHistory(query)
         if (c.id === "calc") {            // stay in the bar, switch to calculator mode
             input.text = "="
             input.cursorPosition = 1
@@ -227,6 +266,7 @@ Item {
 
     function copyCalc() {
         if (!calcOut.ok) return
+        saveHistory(query)
         Quickshell.execDetached(["wl-copy", calcOut.text])
         closeRequested()
     }
@@ -241,6 +281,7 @@ Item {
             input.text = ""
             query = ""
             pendingConfirm = ""
+            histIdx = -1; histDraft = ""
             // rebuilding the grid while the island starts to grow is what made opening choppy: only do it when it is needed
             if (had !== "" || dirty) refresh()
             Qt.callLater(function () { input.forceActiveFocus() })
@@ -252,6 +293,12 @@ Item {
     Connections {
         target: DesktopEntries.applications
         function onValuesChanged() { root.refresh() }
+    }
+
+    Process {
+        running: true
+        command: ["sh", "-c", "tail -n 100 ~/.local/state/island/launcher-history.log 2>/dev/null"]
+        stdout: SplitParser { onRead: d => root.pushHistory(d) }
     }
 
     Process {
@@ -324,25 +371,33 @@ Item {
                 font.family: root.pal.uiFont
                 font.pixelSize: 15
                 clip: true
-                onTextChanged: { root.query = text; root.pendingConfirm = ""; root.refresh() }
+                onTextChanged: { root.query = text; root.pendingConfirm = ""; if (!root.histBusy) root.histIdx = -1; root.refresh() }
 
+                // Up / Down: older / newer searches (in the command list they move the selection instead)
+                // Left / Right: move the text cursor (default behaviour)
+                // Tab / Shift+Tab (or Ctrl+N / Ctrl+P): next / previous result;  Ctrl+Up / Ctrl+Down: a row up / down
                 Keys.onPressed: e => {
                     var cmd = root.mode === "cmd", calc = root.mode === "calc"
+                    var ctrl = (e.modifiers & Qt.ControlModifier) !== 0
                     if (e.key === Qt.Key_Escape) { root.closeRequested(); e.accepted = true }
                     else if (e.key === Qt.Key_Down) {
-                        if (cmd) { cmdList.incrementCurrentIndex(); root.pendingConfirm = "" } else grid.moveCurrentIndexDown()
+                        if (cmd) { cmdList.incrementCurrentIndex(); root.pendingConfirm = "" }
+                        else if (ctrl) { if (!calc) grid.moveCurrentIndexDown() }
+                        else root.histStep(-1)
                         e.accepted = true
                     }
                     else if (e.key === Qt.Key_Up) {
-                        if (cmd) { cmdList.decrementCurrentIndex(); root.pendingConfirm = "" } else grid.moveCurrentIndexUp()
+                        if (cmd) { cmdList.decrementCurrentIndex(); root.pendingConfirm = "" }
+                        else if (ctrl) { if (!calc) grid.moveCurrentIndexUp() }
+                        else root.histStep(1)
                         e.accepted = true
                     }
-                    else if (e.key === Qt.Key_Right || e.key === Qt.Key_Tab) {
-                        if (cmd) cmdList.incrementCurrentIndex(); else if (!calc) grid.moveCurrentIndexRight()
+                    else if (e.key === Qt.Key_Tab || (ctrl && e.key === Qt.Key_N)) {
+                        if (cmd) { cmdList.incrementCurrentIndex(); root.pendingConfirm = "" } else if (!calc) root.stepResult(1)
                         e.accepted = true
                     }
-                    else if (e.key === Qt.Key_Left || e.key === Qt.Key_Backtab) {
-                        if (cmd) cmdList.decrementCurrentIndex(); else if (!calc) grid.moveCurrentIndexLeft()
+                    else if (e.key === Qt.Key_Backtab || (ctrl && e.key === Qt.Key_P)) {
+                        if (cmd) { cmdList.decrementCurrentIndex(); root.pendingConfirm = "" } else if (!calc) root.stepResult(-1)
                         e.accepted = true
                     }
                     else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
@@ -405,6 +460,7 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             highlightFollowsCurrentItem: true
             highlightMoveDuration: 260
+            onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, GridView.Contain)
 
             // one pill that slides between apps instead of every cell lighting up on its own
             highlight: Item {
@@ -476,7 +532,10 @@ Item {
                     id: ma
                     anchors.fill: parent
                     hoverEnabled: true
-                    onEntered: grid.currentIndex = cell.index
+                    onPositionChanged: m => {
+                        var g = mapToItem(root, m.x, m.y)
+                        if (Math.abs(g.x - root.hx) > 1 || Math.abs(g.y - root.hy) > 1) { root.hx = g.x; root.hy = g.y; grid.currentIndex = cell.index }
+                    }
                     onClicked: root.launch(cell.index)
                 }
             }
@@ -503,6 +562,7 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             highlightFollowsCurrentItem: true
             highlightMoveDuration: 150
+            onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
 
             highlight: Rectangle {
                 width: cmdList.width
@@ -540,6 +600,7 @@ Item {
                     font.pixelSize: 18
                 }
                 Text {
+                    id: cname
                     anchors.left: cg.right
                     anchors.leftMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
@@ -550,9 +611,14 @@ Item {
                     font.weight: Font.Medium
                 }
                 Text {
+                    // never runs into the title: starts after it, right-aligned, cut with … when too long
+                    anchors.left: cname.right
+                    anchors.leftMargin: 18
                     anchors.right: parent.right
                     anchors.rightMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideRight
                     text: root.pendingConfirm === crow.modelData.id ? "press Enter again to confirm" : crow.modelData.desc
                     color: root.pendingConfirm === crow.modelData.id ? root.pal.accent2 : root.pal.muted
                     font.family: root.pal.uiFont
@@ -561,7 +627,10 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     hoverEnabled: true
-                    onEntered: cmdList.currentIndex = crow.index
+                    onPositionChanged: m => {
+                        var g = mapToItem(root, m.x, m.y)
+                        if (Math.abs(g.x - root.hx) > 1 || Math.abs(g.y - root.hy) > 1) { root.hx = g.x; root.hy = g.y; cmdList.currentIndex = crow.index }
+                    }
                     onClicked: root.runCmd(crow.index)
                 }
             }
@@ -605,7 +674,7 @@ Item {
             Repeater {
                 model: root.mode === "cmd"
                     ? [["↑↓", "move"], ["⏎", "run"], ["esc", "close"]]
-                    : [["↑↓←→", "move"], ["⏎", "open"], [".", "all apps"], [">", "commands"], ["=", "calc"]]
+                    : [["↑↓", "history"], ["←→", "cursor"], ["tab", "move"], ["⏎", "open"], [".", "all apps"], [">", "commands"], ["=", "calc"]]
                 delegate: Row {
                     required property var modelData
                     spacing: 5

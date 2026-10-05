@@ -61,7 +61,7 @@ else
   ok "already in $RICE"
 fi
 mkdir -p "$BIN" "$UNITS" "$HOME/.cache/island" "$HOME/.local/state/island" "$HOME/logs"
-chmod +x "$RICE"/scripts/*.sh "$RICE"/launch/*.sh "$RICE"/quickshell/island/scripts/*.sh "$RICE"/sysmode/sysmode 2>/dev/null
+chmod +x "$RICE"/update.sh "$RICE"/scripts/*.sh "$RICE"/launch/*.sh "$RICE"/quickshell/island/scripts/*.sh "$RICE"/sysmode/sysmode 2>/dev/null
 
 # ------------------------------------------------------------------------------------------------ 2. packages
 say "2/8  Packages"

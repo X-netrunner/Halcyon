@@ -31,6 +31,14 @@ local function maybe_copy(src, dst)
     input:close()
 end
 
+-- a reload runs this file again: forget the modules loaded last time, otherwise `require` hands back the old
+-- (cached) copies and edits to hyprland/*.lua, variables.lua or scheme/current.lua would not be picked up
+for name in pairs(package.loaded) do
+    if name:match("^hyprland%.") or name:match("^scheme%.") or name == "variables" or name == "hypr-user" then
+        package.loaded[name] = nil
+    end
+end
+
 maybe_copy(hypr .. "/scheme/default.lua", hypr .. "/scheme/current.lua")
 
 hl.monitor({

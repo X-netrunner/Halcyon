@@ -34,8 +34,15 @@ nohash() { echo "${1#\#}"; }
 
 # ---- 1. colour files (each terminal's main config includes its file; install.sh adds the include once)
 mkdir -p "$HOME/.config/foot" "$HOME/.config/kitty" "$HOME/.config/alacritty" "$HOME/.config/ghostty" "$HOME/.config/wezterm"
+# foot >= 1.24 renamed [colors] to [colors-dark] (and newer builds reject [colors]); older foot only knows [colors]
+foot_sec="colors"
+if command -v foot >/dev/null 2>&1; then
+  fv=$(foot --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+' | head -n1)
+  fmaj=${fv%%.*}; fmin=${fv##*.}
+  if [ -n "$fv" ] && { [ "${fmaj:-0}" -gt 1 ] || { [ "${fmaj:-0}" -eq 1 ] && [ "${fmin:-0}" -ge 24 ]; }; }; then foot_sec="colors-dark"; fi
+fi
 {
-  echo "[colors]"
+  echo "[$foot_sec]"
   echo "background=$(nohash "$bg")"; echo "foreground=$(nohash "$fg")"
   echo "selection-background=$(nohash "$surfaceHi")"; echo "selection-foreground=$(nohash "$fg")"
   for i in 0 1 2 3 4 5 6 7; do echo "regular$i=$(nohash "${colors[$i]}")"; done

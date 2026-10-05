@@ -189,7 +189,7 @@ ShellRoot {
             if (id === "wallpaper") root.randomWallpaper()
             else if (id === "config") root.editConfig()
             else if (id === "cheatsheet") root.runCommand("cheatsheet")
-            else if (id === "reload") reloadProc.running = true
+            else if (id === "reload") fullReloadProc.running = true
             else if (id === "nightlight") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_nightlight.sh"])
             else if (id === "touchpad") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_touchpad.sh"])
             else if (id === "gestures") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_gestures.sh"])
@@ -212,6 +212,13 @@ ShellRoot {
     }
     // `hyprctl reload`, then put the island's own Hyprland tweaks back on top (a reload resets them)
     Process { id: reloadProc; command: ["hyprctl", "reload"]; onExited: hyprKick.restart() }
+    // Settings > Reload Hyprland: Hyprland's config + terminal colours (scripts/reload.sh), then the island itself reloads
+    // (that also puts the island's own Hyprland tweaks back on top, they are re-applied at island start)
+    Process {
+        id: fullReloadProc
+        command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/reload.sh"]
+        onExited: Quickshell.reload(false)
+    }
     // ---- volume / brightness / keyboard-light bar: slides up from the bottom edge on every change (Osd.qml)
     Osd { id: osd; pal: pal; enabled: root.osdOn }
     // brightness + keyboard light: scripts/osd-watch.sh prints a line when either changes (silent while the idle dim is active)
@@ -885,6 +892,7 @@ ShellRoot {
         function apps(): void { appsWin.pinFor(9000) }
         function routing(): void { root.runCommand("routing") }
         function lock(): void { lockScreen.lock() }
+        function reload(): void { fullReloadProc.running = true }
     }
 
     // =====================================================================
