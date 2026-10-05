@@ -131,6 +131,16 @@ function nested(pts, ends, maxd2) {
     return { w: 96, h: 96, stars: stars, edges: edges, dust: [] }
 }
 
+// `scripts/portrait.sh <image>` prints one JSON line: a high-detail constellation whose stars and lines carry their own
+// birth time t (see ModeArt.qml), so it grows with use and ends as the picture. null = not usable (too few stars).
+function fromPortrait(line) {
+    var d
+    try { d = JSON.parse(line) } catch (err) { return null }
+    if (!d || !d.stars || d.stars.length < 12 || !d.edges) return null
+    if (!d.dust) d.dust = []
+    return d
+}
+
 // A constellation made from a name, for when there is no profile picture (or it gives no stars): the same name always
 // gives the same sky. Same shape as `hx stars` prints (96 x 96 grid, every star joined to its two nearest neighbours).
 function fromName(name) {

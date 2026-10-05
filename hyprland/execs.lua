@@ -17,6 +17,8 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("~/.config/Halcyon/scripts/notif-guard.sh")
     hl.exec_cmd("quickshell -p ~/.config/Halcyon/quickshell/island &")
     hl.exec_cmd("quickshell -p ~/.config/Halcyon/quickshell/wallpaper &")
+    -- started from the tty1 login (launch/halcyon-login.sh)? then make sure the lock screen really came up
+    hl.exec_cmd("~/.config/Halcyon/scripts/login-watchdog.sh &")
     hl.exec_cmd("sleep 2 && nm-applet &")
     hl.exec_cmd("sleep 2 && blueman-applet &")
     -- idle lock + sleep, set in Settings > Sleep & lock (scripts/idle.sh runs hypridle with its own config)

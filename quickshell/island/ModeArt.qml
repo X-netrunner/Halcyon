@@ -27,6 +27,13 @@ Item {
     opacity: strength
 
     readonly property color tone: pal.accent
+
+    // a high-detail picture constellation (hundreds of stars): smaller glows so the picture stays readable, and only
+    // every 4th star twinkles so it stays cheap. Nothing is built until the art is shown for the first time.
+    readonly property bool dense: art && art.stars ? art.stars.length > 260 : false
+    property bool built: false
+    onVisibleChanged: if (visible) built = true
+    Component.onCompleted: if (visible) built = true
     readonly property real dw: art ? art.w : 100
     readonly property real dh: art ? art.h : 100
     readonly property bool live: alive && visible && (pal ? pal.motion > 0.3 : true)
@@ -107,7 +114,7 @@ Item {
                 Behavior on x { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
                 Behavior on y { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
                 Repeater {
-                    model: root.art && root.art.dust ? root.art.dust : []
+                    model: root.built && root.art && root.art.dust ? root.art.dust : []
                     delegate: Rectangle {
                         required property var modelData
                         required property int index
@@ -132,15 +139,15 @@ Item {
                     anchors.fill: parent
                     preferredRendererType: Shape.CurveRenderer
                     ShapePath {
-                        strokeColor: Qt.alpha(root.tone, 0.07 + 0.10 * root.energy)
-                        strokeWidth: 4 * root.u
+                        strokeColor: Qt.alpha(root.tone, (root.dense ? 0.04 : 0.07) + 0.10 * root.energy)
+                        strokeWidth: (root.dense ? 2.4 : 4) * root.u
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         PathSvg { path: root.edgePath }
                     }
                     ShapePath {
-                        strokeColor: Qt.alpha(root.tone, 0.34 + 0.38 * root.energy)
-                        strokeWidth: (1.0 + 0.5 * root.energy) * root.u
+                        strokeColor: Qt.alpha(root.tone, (root.dense ? 0.26 : 0.34) + 0.38 * root.energy)
+                        strokeWidth: ((root.dense ? 0.7 : 1.0) + 0.5 * root.energy) * root.u
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         PathSvg { path: root.edgePath }
@@ -177,24 +184,26 @@ Item {
 
                 // the stars: halo + core, each on its own flicker rhythm
                 Repeater {
-                    model: root.art ? root.art.stars : []
+                    model: root.built && root.art ? root.art.stars : []
                     delegate: Item {
                         required property var modelData
                         required property int index
                         readonly property real r: modelData[2] || 1.5
-                        readonly property real flick: 0.5 + 0.5 * Math.sin(root.ph * (1 + index % 3) + index * 0.9)
+                        // dense art: most stars hold a steady glow (a binding that never reads `ph` is never re-evaluated)
+                        readonly property real flick: (!root.dense || index % 4 === 0) ? 0.5 + 0.5 * Math.sin(root.ph * (1 + index % 3) + index * 0.9) : 0.7
                         x: root.sx(modelData); y: root.sy(modelData)
                         visible: root.fadeIn(modelData) > 0
                         opacity: Math.min(1, 0.55 + 0.45 * flick * flick + 0.3 * root.energy) * root.fadeIn(modelData)
                         Rectangle {
                             anchors.centerIn: parent
-                            width: r * (9 + 3 * flick + 9 * root.energy) * root.u; height: width; radius: width / 2
+                            visible: !root.dense || r > 1.05
+                            width: r * (root.dense ? 4.5 + 2 * flick + 5 * root.energy : 9 + 3 * flick + 9 * root.energy) * root.u; height: width; radius: width / 2
                             color: Qt.alpha(root.tone, 0.07 + 0.08 * root.energy)
                         }
                         Rectangle {
                             anchors.centerIn: parent
-                            width: r * (4.2 + 1.2 * flick + 2 * root.energy) * root.u; height: width; radius: width / 2
-                            color: Qt.alpha(root.tone, 0.18)
+                            width: r * (root.dense ? 2.8 + 0.8 * flick + 1.2 * root.energy : 4.2 + 1.2 * flick + 2 * root.energy) * root.u; height: width; radius: width / 2
+                            color: Qt.alpha(root.tone, root.dense ? 0.22 : 0.18)
                         }
                         Rectangle {
                             anchors.centerIn: parent

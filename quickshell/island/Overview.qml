@@ -533,6 +533,7 @@ Item {
     onOpenChanged: {
         held = false; dragging = false; moving = false
         dragDone(); toast = ""
+        if (!open) picker.open = false
         if (open) {
             resetPhys(nodes.length)
             idProc.running = true
@@ -556,23 +557,10 @@ Item {
             Qt.callLater(function () { ov.forceActiveFocus() })
         }
     }
-    // graphical file browser for the avatar (zenity / kdialog / yad, see scripts/pick-image.sh)
-    Process {
-        id: pickProc
-        property string startAt: ""
-        command: ["bash", Quickshell.shellPath("scripts/pick-image.sh"), pickProc.startAt]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var p = text.trim()
-                if (p !== "") avIn.text = p
-                Qt.callLater(function () { avIn.forceActiveFocus() })
-            }
-        }
-    }
+    // The avatar browser is drawn by the island itself (ImagePicker.qml, at the bottom of this file) so it opens ON TOP of
+    // the tree. A zenity / kdialog window cannot: it is an ordinary window, the tree is an overlay layer above all of them.
     function browseAvatar() {
-        pickProc.startAt = avIn.text.trim() !== "" ? avIn.text.trim() : (ov.avatarFile !== "" ? ov.avatarFile : "")
-        pickProc.running = false
-        pickProc.running = true
+        picker.openAt(avIn.text.trim() !== "" ? avIn.text.trim() : (ov.avatarFile !== "" ? ov.avatarFile : ""))
     }
     function saveProfile() {
         ov.profileSaved(nameIn.text.trim(), avIn.text.trim())
@@ -1341,5 +1329,13 @@ Item {
                 }
             }
         }
+    }
+    // ---- image browser for the avatar (drawn above everything else in the tree)
+    ImagePicker {
+        id: picker
+        anchors.fill: parent
+        pal: ov.pal
+        onPicked: path => { avIn.text = path; picker.open = false; Qt.callLater(function () { avIn.forceActiveFocus() }) }
+        onCancelled: { picker.open = false; Qt.callLater(function () { avIn.forceActiveFocus() }) }
     }
 }

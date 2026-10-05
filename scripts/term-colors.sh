@@ -18,15 +18,17 @@ mix() { # mix A B percent-of-B
   read -r r1 g1 b1 <<<"$(rgb "$1")"; read -r r2 g2 b2 <<<"$(rgb "$2")"; p=$3
   printf '#%02x%02x%02x' $(( (r1*(100-p) + r2*p)/100 )) $(( (g1*(100-p) + g2*p)/100 )) $(( (b1*(100-p) + b2*p)/100 ))
 }
-# the 8 ANSI hues: fixed soft colours so red still looks red, pulled 28% toward the wallpaper accent so they belong to it
-tint() { mix "$1" "$accent" 28; }
+# the 8 ANSI hues. Red still looks like red and green like green, but every colour is pulled hard toward the wallpaper:
+# blue and magenta ARE the wallpaper's two accents (barely changed), the others take 40% of the accent so each wallpaper
+# gives a clearly different terminal, not just a slightly different background.
+tint() { mix "$1" "$accent" 40; }
 black=$surface;           bblack=$muted
-red=$(tint "#e57a85");    bred=$(mix "$red" "#ffffff" 18)
+red=$(mix "#e57a85" "$accent" 30); bred=$(mix "$red" "#ffffff" 18)
 green=$(tint "#8fd19e");  bgreen=$(mix "$green" "#ffffff" 18)
 yellow=$(tint "#e5c07b"); byellow=$(mix "$yellow" "#ffffff" 18)
-blue=$(mix "#6fa8e8" "$accent" 45);   bblue=$(mix "$blue" "#ffffff" 18)
-magenta=$(mix "#c792ea" "$accent2" 45); bmagenta=$(mix "$magenta" "#ffffff" 18)
-cyan=$(tint "#7fd6d6");   bcyan=$(mix "$cyan" "#ffffff" 18)
+blue=$(mix "#6fa8e8" "$accent" 80);      bblue=$(mix "$blue" "#ffffff" 18)
+magenta=$(mix "#c792ea" "$accent2" 80);  bmagenta=$(mix "$magenta" "#ffffff" 18)
+cyan=$(mix "#7fd6d6" "$accent2" 40);     bcyan=$(mix "$cyan" "#ffffff" 18)
 white=$(mix "$fg" "$bg" 18); bwhite=$fg
 
 colors=("$black" "$red" "$green" "$yellow" "$blue" "$magenta" "$cyan" "$white" "$bblack" "$bred" "$bgreen" "$byellow" "$bblue" "$bmagenta" "$bcyan" "$bwhite")
