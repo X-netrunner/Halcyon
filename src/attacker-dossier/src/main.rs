@@ -110,8 +110,22 @@ fn ts(t: &str) -> String {
 }
 
 fn logs_dir() -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/netrunner".to_string());
-    format!("{}/logs", home)
+    if let Ok(content) = fs::read_to_string("/etc/sysmode.conf") {
+        for line in content.lines() {
+            if let Some(rest) = line.trim().strip_prefix("SYS_HOME=") {
+                let h = rest.trim().trim_matches('"').trim_matches('\'');
+                if !h.is_empty() {
+                    return format!("{}/logs", h);
+                }
+            }
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.is_empty() && home != "/root" {
+            return format!("{}/logs", home);
+        }
+    }
+    "/home/sushanth/logs".to_string()
 }
 
 fn load_cowrie(logs: &str) -> (HashMap<String, CowrieData>, Vec<(String, String, String, String)>) {

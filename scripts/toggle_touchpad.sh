@@ -1,5 +1,6 @@
 #!/bin/bash
-DEVICE="ascf1201:00-2808:0231-touchpad"
+DEVICE=$(hyprctl devices -j 2>/dev/null | grep -i '"name":' | grep -i 'touchpad' | head -1 | sed -E 's/.*"name": *"([^"]+)".*/\1/')
+[ -n "$DEVICE" ] || DEVICE="elan07fb:00-04f3:321a-touchpad"
 STATUS_FILE="$XDG_RUNTIME_DIR/touchpad.status"
 
 # Default state if file doesn't exist

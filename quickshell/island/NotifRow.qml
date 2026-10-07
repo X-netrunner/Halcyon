@@ -16,13 +16,15 @@ Item {
     property real now: 0          // ticks while the centre is open, so "5m" stays fresh
     signal dismissRequested()
 
-    readonly property bool critical: notif.urgency === NotificationUrgency.Critical
+    readonly property bool critical: notif ? notif.urgency === NotificationUrgency.Critical : false
     readonly property color tone: critical ? pal.bad : pal.accent
     readonly property var extraActions: {
         var out = []
-        var a = notif.actions
-        for (var i = 0; i < a.length; i++)
-            if (a[i].identifier !== "default") out.push(a[i])
+        var a = notif ? notif.actions : []
+        if (a) {
+            for (var i = 0; i < a.length; i++)
+                if (a[i].identifier !== "default") out.push(a[i])
+        }
         return out
     }
 
@@ -35,6 +37,7 @@ Item {
         return Qt.formatDateTime(new Date(arrived), "d MMM")
     }
     function runDefault() {
+        if (!notif || !notif.actions) return
         var a = notif.actions
         for (var i = 0; i < a.length; i++)
             if (a[i].identifier === "default") { a[i].invoke(); return }
@@ -129,7 +132,7 @@ Item {
                     spacing: 8
                     Text {
                         Layout.fillWidth: true
-                        text: row.notif.appName.toUpperCase()
+                        text: row.notif ? row.notif.appName.toUpperCase() : ""
                         color: row.pal.muted
                         font.family: row.pal.uiFont
                         font.pixelSize: 10
@@ -165,7 +168,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: row.notif.summary
+                    text: row.notif ? row.notif.summary : ""
                     color: row.pal.text
                     font.family: row.pal.uiFont
                     font.pixelSize: row.pal.tBody + 1
@@ -176,7 +179,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: row.notif.body.replace(/\n/g, "<br>")
+                    text: row.notif && row.notif.body ? row.notif.body.replace(/\n/g, "<br>") : ""
                     textFormat: Text.StyledText
                     color: Qt.alpha(row.pal.text, 0.72)
                     font.family: row.pal.uiFont

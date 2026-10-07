@@ -36,7 +36,7 @@ Item {
     Component.onCompleted: if (visible) built = true
     readonly property real dw: art ? art.w : 100
     readonly property real dh: art ? art.h : 100
-    readonly property bool live: alive && visible && (pal ? pal.motion > 0.3 : true)
+    readonly property bool live: alive && visible && opacity > 0.01 && (pal ? pal.motion > 0.3 : true)
 
     // ---- growth (0..1, Settings > Constellations): stars / edges with a birth value t appear as it passes t
     readonly property real g: (pal && pal.growthOn) ? pal.growth : 0
@@ -184,7 +184,7 @@ Item {
 
                 // the stars: halo + core, each on its own flicker rhythm
                 Repeater {
-                    model: root.built && root.art ? root.art.stars : []
+                    model: root.built && root.art && root.visible ? root.art.stars : []
                     delegate: Item {
                         required property var modelData
                         required property int index

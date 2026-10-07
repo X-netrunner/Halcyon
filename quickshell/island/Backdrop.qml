@@ -17,8 +17,9 @@ Item {
     readonly property bool flagship: mode === "lockdown" || mode === "stealth"
     clip: true
 
+    readonly property bool live: visible && opacity > 0.01 && (pal ? pal.motion > 0.3 : true)
     property real tt: 0
-    NumberAnimation on tt { from: 0; to: 1000000; duration: 1000000000; loops: Animation.Infinite; running: root.visible }
+    NumberAnimation on tt { from: 0; to: 1000000; duration: 1000000000; loops: Animation.Infinite; running: root.live }
 
     ModeArt {
         anchors.fill: parent
@@ -30,10 +31,11 @@ Item {
         strength: root.artStrength
         fit: root.artFit
         energy: root.energy
+        alive: root.live
     }
 
     Repeater {
-        model: root.dots
+        model: root.live ? root.dots : 0
         delegate: Rectangle {
             required property int index
             readonly property real fx: ((index * 0.6180339) % 1)

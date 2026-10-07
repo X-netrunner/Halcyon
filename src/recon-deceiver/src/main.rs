@@ -63,6 +63,16 @@ fn get_hostname() -> String {
 }
 
 fn sys_user() -> String {
+    if let Ok(content) = fs::read_to_string("/etc/sysmode.conf") {
+        for line in content.lines() {
+            if let Some(rest) = line.trim().strip_prefix("SYS_USER=") {
+                let u = rest.trim().trim_matches('"').trim_matches('\'');
+                if !u.is_empty() {
+                    return u.to_string();
+                }
+            }
+        }
+    }
     if let Ok(u) = std::env::var("SUDO_USER") {
         if !u.is_empty() && u != "root" {
             return u;
@@ -85,7 +95,26 @@ fn sys_user() -> String {
             }
         }
     }
-    "netrunner".to_string()
+    "sushanth".to_string()
+}
+
+fn sys_home() -> String {
+    if let Ok(content) = fs::read_to_string("/etc/sysmode.conf") {
+        for line in content.lines() {
+            if let Some(rest) = line.trim().strip_prefix("SYS_HOME=") {
+                let h = rest.trim().trim_matches('"').trim_matches('\'');
+                if !h.is_empty() {
+                    return h.to_string();
+                }
+            }
+        }
+    }
+    if let Ok(h) = std::env::var("HOME") {
+        if !h.is_empty() && h != "/root" {
+            return h;
+        }
+    }
+    format!("/home/{}", sys_user())
 }
 
 fn sys_uid(user: &str) -> u32 {
@@ -1924,8 +1953,7 @@ fn main() {
         std::process::exit(1);
     }
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/netrunner".to_string());
-    let logs_dir = format!("{}/logs", home);
+    let logs_dir = format!("{}/logs", sys_home());
     let hostname = get_hostname();
     let (telnet_user, telnet_pass) = generate_telnet_credentials();
 

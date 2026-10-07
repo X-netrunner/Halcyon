@@ -268,6 +268,7 @@ ShellRoot {
         termDrift: root.opt.termDrift
         cyclePaused: root.gaming
     }
+    readonly property var palObj: pal
 
     // rice settings window (gear in the utilities panel, >settings, SUPER+F11) and the power menu (power button)
     Settings {
@@ -699,7 +700,7 @@ ShellRoot {
     // the state file is the truth: re-read it shortly after a click and every few seconds, so the chip can never
     // disagree with the script (a toggle from SUPER+F10 / a terminal / a failed run all end up shown correctly)
     Timer { id: gamingCheck; interval: 1700; onTriggered: gamingProc.running = true }
-    Timer { interval: 5000; running: true; repeat: true; onTriggered: gamingProc.running = true }
+    Timer { interval: 15000; running: true; repeat: true; onTriggered: gamingProc.running = true }
     function toggleEdgeMode() { setEdgeMode(clickMode ? "hover" : "click") }
     function setProfileInfo(name, avatar) { profileName = name; profileAvatar = avatar; saveSettings() }
 
@@ -713,7 +714,7 @@ ShellRoot {
         caffeineCheck.restart()
     }
     Timer { id: caffeineCheck; interval: 2400; onTriggered: caffeineProc.running = true }
-    Timer { interval: 5000; running: true; repeat: true; onTriggered: caffeineProc.running = true }
+    Timer { interval: 15000; running: true; repeat: true; onTriggered: caffeineProc.running = true }
     Process {
         id: caffeineProc
         running: true
@@ -1350,41 +1351,44 @@ ShellRoot {
     // =====================================================================
     //  FULLSCREEN: SUPER+TAB live tree (laptop -> workspaces -> windows)
     // =====================================================================
-    PanelWindow {
-        id: ovWin
+    LazyLoader {
+        active: root.overviewOpen
+        PanelWindow {
+            id: ovWin
 
-        anchors { top: true; bottom: true; left: true; right: true }
-        exclusionMode: ExclusionMode.Ignore
-        visible: root.overviewOpen || tree.opacity > 0.01
-        color: "transparent"
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusionMode: ExclusionMode.Ignore
+            visible: true
+            color: "transparent"
 
-        WlrLayershell.namespace: "island-overview"
-        WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: root.overviewOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            WlrLayershell.namespace: "island-overview"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: root.overviewOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-        Overview {
-            id: tree
-            anchors.fill: parent
-            pal: pal
-            open: root.overviewOpen
-            compactSpecial: root.compactSpecial
-            profileName: root.profileName
-            profileAvatar: root.profileAvatar
-            avatarFile: root.avatarPath
-            starData: root.starData
-            sysmode: root.sysmode
-            profileStars: root.profileStars
+            Overview {
+                id: tree
+                anchors.fill: parent
+                pal: root.palObj
+                open: root.overviewOpen
+                compactSpecial: root.compactSpecial
+                profileName: root.profileName
+                profileAvatar: root.profileAvatar
+                avatarFile: root.avatarPath
+                starData: root.starData
+                sysmode: root.sysmode
+                profileStars: root.profileStars
 
-            onCloseRequested: root.overviewOpen = false
-            onCompactToggled: on => root.setCompactSpecial(on)
-            onProfileSaved: (name, avatar) => root.setProfileInfo(name, avatar)
-            onWorkspaceClicked: n => { root.overviewOpen = false; root.hypr("hl.dsp.focus({ workspace = " + n + " })") }
-            onSpecialClicked: name => { root.overviewOpen = false; root.hypr("hl.dsp.workspace.toggle_special(\"" + name + "\")") }
-            onWindowClicked: w => { root.overviewOpen = false; root.focusWindow(w) }
-            // drag a window node onto a workspace node: move it, keep the tree open so you see it land
-            onWindowMoved: (address, target) => {
-                var ws = target.indexOf("special:") === 0 ? "\"" + target + "\"" : target
-                root.hypr("hl.dsp.window.move({ workspace = " + ws + ", window = \"address:0x" + address + "\" })")
+                onCloseRequested: root.overviewOpen = false
+                onCompactToggled: on => root.setCompactSpecial(on)
+                onProfileSaved: (name, avatar) => root.setProfileInfo(name, avatar)
+                onWorkspaceClicked: n => { root.overviewOpen = false; root.hypr("hl.dsp.focus({ workspace = " + n + " })") }
+                onSpecialClicked: name => { root.overviewOpen = false; root.hypr("hl.dsp.workspace.toggle_special(\"" + name + "\")") }
+                onWindowClicked: w => { root.overviewOpen = false; root.focusWindow(w) }
+                // drag a window node onto a workspace node: move it, keep the tree open so you see it land
+                onWindowMoved: (address, target) => {
+                    var ws = target.indexOf("special:") === 0 ? "\"" + target + "\"" : target
+                    root.hypr("hl.dsp.window.move({ workspace = " + ws + ", window = \"address:0x" + address + "\" })")
+                }
             }
         }
     }

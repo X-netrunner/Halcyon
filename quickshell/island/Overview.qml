@@ -12,7 +12,10 @@ import Quickshell.Hyprland
 Item {
     id: ov
 
-    property var pal
+    property var pal: ({
+        accent: "#eda578", accent2: "#d29da1", surface: "#1e2130", bg: "#14161f",
+        text: "#e9e2dd", muted: "#aca19a", font: "JetBrainsMono Nerd Font", uiFont: "Inter Variable"
+    })
     property bool open: false
     property bool compactSpecial: true
     property string profileName: ""
@@ -353,9 +356,12 @@ Item {
     }
     function plural(n, w) { return n + " " + w + (n === 1 ? "" : "s") }
     function iconFor(cls) {
-        if (!cls) return Quickshell.iconPath("application-x-executable", true)
+        if (!cls) return Quickshell.iconPath("application-x-executable")
         var e = DesktopEntries.heuristicLookup(cls)
-        return Quickshell.iconPath(e && e.icon ? e.icon : cls.toLowerCase(), "application-x-executable")
+        var ic = e && e.icon ? e.icon : cls.toLowerCase()
+        if (!ic) return Quickshell.iconPath("application-x-executable")
+        if (ic.indexOf("/") === 0) return "file://" + ic
+        return Quickshell.iconPath(ic, "application-x-executable")
     }
 
     function collect() {

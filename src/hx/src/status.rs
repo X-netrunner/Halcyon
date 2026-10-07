@@ -50,7 +50,7 @@ pub fn run() {
     // honeypot counters; the log is root-only in some setups, then readable=false and the UI shows dashes
     let logs = util::logs_dir();
     let (mut alerts, mut today, mut readable) = (0u64, 0u64, false);
-    let mut ips: Vec<String> = Vec::new();
+    let mut ips: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut last = String::new();
     if let Ok(raw) = fs::read(format!("{}/recon-attempts.log", logs)) {
         readable = true;
@@ -67,9 +67,7 @@ pub fn run() {
                 .split(|c: char| !(c.is_ascii_digit() || c == '.'))
                 .find(|t| t.split('.').count() == 4 && t.split('.').all(|p| !p.is_empty() && p.len() <= 3))
             {
-                if !ips.iter().any(|i| i == ip) {
-                    ips.push(ip.to_string());
-                }
+                ips.insert(ip.to_string());
             }
             last = line.trim().chars().take(90).collect();
         }

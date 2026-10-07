@@ -19,11 +19,11 @@ Item {
     signal timedOut()       // the countdown ran out: hide the popup only
     signal hideAll()        // right click
 
-    readonly property bool critical: notif.urgency === NotificationUrgency.Critical
+    readonly property bool critical: notif ? notif.urgency === NotificationUrgency.Critical : false
     readonly property int dur: critical ? 0
         : override > 0 ? override * 1000
-        : Math.max(3000, Math.min(15000, notif.expireTimeout > 0 ? notif.expireTimeout * 1000
-                                         : (notif.urgency === NotificationUrgency.Low ? 4000 : 6000)))
+        : Math.max(3000, Math.min(15000, notif && notif.expireTimeout > 0 ? notif.expireTimeout * 1000
+                                         : (notif && notif.urgency === NotificationUrgency.Low ? 4000 : 6000)))
     readonly property color tone: critical ? pal.bad : pal.accent
 
     property real life: 1
@@ -44,7 +44,7 @@ Item {
 
     readonly property var extraActions: {
         var out = []
-        var a = notif.actions
+        var a = (notif && notif.actions) ? notif.actions : []
         for (var i = 0; i < a.length; i++)
             if (a[i].identifier !== "default") out.push(a[i])
         return out
@@ -64,7 +64,7 @@ Item {
         else card.dismissed()
     }
     function runDefault() {
-        var a = notif.actions
+        var a = (notif && notif.actions) ? notif.actions : []
         for (var i = 0; i < a.length; i++)
             if (a[i].identifier === "default") { a[i].invoke(); return }
     }
@@ -156,7 +156,7 @@ Item {
                     Layout.fillWidth: true
                     Text {
                         Layout.fillWidth: true
-                        text: card.notif.appName.toUpperCase()
+                        text: (card.notif && card.notif.appName) ? card.notif.appName.toUpperCase() : ""
                         color: card.pal.muted
                         font.family: card.pal.uiFont
                         font.pixelSize: 10
@@ -173,7 +173,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: card.notif.summary
+                    text: (card.notif && card.notif.summary) ? card.notif.summary : ""
                     color: card.pal.text
                     font.family: card.pal.uiFont
                     font.pixelSize: 14
@@ -184,7 +184,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: card.notif.body.replace(/\n/g, "<br>")
+                    text: (card.notif && card.notif.body) ? card.notif.body.replace(/\n/g, "<br>") : ""
                     textFormat: Text.StyledText
                     color: Qt.alpha(card.pal.text, 0.74)
                     font.family: card.pal.uiFont

@@ -183,7 +183,7 @@ Scope {
     // terminal-style text (quick terminal)
     readonly property string mono: "JetBrainsMono Nerd Font"
     // text everywhere: first of these that is installed (pacman -S inter-font for Inter)
-    readonly property var uiFonts: ["Inter", "Inter Variable", "SF Pro Display", "Noto Sans", "Cantarell", "Roboto", "DejaVu Sans"]
+    readonly property var uiFonts: ["Inter Variable", "Noto Sans", "Cantarell", "Roboto", "DejaVu Sans", "Inter", "SF Pro Display"]
     readonly property string uiFont: {
         var have = Qt.fontFamilies()
         for (var i = 0; i < uiFonts.length; i++)
