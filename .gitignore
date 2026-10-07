@@ -25,3 +25,7 @@ conf_backup/
 Thumbs.db
 *.swp
 *~
+sysmode/attacker-dossier
+sysmode/log-analyst
+sysmode/recon-deceiver
+sysmode/setStaticMac

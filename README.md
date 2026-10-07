@@ -61,8 +61,15 @@ HYPRLAND_CONFIG=~/.config/Halcyon Hyprland
 - Needs Qt >= 6.6 (MultiEffect masks, curve renderer). Text font: first installed of Inter / Noto Sans / ... (`uiFonts` in `island/Pal.qml`; `pacman -S inter-font`)
 - Deps: quickshell cava imagemagick networkmanager bluez-utils power-profiles-daemon brightnessctl wireplumber (wpctl) wl-clipboard playerctl-compatible MPRIS player
 
-## No Python in the island
-Every helper the island used to run through `python3` is now a subcommand of the Rust `hx` binary (`~/.config/Halcyon/bin/hx`): `hx audio | bt | wifi | disk | specs | wsres | palette <img>` (island feeds), `hx status` (sysmode + honeypot status for the quick terminal), `hx dossier [ip]` and `hx ids` (replace `attacker-dossier.py` and `log-analyst.py`; `sysmode` prefers `hx` and falls back to the .py files). `install.sh` also copies `hx` to `/usr/local/bin` for `sysmode`. The one Python piece left is the `recon-deceiver.py` honeypot daemon itself.
+## No Python in the island and sysmode
+Every helper the island and sysmode used to run through `python3` is now written natively in Rust:
+- **`hx`** (`~/.config/Halcyon/bin/hx`): `hx audio | bt | wifi | disk | specs | wsres | palette <img>` (island feeds), `hx status` (sysmode + honeypot status for the quick terminal), `hx dossier [ip]` and `hx ids`.
+- **`recon-deceiver`** (`~/.config/Halcyon/bin/recon-deceiver`): High-performance multi-port honeypot daemon (replaces `recon-deceiver.py`).
+- **`log-analyst`** (`~/.config/Halcyon/bin/log-analyst`): Real-time IDS signature log analyst daemon (replaces `log-analyst.py`).
+- **`attacker-dossier`** (`~/.config/Halcyon/bin/attacker-dossier`): Attacker log summarizer and intelligence dossier (replaces `attacker-dossier.py`).
+- **`setStaticMac`** (`~/.config/Halcyon/bin/setStaticMac`): Static MAC address manager for iwd and NetworkManager (replaces `setStaticMac.py`).
+- **`power-manager`** and **`touchpad-gestures`**: Native Rust desktop background services.
+All former `.py` scripts have been replaced by native Rust binaries, with legacy scripts archived to `.bak`.
 
 ## Touchpad edge gestures not working?
 `journalctl --user -u touchpad-gestures -e` says why. Usual causes: not in the `input` group (`sudo usermod -aG input $USER`, then log in again), an old binary still installed (re-run `./install.sh`; an old build called `qs -c caelestia ... brightness`, which does nothing without caelestia), or `brightnessctl` / `playerctl` / `wpctl` missing. Left edge up/down = next/previous track (SUPER+ALT+G disables it), right edge up/down = volume, top edge right/left = brightness.

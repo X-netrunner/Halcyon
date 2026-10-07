@@ -13,6 +13,7 @@ import "Binds.js" as Binds
 Scope {
     id: root
     property var pal
+    property bool stars: true             // constellations in this box (Settings > Constellations)
     property string sysmode: ""
     property var starData: null
     property bool profileStars: true
@@ -221,7 +222,7 @@ Scope {
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
 
-                Backdrop { anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
+                Backdrop { visible: root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
 
                 // ---------------- header: title, search, close
                 RowLayout {

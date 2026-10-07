@@ -16,8 +16,9 @@ ShellRoot {
     // Auto power mode = the power-manager daemon (custom/power-manager, user service power-manager.service).
     // Its thresholds (load, battery, heat, idle) live in custom/power-manager/src/main.rs.
     readonly property string powerService: "power-manager.service"
-    // Settings > Bar > Padding: low | normal | high  ->  bar height, gap to the screen edge, side padding
-    readonly property var padSet: ({ low: { h: 34, top: 8, x: 36 }, normal: { h: 44, top: 16, x: 56 }, high: { h: 54, top: 22, x: 76 } })[barPadding] || ({ h: 44, top: 16, x: 56 })
+    // Settings > Bar > Padding: low | normal | high  ->  bar height, side padding, and the space ABOVE the bar (to the screen edge)
+    // = the space BELOW it (to the windows): the same number, so the bar sits evenly. "low" is almost touching both.
+    readonly property var padSet: ({ low: { h: 32, top: 3, gap: 3, x: 28 }, normal: { h: 44, top: 12, gap: 12, x: 56 }, high: { h: 54, top: 20, gap: 20, x: 76 } })[barPadding] || ({ h: 44, top: 12, gap: 12, x: 56 })
     property int notifMax: 5                 // popups on screen at once (Settings > Notifications); a new one past this hides the oldest popup (it stays in the centre)
     // notifications kept in the notification centre (Settings > Notifications, remembered); a new one past this replaces the oldest
     property int notifHistoryMax: 30
@@ -47,7 +48,10 @@ ShellRoot {
         notifIcon: "pfp",          // pfp | app : the picture of a notification is your profile picture (app icon as a badge), or the app's icon
         wsSwipe4: "left",          // left | right : which 4-finger swipe goes to the NEXT workspace (scripts/ws-nav.sh)
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
-        nightTemp: 4000            // night light colour temperature (K)
+        nightTemp: 4000,           // night light colour temperature (K)
+        settingsGlass: 0.72,       // how opaque the Settings window is (lower = more see-through)
+        stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
+        starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true
     })
     // Hyprland values you changed in Settings: only these are pushed (the Lua config rules for everything else).
     // hyCur = what Hyprland has right now (read at start by scripts/hypr-values.sh, then your changes) = where the sliders start.
@@ -263,7 +267,6 @@ ShellRoot {
         cycleSecs: root.opt.cycleSecs
         termDrift: root.opt.termDrift
         cyclePaused: root.gaming
-        onAccentChanged: hyprKick.restart()
     }
 
     // rice settings window (gear in the utilities panel, >settings, SUPER+F11) and the power menu (power button)
@@ -330,6 +333,7 @@ ShellRoot {
     Cheatsheet {
         id: cheat
         pal: pal
+        stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
@@ -394,6 +398,7 @@ ShellRoot {
     Lock {
         id: lockScreen
         pal: pal
+        stars: root.opt.stars !== false && root.opt.starsLock !== false
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
@@ -411,6 +416,7 @@ ShellRoot {
     PowerMenu {
         id: powerMenu
         pal: pal
+        stars: root.opt.stars !== false && root.opt.starsPower !== false
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
@@ -421,6 +427,7 @@ ShellRoot {
     Notifs {
         id: notifs
         pal: pal
+        stars: root.opt.stars !== false && root.opt.starsNotifs !== false
         maxToasts: root.notifMax
         maxHistory: root.notifHistoryMax
         toastSecs: root.opt.toastSecs
@@ -439,6 +446,7 @@ ShellRoot {
     QuickTerm {
         id: quickTerm
         pal: pal
+        stars: root.opt.stars !== false && root.opt.starsTerm !== false
         sysmode: root.sysmode
         clickMode: root.clickMode
         autoHide: root.autoHide
@@ -1100,7 +1108,6 @@ ShellRoot {
         function routing(): void { root.runCommand("routing") }
         function lock(): void { lockScreen.lock() }
         function reload(): void { fullReloadProc.running = true }
-        function reloadPalette(): void { pal.reloadFromFile() }
     }
 
     // =====================================================================
@@ -1112,7 +1119,9 @@ ShellRoot {
         anchors { top: true; left: true; right: true }
         implicitHeight: 620
         // auto-hide frees the strip the bar reserves; otherwise windows start below the bar
-        exclusiveZone: root.autoHide ? 0 : root.padSet.top + root.padSet.h + 2
+        // Hyprland starts windows at (this zone + the outer gap), so the outer gap is taken off to get exactly padSet.gap between bar and windows
+        // (it can not go lower than the outer gap itself: Settings > Look > Gaps)
+        exclusiveZone: root.autoHide ? 0 : Math.max(0, root.padSet.top + root.padSet.h + root.padSet.gap - root.gaps * 2)
         color: "transparent"
 
         WlrLayershell.namespace: "island"

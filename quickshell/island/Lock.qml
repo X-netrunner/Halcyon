@@ -16,6 +16,7 @@ import Quickshell.Services.Pam
 Scope {
     id: root
     property var pal
+    property bool stars: true             // constellations in this box (Settings > Constellations)
     property string sysmode: ""
     property var starData: null
     property bool profileStars: true
@@ -79,6 +80,7 @@ Scope {
 
             // ---- constellation + drifting dots (same quiet look as everything else)
             Backdrop {
+                visible: root.stars
                 anchors.fill: parent
                 pal: root.pal
                 mode: root.sysmode
