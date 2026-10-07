@@ -440,11 +440,13 @@ install_pkgs() {
             local flags=(-S --needed --noconfirm)
             [[ "$AUR_HELPER" == "yay"  ]] && flags+=(--answerclean None --answerdiff None --answeredit None --answerupgrade None)
             [[ "$AUR_HELPER" == "paru" ]] && flags+=(--skipreview)
-            if ! run_as_user_cmd "Installing from the AUR: ${aur_pkgs[*]}" "$AUR_HELPER" "${flags[@]}" "${aur_pkgs[@]}"; then
-                for p in "${aur_pkgs[@]}"; do
-                    run_as_user_cmd "Installing $p (AUR)" "$AUR_HELPER" "${flags[@]}" "$p" || FAILED_PKGS+=("$p")
-                done
-            fi
+            for p in "${aur_pkgs[@]}"; do
+                local p_flags=("${flags[@]}")
+                if [[ "$p" == "acct" ]]; then
+                    p_flags+=(--mflags "CFLAGS=-Wno-error=incompatible-pointer-types")
+                fi
+                run_as_user_cmd "Installing $p (AUR)" "$AUR_HELPER" "${p_flags[@]}" "$p" || FAILED_PKGS+=("$p")
+            done
         else FAILED_PKGS+=("${aur_pkgs[@]}"); fi
     fi
 

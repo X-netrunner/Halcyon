@@ -10,7 +10,6 @@ target/
 # Python bytecode & cache
 __pycache__/
 *.py[cod]
-*$py.class
 
 # Local backups & runtime state
 conf_backup/
@@ -20,12 +19,8 @@ conf_backup/
 *.orig
 *.before-halcyon*
 
-# System & editor metadata
+# Editor & OS files
 .DS_Store
 Thumbs.db
 *.swp
 *~
-sysmode/attacker-dossier
-sysmode/log-analyst
-sysmode/recon-deceiver
-sysmode/setStaticMac
