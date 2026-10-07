@@ -22,6 +22,7 @@ import Quickshell.Wayland
 Scope {
     id: root
     property var pal
+    property bool stars: true             // constellations in this box (Settings > Constellations)
     property string sysmode: ""
     property var starData: null
     property bool profileStars: true
@@ -299,6 +300,7 @@ Scope {
 
             // same quiet look as the tree: drifting dots, and the shield / dragon for lockdown / stealth
             Backdrop {
+                visible: root.stars
                 anchors.fill: parent
                 anchors.margins: 14
                 pal: root.pal

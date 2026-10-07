@@ -23,6 +23,7 @@ import Quickshell.Services.Notifications
 Scope {
     id: root
     property var pal
+    property bool stars: true             // constellations in this box (Settings > Constellations)
     property int maxToasts: 5
     property int maxHistory: 30
     property int toastSecs: 0               // Settings > Notifications > "How long a popup stays": 0 = what the app asks for (else this many seconds)
@@ -278,6 +279,7 @@ Scope {
 
             // tree-style backdrop: drifting dots + flagship-mode art
             Backdrop {
+                visible: root.stars
                 anchors.fill: parent
                 anchors.margins: 14
                 pal: root.pal

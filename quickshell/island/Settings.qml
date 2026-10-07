@@ -145,6 +145,7 @@ Scope {
     readonly property var groups: [
         { id: "look", title: "Look", items: [
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
+            { type: "slider", key: "opt:settingsGlass", def: 0.72, label: "Settings window opacity", desc: "Lower = more see-through: the blurred wallpaper and windows show through the Settings window.", min: 0.35, max: 1, step: 0.01, scale: 100, unit: " %", glyph: 0xF0335 },
             { type: "slider", key: "glassShift", label: "Transparency", desc: "Of the island, panels and overlays", min: -0.15, max: 0.05, step: 0.01, scale: 100, signed: true, glyph: 0xF0335 },
             { type: "slider", key: "colorBoost", label: "Colour intensity", desc: "How strongly the wallpaper's colour shows in the accent. 100 % is natural.", min: 0.5, max: 1.5, step: 0.05, scale: 100, unit: " %", glyph: 0xF03D8 },
             { type: "custom", name: "swatches" },
@@ -238,7 +239,16 @@ Scope {
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] }
         ] },
         { id: "apps", title: "Default apps", items: [ { type: "custom", name: "apps" } ] },
-        { id: "growth", title: "Constellations", items: [ { type: "custom", name: "growth" } ] },
+        { id: "growth", title: "Constellations", items: [
+            { type: "toggle", key: "opt:stars", label: "Constellations in the boxes", desc: "The drifting dots and lines behind the Settings, notification centre, cheat sheet, power menu, lock screen and console. Off = none anywhere, whatever the switches below say." },
+            { type: "toggle", key: "opt:starsSettings", label: "Settings" },
+            { type: "toggle", key: "opt:starsNotifs", label: "Notification centre" },
+            { type: "toggle", key: "opt:starsCheatsheet", label: "Cheat sheet (keys)" },
+            { type: "toggle", key: "opt:starsPower", label: "Power menu" },
+            { type: "toggle", key: "opt:starsLock", label: "Lock screen" },
+            { type: "toggle", key: "opt:starsTerm", label: "Console (quick terminal)" },
+            { type: "custom", name: "growth" }
+        ] },
         { id: "rice", title: "Rice", items: [
             { type: "action", id: "config", label: "Config files", btn: "Edit config", close: true },
             { type: "action", id: "cheatsheet", label: "Shortcuts", btn: "Open the shortcut tree", close: true },
@@ -248,7 +258,6 @@ Scope {
 
     // ---- reading and formatting values
     function get(key) {
-        if (!key || typeof key !== "string") return undefined
         if (key.indexOf("opt:") === 0) return opt[key.substring(4)]
         if (key.indexOf("hy:") === 0) return hyCur[key.substring(3)]
         return root[key]
@@ -300,7 +309,7 @@ Scope {
         return out
     }
     readonly property int shownCount: { var n = 0; for (var g = 0; g < groupsNow.length; g++) n += groupsNow[g].items.length; return n }
-    readonly property int colCount: card.width >= 940 ? 2 : 1
+    readonly property int colCount: card.width >= 1080 ? 2 : 1
     function weight(grp) {
         var w = 2
         if (query === "" && collapsed[grp.id]) return w
@@ -335,9 +344,9 @@ Scope {
         id: cSwatches
         ColumnLayout {
             width: parent ? parent.width : 0
-            spacing: 6
+            spacing: 10
             Row {
-                spacing: 8
+                spacing: 12
                 Repeater {
                     model: [ root.pal.accent, root.pal.accent2, root.pal.surfaceHi, root.pal.surface, root.pal.bg ]
                     delegate: Rectangle { required property var modelData; width: 34; height: 18; radius: 9; color: modelData; border.width: 1; border.color: root.pal.line }
@@ -345,7 +354,7 @@ Scope {
             }
             Text { text: "Now in use: accent, second accent, surfaces"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
             Row {
-                spacing: 6
+                spacing: 10
                 Repeater {
                     model: root.pal.ring
                     delegate: Rectangle {
@@ -367,10 +376,10 @@ Scope {
         id: cWallpaper
         ColumnLayout {
             width: parent ? parent.width : 0
-            spacing: 8
+            spacing: 12
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                spacing: 14
                 Text { text: String.fromCodePoint(0xF024B); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 16 }
                 Text {
                     Layout.fillWidth: true
@@ -382,7 +391,7 @@ Scope {
             }
             Flow {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: 12
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0976); label: "Next wallpaper"; onClicked: root.action("wallpaper") }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0770); label: "Open folder"; onClicked: root.wpAct("open") }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0415); label: "Add wallpapers…"; onClicked: root.wpAct("add") }
@@ -400,7 +409,7 @@ Scope {
                 flickableDirection: Flickable.HorizontalFlick
                 Row {
                     id: thumbRow
-                    spacing: 10
+                    spacing: 14
                     Repeater {
                         model: root.wp.files || []
                         delegate: Rectangle {
@@ -443,7 +452,7 @@ Scope {
         id: cApps
         ColumnLayout {
             width: parent ? parent.width : 0
-            spacing: 10
+            spacing: 14
             Repeater {
                 model: [ { kind: "terminal", title: "Terminal" }, { kind: "browser", title: "Browser" }, { kind: "files", title: "File manager" },
                          { kind: "editor", title: "Code editor  (also used by Edit config)" }, { kind: "music", title: "Music player  (opens on the music workspace)" },
@@ -452,11 +461,11 @@ Scope {
                     id: appRow
                     required property var modelData
                     Layout.fillWidth: true
-                    spacing: 6
+                    spacing: 10
                     Text { text: appRow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                     Flow {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: 12
                         Repeater {
                             model: root.apps[appRow.modelData.kind] || []
                             delegate: SChip {
@@ -487,7 +496,7 @@ Scope {
         id: cGrowth
         ColumnLayout {
             width: parent ? parent.width : 0
-            spacing: 8
+            spacing: 12
             Text {
                 Layout.fillWidth: true
                 text: "They grow the longer the island runs: the dragon unfolds two wings, the shield gains a second rim, a crest and a crown, and the profile picture gets more and more stars until it looks like the picture. Fully grown after 72 hours of use."
@@ -507,7 +516,7 @@ Scope {
             }
             Flow {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: 12
                 SChip { pal: root.pal; label: root.growthOn ? "Growing: on" : "Growing: off"; on: root.growthOn; onClicked: root.setting("growthOn", !root.growthOn) }
                 ActionChip { pal: root.pal; label: "Start over"; doneLabel: "Reset"; onClicked: root.setting("growthReset", true) }
                 ActionChip { pal: root.pal; label: "Fully grown"; doneLabel: "Grown"; onClicked: root.setting("growthMin", root.growthFullMin) }
@@ -534,29 +543,29 @@ Scope {
             focus: root.open
             Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true } }
 
-            Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.55) }
+            Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.40) }
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
 
             Glass {
                 id: card
                 pal: root.pal
                 anchors.centerIn: parent
-                width: Math.min(parent.width - 80, 1180)
+                width: Math.min(parent.width - 100, 1320)
                 height: parent.height - 80
                 radius: root.pal.rXl
-                opacityBody: root.pal.glassSolid - 0.02
+                opacityBody: root.opt.settingsGlass !== undefined ? root.opt.settingsGlass : 0.72
                 border.color: Qt.alpha(root.pal.accent, 0.35)
                 scale: root.open ? 1 : 0.96
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
 
-                Backdrop { anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
+                Backdrop { visible: root.opt.stars !== false && root.opt.starsSettings !== false; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
 
                 // ---------------- header: title, search, collapse, close
                 RowLayout {
                     id: head
-                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 26 }
-                    spacing: 14
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 36 }
+                    spacing: 16
                     Text { text: String.fromCodePoint(0xF0493); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
                     Text { text: "Settings"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
                     Rectangle {
@@ -595,7 +604,7 @@ Scope {
                 // ---------------- the tree
                 Flickable {
                     id: scroll
-                    anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 26; topMargin: 18 }
+                    anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 36; topMargin: 26 }
                     contentWidth: width
                     contentHeight: tree.height + 12
                     clip: true
@@ -604,12 +613,12 @@ Scope {
                     Item {
                         id: tree
                         width: scroll.width
-                        readonly property real gap: 30
+                        readonly property real gap: 64
                         readonly property real colW: (width - (root.colCount - 1) * gap) / root.colCount
                         readonly property real barY: 72
                         readonly property real colsY: 98
                         property real colsH: 0
-                        height: colsY + colsH + 8
+                        height: colsY + colsH + 24
 
                         function measure() {
                             var h = 0
@@ -695,7 +704,7 @@ Scope {
                                         readonly property bool lastGroup: grp.index === col.modelData.length - 1
                                         readonly property bool shut: root.query === "" && !!root.collapsed[grp.modelData.id]
                                         width: col.width
-                                        height: grpHead.height + leavesBox.height + 16
+                                        height: grpHead.height + leavesBox.height + 36
 
                                         // the column's trunk
                                         Rectangle {
@@ -708,7 +717,7 @@ Scope {
                                         Item {
                                             id: grpHead
                                             width: parent.width
-                                            height: 34
+                                            height: 48
                                             Rectangle {
                                                 x: 3; anchors.verticalCenter: parent.verticalCenter
                                                 width: 15; height: 15; radius: 7.5
@@ -722,9 +731,9 @@ Scope {
                                                 text: grp.modelData.title.toUpperCase()
                                                 color: root.pal.accent
                                                 font.family: root.pal.uiFont
-                                                font.pixelSize: 11
+                                                font.pixelSize: 12
                                                 font.weight: Font.DemiBold
-                                                font.letterSpacing: 1.4
+                                                font.letterSpacing: 1.6
                                             }
                                             Text {
                                                 anchors.right: parent.right; anchors.rightMargin: 8
@@ -763,16 +772,16 @@ Scope {
                                                         readonly property bool lastLeaf: leaf.index === grp.modelData.items.length - 1
                                                         readonly property bool inline: m.type === "toggle" || m.type === "tool" || m.type === "action"
                                                         width: leaves.width
-                                                        height: Math.max(34, content.implicitHeight + 14)
+                                                        height: Math.max(56, content.implicitHeight + 32)
 
                                                         // sub-trunk + elbow
-                                                        Rectangle { x: 34; y: 0; width: 1; height: leaf.lastLeaf ? 17 : leaf.height; color: Qt.alpha(root.pal.accent, 0.28) }
-                                                        Rectangle { x: 34; y: 17; width: 16; height: 1; color: Qt.alpha(root.pal.accent, 0.28) }
-                                                        Rectangle { x: 50; y: 17 - 3; width: 6; height: 6; radius: 3; color: Qt.alpha(root.pal.accent, 0.6) }
+                                                        Rectangle { x: 34; y: 0; width: 1; height: leaf.lastLeaf ? 28 : leaf.height; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                        Rectangle { x: 34; y: 28; width: 16; height: 1; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                        Rectangle { x: 50; y: 28 - 3; width: 6; height: 6; radius: 3; color: Qt.alpha(root.pal.accent, 0.6) }
 
                                                         Rectangle {
-                                                            anchors { fill: content; margins: -6; rightMargin: -4 }
-                                                            radius: 10
+                                                            anchors { fill: content; margins: -10; rightMargin: -8 }
+                                                            radius: 12
                                                             color: leafMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.45) : "transparent"
                                                             Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                                         }
@@ -780,18 +789,18 @@ Scope {
 
                                                         ColumnLayout {
                                                             id: content
-                                                            x: 66; y: 7
-                                                            width: leaf.width - 66 - 6
-                                                            spacing: 8
+                                                            x: 70; y: 16
+                                                            width: leaf.width - 70 - 10
+                                                            spacing: 14
 
                                                             // label (+ description) and the inline control
                                                             RowLayout {
                                                                 Layout.fillWidth: true
-                                                                spacing: 12
+                                                                spacing: 20
                                                                 visible: leaf.m.type !== "custom"
                                                                 ColumnLayout {
                                                                     Layout.fillWidth: true
-                                                                    spacing: 2
+                                                                    spacing: 5
                                                                     Text {
                                                                         Layout.fillWidth: true
                                                                         text: leaf.m.label || ""
@@ -808,7 +817,8 @@ Scope {
                                                                             : (leaf.m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (leaf.m.desc || ""))
                                                                         color: root.pal.muted
                                                                         font.family: root.pal.uiFont
-                                                                        font.pixelSize: 10
+                                                                        font.pixelSize: 11
+                                                                        lineHeight: 1.3
                                                                         wrapMode: Text.WordWrap
                                                                     }
                                                                 }
@@ -834,7 +844,7 @@ Scope {
                                                             Flow {
                                                                 Layout.fillWidth: true
                                                                 visible: leaf.m.type === "seg"
-                                                                spacing: 8
+                                                                spacing: 10
                                                                 Repeater {
                                                                     model: leaf.m.type === "seg" ? leaf.m.opts : []
                                                                     delegate: SChip {

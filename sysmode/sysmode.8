@@ -29,7 +29,7 @@ Virtual counter-recon decoy lab profile.
 - Randomizes the hostname to a decoy (e.g. ubuntu-web-srv-XXXX, netgear-gw-01) and binds a transient machine-id
 - Randomizes Ethernet and WiFi MAC addresses to Dell OUIs
 - Optionally broadcasts a decoy SSID on idle WiFi interfaces (--hotspot)
-- Starts the low-interaction honeypot (recon-deceiver.py) and a lightweight IDS (log-analyst.py)
+- Starts the low-interaction honeypot (recon-deceiver) and a lightweight IDS (log-analyst)
 - Masquerades the TCP fingerprint (TTL 64, timestamps on) and ignores ICMP echo
 - Disables IPv6, isolates firewall subnets, and unlocks tun+/wg+ for reverse shells
 - Mounts a transient RAM-backed workspace at ~/Workspace/Stealth

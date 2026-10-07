@@ -289,7 +289,7 @@ fi
 
 if [[ "$REMOVE_LOGIN" != "true" ]]; then
     [[ -f "$RICE_SOURCE/hyprland.lua" ]] || die "The Halcyon files were not found next to this script (${RICE_SOURCE}). Run install.sh from inside the Halcyon folder."
-    for d in power-manager touchpad-gestures hx; do
+    for d in power-manager touchpad-gestures hx recon-deceiver log-analyst attacker-dossier setStaticMac; do
         [[ -f "$RICE_SOURCE/src/$d/Cargo.toml" ]] || die "Missing Rust crate: ${RICE_SOURCE}/src/$d"
     done
     log_info "Halcyon files: ${RICE_SOURCE}"
@@ -741,7 +741,7 @@ else
         install_pkgs rust                           # the plain package: nothing is removed, nothing conflicts with rustup
     fi
     rust_ok && log_success "Rust: $(run_as_user rustc --version)" \
-            || warn_later "No working Rust toolchain: the helpers (hx, power-manager, touchpad-gestures) cannot be built (sudo pacman -S rust)."
+            || warn_later "No working Rust toolchain: the helpers (hx, power-manager, touchpad-gestures, recon-deceiver, log-analyst, attacker-dossier, setStaticMac) cannot be built (sudo pacman -S rust)."
 fi
 
 # ---------------------------------------------------------------------------------------------- step 7
@@ -786,7 +786,7 @@ fi
 try run_as_user_cmd "Making the scripts executable" bash -c '
     cd "$1" || exit 0
     for f in install.sh update.sh scripts/*.sh scripts/halcyon-tune launch/*.sh quickshell/island/scripts/*.sh \
-             quickshell/scripts/*.sh waybar/*.sh sysmode/sysmode sysmode/*.py; do
+             quickshell/scripts/*.sh waybar/*.sh sysmode/sysmode sysmode/*.py sysmode/*.py.bak; do
         [ -f "$f" ] && chmod +x "$f"
     done
     exit 0' _ "$TARGET_RICE"
@@ -806,15 +806,21 @@ if [[ "$DRY_RUN" != "true" ]]; then
 fi
 if [[ "$DRY_RUN" != "true" ]] && ! rust_ok; then
     warn_later "No Rust toolchain: skipped building the helpers. Install it (sudo pacman -S rust), then run install.sh again."
-    BUILD_FAILED=(hx power-manager touchpad-gestures)
+    BUILD_FAILED=(hx power-manager touchpad-gestures recon-deceiver log-analyst attacker-dossier setStaticMac)
 else
-    for crate in hx power-manager touchpad-gestures; do
+    for crate in hx power-manager touchpad-gestures recon-deceiver log-analyst attacker-dossier setStaticMac; do
         MANIFEST="$TARGET_RICE/src/$crate/Cargo.toml"; [[ -f "$MANIFEST" ]] || MANIFEST="$RICE_SOURCE/src/$crate/Cargo.toml"
         log_info "Building ${BOLD}${crate}${RESET} (the first time takes a few minutes)..."
         if run_as_user_cmd "cargo build --release: $crate" env "CARGO_TARGET_DIR=$BUILD_ROOT/$crate" cargo build --release --manifest-path "$MANIFEST" \
            && { [[ "$DRY_RUN" == "true" ]] || [[ -f "$BUILD_ROOT/$crate/release/$crate" ]]; } \
            && run_as_user_cmd "Installing $crate" bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$BUILD_ROOT/$crate/release/$crate" "$BIN_DIR/$crate"; then
             [[ "$DRY_RUN" == "true" ]] || log_success "Installed ${BIN_DIR}/${crate}"
+            # Keep sysmode symlinks in sync
+            case "$crate" in
+                recon-deceiver|log-analyst|attacker-dossier|setStaticMac)
+                    [[ -d "$TARGET_RICE/sysmode" ]] && ln -sf "$BIN_DIR/$crate" "$TARGET_RICE/sysmode/$crate" 2>/dev/null || true
+                    ;;
+            esac
         else
             BUILD_FAILED+=("$crate")
             warn_later "$crate did not build. Retry: cargo build --release --manifest-path $TARGET_RICE/src/$crate/Cargo.toml"
@@ -1005,13 +1011,19 @@ if [[ "$SYSMODE" == "true" ]]; then
         printf 'SYS_HOME=%q\n' "$TARGET_HOME"
         echo "SCRIPTS_DIR=/usr/local/lib/halcyon/sysmode"
     } | write_root_file /etc/sysmode.conf 644 || warn_later "Could not write /etc/sysmode.conf"
-    for f in "$TARGET_RICE"/sysmode/*.py; do
+    for f in "$TARGET_RICE"/sysmode/*.py "$TARGET_RICE"/sysmode/*.py.bak; do
         [[ -f "$f" ]] || continue
         try run_cmd "Installing $(basename "$f") (root-owned)" as_root install -Dm755 -o root -g root "$f" "/usr/local/lib/halcyon/sysmode/$(basename "$f")"
     done
+    for bin_helper in recon-deceiver log-analyst attacker-dossier setStaticMac; do
+        if [[ -x "$BIN_DIR/$bin_helper" || "$DRY_RUN" == "true" ]]; then
+            try run_cmd "Installing $bin_helper to /usr/local/bin" as_root install -Dm755 "$BIN_DIR/$bin_helper" "/usr/local/bin/$bin_helper"
+            try run_cmd "Installing $bin_helper (root-owned) to /usr/local/lib/halcyon/sysmode" as_root install -Dm755 -o root -g root "$BIN_DIR/$bin_helper" "/usr/local/lib/halcyon/sysmode/$bin_helper"
+        fi
+    done
     run_cmd "Installing the sysmode command" as_root install -Dm755 "$TARGET_RICE/sysmode/sysmode" /usr/local/bin/sysmode || die "Could not install /usr/local/bin/sysmode"
     if [[ -x "$BIN_DIR/hx" || "$DRY_RUN" == "true" ]]; then try run_cmd "Installing hx to /usr/local/bin" as_root install -Dm755 "$BIN_DIR/hx" /usr/local/bin/hx
-    else warn_later "hx was not built: sysmode falls back to its Python helper scripts."; fi
+    else warn_later "hx was not built: sysmode falls back to its standalone helper tools."; fi
     try run_cmd "Installing the sysmode manual" as_root install -Dm644 "$TARGET_RICE/sysmode/sysmode.8" /usr/local/share/man/man8/sysmode.8
     try run_cmd "Installing the sysmode bash completion" as_root install -Dm644 "$TARGET_RICE/sysmode/sysmode.bash-completion" /usr/share/bash-completion/completions/sysmode
     if have_systemd || [[ "$DRY_RUN" == "true" ]]; then
@@ -1145,6 +1157,10 @@ check_cmd start-shell.sh "$TARGET_RICE/scripts/start-shell.sh" critical
 check_cmd hx "$BIN_DIR/hx" critical
 check_cmd power-manager "$BIN_DIR/power-manager" critical
 check_cmd touchpad-gestures "$BIN_DIR/touchpad-gestures" critical
+check_cmd recon-deceiver "$BIN_DIR/recon-deceiver" critical
+check_cmd log-analyst "$BIN_DIR/log-analyst" critical
+check_cmd attacker-dossier "$BIN_DIR/attacker-dossier" critical
+check_cmd setStaticMac "$BIN_DIR/setStaticMac" critical
 if [[ "$INSTALL_APPS" == "true" && "$PACKAGES" == "true" ]]; then
     check_cmd thunar thunar
     command -v spotify >/dev/null 2>&1 && check_cmd spotify spotify || check_cmd spotify-launcher spotify-launcher
