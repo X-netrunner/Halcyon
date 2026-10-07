@@ -281,6 +281,7 @@ Scope {
 
     // ---- search + collapsing
     property string query: ""
+    property bool scrolling: false          // true while the list is moving: the starfield / pulses pause so scrolling gets the whole frame
     property var collapsed: ({ apps: true, growth: true })
     function toggleGroup(id) {
         var c = {}
@@ -564,7 +565,7 @@ Scope {
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
 
-                Backdrop { visible: root.open && root.opt.stars !== false && root.opt.starsSettings !== false; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
+                Backdrop { visible: root.open && root.opt.stars !== false && root.opt.starsSettings !== false; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85; paused: root.scrolling }
 
                 // ---------------- header: title, search, collapse, close
                 RowLayout {
@@ -614,6 +615,35 @@ Scope {
                     contentHeight: tree.height + 12
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    pixelAligned: true                 // whole-pixel positions: text does not shimmer while it moves
+                    flickDeceleration: 2800
+                    maximumFlickVelocity: 3200
+                    readonly property real maxY: Math.max(0, contentHeight - height)
+
+                    // "scrolling" = contentY moved in the last ~200 ms: the sky and the pulses stand still meanwhile
+                    onContentYChanged: { root.scrolling = true; settleT.restart() }
+                    onMovementStarted: wheelAnim.stop()
+                    Timer { id: settleT; interval: 200; onTriggered: root.scrolling = false }
+
+                    // mouse wheel: glide to the target instead of jumping a notch at a time
+                    NumberAnimation { id: wheelAnim; target: scroll; property: "contentY"; duration: 230; easing.type: Easing.OutCubic }
+                    WheelHandler {
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: event => {
+                            var pd = event.pixelDelta.y
+                            if (pd !== 0) {                    // touchpad: already smooth, follow the fingers 1:1
+                                wheelAnim.stop()
+                                scroll.contentY = Math.max(0, Math.min(scroll.maxY, scroll.contentY - pd))
+                            } else {                           // wheel notch (120 units): ~90 px, chained notches add up
+                                var base = wheelAnim.running ? wheelAnim.to : scroll.contentY
+                                var to = Math.max(0, Math.min(scroll.maxY, base - event.angleDelta.y / 120 * 90))
+                                wheelAnim.stop()
+                                wheelAnim.to = to
+                                wheelAnim.start()
+                            }
+                            event.accepted = true
+                        }
+                    }
 
                     Item {
                         id: tree
@@ -636,7 +666,7 @@ Scope {
 
                         // pulses that run down the branches
                         property real tt: 0
-                        NumberAnimation on tt { from: 0; to: 1; duration: 3600; loops: Animation.Infinite; running: root.open && root.pal.motion > 0.3 }
+                        NumberAnimation on tt { from: 0; to: 1; duration: 3600; loops: Animation.Infinite; running: root.open && root.pal.motion > 0.3 && !root.scrolling }
 
                         // ---- root node
                         Rectangle {
@@ -757,7 +787,7 @@ Scope {
                                             y: grpHead.height
                                             width: parent.width
                                             height: grp.shut ? 0 : leaves.height
-                                            clip: true
+                                            clip: height !== leaves.height      // only while folding; a clip node per group splits batching
                                             opacity: grp.shut ? 0 : 1
                                             Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                                             Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }

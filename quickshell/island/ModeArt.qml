@@ -21,6 +21,7 @@ Item {
     property real tilt: 0
     property real energy: 0             // 0..1: brief flare (set by the owner, it decays back by itself)
     property bool alive: true           // set false to freeze (still art)
+    property bool paused: false         // true: clocks stand still (e.g. while a list scrolls) but nothing is torn down
 
     readonly property var art: mode === "lockdown" ? Stars.shield : (mode === "stealth" ? Stars.dragon : (mode === "avatar" ? custom : null))
     visible: art !== null && art !== undefined && strength > 0
@@ -81,9 +82,9 @@ Item {
 
     // shared clocks: ph = slow twinkle / breathing (7 s), cyc = travelling lights (6 s). Integer multiples keep them seamless.
     property real ph: 0
-    NumberAnimation on ph { from: 0; to: 6.2832; duration: 7000; loops: Animation.Infinite; running: root.live }
+    NumberAnimation on ph { from: 0; to: 6.2832; duration: 7000; loops: Animation.Infinite; running: root.live && !root.paused }
     property real cyc: 0
-    NumberAnimation on cyc { from: 0; to: 1; duration: 6000; loops: Animation.Infinite; running: root.live }
+    NumberAnimation on cyc { from: 0; to: 1; duration: 6000; loops: Animation.Infinite; running: root.live && !root.paused }
 
     // pointer parallax: -0.5 .. 0.5 across the art, eased
     HoverHandler { id: hh; enabled: root.live }
@@ -255,7 +256,7 @@ Item {
     Timer {
         id: shootT
         interval: 6000
-        running: root.live
+        running: root.live && !root.paused
         repeat: true
         onTriggered: { interval = 8000 + Math.random() * 10000; shooter.go() }
     }

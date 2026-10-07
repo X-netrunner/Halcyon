@@ -14,12 +14,13 @@ Item {
     // secure / cyber (and any non-flagship mode): the user's profile picture as a constellation (`hx stars`, owned by shell.qml)
     property var avatarStars: null
     property bool profileStars: true
+    property bool paused: false        // freeze the animation clocks (e.g. while the page above scrolls); nothing is torn down
     readonly property bool flagship: mode === "lockdown" || mode === "stealth"
     clip: true
 
     readonly property bool live: visible && opacity > 0.01 && (pal ? pal.motion > 0.3 : true)
     property real tt: 0
-    NumberAnimation on tt { from: 0; to: 1000000; duration: 1000000000; loops: Animation.Infinite; running: root.live }
+    NumberAnimation on tt { from: 0; to: 1000000; duration: 1000000000; loops: Animation.Infinite; running: root.live && !root.paused }
 
     ModeArt {
         anchors.fill: parent
@@ -32,6 +33,7 @@ Item {
         fit: root.artFit
         energy: root.energy
         alive: root.live
+        paused: root.paused
     }
 
     Repeater {
