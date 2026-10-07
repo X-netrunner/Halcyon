@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
+# Lightweight Signature-Matching IDS Daemon
+# Re-written in Rust for speed & lightweight execution.
 import os
+import sys
+
+_DIR = os.path.dirname(os.path.abspath(__file__))
+_CANDIDATES = [
+    os.path.join(_DIR, "log-analyst"),
+    os.path.expanduser("~/CustomHyprScripts/log-analyst/target/release/log-analyst"),
+]
+for _bin in _CANDIDATES:
+    if os.path.isfile(_bin) and os.access(_bin, os.X_OK):
+        os.execv(_bin, [_bin] + sys.argv[1:])
+
 import re
 import subprocess
-import sys
 import time
 
-LOG_FILE = "/home/netrunner/logs/recon-attempts.log"
-ALERT_LOG = "/home/netrunner/logs/ids-alerts.log"
+LOG_FILE = os.path.expanduser("~/logs/recon-attempts.log")
+ALERT_LOG = os.path.expanduser("~/logs/ids-alerts.log")
 
 # Strict, pre-compiled regex signatures matching standard tooling footprints
 SIGNATURES = {

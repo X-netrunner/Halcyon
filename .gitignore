@@ -1,1 +1,27 @@
+# Compiled binaries & build artifacts
+bin/*
+!bin/.gitkeep
 target/
+**/target/
+*.o
+*.so
+*.a
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local backups & runtime state
+conf_backup/
+*.bak
+*.tmp
+*.log
+*.orig
+*.before-halcyon*
+
+# System & editor metadata
+.DS_Store
+Thumbs.db
+*.swp
+*~

@@ -9,4 +9,5 @@ if command -v gsettings >/dev/null 2>&1; then
   if [ "$mode" = light ]; then gsettings set org.gnome.desktop.interface color-scheme prefer-light 2>/dev/null
   else gsettings set org.gnome.desktop.interface color-scheme prefer-dark 2>/dev/null; fi
 fi
+bash "$(dirname "$0")/gtk-theme.sh" --auto >/dev/null 2>&1   # GTK apps (Thunar ...) get the matching colours
 exit 0

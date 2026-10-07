@@ -10,12 +10,15 @@ RowLayout {
     property var net
     property var cava: []
     property bool clock24: false
+    property bool clockSeconds: false    // Settings > Bar: seconds in the clock
+    property bool clockDate: true        // Settings > Bar: the weekday and date next to the clock
     property bool playing: false
     property string activeSpecial: ""
     property bool caffeine: false
     property bool showStats: false       // Settings > Bar: CPU / memory / temperature slide out while the pointer is on the bar
     signal statusClicked()
     signal workspaceClicked(int wsId)
+    signal workspaceScrolled(int dir)    // +1 = wheel up, -1 = wheel down (shell.qml runs ws-nav.sh; Settings > Workspaces > invert)
     signal specialClicked(string name)
 
     readonly property var specials: [
@@ -43,13 +46,56 @@ RowLayout {
 
     spacing: 0
 
-    SystemClock { id: clock; precision: SystemClock.Minutes }
+    SystemClock { id: clock; precision: row.clockSeconds ? SystemClock.Seconds : SystemClock.Minutes }
 
     // ---- workspaces: numbers (current one filled), then icons for special workspaces
     //      SUPER+N -> N     SUPER+S scratch     SUPER+M music     CTRL+SHIFT+ESC performance
-    Row {
+    Item {
+        id: wsRow
         Layout.alignment: Qt.AlignVCenter
-        spacing: 4
+        implicitWidth: wsInner.implicitWidth
+        implicitHeight: 26
+        readonly property int spacing: 4
+
+        // index of the focused workspace in the list (-1 while a special workspace has focus)
+        readonly property int curIdx: {
+            for (var i = 0; i < row.wsList.length; i++) if (row.wsList[i].focused) return i
+            return -1
+        }
+        readonly property int cellW: 26
+
+        // the wheel over the workspace numbers walks through the workspaces
+        WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: function (e) {
+                if (e.angleDelta.y !== 0) row.workspaceScrolled(e.angleDelta.y > 0 ? 1 : -1)
+            }
+        }
+
+        // ONE highlight that slides (and stretches a little on the way) from workspace to workspace,
+        // instead of every number fading its own background in and out
+        Rectangle {
+            id: wsPill
+            z: 0
+            height: 26
+            width: wsRow.cellW
+            radius: height / 2
+            color: row.pal.accent
+            visible: wsRow.curIdx >= 0
+            opacity: wsRow.curIdx >= 0 ? 1 : 0
+            property real target: Math.max(0, wsRow.curIdx) * (wsRow.cellW + wsRow.spacing)
+            x: target
+            Behavior on x {
+                enabled: row.pal.motion > 0.01
+                NumberAnimation { duration: Math.round(row.pal.dMed * 1.15); easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve }
+            }
+            Behavior on opacity { NumberAnimation { duration: row.pal.dFast } }
+        }
+
+        // the numbers and special icons sit in their own Row; the pill above floats over it, outside the layout
+        Row {
+        id: wsInner
+        spacing: wsRow.spacing
 
         Repeater {
             model: row.wsList
@@ -57,14 +103,20 @@ RowLayout {
                 id: wsItem
                 required property var modelData
                 readonly property bool cur: modelData.focused
-                width: cur ? 30 : 24
+                z: 1
+                width: wsRow.cellW
                 height: 26
-                Behavior on width { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve } }
+                // a workspace that was just created fades / grows in instead of popping
+                opacity: 0
+                scale: 0.6
+                Component.onCompleted: { opacity = 1; scale = 1 }
+                Behavior on opacity { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.OutCubic } }
 
                 Rectangle {
                     anchors.fill: parent
                     radius: height / 2
-                    color: wsItem.cur ? row.pal.accent : (wsMa.containsMouse ? row.pal.surface : "transparent")
+                    color: (!wsItem.cur && wsMa.containsMouse) ? row.pal.surface : "transparent"
                     Behavior on color { ColorAnimation { duration: row.pal.dFast } }
                 }
                 Text {
@@ -74,7 +126,7 @@ RowLayout {
                     font.family: row.pal.uiFont
                     font.pixelSize: row.pal.tBody
                     font.weight: wsItem.cur ? Font.DemiBold : Font.Medium
-                    Behavior on color { ColorAnimation { duration: row.pal.dFast } }
+                    Behavior on color { ColorAnimation { duration: Math.round(row.pal.dMed * 0.8) } }
                 }
                 MouseArea { id: wsMa; anchors.fill: parent; hoverEnabled: true; onClicked: row.workspaceClicked(wsItem.modelData.id) }
             }
@@ -107,6 +159,7 @@ RowLayout {
                 MouseArea { id: spMa; anchors.fill: parent; hoverEnabled: true; onClicked: row.specialClicked(spItem.modelData.name) }
             }
         }
+        }
     }
 
     Item { implicitWidth: 18 }
@@ -123,18 +176,20 @@ RowLayout {
         Layout.alignment: Qt.AlignVCenter
         spacing: 10
         Text {
-            text: Qt.formatDateTime(clock.date, row.clock24 ? "HH:mm" : "hh:mm AP")
+            text: Qt.formatDateTime(clock.date, (row.clock24 ? "HH:mm" : "hh:mm") + (row.clockSeconds ? ":ss" : "") + (row.clock24 ? "" : " AP"))
             color: row.pal.text
             font.family: row.pal.uiFont
             font.pixelSize: row.pal.tTitle
             font.weight: Font.DemiBold
         }
         Rectangle {
+            visible: row.clockDate
             width: 3; height: 3; radius: 1.5
             color: Qt.alpha(row.pal.muted, 0.7)
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
+            visible: row.clockDate
             text: Qt.formatDateTime(clock.date, "ddd") + "  " + Qt.formatDateTime(clock.date, "d MMM")
             color: row.pal.muted
             font.family: row.pal.uiFont
@@ -238,7 +293,7 @@ RowLayout {
                     Rectangle { x: 21.5; y: 4; width: 2; height: 4; radius: 1; color: row.pal.text }
                 }
                 Text {
-                    text: row.stats.bat + "%"
+                    text: row.stats.bat + "%" + (row.stats.batEst ? " (" + row.stats.batEst + ")" : "")
                     color: row.pal.text
                     font.family: row.pal.uiFont
                     font.pixelSize: row.pal.tBody

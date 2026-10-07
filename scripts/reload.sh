@@ -4,5 +4,5 @@
 #   2. terminal colours            (re-written from the current palette and re-applied to open terminals)
 # The island itself (quickshell) is reloaded by the island right after this script exits.
 hyprctl reload >/dev/null 2>&1
-bash "$(dirname "$0")/term-colors.sh" >/dev/null 2>&1
+bash "$(dirname "$0")/term-colors.sh" --now >/dev/null 2>&1
 exit 0

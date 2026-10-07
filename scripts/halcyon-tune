@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Root helper for Halcyon. install.sh copies it to /usr/local/bin/halcyon-tune (root-owned, so you cannot edit what runs as
+# root) and adds ONE sudoers line that lets your user run exactly that file without a password. It does a fixed list of
+# things and nothing else, so the sudo rule stays narrow:
+#
+#   halcyon-tune game-on                 CPU governor / EPP / turbo, platform profile, GPU clocks, swappiness, Wi-Fi power saving off
+#   halcyon-tune game-off                put every one of those back to what it was before game-on
+#   halcyon-tune wifi-ps on|off          Wi-Fi power saving on every wireless interface
+#   halcyon-tune pm <manager>            halcyon | power-profiles-daemon | tlp | auto-cpufreq | tuned: only this one may run
+#
+# It takes no file names, no paths and no free text: every argument is checked against a fixed list below.
+[ "$(id -u)" -eq 0 ] || { echo "run via sudo" >&2; exit 1; }
+umask 077
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+SAVE=/run/halcyon-tune.saved          # /run is root-only: nobody else can plant or edit this file
+declare -A S=()
+
+w() { [ -w "$2" ] && printf '%s' "$1" > "$2" 2>/dev/null; }      # w VALUE FILE : only ever writes to a sysfs / procfs file
+rd() { cat "$1" 2>/dev/null; }
+wifi_ifaces() { local d; for d in /sys/class/net/*; do [ -d "$d/wireless" ] && basename "$d"; done; }
+wifi_get() { iw dev "$1" get power_save 2>/dev/null | awk '/[Pp]ower save/ { print $NF }'; }
+wifi_set() { command -v iw >/dev/null 2>&1 && iw dev "$1" set power_save "$2" >/dev/null 2>&1; }
+
+load_saved() {          # read KEY=VALUE lines. Never `source` the file.
+  local k v
+  while IFS='=' read -r k v; do
+    [[ "$k" =~ ^[a-z0-9_.-]+$ ]] && S["$k"]=$v
+  done < "$SAVE"
+}
+
+game_on() {
+  [ -f "$SAVE" ] && return 0                                      # already on: keep what was saved the first time
+  local d i
+  {
+    echo "gov=$(rd /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)"
+    echo "epp=$(rd /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference)"
+    echo "plat=$(rd /sys/firmware/acpi/platform_profile)"
+    echo "swap=$(rd /proc/sys/vm/swappiness)"
+    echo "boost=$(rd /sys/devices/system/cpu/cpufreq/boost)"
+    echo "notb=$(rd /sys/devices/system/cpu/intel_pstate/no_turbo)"
+    for i in $(wifi_ifaces); do echo "wifi_$i=$(wifi_get "$i")"; done
+    command -v nvidia-smi >/dev/null 2>&1 && echo "nvpm=$(nvidia-smi --query-gpu=persistence_mode --format=csv,noheader 2>/dev/null | head -n1)"
+  } > "$SAVE"
+  for d in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do w performance "$d"; done
+  for d in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do w performance "$d"; done
+  w performance /sys/firmware/acpi/platform_profile
+  w 1 /sys/devices/system/cpu/cpufreq/boost                       # AMD / acpi-cpufreq turbo
+  w 0 /sys/devices/system/cpu/intel_pstate/no_turbo               # Intel turbo
+  w 10 /proc/sys/vm/swappiness                                    # keep game memory in RAM
+  for d in /sys/class/drm/card*/device/power_dpm_force_performance_level; do w high "$d"; done
+  for d in /sys/class/drm/card*; do                               # Intel iGPU: pin to the highest clock
+    [ -r "$d/gt_max_freq_mhz" ] && [ -w "$d/gt_min_freq_mhz" ] && w "$(rd "$d/gt_max_freq_mhz")" "$d/gt_min_freq_mhz"
+  done
+  for i in $(wifi_ifaces); do wifi_set "$i" off; done             # lower latency
+  command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -pm 1 >/dev/null 2>&1   # NVIDIA: keep the driver loaded, no wake-up stalls
+}
+
+game_off() {
+  [ -f "$SAVE" ] || return 0
+  load_saved; rm -f "$SAVE"
+  local d i
+  for d in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do w "${S[gov]:-powersave}" "$d"; done
+  [ -n "${S[epp]:-}" ] && for d in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do w "${S[epp]}" "$d"; done
+  [ -n "${S[plat]:-}" ] && w "${S[plat]}" /sys/firmware/acpi/platform_profile
+  [ -n "${S[swap]:-}" ] && w "${S[swap]}" /proc/sys/vm/swappiness
+  [ -n "${S[boost]:-}" ] && w "${S[boost]}" /sys/devices/system/cpu/cpufreq/boost
+  [ -n "${S[notb]:-}" ] && w "${S[notb]}" /sys/devices/system/cpu/intel_pstate/no_turbo
+  for d in /sys/class/drm/card*/device/power_dpm_force_performance_level; do w auto "$d"; done
+  for d in /sys/class/drm/card*; do
+    [ -r "$d/gt_RPn_freq_mhz" ] && [ -w "$d/gt_min_freq_mhz" ] && w "$(rd "$d/gt_RPn_freq_mhz")" "$d/gt_min_freq_mhz"
+  done
+  [ "${S[nvpm]:-}" = Disabled ] && nvidia-smi -pm 0 >/dev/null 2>&1
+  for i in $(wifi_ifaces); do                                     # back to what each card had, not just "on"
+    case "${S[wifi_$i]:-}" in on|off) wifi_set "$i" "${S[wifi_$i]}" ;; esac
+  done
+}
+
+wifi_ps() {
+  local i
+  for i in $(wifi_ifaces); do wifi_set "$i" "$1"; done
+}
+
+# Only one power manager may own the CPU: check the chosen one exists FIRST (so a typo or a missing package never leaves
+# the machine with none), then stop the others, then start it.
+pm() {
+  local want="$1" k u
+  declare -A svc=( [power-profiles-daemon]=power-profiles-daemon.service [tlp]=tlp.service
+                   [auto-cpufreq]=auto-cpufreq.service [tuned]=tuned.service )
+  [ "$want" = halcyon ] && want=power-profiles-daemon             # Halcyon Auto is a daemon that drives power-profiles-daemon
+  systemctl cat "${svc[$want]}" >/dev/null 2>&1 || { echo "$want is not installed" >&2; exit 3; }
+  for k in "${!svc[@]}"; do
+    [ "$k" = "$want" ] && continue
+    u=${svc[$k]}; systemctl is-active --quiet "$u" && systemctl stop "$u"
+  done
+  [ "$want" = tlp ] && systemctl unmask tlp.service >/dev/null 2>&1
+  systemctl start "${svc[$want]}"
+}
+
+case "${1:-}" in
+  game-on)  game_on ;;
+  game-off) game_off ;;
+  wifi-ps)  case "${2:-}" in on|off) wifi_ps "$2" ;; *) echo "usage: halcyon-tune wifi-ps on|off" >&2; exit 2 ;; esac ;;
+  pm)       case "${2:-}" in halcyon|power-profiles-daemon|tlp|auto-cpufreq|tuned) pm "$2" ;; *) echo "unknown power manager" >&2; exit 2 ;; esac ;;
+  *)        echo "usage: halcyon-tune game-on | game-off | wifi-ps on|off | pm <halcyon|power-profiles-daemon|tlp|auto-cpufreq|tuned>" >&2; exit 2 ;;
+esac

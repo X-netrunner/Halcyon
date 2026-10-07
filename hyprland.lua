@@ -1,6 +1,9 @@
 local home = os.getenv("HOME")
 local hypr = home .. "/.config/Halcyon"
-package.path = package.path .. ";" .. hypr .. "/?.lua"
+-- FIRST in the search path, not last: when Hyprland loads this through ~/.config/hypr/hyprland.lua it puts ~/.config/hypr
+-- first, and an older setup left there (hypr/variables.lua, hypr/hyprland/*.lua, hypr/scheme/...) would be picked up
+-- instead of Halcyon's own files with the same names. Halcyon's folder must win.
+package.path = hypr .. "/?.lua;" .. package.path
 
 local function maybe_create(file, content)
     local f = io.open(file)

@@ -1202,7 +1202,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 26
-        text: "click a node to jump   ·   drag a window towards a workspace to move it   ·   let go anywhere else and it swings back   ·   S compact specials   ·   Esc close"
+        text: "Esc close"
         color: ov.pal.muted
         font.family: ov.pal.uiFont
         font.pixelSize: 11

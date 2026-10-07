@@ -57,7 +57,7 @@ finish() {
       command -v hyprctl >/dev/null && hyprctl reload >/dev/null 2>&1
       pkill -f "quickshell -p .*quickshell/island" 2>/dev/null
       sleep 0.5
-      setsid -f quickshell -p "$RICE/quickshell/island" >/dev/null 2>&1 && ok "island restarted, Hyprland reloaded"
+      setsid -f "$RICE/scripts/start-shell.sh" island >/dev/null 2>&1 && ok "island restarted, Hyprland reloaded"
     fi
   else
     ok "not inside a Halcyon session: log in again (or run $RICE/launch/halcyon.sh) to use the new version"
@@ -117,7 +117,7 @@ else
   [ -f "$CACHE/install.sh" ] || die "the download has no install.sh"
 
   # your own files survive the copy
-  KEEP=(hypr-user.lua scheme/current.lua gamemode.conf)
+  KEEP=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom)
   keep="$(mktemp -d)"
   for f in "${KEEP[@]}"; do
     [ -f "$RICE/$f" ] && { mkdir -p "$keep/$(dirname "$f")"; cp -a "$RICE/$f" "$keep/$f"; }

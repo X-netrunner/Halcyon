@@ -9,12 +9,21 @@ import Quickshell.Services.SystemTray
 
 PanelWindow {
     id: root
+
+    property string barPadding: "normal"  // "low" | "normal" | "high"
+
+    readonly property int barHeight: ({ "low": 26, "normal": 38, "high": 52 })[barPadding] || 38
+    readonly property int outerMargin: ({ "low": 2, "normal": 6, "high": 12 })[barPadding] || 6
+    readonly property int innerMargin: ({ "low": 8, "normal": 16, "high": 24 })[barPadding] || 16
+    readonly property int itemSpacing: ({ "low": 6, "normal": 12, "high": 18 })[barPadding] || 12
+
     anchors {
         top: true
         left: true
         right: true
     }
-    implicitHeight: 38
+    implicitHeight: root.barHeight + (root.outerMargin * 2)
+    exclusionMode: ExclusionMode.Normal
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "topbar"
@@ -23,6 +32,36 @@ PanelWindow {
     property string battText: ""
     property string wifiText: ""
     property string btText: ""
+
+    readonly property var wsList: {
+        var l = Hyprland.workspaces.values, out = []
+        for (var i = 0; i < l.length; i++) if (l[i].id > 0) out.push(l[i])
+        out.sort(function (a, b) { return a.id - b.id })
+        return out
+    }
+
+    Process {
+        id: settingsProc
+        command: ["sh", "-c", "cat \"$HOME/.local/state/island/settings.json\" 2>/dev/null || echo '{}'"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var s = JSON.parse(text)
+                    if (s.barPadding && ["low", "normal", "high"].indexOf(s.barPadding) >= 0) {
+                        root.barPadding = s.barPadding
+                    }
+                } catch(e) {}
+            }
+        }
+    }
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: true
+        onTriggered: settingsProc.running = true
+    }
 
     Timer {
         interval: 1000
@@ -76,28 +115,51 @@ PanelWindow {
 
     Rectangle {
         anchors.fill: parent
-        anchors.margins: 4
+        anchors.margins: root.outerMargin
         radius: 999
         color: "#eb111321"
         border.color: "#26bfc6ff"
         border.width: 1
 
+        Behavior on anchors.margins { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 12
+            anchors.leftMargin: root.innerMargin
+            anchors.rightMargin: root.innerMargin
+            spacing: root.itemSpacing
+
+            Behavior on anchors.leftMargin { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+            Behavior on anchors.rightMargin { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+            Behavior on spacing { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
 
             Row {
                 spacing: 6
+                anchors.verticalCenter: parent.verticalCenter
                 Repeater {
-                    model: Hyprland.workspaces
+                    model: root.wsList
                     delegate: Rectangle {
-                        width: modelData.active ? 22 : 8
-                        height: 8
-                        radius: 4
+                        id: wsPill
+                        required property var modelData
+                        width: modelData.active ? 26 : 9
+                        height: 9
+                        radius: 4.5
                         color: modelData.active ? "#bfc6ff" : "#555870"
                         anchors.verticalCenter: parent.verticalCenter
+
+                        Behavior on width {
+                            NumberAnimation {
+                                duration: 260
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: [0.25, 1, 0.5, 1]
+                            }
+                        }
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 260
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                     }
                 }
             }
@@ -107,7 +169,7 @@ PanelWindow {
             Rectangle {
                 visible: root.clockText !== ""
                 implicitWidth: clockTxt.implicitWidth + 20
-                implicitHeight: 24
+                implicitHeight: Math.max(20, root.barHeight - 14)
                 radius: 999
                 color: "#22ffffff"
 
@@ -130,7 +192,7 @@ PanelWindow {
                 Rectangle {
                     visible: root.wifiText !== ""
                     implicitWidth: wifiTxt.implicitWidth + 16
-                    implicitHeight: 24
+                    implicitHeight: Math.max(20, root.barHeight - 14)
                     radius: 999
                     color: "#22ffffff"
 
@@ -147,7 +209,7 @@ PanelWindow {
                 Rectangle {
                     visible: root.btText !== ""
                     implicitWidth: btTxt.implicitWidth + 16
-                    implicitHeight: 24
+                    implicitHeight: Math.max(20, root.barHeight - 14)
                     radius: 999
                     color: "#22ffffff"
 
@@ -164,7 +226,7 @@ PanelWindow {
                 Rectangle {
                     visible: root.battText !== ""
                     implicitWidth: battTxt.implicitWidth + 16
-                    implicitHeight: 24
+                    implicitHeight: Math.max(20, root.barHeight - 14)
                     radius: 999
                     color: "#22ffffff"
 

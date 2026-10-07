@@ -16,7 +16,7 @@ Lightweight, minimal, smooth and fast Hyprland setup in Lua, independent of cael
 - Wallpaper changes with a circular reveal from the screen centre (new wallpaper grows over the old one)
 - Wallpaper is picked once per boot (stays the same across quickshell reloads); "Random wallpaper" in the drawer / panel changes it on demand
 - Special workspaces that overlay the current one: SUPER+S scratch (SUPER+ALT+S sends the focused window there), SUPER+M music, CTRL+SHIFT+ESC system monitor, SUPER+D communication (Discord / Vesktop), SUPER+R tasks (Todoist). Music and communication start their apps from `scripts/special.sh` (see below); `todoCmd` is in `variables.lua`
-- Gestures: handled by Hyprland (`hyprland/gestures.lua`): 3/4 fingers right/left = next/previous workspace, 3 fingers up or down = toggle the scratch special workspace, 4 fingers down = sleep, 2-finger pinch = workspace tree. The single-finger edge gestures come from the `touchpad-gestures` service: right edge up/down = volume up/down, top edge right/left = brightness up/down, left edge up/down = next/previous track
+- Gestures: handled by Hyprland (`hyprland/gestures.lua`): 3 fingers right/left = next/previous workspace, 4 fingers left/right = next/previous (flip in Settings > Workspaces > "4-finger swipe"), 3 fingers up or down = toggle the scratch special workspace, 4 fingers down = sleep, 3-finger pinch = workspace tree. The single-finger edge gestures come from the `touchpad-gestures` service: right edge up/down = volume up/down, top edge right/left = brightness up/down, left edge up/down = next/previous track
 - Notifications: the island is the notification daemon (`quickshell/island/Notifs.qml`, `NotifCard.qml`, `NotifRow.qml`). **No bell button any more**: touch the **right edge** of the screen (upper part) and the notification centre slides out; leave it and it slides back (hover mode, see **Edge boxes** below). Swipe any notification (popup or in the centre) sideways and let go past half its width to dismiss it; the ✕ still works. Empty state is a tree-style node ("All caught up" / "Do not disturb"). A thin bar on that edge glows (and breathes) while something is unread, and goes grey while do-not-disturb is on. Keyboard: SUPER+SHIFT+N toggles it (closes by itself a few seconds after the pointer is off it), SUPER+SHIFT+D toggles do-not-disturb (also the DND chip in the panel), CTRL+ALT+C clears everything. **Popups** stack top-right, at most `notifMax` (5, top of `shell.qml`); a popup timing out only hides the popup, hover pauses the timer, click dismisses, right-click hides all popups, critical ones stay until dismissed. The centre keeps the latest `notifHistoryMax` (30). Apps in `coalesceApps` (`notify-send` by default) replace the earlier one with the same title, every other app only replaces an exact repeat. Click a row to run its action and remove it, `x` removes only it, `Clear` empties the list. No dunst/mako needed (only one daemon can own the D-Bus name, so stop it if it is running)
 - **Quick terminal** (`quickshell/island/QuickTerm.qml`): touch the **top-left corner** (or SUPER+SHIFT+Enter, or `>quick terminal`) for a plain console box with a command line, so one-shot commands do not need a full terminal. While the input is empty and nothing has run it shows the **status of sysmode and the honeypot** as console lines (`>ids hit : 0`, `>alerts : 1 today · 3 total`, honeypot / ids / cowrie / decoy wifi, from `hx status`); the moment you start typing that fades away and your command and its streaming output take over. `sudo ...` and root sysmode actions ask for your password in the input line (masked, fed to `sudo -S`, never stored). If another window opens, the console lets go of the keyboard; click it (or SUPER+SHIFT+Enter) to type again. Enter runs, Up/Down history, Ctrl+C stops, Ctrl+L or `clear` clears, Esc closes, `cd` is remembered. `secure` / `stealth` / `cyber` / `lockdown` (or `sysmode ...`, or `sm ...`) switch sysmode (root actions use the in-console sudo prompt). vim / htop / ssh / less and friends open in a real `foot` window instead
 - Performance page: CPU, RAM, TEMP and GPU rings. GPU shows "off" while the dGPU is asleep and never wakes it (`scripts/gpu.sh`, polled only while the page is open). Below the rings, a hardware card: processor (model, cores/threads), graphics (iGPU + dGPU names, read from sysfs + `pci.ids` so a sleeping dGPU is never woken), memory (size, type, speed and channels, e.g. `DDR5 · dual-channel`) and storage (drive model + used/total per mount, `scripts/disk.py`, refreshed while the page is open). RAM type/speed/channels come from `dmidecode`, which needs root: `install.sh` saves its output once to `~/.cache/island/dmi-memory.txt` (re-run it after changing RAM). Without that file you still get the size. Channels are inferred from the slot names, so treat them as a good guess
@@ -47,7 +47,7 @@ HYPRLAND_CONFIG=~/.config/Halcyon Hyprland
 - Hold and drag the bar sideways (or scroll / two-finger swipe): drag left = performance page, drag right = media page
 - Auto-hide: toggle in the bottom-right panel (Rice > Auto-hide) or `> auto-hide`. When on, the bar slides away and stops reserving space; touch the top edge of the screen to bring it back
 - **SUPER+TAB: live tree overview.** Laptop (hostname, your name + avatar) -> every workspace -> the windows on it, special workspaces (scratch / music / sysmon) included. Nodes drift gently and a pulse runs along each branch. Click a node to jump to it. **Drag a window (leaf) node: its branch is cut, and when it gets close to a workspace a tether reaches out and joins; let go while joined and the window moves there (special workspaces too, or the "+ New workspace" pill). Let go anywhere else and the leaf swings back and its branch regrows**; Esc cancels a drag. Snap distances: `reachR` / `connectR` at the top of the drag block in `Overview.qml` `S` (or the toggle top-right) switches compact / full-size special workspaces, `E` or a click on the laptop node edits your display name and avatar (saved in settings.json), Esc closes Every workspace and window node also shows its live CPU and memory use (`scripts/wsres.py`, polled only while the tree is open), and the header shows the total.
-- Tap SUPER (or SUPER+Space): the bar grows into one search bar
+- Tap SUPER: the bar grows into one search bar
   - type to search apps (ranked by usage; clutter like qv4l2 / avahi / Qt tools is hidden, list is `hiddenPatterns` in `island/Launcher.qml`)
   - `.` lists every installed app A-Z (`.fire` filters that list)
   - `>` lists commands: random wallpaper, calculator, settings, power options, power mode, wifi/bt, lock/sleep/log out/restart/shut down
@@ -130,7 +130,24 @@ Two causes, both fixed in `sysmode/sysmode`: (1) `start_cowrie` returns 1 when D
 - **Performance page**: the power-mode chips and the mode line were removed (power mode lives in the bottom-right panel).
 
 ## Install (one script)
-`./install.sh` does everything on Arch: copies the rice to `~/.config/Halcyon`, installs the packages, builds `hx` / `power-manager` / `touchpad-gestures`, makes `~/.config/hypr/hyprland.lua` load Halcyon (your old config is backed up) and adds a "Halcyon" session to the login screen, installs the services (gestures, sysmode honeypot + IDS at boot, RAM info at boot), makes a first wallpaper if `~/Pictures/Wallpapers` is empty, builds the colours from it, and includes the terminal colour files in foot / kitty / alacritty / ghostty. `--yes` = no questions, `--no-packages`, `--no-sysmode`, `--tty-autostart`. Safe to run again.
+`./install.sh` is the only installer (the separate `glinstall.sh` of the fixed zip is merged into it). Run it as your normal user from the Halcyon folder; it asks for sudo only where needed. Safe to run again.
+
+```
+./install.sh                 asks before the important things
+./install.sh --yes           no questions (fresh machine; update.sh uses this)
+./install.sh --dry-run       show every step, change nothing
+```
+
+What it does, in order: checks the machine / user / sudo, installs packages (official repos, the AUR only for the few that need it; an AUR helper is built only if one is really needed), detects GPU drivers and CPU microcode, sets up audio / Bluetooth / network / power services and the `input` + `video` groups, installs Hyprland, Quickshell and the desktop, makes sure a Rust toolchain exists, copies the rice to `~/.config/Halcyon` (the old copy is saved in `~/.config/Halcyon-backups`; your `hypr-user.lua`, `scheme/current.lua` and `gamemode.conf` are never overwritten), builds `hx` / `power-manager` / `touchpad-gestures`, makes `~/.config/hypr/hyprland.lua` load Halcyon, adds a "Halcyon" session to the login screen (or, with no login manager, offers the lock screen as login screen), installs the user services and the boot service for RAM details, installs the root helpers, makes colours from your wallpaper and includes the colour files in your terminals, then checks the result.
+
+Options: `--yes`, `--dry-run`, `--no-packages` (also skips drivers), `--no-drivers`, `--no-aur`, `--upgrade` (a full `pacman -Syu` first; **not** done by default, because it can update the kernel under a running desktop and `update.sh` runs this installer), `--no-sysmode`, `--no-tune`, `--link` (symlink instead of copy, for development: the folder must be writable by you), `--user NAME` (when run as root), `--tty-autostart`, `--lock-login` / `--no-lock-login` / `--remove-lock-login`, `-v`.
+
+**Security notes** (what runs as root, and why it can be trusted):
+- `halcyon-tune` (Gaming mode CPU/GPU boost, power-manager switch, Wi-Fi power saving) is copied to `/usr/local/bin` as a **root-owned** file and the sudoers rule names exactly that file and nothing else. It accepts only fixed words (`game-on`, `game-off`, `wifi-ps on|off`, `pm <known manager>`), never a path or free text, and never `source`s a file. Skip it with `--no-tune`.
+- The sudoers rule is written to a root-owned temporary file, validated with `visudo -cf`, and only then moved into place; a rule that fails validation is never installed.
+- `sysmode` runs as root, so the Python scripts it launches are installed as **root-owned** copies in `/usr/local/lib/halcyon/sysmode` (`SCRIPTS_DIR` in `/etc/sysmode.conf`). Before, it ran them from `~/.config/Halcyon/sysmode`, a folder any program running as you could edit. Re-run `./install.sh` after changing those scripts.
+- When run as root, AUR builds get a temporary sudo rule that allows only `/usr/bin/pacman`, removed again when the installer exits.
+- Everything is logged to a private temporary folder (the path is printed at the start and end).
 
 ## Added in the third round
 - **Constellations grow** (Settings > Constellations): the island counts the minutes it runs (saved in `settings.json`). Dragon: two wings unfold from the shoulders (near wing first). Shield: second rim, hexagon crest, four rays, crown star. Profile picture (or name sky): 4 levels, 70 to about 220 stars, so it looks more like the picture. Full growth = 72 h of use. Drag the bar to preview any stage, "Start over" resets, "Growing: off" shows the plain ones. Data: `StarData.js` (`[x, y, size, birth, startX, startY]`), drawing: `ModeArt.qml`.
@@ -170,3 +187,58 @@ Two causes, both fixed in `sysmode/sysmode`: (1) `start_cowrie` returns 1 when D
 - **Lock screen**: every key press sends a ring out of the profile picture, fired by the same `kick()` that flares the constellation; wrong password = bigger red ring.
 - **Lock screen as login screen**: with no login manager, `install.sh` can set up auto-login on tty1; `launch/halcyon-login.sh` starts Halcyon already locked (the island locks first thing, `scripts/login-watchdog.sh` makes sure). Undo: `./install.sh --remove-lock-login`; skip one boot: `touch ~/.cache/island/no-autostart`; another console (Ctrl+Alt+F2) stays a normal text login.
 - **Avatar picker**: Browse in the tree's profile editor now opens `ImagePicker.qml` inside the island, over the tree, instead of a zenity window on a workspace.
+- **Tap Super fix**: the old tap detector could get stuck on "used" and swallow the next tap (and ignored right Super and mouse use). It now resets on every Super press. Debug: `touch ~/.cache/island/super-debug`, tap Super, read `~/.cache/island/super-debug.log`.
+- **New settings**: Look > Colour intensity (with a swatch of the current palette), Behaviour > Tap Super to open the launcher, Behaviour > Terminals follow the wallpaper colours.
+
+## Super tap, power manager, gaming mode, bar padding, battery estimate
+- **Super tap**: tapping Super opens the launcher. The release bind writes a trigger file the island watches (a few ms) instead of starting a new `quickshell ipc` process every time (that was the lag); IPC stays as a fallback and a 350ms debounce stops double triggers
+- **Power manager** (Settings): Halcyon Auto / power-profiles-daemon / TLP / auto-cpufreq / Tuned. Only one runs at a time (`scripts/halcyon-tune pm`), the chosen one is remembered across logins. Install the one you pick first (`pacman -S tlp`, ...)
+- **Gaming mode**: now also sets CPU governor + EPP + turbo, platform profile, GPU clocks (AMD/Intel/NVIDIA), swappiness, Wi-Fi power save off, starts `gamemoded`; Caffeine and Do not disturb are switched on and, afterwards, put back to what they were before. The root part is `scripts/halcyon-tune`, installed with a narrow sudoers rule by `install.sh`
+- **Bar padding**: Low / Normal / High changes the island's height, distance from the top and side padding
+- **Battery estimate**: shown next to the battery percentage and on the performance page, smoothed over a few seconds
+- **Workspace switch**: one highlight slides between workspace numbers
+
+## Settings as a tree, colour cycling, workspace navigation (latest pass)
+
+**Settings is now a tree** (same look as the shortcut tree): Halcyon at the root, one branch per area (Look, Colours,
+Workspaces, Motion, Bar, Panels & notifications, Mouse / touchpad / keyboard, Tools, Wallpaper, Sleep & lock, Default apps,
+Constellations, Rice). Click a branch title to fold it, type in the search box to find any setting, *Collapse all* /
+*Expand all* at the top. Switches slide and flash a ring when you click them; buttons light up with a tick for a moment
+(`Toggle.qml`, `ActionChip.qml`). The **Tools** switches (night light, touchpad, edge gestures) read the real state from
+`scripts/tool-state.sh` every 3 s, so they always show what is actually on, also when you used the key or a terminal.
+Sliders for window / input values start at what Hyprland has *right now* (`quickshell/island/scripts/hypr-values.sh`), and
+only the values you change are pushed; **Look > Back to the config files** forgets them again.
+
+**Next / previous workspace** (`scripts/ws-nav.sh`, used by the 3 / 4 finger swipes and SUPER+CTRL+Right / Left):
+with workspaces 1 and 2, *next* from 2 opens a new workspace 3 (never from an empty one, never above the limit);
+*previous* from 1 jumps to the last workspace. Settings > Workspaces can change each of these (open new / go back to 1 /
+stay, wrap / stay, highest workspace number).
+
+**Accent colour cycling**: Settings > Colours > *Cycle through the wallpaper*. `palette.sh` now also writes `swatches`
+(up to 6 real hues of the picture, strongest first). The accent glides through them on the colour wheel (red, purple,
+orange ...), resting a moment on each; *Time per colour* sets the speed. *Terminal colours > Spectrum* gives every ANSI
+colour its own wallpaper hue (a red + purple wallpaper gives a red red and a purple magenta, not red everything);
+*Open terminals cycle too* repaints cursor / blue / magenta every 5 s along with the accent. Gaming mode pauses the cycle.
+
+**More controls**: accent mode and speed, terminal colour mode, workspace rules, clock seconds / date, popup length,
+volume bar length, wallpaper slideshow (every 5 min ... 1 h), night light warmth, border width, unfocused opacity, blur
+strength / passes, dimming, natural scroll, tap to click, pointer speed / acceleration, focus follows pointer, key repeat,
+tiling layout switch.
+
+## Changes in this version
+
+- **Install**: verbose by default (`-q` for quiet), `--no-apps` skips thunar / foot / spotify / discord, sysmode is installed and checked (`sysmode doctor`) but no mode is switched on for you. The tty1 lock-screen login is opt-in (`--lock-login`).
+- **Why Hyprland used to start with defaults**: `HYPRLAND_CONFIG` has to point to the *file* `hyprland.lua`, not the folder. `launch/halcyon.sh` now fixes that, and the install verifies the config (`Hyprland --verify-config`) before it enables anything.
+- **Quickshell** is started by `scripts/start-shell.sh` (waits for Wayland, restarts on crash). Logs: `~/.cache/island/quickshell-island.log`.
+- **Diagnostics**: `scripts/halcyon-doctor.sh` (Hyprland config, quickshell, GPU / NVIDIA / Intel, keyboard light, gaming mode).
+- **Drivers**: NVIDIA (open / legacy / nouveau by GPU generation, PRIME for hybrids), Intel, AMD, keyboard backlight vendors. Per-machine GPU env goes in `~/.config/Halcyon/gpu.lua`.
+- **Notifications** show your profile picture (app icon as a badge): Settings > Panels & notifications > "Notification picture".
+- **App themes** (`scripts/app-themes.sh`, installed by `install.sh`, re-run on every wallpaper change; `--now` forces it, `echo off > ~/.local/state/island/app-follow` stops the automatic runs): the same wallpaper colours in
+  - **Starship**: `config/starship.toml` becomes `~/.config/starship.toml` (your old one is kept as `.before-halcyon`); the `HALCYON PALETTE` block at its bottom is rewritten, everything above it is yours. The right side of the prompt shows `◈ halcyon` (the rice name, `[custom.halcyon]`) next to the sysmode tag and the other stats.
+  - **fish**: `~/.config/fish/conf.d/halcyon.fish` (colours by the terminal's ANSI names, so they follow the wallpaper by themselves; starts Starship unless your `config.fish` already does).
+  - **btop** (`color_theme = "halcyon"`), **yazi** (flavor `halcyon`), **foot** and the other terminals (`term-colors.sh`), **Thunar** (`gtk-theme.sh`).
+  - **Spotify**: spicetify theme `halcyon` (`spicetify-cli` from the AUR). A theme only shows after `spicetify apply`, which the island does after a wallpaper change while Spotify is closed (`--now` does it right away; a Spotify update needs `--now` once, and the first time Spotify must have been started once).
+  - **Discord**: stock Discord cannot be themed, so the installer adds **Vesktop** (AUR) and writes + enables `halcyon.theme.css` there (Vencord too, if you have it). Vesktop is also the default chat app when you have not chosen one. Discord renames its CSS variables now and then: if a part stays unthemed, tell me which.
+  Spotify and Discord always use the dark palette.
+- **GTK apps (Thunar, file dialogs)**: `scripts/gtk-theme.sh` writes `~/.config/gtk-3.0/gtk.css` and `gtk-4.0/gtk.css` (between `halcyon` markers, the rest of those files is untouched) from the island palette, and re-runs on every wallpaper and dark / light change. Reopen Thunar (`thunar -q`) to see it. `gtk-theme.sh --remove` takes it out; `echo off > ~/.local/state/island/gtk-follow` stops the automatic runs.
+- **Invert workspace scrolling**: Settings > Workspaces. Applies to the wheel over the workspace numbers in the bar and the 3 / 4 finger swipes.

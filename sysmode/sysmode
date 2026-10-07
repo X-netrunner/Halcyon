@@ -118,11 +118,11 @@ stop_daemons() {
     echo "[*] Stopping recon deception daemon..."
     systemctl stop recon-deceiver.service 2>/dev/null || true
     stop_pidfile /var/run/recon-deceiver.pid
-    pkill -f recon-deceiver.py 2>/dev/null || true
+    pkill -f recon-deceiver 2>/dev/null || true
     echo "[*] Stopping lightweight IDS log analyst..."
     systemctl stop log-analyst.service 2>/dev/null || true
     stop_pidfile /var/run/log-analyst.pid
-    pkill -f log-analyst.py 2>/dev/null || true
+    pkill -f log-analyst 2>/dev/null || true
     pkill -f "hx ids" 2>/dev/null || true
 }
 
@@ -771,8 +771,8 @@ show_status() {
 
     echo "RAM Workspace (tmpfs)           : $( mountpoint -q "$STEALTH_WORKSPACE" && echo 'Active ('"$STEALTH_WORKSPACE"')' || echo 'Inactive' )"
     echo "Encrypted DNS (dnscrypt-proxy)  : $( systemctl is-active --quiet dnscrypt-proxy 2>/dev/null && echo 'Active' || echo 'Inactive' )"
-    echo "Honeypot Daemon (recon-deceiver): $( { systemctl is-active --quiet recon-deceiver 2>/dev/null || pgrep -f recon-deceiver.py >/dev/null; } && echo 'Active' || echo 'Inactive' )"
-    echo "IDS Log Analyst (log-analyst)   : $( { systemctl is-active --quiet log-analyst 2>/dev/null || pgrep -f "log-analyst.py|hx ids" >/dev/null; } && echo 'Active' || echo 'Inactive' )"
+    echo "Honeypot Daemon (recon-deceiver): $( { systemctl is-active --quiet recon-deceiver 2>/dev/null || pgrep -f recon-deceiver >/dev/null; } && echo 'Active' || echo 'Inactive' )"
+    echo "IDS Log Analyst (log-analyst)   : $( { systemctl is-active --quiet log-analyst 2>/dev/null || pgrep -f "log-analyst|hx ids" >/dev/null; } && echo 'Active' || echo 'Inactive' )"
     echo "Cowrie SSH Honeypot (Docker)    : $( { docker inspect -f '{{.State.Running}}' cowrie 2>/dev/null | grep -qx true; } && echo 'Active (Port 22)' || echo 'Inactive' )"
 }
 
@@ -1783,13 +1783,19 @@ start_stealth_daemons() {
     # start_cowrie returns 1 when docker is missing / not running; under `set -e` that used to END this whole function
     # right here, so the honeypot, the IDS and the MAC logger below were never started (and the mode file already said stealth)
     start_cowrie || true
-    if systemctl restart recon-deceiver.service >/dev/null 2>&1 && sleep 1 && pgrep -f recon-deceiver.py >/dev/null; then
+    if systemctl restart recon-deceiver.service >/dev/null 2>&1 && sleep 1 && pgrep -f recon-deceiver >/dev/null; then
         echo "[+] recon-deceiver.service running"
-    elif [[ ! -f "$SCRIPTS_DIR/recon-deceiver.py" ]]; then
-        echo "[!] $SCRIPTS_DIR/recon-deceiver.py not found (is the rice in $SYS_HOME/.config/Halcyon? set SYS_HOME in /etc/sysmode.conf)"
-    else
-        echo "[!] recon-deceiver.service unavailable or not running; starting the script directly..."
+    elif [[ -x "$SCRIPTS_DIR/recon-deceiver" ]]; then
+        echo "[*] Launching native Rust recon-deceiver daemon..."
+        start_bg recon-deceiver /var/run/recon-deceiver.pid "$SCRIPTS_DIR/recon-deceiver" 3
+    elif [[ -x "$SYS_HOME/CustomHyprScripts/recon-deceiver" ]]; then
+        echo "[*] Launching native Rust recon-deceiver daemon..."
+        start_bg recon-deceiver /var/run/recon-deceiver.pid "$SYS_HOME/CustomHyprScripts/recon-deceiver" 3
+    elif [[ -f "$SCRIPTS_DIR/recon-deceiver.py" ]]; then
+        echo "[!] starting the honeypot script directly..."
         start_bg recon-deceiver /var/run/recon-deceiver.pid python3 "$SCRIPTS_DIR/recon-deceiver.py" 3
+    else
+        echo "[!] $SCRIPTS_DIR/recon-deceiver not found"
     fi
 
     # Start log analyst daemon (IDS) via systemd

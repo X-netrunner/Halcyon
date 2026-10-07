@@ -1,14 +1,26 @@
 #!/usr/bin/env python3
+# Recon Deception Honeypot Daemon
+# Re-written in Rust for speed & lightweight execution.
+import os
+import sys
+
+_DIR = os.path.dirname(os.path.abspath(__file__))
+_CANDIDATES = [
+    os.path.join(_DIR, "recon-deceiver"),
+    os.path.expanduser("~/CustomHyprScripts/recon-deceiver/target/release/recon-deceiver"),
+]
+for _bin in _CANDIDATES:
+    if os.path.isfile(_bin) and os.access(_bin, os.X_OK):
+        os.execv(_bin, [_bin] + sys.argv[1:])
+
 import gzip
 import io
-import os
 import random
 import tarfile
 import re
 import shutil
 import socket
 import subprocess
-import sys
 import threading
 import time
 import urllib.parse
@@ -80,7 +92,7 @@ PORTS = {
     8080: b"HTTP/1.1 200 OK\r\nServer: nginx/1.18.0 (Ubuntu)\r\nConnection: close\r\n\r\n<html><body><h1>It works!</h1></body></html>\r\n",
 }
 
-LOG_FILE = "/home/netrunner/logs/recon-attempts.log"
+LOG_FILE = os.path.expanduser("~/logs/recon-attempts.log")
 
 # When this marker file exists, port 22 is served by the Cowrie SSH honeypot
 # container instead of the banner tarpit. sysmode creates/removes it, and the
@@ -102,7 +114,7 @@ TIME_LIMIT_BEFORE_BAN = 120
 # --- Randomized telnet credential (generated once at daemon start) ---
 # A real telnetd has a fixed account, so we bake one random-looking pair
 # for the whole daemon run rather than accepting Enter/Enter like before.
-TELNET_CRED_FILE = "/home/netrunner/logs/honeypot-credentials.txt"
+TELNET_CRED_FILE = os.path.expanduser("~/logs/honeypot-credentials.txt")
 TELNET_USERNAMES = [
     "ubuntu", "admin", "root", "backup", "deploy", "webadmin", "sysadmin",
     "support", "operator", "user", "test", "postgres", "mysql", "git",
@@ -333,7 +345,7 @@ def unban_ip_later(ip):
 # --- Automated counter-scan of attackers (active defense) ---
 # When an attacker connects to (or DNS-probes) the decoy, automatically
 # profile them back with nmap and log the results for later review.
-SCAN_LOG_FILE = "/home/netrunner/logs/attacker-scans.log"
+SCAN_LOG_FILE = os.path.expanduser("~/logs/attacker-scans.log")
 LAST_SCAN_TIME = {}
 SCAN_COOLDOWN = 300  # seconds; never scan the same IP more often than this
 
@@ -693,7 +705,7 @@ SANDBOX_DENIED = {"/etc/shadow"}
 # inspection (real gzip/tar magic bytes), and it captures anything an attacker
 # uploads (STOR) for analysis — the "they plant a backdoor and log out" win.
 
-FTP_UPLOAD_DIR = "/home/netrunner/logs/attacker-uploads"
+FTP_UPLOAD_DIR = os.path.expanduser("~/logs/attacker-uploads")
 FTP_DENIED = {"/etc/shadow", "/etc/gshadow", "/etc/shadow-", "/etc/sudoers"}
 
 

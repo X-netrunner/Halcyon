@@ -41,6 +41,11 @@ for i = 1, 9 do
     hl.bind(vars.kbMoveWinToWs .. " + " .. i, hl.dsp.window.move({ workspace = i }))
 end
 
+-- Next / previous workspace: SUPER+CTRL+Right opens a new workspace after the last one, SUPER+CTRL+Left on the first one
+-- jumps to the last (same as the 3 / 4 finger swipes; see scripts/ws-nav.sh and Settings > Workspaces)
+bind("wsnext", "SUPER + CTRL + Right", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh next"))
+bind("wsprev", "SUPER + CTRL + Left", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh prev"))
+
 -- Special workspaces (overlay on top of the current workspace)
 --   SUPER+S            scratch workspace   (SUPER+ALT+S sends the focused window there)
 --   SUPER+M            music               (starts Spotify the first time / when it has no window: scripts/special.sh)
@@ -95,6 +100,7 @@ bind("layout", "SUPER + ALT + T", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scri
 bind("nightlight", "SUPER + ALT + N", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_nightlight.sh"))
 bind("emoji", "SUPER + period", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/emoji.sh"))
 bind("livewall", "SUPER + ALT + W", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_livewallpaper.sh"))
+bind("nextwall", "SUPER + SHIFT + W", hl.dsp.exec_cmd("quickshell ipc -p " .. home .. "/.config/Halcyon/quickshell/wallpaper call wallpaper next"))
 bind("gestures", "SUPER + ALT + G", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_gestures.sh"))
 bind("power", "SUPER + ALT + P", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_power.sh"))
 bind("caffeine", "SUPER + ALT + C", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/caffeine.sh toggle"))   -- caffeine: screen stays awake
@@ -109,36 +115,15 @@ bind("notifcenter", "SUPER + SHIFT + N", hl.dsp.exec_cmd(ipc .. "notifcenter")) 
 bind("dnd", "SUPER + SHIFT + D", hl.dsp.exec_cmd(ipc .. "dnd"))
 bind("theme", "SUPER + SHIFT + T", hl.dsp.exec_cmd(ipc .. "theme"))                 -- light / dark theme           -- do not disturb
 
--- Tapping SUPER on its own (press + release, nothing else in between) opens the drawer.
--- Hyprland's Lua API has no "catchall" key (that was the error on this line), so instead every
--- ordinary key gets a tiny non-consuming marker bind: SUPER+<key> flags SUPER as "used" while the
--- key still reaches its real bind / the focused app untouched. Result: SUPER+T etc. never pop the
--- drawer when you let go of SUPER.
--- If the drawer never opens, delete the marker loop below (the SUPER+Space fallback still works).
-local superUsed = false
-local function markUsed() superUsed = true end
-
-local markKeys = {}
-for c = string.byte("a"), string.byte("z") do markKeys[#markKeys + 1] = string.char(c) end
-for d = 0, 9 do markKeys[#markKeys + 1] = tostring(d) end
-for f = 1, 12 do markKeys[#markKeys + 1] = "F" .. f end
-for _, k in ipairs({ "space", "Tab", "grave", "comma", "period", "slash", "semicolon", "apostrophe",
-                     "bracketleft", "bracketright", "backslash", "minus", "equal", "Return",
-                     "BackSpace", "Escape", "Left", "Right", "Up", "Down", "Print" }) do
-    markKeys[#markKeys + 1] = k
-end
-for _, mods in ipairs({ "SUPER", "SUPER + SHIFT", "SUPER + ALT", "SUPER + CTRL" }) do
-    for _, k in ipairs(markKeys) do
-        pcall(hl.bind, mods .. " + " .. k, markUsed, { non_consuming = true })
-    end
+-- Tapping SUPER on its own opens the launcher (no Space needed).
+-- Runs on key RELEASE. A modifier key is reported with and without itself in the modifier mask depending on the
+-- Hyprland version, so both spellings are bound; the island ignores the second trigger (350ms debounce), so
+-- registering both is safe. super_tap.sh writes a file the island watches (a few ms) and falls back to IPC.
+local superTapCmd = home .. "/.config/Halcyon/scripts/super_tap.sh"
+for _, k in ipairs({ "SUPER_L", "SUPER_R", "SUPER + SUPER_L", "SUPER + SUPER_R" }) do
+    pcall(hl.bind, k, hl.dsp.exec_cmd(superTapCmd), { release = true })
 end
 
-hl.bind("SUPER + SUPER_L", function()
-    if not superUsed then hl.dispatch(hl.dsp.exec_cmd(ipc .. "launcher")) end
-    superUsed = false
-end, { release = true })
-
-bind("launcher", "SUPER + space", hl.dsp.exec_cmd(ipc .. "launcher"))
 -- SUPER+TAB: live workspace tree (workspaces -> windows, special workspaces included)
 bind("overview", "SUPER + TAB", hl.dsp.exec_cmd(ipc .. "overview"))
 hl.bind("SUPER + GRAVE", hl.dsp.exec_cmd(home .. "/.config/hyprland.overview.sh"))
