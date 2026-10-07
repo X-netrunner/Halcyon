@@ -67,11 +67,13 @@ Scope {
 
     SystemClock { id: clock; precision: SystemClock.Seconds }
 
-    WlSessionLock {
-        locked: root.locked
+    LazyLoader {
+        active: root.locked
+        WlSessionLock {
+            locked: root.locked
 
-        WlSessionLockSurface {
-            id: surf
+            WlSessionLockSurface {
+                id: surf
             color: root.pal.bg
 
             // the whole screen eases in when it locks
@@ -80,7 +82,7 @@ Scope {
 
             // ---- constellation + drifting dots (same quiet look as everything else)
             Backdrop {
-                visible: root.stars
+                visible: root.locked && root.stars
                 anchors.fill: parent
                 pal: root.pal
                 mode: root.sysmode
@@ -332,4 +334,5 @@ Scope {
             }
         }
     }
+}
 }

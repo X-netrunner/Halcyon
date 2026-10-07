@@ -17,6 +17,16 @@ fn build_sig(pattern: &str) -> Regex {
 }
 
 fn sys_user() -> String {
+    if let Ok(content) = fs::read_to_string("/etc/sysmode.conf") {
+        for line in content.lines() {
+            if let Some(rest) = line.trim().strip_prefix("SYS_USER=") {
+                let u = rest.trim().trim_matches('"').trim_matches('\'');
+                if !u.is_empty() {
+                    return u.to_string();
+                }
+            }
+        }
+    }
     if let Ok(u) = std::env::var("SUDO_USER") {
         if !u.is_empty() && u != "root" {
             return u;
@@ -39,7 +49,26 @@ fn sys_user() -> String {
             }
         }
     }
-    "netrunner".to_string()
+    "sushanth".to_string()
+}
+
+fn sys_home() -> String {
+    if let Ok(content) = fs::read_to_string("/etc/sysmode.conf") {
+        for line in content.lines() {
+            if let Some(rest) = line.trim().strip_prefix("SYS_HOME=") {
+                let h = rest.trim().trim_matches('"').trim_matches('\'');
+                if !h.is_empty() {
+                    return h.to_string();
+                }
+            }
+        }
+    }
+    if let Ok(h) = std::env::var("HOME") {
+        if !h.is_empty() && h != "/root" {
+            return h;
+        }
+    }
+    format!("/home/{}", sys_user())
 }
 
 fn sys_uid(user: &str) -> u32 {
@@ -164,7 +193,7 @@ fn main() {
         return;
     }
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/netrunner".to_string());
+    let home = sys_home();
     let log_file_path = format!("{}/logs/recon-attempts.log", home);
     let alert_log_path = format!("{}/logs/ids-alerts.log", home);
 

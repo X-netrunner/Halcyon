@@ -9,7 +9,7 @@ Item {
     property string text: ""
     property real shown: value
 
-    Behavior on shown { NumberAnimation { duration: 700; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+    Behavior on shown { enabled: root.visible; NumberAnimation { duration: 700; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
 
     implicitWidth: 80
     implicitHeight: 80

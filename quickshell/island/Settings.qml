@@ -258,8 +258,9 @@ Scope {
 
     // ---- reading and formatting values
     function get(key) {
-        if (key.indexOf("opt:") === 0) return opt[key.substring(4)]
-        if (key.indexOf("hy:") === 0) return hyCur[key.substring(3)]
+        if (!key || typeof key !== "string") return undefined
+        if (key.indexOf("opt:") === 0) return opt ? opt[key.substring(4)] : undefined
+        if (key.indexOf("hy:") === 0) return hyCur ? hyCur[key.substring(3)] : undefined
         return root[key]
     }
     function num(m) {
@@ -309,7 +310,7 @@ Scope {
         return out
     }
     readonly property int shownCount: { var n = 0; for (var g = 0; g < groupsNow.length; g++) n += groupsNow[g].items.length; return n }
-    readonly property int colCount: card.width >= 1080 ? 2 : 1
+    readonly property int colCount: (typeof card !== "undefined" && card) ? (card.width >= 1080 ? 2 : 1) : 2
     function weight(grp) {
         var w = 2
         if (query === "" && collapsed[grp.id]) return w
@@ -322,22 +323,24 @@ Scope {
         return w
     }
     readonly property var columns: {
-        var n = colCount, cols = [], hs = []
+        var n = colCount || 2, cols = [], hs = []
         for (var i = 0; i < n; i++) { cols.push([]); hs.push(0) }
         for (var g = 0; g < groupsNow.length; g++) {
             var best = 0
             for (var j = 1; j < n; j++) if (hs[j] < hs[best]) best = j
-            cols[best].push(groupsNow[g])
-            hs[best] += weight(groupsNow[g])
+            if (cols[best]) {
+                cols[best].push(groupsNow[g])
+                hs[best] += weight(groupsNow[g])
+            }
         }
         return cols
     }
 
     onOpenChanged: if (open) {
         if (!appsProc.running) appsProc.running = true
-        search.text = ""; query = ""; focusT.restart()
+        query = ""; focusT.restart()
     }
-    Timer { id: focusT; interval: 60; onTriggered: search.forceActiveFocus() }
+    Timer { id: focusT; interval: 60; onTriggered: if (typeof search !== "undefined" && search) { search.text = ""; search.forceActiveFocus() } }
 
     // ======================================================================== custom leaves
     Component {
@@ -525,9 +528,11 @@ Scope {
     }
 
     // ======================================================================== the window
-    PanelWindow {
-        id: win
-        visible: root.open || fade.opacity > 0.01
+    LazyLoader {
+        active: root.open
+        PanelWindow {
+            id: win
+            visible: true
         anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
@@ -559,7 +564,7 @@ Scope {
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
 
-                Backdrop { visible: root.opt.stars !== false && root.opt.starsSettings !== false; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
+                Backdrop { visible: root.open && root.opt.stars !== false && root.opt.starsSettings !== false; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
 
                 // ---------------- header: title, search, collapse, close
                 RowLayout {
@@ -895,4 +900,5 @@ Scope {
             }
         }
     }
+}
 }

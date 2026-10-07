@@ -73,6 +73,7 @@ pub fn now_stamp() -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn epoch() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -80,6 +81,7 @@ pub fn epoch() -> f64 {
         .unwrap_or(0.0)
 }
 
+#[allow(dead_code)]
 pub fn hostname() -> String {
     let h = read("/proc/sys/kernel/hostname");
     let h = h.trim();

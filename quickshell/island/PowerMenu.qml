@@ -34,10 +34,12 @@ Scope {
         { id: "shutdown", label: "Shut down", glyph: 0xF0425, confirm: true,  key: Qt.Key_P }
     ]
 
-    PanelWindow {
-        id: win
-        visible: root.open || fade.opacity > 0.01
-        anchors { top: true; bottom: true; left: true; right: true }
+    LazyLoader {
+        active: root.open
+        PanelWindow {
+            id: win
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         WlrLayershell.namespace: "island-power"
@@ -60,7 +62,7 @@ Scope {
             Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.55) }
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
 
-            Backdrop { visible: root.stars; anchors.fill: parent; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 26; artStrength: 0.8; artFit: 0.7 }
+            Backdrop { visible: (root.open || fade.opacity > 0.01) && root.stars; anchors.fill: parent; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 26; artStrength: 0.8; artFit: 0.7 }
 
             Column {
                 anchors.centerIn: parent
@@ -132,4 +134,5 @@ Scope {
             }
         }
     }
+}
 }

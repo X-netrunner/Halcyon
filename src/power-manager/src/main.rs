@@ -10,9 +10,9 @@ use std::sync::mpsc;
 use evdev::Device;
 use rand::seq::SliceRandom;
 
-const MONITOR: &str = "eDP-1";
-const RES_HIGH: &str = "1920x1200@144";
-const RES_LOW: &str = "1920x1200@60";
+const DEFAULT_MONITOR: &str = "eDP-1";
+const DEFAULT_RES_HIGH: &str = "1920x1080@144";
+const DEFAULT_RES_LOW: &str = "1920x1080@60";
 
 
 const THERMAL_THROTTLE_TEMP: f64 = 85.0;
@@ -40,8 +40,9 @@ struct HyprClient {
     class: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct HyprMonitor {
+    #[serde(default)]
     solitary: String,
 }
 
@@ -295,20 +296,52 @@ fn main() {
 }
 
 fn get_cpu_temp() -> Option<f64> {
-    let zones = fs::read_dir("/sys/class/thermal").ok()?;
-    for entry in zones.flatten() {
-        let dir = entry.path();
-        if !dir.is_dir() {
-            continue;
-        }
-        let type_path = dir.join("type");
-        let type_str = fs::read_to_string(type_path).unwrap_or_default();
-        if type_str.trim() == "x86_pkg_temp" {
-            let temp_str = fs::read_to_string(dir.join("temp")).ok()?;
-            if let Ok(milli) = temp_str.trim().parse::<f64>() {
-                return Some(milli / 1000.0);
+    // 1. Check hwmon for dedicated CPU temperature drivers (AMD k10temp, Intel coretemp)
+    if let Ok(hwmon_entries) = fs::read_dir("/sys/class/hwmon") {
+        for entry in hwmon_entries.flatten() {
+            let dir = entry.path();
+            let name = fs::read_to_string(dir.join("name")).unwrap_or_default();
+            let name_trimmed = name.trim();
+            if name_trimmed == "k10temp" || name_trimmed == "coretemp" {
+                for temp_file in &["temp1_input", "temp2_input"] {
+                    if let Ok(temp_str) = fs::read_to_string(dir.join(temp_file)) {
+                        if let Ok(milli) = temp_str.trim().parse::<f64>() {
+                            if milli > 0.0 && milli < 150000.0 {
+                                return Some(milli / 1000.0);
+                            }
+                        }
+                    }
+                }
             }
-            return None;
+        }
+    }
+
+    // 2. Fall back to thermal zones (x86_pkg_temp, k10temp, Tctl, acpitz, etc.)
+    if let Ok(zones) = fs::read_dir("/sys/class/thermal") {
+        let mut max_temp: Option<f64> = None;
+        for entry in zones.flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let type_str = fs::read_to_string(dir.join("type")).unwrap_or_default();
+            let t = type_str.trim();
+            if t == "x86_pkg_temp" || t == "k10temp" || t == "Tctl" || t == "acpitz" || t.contains("cpu") {
+                if let Ok(temp_str) = fs::read_to_string(dir.join("temp")) {
+                    if let Ok(milli) = temp_str.trim().parse::<f64>() {
+                        let c = milli / 1000.0;
+                        if c > 0.0 && c < 150.0 {
+                            if t == "x86_pkg_temp" || t == "k10temp" || t == "Tctl" {
+                                return Some(c);
+                            }
+                            max_temp = Some(max_temp.map_or(c, |m| m.max(c)));
+                        }
+                    }
+                }
+            }
+        }
+        if max_temp.is_some() {
+            return max_temp;
         }
     }
     None
@@ -425,9 +458,28 @@ fn determine_mode(conn: &mut HyprlandConnection, last_mode: Option<PowerMode>, s
 }
 
 fn ac_online() -> bool {
-    fs::read_to_string("/sys/class/power_supply/AC0/online")
-        .map(|s| s.trim() == "1")
-        .unwrap_or(false)
+    let Ok(entries) = fs::read_dir("/sys/class/power_supply") else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let is_ac = name.starts_with("AC") || name.starts_with("ADP") || {
+            let type_path = path.join("type");
+            fs::read_to_string(type_path)
+                .map(|t| t.trim().eq_ignore_ascii_case("Mains"))
+                .unwrap_or(false)
+        };
+        if is_ac {
+            let online_path = path.join("online");
+            if let Ok(status) = fs::read_to_string(online_path) {
+                if status.trim() == "1" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Instantaneous CPU busy% from /proc/stat deltas (~500ms sample).
@@ -483,6 +535,55 @@ fn get_gpu_utilization() -> f64 {
         .unwrap_or(0.0)
 }
 
+fn get_monitor_config(conn: &mut HyprlandConnection) -> (String, String, String) {
+    if let Ok(output) = conn.send_cmd("j/monitors") {
+        if let Ok(monitors) = serde_json::from_str::<Vec<serde_json::Value>>(&output) {
+            let mon = monitors.iter().find(|m| {
+                m["name"].as_str().map_or(false, |n| n.starts_with("eDP"))
+            }).or_else(|| monitors.first());
+
+            if let Some(m) = mon {
+                let name = m["name"].as_str().unwrap_or(DEFAULT_MONITOR).to_string();
+                let width = m["width"].as_u64().unwrap_or(1920);
+                let height = m["height"].as_u64().unwrap_or(1080);
+                
+                let mut max_hz = 144u64;
+                if let Some(modes) = m["availableModes"].as_array() {
+                    for mode_val in modes {
+                        if let Some(mode_str) = mode_val.as_str() {
+                            if let Some(at_idx) = mode_str.find('@') {
+                                if let Some(hz_str) = mode_str[at_idx + 1..].split('.').next() {
+                                    if let Ok(hz) = hz_str.parse::<u64>() {
+                                        if hz > max_hz {
+                                            max_hz = hz;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if let Some(rr) = m["refreshRate"].as_f64() {
+                    max_hz = rr.round() as u64;
+                }
+
+                let high = format!("{}x{}@{}", width, height, max_hz);
+                let low = format!("{}x{}@60", width, height);
+                return (name, high, low);
+            }
+        }
+    }
+    (DEFAULT_MONITOR.to_string(), DEFAULT_RES_HIGH.to_string(), DEFAULT_RES_LOW.to_string())
+}
+
+fn set_hyprland_monitor(conn: &mut HyprlandConnection, high_refresh: bool) {
+    let (monitor_name, res_high, res_low) = get_monitor_config(conn);
+    let resolution = if high_refresh { res_high } else { res_low };
+    let arg = format!("eval hl.monitor({{ output = '{}', mode = '{}', position = '0x0', scale = 1 }})", monitor_name, resolution);
+    if let Err(e) = conn.send_cmd(&arg) {
+        eprintln!("Failed to set monitor resolution via socket: {}", e);
+    }
+}
+
 fn apply_mode(conn: &mut HyprlandConnection, mode: PowerMode, last_mode: Option<PowerMode>) {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S");
     
@@ -490,7 +591,7 @@ fn apply_mode(conn: &mut HyprlandConnection, mode: PowerMode, last_mode: Option<
         PowerMode::Battery => {
             println!("[{}] Switching to BATTERY mode", now);
             set_power_profile("power-saver");
-            set_hyprland_monitor(conn, RES_LOW);
+            set_hyprland_monitor(conn, false);
             disable_nvidia_gpu();
             if last_mode == Some(PowerMode::Gaming) {
                 toggle_gaming_optimizations(conn, false);
@@ -499,7 +600,7 @@ fn apply_mode(conn: &mut HyprlandConnection, mode: PowerMode, last_mode: Option<
         PowerMode::ACBalanced => {
             println!("[{}] Switching to AC BALANCED mode", now);
             set_power_profile("balanced");
-            set_hyprland_monitor(conn, RES_HIGH);
+            set_hyprland_monitor(conn, true);
             enable_nvidia_gpu();
             if last_mode == Some(PowerMode::Gaming) {
                 toggle_gaming_optimizations(conn, false);
@@ -508,7 +609,7 @@ fn apply_mode(conn: &mut HyprlandConnection, mode: PowerMode, last_mode: Option<
         PowerMode::ACPerformance => {
             println!("[{}] Switching to AC PERFORMANCE mode", now);
             set_power_profile("performance");
-            set_hyprland_monitor(conn, RES_HIGH);
+            set_hyprland_monitor(conn, true);
             enable_nvidia_gpu();
             if last_mode == Some(PowerMode::Gaming) {
                 toggle_gaming_optimizations(conn, false);
@@ -517,7 +618,7 @@ fn apply_mode(conn: &mut HyprlandConnection, mode: PowerMode, last_mode: Option<
         PowerMode::Idle => {
             println!("[{}] Switching to IDLE mode", now);
             set_power_profile("power-saver");
-            set_hyprland_monitor(conn, RES_HIGH);
+            set_hyprland_monitor(conn, true);
             disable_nvidia_gpu();
             if last_mode == Some(PowerMode::Gaming) {
                 toggle_gaming_optimizations(conn, false);
@@ -526,7 +627,7 @@ fn apply_mode(conn: &mut HyprlandConnection, mode: PowerMode, last_mode: Option<
         PowerMode::Gaming => {
             println!("[{}] Switching to GAMING mode", now);
             set_power_profile("performance");
-            set_hyprland_monitor(conn, RES_HIGH);
+            set_hyprland_monitor(conn, true);
             enable_nvidia_gpu();
             toggle_gaming_optimizations(conn, true);
         }
@@ -549,13 +650,6 @@ fn set_power_profile(profile: &str) {
 /// (e.g. sysmode forcing performance on battery) get reverted next poll.
 fn assert_power_profile(mode: PowerMode) {
     set_power_profile(mode.profile());
-}
-
-fn set_hyprland_monitor(conn: &mut HyprlandConnection, resolution: &str) {
-    let arg = format!("eval hl.monitor({{ output = '{}', mode = '{}', position = '0x0', scale = 1 }})", MONITOR, resolution);
-    if let Err(e) = conn.send_cmd(&arg) {
-        eprintln!("Failed to set monitor resolution via socket: {}", e);
-    }
 }
 
 fn disable_nvidia_gpu() {
@@ -618,11 +712,30 @@ fn toggle_gaming_optimizations(conn: &mut HyprlandConnection, enable: bool) {
     }
 }
 
+fn get_user_home() -> String {
+    if let Ok(h) = std::env::var("HOME") {
+        if !h.is_empty() && h != "/root" {
+            return h;
+        }
+    }
+    if let Ok(content) = fs::read_to_string("/etc/sysmode.conf") {
+        for line in content.lines() {
+            if let Some(rest) = line.trim().strip_prefix("SYS_HOME=") {
+                let path = rest.trim().trim_matches('"').trim_matches('\'');
+                if !path.is_empty() {
+                    return path.to_string();
+                }
+            }
+        }
+    }
+    std::env::var("HOME").unwrap_or_else(|_| "/home/sushanth".to_string())
+}
+
 fn manage_ui_elements(mode: PowerMode, mut gslapper_running: bool, conn: &mut HyprlandConnection) -> bool {
     if !live_wallpaper_enabled() {
         return gslapper_running;
     }
-    let home = std::env::var("HOME").unwrap();
+    let home = get_user_home();
     let disabled_file = format!("{}/.local/state/livewallpaper_disabled", home);
     let manually_disabled = std::path::Path::new(&disabled_file).exists();
 
@@ -644,10 +757,11 @@ fn manage_ui_elements(mode: PowerMode, mut gslapper_running: bool, conn: &mut Hy
                 }
             });
 
+            let (monitor_name, _, _) = get_monitor_config(conn);
             let status = Command::new("gslapper")
                 .env("XDG_RUNTIME_DIR", &xdg_runtime)
                 .env("WAYLAND_DISPLAY", &wayland_display)
-                .args(["--fork", "--cache-size", "16", "-l", "background", "-o", "no-audio loop fill", MONITOR, &wallpaper_path])
+                .args(["--fork", "--cache-size", "16", "-l", "background", "-o", "no-audio loop fill", &monitor_name, &wallpaper_path])
                 .status();
             
             if status.map(|s| s.success()).unwrap_or(false) {
@@ -686,7 +800,7 @@ fn pick_random_wallpaper(dir: &str) -> String {
         chosen.clone()
     } else {
         // Fallback to the default if no videos found
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/netrunner".to_string());
+        let home = get_user_home();
         format!("{}/Pictures/Wallpapers/jinx-mayhem-in-arcane.3840x2160.mp4", home)
     }
 }
@@ -784,18 +898,31 @@ fn update_scheme_primary(video_path: &str) {
     let (r, g, b) = get_dominant_color_from_video(video_path);
     let hex_format = format!("{:02x}{:02x}{:02x}", r, g, b);
 
-    let home = std::env::var("HOME").unwrap();
-    let scheme_path = format!("{}/.config/hypr/scheme/current.lua", home);
+    let home = get_user_home();
+    let scheme_paths = [
+        format!("{}/.config/Halcyon/scheme/current.lua", home),
+        format!("{}/.config/hypr/scheme/current.lua", home),
+    ];
 
-    if let Ok(content) = fs::read_to_string(&scheme_path) {
-        let new_primary = format!("    primary = \"{}\",\n", hex_format);
-        let new_content = content.replace(
-            "    primary = \"",
-            &new_primary,
-        );
-
-        if let Ok(_) = fs::write(&scheme_path, &new_content) {
-            println!("[POWER] Updated scheme primary color to {} ({})", hex_format, video_path);
+    for scheme_path in &scheme_paths {
+        if let Ok(content) = fs::read_to_string(scheme_path) {
+            let mut new_lines = Vec::new();
+            let mut matched = false;
+            for line in content.lines() {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("primary") && trimmed.contains('=') {
+                    new_lines.push(format!("    primary         = \"#{}\",", hex_format));
+                    matched = true;
+                } else {
+                    new_lines.push(line.to_string());
+                }
+            }
+            if matched {
+                let new_content = new_lines.join("\n") + "\n";
+                if fs::write(scheme_path, &new_content).is_ok() {
+                    println!("[POWER] Updated scheme primary color to #{} in {}", hex_format, scheme_path);
+                }
+            }
         }
     }
 }

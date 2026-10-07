@@ -42,6 +42,26 @@ for _ in $(seq 1 150); do
 done
 [ -n "${WAYLAND_DISPLAY:-}" ] || { alert "no WAYLAND_DISPLAY: not started from inside a Wayland session"; exit 1; }
 
+# Ensure UTF-8 locale for Wayland and xkbcommon compose tables
+case "${LANG:-}" in
+  *.[uU][tT][fF]-8|*.[uU][tT][fF]8) ;;
+  *) export LANG="${LANG:-en_US}.UTF-8" ;;
+esac
+
+# On hybrid AMD + NVIDIA systems, keep Quickshell on the integrated GPU (Mesa/Radeon)
+# and prevent loading NVIDIA's 60MB shader compiler blob (libnvidia-gpucomp.so) into RAM
+if [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
+  export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+fi
+if [ -f /usr/share/vulkan/icd.d/radeon_icd.json ]; then
+  export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.json
+  export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json
+fi
+
+# Quickshell links jemalloc. Without tuning, jemalloc retains hundreds of megabytes across multi-core arenas.
+# Restrict to 2 arenas and immediately purge dirty/muzzy pages back to the kernel.
+export MALLOC_CONF="narenas:2,dirty_decay_ms:0,muzzy_decay_ms:0,background_thread:true"
+
 say "using $qs ($("$qs" --version 2>&1 | head -n1)) on $WAYLAND_DISPLAY, QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}"
 [ "$name" = island ] && bash "$RICE/scripts/notif-guard.sh" 2>/dev/null
 

@@ -83,7 +83,7 @@ Scope {
 
     // ---------------------------------------------------------------- the tree data (rebuilt when the search or a shortcut changes)
     property string query: ""
-    readonly property int colCount: card.width >= 1180 ? 3 : (card.width >= 780 ? 2 : 1)
+    readonly property int colCount: (typeof card !== "undefined" && card) ? (card.width >= 1180 ? 3 : (card.width >= 780 ? 2 : 1)) : 2
 
     function visibleGroups() {
         var q = query.toLowerCase().trim()
@@ -113,22 +113,24 @@ Scope {
     }
     readonly property var groupsNow: { var a = query; var b = keyMap; var c = customs; return visibleGroups() }
     readonly property var columns: {
-        var n = colCount, cols = [], hs = []
+        var n = colCount || 2, cols = [], hs = []
         for (var i = 0; i < n; i++) { cols.push([]); hs.push(0) }
         for (var g = 0; g < groupsNow.length; g++) {
             var best = 0
             for (var j = 1; j < n; j++) if (hs[j] < hs[best]) best = j
-            cols[best].push(groupsNow[g])
-            hs[best] += groupsNow[g].items.length + 2 + (groupsNow[g].custom ? 1 : 0)
+            if (cols[best]) {
+                cols[best].push(groupsNow[g])
+                hs[best] += groupsNow[g].items.length + 2 + (groupsNow[g].custom ? 1 : 0)
+            }
         }
         return cols
     }
     readonly property int shownCount: { var n = 0; for (var g = 0; g < groupsNow.length; g++) n += groupsNow[g].items.length; return n }
 
     onOpenChanged: {
-        if (open) { search.text = ""; query = ""; editId = ""; capturing = false; focusT.restart() }
+        if (open) { query = ""; editId = ""; capturing = false; focusT.restart() }
     }
-    Timer { id: focusT; interval: 60; onTriggered: search.forceActiveFocus() }
+    Timer { id: focusT; interval: 60; onTriggered: if (typeof search !== "undefined" && search) { search.text = ""; search.forceActiveFocus() } }
 
     // ---------------------------------------------------------------- small pieces
     // a keycap: one key of a shortcut
@@ -188,10 +190,12 @@ Scope {
         }
     }
 
-    PanelWindow {
-        id: win
-        visible: root.open || fade.opacity > 0.01
-        anchors { top: true; bottom: true; left: true; right: true }
+    LazyLoader {
+        active: root.open
+        PanelWindow {
+            id: win
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         WlrLayershell.namespace: "island-keys"
@@ -222,7 +226,7 @@ Scope {
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
 
-                Backdrop { visible: root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
+                Backdrop { visible: root.open && root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
 
                 // ---------------- header: title, search, close
                 RowLayout {
@@ -760,4 +764,5 @@ Scope {
             }
         }
     }
+}
 }

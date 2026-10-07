@@ -11,7 +11,11 @@ import Quickshell
 Item {
     id: root
 
-    property var pal
+    property var pal: ({
+        accent: "#eda578", accent2: "#d29da1", surface: "#1e2130", bg: "#14161f",
+        text: "#e9e2dd", muted: "#aca19a", font: "JetBrainsMono Nerd Font", uiFont: "Inter Variable",
+        rSm: 8, rMd: 12, rLg: 16, dMed: 200
+    })
     property bool open: false
     property string folderPath: ""
     signal picked(string path)

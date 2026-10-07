@@ -279,7 +279,7 @@ Scope {
 
             // tree-style backdrop: drifting dots + flagship-mode art
             Backdrop {
-                visible: root.stars
+                visible: panel.visible && root.stars
                 anchors.fill: parent
                 anchors.margins: 14
                 pal: root.pal

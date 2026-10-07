@@ -300,7 +300,7 @@ Scope {
 
             // same quiet look as the tree: drifting dots, and the shield / dragon for lockdown / stealth
             Backdrop {
-                visible: root.stars
+                visible: root.shown && root.stars
                 anchors.fill: parent
                 anchors.margins: 14
                 pal: root.pal

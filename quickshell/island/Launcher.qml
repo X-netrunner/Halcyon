@@ -234,7 +234,8 @@ Item {
     }
 
     function iconFor(e) {
-        var ic = e.icon || ""
+        var ic = e && e.icon ? e.icon : ""
+        if (!ic) return Quickshell.iconPath("application-x-executable")
         if (ic.indexOf("/") === 0) return "file://" + ic
         return Quickshell.iconPath(ic, "application-x-executable")
     }

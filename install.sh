@@ -937,12 +937,12 @@ UNITS="$TARGET_HOME/.config/systemd/user"
 try run_as_user_cmd "Installing the user services (gestures start with the desktop, Auto power from the island)" \
     install -m644 "$TARGET_RICE/systemd/power-manager.service" "$TARGET_RICE/systemd/touchpad-gestures.service" "$UNITS/"
 if [[ "$DRY_RUN" != "true" ]] && have_systemd && user_bus_ready; then
-    try run_as_user_cmd "Reloading the user systemd" user_systemctl daemon-reload
+    try run_cmd "Reloading the user systemd" user_systemctl daemon-reload
     # only inside a running desktop (the gestures need it); otherwise they start with the next login via execs.lua
     if [[ -x "$BIN_DIR/touchpad-gestures" && -n "${WAYLAND_DISPLAY:-}" ]]; then
-        try run_as_user_cmd "Starting touchpad gestures" user_systemctl start touchpad-gestures.service
+        try run_cmd "Starting touchpad gestures" user_systemctl start touchpad-gestures.service
     fi
-    [[ "$PACKAGES" == "true" ]] && try run_as_user_cmd "Enabling PipeWire for the user" user_systemctl enable --now pipewire pipewire-pulse wireplumber
+    [[ "$PACKAGES" == "true" ]] && try run_cmd "Enabling PipeWire for the user" user_systemctl enable --now pipewire pipewire-pulse wireplumber
 else
     log_info "No user session running here: the user services start at the next login."
 fi
