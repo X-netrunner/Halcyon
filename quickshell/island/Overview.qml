@@ -14,7 +14,8 @@ Item {
 
     property var pal: ({
         accent: "#eda578", accent2: "#d29da1", surface: "#1e2130", bg: "#14161f",
-        text: "#e9e2dd", muted: "#aca19a", font: "JetBrainsMono Nerd Font", uiFont: "Inter Variable"
+        text: "#e9e2dd", muted: "#aca19a", font: "JetBrainsMono Nerd Font", uiFont: "Inter Variable",
+        motion: 1.0, growth: 0, growthOn: false
     })
     property bool open: false
     property bool compactSpecial: true
@@ -595,6 +596,7 @@ Item {
     ModeArt {
         anchors.fill: parent
         anchors.margins: 60
+        clip: true          // same as Backdrop (which draws its lines fine): keeps the line Shapes inside a clip node
         pal: ov.pal
         mode: (ov.sysmode === "lockdown" || ov.sysmode === "stealth") ? ov.sysmode : (ov.profileStars && ov.starData ? "avatar" : "")
         custom: ov.starData
