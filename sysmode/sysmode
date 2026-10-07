@@ -60,6 +60,26 @@ COMPILERS=(gcc g++ clang make as ld rustc)
 # Small helpers
 # ---------------------------------------------------------------------------
 
+get_sys_hostname() {
+    if command -v hostnamectl >/dev/null 2>&1; then
+        local h
+        h=$(hostnamectl hostname 2>/dev/null)
+        if [[ -n "$h" ]]; then
+            echo "$h"
+            return 0
+        fi
+    fi
+    if [[ -r /etc/hostname ]]; then
+        local h
+        h=$(head -n 1 /etc/hostname 2>/dev/null | tr -d '[:space:]')
+        if [[ -n "$h" ]]; then
+            echo "$h"
+            return 0
+        fi
+    fi
+    uname -n
+}
+
 update_config() {
     local key="$1" val="$2"
     mkdir -p /etc
@@ -145,7 +165,7 @@ COWRIE_STATE_DIR="$LOGS_DIR/cowrie-lib"
 write_cowrie_config() {
     mkdir -p "$COWRIE_CFG_DIR"
     local host
-    host=$(hostname)
+    host=$(get_sys_hostname)
     cat > "$COWRIE_CFG_DIR/cowrie.cfg" <<EOF
 [honeypot]
 hostname = $host
@@ -1040,8 +1060,10 @@ cleanup_stealth() {
     if [[ -f /etc/sysmode.orig-hostname ]]; then
         local orig_hostname
         orig_hostname=$(cat /etc/sysmode.orig-hostname)
-        echo "[*] Restoring original hostname to $orig_hostname..."
-        hostnamectl set-hostname "$orig_hostname" || true
+        if [[ -n "$orig_hostname" ]]; then
+            echo "[*] Restoring original hostname to $orig_hostname..."
+            hostnamectl set-hostname "$orig_hostname" || true
+        fi
         rm -f /etc/sysmode.orig-hostname
         rm -f /etc/sysmode.persona
     fi
@@ -1474,8 +1496,8 @@ set_stealth() {
     ensure_logs
 
     # 1. Hostname & Machine ID Randomization (spoofed to a randomized decoy hostname)
-    if [[ ! -f /etc/sysmode.orig-hostname ]]; then
-        hostname > /etc/sysmode.orig-hostname
+    if [[ ! -s /etc/sysmode.orig-hostname ]]; then
+        get_sys_hostname > /etc/sysmode.orig-hostname
     fi
     local decoys=(ubuntu-server ubuntu-web-srv debian-server debian-web-01 nas-backup synology-nas netgear-gw-01 linksys-router cisco-switch fortigate-vpn linux-workstation srv-db-cluster)
 
