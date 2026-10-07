@@ -20,3 +20,6 @@ hl.env("NIXOS_OZONE_WL", "1")
 hl.env("WLR_RENDERER_ALLOW_SOFTWARE", "1")
 hl.env("XDG_MENU_PREFIX", "arch-")
 hl.env("QT_STYLE_OVERRIDE", "kvantum")
+
+-- GPU specific variables written by install.sh (NVIDIA video acceleration ...). Optional: no file = nothing happens.
+pcall(dofile, (os.getenv("HOME") or "") .. "/.config/Halcyon/gpu.lua")

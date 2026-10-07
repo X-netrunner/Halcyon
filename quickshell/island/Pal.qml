@@ -20,10 +20,85 @@ Scope {
     property color rawBg: "#14161f"
     property color rawSurface: "#1e2130"
     property color rawSurfaceHi: "#272b3d"
-    property color rawAccent: "#9aa9d4"
+    property color rawAccent: "#9aa9d4"      // the accent in use right now (= fixedAccent, or the cycling colour)
     property color rawAccent2: "#c2add8"
     property color rawText: "#dcdde8"
     property color rawMuted: "#9496a8"
+
+    // ---------- accent cycling (Settings > Colours) ----------
+    // The wallpaper's accent is one colour (its strongest hue). With accentMode "cycle" the accent instead drifts through
+    // every colour the wallpaper has (`swatches`, made by scripts/palette.sh): red -> purple -> orange ... and round again,
+    // blending smoothly between neighbours and resting a moment on each. accent2 is always the colour one step ahead.
+    property string accentMode: "fixed"     // fixed | cycle
+    property real cycleSecs: 30             // seconds from one colour to the next
+    property bool cyclePaused: false        // Gaming mode: no colour animation at all
+    property bool termDrift: false          // repaint the open terminals along with the accent (scripts/term-colors.sh --drift)
+    property var swatches: []               // the wallpaper's colours as hex strings, strongest first
+    property var ring: []                   // the same, sorted around the colour wheel: [{ h, s, l }]
+    property real phase: 0                  // where we are on the ring: 0 .. ring.length
+    property color fixedAccent: "#9aa9d4"   // what `hx palette` / palette.sh chose (used when not cycling)
+    property color fixedAccent2: "#c2add8"
+    property color probe: "#000000"         // scratch: assigning a hex string to a colour lets us read its hue
+    readonly property bool cycling: accentMode === "cycle" && ring.length > 1 && !cyclePaused
+    onCyclingChanged: syncAccent()
+    onSwatchesChanged: rebuildRing()
+    function rebuildRing() {
+        var l = []
+        for (var i = 0; i < swatches.length; i++) {
+            probe = swatches[i]
+            l.push({ h: hueOf(probe, 0), s: probe.hslSaturation, l: probe.hslLightness })
+        }
+        l.sort(function (a, b) { return a.h - b.h })
+        ring = l
+        if (phase >= l.length) phase = 0
+        syncAccent()
+    }
+    function mixHsl(a, b, t) {
+        var dh = ((b.h - a.h + 1.5) % 1) - 0.5          // shortest way round the wheel
+        return Qt.hsla((a.h + dh * t + 1) % 1, a.s + (b.s - a.s) * t, a.l + (b.l - a.l) * t, 1)
+    }
+    function applyCycle() {
+        var n = ring.length
+        if (n < 2) return
+        var i = Math.floor(phase) % n
+        var f = phase - Math.floor(phase)
+        var t = f * f * (3 - 2 * f)                     // smoothstep: lingers on each colour, glides between them
+        rawAccent = mixHsl(ring[i], ring[(i + 1) % n], t)
+        rawAccent2 = mixHsl(ring[(i + 1) % n], ring[(i + 2) % n], t)
+        refresh()
+    }
+    function syncAccent() {
+        if (cycling) { applyCycle(); return }
+        rawAccent = fixedAccent
+        rawAccent2 = fixedAccent2
+        refresh()
+    }
+    Timer {
+        id: cycleT
+        interval: 100
+        repeat: true
+        running: pal.cycling
+        property double last: 0
+        onRunningChanged: last = Date.now()
+        onTriggered: {
+            var t = Date.now()
+            pal.phase = (pal.phase + (t - last) / 1000 / Math.max(3, pal.cycleSecs)) % pal.ring.length
+            last = t
+            pal.applyCycle()
+        }
+    }
+    // the terminals that are open follow the cycle too, a few seconds apart (they are repainted with escape codes)
+    Timer {
+        interval: 5000
+        repeat: true
+        running: pal.cycling && pal.termDrift
+        onTriggered: pal.runTermColors()
+    }
+    function runTermColors() {
+        var cmd = ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/term-colors.sh"]
+        if (cycling && termDrift) cmd = cmd.concat(["--drift", String(rawAccent), String(rawAccent2)])
+        Quickshell.execDetached(cmd)
+    }
 
     // ---------- colour (what every component uses) ----------
     property color bg: "#14161f"
@@ -139,8 +214,8 @@ Scope {
     Behavior on bg { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
     Behavior on surface { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
     Behavior on surfaceHi { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
-    Behavior on accent { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
-    Behavior on accent2 { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
+    Behavior on accent { enabled: !pal.cycling; ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
+    Behavior on accent2 { enabled: !pal.cycling; ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
     Behavior on text { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
     Behavior on muted { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
 
@@ -150,11 +225,13 @@ Scope {
             if (p.bg) pal.rawBg = p.bg
             if (p.surface) pal.rawSurface = p.surface
             if (p.surfaceHi) pal.rawSurfaceHi = p.surfaceHi
-            if (p.accent) pal.rawAccent = p.accent
-            if (p.accent2) pal.rawAccent2 = p.accent2
+            if (p.accent) pal.fixedAccent = p.accent
+            if (p.accent2) pal.fixedAccent2 = p.accent2
             if (p.text) pal.rawText = p.text
             if (p.muted) pal.rawMuted = p.muted
-            pal.refresh()
+            var sw = p.swatches || []
+            if (JSON.stringify(sw) !== JSON.stringify(pal.swatches)) pal.swatches = sw     // rebuilds the ring, then syncs the accent
+            else pal.syncAccent()
             termColors.restart()          // terminals follow the wallpaper too (scripts/term-colors.sh)
         } catch (e) {}
     }
@@ -162,8 +239,19 @@ Scope {
     // a moment after the last palette change: write the terminal colour files and repaint open terminals
     Timer {
         id: termColors
-        interval: 1500
-        onTriggered: Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/term-colors.sh"])
+        interval: 400
+        onTriggered: pal.runTermColors()
+    }
+
+    function reloadFromFile() {
+        palProc.running = false
+        palProc.running = true
+    }
+
+    Process {
+        id: palProc
+        command: ["sh", "-c", "cat \"$HOME/.cache/island/palette.json\" 2>/dev/null"]
+        stdout: SplitParser { onRead: data => pal.apply(data) }
     }
 
     Process {

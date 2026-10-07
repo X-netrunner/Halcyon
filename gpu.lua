@@ -1,0 +1,3 @@
+-- Written by install.sh (hybrid laptop: integrated GPU + NVIDIA). Yours to edit or delete: it is kept when you update.
+-- The integrated GPU draws the desktop (battery); run a game on the NVIDIA GPU with:  prime-run <program>
+-- In Steam, set a game's launch options to:  prime-run %command%

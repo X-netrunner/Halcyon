@@ -25,7 +25,10 @@ Scope {
     property var pal
     property int maxToasts: 5
     property int maxHistory: 30
+    property int toastSecs: 0               // Settings > Notifications > "How long a popup stays": 0 = what the app asks for (else this many seconds)
     property bool dnd: false
+    property string avatar: ""              // your profile picture (shell.qml avatarPath): the picture of every notification
+    property bool usePfp: true              // Settings > Panels & notifications > Notification picture: profile picture / app icon
     property bool clickMode: false          // Edge toggle: false = hover opens it, true = click the edge to open / close it
     property bool autoHide: false           // auto-hide on: it closes as soon as the pointer leaves, in either mode
     property string sysmode: ""             // lockdown / stealth get their background art
@@ -94,17 +97,23 @@ Scope {
     // click mode: click the edge strip to open it, click it again (or Esc / the keybind) to close it.
     // opened from the keyboard it closes by itself a few seconds after the pointer is not on it (hover mode / auto-hide).
     readonly property real reveal: centerOpen ? 1 : 0
+    // hover is debounced both ways so a pointer resting on (or flicking across) the edge can not make the centre pop in and out:
+    //   open   only after the pointer has stayed on the strip for a moment (openT)
+    //   close  only after it has been away for a moment (closeT)
+    //   after closing, the strip ignores the pointer for a short while (lockT)
     function setHover(on) {
-        if (on) { closeT.stop(); if (!clickMode) centerOpen = true }
-        else if (!clickMode || autoHide) { closeT.interval = 450; closeT.restart() }
+        if (on) { closeT.stop(); if (!clickMode && !centerOpen && !lockT.running) openT.restart() }
+        else { openT.stop(); if (centerOpen && (!clickMode || autoHide)) { closeT.interval = 700; closeT.restart() } }
     }
     function toggleCenter() {
         if (centerOpen) { closeT.stop(); centerOpen = false }
         else { centerOpen = true; if (!clickMode || autoHide) { closeT.interval = 6000; closeT.restart() } }
     }
-    Timer { id: closeT; interval: 450; onTriggered: root.centerOpen = false }
+    Timer { id: openT; interval: 140; onTriggered: root.centerOpen = true }
+    Timer { id: lockT; interval: 600 }
+    Timer { id: closeT; interval: 700; onTriggered: root.centerOpen = false }
 
-    onCenterOpenChanged: if (centerOpen) { unread = 0; hideToasts() }
+    onCenterOpenChanged: { if (centerOpen) { unread = 0; hideToasts() } else { openT.stop(); lockT.restart() } }
     onDndChanged: if (dnd) hideToasts()
 
     // ---------- a new notification ----------
@@ -184,9 +193,9 @@ Scope {
         WlrLayershell.layer: WlrLayer.Top
 
         // only the edge trigger and the cards / centre take clicks; the rest of the strip is click-through
-        mask: root.centerOpen ? maskOpen : maskClosed
-        Region { id: maskClosed; regions: [ Region { item: hot }, Region { item: stack } ] }
-        Region { id: maskOpen; regions: [ Region { item: hot }, Region { item: panel } ] }
+        // one fixed mask (the closed panel sits outside the window): swapping masks on open / close re-sent the pointer
+        // enter / leave and could set the centre flickering while the pointer rested on the edge
+        mask: Region { regions: [ Region { item: hot }, Region { item: stack }, Region { item: panel } ] }
 
         // ---------- right-edge trigger ----------
         // a strip on the right edge, upper part of the screen (the utilities box owns the bottom-right corner)
@@ -240,6 +249,9 @@ Scope {
                     required property var modelData
                     notif: modelData
                     pal: root.pal
+                    avatar: root.avatar
+                    usePfp: root.usePfp
+                    override: root.toastSecs
                     width: root.cardW
                     onDismissed: root.dismiss(modelData)
                     onTimedOut: root.toastTimedOut(modelData)
@@ -339,6 +351,8 @@ Scope {
                         required property var modelData
                         notif: modelData
                         pal: root.pal
+                        avatar: root.avatar
+                        usePfp: root.usePfp
                         width: list.width
                         arrived: root.arrived[modelData.id] || 0
                         now: root.now

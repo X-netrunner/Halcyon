@@ -7,16 +7,24 @@
 #     and a truly grey picture gets a neutral accent
 #   * accent2 is the second most important hue (or a close neighbour of the first when there is only one)
 #   * "dominant" is the raw average colour of the main hue, for anything that wants the real colour
+#   * "swatches" is every colour the picture really has: up to 6 hues (about 50 degrees apart, each with a real share of
+#     the picture), strongest first. Settings > Colours > "Cycle through the wallpaper" slides the accent from one to the
+#     next, and the terminal colours (scripts/term-colors.sh) use them for red / green / blue / magenta ...
 # Needs ImageMagick (magick or convert), od and awk: all of them are on every Arch install.
 export LC_ALL=C          # awk must print 12.5, never 12,5
 img="${1:-}"
+# no argument = the wallpaper in use (Settings > Colour intensity re-runs it this way)
+[ -n "$img" ] || img=$(sed -n 2p "$HOME/.local/state/island/wallpaper" 2>/dev/null)
 [ -f "$img" ] || exit 1
+# Settings > Look > Colour intensity: 0.5 (calm) .. 1.5 (vivid), default 1
+boost=$(head -n1 "$HOME/.local/state/island/color-boost" 2>/dev/null)
+case "$boost" in ''|*[!0-9.]*) boost=1 ;; esac
 out="$HOME/.cache/island/palette.json"
 mkdir -p "$(dirname "$out")"
 IM=magick; command -v magick >/dev/null 2>&1 || IM=convert
 command -v "$IM" >/dev/null 2>&1 || exit 2
 
-json=$("$IM" "${img}[0]" -resize 64x64! -depth 8 rgb:- 2>/dev/null | od -An -v -tu1 -w3 | awk '
+json=$("$IM" "${img}[0]" -resize 64x64! -depth 8 rgb:- 2>/dev/null | od -An -v -tu1 -w3 | awk -v BOOST="$boost" '
 function max3(a, b, c) { return (a > b ? (a > c ? a : c) : (b > c ? b : c)) }
 function min3(a, b, c) { return (a < b ? (a < c ? a : c) : (b < c ? b : c)) }
 function clamp(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x) }
@@ -57,7 +65,7 @@ NF >= 3 {
     if (s < 0.10 || v < 0.10) next            # grey / near-black pixels say nothing about the colour
     if (r == mx) h = (g - b) / d; else if (g == mx) h = 2 + (b - r) / d; else h = 4 + (r - g) / d
     h = h / 6; if (h < 0) h += 1
-    wt = s * (0.25 + v)
+    wt = (s ^ 2) * (0.25 + v)
     k = int(h * BINS) % BINS
     W[k] += wt; CX[k] += wt * cos(h * PI2); CY[k] += wt * sin(h * PI2)
     SS[k] += wt * s; SV[k] += wt * v; SR[k] += wt * r; SG[k] += wt * g; SB[k] += wt * b
@@ -83,13 +91,30 @@ END {
             if (dist >= 3 && SM[k] > 0.22 * wtop && SM[k] > best) { best = SM[k]; sec = k }
         }
         if (sec >= 0) { around(sec); h2 = H; sat2 = S } else { h2 = h1 + 0.08; sat2 = sat1 * 0.9 }
-        sa = clamp(sat1, 0.34, 0.74); sa2 = clamp(sat2, 0.30, 0.70)
+        sa = clamp(sat1 * BOOST, 0.34 * BOOST, 0.92); sa2 = clamp(sat2 * BOOST, 0.30 * BOOST, 0.90)
         sbg = 0.30
+        # every real colour of the picture, strongest first; a hue "uses up" the 50 degrees around it
+        nsw = 0
+        for (k = 0; k < BINS; k++) SM2[k] = SM[k]
+        for (pick = 0; pick < 6; pick++) {
+            bk = -1; bw = 0
+            for (k = 0; k < BINS; k++) if (SM2[k] > bw) { bw = SM2[k]; bk = k }
+            if (bk < 0 || bw < 0.14 * wtop) break
+            around(bk)
+            SW[nsw++] = hsl(H, clamp(S * BOOST, 0.34 * BOOST, 0.92), 0.70)
+            for (j = -2; j <= 2; j++) SM2[(bk + j + BINS) % BINS] = 0
+        }
+        for (i = 0; i < nsw; i++) sws = sws (i ? "," : "") "\"" SW[i] "\""
     }
-    printf "{\"bg\":\"%s\",\"surface\":\"%s\",\"surfaceHi\":\"%s\",\"accent\":\"%s\",\"accent2\":\"%s\",\"text\":\"%s\",\"muted\":\"%s\",\"dominant\":\"%s\"}\n", \
+    printf "{\"bg\":\"%s\",\"surface\":\"%s\",\"surfaceHi\":\"%s\",\"accent\":\"%s\",\"accent2\":\"%s\",\"text\":\"%s\",\"muted\":\"%s\",\"dominant\":\"%s\",\"swatches\":[%s]}\n", \
         hsl(h1, sbg, 0.095), hsl(h1, sbg - 0.04, 0.155), hsl(h1, sbg - 0.04, 0.205), \
-        hsl(h1, sa, 0.70), hsl(h2, sa2, 0.72), hsl(h1, 0.20, 0.89), hsl(h1, 0.10, 0.64), dom
+        hsl(h1, sa, 0.70), hsl(h2, sa2, 0.72), hsl(h1, 0.20, 0.89), hsl(h1, 0.10, 0.64), dom, sws
 }')
 [ -n "$json" ] || exit 1
 # in place (no rename), so `tail -F` in the island sees it
 printf '%s\n' "$json" > "$out"
+
+# Notify the island directly via IPC so it updates immediately
+if command -v quickshell >/dev/null 2>&1; then
+  quickshell ipc -p "$HOME/.config/Halcyon/quickshell/island" call island reloadPalette >/dev/null 2>&1 || true
+fi

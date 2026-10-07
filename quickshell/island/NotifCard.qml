@@ -12,12 +12,16 @@ Item {
     id: card
     property var pal
     property var notif
+    property string avatar: ""   // profile picture shown as the notification picture ("" = none)
+    property bool usePfp: true   // Settings > Panels & notifications > Notification picture
+    property int override: 0     // seconds from Settings (0 = the app's own timeout, 3..15 s); critical ones still wait for a click
     signal dismissed()      // the user clicked it: remove it everywhere
     signal timedOut()       // the countdown ran out: hide the popup only
     signal hideAll()        // right click
 
     readonly property bool critical: notif.urgency === NotificationUrgency.Critical
     readonly property int dur: critical ? 0
+        : override > 0 ? override * 1000
         : Math.max(3000, Math.min(15000, notif.expireTimeout > 0 ? notif.expireTimeout * 1000
                                          : (notif.urgency === NotificationUrgency.Low ? 4000 : 6000)))
     readonly property color tone: critical ? pal.bad : pal.accent
@@ -138,6 +142,8 @@ Item {
                 Layout.alignment: Qt.AlignTop
                 pal: card.pal
                 notif: card.notif
+                avatar: card.avatar
+                usePfp: card.usePfp
                 size: 44
                 tone: card.tone
             }

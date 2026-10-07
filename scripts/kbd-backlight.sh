@@ -40,9 +40,14 @@ doctor() {
     *SAMSUNG*|*Samsung*) mod="samsung_laptop" ;;
     *Apple*)       mod="applesmc"; extra="(MacBooks: applesmc gives smc::kbd_backlight)" ;;
     *System76*)    mod="system76_acpi"; extra="(system76-dkms / system76-acpi-dkms from the AUR on non-System76 kernels)" ;;
-    *TUXEDO*|*Clevo*|*SCHENKER*) extra="install tuxedo-drivers-dkms (AUR); it creates rgb:kbd_backlight" ;;
-    *MSI*|*Micro-Star*) extra="try msi-ec-dkms (AUR) or openrgb for per-key RGB boards" ;;
+    *TUXEDO*|*Clevo*|*SCHENKER*|*XMG*|*Eluktronics*) extra="install tuxedo-drivers-dkms (AUR); it creates rgb:kbd_backlight" ;;
+    *MSI*|*Micro-Star*) mod="msi_ec"; extra="(msi-ec-dkms from the AUR on older kernels, or openrgb for per-key RGB boards)" ;;
+    *Framework*)   mod="cros_kbd_led_backlight"; extra="(Framework: chromeos::kbd_backlight)" ;;
+    *Acer*)        mod="acer_wmi"; extra="(Predator / Nitro 4-zone RGB: linuwu-sense-dkms from the AUR)" ;;
+    *HUAWEI*|*Huawei*|*HONOR*) mod="huawei_wmi" ;;
+    *Razer*)       extra="Razer keyboards are not a standard keyboard light: pacman -S openrazer-daemon, then polychromatic" ;;
   esac
+  echo "(install.sh does this for you: it detects the laptop and loads / installs the driver. Re-run ./install.sh after a kernel change.)"
   if [ -n "$mod" ]; then
     echo "likely driver: $mod $extra"
     if modinfo "$mod" >/dev/null 2>&1; then

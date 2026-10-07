@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 # Per-attacker dossier built from the honeypot logs.
-# Used by `sysmode logs` to summarize attacker activity per source IP.
+# Re-written in Rust for speed & lightweight execution.
+import os
+import sys
+
+_DIR = os.path.dirname(os.path.abspath(__file__))
+_CANDIDATES = [
+    os.path.join(_DIR, "attacker-dossier"),
+    os.path.expanduser("~/CustomHyprScripts/attacker-dossier/target/release/attacker-dossier"),
+]
+for _bin in _CANDIDATES:
+    if os.path.isfile(_bin) and os.access(_bin, os.X_OK):
+        os.execv(_bin, [_bin] + sys.argv[1:])
+
 import collections
 import datetime
 import json
@@ -8,7 +20,7 @@ import os
 import re
 import sys
 
-LOGS = "/home/netrunner/logs"
+LOGS = os.path.expanduser("~/logs")
 ANY_IP = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 
 

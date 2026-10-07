@@ -27,6 +27,8 @@ var groups = [
     { id: "workspaces", title: "Workspaces", items: [
         { label: "Go to workspace", kind: "text", keys: "Super + 1..9" },
         { label: "Move window to workspace", kind: "text", keys: "Super + Alt + 1..9" },
+        { id: "wsnext", label: "Next workspace (a new one after the last)", keys: "SUPER + CTRL + Right" },
+        { id: "wsprev", label: "Previous workspace (first wraps to last)", keys: "SUPER + CTRL + Left" },
         { id: "scratch", label: "Scratch workspace (overlay)", keys: "SUPER + S" },
         { id: "toscratch", label: "Send window to scratch", keys: "SUPER + ALT + S" },
         { id: "music", label: "Music (your default player)", keys: "SUPER + M" },
@@ -35,7 +37,7 @@ var groups = [
         { id: "todo", label: "Tasks", keys: "SUPER + R" }
     ] },
     { id: "island", title: "Island", items: [
-        { id: "launcher", label: "Launcher (or just tap Super)", keys: "SUPER + space" },
+        { id: "launcher", label: "Launcher", keys: "Super" },
         { id: "overview", label: "Live workspace tree", keys: "SUPER + TAB" },
         { id: "cheatsheet", label: "This cheatsheet", keys: "SUPER + ALT + slash" },
         { id: "settings", label: "Rice settings", keys: "SUPER + F11" },
@@ -55,6 +57,7 @@ var groups = [
         { id: "caffeine", label: "Caffeine (screen stays awake)", keys: "SUPER + ALT + C" },
         { id: "gestures", label: "Touchpad edge gestures", keys: "SUPER + ALT + G" },
         { id: "livewall", label: "Live wallpaper", keys: "SUPER + ALT + W" },
+        { id: "nextwall", label: "Next wallpaper", keys: "SUPER + SHIFT + W" },
         { id: "nightlight", label: "Nightlight", keys: "SUPER + ALT + N" },
         { label: "Touchpad on / off", kind: "text", keys: "Fn + touchpad key" }
     ] },
@@ -71,10 +74,10 @@ var groups = [
         { label: "Volume up / down", kind: "text", keys: "right edge, slide" },
         { label: "Brightness up / down", kind: "text", keys: "top edge, slide" },
         { label: "Next / previous track", kind: "text", keys: "left edge, flick" },
-        { label: "Next / previous workspace", kind: "text", keys: "3-4 fingers, sideways" },
+        { label: "Next / previous workspace (new one at the end)", kind: "text", keys: "3 fingers right = next; 4 fingers left = next" },
         { label: "Scratch workspace", kind: "text", keys: "3 fingers, up / down" },
         { label: "Sleep", kind: "text", keys: "4 fingers, down" },
-        { label: "Workspace tree", kind: "text", keys: "2-finger pinch" }
+        { label: "Workspace tree", kind: "text", keys: "3-finger pinch" }
     ] },
     { id: "sysmode", title: "Sysmode (terminal, sudo)", items: [
         { label: "Active profile and kernel metrics", kind: "cli", keys: "sysmode status" },

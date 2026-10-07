@@ -106,6 +106,16 @@ Item {
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }
+                Text {
+                    visible: !!(root.stats && (root.stats.hasBat || root.stats.bat > 0 || (root.stats.batEst && root.stats.batEst !== "")))
+                    text: "battery · " + root.stats.bat + "%" + (root.stats.batEst ? " (" + root.stats.batEst + ")" : "") + (root.stats.charging ? " ⚡ charging" : "")
+                    color: root.pal.good
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tBody
+                    font.weight: Font.DemiBold
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
                 // active sysmode profile (read-only; switch with the `sysmode` CLI). Colours match `sysmode status`.
                 Text {
                     text: "sysmode · " + (root.sysmode !== "" ? root.sysmode : "not set")

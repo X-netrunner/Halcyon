@@ -16,6 +16,8 @@ ShellRoot {
     // Auto power mode = the power-manager daemon (custom/power-manager, user service power-manager.service).
     // Its thresholds (load, battery, heat, idle) live in custom/power-manager/src/main.rs.
     readonly property string powerService: "power-manager.service"
+    // Settings > Bar > Padding: low | normal | high  ->  bar height, gap to the screen edge, side padding
+    readonly property var padSet: ({ low: { h: 34, top: 8, x: 36 }, normal: { h: 44, top: 16, x: 56 }, high: { h: 54, top: 22, x: 76 } })[barPadding] || ({ h: 44, top: 16, x: 56 })
     property int notifMax: 5                 // popups on screen at once (Settings > Notifications); a new one past this hides the oldest popup (it stays in the centre)
     // notifications kept in the notification centre (Settings > Notifications, remembered); a new one past this replaces the oldest
     property int notifHistoryMax: 30
@@ -27,9 +29,112 @@ ShellRoot {
     property bool osdOn: true              // the volume / brightness bar that slides in on every change
     // 12 / 24 hour clock in the bar (Settings > Bar)
     property bool clock24: false
+    // ---- the rest of the Settings tree. Settings.qml reads / writes these by key ("opt:<key>" and "hy:<key>"), they are saved in
+    // settings.json (under "opt" / "hy") and applied below (setOpt / applyHypr)
+    property var opt: ({
+        accentMode: "fixed",       // fixed | cycle : the accent is the wallpaper's main colour, or drifts through all of its colours
+        cycleSecs: 30,             // seconds from one wallpaper colour to the next
+        termMode: "spectrum",      // spectrum | accent : terminal colours from every wallpaper colour, or from the one accent
+        termDrift: false,          // open terminals follow the accent cycle
+        wsEnd: "new",              // new | wrap | stay : "next workspace" on the last one (scripts/ws-nav.sh)
+        wsStart: "wrap",           // wrap | stay : "previous workspace" on the first one
+        wsMax: 9,                  // "next workspace" never opens a workspace above this number
+        wpEvery: 0,                // minutes between automatic wallpaper changes (0 = off)
+        clockSeconds: false,       // show seconds in the bar clock
+        clockDate: true,           // show the weekday and date next to the clock
+        osdHold: 1700,             // ms the volume / brightness bar stays
+        toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
+        notifIcon: "pfp",          // pfp | app : the picture of a notification is your profile picture (app icon as a badge), or the app's icon
+        wsSwipe4: "left",          // left | right : which 4-finger swipe goes to the NEXT workspace (scripts/ws-nav.sh)
+        wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
+        nightTemp: 4000            // night light colour temperature (K)
+    })
+    // Hyprland values you changed in Settings: only these are pushed (the Lua config rules for everything else).
+    // hyCur = what Hyprland has right now (read at start by scripts/hypr-values.sh, then your changes) = where the sliders start.
+    property var hy: ({})
+    property var hyCur: ({})
+    readonly property var hyMap: ({
+        borderSize: ["general", "border_size"], resizeOnBorder: ["general", "resize_on_border"],
+        activeOpacity: ["decoration", "active_opacity"], inactiveOpacity: ["decoration", "inactive_opacity"],
+        dimInactive: ["decoration", "dim_inactive"], dimStrength: ["decoration", "dim_strength"],
+        blurSize: ["decoration", "blur", "size"], blurPasses: ["decoration", "blur", "passes"],
+        followMouse: ["input", "follow_mouse"], repeatDelay: ["input", "repeat_delay"], repeatRate: ["input", "repeat_rate"],
+        sensitivity: ["input", "sensitivity"], accelProfile: ["input", "accel_profile"], leftHanded: ["input", "left_handed"],
+        naturalScroll: ["input", "touchpad", "natural_scroll"], tapToClick: ["input", "touchpad", "tap_to_click"],
+        disableTyping: ["input", "touchpad", "disable_while_typing"], focusOnActivate: ["misc", "focus_on_activate"]
+    })
+    function setOpt(k, v) {
+        var o = {}
+        for (var x in opt) o[x] = opt[x]
+        o[k] = v
+        opt = o
+        switch (k) {
+        case "wsEnd": writeFlag("ws-end", v); break
+        case "wsStart": writeFlag("ws-start", v); break
+        case "wsMax": writeFlag("ws-max", v); break
+        case "wsInvert": writeFlag("ws-invert", v ? "1" : "0"); break
+        case "wsSwipe4": writeFlag("ws-swipe4", v); break
+        case "termMode": writeFlag("term-mode", v); termRun.restart(); break
+        case "termDrift": termRun.restart(); break
+        case "accentMode": termRun.restart(); break
+        case "nightTemp": nightT.restart(); break
+        }
+        saveSettings()
+    }
+    function setHy(k, v) {
+        var h = {}, c = {}
+        for (var x in hy) h[x] = hy[x]
+        for (var y in hyCur) c[y] = hyCur[y]
+        h[k] = v; c[k] = v
+        hy = h; hyCur = c
+        saveSettings()
+        hyprKick.restart()
+    }
+    // the flag files scripts read (ws-nav.sh, term-colors.sh): written again at start so they always match the settings
+    function syncOptFlags() {
+        writeFlag("ws-end", opt.wsEnd); writeFlag("ws-start", opt.wsStart); writeFlag("ws-max", opt.wsMax); writeFlag("ws-invert", opt.wsInvert ? "1" : "0"); writeFlag("ws-swipe4", opt.wsSwipe4 || "left")
+        writeFlag("term-mode", opt.termMode)
+    }
+    // Settings > Look > "Back to the Lua config": forget every Hyprland value changed here and let the config files rule again
+    function resetLook() {
+        hy = {}
+        hyprTouched = false; scrollTouched = false
+        rounding = 18; gaps = 8; blur = true; shadows = true; hyprAnim = true; scrollTouch = 0.3; scrollMouse = 1.0
+        saveSettings()
+        reloadProc.running = true
+        hyReadAgain.restart()
+    }
+    Timer { id: termRun; interval: 500; onTriggered: pal.runTermColors() }
+    Timer { id: nightT; interval: 600; onTriggered: Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_nightlight.sh", "temp", String(root.opt.nightTemp)]) }
+    Timer { id: hyReadAgain; interval: 1800; onTriggered: hyRead.running = true }
+    Process {
+        id: hyRead
+        running: true
+        command: ["bash", root.cfg + "/island/scripts/hypr-values.sh"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var v = JSON.parse(text), o = {}
+                    for (var k in v) o[k] = v[k]
+                    for (var h in root.hy) o[h] = root.hy[h]
+                    root.hyCur = o
+                } catch (e) {}
+            }
+        }
+    }
+    // wallpaper slideshow (Settings > Wallpaper): a new random wallpaper every N minutes; the island's colours follow it
+    Timer {
+        interval: Math.max(1, root.opt.wpEvery) * 60000
+        running: root.settingsLoaded && root.opt.wpEvery > 0 && !root.gaming
+        repeat: true
+        onTriggered: root.randomWallpaper()
+    }
     // constellations grow with the total minutes the island has run (Settings > Constellations)
     property bool growthOn: true
     property double growthMin: 0
+    property bool superTap: true        // tapping Super alone opens the launcher (hyprland/keybinds.lua reads the flag file)
+    property bool termFollow: true      // terminals take the wallpaper's colours automatically
+    property real colorBoost: 1.0       // 0.5 calm .. 1.5 vivid: how strongly the wallpaper's colour shows in the accent
     readonly property real growthFullMin: 4320          // 72 hours of use = fully grown
     readonly property real growth: Math.min(1, growthMin / growthFullMin)
     Timer {
@@ -91,6 +196,8 @@ ShellRoot {
     property real scrollMouse: 1.0
     property bool scrollTouched: false
     property string barScroll: "medium"
+    property string barPadding: "normal"  // low | normal | high
+    property string powerMgr: "halcyon"   // halcyon | power-profiles-daemon | tlp | auto-cpufreq | tuned
     readonly property real barScrollStep: ({ "low": 240, "medium": 90, "high": 25 })[barScroll] || 90
     // what hovering the bar does: none | stats (CPU / RAM / temp slide out in the bar) | perf | media (that page opens)
     property string hoverAction: "none"
@@ -145,7 +252,19 @@ ShellRoot {
     }
     readonly property bool playing: player !== null && player !== undefined && player.isPlaying
 
-    Pal { id: pal; light: root.theme === "light"; glassShift: root.glassShift; motion: root.gaming ? 0.25 : root.motion; growth: root.growth; growthOn: root.growthOn }
+    Pal {
+        id: pal
+        light: root.theme === "light"
+        glassShift: root.glassShift
+        motion: root.gaming ? 0.25 : root.motion
+        growth: root.growth
+        growthOn: root.growthOn
+        accentMode: root.opt.accentMode
+        cycleSecs: root.opt.cycleSecs
+        termDrift: root.opt.termDrift
+        cyclePaused: root.gaming
+        onAccentChanged: hyprKick.restart()
+    }
 
     // rice settings window (gear in the utilities panel, >settings, SUPER+F11) and the power menu (power button)
     Settings {
@@ -173,6 +292,9 @@ ShellRoot {
         growthOn: root.growthOn
         growthMin: root.growthMin
         growthFullMin: root.growthFullMin
+        superTap: root.superTap
+        termFollow: root.termFollow
+        colorBoost: root.colorBoost
         idleLock: root.idleLock
         idleSleep: root.idleSleep
         idleDim: root.idleDim
@@ -181,8 +303,12 @@ ShellRoot {
         compactWs: root.compactWs
         hoverAction: root.hoverAction
         barScroll: root.barScroll
+        barPadding: root.barPadding
+        powerMgr: root.powerMgr
         scrollTouch: root.scrollTouch
         scrollMouse: root.scrollMouse
+        opt: root.opt
+        hyCur: root.hyCur
         onSetting: (k, v) => root.setSetting(k, v)
         onWallpaperSet: path => root.setWallpaper(path)
         onAction: id => {
@@ -193,7 +319,10 @@ ShellRoot {
             else if (id === "nightlight") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_nightlight.sh"])
             else if (id === "touchpad") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_touchpad.sh"])
             else if (id === "gestures") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_gestures.sh"])
-            else if (id === "termcolors") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/term-colors.sh"])
+            else if (id === "wifi-powersave") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_wifi_powersave.sh"])
+            else if (id === "termcolors") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/term-colors.sh", "--now"])
+            else if (id === "layout") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_layout.sh"]); hyReadAgain.restart() }
+            else if (id === "reset-look") root.resetLook()
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
         }
     }
@@ -220,7 +349,7 @@ ShellRoot {
         onExited: Quickshell.reload(false)
     }
     // ---- volume / brightness / keyboard-light bar: slides up from the bottom edge on every change (Osd.qml)
-    Osd { id: osd; pal: pal; enabled: root.osdOn }
+    Osd { id: osd; pal: pal; enabled: root.osdOn; holdMs: root.opt.osdHold }
     // brightness + keyboard light: scripts/osd-watch.sh prints a line when either changes (silent while the idle dim is active)
     Process {
         running: root.osdOn
@@ -259,7 +388,7 @@ ShellRoot {
             }
         }
     }
-    Component.onCompleted: volRead.running = true
+    Component.onCompleted: { volRead.running = true; startTapWatch() }
 
     // our own lock screen (replaces hyprlock): SUPER+L, power menu > Lock, `>lock`, scripts/lock.sh
     Lock {
@@ -294,6 +423,9 @@ ShellRoot {
         pal: pal
         maxToasts: root.notifMax
         maxHistory: root.notifHistoryMax
+        toastSecs: root.opt.toastSecs
+        avatar: root.avatarPath
+        usePfp: root.opt.notifIcon !== "app"
         dnd: root.dnd
         clickMode: root.clickMode
         autoHide: root.autoHide
@@ -322,6 +454,20 @@ ShellRoot {
         if (dir < 0) page = (page === "perf") ? "home" : "media"
         else page = (page === "media") ? "home" : "perf"
     }
+    // Super tap can arrive twice (fast file trigger + IPC fallback, or both Super_L bind forms): only the first counts
+    property double lastSuperTap: 0
+    function superTapFired() {
+        if (!superTap) return
+        var n = Date.now()
+        if (n - lastSuperTap < 350) return
+        lastSuperTap = n
+        toggleLauncher()
+    }
+    // fast path: keybinds write this file (a few ms) instead of waiting for a whole `quickshell ipc` process to start
+    readonly property string superTapFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/halcyon-super-tap"
+    function startTapWatch() { Quickshell.execDetached(["sh", "-c", "echo 0 > \"$1\"", "sh", superTapFile]); tapWatchT.start() }
+    Timer { id: tapWatchT; interval: 600; onTriggered: tapWatch.path = root.superTapFile }
+    FileView { id: tapWatch; path: ""; watchChanges: true; onFileChanged: root.superTapFired() }
     function toggleLauncher() {
         overviewOpen = false
         page = (page === "launcher") ? "home" : "launcher"
@@ -350,10 +496,15 @@ ShellRoot {
                                                   hyprAnim: hyprAnim, profileStars: profileStars, hyprTouched: hyprTouched,
                                                   profileName: profileName, profileAvatar: profileAvatar, routeApps: routeApps,
                                                   notifHistoryMax: notifHistoryMax, notifMax: notifMax, idleLock: idleLock, idleSleep: idleSleep, idleDim: idleDim, osdOn: osdOn, idleTouched: idleTouched,
-                                                  clock24: clock24, growthOn: growthOn, growthMin: growthMin,
+                                                  clock24: clock24, growthOn: growthOn, growthMin: growthMin, superTap: superTap, termFollow: termFollow, colorBoost: colorBoost,
                                                   theme: theme, themeTouched: themeTouched, scrollTouch: scrollTouch, scrollMouse: scrollMouse, scrollTouched: scrollTouched,
-                                                  barScroll: barScroll, hoverAction: hoverAction, compactWs: compactWs })])
+                                                  barScroll: barScroll, barPadding: barPadding, powerMgr: powerMgr, hoverAction: hoverAction, compactWs: compactWs, opt: opt, hy: hy })])
     }
+    // small one-line state files read by scripts / Hyprland's Lua config
+    function writeFlag(name, value) {
+        Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && printf '%s\\n' \"$3\" > \"$1/$2\"", "sh", stateDir, name, String(value)])
+    }
+    Timer { id: boostT; interval: 350; onTriggered: Quickshell.execDetached(["bash", cfg + "/island/scripts/palette.sh"]) }
     function setAutoHide(v) { autoHide = v; saveSettings() }
     function setCompactSpecial(v) { compactSpecial = v; saveSettings(); applySpecialScale() }
     // special workspace windows (scratch / music / communication / monitor / tasks): compact = a smaller window,
@@ -369,6 +520,8 @@ ShellRoot {
 
     // one entry point for every value the Settings window changes
     function setSetting(k, v) {
+        if (k.indexOf("opt:") === 0) { setOpt(k.substring(4), v); return }
+        if (k.indexOf("hy:") === 0) { setHy(k.substring(3), v); return }
         switch (k) {
         case "autoHide": setAutoHide(v); return
         case "dnd": setDnd(v); return
@@ -381,6 +534,9 @@ ShellRoot {
         case "growthOn": growthOn = v; break
         case "growthMin": growthMin = v; break
         case "growthReset": growthMin = 0; break
+        case "superTap": superTap = v; writeFlag("super-tap", v ? "on" : "off"); break
+        case "termFollow": termFollow = v; writeFlag("term-follow", v ? "on" : "off"); if (v) Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/term-colors.sh", "--now"]); break
+        case "colorBoost": colorBoost = Math.max(0.5, Math.min(1.5, v)); writeFlag("color-boost", colorBoost.toFixed(2)); boostT.restart(); break
         case "compactSpecial": setCompactSpecial(v); return
         case "routeApps": routeApps = v; break
         case "idleLock": idleLock = v; idleTouched = true; applyIdle(); break
@@ -398,6 +554,8 @@ ShellRoot {
         case "compactWs": compactWs = v; if (v) compactT.restart(); break
         case "hoverAction": hoverAction = v; hoverOpened = false; break
         case "barScroll": barScroll = v; break
+        case "barPadding": barPadding = v; break
+        case "powerMgr": powerMgr = v; Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/power_manager_select.sh", v]); break
         case "scrollTouch": scrollTouch = v; scrollTouched = true; break
         case "scrollMouse": scrollMouse = v; scrollTouched = true; break
         }
@@ -504,6 +662,17 @@ ShellRoot {
             cfg.group = { "col.border_active": act, "col.border_inactive": ina, groupbar: { text_color: dk ? "rgb(dcdce6)" : "rgb(1b1d27)" } }
         }
         if (scrollTouched) cfg.input = { scroll_factor: scrollMouse, touchpad: { scroll_factor: scrollTouch } }
+        // the values changed in Settings > Look / Windows / Input: each one into its place in the config table
+        for (var hk in hy) {
+            var path = hyMap[hk]
+            if (!path) continue
+            var node = cfg
+            for (var pi = 0; pi < path.length - 1; pi++) {
+                if (!node[path[pi]]) node[path[pi]] = {}
+                node = node[path[pi]]
+            }
+            node[path[path.length - 1]] = hy[hk]
+        }
         var any = false
         for (var k in cfg) any = true
         if (!any) return
@@ -691,14 +860,32 @@ ShellRoot {
                     if (s.scrollMouse !== undefined) root.scrollMouse = s.scrollMouse
                     root.scrollTouched = !!s.scrollTouched
                     if (["low", "medium", "high"].indexOf(s.barScroll) >= 0) root.barScroll = s.barScroll
+                    if (s.barPadding && ["low", "normal", "high"].indexOf(s.barPadding) >= 0) root.barPadding = s.barPadding
+                    if (s.powerMgr) root.powerMgr = s.powerMgr
                     if (["none", "stats", "perf", "media"].indexOf(s.hoverAction) >= 0) root.hoverAction = s.hoverAction
                     root.compactWs = s.compactWs !== false
+                    if (s.opt) {
+                        var oo = {}
+                        for (var ox in root.opt) oo[ox] = root.opt[ox]
+                        for (var oy in s.opt) oo[oy] = s.opt[oy]
+                        root.opt = oo
+                    }
+                    if (s.hy) {
+                        root.hy = s.hy
+                        var hc = {}
+                        for (var hx in root.hyCur) hc[hx] = root.hyCur[hx]
+                        for (var hz in s.hy) hc[hz] = s.hy[hz]
+                        root.hyCur = hc
+                    }
+                    root.syncOptFlags()
                     if (root.themeTouched) root.applyThemeApps()
-                    if (root.hyprTouched || root.themeTouched || root.scrollTouched) hyprKick.restart()
-                    if (root.autoPower) {
+                    if (root.hyprTouched || root.themeTouched || root.scrollTouched || Object.keys(root.hy).length > 0) hyprKick.restart()
+                    if (root.autoPower && root.powerMgr === "halcyon") {
                         root.autoGuard = Date.now() + 10000
                         Quickshell.execDetached(["systemctl", "--user", "start", root.powerService])
                     }
+                    // a power manager other than Halcyon Auto: the system's own default starts at boot, so put the chosen one back
+                    if (root.powerMgr !== "halcyon") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/power_manager_select.sh", root.powerMgr, "quiet"])
                     root.compactSpecial = s.compactSpecial !== false
                     root.applySpecialScale()
                     root.routeApps = s.routeApps !== false
@@ -708,6 +895,9 @@ ShellRoot {
                     if (s.notifMax !== undefined) root.notifMax = s.notifMax
                     root.clock24 = !!s.clock24
                     root.growthOn = s.growthOn !== false
+                    root.superTap = s.superTap !== false
+                    root.termFollow = s.termFollow !== false
+                    if (s.colorBoost !== undefined) root.colorBoost = s.colorBoost
                     if (s.growthMin !== undefined) root.growthMin = s.growthMin
                     if (s.idleLock !== undefined) root.idleLock = s.idleLock
                     if (s.idleSleep !== undefined) root.idleSleep = s.idleSleep
@@ -887,6 +1077,7 @@ ShellRoot {
     IpcHandler {
         target: "island"
         function launcher(): void { root.toggleLauncher() }
+        function supertap(): void { root.superTapFired() }
         function overview(): void { root.toggleOverview() }
         function home(): void { root.page = "home" }
         function media(): void { root.page = "media" }
@@ -896,6 +1087,7 @@ ShellRoot {
         function clearnotifs(): void { notifs.clearAll() }
         function notifcenter(): void { notifs.toggleCenter() }
         function dnd(): void { root.setDnd(!root.dnd) }
+        function dndset(on: bool): void { root.setDnd(on) }          // set (gamemode.sh): dnd() above only toggles
         function cheatsheet(): void { root.runCommand("cheatsheet") }
         function theme(): void { root.toggleTheme() }
         function quickterm(): void { quickTerm.toggle() }
@@ -908,6 +1100,7 @@ ShellRoot {
         function routing(): void { root.runCommand("routing") }
         function lock(): void { lockScreen.lock() }
         function reload(): void { fullReloadProc.running = true }
+        function reloadPalette(): void { pal.reloadFromFile() }
     }
 
     // =====================================================================
@@ -919,7 +1112,7 @@ ShellRoot {
         anchors { top: true; left: true; right: true }
         implicitHeight: 620
         // auto-hide frees the strip the bar reserves; otherwise windows start below the bar
-        exclusiveZone: root.autoHide ? 0 : 62
+        exclusiveZone: root.autoHide ? 0 : root.padSet.top + root.padSet.h + 2
         color: "transparent"
 
         WlrLayershell.namespace: "island"
@@ -977,15 +1170,15 @@ ShellRoot {
             opacityBody: root.page === "home" ? pal.glassBar : pal.glassBarOpen
             Behavior on opacityBody { NumberAnimation { duration: pal.dMed } }
             anchors.top: parent.top
-            anchors.topMargin: win.shown ? 16 : -(height + 30)
+            anchors.topMargin: win.shown ? root.padSet.top : -(height + 30)
             anchors.horizontalCenter: parent.horizontalCenter
             clip: true
 
-            width: root.page === "home" ? home.implicitWidth + 56
+            width: root.page === "home" ? home.implicitWidth + root.padSet.x
                  : root.page === "media" ? 500
                  : root.page === "perf" ? 720
                  : launcher.wantedWidth
-            height: root.page === "home" ? 44
+            height: root.page === "home" ? root.padSet.h
                   : root.page === "media" ? 156
                   : root.page === "perf" ? 316
                   : launcher.wantedHeight
@@ -1072,6 +1265,8 @@ ShellRoot {
                     net: root.net
                     cava: root.cava
                     clock24: root.clock24
+                    clockSeconds: root.opt.clockSeconds
+                    clockDate: root.opt.clockDate
                     playing: root.playing
                     activeSpecial: root.activeSpecial
                     caffeine: root.caffeine
@@ -1081,6 +1276,7 @@ ShellRoot {
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
                     onStatusClicked: root.page = "perf"
                     onWorkspaceClicked: n => root.hypr("hl.dsp.focus({ workspace = " + n + " })")
+                    onWorkspaceScrolled: d => Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", d > 0 ? "wheel-up" : "wheel-down"])
                     onSpecialClicked: name => root.toggleSpecial(name)
                 }
 

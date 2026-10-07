@@ -10,6 +10,8 @@ Item {
     id: row
     property var pal
     property var notif
+    property string avatar: ""    // profile picture shown as the notification picture ("" = none)
+    property bool usePfp: true
     property real arrived: 0      // ms timestamp, set by Notifs.qml
     property real now: 0          // ticks while the centre is open, so "5m" stays fresh
     signal dismissRequested()
@@ -112,6 +114,8 @@ Item {
                 Layout.alignment: Qt.AlignTop
                 pal: row.pal
                 notif: row.notif
+                avatar: row.avatar
+                usePfp: row.usePfp
                 size: 36
                 tone: row.tone
             }
