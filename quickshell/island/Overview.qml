@@ -83,9 +83,12 @@ Item {
         loops: Animation.Infinite
         running: ov.open || ov.opacity > 0.01
     }
-    // The node drift is at most ~8 px/s, so 30 steps a second is invisible, but it means the branch curves
-    // (the expensive part) are re-tessellated 30x/s instead of every frame. Pulses and dust still use `tt`.
-    readonly property real ttq: Math.floor(tt * 30) / 30
+    // Settings > Performance. fps 0 = every frame of the screen (smoothest); a number = the animation steps that many times a
+    // second (the branch curves are the expensive part, they are only redrawn when a step happens).
+    // quality: 0 low (no floating dots, no travelling lights, no glow), 1 medium (fewer dots), 2 high.
+    readonly property int fps: pal && pal.artFps !== undefined ? pal.artFps : 0
+    readonly property int quality: pal && pal.artQuality !== undefined ? pal.artQuality : 2
+    readonly property real ttq: fps > 0 ? Math.floor(tt * fps) / fps : tt
 
     // ---------------------------------------------------------------- drag physics
     // Hold the laptop node to make the tree shake, drag it and every branch trails behind on springs.
@@ -613,7 +616,7 @@ Item {
 
     // faint drifting dots so the empty space feels alive too
     Repeater {
-        model: 26
+        model: ov.quality >= 2 ? 26 : (ov.quality === 1 ? 12 : 0)
         delegate: Rectangle {
             required property int index
             readonly property real fx: ((index * 0.6180339) % 1)
@@ -622,8 +625,8 @@ Item {
             height: width
             radius: width / 2
             color: Qt.alpha(ov.pal.accent, 0.10 + (index % 4) * 0.03)
-            x: ov.width * fx + 14 * Math.sin(ov.tau * (40 + index * 11 % 50) * ov.tt / 1000 + index)
-            y: ov.height * fy + 14 * Math.cos(ov.tau * (40 + index * 17 % 50) * ov.tt / 1000 + index * 2)
+            x: ov.width * fx + 14 * Math.sin(ov.tau * (40 + index * 11 % 50) * ov.ttq / 1000 + index)
+            y: ov.height * fy + 14 * Math.cos(ov.tau * (40 + index * 17 % 50) * ov.ttq / 1000 + index * 2)
         }
     }
 
@@ -652,7 +655,7 @@ Item {
             readonly property real ey: sy + (ey0 - sy) * link
             readonly property real dx: (ex - sx) * 0.5
             readonly property color tint: modelData.tint === "accent2" ? ov.pal.accent2 : ov.pal.accent
-            readonly property real u: (ov.tt * 0.1 + modelData.ph) % 1
+            readonly property real u: ov.quality >= 1 ? (ov.ttq * 0.1 + modelData.ph) % 1 : 0
             property real appear: 0
 
             opacity: appear * Math.min(1, link * 1.8)
@@ -683,6 +686,7 @@ Item {
             }
             // pulse travelling parent -> child
             Rectangle {
+                visible: ov.quality >= 1
                 width: 6; height: 6; radius: 3
                 color: eg.tint
                 opacity: Math.sin(Math.PI * eg.u) * 0.85
@@ -796,7 +800,7 @@ Item {
                     Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
                     SequentialAnimation on opacity {
                         loops: Animation.Infinite
-                        running: nd.isRoot && ov.open
+                        running: nd.isRoot && ov.open && ov.quality >= 1
                         NumberAnimation { to: 0.2; duration: 2200; easing.type: Easing.InOutSine }
                         NumberAnimation { to: 0.05; duration: 2200; easing.type: Easing.InOutSine }
                     }
