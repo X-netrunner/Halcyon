@@ -202,6 +202,11 @@ Scope {
     property real growth: 0
     property bool growthOn: true
 
+    // Settings > Performance: artQuality 0 = low, 1 = medium, 2 = high (how much the tree view and the constellations
+    // animate); artFps = how often they update, 0 = every frame of the screen
+    property int artQuality: 2
+    property int artFps: 0
+
     // ---------- motion ----------
     // one signature curve (easeOutQuint): fast start, long soft landing, never bounces
     readonly property var curve: [0.22, 1, 0.36, 1, 1, 1]

@@ -50,6 +50,8 @@ ShellRoot {
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
         nightTemp: 4000,           // night light colour temperature (K)
         settingsGlass: 0.72,       // how opaque the Settings window is (lower = more see-through)
+        perf: "high",              // low | medium | high : how much the tree view and constellations animate (and how many stars the picture gets)
+        fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
         stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true
     })
@@ -221,6 +223,10 @@ ShellRoot {
     property bool settingsLoaded: false
     // the profile picture as a constellation (secure / cyber backdrops everywhere); redone when the picture changes
     property var starData: null
+    // Settings > Performance: 0 low, 1 medium, 2 high. Also sets how detailed the picture constellation is (grid of the picture)
+    readonly property int perfLevel: opt.perf === "low" ? 0 : (opt.perf === "medium" ? 1 : 2)
+    readonly property int starGrid: perfLevel === 0 ? 96 : (perfLevel === 1 ? 128 : 160)
+    onStarGridChanged: if (settingsLoaded && profileStars && avatarPath !== "") makeStars()
     property string avatarPath: ""      // the picture actually found (scripts/avatar.sh); "" = none
     readonly property string starName: profileName !== "" ? profileName : Quickshell.env("USER")
     function refreshAvatar() { avatarProc.running = true }
@@ -263,6 +269,8 @@ ShellRoot {
         motion: root.gaming ? 0.25 : root.motion
         growth: root.growth
         growthOn: root.growthOn
+        artQuality: root.perfLevel
+        artFps: root.opt.fps || 0
         accentMode: root.opt.accentMode
         cycleSecs: root.opt.cycleSecs
         termDrift: root.opt.termDrift
@@ -941,8 +949,10 @@ ShellRoot {
     // stars) merged into nested levels (see StarData.fromLevels).
     Process {
         id: starProc
-        command: ["sh", "-c", "bash \"$1\" \"$2\" || for n in 70 110 160 220; do \"$3\" stars \"$2\" $n; done",
-                  "sh", root.cfg + "/island/scripts/portrait.sh", root.avatarPath, root.hx]
+        // `hx portrait` does it in milliseconds. Exit 1 = this picture gives no usable stars (-> a sky from your name);
+        // anything else (an older hx without `portrait`) falls back to the awk script, then to four `hx stars` calls.
+        command: ["sh", "-c", "\"$3\" portrait \"$2\" \"$4\"; rc=$?; case $rc in 0|1) ;; *) bash \"$1\" \"$2\" \"$4\" || for n in 70 110 160 220; do \"$3\" stars \"$2\" $n; done ;; esac",
+                  "sh", root.cfg + "/island/scripts/portrait.sh", root.avatarPath, root.hx, String(root.starGrid)]
         stdout: StdioCollector {
             onStreamFinished: {
                 var lines = text.split("\n").filter(function (l) { return l.trim() !== "" })

@@ -29,6 +29,12 @@ Item {
 
     readonly property color tone: pal.accent
 
+    // Settings > Performance (pal.artQuality: 0 low, 1 medium, 2 high; pal.artFps: 0 = every frame, else steps per second)
+    readonly property int quality: pal && pal.artQuality !== undefined ? pal.artQuality : 2
+    readonly property int fps: pal && pal.artFps !== undefined ? pal.artFps : 0
+    readonly property bool animated: live && !paused && quality >= 1
+    readonly property bool twinkleAll: quality >= 2 && !dense
+
     // a high-detail picture constellation (hundreds of stars): smaller glows so the picture stays readable, and only
     // every 4th star twinkles so it stays cheap. Nothing is built until the art is shown for the first time.
     readonly property bool dense: art && art.stars ? art.stars.length > 260 : false
@@ -71,8 +77,9 @@ Item {
         if (!art) return []
         var e = [], all = art.edges, gg = g
         for (var k = 0; k < all.length; k++) if (edgeOn(all[k])) e.push(all[k])
-        var out = [], step = Math.max(1, Math.floor(e.length / 16))
-        for (var i = 0; i < e.length && out.length < 16; i += step) out.push(e[i])
+        var maxL = root.quality >= 2 ? 16 : 6
+        var out = [], step = Math.max(1, Math.floor(e.length / maxL))
+        for (var i = 0; i < e.length && out.length < maxL; i += step) out.push(e[i])
         return out
     }
 
@@ -81,13 +88,16 @@ Item {
     readonly property real u: 1 / Math.max(0.05, baseScale)
 
     // shared clocks: ph = slow twinkle / breathing (7 s), cyc = travelling lights (6 s). Integer multiples keep them seamless.
-    property real ph: 0
-    NumberAnimation on ph { from: 0; to: 6.2832; duration: 7000; loops: Animation.Infinite; running: root.live && !root.paused }
-    property real cyc: 0
-    NumberAnimation on cyc { from: 0; to: 1; duration: 6000; loops: Animation.Infinite; running: root.live && !root.paused }
+    // (at a limited frame rate the clocks step instead of gliding, so nothing below is re-evaluated in between)
+    property real phRaw: 0
+    NumberAnimation on phRaw { from: 0; to: 6.2832; duration: 7000; loops: Animation.Infinite; running: root.animated }
+    property real cycRaw: 0
+    NumberAnimation on cycRaw { from: 0; to: 1; duration: 6000; loops: Animation.Infinite; running: root.animated }
+    readonly property real ph: fps > 0 ? Math.floor(phRaw / (0.8976 / fps)) * (0.8976 / fps) : phRaw
+    readonly property real cyc: fps > 0 ? Math.floor(cycRaw * 6 * fps) / (6 * fps) : cycRaw
 
     // pointer parallax: -0.5 .. 0.5 across the art, eased
-    HoverHandler { id: hh; enabled: root.live }
+    HoverHandler { id: hh; enabled: root.live && root.quality >= 1 }
     readonly property real px: hh.hovered ? (hh.point.position.x / Math.max(1, root.width) - 0.5) : 0
     readonly property real py: hh.hovered ? (hh.point.position.y / Math.max(1, root.height) - 0.5) : 0
 
@@ -157,7 +167,7 @@ Item {
 
                 // lights travelling along the lines (alternate directions, staggered)
                 Repeater {
-                    model: root.live ? root.pulseEdges : []
+                    model: root.live && root.quality >= 1 ? root.pulseEdges : []
                     delegate: Item {
                         id: pulse
                         required property var modelData
@@ -191,7 +201,7 @@ Item {
                         required property int index
                         readonly property real r: modelData[2] || 1.5
                         // dense art: most stars hold a steady glow (a binding that never reads `ph` is never re-evaluated)
-                        readonly property real flick: (!root.dense || index % 4 === 0) ? 0.5 + 0.5 * Math.sin(root.ph * (1 + index % 3) + index * 0.9) : 0.7
+                        readonly property real flick: (root.twinkleAll || (root.quality >= 1 && index % 4 === 0)) ? 0.5 + 0.5 * Math.sin(root.ph * (1 + index % 3) + index * 0.9) : 0.7
                         x: root.sx(modelData); y: root.sy(modelData)
                         visible: root.fadeIn(modelData) > 0
                         opacity: Math.min(1, 0.55 + 0.45 * flick * flick + 0.3 * root.energy) * root.fadeIn(modelData)
@@ -256,7 +266,7 @@ Item {
     Timer {
         id: shootT
         interval: 6000
-        running: root.live && !root.paused
+        running: root.animated
         repeat: true
         onTriggered: { interval = 8000 + Math.random() * 10000; shooter.go() }
     }
