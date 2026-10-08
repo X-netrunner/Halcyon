@@ -25,7 +25,7 @@ browsers=(
   "vivaldi|Vivaldi|vivaldi-stable|vivaldi-stable.desktop|0" "qutebrowser|qutebrowser|qutebrowser|org.qutebrowser.qutebrowser.desktop|0"
 )
 files=(
-  "yazi|Yazi|yazi||1" "dolphin|Dolphin|dolphin|org.kde.dolphin.desktop|0" "nautilus|Files|nautilus|org.gnome.Nautilus.desktop|0"
+  "yazi|Yazi|yazi|yazi.desktop|1" "dolphin|Dolphin|dolphin|org.kde.dolphin.desktop|0" "nautilus|Files|nautilus|org.gnome.Nautilus.desktop|0"
   "thunar|Thunar|thunar|thunar.desktop|0" "nemo|Nemo|nemo|nemo.desktop|0" "pcmanfm|PCManFM|pcmanfm|pcmanfm.desktop|0"
   "pcmanfm-qt|PCManFM-Qt|pcmanfm-qt|pcmanfm-qt.desktop|0" "caja|Caja|caja|caja.desktop|0" "ranger|Ranger|ranger||1" "lf|lf|lf||1" "nnn|nnn|nnn||1"
 )
@@ -101,6 +101,8 @@ case "$1" in
     if [ -n "$desk" ] && [ -n "$(ls /usr/share/applications/"$desk" ~/.local/share/applications/"$desk" 2>/dev/null)" ]; then
       [ "$k" = browser ] && { xdg-settings set default-web-browser "$desk" 2>/dev/null; xdg-mime default "$desk" x-scheme-handler/http x-scheme-handler/https text/html 2>/dev/null; }
       [ "$k" = files ] && xdg-mime default "$desk" inode/directory 2>/dev/null
+      # a code editor opens plain text and source files (a GUI editor only: a terminal editor has no desktop file here)
+      [ "$k" = editor ] && xdg-mime default "$desk" text/plain text/markdown text/x-shellscript text/x-python text/x-csrc text/x-c++src text/x-rust application/json application/x-yaml application/toml 2>/dev/null
     fi
     ;;
   run)

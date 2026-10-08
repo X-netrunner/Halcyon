@@ -6,6 +6,7 @@
 #   Spotify   ~/.config/spicetify/Themes/halcyon  (spicetify; needs `spicetify apply`, which --now / --setup do)
 #   Discord   Vesktop / Vencord theme file halcyon.theme.css (stock Discord cannot be themed: Vesktop is installed for that)
 #   fish      static (config/fish/halcyon.fish uses the terminal's ANSI names, so it follows the wallpaper on its own)
+#   + scripts/app-themes-extra.sh: VSCodium / Code - OSS / VS Code / Cursor, Zed, Firefox / Zen / LibreWolf / Floorp, Qt apps (Dolphin, Kate)
 # The colours are the island palette + the 16 terminal colours (term-colors.sh --export  ->  ~/.cache/island/ansi.env).
 #   --auto    what the island runs after every wallpaper change (does nothing while ~/.local/state/island/app-follow is "off")
 #   --now     regenerate everything now, and apply the Spotify theme
@@ -383,9 +384,13 @@ ensure_choices() {
   fi
 }
 
+# editors, browsers, Qt apps (the apps you chose in the installer): see scripts/app-themes-extra.sh
+[ -f "$here/app-themes-extra.sh" ] && . "$here/app-themes-extra.sh"
+
 # every run: pick the halcyon theme where an app still has another one (existing choices are backed up once), then write the files
 starship_adopt
 starship_theme; fish_theme; btop_theme; yazi_theme; spotify_theme; discord_theme
+if declare -F editors_theme >/dev/null; then editors_theme; browser_theme; qt_theme; fi
 ensure_choices >/dev/null          # after the files exist (Vesktop needs its theme file first)
 have btop && pkill -USR2 -x btop 2>/dev/null     # a running btop re-reads its config and theme
 if [ "$mode" = "--setup" ]; then ensure_choices; spotify_setup; fi

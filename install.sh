@@ -15,7 +15,8 @@
 #    2  package manager: AUR helper only if one is really needed
 #    3  graphics drivers + CPU microcode: NVIDIA (open / legacy, by GPU generation), Intel, AMD, hybrid laptops (detected)
 #    4  audio (+ firmware), Bluetooth, network, power services, input / video groups
-#    5  Hyprland, Quickshell and the desktop packages + your apps (foot, Thunar, Spotify, Discord)
+#    5  Hyprland, Quickshell and the desktop packages + YOUR apps: you pick the web browser, the file manager (Thunar, Yazi,
+#       Dolphin, ...), the code editor (VSCodium, Zed, ...) and whether to install sysmode; plus foot, Spotify, Discord
 #    6  Rust toolchain (for the helpers below)
 #    7  copies the rice to ~/.config/Halcyon (an older copy is backed up; your hypr-user.lua, scheme/current.lua and
 #       gamemode.conf are kept)
@@ -40,7 +41,13 @@
 #   --lock-login           use the lock screen as login screen even if a login manager exists
 #   --no-lock-login        never set that up (you log in on the text console and start Halcyon by hand)
 #   --remove-lock-login    undo it: no more auto-login on tty1, tty1 is an ordinary text login again
-#   --no-apps              do not install foot / Thunar / Spotify / Discord
+#   --no-apps              do not install foot / Spotify / Discord (and no file manager unless you ask for one)
+#   --browser ID           firefox | zen | librewolf | floorp | chromium | brave | vivaldi | chrome | qutebrowser | keep
+#   --files ID[,ID]        thunar | yazi | dolphin | nautilus | nemo | pcmanfm | none   (the first one opens folders: SUPER+E)
+#   --editor ID[,ID]       codium | zeditor | neovim | none                              (the first one is SUPER+C)
+#   --sysmode              install sysmode without asking (--no-sysmode: skip it)
+#   --choose               ask the four questions above again (they are asked once, then remembered for update.sh)
+#                          Without these options and in a terminal you get a short menu; with --yes the saved / default choice is used.
 #   -v, --verbose          show the output of every command (this is the default)
 #   -q, --quiet            only the steps, the output goes to the log file          -h, --help      this text
 # ==============================================================================================================
@@ -65,7 +72,8 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 AUTO_CONFIRM=false; DRY_RUN=false; VERBOSE=true        # verbose by default: you see every command's output (-q hides it)
 INSTALL_APPS=true
 PACKAGES=true; SKIP_DRIVERS=false; SKIP_AUR=false; UPGRADE=auto; SKIP_TUNE=false
-SYSMODE=true; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && SYSMODE=false
+SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=false; SYSMODE_ASKED=true; }
+PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 LINK_CONFIG=false; REQUESTED_USER=""; TTY_AUTOSTART=false; LOCK_LOGIN=auto; REMOVE_LOGIN=false
 
 WARNINGS=()          # non-fatal problems, listed again at the end
@@ -127,7 +135,15 @@ while [[ $# -gt 0 ]]; do
         --no-drivers)       SKIP_DRIVERS=true ;;
         --no-aur)           SKIP_AUR=true ;;
         --upgrade)          UPGRADE=yes ;;
-        --no-sysmode)       SYSMODE=false ;;
+        --sysmode)          SYSMODE=true; SYSMODE_ASKED=true ;;
+        --no-sysmode)       SYSMODE=false; SYSMODE_ASKED=true ;;
+        --browser)          shift; PICK_BROWSER="${1:-}"; [[ -n "$PICK_BROWSER" ]] || die "--browser needs a name (see --help)" ;;
+        --browser=*)        PICK_BROWSER="${1#--browser=}" ;;
+        --files|--file-manager) shift; PICK_FILES="${1:-}"; [[ -n "$PICK_FILES" ]] || die "--files needs a name (see --help)" ;;
+        --files=*)          PICK_FILES="${1#--files=}" ;;
+        --editor)           shift; PICK_EDITOR="${1:-}"; [[ -n "$PICK_EDITOR" ]] || die "--editor needs a name (see --help)" ;;
+        --editor=*)         PICK_EDITOR="${1#--editor=}" ;;
+        --choose)           CHOOSE=true ;;
         --no-tune)          SKIP_TUNE=true ;;
         --link)             LINK_CONFIG=true ;;
         --copy-config)      LINK_CONFIG=false ;;                  # the default; kept so old command lines still work
@@ -679,6 +695,120 @@ if [[ ${#NEED_GROUPS[@]} -gt 0 ]]; then
     NEED_RELOGIN=true
 elif [[ ${#HAVE_GROUPS[@]} -gt 0 ]]; then log_success "$TARGET_USER is already in: ${HAVE_GROUPS[*]}"; fi
 
+# ---------------------------------------------------------------------------------------------- your choices
+# Browser, file manager, code editor and sysmode are YOUR choice: a short menu (once), then remembered per user in
+# ~/.local/state/island/install-choices.env so update.sh installs the same things again without asking.
+# Order of precedence: option on the command line > the menu (terminal, no --yes) > what was saved > the default.
+CHOICES_FILE="$TARGET_HOME/.local/state/island/install-choices.env"
+have_any() { local c; for c in "$@"; do command -v "$c" >/dev/null 2>&1 && return 0; done; return 1; }
+saved_choice() { [[ -f "$CHOICES_FILE" ]] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$CHOICES_FILE" | tail -n1 || true; }
+
+# menu_pick OUTVAR "Title" "default ids" MULTI(0|1) "id|Label|note" ...   -> OUTVAR = the chosen ids (space separated)
+menu_pick() {
+    local out=$1 title=$2 def=$3 multi=$4; shift 4
+    local ids=() labels=() notes=() line a b c i ans tok mark picked=() defnames=""
+    for line in "$@"; do IFS='|' read -r a b c <<<"$line"; ids+=("$a"); labels+=("$b"); notes+=("$c"); done
+    echo -e "\n  ${CYAN}${BOLD}${title}${RESET}"
+    for i in "${!ids[@]}"; do
+        mark=" "; [[ " $def " == *" ${ids[$i]} "* ]] && { mark="${GREEN}*${RESET}"; defnames+="${defnames:+, }${labels[$i]}"; }
+        printf '   %b %s%2d%s  %-18s %s%s%s\n' "$mark" "$BOLD" "$((i + 1))" "$RESET" "${labels[$i]}" "$DIM" "${notes[$i]}" "$RESET"
+    done
+    if [[ "$multi" == "1" ]]; then echo -e "   ${DIM}several are fine: 1,2  (the first one is the default)${RESET}"; fi
+    read -rp "  Your choice [Enter = ${defnames}]: " ans || ans=""
+    ans="${ans//,/ }"
+    if [[ -z "${ans// /}" ]]; then picked=($def)
+    else
+        for tok in $ans; do
+            if [[ "$tok" =~ ^[0-9]+$ ]] && (( tok >= 1 && tok <= ${#ids[@]} )); then picked+=("${ids[$((tok - 1))]}")
+            else
+                for i in "${!ids[@]}"; do [[ "${ids[$i]}" == "$tok" ]] && picked+=("$tok"); done
+            fi
+        done
+        [[ ${#picked[@]} -gt 0 ]] || { echo -e "  ${YELLOW}Not understood: using ${defnames}${RESET}"; picked=($def); }
+    fi
+    # "keep" / "none" stand alone; a single-choice menu takes the first answer only
+    for tok in "${picked[@]}"; do [[ "$tok" == keep || "$tok" == none ]] && { picked=("$tok"); break; }; done
+    [[ "$multi" == "1" ]] || picked=("${picked[0]}")
+    printf -v "$out" '%s' "${picked[*]}"
+}
+
+browser_pkgs() { case "$1" in firefox) echo firefox ;; zen) echo zen-browser-bin ;; librewolf) echo librewolf-bin ;; floorp) echo floorp-bin ;;
+                  chromium) echo chromium ;; brave) echo brave-bin ;; vivaldi) echo vivaldi ;; chrome) echo google-chrome ;; qutebrowser) echo qutebrowser ;; esac; }
+files_pkgs()   { case "$1" in thunar) echo thunar thunar-archive-plugin thunar-volman gvfs gvfs-mtp tumbler ffmpegthumbnailer file-roller ;;
+                  yazi) echo yazi ffmpegthumbnailer zoxide ;; dolphin) echo dolphin ffmpegthumbs kio-extras kde-cli-tools gvfs gvfs-mtp ;;
+                  nautilus) echo nautilus gvfs gvfs-mtp file-roller ;; nemo) echo nemo nemo-fileroller gvfs gvfs-mtp ;; pcmanfm) echo pcmanfm-gtk3 gvfs gvfs-mtp ;; esac; }
+editor_pkgs()  { case "$1" in codium) echo vscodium-bin ;; zeditor) echo zed ;; neovim) echo neovim ;; esac; }
+choice_bin()   { case "$1:$2" in
+                  browser:zen) echo zen-browser ;; browser:chrome) echo google-chrome-stable ;; browser:vivaldi) echo vivaldi-stable ;;
+                  files:pcmanfm) echo pcmanfm ;; editor:neovim) echo nvim ;; *) echo "$2" ;; esac; }
+choice_valid() { local kind=$1 id=$2 fn; case "$kind" in browser) fn=browser_pkgs ;; files) fn=files_pkgs ;; editor) fn=editor_pkgs ;; esac
+                 [[ "$id" == keep || "$id" == none || -n "$($fn "$id")" ]]; }
+apps_id()      { [[ "$1:$2" == editor:neovim ]] && echo nvim || echo "$2"; }      # the id Settings > Default apps (apps.sh) uses
+
+choose_apps() {
+    local interactive=false have_b have_e s_b s_f s_e s_s ask_b=false ask_f=false ask_e=false ask_s=false id kind
+    local flag_b="$PICK_BROWSER" flag_f="$PICK_FILES" flag_e="$PICK_EDITOR"      # given on the command line
+    [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
+    s_b=$(saved_choice BROWSER); s_f=$(saved_choice FILES); s_e=$(saved_choice EDITOR); s_s=$(saved_choice SYSMODE)
+    have_any firefox chromium google-chrome-stable brave vivaldi-stable zen-browser librewolf floorp qutebrowser && have_b=true || have_b=false
+    have_any codium code code-oss cursor zeditor zed subl kate nvim && have_e=true || have_e=false
+    # saved sysmode answer (only when nothing on the command line decided it)
+    [[ "$SYSMODE_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_s" ]] && { [[ "$s_s" == yes ]] && SYSMODE=true || SYSMODE=false; SYSMODE_ASKED=true; }
+    if [[ "$interactive" == "true" ]]; then
+        [[ -z "$PICK_BROWSER" && ( "$CHOOSE" == "true" || -z "$s_b" ) ]] && ask_b=true
+        [[ -z "$PICK_FILES"   && ( "$CHOOSE" == "true" || -z "$s_f" ) && "$INSTALL_APPS" == "true" ]] && ask_f=true
+        [[ -z "$PICK_EDITOR"  && ( "$CHOOSE" == "true" || -z "$s_e" ) ]] && ask_e=true
+        [[ "$SYSMODE_ASKED" != "true" ]] && ask_s=true
+        if [[ "$ask_b$ask_f$ask_e$ask_s" == *true* ]]; then
+            echo -e "\n${BOLD}Make it yours${RESET} ${DIM}(Enter takes the marked choice; ./install.sh --choose asks again later)${RESET}"
+        fi
+    fi
+    # ---- web browser
+    local bopts=()
+    [[ "$have_b" == "true" ]] && bopts+=("keep|Keep what I have|a browser is already installed")
+    bopts+=("firefox|Firefox|fast, mainstream" "zen|Zen|Firefox-based, minimal, vertical tabs (AUR)" "librewolf|LibreWolf|privacy-hardened Firefox (AUR)"
+            "floorp|Floorp|Firefox-based, very customisable (AUR)" "chromium|Chromium|open-source Chrome" "brave|Brave|Chromium with built-in blocking (AUR)"
+            "vivaldi|Vivaldi|Chromium, many features" "chrome|Google Chrome|(AUR)" "qutebrowser|qutebrowser|keyboard-driven")
+    if [[ "$ask_b" == "true" ]]; then menu_pick PICK_BROWSER "Web browser" "$([[ "$have_b" == true ]] && echo keep || echo firefox)" 0 "${bopts[@]}"
+    elif [[ -z "$PICK_BROWSER" ]]; then PICK_BROWSER="${s_b:-$([[ "$have_b" == true ]] && echo keep || echo firefox)}"; fi
+    # ---- file manager
+    if [[ "$ask_f" == "true" ]]; then
+        menu_pick PICK_FILES "File manager" "thunar" 1 "thunar|Thunar|GUI, light, themed by Halcyon" "yazi|Yazi|terminal, very fast, image previews" \
+            "dolphin|Dolphin|KDE's, feature-rich" "nautilus|Files (Nautilus)|GNOME's" "nemo|Nemo|Cinnamon's" "pcmanfm|PCManFM|tiny and quick" "none|None|I have one / skip"
+    elif [[ -z "$PICK_FILES" ]]; then PICK_FILES="${s_f:-$([[ "$INSTALL_APPS" == true ]] && echo thunar || echo none)}"; fi
+    # ---- code editor
+    if [[ "$ask_e" == "true" ]]; then
+        menu_pick PICK_EDITOR "Code editor" "$([[ "$have_e" == true ]] && echo none || echo codium)" 1 "codium|VSCodium|VS Code without Microsoft's telemetry (AUR)" \
+            "zeditor|Zed|fast native editor (Rust)" "neovim|Neovim|terminal editor" "none|None|I have one / skip"
+    elif [[ -z "$PICK_EDITOR" ]]; then PICK_EDITOR="${s_e:-none}"; fi
+    # ---- sysmode
+    if [[ "$ask_s" == "true" ]]; then
+        echo -e "\n  ${CYAN}${BOLD}sysmode${RESET}  ${DIM}hardening profiles + a honeypot / IDS lab: secure | cyber | stealth | lockdown${RESET}"
+        echo -e "   ${DIM}installs ~10 security tools (nmap, ufw, audit, docker, lynis ...) and a boot service; skip it if you only want the desktop${RESET}"
+        if ask "  Install sysmode?"; then SYSMODE=true; else SYSMODE=false; fi
+        SYSMODE_ASKED=true
+    fi
+    # ---- check the names (a typo in --browser must not silently install nothing)
+    local lst
+    for kind in browser files editor; do
+        case "$kind" in browser) lst="$PICK_BROWSER" ;; files) lst="$PICK_FILES" ;; editor) lst="$PICK_EDITOR" ;; esac
+        lst="${lst//,/ }"
+        for id in $lst; do choice_valid "$kind" "$id" || die "Unknown $kind '$id' (see ./install.sh --help for the names)"; done
+        case "$kind" in browser) PICK_BROWSER="$lst" ;; files) PICK_FILES="$lst" ;; editor) PICK_EDITOR="$lst" ;; esac
+    done
+    PICK_BROWSER="${PICK_BROWSER%% *}"                                  # one browser
+    [[ "$PICK_BROWSER" == keep && "$have_b" != "true" ]] && PICK_BROWSER=firefox   # "keep" with nothing installed: never leave the desktop without one
+    # what is new this run (command line or menu) becomes the system default; a saved choice does not override a later change in Settings
+    # (only an explicit pick: a default or a saved one must never override what you chose later in Settings > Default apps)
+    APPLY_PICKS=()
+    [[ ( -n "$flag_b" || "$ask_b" == true ) && "$PICK_BROWSER" != keep ]] && APPLY_PICKS+=("browser=$PICK_BROWSER")
+    id="${PICK_FILES%% *}";  [[ ( -n "$flag_f" || "$ask_f" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("files=$id")
+    id="${PICK_EDITOR%% *}"; [[ ( -n "$flag_e" || "$ask_e" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("editor=$(apps_id editor "$id")")
+    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)"
+}
+if [[ "$PACKAGES" == "true" && "$REMOVE_LOGIN" != "true" ]]; then choose_apps
+else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; fi
+
 # ---------------------------------------------------------------------------------------------- step 5
 log_step "Step 5: Hyprland and the desktop"
 
@@ -687,21 +817,27 @@ if [[ "$PACKAGES" == "true" ]]; then
     CORE=(xdg-desktop-portal-hyprland xdg-desktop-portal-gtk polkit-kde-agent
           hypridle hyprlock hyprsunset hyprutils
           qt6-base qt6-declarative qt6-svg qt6-wayland qt6-5compat qt6-multimedia qt5-wayland qt6ct kvantum kservice
-          imagemagick cava btop fish starship yazi poppler fd ripgrep fzf grim slurp wl-clipboard cliphist fuzzel
+          imagemagick cava btop fish starship poppler fd ripgrep fzf grim slurp wl-clipboard cliphist fuzzel
           dmidecode util-linux lsof jq zenity gamemode
           inter-font ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji adwaita-icon-theme)
-    # a browser, only if you have none yet (Settings > Default apps changes it any time)
-    have_any() { local c; for c in "$@"; do command -v "$c" >/dev/null 2>&1 && return 0; done; return 1; }
-    have_any firefox chromium google-chrome-stable brave vivaldi-stable zen-browser librewolf floorp qutebrowser || CORE+=(firefox)
+    # (the browser, file manager and editor you chose are installed below)
     install_pkgs "${CORE[@]}"
     # AUR: the cursor theme Halcyon is configured for, the log-out menu, emoji picker, frozen screenshots
     install_pkgs sweet-cursors-git wlogout bemoji wayfreeze
 
-    # ---- your apps: always installed (skip with --no-apps), whatever else is already on the machine
+    # ---- the apps YOU chose (choose_apps above): web browser, file manager(s), code editor(s)
+    CH_PKGS=()
+    for id in $PICK_BROWSER; do [[ "$id" == keep ]] || CH_PKGS+=($(browser_pkgs "$id")); done
+    for id in $PICK_FILES;   do [[ "$id" == none ]] || CH_PKGS+=($(files_pkgs "$id")); done
+    for id in $PICK_EDITOR;  do [[ "$id" == none ]] || CH_PKGS+=($(editor_pkgs "$id")); done
+    if [[ ${#CH_PKGS[@]} -gt 0 ]]; then
+        log_info "Your apps: browser ${PICK_BROWSER:-keep}, files ${PICK_FILES:-none}, editor ${PICK_EDITOR:-none}"
+        install_pkgs "${CH_PKGS[@]}"
+    fi
+    # ---- terminal, music, chat: installed unless --no-apps
     if [[ "$INSTALL_APPS" == "true" ]]; then
-        log_info "Apps: foot (terminal), Thunar (files), Spotify, Discord (+ spicetify and Vesktop so they can wear the rice colours)"
+        log_info "Apps: foot (terminal), Spotify, Discord (+ spicetify and Vesktop so they can wear the rice colours)"
         install_pkgs foot
-        install_pkgs thunar thunar-archive-plugin thunar-volman gvfs gvfs-mtp tumbler ffmpegthumbnailer file-roller
         # Spotify: spotify-launcher is in the official repositories and downloads the official Spotify client the first time
         # you start it. Only when that package does not exist is the AUR package 'spotify' used.
         if pkg_missing spotify && pkg_missing spotify-launcher; then
@@ -711,7 +847,7 @@ if [[ "$PACKAGES" == "true" ]]; then
         # themes: spicetify patches Spotify (AUR); stock Discord cannot be themed, Vesktop (AUR) is a themeable Discord client
         install_pkgs spicetify-cli vesktop
     else
-        log_info "Apps skipped (--no-apps)."
+        log_info "Apps skipped (--no-apps): foot, Spotify, Discord."
     fi
     try run_as_user_cmd "Creating the standard user folders" xdg-user-dirs-update
 else
@@ -1131,7 +1267,11 @@ log_step "Step 12: Wallpaper and colours"
 user_setup wallpaper  || warn_later "Wallpaper / colours: something did not work (is ImageMagick installed?)"
 user_setup terminals  || warn_later "Terminal colour files could not be written."
 user_setup app-themes || warn_later "App themes (Starship, fish, btop, yazi, Spotify, Discord, Thunar) could not all be set up: run ~/.config/Halcyon/scripts/user-setup.sh app-themes"
-[[ "$INSTALL_APPS" == "true" && "$PACKAGES" == "true" ]] && { user_setup default-apps || true; }
+if [[ "$PACKAGES" == "true" ]]; then
+    if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
+    # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
+    user_setup save-choices "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" || true
+fi
 [[ "$PACKAGES" == "true" && "$SKIP_DRIVERS" != "true" ]] && { user_setup gpu-env "$GPU_ENV_MODE" || true; }
 
 if [[ "$DRY_RUN" != "true" && $EUID -eq 0 ]]; then      # run as root: make sure nothing of the user's ended up owned by root
@@ -1163,8 +1303,12 @@ check_cmd recon-deceiver "$BIN_DIR/recon-deceiver" critical
 check_cmd log-analyst "$BIN_DIR/log-analyst" critical
 check_cmd attacker-dossier "$BIN_DIR/attacker-dossier" critical
 check_cmd setStaticMac "$BIN_DIR/setStaticMac" critical
+if [[ "$PACKAGES" == "true" ]]; then
+    for id in $PICK_BROWSER; do [[ "$id" == keep ]] || check_cmd "$id" "$(choice_bin browser "$id")"; done
+    for id in $PICK_FILES;   do [[ "$id" == none ]] || check_cmd "$id" "$(choice_bin files "$id")"; done
+    for id in $PICK_EDITOR;  do [[ "$id" == none ]] || check_cmd "$id" "$(choice_bin editor "$id")"; done
+fi
 if [[ "$INSTALL_APPS" == "true" && "$PACKAGES" == "true" ]]; then
-    check_cmd thunar thunar
     command -v spotify >/dev/null 2>&1 && check_cmd spotify spotify || check_cmd spotify-launcher spotify-launcher
     check_cmd discord discord
 fi
