@@ -148,6 +148,46 @@ tooltip * { color: $TXT; }
 .dialog-action-area, messagedialog, dialog { background-color: $SURF; color: $TXT; }
 infobar, .info { background-color: alpha($ACC, 0.25); color: $TXT; }
 label.dim-label, .dim-label { color: $MUT; }
+/* ---- Thunar and the other GTK 3 file managers: flat toolbar, pill path bar, card-like icon view, soft side pane ---- */
+window.background.csd, window.csd { border-radius: 16px; }
+toolbar { padding: 4px 6px; border-bottom: 1px solid $LINE; }
+toolbar button, headerbar button.flat, headerbar button.image-button { background-color: transparent; border-color: transparent; border-radius: 10px; padding: 4px 8px; }
+toolbar button:hover, headerbar button.flat:hover { background-color: alpha($ACC, 0.16); border-color: transparent; }
+toolbar button:active, toolbar button:checked { background-color: alpha($ACC, 0.32); color: $TXT; border-color: transparent; }
+.path-bar, .path-bar button, .path-bar box { background-color: transparent; }
+.path-bar button { margin: 0 2px; padding: 3px 12px; border-radius: 999px; border-color: transparent; background-color: alpha($HI, 0.55); }
+.path-bar button:hover { background-color: $HI; }
+.path-bar button:checked, .path-bar button.current-dir { background-color: $ACC; color: $FGA; border-color: $ACC; font-weight: 600; }
+.path-bar button.slider-button { background-color: transparent; }
+menubar { background-color: $SURF; border-bottom: 1px solid $LINE; }
+menubar > menuitem { padding: 4px 10px; border-radius: 8px; }
+menubar > menuitem:hover { background-color: alpha($ACC, 0.20); }
+paned > separator { min-width: 1px; }
+.sidebar, placessidebar, placessidebar .view, placessidebar viewport { background-color: $SURF; border-right: 1px solid $LINE; }
+placessidebar row, .sidebar row { padding: 5px 8px; margin: 1px 6px; border-radius: 10px; }
+placessidebar row:hover, .sidebar row:hover { background-color: alpha($ACC, 0.12); }
+placessidebar row:selected, .sidebar row:selected { background-color: alpha($ACC, 0.26); color: $TXT; box-shadow: inset 3px 0 0 $ACC; }
+placessidebar row:selected label, placessidebar row:selected image { color: $TXT; }
+placessidebar .sidebar-icon, .sidebar image { color: $ACC; }
+iconview { padding: 8px; }
+iconview:selected, iconview:selected:focus { background-color: alpha($ACC, 0.30); box-shadow: inset 0 0 0 1px alpha($ACC, 0.8); border-radius: 12px; }
+iconview:hover { background-color: alpha($ACC, 0.10); border-radius: 12px; }
+iconview.cell:selected label, iconview.cell:selected { color: $TXT; }
+treeview.view row:hover { background-color: alpha($ACC, 0.10); }
+treeview.view:selected, treeview.view row:selected { background-color: alpha($ACC, 0.30); color: $TXT; }
+treeview.view:selected:focus { background-color: alpha($ACC, 0.36); }
+treeview.view header button { padding: 6px 8px; font-weight: 600; border-bottom: 1px solid $LINE; }
+.rubberband, rubberband { background-color: alpha($ACC, 0.18); border: 1px solid $ACC; border-radius: 4px; }
+statusbar { padding: 3px 10px; border-top: 1px solid $LINE; color: $MUT; }
+statusbar label { color: $MUT; }
+notebook > header { border-bottom: 1px solid $LINE; }
+notebook > header > tabs > tab { padding: 4px 14px; border-radius: 10px 10px 0 0; }
+notebook > header > tabs > tab:hover { color: $TXT; background-color: alpha($ACC, 0.10); }
+filechooser, filechooser .sidebar, filechooser placessidebar { background-color: $BG; }
+dialog .dialog-action-area button, messagedialog button { min-height: 30px; padding: 2px 16px; }
+progressbar trough, progressbar progress { border-radius: 8px; min-height: 6px; }
+button.destructive-action { background-color: $ACC2; color: $FGA; border-color: $ACC2; }
+scrolledwindow > viewport, scrolledwindow { background-color: transparent; }
 C
 }
 write() {   # write FILE VERSION

@@ -223,3 +223,7 @@ Quickshell island RSS dropped from **~750 MB down to ~218 MB - 250 MB** (a **~50
 - **`scripts/user-setup.sh`**: `default-apps browser= files= editor=` applies what you picked (and replaces an older choice); `save-choices` writes the saved answers.
 - **`scripts/apps.sh`**: Yazi gets its desktop file (so it can be the default for folders); a GUI code editor becomes the default for text and source files.
 - **`scripts/app-themes-extra.sh`** (new, sourced by `app-themes.sh`): wallpaper-following themes for VSCodium / Code - OSS / VS Code / Cursor, Zed, Firefox-family browsers (Firefox, Zen, LibreWolf, Floorp, Waterfox) and Qt apps (qt6ct + Kvantum). Existing settings files are backed up once (`*.before-halcyon`); only marked blocks of Halcyon are rewritten.
+
+- **Spotify (spicetify)**: `user.css` now has a Halcyon block (floating rounded panels, card hover with accent border, pill buttons, themed menus and scrollbars); your own CSS below it is kept.
+- **Vesktop / Discord**: shape rules on top of the colours (rounded sidebar, input box, menus, modals, code blocks, hover and mention highlights, thin scrollbars) and a themed loading splash. Stock Discord cannot be themed: use Vesktop.
+- **Thunar and GTK 3 file managers**: flat toolbar, pill-shaped path bar, rounded side-pane rows with an accent marker, card-style icon view, rubber-band selection, status bar and tabs.
