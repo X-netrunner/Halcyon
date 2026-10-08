@@ -214,3 +214,12 @@ Quickshell island RSS dropped from **~750 MB down to ~218 MB - 250 MB** (a **~50
 - `install.sh` / `update.sh` now keep `gpu-mode` and `autostart.conf`, so a reinstall no longer resets your GPU mode or applet choices.
 
 - **Lock-screen login now works with fish** (`./install.sh --lock-login`): it writes `~/.config/fish/conf.d/halcyon-login.fish`. `--remove-lock-login` deletes it again. bash and zsh work as before.
+
+---
+
+## Choose your apps, and theme them
+
+- **`install.sh`**: new menu (and `--browser`, `--files`, `--editor`, `--sysmode`, `--choose` options) for the web browser, file manager(s), code editor(s) and sysmode. The answers are saved in `~/.local/state/island/install-choices.env` and reused by `update.sh`. Thunar is no longer forced on everybody and Yazi is installed only when chosen. Nothing is installed or made the system default without a choice; `--yes` keeps the old behaviour (keep your browser or Firefox, Thunar, sysmode).
+- **`scripts/user-setup.sh`**: `default-apps browser= files= editor=` applies what you picked (and replaces an older choice); `save-choices` writes the saved answers.
+- **`scripts/apps.sh`**: Yazi gets its desktop file (so it can be the default for folders); a GUI code editor becomes the default for text and source files.
+- **`scripts/app-themes-extra.sh`** (new, sourced by `app-themes.sh`): wallpaper-following themes for VSCodium / Code - OSS / VS Code / Cursor, Zed, Firefox-family browsers (Firefox, Zen, LibreWolf, Floorp, Waterfox) and Qt apps (qt6ct + Kvantum). Existing settings files are backed up once (`*.before-halcyon`); only marked blocks of Halcyon are rewritten.

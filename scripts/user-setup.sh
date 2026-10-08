@@ -11,8 +11,11 @@
 #                                         foot / kitty / alacritty / ghostty / wezterm, included once
 #     user-setup.sh app-themes            Starship prompt (with the rice name) + fish colours, then the halcyon theme for btop / yazi /
 #                                         Spotify (spicetify) / Discord (Vesktop); all follow the wallpaper (scripts/app-themes.sh)
-#     user-setup.sh default-apps          foot / Thunar / Spotify / Discord become the default terminal / files / music / chat
-#                                         (only for a kind you have not chosen yourself in Settings > Default apps)
+#     user-setup.sh default-apps [browser=ID] [files=ID] [editor=ID]
+#                                         foot / Thunar / Spotify / Discord become the default terminal / files / music / chat
+#                                         (only for a kind you have not chosen yourself in Settings > Default apps).
+#                                         browser= / files= / editor= are what you picked in the installer: those always win
+#     user-setup.sh save-choices K=V...   remember the installer's picks (~/.local/state/island/install-choices.env: BROWSER FILES EDITOR SYSMODE)
 #     user-setup.sh gpu-env MODE          ~/.config/Halcyon/gpu.lua for this GPU setup: nvidia | hybrid | none
 # Exit status: 0 = done / nothing to do, 1 = could not do it (a message says why).
 set -uo pipefail
@@ -316,8 +319,16 @@ app_themes() {
 
 # ---------------------------------------------------------------------------------------------- default apps
 default_apps() {
-  local apps="$RICE/scripts/apps.sh" env="$HOME/.local/state/island/apps.env" kind id cur
+  local apps="$RICE/scripts/apps.sh" env="$HOME/.local/state/island/apps.env" kind id cur pick a
   [ -f "$apps" ] || return 0
+  # what you picked in the installer (browser= files= editor=): set first, and they replace an older choice
+  for a in "$@"; do
+    kind=${a%%=*}; id=${a#*=}
+    case "$kind" in browser|files|editor) ;; *) continue ;; esac
+    [ -n "$id" ] && [ "$id" != keep ] && [ "$id" != none ] || continue
+    if bash "$apps" set "$kind" "$id" 2>/dev/null; then ok "default $kind: $id"
+    else warn "default $kind: $id is not installed (pick one in Settings > Default apps)"; fi
+  done
   # kind:preferred ids in order. Only when you have not picked one for that kind yet; an app that is not installed is skipped.
   for pair in "terminal:foot" "files:thunar" "music:spotify spotify-launcher" "chat:vesktop discord"; do
     kind=${pair%%:*}
@@ -327,6 +338,20 @@ default_apps() {
     done
   done
   return 0
+}
+
+# ---------------------------------------------------------------------------------------------- the installer's choices
+# BROWSER=firefox FILES="thunar yazi" EDITOR=codium SYSMODE=yes ... : kept per user, so update.sh / a second install.sh run
+# installs the same things again without asking (./install.sh --choose asks again)
+save_choices() {
+  local f="$HOME/.local/state/island/install-choices.env" a k
+  mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
+  for a in "$@"; do
+    k=${a%%=*}
+    case "$k" in BROWSER|FILES|EDITOR|SYSMODE) ;; *) continue ;; esac
+    grep -v "^$k=" "$f" > "$f.new" 2>/dev/null; printf '%s="%s"\n' "$k" "${a#*=}" >> "$f.new"; mv "$f.new" "$f"
+  done
+  ok "your choices are saved in ~/.local/state/island/install-choices.env"
 }
 
 # ---------------------------------------------------------------------------------------------- GPU environment
@@ -363,7 +388,8 @@ LUA
 }
 
 case "${1:-}" in
-  default-apps)  default_apps ;;
+  default-apps)  shift; default_apps "$@" ;;
+  save-choices)  shift; save_choices "$@" ;;
   gpu-env)       gpu_env "${2:-none}" ;;
   hypr-entry)    hypr_entry ;;
   login-add)     login_add || { warn "your login shell is not bash, zsh or fish, so the lock-screen login was NOT set up (auto-login without it would leave an open shell)"; exit 1; } ;;

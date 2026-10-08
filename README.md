@@ -6,9 +6,26 @@ Lightweight, minimal, smooth and fast Hyprland setup in Lua, independent of cael
 - `hyprland/`, `variables.lua`, `scheme/`: Hyprland config (Lua)
 - `quickshell/`: island bar; the wallpaper layer (`island/Wallpaper.qml`) runs inside the same Quickshell process
 - `launch/`: start scripts (`halcyon.sh`, `halcyon-isolated.sh`)
-- `scripts/`: cheatsheet, emoji picker, area screenshot, and the toggles (layout, nightlight, touchpad, gestures, power manager, live wallpaper)
+- `scripts/`: app themes (`app-themes.sh`, `app-themes-extra.sh`), cheatsheet, emoji picker, area screenshot, and the toggles (layout, nightlight, touchpad, gestures, power manager, live wallpaper)
 - `src/`: Rust sources for `power-manager` (Auto power), `touchpad-gestures` and `hx` (island data feeds, sysmode status / IDS / dossier); `systemd/`: their user services
 - `sysmode/`: the `sysmode` hardening/decoy-lab CLI plus the honeypot and IDS scripts it launches
+
+## Choose your apps (install.sh)
+`./install.sh` asks four short questions the first time (Enter takes the marked choice), and remembers the answers per user in `~/.local/state/island/install-choices.env`, so `update.sh` installs the same things again without asking:
+- **Web browser**: Firefox, Zen, LibreWolf, Floorp, Chromium, Brave, Vivaldi, Google Chrome, qutebrowser (or keep the one you have)
+- **File manager** (several allowed, the first one opens folders with SUPER+E): Thunar, Yazi, Dolphin, Nautilus, Nemo, PCManFM
+- **Code editor** (several allowed, the first one is SUPER+C): VSCodium, Zed, Neovim
+- **sysmode**: the hardening / honeypot lab and its ~10 security tools, or skip it
+
+No questions: `--browser zen --files yazi,thunar --editor codium,zeditor --no-sysmode` (see `./install.sh --help`). `--yes` uses the saved choice or the default (keep your browser or Firefox, Thunar, no extra editor, sysmode). `./install.sh --choose` asks again. What you pick also becomes the default in Settings > Default apps (and the system default for links, folders and text files).
+
+## Themed apps
+Everything follows the wallpaper colours (`scripts/app-themes.sh`, run by the island after every wallpaper change; `app-follow = off` in `~/.local/state/island` stops it):
+- terminals, fish, Starship, btop, Yazi, Spotify (spicetify), Discord (Vesktop), Thunar / Nautilus / Nemo / GTK file dialogs
+- **VSCodium / Code - OSS / VS Code / Cursor**: a "Halcyon" colour theme (installed once as a tiny extension; after a wallpaper change use *Reload Window*)
+- **Zed**: `~/.config/zed/themes/halcyon.json`, reloads live
+- **Firefox / Zen / LibreWolf / Floorp**: toolbar, tabs, address bar, new tab page and about: pages (`userChrome.css` + `userContent.css`, the browser must have been started once and needs one restart). Chromium-based browsers cannot be themed from a file: they only get dark mode
+- **Dolphin, Kate and other Qt apps**: a qt6ct palette and a Kvantum theme "Halcyon"
 
 ## Key features
 - Minimal, rounded UI with smooth fast animations
