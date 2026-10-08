@@ -272,7 +272,50 @@ spotify_theme() {
     echo "progress-bg        = $(nh "$hi")";       echo "heart              = $(nh "$red")";     echo "pagelink-active    = $(nh "$acc")"
     echo "radio-btn-active   = $(nh "$acc")"
   } > "$d/color.ini.tmp" && mv "$d/color.ini.tmp" "$d/color.ini"
-  [ -f "$d/user.css" ] || echo "/* Halcyon: colours only (color.ini). Add your own CSS here. */" > "$d/user.css"
+  # user.css: the Halcyon shape (floating rounded panels, soft cards, pill buttons). Only the marked block is rewritten: your own CSS below it stays.
+  local B="/* >>> halcyon >>> */" E="/* <<< halcyon <<< */" u="$d/user.css"
+  mixv "$bg" "$acc" 14; local sel=$MIX
+  {
+    strip_block "$u" "$B" "$E"
+    cat <<CSS
+$B
+/* written by scripts/app-themes.sh: do not edit this block (Spotify renames classes now and then: a rule that stops matching is harmless) */
+.Root__top-container { gap: 8px !important; padding: 8px !important; background: $bg !important; }
+.Root__nav-bar, .Root__main-view, .Root__right-sidebar, .Root__now-playing-bar, .main-yourLibraryX-libraryContainer, .main-view-container {
+  border-radius: 16px !important; }
+.Root__nav-bar, .Root__right-sidebar { background: $surf !important; border: 1px solid $hi !important; }
+.Root__main-view { background: $bg !important; border: 1px solid $hi !important; overflow: hidden !important; }
+.main-nowPlayingBar-container, .Root__now-playing-bar { background: $surf !important; border: 1px solid $hi !important; border-radius: 16px !important; }
+.main-topBar-background, .main-topBar-container { background: transparent !important; }
+.main-entityHeader-background { background: linear-gradient(180deg, $sel, $bg) !important; }
+.main-home-content, .main-entityHeader-container { background: transparent !important; }
+.main-card-card, .main-cardImage-imageWrapper { border-radius: 14px !important; }
+.main-card-card { background: $surf !important; border: 1px solid transparent !important; transition: background .15s ease, border-color .15s ease, transform .15s ease !important; }
+.main-card-card:hover { background: $hi !important; border-color: $acc !important; transform: translateY(-2px); }
+.main-trackList-trackListRow { border-radius: 10px !important; }
+.main-trackList-trackListRow:hover { background: rgba($(rgb "$acc"), 0.12) !important; }
+.main-trackList-selected, .main-trackList-active { background: rgba($(rgb "$acc"), 0.22) !important; }
+.main-trackList-playingIcon, .main-trackList-rowPlayPauseButton { color: $acc !important; }
+.main-playButton-PlayButton, .main-playPauseButton-button { background: $acc !important; color: $bg !important; border-radius: 50% !important; }
+.main-playButton-PlayButton:hover { filter: brightness(1.12); transform: scale(1.05) !important; }
+.main-shuffleButton-button.main-shuffleButton-enabled, .main-repeatButton-button.main-repeatButton-enabled { color: $acc !important; }
+.main-globalNav-searchContainer input, .x-searchInput-searchInputInput, .main-topBar-searchBar input { background: $surf !important; border: 1px solid $hi !important; border-radius: 12px !important; }
+.x-searchInput-searchInputInput:focus, .main-globalNav-searchContainer input:focus { border-color: $acc !important; }
+.main-yourLibraryX-listItem a, .main-yourLibraryX-libraryItemContainer, .main-yourLibraryX-listRow { border-radius: 10px !important; }
+.main-yourLibraryX-listItem:hover, .main-yourLibraryX-libraryItemContainer:hover { background: rgba($(rgb "$acc"), 0.10) !important; }
+.progress-bar__slider, .x-progressBar-fillColor { background: $acc !important; }
+.main-actionButtons button, .main-buttons-button { border-radius: 999px !important; }
+[role="menu"], .main-contextMenu-menu, .main-contextMenu-menuItem { background: $surf !important; border-radius: 12px !important; }
+.main-contextMenu-menu { border: 1px solid $hi !important; box-shadow: 0 10px 30px rgba(0,0,0,.4) !important; padding: 6px !important; }
+.main-contextMenu-menuItemButton:hover { background: rgba($(rgb "$acc"), 0.18) !important; border-radius: 8px !important; }
+::-webkit-scrollbar { width: 8px !important; }
+::-webkit-scrollbar-thumb { background: $hi !important; border-radius: 8px !important; }
+::-webkit-scrollbar-thumb:hover { background: $acc !important; }
+::-webkit-scrollbar-track { background: transparent !important; }
+::selection { background: rgba($(rgb "$acc"), 0.35); }
+$E
+CSS
+  } > "$u.tmp" && mv "$u.tmp" "$u"
 }
 spotify_apply() {   # a theme is only visible after `spicetify apply`; Spotify's UI restarts when it is open
   have spicetify || return 0
@@ -344,9 +387,48 @@ discord_theme() {
   --mention-background: rgba($(rgb "$acc"), 0.18) !important;
   --status-positive: var(--h-green) !important; --status-warning: var(--h-yellow) !important; --status-danger: var(--h-red) !important;
   --scrollbar-thin-thumb: var(--h-hi) !important; --scrollbar-auto-thumb: var(--h-hi) !important; --scrollbar-auto-track: transparent !important;
+  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px;
+  --custom-guild-icon-border-radius: 14px;
+  --font-primary: "Inter", "gg sans", sans-serif;
 }
+/* ---- shape: the same soft cards as the island (class names are matched by their stable prefix, Discord renames the suffix) ---- */
+[class*="guilds_"] { background: var(--h-bg) !important; }
+[class*="sidebar_"] { background: var(--h-surf) !important; border-radius: 16px 0 0 0; border-top: 1px solid var(--h-hi); border-left: 1px solid var(--h-hi); }
+[class*="chat_"] { background: var(--h-bg) !important; }
+[class*="chatContent_"] { background: var(--h-bg) !important; }
+[class*="title_"][class*="container_"], [class*="bar_"][class*="themed_"] { background: var(--h-bg) !important; box-shadow: none !important; border-bottom: 1px solid var(--h-hi) !important; }
+[class*="members_"], [class*="membersWrap_"] { background: var(--h-surf) !important; }
+[class*="panels_"] { background: var(--h-bg) !important; border-top: 1px solid var(--h-hi) !important; }
+[class*="channelTextArea_"], [class*="textArea_"] { background: var(--h-surf) !important; border-radius: 14px !important; border: 1px solid var(--h-hi) !important; }
+[class*="channelTextArea_"]:focus-within { border-color: var(--h-acc) !important; box-shadow: 0 0 0 1px var(--h-acc) !important; }
+[class*="searchBar_"] { background: var(--h-surf) !important; border-radius: 10px !important; }
+[class*="wrapper_"][class*="guildIcon"], [class*="icon_"][class*="guild"], [class*="listItem_"] [class*="wrapper_"] > svg { transition: border-radius .15s ease; }
+[class*="selected_"][class*="wrapper_"] > [class*="pill"], [class*="item_"][class*="selected"] { background: var(--h-acc) !important; }
+[class*="containerDefault_"] [class*="wrapper_"][class*="selected"], [class*="modeSelected"] { background: rgba($(rgb "$acc"), 0.18) !important; border-radius: 10px !important; }
+[class*="containerDefault_"] [class*="wrapper_"]:hover, [class*="modeUnread"]:hover { background: rgba($(rgb "$acc"), 0.10) !important; border-radius: 10px !important; }
+[class*="messageListItem_"] [class*="message_"]:hover, [class*="cozyMessage_"]:hover { background: rgba($(rgb "$hov"), 0.55) !important; border-radius: 10px; }
+[class*="mentioned_"] { background: rgba($(rgb "$acc"), 0.10) !important; box-shadow: inset 2px 0 0 var(--h-acc) !important; }
+[class*="mentioned_"]:hover { background: rgba($(rgb "$acc"), 0.16) !important; }
+[class*="newMessagesBar_"], [class*="divider_"][class*="isUnread"] { color: var(--h-acc) !important; border-color: var(--h-acc) !important; }
+[class*="layer_"] [class*="menu_"], [class*="popout_"], [class*="quickswitcher_"], [class*="container_"][class*="menu"] { background: var(--h-surf) !important; border: 1px solid var(--h-hi) !important; border-radius: 14px !important; box-shadow: 0 10px 30px rgba(0,0,0,.4) !important; }
+[class*="item_"][class*="focused"] { background: rgba($(rgb "$acc"), 0.22) !important; border-radius: 8px; }
+[class*="root_"][class*="modal"], [class*="modal_"] { border-radius: 18px !important; border: 1px solid var(--h-hi) !important; }
+[class*="markup_"] code, [class*="markup_"] pre, [class*="codeBlockText"] { background: var(--h-surf) !important; border: 1px solid var(--h-hi) !important; border-radius: 10px !important; }
+[class*="embedWrapper_"] { background: var(--h-surf) !important; border-color: var(--h-hi) !important; border-radius: 12px !important; }
+[class*="lookFilled_"][class*="colorBrand_"] { border-radius: 10px !important; font-weight: 600; }
+[class*="avatar_"] img, [class*="avatar_"] svg { border-radius: 50% !important; }
+[class*="scroller_"]::-webkit-scrollbar { width: 8px !important; height: 8px !important; }
+[class*="scroller_"]::-webkit-scrollbar-thumb { background: var(--h-hi) !important; border-radius: 8px !important; border: 2px solid transparent !important; background-clip: padding-box !important; }
+[class*="scroller_"]::-webkit-scrollbar-thumb:hover { background: var(--h-acc) !important; background-clip: padding-box !important; }
+[class*="scroller_"]::-webkit-scrollbar-track { background: transparent !important; border: none !important; }
+::selection { background: rgba($(rgb "$acc"), 0.35); }
 CSS
     mv "$base/themes/halcyon.theme.css.tmp" "$base/themes/halcyon.theme.css"
+    # Vesktop's own settings: the loading splash wears the same colours
+    if [ "$base" = "$HOME/.config/vesktop" ] && command -v jq >/dev/null 2>&1; then
+      local vs="$base/settings.json"; [ -s "$vs" ] || echo '{}' > "$vs"
+      jq --arg bg "$bg" --arg fg "$fg" '.splashTheming = true | .splashBackground = $bg | .splashColor = $fg' "$vs" > "$vs.new" 2>/dev/null && mv "$vs.new" "$vs"
+    fi
   done
 }
 
