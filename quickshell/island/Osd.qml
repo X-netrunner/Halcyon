@@ -15,16 +15,24 @@ Scope {
     property real value: 0
     property bool muted: false
     property bool shown: false
+    property bool alive: false      // the window only exists from the first change until a moment after it has faded out
 
     function show(k, v, m) {
         if (!enabled) return
         kind = k
         value = v
         muted = !!m
-        shown = true
         hideT.restart()
+        unloadT.stop()
+        if (alive) { shown = true; return }
+        // window is created hidden first, `shown` flips a moment later so the slide-up still animates
+        alive = true
+        showT.restart()
     }
-    Timer { id: hideT; interval: root.holdMs; onTriggered: root.shown = false }
+    Timer { id: showT; interval: 40; onTriggered: root.shown = true }
+    Timer { id: hideT; interval: root.holdMs; onTriggered: { root.shown = false; unloadT.restart() } }
+    // after the fade-out, drop the whole window (its scene graph, buffers and layer surface) until the next change
+    Timer { id: unloadT; interval: (root.pal ? root.pal.dMed : 300) + 250; onTriggered: if (!root.shown) root.alive = false }
 
     readonly property string glyph: kind === "bright" ? String.fromCodePoint(0xF00E0)
                                   : kind === "kbd" ? String.fromCodePoint(0xF030C)
@@ -32,7 +40,9 @@ Scope {
     readonly property string title: kind === "bright" ? "Brightness" : (kind === "kbd" ? "Keyboard light" : (muted ? "Muted" : "Volume"))
     readonly property bool over: kind === "vol" && value > 1.001
 
-    PanelWindow {
+    LazyLoader {
+        active: root.alive
+        PanelWindow {
         id: win
         visible: root.shown || card.opacity > 0.01
         anchors { bottom: true }
@@ -109,5 +119,6 @@ Scope {
                 font.weight: Font.DemiBold
             }
         }
+    }
     }
 }

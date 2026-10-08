@@ -321,7 +321,9 @@ spotify_apply() {   # a theme is only visible after `spicetify apply`; Spotify's
   have spicetify || return 0
   local prefs="$HOME/.config/spotify/prefs"
   [ -f "$prefs" ] || { [ "$mode" = "--setup" ] && echo "   spicetify: start Spotify once and log in, then run  ~/.config/Halcyon/scripts/app-themes.sh --now"; return 0; }
-  spicetify apply >/dev/null 2>&1 || spicetify backup apply >/dev/null 2>&1
+  # -n = --no-restart: plain `spicetify apply` (re)starts Spotify, which is how it kept opening by itself after every
+  # wallpaper change. Only the explicit --now / --setup runs may leave Spotify open; automatic runs never start it.
+  spicetify apply -n >/dev/null 2>&1 || spicetify backup apply -n >/dev/null 2>&1
 }
 spotify_setup() {
   have spicetify || return 0
