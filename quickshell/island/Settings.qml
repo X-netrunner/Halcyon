@@ -74,6 +74,31 @@ Scope {
         stdout: StdioCollector { onStreamFinished: { if (root.toolPending !== "") return; try { root.tools = JSON.parse(text) } catch (e) {} } }
     }
 
+    // ---- Startup & background (scripts/startup-conf.sh): tray applets, polkit agent, GPU. Keys \"st:NAME\" in the tree below.
+    property var startup: ({ NM_APPLET: false, BLUEMAN: false, POLKIT: "auto", GPU: "igpu", has: ({ nm: true, blueman: true, hyprpolkit: true, gnome: true, kde: true, nvidia: false }) })
+    property string startupNote: ""        // "applies at the next login" hint after changing the agent or the GPU
+    readonly property string startupScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-conf.sh"
+    // every change in the tree goes through here: "st:" values are written by the script, everything else goes to shell.qml
+    function change(key, v) {
+        if (typeof key === "string" && key.indexOf("st:") === 0) {
+            var k = key.substring(3)
+            var st = JSON.parse(JSON.stringify(startup))
+            st[k] = v
+            startup = st                                   // show it at once; the real state is read again below
+            Quickshell.execDetached(["bash", startupScript, "set", k, (v === true ? "1" : v === false ? "0" : String(v))])
+            if (k === "POLKIT" || k === "GPU") startupNote = "Applies the next time you log in."
+            startupAgain.restart()
+            return
+        }
+        setting(key, v)
+    }
+    Timer { id: startupAgain; interval: 900; onTriggered: if (!startupProc.running) startupProc.running = true }
+    Process {
+        id: startupProc
+        command: ["bash", root.startupScript, "list"]
+        stdout: StdioCollector { onStreamFinished: { try { root.startup = JSON.parse(text) } catch (e) {} } }
+    }
+
     // default apps (scripts/apps.sh): what is installed per kind, and the one in use
     property var apps: ({ terminal: [], browser: [], files: [], editor: [], music: [], chat: [], current: ({ terminal: "", browser: "", files: "", editor: "", music: "", chat: "" }) })
     readonly property string appsScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh"
@@ -185,9 +210,17 @@ Scope {
             { type: "toggle", key: "compactSpecial", label: "Compact special workspaces", desc: "On: scratch / music / communication / monitor / tasks windows are smaller. Off: full size." }
         ] },
         { id: "performance", title: "Performance", items: [
+            { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars, 30 fps, small notification lists. Medium: light blur, no shadows, 60 fps. High: everything on, as designed. It sets the options on this page and in Look, Motion and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
             { type: "seg", key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] }
+        ] },
+        { id: "startup", title: "Startup & background", items: [
+            { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
+            { type: "toggle", key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
+            { type: "seg", key: "st:POLKIT", label: "Password prompt helper (polkit agent)", desc: "The small program that shows the 'enter your password' window for apps that need admin rights. Auto picks the lightest one installed: Hyprland's, then GNOME's, then KDE's (the heaviest). None = no password windows at all. Takes effect at the next login.", opts: [o("auto", "Auto"), o("hyprpolkitagent", "Hyprland"), o("gnome", "GNOME"), o("kde", "KDE"), o("none", "None")] },
+            { type: "seg", key: "st:GPU", label: "Graphics card for the desktop", desc: "Integrated: the Intel / AMD graphics draw the desktop; the NVIDIA card sleeps until you run a program with prime-run. Lowest RAM and battery use. NVIDIA: the NVIDIA card draws the desktop; smoother with heavy blur, but it loads the NVIDIA libraries (+100 MB or more RAM) and uses a lot more battery. Takes effect at the next login.", opts: [o("igpu", "Integrated (saves RAM)"), o("dgpu", "NVIDIA")] },
+            { type: "action", id: "mem-report", label: "Memory report", btn: "Show what uses my RAM", done: "Opening…", desc: "Opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh), so you can see where the RAM goes." }
         ] },
         { id: "bar", title: "Bar", items: [
             { type: "seg", key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
@@ -268,6 +301,7 @@ Scope {
         if (!key || typeof key !== "string") return undefined
         if (key.indexOf("opt:") === 0) return opt ? opt[key.substring(4)] : undefined
         if (key.indexOf("hy:") === 0) return hyCur ? hyCur[key.substring(3)] : undefined
+        if (key.indexOf("st:") === 0) return startup ? startup[key.substring(3)] : undefined
         return root[key]
     }
     function num(m) {
@@ -346,6 +380,8 @@ Scope {
 
     onOpenChanged: if (open) {
         if (!appsProc.running) appsProc.running = true
+        if (!startupProc.running) startupProc.running = true
+        startupNote = ""
         query = ""; focusT.restart()
     }
     Timer { id: focusT; interval: 60; onTriggered: if (typeof search !== "undefined" && search) { search.text = ""; search.forceActiveFocus() } }
@@ -856,6 +892,10 @@ Scope {
                                                                         Layout.fillWidth: true
                                                                         visible: text !== ""
                                                                         text: (leaf.m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset)"
+                                                                            : (leaf.m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet)"
+                                                                            : (leaf.m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
+                                                                            : (leaf.m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (leaf.m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
+                                                                            : ((leaf.m.key === "st:POLKIT" || leaf.m.key === "st:GPU") && root.startupNote !== "") ? (leaf.m.desc || "") + "  \u2192 " + root.startupNote
                                                                             : (leaf.m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (leaf.m.desc || ""))
                                                                         color: root.pal.muted
                                                                         font.family: root.pal.uiFont
@@ -870,7 +910,7 @@ Scope {
                                                                     pal: root.pal
                                                                     on: root.boolVal(leaf.m)
                                                                     busy: leaf.m.type === "tool" && root.toolPending === leaf.m.key
-                                                                    onToggled: leaf.m.type === "tool" ? root.toolFlip(leaf.m.key) : root.setting(leaf.m.key, !root.boolVal(leaf.m))
+                                                                    onToggled: leaf.m.type === "tool" ? root.toolFlip(leaf.m.key) : root.change(leaf.m.key, !root.boolVal(leaf.m))
                                                                 }
                                                                 ActionChip {
                                                                     visible: leaf.m.type === "action"
@@ -894,7 +934,7 @@ Scope {
                                                                         pal: root.pal
                                                                         label: modelData.t
                                                                         on: root.same(root.get(leaf.m.key), modelData.v)
-                                                                        onClicked: root.setting(leaf.m.key, modelData.v)
+                                                                        onClicked: root.change(leaf.m.key, modelData.v)
                                                                     }
                                                                 }
                                                             }
@@ -910,7 +950,7 @@ Scope {
                                                                 onMoved: v => {
                                                                     var raw = leaf.m.min + v * (leaf.m.max - leaf.m.min)
                                                                     var q = Math.round(raw / leaf.m.step) * leaf.m.step
-                                                                    root.setting(leaf.m.key, Math.round(q * 1000) / 1000)
+                                                                    root.change(leaf.m.key, Math.round(q * 1000) / 1000)
                                                                 }
                                                             }
 

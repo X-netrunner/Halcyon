@@ -50,6 +50,7 @@ ShellRoot {
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
         nightTemp: 4000,           // night light colour temperature (K)
         settingsGlass: 0.72,       // how opaque the Settings window is (lower = more see-through)
+        resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
         perf: "high",              // low | medium | high : how much the tree view and constellations animate (and how many stars the picture gets)
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
         pageClose: 600,            // ms the performance / media page waits after the pointer leaves the bar before it folds back (150 / 600 / 4000)
@@ -87,8 +88,41 @@ ShellRoot {
         case "termDrift": termRun.restart(); break
         case "accentMode": termRun.restart(); break
         case "nightTemp": nightT.restart(); break
+        case "resMode": applyResMode(v); break
         }
         saveSettings()
+    }
+
+    // Settings > Performance > Resource use: three presets that set many options at once. The options stay changeable afterwards.
+    // (Startup items and the GPU are NOT part of it: they only change at the next login, see Settings > Startup & background.)
+    readonly property var resPresets: ({
+        low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, accentMode: "fixed", termDrift: false, clockSeconds: false },
+                  blur: false, shadows: false, hyprAnim: false, motion: 0.5, profileStars: false, notifHistoryMax: 10, notifMax: 3,
+                  hy: { blurSize: 4, blurPasses: 1 } },
+        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true },
+                  blur: true,  shadows: false, hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 20, notifMax: 5,
+                  hy: { blurSize: 6, blurPasses: 2 } },
+        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true },
+                  blur: true,  shadows: true,  hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 30, notifMax: 5,
+                  hy: { blurSize: 7, blurPasses: 3 } }
+    })
+    function applyResMode(m) {
+        var p = resPresets[m]
+        if (!p) return
+        var o = {}
+        for (var x in opt) o[x] = opt[x]
+        for (var y in p.opt) o[y] = p.opt[y]
+        o.resMode = m
+        opt = o
+        blur = p.blur; shadows = p.shadows; hyprAnim = p.hyprAnim; motion = p.motion
+        profileStars = p.profileStars; notifHistoryMax = p.notifHistoryMax; notifMax = p.notifMax
+        hyprTouched = true
+        var h = {}, c = {}
+        for (var a in hy) h[a] = hy[a]
+        for (var b in hyCur) c[b] = hyCur[b]
+        for (var k in p.hy) { h[k] = p.hy[k]; c[k] = p.hy[k] }
+        hy = h; hyCur = c
+        hyprKick.restart()
     }
     function setHy(k, v) {
         var h = {}, c = {}
@@ -341,6 +375,7 @@ ShellRoot {
             else if (id === "termcolors") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/term-colors.sh", "--now"])
             else if (id === "layout") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_layout.sh"]); hyReadAgain.restart() }
             else if (id === "reset-look") root.resetLook()
+            else if (id === "mem-report") { var h = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", h + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\"; echo; read -n1 -r -p 'Press any key to close '", "x", h + "/halcyon-mem.sh"]) }
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
         }
     }
@@ -1431,8 +1466,11 @@ ShellRoot {
         id: corner
 
         anchors { bottom: true; right: true }
-        implicitWidth: pal.boxW + pal.boxEdge + 30     // same box width / edge gap as the notification centre
-        implicitHeight: 900
+        // only as big as the box while it is open or fading out; closed it is a small corner tab (a 450x900 surface = ~5 MB of
+        // buffers here and again in Hyprland for nothing). The box fades in over ~200 ms, so the resize is not visible.
+        readonly property bool big: open || panel.visible
+        implicitWidth: big ? pal.boxW + pal.boxEdge + 30 : 48     // same box width / edge gap as the notification centre
+        implicitHeight: big ? 900 : 48
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
 
@@ -1540,8 +1578,9 @@ ShellRoot {
         id: appsWin
 
         anchors { bottom: true; left: true }
-        implicitWidth: pal.boxW + pal.boxEdge + 30
-        implicitHeight: 700
+        readonly property bool big: open || bgPanel.visible      // see the utilities box: small corner tab while closed
+        implicitWidth: big ? pal.boxW + pal.boxEdge + 30 : 48
+        implicitHeight: big ? 700 : 48
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
 

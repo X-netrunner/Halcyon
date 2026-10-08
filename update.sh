@@ -117,7 +117,7 @@ else
   [ -f "$CACHE/install.sh" ] || die "the download has no install.sh"
 
   # your own files survive the copy
-  KEEP=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom)
+  KEEP=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf)
   keep="$(mktemp -d)"
   for f in "${KEEP[@]}"; do
     [ -f "$RICE/$f" ] && { mkdir -p "$keep/$(dirname "$f")"; cp -a "$RICE/$f" "$keep/$f"; }
