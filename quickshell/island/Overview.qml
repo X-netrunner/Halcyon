@@ -83,6 +83,9 @@ Item {
         loops: Animation.Infinite
         running: ov.open || ov.opacity > 0.01
     }
+    // The node drift is at most ~8 px/s, so 30 steps a second is invisible, but it means the branch curves
+    // (the expensive part) are re-tessellated 30x/s instead of every frame. Pulses and dust still use `tt`.
+    readonly property real ttq: Math.floor(tt * 30) / 30
 
     // ---------------------------------------------------------------- drag physics
     // Hold the laptop node to make the tree shake, drag it and every branch trails behind on springs.
@@ -253,7 +256,7 @@ Item {
         for (var i = 1; i < nodes.length; i++) {
             var n = nodes[i]
             if (n.depth !== 1) continue
-            var ax = pxBase(i, tt) + n.w / 2, ay = pyBase(i, tt)
+            var ax = pxBase(i, ttq) + n.w / 2, ay = pyBase(i, ttq)
             var dist = Math.sqrt((lx - ax) * (lx - ax) + (ly - ay) * (ly - ay))
             if (dist < bd) { bd = dist; best = i }
         }
@@ -280,7 +283,7 @@ Item {
         snapUpdate()
     }
     function flyBack() {
-        landFromX = px(dragIdx, tt); landFromY = py(dragIdx, tt)
+        landFromX = px(dragIdx, ttq); landFromY = py(dragIdx, ttq)
         dragState = "return"
         reachIdx = -1; reachK = 0; dropIdx = -1
         landP = 0
@@ -531,7 +534,10 @@ Item {
 
     Connections { target: Hyprland.workspaces; function onValuesChanged() { if (ov.open) rebuildT.restart() } }
     Connections { target: Hyprland.toplevels; function onValuesChanged() { if (ov.open) rebuildT.restart() } }
-    Connections { target: Hyprland; function onRawEvent(e) { if (ov.open) eventT.restart() } }
+    // events that never change workspaces or windows (the island's own layers fire openlayer/closelayer a lot)
+    readonly property var quietEvents: ({ openlayer: 1, closelayer: 1, activelayout: 1, keyboardlayout: 1, submap: 1,
+                                          screencast: 1, bell: 1, ignoregrouplock: 1, lockgroups: 1, configreloaded: 1 })
+    Connections { target: Hyprland; function onRawEvent(e) { if (ov.open && !ov.quietEvents[e.name]) eventT.restart() } }
 
     onWidthChanged: rebuildT.restart()
     onHeightChanged: rebuildT.restart()
@@ -634,10 +640,10 @@ Item {
             required property var modelData
             readonly property var nA: ov.nodes[modelData.a]
             readonly property var nB: ov.nodes[modelData.b]
-            readonly property real sx: ov.px(modelData.a, ov.tt) + (nA ? nA.w / 2 : 0)
-            readonly property real sy: ov.py(modelData.a, ov.tt)
-            readonly property real ex0: ov.px(modelData.b, ov.tt) - (nB ? nB.w / 2 : 0)
-            readonly property real ey0: ov.py(modelData.b, ov.tt)
+            readonly property real sx: ov.px(modelData.a, ov.ttq) + (nA ? nA.w / 2 : 0)
+            readonly property real sy: ov.py(modelData.a, ov.ttq)
+            readonly property real ex0: ov.px(modelData.b, ov.ttq) - (nB ? nB.w / 2 : 0)
+            readonly property real ey0: ov.py(modelData.b, ov.ttq)
             // the branch of a held leaf is cut: it retracts to the workspace, and grows back if the leaf returns
             readonly property bool cut: ov.dragIdx >= 0 && ov.dragIdx === modelData.b && (ov.dragState === "drag" || ov.dragState === "dock")
             property real link: cut ? 0 : 1
@@ -694,10 +700,10 @@ Item {
         readonly property var tn: ti >= 1 ? ov.nodes[ti] : null
         readonly property var dn: ov.dragIdx >= 0 ? ov.nodes[ov.dragIdx] : null
         readonly property bool joined: ti >= 1 && ov.dropIdx === ti
-        readonly property real sx: tn ? ov.px(ti, ov.tt) + tn.w / 2 : 0
-        readonly property real sy: tn ? ov.py(ti, ov.tt) : 0
-        readonly property real tx: dn ? ov.px(ov.dragIdx, ov.tt) - dn.w / 2 : 0
-        readonly property real ty: dn ? ov.py(ov.dragIdx, ov.tt) : 0
+        readonly property real sx: tn ? ov.px(ti, ov.ttq) + tn.w / 2 : 0
+        readonly property real sy: tn ? ov.py(ti, ov.ttq) : 0
+        readonly property real tx: dn ? ov.px(ov.dragIdx, ov.ttq) - dn.w / 2 : 0
+        readonly property real ty: dn ? ov.py(ov.dragIdx, ov.ttq) : 0
         // not joined yet: the line only stretches part of the way, further the closer the leaf gets
         readonly property real frac: joined ? 1 : 0.18 + 0.62 * ov.reachK
         readonly property real fx: sx + (tx - sx) * frac
@@ -760,8 +766,8 @@ Item {
             z: beingDragged ? 50 : 0
             width: d.w
             height: d.h
-            x: ov.px(index, ov.tt) - width / 2
-            y: ov.py(index, ov.tt) - height / 2
+            x: ov.px(index, ov.ttq) - width / 2
+            y: ov.py(index, ov.ttq) - height / 2
             opacity: Math.min(1, appear * 1.6)
 
             SequentialAnimation on appear {
@@ -1020,8 +1026,8 @@ Item {
                             var q = mapToItem(ov, m.x, m.y)
                             if (!moved && Math.sqrt((q.x - startX) * (q.x - startX) + (q.y - startY) * (q.y - startY)) > 8) {
                                 moved = true
-                                grabX = startX - ov.px(nd.index, ov.tt)
-                                grabY = startY - ov.py(nd.index, ov.tt)
+                                grabX = startX - ov.px(nd.index, ov.ttq)
+                                grabY = startY - ov.py(nd.index, ov.ttq)
                                 ov.beginDrag(nd.index, q.x - grabX, q.y - grabY)
                             }
                             if (moved) ov.moveDrag(q.x - grabX, q.y - grabY)

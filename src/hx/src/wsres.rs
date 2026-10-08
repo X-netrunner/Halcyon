@@ -5,27 +5,37 @@ use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-type Procs = HashMap<i32, (i32, u64, u64)>; // pid -> (ppid, cpu ticks, rss pages)
+type Procs = HashMap<i32, (i32, u64)>; // pid -> (ppid, cpu ticks)
 
+// Cheap pass over /proc: only `stat` (parent + cpu ticks) for every process. The resident size (`statm`)
+// is read later, and only for the processes that actually belong to a window (see `rss_pages`).
 fn snapshot() -> Procs {
-    let mut procs = HashMap::new();
+    use std::io::Read;
+    let mut procs = HashMap::with_capacity(512);
+    let mut buf = String::with_capacity(512);
     if let Ok(rd) = std::fs::read_dir("/proc") {
         for e in rd.flatten() {
-            let name = e.file_name().to_string_lossy().into_owned();
-            let pid: i32 = match name.parse() { Ok(p) => p, Err(_) => continue };
-            let s = match std::fs::read_to_string(format!("/proc/{}/stat", pid)) { Ok(s) => s, Err(_) => continue };
-            let r = match s.rfind(')') { Some(i) => &s[i + 2..], None => continue };
-            let rest: Vec<&str> = r.split_whitespace().collect();
-            if rest.len() < 13 { continue; }
-            let (ppid, ut, st) = (rest[1].parse().unwrap_or(0), rest[11].parse::<u64>().unwrap_or(0), rest[12].parse::<u64>().unwrap_or(0));
-            let rss = std::fs::read_to_string(format!("/proc/{}/statm", pid))
-                .ok()
-                .and_then(|m| m.split_whitespace().nth(1).and_then(|x| x.parse().ok()))
-                .unwrap_or(0);
-            procs.insert(pid, (ppid, ut + st, rss));
+            let pid: i32 = match e.file_name().to_str().and_then(|n| n.parse().ok()) { Some(p) => p, None => continue };
+            buf.clear();
+            let ok = std::fs::File::open(format!("/proc/{}/stat", pid)).and_then(|mut f| f.read_to_string(&mut buf)).is_ok();
+            if !ok { continue; }
+            let r = match buf.rfind(')') { Some(i) => &buf[i + 2..], None => continue };
+            // fields after the comm: state(0) ppid(1) ... utime(11) stime(12)
+            let mut it = r.split_whitespace();
+            let ppid = match it.nth(1).and_then(|x| x.parse().ok()) { Some(v) => v, None => 0 };
+            let ut = match it.nth(9) { Some(x) => x.parse::<u64>().unwrap_or(0), None => continue };
+            let st = match it.next() { Some(x) => x.parse::<u64>().unwrap_or(0), None => continue };
+            procs.insert(pid, (ppid, ut + st));
         }
     }
     procs
+}
+
+fn rss_pages(pid: i32, buf: &mut String) -> u64 {
+    use std::io::Read;
+    buf.clear();
+    if std::fs::File::open(format!("/proc/{}/statm", pid)).and_then(|mut f| f.read_to_string(buf)).is_err() { return 0; }
+    buf.split_whitespace().nth(1).and_then(|x| x.parse().ok()).unwrap_or(0)
 }
 
 fn owner_of(pid: i32, owners: &HashMap<i32, Vec<Value>>, procs: &Procs, memo: &mut HashMap<i32, Option<i32>>) -> Option<i32> {
@@ -69,12 +79,14 @@ pub fn wsres(interval: f64) {
 
         let mut per_owner: HashMap<i32, (f64, f64)> = by_pid.keys().map(|p| (*p, (0.0, 0.0))).collect();
         let mut memo = HashMap::new();
-        for (pid, (_, ticks, rss)) in &cur {
+        let mut sbuf = String::with_capacity(128);
+        for (pid, (_, ticks)) in &cur {
             if let Some(o) = owner_of(*pid, &by_pid, &cur, &mut memo) {
                 let d = prev.get(pid).map(|b| ticks.saturating_sub(b.1)).unwrap_or(0) as f64;
+                let rss = rss_pages(*pid, &mut sbuf);
                 let e = per_owner.get_mut(&o).unwrap();
                 e.0 += d / hz / dt * 100.0 / ncpu;
-                e.1 += *rss as f64 * page_mb;
+                e.1 += rss as f64 * page_mb;
             }
         }
         let mut ws: Map<String, Value> = Map::new();
