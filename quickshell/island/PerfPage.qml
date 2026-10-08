@@ -26,14 +26,8 @@ Item {
     }
     readonly property string cpuText: specs.cpu ? specs.cpu + "\n" + specs.cores + " cores · " + specs.threads + " threads" : "…"
     readonly property string gpuText: (specs.gpus && specs.gpus.length > 0) ? specs.gpus.join("\n") : "No GPU found"
-    readonly property string ramText: {
-        var r = specs.ram
-        if (!r) return "…"
-        var ch = r.channels === "soldered" ? "soldered" : (r.channels ? r.channels + "-channel" : "")
-        var head = [r.type, ch].filter(function (x) { return x }).join(" · ")
-        var tail = r.total + (r.modules > 1 ? " (" + r.detail + ")" : "") + (r.speed ? " · " + r.speed : "")
-        return head !== "" ? head + "\n" + tail : tail + "\ntype unknown: run scripts/refresh-ram.sh"
-    }
+    // just the installed amount (no DDR type / channels / speed)
+    readonly property string ramText: specs.ram && specs.ram.total ? String(specs.ram.total) : "…"
     readonly property string diskText: {
         var d = specs.disks
         if (!d || d.length === 0) return "…"
@@ -108,7 +102,7 @@ Item {
                 }
                 Text {
                     visible: !!(root.stats && (root.stats.hasBat || root.stats.bat > 0 || (root.stats.batEst && root.stats.batEst !== "")))
-                    text: "battery · " + root.stats.bat + "%" + (root.stats.batEst ? " (" + root.stats.batEst + ")" : "") + (root.stats.charging ? " ⚡ charging" : "")
+                    text: "battery · " + root.stats.bat + "%" + (root.stats.batEst ? " (" + root.stats.batEst + ")" : "") + (root.stats.charging ? " · charging" : "")
                     color: root.pal.good
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tBody
@@ -139,7 +133,39 @@ Item {
             SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF061A); label: "Processor"; value: root.cpuText }
             SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF08AE); label: "Graphics"; value: root.gpuText }
             SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF035B); label: "Memory"; value: root.ramText }
-            SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF02CA); label: "Storage"; value: root.diskText; usage: root.diskUsage }
+            SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF02CA); label: "Storage"; value: root.diskText }
+        }
+
+        // disk usage bars: one row along the whole bottom, one bar per disk sharing the width
+        Row {
+            Layout.fillWidth: true
+            spacing: 26
+            Repeater {
+                model: root.diskUsage
+                delegate: Column {
+                    required property var modelData
+                    width: root.diskUsage.length > 1 ? (parent.width - 26 * (root.diskUsage.length - 1)) / root.diskUsage.length : parent.width
+                    spacing: 3
+                    Text {
+                        width: parent.width
+                        text: modelData.label + "  ·  " + modelData.text
+                        elide: Text.ElideRight
+                        color: root.pal.muted
+                        font.family: root.pal.uiFont
+                        font.pixelSize: 10
+                    }
+                    Rectangle {
+                        width: parent.width; height: 4; radius: 2
+                        color: root.pal.surface
+                        Rectangle {
+                            width: parent.width * Math.min(1, Math.max(0.02, modelData.frac))
+                            height: parent.height; radius: 2
+                            color: modelData.frac > 0.9 ? root.pal.bad : (modelData.frac > 0.75 ? root.pal.warn : root.pal.accent)
+                            Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                        }
+                    }
+                }
+            }
         }
     }
 }

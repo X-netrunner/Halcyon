@@ -1,6 +1,8 @@
 local vars = require("variables")
 local home = os.getenv("HOME")
 local rice = home .. "/.config/Halcyon"
+-- fewer malloc arenas + earlier trim: the shells give freed memory back instead of holding it (a lot less resident RAM)
+local mem = "MALLOC_ARENA_MAX=2 MALLOC_TRIM_THRESHOLD_=131072 "
 
 -- Autostart. Every command runs through /bin/sh, so "&" and "&&" work; the island and the wallpaper shell are started by
 -- scripts/start-shell.sh, which waits for the Wayland socket, logs to ~/.cache/island/quickshell-<name>.log, restarts a
@@ -13,8 +15,9 @@ hl.on("hyprland.start", function()
 
     -- notifications: the island is the notification daemon now (quickshell/island/Notifs.qml), so no dunst/mako.
     -- start-shell.sh island frees org.freedesktop.Notifications (scripts/notif-guard.sh) right before the island starts
-    hl.exec_cmd(rice .. "/scripts/start-shell.sh island &")
-    hl.exec_cmd(rice .. "/scripts/start-shell.sh wallpaper &")
+    -- QSG_RENDER_LOOP=basic: all the island windows share one GPU context instead of one each (much less RAM)
+    hl.exec_cmd(mem .. "QSG_RENDER_LOOP=basic " .. rice .. "/scripts/start-shell.sh island &")
+    -- (the wallpaper layer is part of the island shell now: quickshell/island/Wallpaper.qml, no second process)
 
     -- polkit agent and the Hyprland portal (Arch puts the portal in /usr/lib/, other distributions in /usr/lib/hyprland/)
     hl.exec_cmd("/usr/lib/polkit-kde-authentication-agent-1 &")

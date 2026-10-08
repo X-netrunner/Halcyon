@@ -4,7 +4,7 @@ Lightweight, minimal, smooth and fast Hyprland setup in Lua, independent of cael
 
 ## Layout
 - `hyprland/`, `variables.lua`, `scheme/`: Hyprland config (Lua)
-- `quickshell/`: island bar, wallpaper layer
+- `quickshell/`: island bar; the wallpaper layer (`island/Wallpaper.qml`) runs inside the same Quickshell process
 - `launch/`: start scripts (`halcyon.sh`, `halcyon-isolated.sh`)
 - `scripts/`: cheatsheet, emoji picker, area screenshot, and the toggles (layout, nightlight, touchpad, gestures, power manager, live wallpaper)
 - `src/`: Rust sources for `power-manager` (Auto power), `touchpad-gestures` and `hx` (island data feeds, sysmode status / IDS / dossier); `systemd/`: their user services
@@ -249,3 +249,7 @@ tiling layout switch.
   Spotify and Discord always use the dark palette.
 - **GTK apps (Thunar, file dialogs)**: `scripts/gtk-theme.sh` writes `~/.config/gtk-3.0/gtk.css` and `gtk-4.0/gtk.css` (between `halcyon` markers, the rest of those files is untouched) from the island palette, and re-runs on every wallpaper and dark / light change. Reopen Thunar (`thunar -q`) to see it. `gtk-theme.sh --remove` takes it out; `echo off > ~/.local/state/island/gtk-follow` stops the automatic runs.
 - **Invert workspace scrolling**: Settings > Workspaces. Applies to the wheel over the workspace numbers in the bar and the 3 / 4 finger swipes.
+
+
+## Memory footprint (one Quickshell process)
+The wallpaper layer used to be a second Quickshell instance (`quickshell/wallpaper`), i.e. a whole extra Qt + QML + GL stack just to show a picture. It is now `quickshell/island/Wallpaper.qml`, a window inside the island shell, so the autostart starts one Quickshell, not two. `SUPER+SHIFT+W`, `sysmode` and the island itself all reach it through `quickshell ipc -p ~/.config/Halcyon/quickshell/island call wallpaper next` (or `set <path>`). The picture is decoded at the screen size (not 2.4x the width) and the "incoming" copy is released after every reveal. `launch/halcyon.sh` gives Hyprland fewer malloc arenas (`HALCYON_NO_MALLOC_TUNE=1` turns that off). Measure with `scripts/halcyon-mem.sh` (PSS is the number that counts).

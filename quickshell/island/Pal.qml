@@ -206,6 +206,10 @@ Scope {
     // animate); artFps = how often they update, 0 = every frame of the screen
     property int artQuality: 2
     property int artFps: 0
+    // Settings > Performance > Line drawing: true = the GPU draws the constellation lines (plain quads) and the tree branches
+    // (a small shader, branchShader = the compiled .qsb, "" until it is ready); false = the old Shape paths (CPU)
+    property bool gpuLines: true
+    property string branchShader: ""
 
     // ---------- motion ----------
     // one signature curve (easeOutQuint): fast start, long soft landing, never bounces

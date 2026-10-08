@@ -38,8 +38,11 @@ Item {
     // a high-detail picture constellation (hundreds of stars): smaller glows so the picture stays readable, and only
     // every 4th star twinkles so it stays cheap. Nothing is built until the art is shown for the first time.
     readonly property bool dense: art && art.stars ? art.stars.length > 260 : false
+    // built = the star / line items exist. They are torn down again 5 s after the art is hidden (a closed box keeps nothing
+    // in memory), and rebuilt the next time it is shown.
     property bool built: false
-    onVisibleChanged: if (visible) built = true
+    onVisibleChanged: { if (visible) { unbuild.stop(); built = true } else unbuild.restart() }
+    Timer { id: unbuild; interval: 5000; onTriggered: if (!root.visible) root.built = false }
     Component.onCompleted: if (visible) built = true
     readonly property real dw: art ? art.w : 100
     readonly property real dh: art ? art.h : 100
@@ -62,8 +65,9 @@ Item {
     function edgeOn(e) { return e.length < 3 || e[2] <= g }
 
     // edges as one path: "M x,y L x,y M ...", with the line segments kept for the travelling lights
+    readonly property bool gpuLines: pal && pal.gpuLines !== undefined ? pal.gpuLines : true
     readonly property string edgePath: {
-        if (!art) return ""
+        if (!art || gpuLines) return ""
         var p = "", s = art.stars, e = art.edges, gg = g
         for (var i = 0; i < e.length; i++) {
             if (!edgeOn(e[i])) continue
@@ -146,8 +150,12 @@ Item {
                 Behavior on x { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
                 Behavior on y { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
 
+                // CPU line drawing (Settings > Performance > Line drawing: CPU). Tessellated on a worker thread so opening a box
+                // never stalls the island.
                 Shape {
                     anchors.fill: parent
+                    visible: !root.gpuLines
+                    asynchronous: true
                     preferredRendererType: Shape.CurveRenderer
                     ShapePath {
                         strokeColor: Qt.alpha(root.tone, (root.dense ? 0.04 : 0.07) + 0.10 * root.energy)
@@ -162,6 +170,41 @@ Item {
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         PathSvg { path: root.edgePath }
+                    }
+                }
+
+                // GPU line drawing: one plain quad per line (a second, soft glow quad only on the small flagship art, not on the
+                // dense picture). The scene graph batches them; no path is built or tessellated.
+                component EdgeQuad: Rectangle {
+                    required property var modelData
+                    property real lineW: 1
+                    readonly property var a: root.art.stars[modelData[0]]
+                    readonly property var b: root.art.stars[modelData[1]]
+                    readonly property bool ok: a !== undefined && b !== undefined && root.edgeOn(modelData)
+                    readonly property real ax: ok ? root.sx(a) : 0
+                    readonly property real ay: ok ? root.sy(a) : 0
+                    readonly property real bx: ok ? root.sx(b) : 0
+                    readonly property real by: ok ? root.sy(b) : 0
+                    visible: ok && width > 0.01
+                    x: ax; y: ay - height / 2
+                    width: Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay))
+                    height: lineW * root.u
+                    rotation: Math.atan2(by - ay, bx - ax) * 57.29578
+                    transformOrigin: Item.Left
+                    antialiasing: true
+                }
+                Repeater {
+                    model: root.built && root.gpuLines && root.art && !root.dense ? root.art.edges : []
+                    delegate: EdgeQuad {
+                        lineW: 4
+                        color: Qt.alpha(root.tone, 0.07 + 0.10 * root.energy)
+                    }
+                }
+                Repeater {
+                    model: root.built && root.gpuLines && root.art ? root.art.edges : []
+                    delegate: EdgeQuad {
+                        lineW: (root.dense ? 0.9 : 1.0) + 0.5 * root.energy
+                        color: Qt.alpha(root.tone, (root.dense ? 0.30 : 0.34) + 0.38 * root.energy)
                     }
                 }
 

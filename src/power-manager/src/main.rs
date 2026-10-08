@@ -652,7 +652,20 @@ fn assert_power_profile(mode: PowerMode) {
     set_power_profile(mode.profile());
 }
 
+/// `~/.config/Halcyon/gpu-mode` says `dgpu` (scripts/gpu-mode.sh): the NVIDIA GPU draws the desktop, so it must never be
+/// runtime-suspended, on battery or not.
+fn dgpu_mode() -> bool {
+    let home = std::env::var("HOME").unwrap_or_default();
+    fs::read_to_string(format!("{home}/.config/Halcyon/gpu-mode"))
+        .map(|s| s.trim() == "dgpu")
+        .unwrap_or(false)
+}
+
 fn disable_nvidia_gpu() {
+    if dgpu_mode() {
+        enable_nvidia_gpu();
+        return;
+    }
     let pm_paths = [
         "/sys/bus/pci/devices/0000:01:00.0/power/control",
         "/sys/bus/pci/devices/0000:01:00.1/power/control",

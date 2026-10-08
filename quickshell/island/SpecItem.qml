@@ -48,29 +48,34 @@ Item {
             maximumLineCount: 3
             elide: Text.ElideRight
         }
-        Repeater {
-            model: root.usage
-            delegate: Column {
-                required property var modelData
-                width: body.width
-                topPadding: 4
-                spacing: 3
-                Text {
-                    width: parent.width
-                    text: modelData.label + "  ·  " + modelData.text
-                    elide: Text.ElideRight
-                    color: root.pal.muted
-                    font.family: root.pal.uiFont
-                    font.pixelSize: 10
-                }
-                Rectangle {
-                    width: parent.width; height: 4; radius: 2
-                    color: root.pal.surface
+        // usage bars side by side (one per disk), sharing the full width
+        Row {
+            width: body.width
+            spacing: 22
+            Repeater {
+                model: root.usage
+                delegate: Column {
+                    required property var modelData
+                    width: root.usage.length > 1 ? (body.width - 22 * (root.usage.length - 1)) / root.usage.length : body.width
+                    topPadding: 4
+                    spacing: 3
+                    Text {
+                        width: parent.width
+                        text: modelData.label + "  ·  " + modelData.text
+                        elide: Text.ElideRight
+                        color: root.pal.muted
+                        font.family: root.pal.uiFont
+                        font.pixelSize: 10
+                    }
                     Rectangle {
-                        width: parent.width * Math.min(1, Math.max(0.02, modelData.frac))
-                        height: parent.height; radius: 2
-                        color: modelData.frac > 0.9 ? root.pal.bad : (modelData.frac > 0.75 ? root.pal.warn : root.pal.accent)
-                        Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                        width: parent.width; height: 4; radius: 2
+                        color: root.pal.surface
+                        Rectangle {
+                            width: parent.width * Math.min(1, Math.max(0.02, modelData.frac))
+                            height: parent.height; radius: 2
+                            color: modelData.frac > 0.9 ? root.pal.bad : (modelData.frac > 0.75 ? root.pal.warn : root.pal.accent)
+                            Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                        }
                     }
                 }
             }

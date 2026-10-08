@@ -100,7 +100,7 @@ bind("layout", "SUPER + ALT + T", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scri
 bind("nightlight", "SUPER + ALT + N", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_nightlight.sh"))
 bind("emoji", "SUPER + period", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/emoji.sh"))
 bind("livewall", "SUPER + ALT + W", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_livewallpaper.sh"))
-bind("nextwall", "SUPER + SHIFT + W", hl.dsp.exec_cmd("quickshell ipc -p " .. home .. "/.config/Halcyon/quickshell/wallpaper call wallpaper next"))
+bind("nextwall", "SUPER + SHIFT + W", hl.dsp.exec_cmd("quickshell ipc -p " .. home .. "/.config/Halcyon/quickshell/island call wallpaper next"))
 bind("gestures", "SUPER + ALT + G", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_gestures.sh"))
 bind("power", "SUPER + ALT + P", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_power.sh"))
 bind("caffeine", "SUPER + ALT + C", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/caffeine.sh toggle"))   -- caffeine: screen stays awake

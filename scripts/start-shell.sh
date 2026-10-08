@@ -50,10 +50,12 @@ esac
 
 # On hybrid AMD + NVIDIA systems, keep Quickshell on the integrated GPU (Mesa/Radeon)
 # and prevent loading NVIDIA's 60MB shader compiler blob (libnvidia-gpucomp.so) into RAM
-if [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
+# (not in dGPU mode, see scripts/gpu-mode.sh: there the island draws on the NVIDIA GPU like the compositor does)
+gpu_mode="igpu"; [ -s "$RICE/gpu-mode" ] && gpu_mode="$(head -n1 "$RICE/gpu-mode")"
+if [ "$gpu_mode" != dgpu ] && [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
   export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
 fi
-if [ -f /usr/share/vulkan/icd.d/radeon_icd.json ]; then
+if [ "$gpu_mode" != dgpu ] && [ -f /usr/share/vulkan/icd.d/radeon_icd.json ]; then
   export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.json
   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json
 fi

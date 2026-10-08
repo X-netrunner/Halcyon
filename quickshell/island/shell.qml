@@ -52,6 +52,9 @@ ShellRoot {
         settingsGlass: 0.72,       // how opaque the Settings window is (lower = more see-through)
         perf: "high",              // low | medium | high : how much the tree view and constellations animate (and how many stars the picture gets)
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
+        pageClose: 600,            // ms the performance / media page waits after the pointer leaves the bar before it folds back (150 / 600 / 4000)
+        lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
+        bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
         stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true
     })
@@ -269,8 +272,11 @@ ShellRoot {
         motion: root.gaming ? 0.25 : root.motion
         growth: root.growth
         growthOn: root.growthOn
-        artQuality: root.perfLevel
-        artFps: root.opt.fps || 0
+        // Gaming mode: tree view and constellations drop to the lightest settings whatever Settings > Performance says
+        artQuality: root.gaming ? 0 : root.perfLevel
+        artFps: root.gaming ? 15 : (root.opt.fps || 0)
+        gpuLines: root.opt.lines !== "cpu"
+        branchShader: root.branchShaderUrl
         accentMode: root.opt.accentMode
         cycleSecs: root.opt.cycleSecs
         termDrift: root.opt.termDrift
@@ -595,7 +601,7 @@ ShellRoot {
 
     // ---- wallpaper: a thumbnail in Settings / next
     function setWallpaper(path) {
-        Quickshell.execDetached(["quickshell", "ipc", "-p", cfg + "/wallpaper", "call", "wallpaper", "set", path])
+        wallpaperLayer.useFile(path)          // same process now (it used to be a second quickshell, ~100 MB more)
     }
 
     // ---- Settings > Edit config: the code editor chosen in Settings > Default apps (falls back to the file manager)
@@ -821,7 +827,7 @@ ShellRoot {
         }
     }
     function randomWallpaper() {
-        Quickshell.execDetached(["quickshell", "ipc", "-p", cfg + "/wallpaper", "call", "wallpaper", "next"])
+        wallpaperLayer.next()
     }
     function runCommand(id) {
         if (id.indexOf("profile-") === 0) {
@@ -926,6 +932,14 @@ ShellRoot {
                 root.settingsLoaded = true
             }
         }
+    }
+    // tree-branch shader (branch.frag): compiled once with Qt's `qsb` into ~/.cache/halcyon, again only when branch.frag changes.
+    // No qsb on the machine (package qt6-shadertools) = the url stays empty and the branches use the Shape fallback.
+    property string branchShaderUrl: ""
+    Process {
+        running: true
+        command: ["bash", root.cfg + "/island/scripts/build-shader.sh"]
+        stdout: StdioCollector { onStreamFinished: { var p = text.trim(); if (p !== "") root.branchShaderUrl = "file://" + p } }
     }
     Process {
         id: gamingProc
@@ -1092,6 +1106,10 @@ ShellRoot {
         }
     }
 
+    // the wallpaper layer (circular reveal) lives in this same Quickshell process: one Qt/QML/GL stack instead of two.
+    // `quickshell ipc -p ~/.config/Halcyon/quickshell/island call wallpaper next` still works (target "wallpaper" in Wallpaper.qml)
+    Wallpaper { id: wallpaperLayer }
+
     // quickshell ipc -p ~/.config/Halcyon/quickshell/island call island <fn>
     IpcHandler {
         target: "island"
@@ -1227,7 +1245,7 @@ ShellRoot {
             }
             // media/perf fall back to the bar when the pointer leaves (quickly if hovering opened them)
             Timer {
-                interval: root.hoverOpened ? 600 : 4000
+                interval: root.opt.pageClose !== undefined ? root.opt.pageClose : 600
                 running: (root.page === "media" || root.page === "perf") && !hov.hovered
                 onTriggered: { root.page = "home"; root.hoverOpened = false }
             }
@@ -1291,6 +1309,9 @@ ShellRoot {
                     activeSpecial: root.activeSpecial
                     caffeine: root.caffeine
                     showStats: root.hoverAction === "stats" && hov.hovered
+                    bgCount: bgPanel.count
+                    showBgCount: root.opt.bgWhere !== "corner"
+                    onBgClicked: appsWin.pinFor(9000)
                     opacity: root.page === "home" ? 1 : 0
                     visible: opacity > 0.01
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
@@ -1570,7 +1591,7 @@ ShellRoot {
 
         // how many apps are alive in the background: a small count on the corner while the box is closed
         Rectangle {
-            visible: bgPanel.count > 0 && !appsWin.open
+            visible: bgPanel.count > 0 && !appsWin.open && root.opt.bgWhere === "corner"
             anchors.left: parent.left; anchors.bottom: parent.bottom
             anchors.leftMargin: 6; anchors.bottomMargin: 6
             width: 18; height: 18; radius: 9
