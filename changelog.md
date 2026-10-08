@@ -200,3 +200,17 @@ Quickshell island RSS dropped from **~750 MB down to ~218 MB - 250 MB** (a **~50
 
 ## GPU mode (dgpu / igpu)
 `~/.config/Halcyon/gpu-mode` (default shipped: `dgpu`) picks the GPU that draws the desktop. `launch/halcyon.sh` sets `AQ_DRM_DEVICES` (NVIDIA first) and the NVIDIA GBM/GLX/VA-API variables, `start-shell.sh` stops forcing Mesa/radeon for the island, and `power-manager` keeps the NVIDIA GPU powered. Switch with `scripts/gpu-mode.sh igpu|dgpu|status`, then log out and in.
+
+## Lean autostart + small closed edge windows
+- `scripts/autostart-extras.sh` (settings: `~/.config/Halcyon/autostart.conf`): polkit agent = lightest installed one (hyprpolkitagent, then polkit-gnome, then polkit-kde); `nm-applet` and `blueman-applet` are off by default (island has its own Wi-Fi / Bluetooth lists; the two applets cost ~60-100 MB). Set `NM_APPLET=1` / `BLUEMAN=1` to get them back (blueman is needed to pair NEW Bluetooth devices from a GUI).
+- Utilities box (bottom-right) and background-apps box (bottom-left): the layer surface is a 48x48 tab while closed and grows to the full size only while open / fading, so ~450x900 and ~450x700 buffers are not held all day.
+
+---
+
+## Settings: startup choices and Low / Medium / High resource use
+
+- **Settings > Startup & background** (new): switches for nm-applet and blueman-applet (start / stop at once), a polkit agent picker (Auto, Hyprland, GNOME, KDE, None; next login), the desktop graphics card (Integrated / NVIDIA; next login) and a "Show what uses my RAM" button (runs `scripts/halcyon-mem.sh`). Backed by `scripts/startup-conf.sh`, which edits `~/.config/Halcyon/autostart.conf` and `gpu-mode`.
+- **Settings > Performance > Resource use** (new): Low / Medium / High presets. They set blur, shadows, window animations, island animation speed, tree/constellation quality and frame rate, constellations, and the notification list sizes in one go. Every option can still be changed afterwards. Startup items and the GPU are not part of the presets.
+- `install.sh` / `update.sh` now keep `gpu-mode` and `autostart.conf`, so a reinstall no longer resets your GPU mode or applet choices.
+
+- **Lock-screen login now works with fish** (`./install.sh --lock-login`): it writes `~/.config/fish/conf.d/halcyon-login.fish`. `--remove-lock-login` deletes it again. bash and zsh work as before.

@@ -754,7 +754,7 @@ run_as_user_cmd "Creating the config, state and cache folders" mkdir -p \
     "$TARGET_HOME/.cache/island" "$TARGET_HOME/Pictures/Wallpapers" "$TARGET_HOME/Pictures/Screenshots" "$TARGET_HOME/logs" \
     || die "Could not create folders in $TARGET_HOME"
 
-KEEP_FILES=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom)     # yours: never overwritten by the copy
+KEEP_FILES=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf)     # yours: never overwritten by the copy
 if [[ "$(readlink -f "$TARGET_RICE" 2>/dev/null)" == "$(readlink -f "$RICE_SOURCE")" ]]; then
     log_success "Halcyon is already in ${TARGET_RICE}"
 else
@@ -926,7 +926,7 @@ if [[ "$WANT_LOCK_LOGIN" == "true" ]]; then
             warn_later "Could not write $GETTY_DROPIN: the lock-screen login is NOT active (nothing was changed on tty1)."
         fi
     else
-        warn_later "Your login shell is not bash or zsh, so the lock-screen login was NOT set up (auto-login without it would leave an open shell). Start Halcyon with: start-halcyon"
+        warn_later "Your login shell is not bash, zsh or fish, so the lock-screen login was NOT set up (auto-login without it would leave an open shell). Start Halcyon with: start-halcyon"
     fi
 fi
 

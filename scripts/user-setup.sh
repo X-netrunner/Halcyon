@@ -48,7 +48,20 @@ login_profile() {   # the profile file of the shell tty1 will run (bash or zsh);
   local sh; sh=$(basename "$(getent passwd "$ME" | cut -d: -f7)")
   case "$sh" in bash) echo "$HOME/.bash_profile" ;; zsh) echo "${ZDOTDIR:-$HOME}/.zprofile" ;; esac
 }
+login_fish_file() { echo "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/halcyon-login.fish"; }
+login_is_fish() { [ "$(basename "$(getent passwd "$ME" | cut -d: -f7)")" = fish ]; }
+login_add_fish() {   # fish has no ~/.bash_profile: its own conf.d file (runs for every fish, the snippet only acts in the tty1 login shell)
+  local f; f=$(login_fish_file); mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FISH
+$SNIP_MARK (install.sh; undo with ./install.sh --remove-lock-login)
+if status is-login; and test -z "\$WAYLAND_DISPLAY"; and test -z "\$DISPLAY"; and test (tty) = /dev/tty1; and not test -e "\$HOME/.cache/island/no-autostart"
+    exec "$RICE/launch/halcyon-login.sh"
+end
+FISH
+  grep -q "halcyon-login.sh" "$f" 2>/dev/null
+}
 login_add() {   # 0 = the lines are in place
+  if login_is_fish; then login_add_fish; return; fi
   local f; f=$(login_profile); [ -n "$f" ] || return 1
   if ! grep -q "halcyon-login.sh" "$f" 2>/dev/null; then
     # an older --tty-autostart line would start Halcyon WITHOUT the lock first: replace it
@@ -65,6 +78,7 @@ login_add() {   # 0 = the lines are in place
 }
 login_remove() {
   local f
+  rm -f "$(login_fish_file)"
   for f in "$HOME/.bash_profile" "${ZDOTDIR:-$HOME}/.zprofile"; do
     [ -f "$f" ] && sed -i "/$SNIP_MARK/,/^fi\$/d" "$f"
   done
@@ -352,7 +366,7 @@ case "${1:-}" in
   default-apps)  default_apps ;;
   gpu-env)       gpu_env "${2:-none}" ;;
   hypr-entry)    hypr_entry ;;
-  login-add)     login_add || { warn "your login shell is not bash or zsh, so the lock-screen login was NOT set up (auto-login without it would leave an open shell)"; exit 1; } ;;
+  login-add)     login_add || { warn "your login shell is not bash, zsh or fish, so the lock-screen login was NOT set up (auto-login without it would leave an open shell)"; exit 1; } ;;
   login-remove)  login_remove ;;
   tty-autostart) tty_autostart ;;
   wallpaper)     wallpaper ;;
