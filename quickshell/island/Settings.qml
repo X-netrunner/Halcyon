@@ -186,10 +186,12 @@ Scope {
         ] },
         { id: "performance", title: "Performance", items: [
             { type: "seg", key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
-            { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] }
+            { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
+            { type: "seg", key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] }
         ] },
         { id: "bar", title: "Bar", items: [
             { type: "seg", key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
+            { type: "seg", key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")] },
             { type: "seg", key: "barScroll", label: "Scroll / swipe on the bar to change page", opts: [o("low", "Long swipe"), o("medium", "Medium"), o("high", "Sensitive")] },
             { type: "seg", key: "clock24", label: "Clock", opts: [o(false, "12 hour"), o(true, "24 hour")] },
             { type: "toggle", key: "opt:clockSeconds", label: "Show seconds" },
@@ -208,6 +210,7 @@ Scope {
             { type: "toggle", key: "osdOn", label: "Volume / brightness bar", desc: "Slides up from the bottom whenever volume, brightness or the keyboard light changes." },
             { type: "seg", key: "opt:osdHold", label: "How long that bar stays", opts: [o(1000, "Short"), o(1700, "Normal"), o(3000, "Long")] },
             { type: "toggle", key: "profileStars", label: "Profile picture constellation" },
+            { type: "seg", key: "opt:bgWhere", label: "Background apps count", desc: "Where the number of apps running in the background is shown. The box with the apps always opens bottom-left (on the bar, click the number to open it).", opts: [o("corner", "Corner"), o("bar", "Bar")] },
             { type: "toggle", key: "routeApps", label: "Send Spotify / Discord to their workspace" }
         ] },
         { id: "input", title: "Mouse, touchpad & keyboard", items: [

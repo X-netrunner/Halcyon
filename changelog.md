@@ -185,3 +185,18 @@ Quickshell island RSS dropped from **~750 MB down to ~218 MB - 250 MB** (a **~50
 | **Sysmode Logs** | Split between `/root/logs` and user home | **Unified to `SYS_HOME/logs`** | Verified config resolution in daemons |
 | **Overview (Super+Tab)** | Threw TypeErrors on node render | **Zero errors, smooth rendering** | Tested via Quickshell IPC |
 | **Launcher / Desktop Entries** | Missing icon & invalid line warnings | **Zero warnings in log** | Verified in `quickshell-island.log` |
+
+
+---
+
+## Memory pass: one Quickshell instead of two
+
+- **Wallpaper merged into the island** (`quickshell/island/Wallpaper.qml`, `quickshell/wallpaper/` removed): one Qt/QML/GL stack less. IPC target `wallpaper` now lives in the island instance; `keybinds.lua`, `sysmode`, `shell.qml` and `halcyon-doctor.sh` updated, `execs.lua` no longer starts a second shell.
+- **Wallpaper decode size**: `sourceSize` = screen width x height (was up to 2.4x screen width), so each decoded wallpaper is ~9 MB instead of ~21 MB at 1920x1200; the reveal holds two at once.
+- **Incoming wallpaper released** after the reveal (it used to keep a second decoded copy + GPU texture alive until the next change).
+- **Hyprland process**: `MALLOC_ARENA_MAX=2` + `MALLOC_TRIM_THRESHOLD_=131072` in `launch/halcyon.sh` (opt out: `HALCYON_NO_MALLOC_TUNE=1`).
+- New `scripts/halcyon-mem.sh` prints RSS and PSS per Halcyon process for before/after comparisons.
+- Trade-off: the wallpaper now restarts together with the island (reload / crash), instead of staying up on its own.
+
+## GPU mode (dgpu / igpu)
+`~/.config/Halcyon/gpu-mode` (default shipped: `dgpu`) picks the GPU that draws the desktop. `launch/halcyon.sh` sets `AQ_DRM_DEVICES` (NVIDIA first) and the NVIDIA GBM/GLX/VA-API variables, `start-shell.sh` stops forcing Mesa/radeon for the island, and `power-manager` keeps the NVIDIA GPU powered. Switch with `scripts/gpu-mode.sh igpu|dgpu|status`, then log out and in.

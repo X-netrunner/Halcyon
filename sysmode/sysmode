@@ -577,9 +577,9 @@ remove_lynis() {
 
 randomize_wallpaper() {
     echo "[*] Randomizing wallpaper..."
-    # Halcyon's wallpaper layer (quickshell/wallpaper): ask the running instance for a new one
+    # Halcyon's wallpaper layer (inside the island shell, quickshell/island/Wallpaper.qml): ask the running instance for a new one
     sudo -u "$SYS_USER" env XDG_RUNTIME_DIR="/run/user/$USER_UID" \
-        quickshell ipc -p "$SYS_HOME/.config/Halcyon/quickshell/wallpaper" call wallpaper next >/dev/null 2>&1 || true
+        quickshell ipc -p "$SYS_HOME/.config/Halcyon/quickshell/island" call wallpaper next >/dev/null 2>&1 || true
 }
 
 # ---------------------------------------------------------------------------

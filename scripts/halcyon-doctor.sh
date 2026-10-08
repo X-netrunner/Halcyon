@@ -46,7 +46,7 @@ for q in QtQuick/Layouts QtQuick/Shapes QtQuick/Effects QtQuick/Controls Qt/labs
   d=""; for base in /usr/lib/qt6/qml /usr/lib/qt/qml /usr/lib64/qt6/qml; do [ -d "$base/$q" ] && d=1; done
   [ -n "$d" ] && ok "Qt module $q" || bad "Qt module $q is missing (sudo pacman -S qt6-declarative qt6-5compat qt6-svg qt6-wayland)"
 done
-for sh in island wallpaper; do
+for sh in island; do   # the wallpaper layer is part of the island shell now (quickshell/island/Wallpaper.qml)
   if pgrep -f "quickshell.* -p .*quickshell/$sh" >/dev/null 2>&1 || pgrep -f "qs .*-p .*quickshell/$sh" >/dev/null 2>&1; then ok "the $sh shell is running"
   else
     bad "the $sh shell is NOT running"

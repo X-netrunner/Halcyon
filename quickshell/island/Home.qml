@@ -15,6 +15,9 @@ RowLayout {
     property bool playing: false
     property string activeSpecial: ""
     property bool caffeine: false
+    property int bgCount: 0              // apps alive in the background (BgApps.count)
+    property bool showBgCount: false     // Settings > Panels > Background apps count: on the bar instead of the bottom-left corner
+    signal bgClicked()                   // opens the background-apps box (it stays bottom-left)
     property bool showStats: false       // Settings > Bar: CPU / memory / temperature slide out while the pointer is on the bar
     signal statusClicked()
     signal workspaceClicked(int wsId)
@@ -238,7 +241,38 @@ RowLayout {
 
         Row {
             id: status
+            z: 1                                   // above the status MouseArea so the count chip gets its own clicks
             spacing: 10
+
+            // background apps: count in the bar (Settings > Panels > Background apps count), click opens the box in the corner
+            Item {
+                id: bgChip
+                visible: row.showBgCount && row.bgCount > 0
+                width: bgRow.implicitWidth
+                height: 20
+                anchors.verticalCenter: parent.verticalCenter
+                Row {
+                    id: bgRow
+                    spacing: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: String.fromCodePoint(0xF003B)
+                        color: row.pal.accent
+                        font.family: row.pal.font
+                        font.pixelSize: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: row.bgCount
+                        color: row.pal.text
+                        font.family: row.pal.uiFont
+                        font.pixelSize: row.pal.tBody
+                        font.weight: Font.DemiBold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+                MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: row.bgClicked() }
+            }
 
             // caffeine is on: the screen will not sleep or lock
             Text {

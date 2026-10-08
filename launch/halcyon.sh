@@ -35,6 +35,30 @@ if [ ! -f "$cfg" ]; then
   sleep 5; exit 1
 fi
 
+# Hyprland (and so everything it starts) gets fewer malloc arenas and trims freed memory back sooner: a lower resident size
+# for a long-running session, at no visible cost on a laptop. Turn it off with  HALCYON_NO_MALLOC_TUNE=1  in your environment.
+if [ -z "${HALCYON_NO_MALLOC_TUNE:-}" ]; then
+  export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}" MALLOC_TRIM_THRESHOLD_="${MALLOC_TRIM_THRESHOLD_:-131072}"
+fi
+
+# GPU: ~/.config/Halcyon/gpu-mode = igpu | dgpu (change it with scripts/gpu-mode.sh). dgpu = the NVIDIA GPU draws the desktop.
+mode=igpu; [ -s "$RICE/gpu-mode" ] && mode="$(head -n1 "$RICE/gpu-mode")"
+if [ "$mode" = dgpu ] && [ -r /proc/driver/nvidia/version ]; then
+  nv=""; others=""
+  for c in /sys/class/drm/card[0-9]*; do
+    [ -e "$c/device/vendor" ] || continue
+    case "$c" in */card[0-9]*-*) continue ;; esac
+    if [ "$(cat "$c/device/vendor")" = 0x10de ]; then nv="/dev/dri/${c##*/}"; else others="${others:+$others:}/dev/dri/${c##*/}"; fi
+  done
+  if [ -n "$nv" ]; then
+    export AQ_DRM_DEVICES="$nv${others:+:$others}"        # first = renders, the others only scan out (hybrid laptop screens)
+    export GBM_BACKEND=nvidia-drm __GLX_VENDOR_LIBRARY_NAME=nvidia LIBVA_DRIVER_NAME=nvidia NVD_BACKEND=direct
+    echo "GPU mode: dgpu (AQ_DRM_DEVICES=$AQ_DRM_DEVICES)" >> "$log"
+  else echo "GPU mode: dgpu asked for but no NVIDIA card found, using the default GPU" >> "$log"; fi
+elif [ "$mode" = dgpu ]; then
+  echo "GPU mode: dgpu asked for but the NVIDIA driver is not loaded, using the default GPU" >> "$log"
+fi
+
 if command -v start-hyprland >/dev/null 2>&1; then exec start-hyprland; fi     # Hyprland's own start wrapper (0.53 and newer)
 if command -v Hyprland >/dev/null 2>&1; then exec Hyprland; fi
 echo "Halcyon: Hyprland is not installed (sudo pacman -S hyprland), then run ./install.sh" | tee -a "$log" >&2

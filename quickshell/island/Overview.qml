@@ -89,6 +89,7 @@ Item {
     readonly property int fps: pal && pal.artFps !== undefined ? pal.artFps : 0
     readonly property int quality: pal && pal.artQuality !== undefined ? pal.artQuality : 2
     readonly property real ttq: fps > 0 ? Math.floor(tt * fps) / fps : tt
+    readonly property bool gpuBranch: pal && pal.gpuLines === true && pal.branchShader !== undefined && pal.branchShader !== ""
 
     // ---------------------------------------------------------------- drag physics
     // Hold the laptop node to make the tree shake, drag it and every branch trails behind on springs.
@@ -665,7 +666,32 @@ Item {
                 NumberAnimation { to: 1; duration: 500; easing.type: Easing.OutCubic }
             }
 
+            // GPU line drawing (Settings > Performance > Line drawing): one small quad per branch, the curve is computed by
+            // branch.frag on the GPU, so nothing is tessellated while the tree floats. Falls back to the Shape below when
+            // the shader could not be built (no `qsb` installed) or when CPU drawing is chosen.
+            ShaderEffect {
+                id: fx
+                visible: ov.gpuBranch
+                readonly property real pad: 4
+                readonly property real minX: Math.min(eg.sx, eg.ex, eg.sx + eg.dx, eg.ex - eg.dx)
+                readonly property real maxX: Math.max(eg.sx, eg.ex, eg.sx + eg.dx, eg.ex - eg.dx)
+                readonly property real minY: Math.min(eg.sy, eg.ey)
+                readonly property real maxY: Math.max(eg.sy, eg.ey)
+                x: minX - pad; y: minY - pad
+                width: Math.max(1, maxX - minX + 2 * pad)
+                height: Math.max(1, maxY - minY + 2 * pad)
+                property color color: Qt.alpha(eg.tint, 0.42)
+                property vector2d p0: Qt.vector2d(eg.sx - x, eg.sy - y)
+                property vector2d p1: Qt.vector2d(eg.sx + eg.dx - x, eg.sy - y)
+                property vector2d p2: Qt.vector2d(eg.ex - eg.dx - x, eg.ey - y)
+                property vector2d p3: Qt.vector2d(eg.ex - x, eg.ey - y)
+                property vector2d dim: Qt.vector2d(width, height)
+                property real lw: 1.6
+                fragmentShader: ov.gpuBranch ? ov.pal.branchShader : ""
+            }
             Shape {
+                visible: !ov.gpuBranch || fx.status === ShaderEffect.Error
+                asynchronous: true
                 preferredRendererType: Shape.CurveRenderer
                 ShapePath {
                     strokeColor: Qt.alpha(eg.tint, 0.42)
