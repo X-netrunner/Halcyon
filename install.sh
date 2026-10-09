@@ -734,7 +734,7 @@ menu_pick() {
 
 browser_pkgs() { case "$1" in firefox) echo firefox ;; zen) echo zen-browser-bin ;; librewolf) echo librewolf-bin ;; floorp) echo floorp-bin ;;
                   chromium) echo chromium ;; brave) echo brave-bin ;; vivaldi) echo vivaldi ;; chrome) echo google-chrome ;; qutebrowser) echo qutebrowser ;; esac; }
-files_pkgs()   { case "$1" in thunar) echo thunar thunar-archive-plugin thunar-volman gvfs gvfs-mtp tumbler ffmpegthumbnailer file-roller ;;
+files_pkgs()   { case "$1" in thunar) echo thunar thunar-archive-plugin thunar-volman gvfs gvfs-mtp tumbler ffmpegthumbnailer file-roller papirus-icon-theme ;;
                   yazi) echo yazi ffmpegthumbnailer zoxide ;; dolphin) echo dolphin ffmpegthumbs kio-extras kde-cli-tools gvfs gvfs-mtp ;;
                   nautilus) echo nautilus gvfs gvfs-mtp file-roller ;; nemo) echo nemo nemo-fileroller gvfs gvfs-mtp ;; pcmanfm) echo pcmanfm-gtk3 gvfs gvfs-mtp ;; esac; }
 editor_pkgs()  { case "$1" in codium) echo vscodium-bin ;; zeditor) echo zed ;; neovim) echo neovim ;; esac; }

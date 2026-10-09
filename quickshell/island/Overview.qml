@@ -248,6 +248,14 @@ Item {
         return landFromY + (ty - landFromY) * landP
     }
 
+    // all node centres, computed once per frame: [x0, y0, x1, y1 ...]. The nodes and the edges read this instead of each calling
+    // px() / py() themselves (an edge used to do four sine evaluations per frame on top of its two nodes' own)
+    readonly property var pos: {
+        var n = nodes.length, t = ttq, out = new Array(n * 2)
+        for (var i = 0; i < n; i++) { out[i * 2] = px(i, t); out[i * 2 + 1] = py(i, t) }
+        return out
+    }
+
     function snapUpdate() {
         var d = nodes[dragIdx]
         if (!d) return
@@ -644,10 +652,10 @@ Item {
             required property var modelData
             readonly property var nA: ov.nodes[modelData.a]
             readonly property var nB: ov.nodes[modelData.b]
-            readonly property real sx: ov.px(modelData.a, ov.ttq) + (nA ? nA.w / 2 : 0)
-            readonly property real sy: ov.py(modelData.a, ov.ttq)
-            readonly property real ex0: ov.px(modelData.b, ov.ttq) - (nB ? nB.w / 2 : 0)
-            readonly property real ey0: ov.py(modelData.b, ov.ttq)
+            readonly property real sx: (ov.pos[modelData.a * 2] || 0) + (nA ? nA.w / 2 : 0)
+            readonly property real sy: ov.pos[modelData.a * 2 + 1] || 0
+            readonly property real ex0: (ov.pos[modelData.b * 2] || 0) - (nB ? nB.w / 2 : 0)
+            readonly property real ey0: ov.pos[modelData.b * 2 + 1] || 0
             // the branch of a held leaf is cut: it retracts to the workspace, and grows back if the leaf returns
             readonly property bool cut: ov.dragIdx >= 0 && ov.dragIdx === modelData.b && (ov.dragState === "drag" || ov.dragState === "dock")
             property real link: cut ? 0 : 1
@@ -689,24 +697,26 @@ Item {
                 property real lw: 1.6
                 fragmentShader: ov.gpuBranch ? ov.pal.branchShader : ""
             }
-            Shape {
-                visible: !ov.gpuBranch || fx.status === ShaderEffect.Error
-                asynchronous: true
-                preferredRendererType: Shape.CurveRenderer
-                ShapePath {
-                    strokeColor: Qt.alpha(eg.tint, 0.42)
-                    strokeWidth: 1.6
-                    fillColor: "transparent"
-                    capStyle: ShapePath.RoundCap
-                    startX: eg.sx
-                    startY: eg.sy
-                    PathCubic {
-                        x: eg.ex
-                        y: eg.ey
-                        control1X: eg.sx + eg.dx
-                        control1Y: eg.sy
-                        control2X: eg.ex - eg.dx
-                        control2Y: eg.ey
+            Loader {
+                active: !ov.gpuBranch || fx.status === ShaderEffect.Error
+                sourceComponent: Shape {
+                    asynchronous: true
+                    preferredRendererType: Shape.CurveRenderer
+                    ShapePath {
+                        strokeColor: Qt.alpha(eg.tint, 0.42)
+                        strokeWidth: 1.6
+                        fillColor: "transparent"
+                        capStyle: ShapePath.RoundCap
+                        startX: eg.sx
+                        startY: eg.sy
+                        PathCubic {
+                            x: eg.ex
+                            y: eg.ey
+                            control1X: eg.sx + eg.dx
+                            control1Y: eg.sy
+                            control2X: eg.ex - eg.dx
+                            control2Y: eg.ey
+                        }
                     }
                 }
             }
@@ -796,8 +806,8 @@ Item {
             z: beingDragged ? 50 : 0
             width: d.w
             height: d.h
-            x: ov.px(index, ov.ttq) - width / 2
-            y: ov.py(index, ov.ttq) - height / 2
+            x: (ov.pos[index * 2] || 0) - width / 2
+            y: (ov.pos[index * 2 + 1] || 0) - height / 2
             opacity: Math.min(1, appear * 1.6)
 
             SequentialAnimation on appear {

@@ -14,11 +14,22 @@ bat=""
 for b in /sys/class/power_supply/BAT* /sys/class/power_supply/bat* /sys/class/power_supply/CMB* /sys/class/power_supply/*battery*; do
   [ -d "$b" ] && bat=$b && break
 done
-if [ -z "$bat" ] && command -v upower >/dev/null 2>&1; then
-  if upower -e 2>/dev/null | grep -q -i bat; then
-    hasbat_upower=true
-  fi
-fi
+# upower: looked up once; read at most every 15 s with ONE call (it used to be up to five forks on every tick)
+up_bat=""; up_t=0; up_cap=0; up_st=""; up_est=""
+if command -v upower >/dev/null 2>&1; then up_bat=$(upower -e 2>/dev/null | grep -i -m1 bat); fi
+upower_read() {
+  local now; printf -v now '%(%s)T' -1
+  [ -n "$up_bat" ] && [ $((now - up_t)) -ge 15 ] || return 0
+  up_t=$now
+  IFS='|' read -r up_cap up_st up_est < <(upower -i "$up_bat" 2>/dev/null | awk -F: '
+    function trim(v) { gsub(/^ +| +$/, "", v); return v }
+    /percentage/ { p = trim($2); gsub(/%/, "", p) }
+    /state/ { s = trim($2) }
+    /time to empty/ { e = trim($2) }
+    /time to full/ { f = trim($2) " to full" }
+    END { print (p + 0) "|" s "|" (f != "" ? f : e) }')
+}
+fmt() { local m=$1; if [ "$m" -ge 60 ]; then printf '%dh %02dm' $((m/60)) $((m%60)); else printf '%dm' "$m"; fi; }
 
 while true; do
   sleep "$iv"
@@ -93,36 +104,16 @@ while true; do
       if [ "${rate_avg:-0}" -le 0 ]; then rate_avg=$rate; else rate_avg=$(( (rate_avg * 7 + rate) / 8 )); fi
     fi
 
-    fmt() { local m=$1; if [ "$m" -ge 60 ]; then printf '%dh %02dm' $((m/60)) $((m%60)); else printf '%dm' "$m"; fi; }
-
     if [ "$st" = "Discharging" ] && [ -n "$now" ] && [ "${rate_avg:-0}" -gt 0 ]; then
       batest="$(fmt $(( now * 60 / rate_avg )))"
     elif [ "$st" = "Charging" ] && [ -n "$full" ] && [ -n "$now" ] && [ "${rate_avg:-0}" -gt 0 ] && [ "$full" -gt "$now" ]; then
       batest="$(fmt $(( (full - now) * 60 / rate_avg ))) to full"
     fi
 
-    if [ -z "$batest" ] && [ "$st" != "Full" ] && command -v upower >/dev/null 2>&1; then
-      up_bat=$(upower -e 2>/dev/null | grep -i bat | head -1)
-      if [ -n "$up_bat" ]; then
-        t_empty=$(upower -i "$up_bat" 2>/dev/null | awk -F: '/time to empty/{print $2}' | xargs)
-        t_full=$(upower -i "$up_bat" 2>/dev/null | awk -F: '/time to full/{print $2}' | xargs)
-        [ -n "$t_empty" ] && batest="$t_empty"
-        [ -n "$t_full" ] && batest="$t_full to full"
-      fi
-    fi
-  elif [ "$hasbat_upower" = true ] && command -v upower >/dev/null 2>&1; then
-    up_bat=$(upower -e 2>/dev/null | grep -i bat | head -1)
-    if [ -n "$up_bat" ]; then
-      hasbat=true
-      cap_str=$(upower -i "$up_bat" 2>/dev/null | awk -F: '/percentage/{print $2}' | tr -d ' %' | xargs)
-      cap=${cap_str:-0}
-      st=$(upower -i "$up_bat" 2>/dev/null | awk -F: '/state/{print $2}' | xargs)
-      [ "$st" = "charging" ] && chg=true
-      t_empty=$(upower -i "$up_bat" 2>/dev/null | awk -F: '/time to empty/{print $2}' | xargs)
-      t_full=$(upower -i "$up_bat" 2>/dev/null | awk -F: '/time to full/{print $2}' | xargs)
-      if [ -n "$t_empty" ]; then batest="$t_empty"; fi
-      if [ -n "$t_full" ]; then batest="$t_full to full"; fi
-    fi
+    if [ -z "$batest" ] && [ "$st" != "Full" ]; then upower_read; batest=$up_est; fi
+  elif [ -n "$up_bat" ]; then
+    upower_read
+    hasbat=true; cap=${up_cap:-0}; [ "$up_st" = "charging" ] && chg=true; batest=$up_est
   fi
 
   ac=false

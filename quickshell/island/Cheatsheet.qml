@@ -38,6 +38,8 @@ Scope {
     property string editCmd: ""
     property string editError: ""
     property bool capturing: false
+    property int focusReq: 0           // bumped to ask the window to put the cursor back in the search box
+    property bool typing: false        // true while keys are being typed: the starfield rests
 
     function startEdit(rec) {
         var p = Binds.parse(rec.keys === "none" ? rec.def : rec.keys)
@@ -50,7 +52,7 @@ Scope {
         capturing = false
         editId = rec.id
     }
-    function cancelEdit() { editId = ""; capturing = false; editError = ""; search.forceActiveFocus() }
+    function cancelEdit() { editId = ""; capturing = false; editError = ""; focusReq++ }
     function toggleMod(m) {
         var o = {}
         for (var k in editMods) o[k] = editMods[k]
@@ -87,7 +89,7 @@ Scope {
 
     function visibleGroups() {
         var q = query.toLowerCase().trim()
-        var out = []
+        var out = [], sig = ""
         for (var g = 0; g < Binds.groups.length; g++) {
             var grp = Binds.groups[g]
             var items = []
@@ -98,8 +100,9 @@ Scope {
                 if (q !== "" && hay.indexOf(q) < 0) continue
                 items.push({ id: it.id || "", label: it.label, kind: it.kind || "bind", keys: keys, def: it.keys,
                              editable: !!it.id, custom: -1, cmd: "", changed: !!it.id && keyMap[it.id] !== undefined })
+                sig += (it.id || "") + "|" + it.label + "|" + keys + "|" + (it.kind || "") + "|" + (!!it.id && keyMap[it.id] !== undefined) + ";"
             }
-            if (items.length > 0) out.push({ id: grp.id, title: grp.title, items: items, custom: false })
+            if (items.length > 0) { out.push({ id: grp.id, title: grp.title, items: items, custom: false }); sig += "#" + grp.id + ";" }
         }
         var cit = []
         for (var c = 0; c < customs.length; c++) {
@@ -107,11 +110,20 @@ Scope {
             var chay = (cu.label + " " + cu.cmd + " " + cu.keys + " " + Binds.parts(cu.keys).join(" ")).toLowerCase()
             if (q !== "" && chay.indexOf(q) < 0) continue
             cit.push({ id: "custom:" + c, label: cu.label, kind: "bind", keys: cu.keys, def: cu.keys, editable: true, custom: c, cmd: cu.cmd, changed: false })
+            sig += "c" + c + "|" + cu.label + "|" + cu.keys + "|" + cu.cmd + ";"
         }
-        if (q === "" || cit.length > 0) out.push({ id: "custom", title: "Your shortcuts", items: cit, custom: true })
+        if (q === "" || cit.length > 0) { out.push({ id: "custom", title: "Your shortcuts", items: cit, custom: true }); sig += "#custom;" }
+        out.sig = sig
         return out
     }
-    readonly property var groupsNow: { var a = query; var b = keyMap; var c = customs; return visibleGroups() }
+    readonly property var _gc: ({ sig: "", out: [] })    // last result, mutated in place (never re-assigned)
+    readonly property var groupsNow: {
+        var a = query; var b = keyMap; var c = customs
+        var r = visibleGroups()
+        if (r.sig === _gc.sig) return _gc.out
+        _gc.sig = r.sig; _gc.out = r
+        return r
+    }
     readonly property var columns: {
         var n = colCount || 2, cols = [], hs = []
         for (var i = 0; i < n; i++) { cols.push([]); hs.push(0) }
@@ -126,11 +138,17 @@ Scope {
         return cols
     }
     readonly property int shownCount: { var n = 0; for (var g = 0; g < groupsNow.length; g++) n += groupsNow[g].items.length; return n }
+    // columns that actually hold a group: the tree lines are drawn for those only (a search with few hits = one line,
+    // nothing found = no line at all)
+    readonly property int usedCols: {
+        var n = 0
+        for (var i = 0; i < columns.length; i++) if (columns[i].length > 0) n = i + 1
+        return n
+    }
 
     onOpenChanged: {
-        if (open) { query = ""; editId = ""; capturing = false; focusT.restart() }
+        if (open) { query = ""; editId = ""; capturing = false }
     }
-    Timer { id: focusT; interval: 60; onTriggered: if (typeof search !== "undefined" && search) { search.text = ""; search.forceActiveFocus() } }
 
     // ---------------------------------------------------------------- small pieces
     // a keycap: one key of a shortcut
@@ -209,6 +227,10 @@ Scope {
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             focus: root.open
             Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { if (root.editId !== "") root.cancelEdit(); else root.hide(); e.accepted = true } }
+            // focus the search box from in here, where `search` is visible
+            Timer { running: root.open; interval: 80; onTriggered: search.forceActiveFocus() }
+            Connections { target: root; function onFocusReqChanged() { search.forceActiveFocus() } }
+            Timer { id: typingT; interval: 220; onTriggered: root.typing = false }
 
             Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.55) }
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
@@ -226,7 +248,7 @@ Scope {
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
 
-                Backdrop { visible: root.open && root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85 }
+                Backdrop { visible: root.open && root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85; paused: root.typing }
 
                 // ---------------- header: title, search, close
                 RowLayout {
@@ -257,7 +279,10 @@ Scope {
                             selectionColor: Qt.alpha(root.pal.accent, 0.4)
                             font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                             clip: true
-                            onTextChanged: root.query = text
+                            Component.onCompleted: forceActiveFocus()
+                            // one filter + rebuild after a short pause instead of one per key
+                            onTextChanged: { root.typing = true; typingT.restart(); qDebounce.restart() }
+                            Timer { id: qDebounce; interval: 130; onTriggered: root.query = search.text }
                             Keys.onEscapePressed: { if (root.editId !== "") root.cancelEdit(); else root.hide() }
                         }
                     }
@@ -324,10 +349,11 @@ Scope {
                         }
 
                         // ---- branches from the root to every column: one stem, one bar, one drop per column
-                        Rectangle { x: tree.width / 2; y: rootNode.height; width: 1; height: tree.barY - rootNode.height; color: Qt.alpha(root.pal.accent, 0.45) }
+                        Rectangle { visible: root.usedCols > 0; x: tree.width / 2; y: rootNode.height; width: 1; height: tree.barY - rootNode.height; color: Qt.alpha(root.pal.accent, 0.45) }
                         Rectangle {
+                            visible: root.usedCols > 0
                             readonly property real firstX: 10
-                            readonly property real lastX: (root.colCount - 1) * (tree.colW + tree.gap) + 10
+                            readonly property real lastX: (Math.max(1, root.usedCols) - 1) * (tree.colW + tree.gap) + 10
                             x: Math.min(firstX, tree.width / 2)
                             y: tree.barY
                             width: Math.max(1, Math.max(lastX, tree.width / 2) - x)
@@ -335,7 +361,7 @@ Scope {
                             color: Qt.alpha(root.pal.accent, 0.45)
                         }
                         Repeater {
-                            model: root.colCount
+                            model: root.usedCols
                             delegate: Item {
                                 required property int index
                                 readonly property real cx: index * (tree.colW + tree.gap) + 10
