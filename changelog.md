@@ -4,6 +4,27 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Smaller Thunar icons and a lighter stats loop
+
+- **Thunar icons** (`scripts/thunar-look.sh`): every preset is one step smaller. Medium (default) is now side bar 22, lists 24 px, icon view 48 px (was 24 / 36 / 72). Small and Large moved down the same way. The sizes are re-applied once on the next login for everyone who already had the old ones; a size you set by hand afterwards is left alone.
+- **`stats.sh`** (runs every 2 s): `upower` is now found once and read at most every 15 s with a single call, instead of up to five process starts per tick on laptops without sysfs battery estimates. `fmt` is defined once instead of on every tick.
+- **`power-manager` and `touchpad-gestures`** now build with the same release profile as the other crates (LTO, one codegen unit, stripped, panic = abort): smaller, faster binaries.
+- Removed `scripts/app-themes.sh.bak`, an older copy of `app-themes.sh`.
+
+## Backup this device, btop --force-utf
+
+- **Settings > System > Backup** (new): "Backup this device" and "Backup my home folder only". They open a terminal running `scripts/backup-device.sh`: it lists the external disks that are plugged in (never the system disk), mounts the one you pick, and copies with rsync into `<disk>/Halcyon-backup/<host>/<date>/` (hard-linked to the last run, `latest` link, nothing is erased or formatted). `--dry-run` shows what would be copied.
+- CTRL+SHIFT+ESC system monitor now starts `btop --force-utf` (`sysmonCmd` in `variables.lua`).
+
+## Settings, notification spot and Thunar icons
+
+- **Settings tree**: groups and items regrouped by topic (Look, Colours, Wallpaper, Transparency/blur/dimming, Motion, Night light, Workspaces & windows, Bar, Notifications, Panels & on-screen display, Input, Power, Performance & memory, Startup, Default apps, Constellations, Rice). Searching with few hits no longer draws the empty second column's tree line.
+- **Notification trigger spot**: new Settings option, right edge (default) or top-right corner.
+- **Thunar / GTK icons**: `gtk-theme.sh` uses Papirus-Dark / Papirus-Light when installed (`papirus-icon-theme`, now installed with Thunar; `~/.local/state/island/gtk-icons = off` keeps your own), no washed-out selection effect on icons, higher-contrast toolbar / sidebar / menu icons.
+
+---
+
+
 ## 1. QuickShell Island: Idle High CPU & Memory Leak Resolution
 
 ### Problem & Diagnostic
@@ -227,3 +248,13 @@ Quickshell island RSS dropped from **~750 MB down to ~218 MB - 250 MB** (a **~50
 - **Spotify (spicetify)**: `user.css` now has a Halcyon block (floating rounded panels, card hover with accent border, pill buttons, themed menus and scrollbars); your own CSS below it is kept.
 - **Vesktop / Discord**: shape rules on top of the colours (rounded sidebar, input box, menus, modals, code blocks, hover and mention highlights, thin scrollbars) and a themed loading splash. Stock Discord cannot be themed: use Vesktop.
 - **Thunar and GTK 3 file managers**: flat toolbar, pill-shaped path bar, rounded side-pane rows with an accent marker, card-style icon view, rubber-band selection, status bar and tabs.
+
+---
+
+## Settings sorted into sections, and clearer Thunar icons
+
+- **Settings are now in a fixed, logical order** with four sections: **Appearance** (Look, Colours, Terminal colours, Wallpaper, Transparency / blur / dimming, Motion, Night light, Constellations), **Desktop** (Bar, Clock, Workspaces & windows, Switching workspaces, Notifications, Panels & on-screen display), **Input & power** (Mouse & pointer, Touchpad, Keyboard, Power, Sleep & lock) and **System** (Performance & memory, Startup & background, Default apps, Rice). Big groups were split (clock out of Bar, workspace switching out of Workspaces, terminal colours out of Colours, touchpad / keyboard / mouse apart, sleep & lock apart from the power manager).
+- **Section tabs** under the search box (All / Appearance / Desktop / Input & power / System) show one section at a time; searching still looks through everything.
+- The two columns now **keep that order** (top to bottom, then the next column) instead of being balanced by height, which used to shuffle the groups. Each group shows its section next to the title.
+- **Thunar icons**: new `scripts/thunar-look.sh` and **Settings > Default apps > File manager icons** (Small / Medium / Large) set Thunar's own sizes: side bar, folder tree, list / compact / icon view zoom and toolbar. Medium is applied once automatically; after that only your choice changes it. `gtk-theme.sh` adds roomier side bar and list rows, 22 px toolbar icons and bigger, bolder file names under icons. Papirus (dark / light) is still the icon theme.
+

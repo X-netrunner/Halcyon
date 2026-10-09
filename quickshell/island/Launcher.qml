@@ -72,6 +72,24 @@ Item {
         "cups", "system-config-printer", "vim", "electron", "bluetooth adapters", "blueman-adapters",
         "kvantum", "qt5 settings", "qt6 settings", "qt5ct", "qt6ct", "nwg-", "lsp-plugins"
     ]
+    // search index per app, built once (cleared when the app list changes): lower-cased name, lower-cased extra text, hidden or not
+    property var appIdx: ({})
+    function info(a) {
+        var k = a.id || a.name
+        var x = appIdx[k]
+        if (x) return x
+        x = { name: (a.name || "").toLowerCase(),
+              extra: ((a.genericName || "") + " " + (a.comment || "") + " " + String(a.keywords || "")).toLowerCase(),
+              hidden: isHidden(a) }
+        appIdx[k] = x
+        return x
+    }
+    // same entries in the same order? then the model is left alone (replacing it rebuilds every delegate)
+    function sameList(a, b) {
+        if (a.length !== b.length) return false
+        for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+        return true
+    }
     function isHidden(a) {
         var hay = ((a.name || "") + " " + (a.id || "")).toLowerCase()
         for (var i = 0; i < hiddenPatterns.length; i++)
@@ -184,7 +202,8 @@ Item {
                 outc.push({ c: cm, r: r, i: c })
             }
             outc.sort(function (x, y) { return (y.r - x.r) || (x.i - y.i) })
-            cmdResults = outc.map(function (o) { return o.c })
+            var ncmd = outc.map(function (o) { return o.c })
+            if (!sameList(ncmd, cmdResults)) cmdResults = ncmd
             cmdList.currentIndex = 0
             return
         }
@@ -197,14 +216,15 @@ Item {
         for (var i = 0; i < apps.length; i++) {
             var a = apps[i]
             if (a.noDisplay) continue
-            if (!showAll && isHidden(a)) continue
-            var name = (a.name || "").toLowerCase()
+            var ix = info(a)
+            if (!showAll && ix.hidden) continue
+            var name = ix.name
             var rank = 1
             if (q !== "") {
                 if (name.indexOf(q) === 0) rank = 5
                 else if (name.indexOf(" " + q) >= 0) rank = 4
                 else if (name.indexOf(q) >= 0) rank = 3
-                else if (((a.genericName || "") + " " + (a.comment || "") + " " + String(a.keywords || "")).toLowerCase().indexOf(q) >= 0) rank = 2
+                else if (ix.extra.indexOf(q) >= 0) rank = 2
                 else if (q.length > 1 && fuzzy(q, name)) rank = 1
                 else continue
             }
@@ -229,7 +249,8 @@ Item {
             }
             out = used
         }
-        results = out.map(function (o) { return o.e })
+        var nres = out.map(function (o) { return o.e })
+        if (!sameList(nres, results)) results = nres
         grid.currentIndex = 0
     }
 
@@ -293,8 +314,9 @@ Item {
 
     Connections {
         target: DesktopEntries.applications
-        function onValuesChanged() { root.refresh() }
+        function onValuesChanged() { root.appIdx = ({}); refreshT.restart() }
     }
+    Timer { id: refreshT; interval: 150; onTriggered: root.refresh() }
 
     Process {
         running: true

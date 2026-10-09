@@ -11,3 +11,10 @@ ctrlc = { version = "3.4", features = ["termination"] }
 evdev = "0.12"
 libc = "0.2"
 rand = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

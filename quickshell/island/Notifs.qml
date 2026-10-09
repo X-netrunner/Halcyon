@@ -30,6 +30,8 @@ Scope {
     property bool dnd: false
     property string avatar: ""              // your profile picture (shell.qml avatarPath): the picture of every notification
     property bool usePfp: true              // Settings > Panels & notifications > Notification picture: profile picture / app icon
+    property string spot: "edge"            // Settings > Panels & notifications > Notification trigger spot: edge = strip on the right edge, corner = the top-right corner
+    readonly property bool corner: spot === "corner"
     property bool clickMode: false          // Edge toggle: false = hover opens it, true = click the edge to open / close it
     property bool autoHide: false           // auto-hide on: it closes as soon as the pointer leaves, in either mode
     property string sysmode: ""             // lockdown / stealth get their background art
@@ -113,6 +115,12 @@ Scope {
     Timer { id: openT; interval: 140; onTriggered: root.centerOpen = true }
     Timer { id: lockT; interval: 600 }
     Timer { id: closeT; interval: 700; onTriggered: root.centerOpen = false }
+
+    // the unread bar used to breathe for as long as anything stayed unread: an endless animation = a new frame on every refresh,
+    // all day. It now breathes for a few seconds after each new notification and then rests (the bar itself stays lit).
+    property bool breathe: false
+    onUnreadChanged: { if (unread > 0) { breathe = true; breatheT.restart() } else breathe = false }
+    Timer { id: breatheT; interval: 12000; onTriggered: root.breathe = false }
 
     onCenterOpenChanged: { if (centerOpen) { unread = 0; hideToasts() } else { openT.stop(); lockT.restart() } }
     onDndChanged: if (dnd) hideToasts()
@@ -199,14 +207,15 @@ Scope {
         mask: Region { regions: [ Region { item: hot }, Region { item: stack }, Region { item: panel } ] }
 
         // ---------- right-edge trigger ----------
-        // a strip on the right edge, upper part of the screen (the utilities box owns the bottom-right corner)
+        // edge: a strip on the right edge, upper part of the screen (the utilities box owns the bottom-right corner)
+        // corner: a small spot in the very top-right corner of the screen
         EdgeGrab {
             id: hot
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.topMargin: root.pal.boxTop
-            width: root.clickMode ? 16 : 12
-            height: 260
+            anchors.topMargin: root.corner ? 0 : root.pal.boxTop
+            width: root.corner ? (root.clickMode ? 28 : 16) : (root.clickMode ? 16 : 12)
+            height: root.corner ? (root.clickMode ? 28 : 16) : 260
             clickMode: root.clickMode
             onHoverChanged: on => root.setHover(on)
             onTapped: root.toggleCenter()
@@ -216,9 +225,11 @@ Scope {
                 id: hint
                 anchors.right: parent.right
                 anchors.rightMargin: 3
-                anchors.verticalCenter: parent.verticalCenter
-                width: 4
-                height: root.centerOpen ? 0 : 54
+                anchors.top: root.corner ? parent.top : undefined
+                anchors.topMargin: 3
+                anchors.verticalCenter: root.corner ? undefined : parent.verticalCenter
+                width: root.corner ? (root.centerOpen ? 0 : 10) : 4
+                height: root.corner ? 4 : (root.centerOpen ? 0 : 54)
                 radius: 2
                 color: root.dnd ? root.pal.muted : root.pal.accent
                 opacity: (!root.centerOpen && (root.unread > 0 || root.dnd || root.clickMode)) ? (root.dnd ? 0.55 : (root.unread > 0 ? 0.95 : 0.22)) : 0
@@ -227,8 +238,9 @@ Scope {
                 Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                 // breathes while something is unread
                 SequentialAnimation on scale {
-                    running: root.unread > 0 && !root.dnd && !root.centerOpen
+                    running: root.breathe && root.unread > 0 && !root.dnd && !root.centerOpen
                     loops: Animation.Infinite
+                    onRunningChanged: if (!running) hint.scale = 1
                     NumberAnimation { to: 1.5; duration: 900; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
                 }

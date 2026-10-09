@@ -5,9 +5,12 @@
 # between "halcyon" markers (anything else you keep in those files is left alone), and sets gtk-application-prefer-dark-theme.
 # Run by the island on every wallpaper / theme change, and by hand:  ~/.config/Halcyon/scripts/gtk-theme.sh
 # Already open GTK apps keep their old colours until you reopen them (for Thunar:  thunar -q).
+# Thunar icon size (small | medium | large): scripts/thunar-look.sh, or Settings > Default apps > File manager icons.
 #   --remove                      take the halcyon block out again
 #   --auto                        what the island runs: does nothing while gtk-follow is off
 #   ~/.local/state/island/gtk-follow = off     stops the automatic runs (running it by hand still works)
+#   ~/.local/state/island/gtk-icons  = off     keeps your own icon theme (otherwise Papirus-Dark / Papirus-Light is used when installed:
+#                                              clear, colourful icons that stay readable on the dark and the light surfaces)
 pal="$HOME/.cache/island/palette.json"
 state="$HOME/.local/state/island"
 B="/* >>> halcyon >>> */"; E="/* <<< halcyon <<< */"
@@ -47,6 +50,8 @@ else   # the wallpaper palette is made for dark: light surfaces tinted with the 
   FGA="#ffffff"
   mixv "$HI" "$TXT" 14; LINE=$MIX; PREFER=0
 fi
+
+mixv "$ACC" "$TXT" 30; ICO=$MIX   # symbolic icons (sidebar, toolbar): the accent, pulled towards the text colour for contrast
 
 mkdir -p "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"
 colors() { cat <<C
@@ -168,7 +173,7 @@ placessidebar row, .sidebar row { padding: 5px 8px; margin: 1px 6px; border-radi
 placessidebar row:hover, .sidebar row:hover { background-color: alpha($ACC, 0.12); }
 placessidebar row:selected, .sidebar row:selected { background-color: alpha($ACC, 0.26); color: $TXT; box-shadow: inset 3px 0 0 $ACC; }
 placessidebar row:selected label, placessidebar row:selected image { color: $TXT; }
-placessidebar .sidebar-icon, .sidebar image { color: $ACC; }
+placessidebar .sidebar-icon, .sidebar image { color: $ICO; -gtk-icon-effect: none; }
 iconview { padding: 8px; }
 iconview:selected, iconview:selected:focus { background-color: alpha($ACC, 0.30); box-shadow: inset 0 0 0 1px alpha($ACC, 0.8); border-radius: 12px; }
 iconview:hover { background-color: alpha($ACC, 0.10); border-radius: 12px; }
@@ -188,6 +193,41 @@ dialog .dialog-action-area button, messagedialog button { min-height: 30px; padd
 progressbar trough, progressbar progress { border-radius: 8px; min-height: 6px; }
 button.destructive-action { background-color: $ACC2; color: $FGA; border-color: $ACC2; }
 scrolledwindow > viewport, scrolledwindow { background-color: transparent; }
+/* ---- icons: readable at every size ---- */
+iconview, iconview.cell, treeview.view, treeview.view.cell, placessidebar row, .sidebar row { -gtk-icon-effect: none; }
+iconview:selected, iconview:hover, treeview.view:selected, treeview.view:hover { -gtk-icon-effect: none; }
+iconview.cell { padding: 6px; border-radius: 12px; }
+iconview.cell label, iconview text { color: $TXT; font-size: 0.95em; }
+iconview.cell:selected label { font-weight: 600; }
+toolbar button image, toolbar button label, headerbar button image, menubar image, statusbar image { color: $TXT; -gtk-icon-effect: none; }
+toolbar button:hover image, headerbar button:hover image { color: $TXT; }
+toolbar button:active image, toolbar button:checked image { color: $TXT; }
+toolbar button:disabled image, toolbar button:disabled label, headerbar button:disabled image { color: $MUT; opacity: 0.55; }
+toolbar button image, headerbar button.image-button image { -gtk-icon-size: 18px; -gtk-icon-palette: error $ACC2, warning $ACC, success $ICO; }
+.path-bar button image { color: inherit; -gtk-icon-effect: none; }
+.path-bar button:checked image, .path-bar button.current-dir image { color: $FGA; }
+menuitem image, menuitem check, menuitem radio, menuitem arrow { color: $ICO; -gtk-icon-effect: none; }
+menuitem:hover image, menuitem:hover arrow { color: $TXT; }
+menuitem:disabled image { color: $MUT; }
+row image, treeview.view image { -gtk-icon-effect: none; }
+entry image, .location-entry image { color: $MUT; }
+entry image:hover { color: $TXT; }
+/* ---- Thunar: roomier rows, bigger toolbar icons, clearer names ---- */
+toolbar button, headerbar button.image-button { min-height: 32px; min-width: 32px; }
+toolbar button image, headerbar button.image-button image { -gtk-icon-size: 22px; }
+placessidebar row, .sidebar row { min-height: 30px; padding: 6px 10px; }
+placessidebar row label, .sidebar row label { font-size: 1.03em; font-weight: 500; color: $TXT; }
+.sidebar treeview.view, treeview.sidebar, .sidebar .view { background-color: $SURF; color: $TXT; }
+.sidebar treeview.view row { min-height: 30px; padding: 3px 8px; margin: 1px 6px; border-radius: 10px; }
+.sidebar treeview.view row:hover { background-color: alpha($ACC, 0.12); }
+.sidebar treeview.view row:selected { background-color: alpha($ACC, 0.26); color: $TXT; box-shadow: inset 3px 0 0 $ACC; }
+.sidebar treeview.view row:selected image { -gtk-icon-effect: none; }
+treeview.view row { min-height: 26px; }
+treeview.view { -gtk-icon-effect: none; }
+iconview { padding: 12px; }
+iconview.cell { padding: 8px; }
+iconview.cell label, iconview text { font-size: 1.05em; font-weight: 500; color: $TXT; }
+iconview.cell:selected label, iconview:selected text { color: $TXT; font-weight: 700; }
 C
 }
 write() {   # write FILE VERSION
@@ -197,13 +237,36 @@ write() {   # write FILE VERSION
 write "$HOME/.config/gtk-3.0/gtk.css" 3
 write "$HOME/.config/gtk-4.0/gtk.css" 4
 
+setini() {   # setini FILE KEY VALUE: sets KEY in the [Settings] section of FILE, creating file / section as needed
+  local f="$1" k="$2" v="$3"
+  mkdir -p "$(dirname "$f")"
+  if [ -f "$f" ] && grep -q "^$k *=" "$f"; then
+    sed -i "s|^$k *=.*|$k=$v|" "$f"
+  elif [ -f "$f" ] && grep -q '^\[Settings\]' "$f"; then
+    sed -i "/^\[Settings\]/a $k=$v" "$f"
+  else
+    printf '[Settings]\n%s=%s\n' "$k" "$v" >> "$f"
+  fi
+}
 # GTK 3 reads the dark variant of its base theme from settings.ini
-ini="$HOME/.config/gtk-3.0/settings.ini"
-if [ -f "$ini" ] && grep -q '^gtk-application-prefer-dark-theme' "$ini"; then
-  sed -i "s/^gtk-application-prefer-dark-theme.*/gtk-application-prefer-dark-theme=$PREFER/" "$ini"
-elif [ -f "$ini" ] && grep -q '^\[Settings\]' "$ini"; then
-  sed -i "/^\[Settings\]/a gtk-application-prefer-dark-theme=$PREFER" "$ini"
-else
-  printf '[Settings]\ngtk-application-prefer-dark-theme=%s\n' "$PREFER" >> "$ini"
+setini "$HOME/.config/gtk-3.0/settings.ini" gtk-application-prefer-dark-theme "$PREFER"
+
+# Thunar's own icon sizes (side bar, lists, icon view, toolbar): applied once; change them in Settings > Default apps > File manager icons
+bash "$(dirname "$0")/thunar-look.sh" auto >/dev/null 2>&1 || true
+
+# icon theme: Papirus (dark / light variant) when it is installed, else whatever the system already uses
+if [ "$(head -n1 "$state/gtk-icons" 2>/dev/null)" != "off" ]; then
+  has_icons() { local d; for d in "$HOME/.local/share/icons" "$HOME/.icons" /usr/share/icons /usr/local/share/icons; do [ -d "$d/$1" ] && return 0; done; return 1; }
+  want=""
+  if [ "$mode" = dark ]; then
+    for t in Papirus-Dark Papirus; do has_icons "$t" && { want=$t; break; }; done
+  else
+    for t in Papirus-Light Papirus; do has_icons "$t" && { want=$t; break; }; done
+  fi
+  if [ -n "$want" ]; then
+    setini "$HOME/.config/gtk-3.0/settings.ini" gtk-icon-theme-name "$want"
+    setini "$HOME/.config/gtk-4.0/settings.ini" gtk-icon-theme-name "$want"
+    setini "$HOME/.config/gtk-4.0/settings.ini" gtk-application-prefer-dark-theme "$PREFER"
+  fi
 fi
 exit 0

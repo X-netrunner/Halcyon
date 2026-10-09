@@ -45,6 +45,7 @@ ShellRoot {
         clockDate: true,           // show the weekday and date next to the clock
         osdHold: 1700,             // ms the volume / brightness bar stays
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
+        notifSpot: "edge",         // edge | corner : where the notification centre is opened from: a strip on the right edge, or the top-right corner
         notifIcon: "pfp",          // pfp | app : the picture of a notification is your profile picture (app icon as a badge), or the app's icon
         wsSwipe4: "left",          // left | right : which 4-finger swipe goes to the NEXT workspace (scripts/ws-nav.sh)
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
@@ -376,6 +377,7 @@ ShellRoot {
             else if (id === "layout") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_layout.sh"]); hyReadAgain.restart() }
             else if (id === "reset-look") root.resetLook()
             else if (id === "mem-report") { var h = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", h + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\"; echo; read -n1 -r -p 'Press any key to close '", "x", h + "/halcyon-mem.sh"]) }
+            else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
         }
     }
@@ -483,6 +485,7 @@ ShellRoot {
         toastSecs: root.opt.toastSecs
         avatar: root.avatarPath
         usePfp: root.opt.notifIcon !== "app"
+        spot: root.opt.notifSpot === "corner" ? "corner" : "edge"
         dnd: root.dnd
         clickMode: root.clickMode
         autoHide: root.autoHide
@@ -547,7 +550,14 @@ ShellRoot {
     // hyprctl dispatch takes Lua expressions on Hyprland 0.55+
     function hypr(expr) { Quickshell.execDetached(["hyprctl", "dispatch", expr]) }
 
+    // writes are batched: a slider drag or a burst of changes now costs ONE shell + file write, 300 ms after the last change
     function saveSettings() {
+        if (!settingsLoaded) return
+        saveT.restart()
+    }
+    Timer { id: saveT; interval: 300; onTriggered: root.writeSettings() }
+    Component.onDestruction: if (saveT.running) { saveT.stop(); writeSettings() }      // never lose a pending save when the island reloads
+    function writeSettings() {
         if (!settingsLoaded) return
         Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && printf '%s\\n' \"$2\" > \"$1/settings.json\"", "sh", stateDir,
                                  JSON.stringify({ autoHide: autoHide, autoPower: autoPower, compactSpecial: compactSpecial, dnd: dnd, edgeMode: edgeMode, glassShift: glassShift, motion: motion, rounding: rounding, gaps: gaps, blur: blur, shadows: shadows,
@@ -749,7 +759,6 @@ ShellRoot {
     // the state file is the truth: re-read it shortly after a click and every few seconds, so the chip can never
     // disagree with the script (a toggle from SUPER+F10 / a terminal / a failed run all end up shown correctly)
     Timer { id: gamingCheck; interval: 1700; onTriggered: gamingProc.running = true }
-    Timer { interval: 15000; running: true; repeat: true; onTriggered: gamingProc.running = true }
     function toggleEdgeMode() { setEdgeMode(clickMode ? "hover" : "click") }
     function setProfileInfo(name, avatar) { profileName = name; profileAvatar = avatar; saveSettings() }
 
@@ -763,7 +772,6 @@ ShellRoot {
         caffeineCheck.restart()
     }
     Timer { id: caffeineCheck; interval: 2400; onTriggered: caffeineProc.running = true }
-    Timer { interval: 15000; running: true; repeat: true; onTriggered: caffeineProc.running = true }
     Process {
         id: caffeineProc
         running: true
@@ -985,7 +993,7 @@ ShellRoot {
     Process {
         running: true
         command: ["bash", root.cfg + "/island/scripts/stats.sh", "2"]
-        stdout: SplitParser { onRead: d => { try { root.stats = JSON.parse(d) } catch (e) {} } }
+        stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.stats = JSON.parse(d) } catch (e) {} } }
     }
     Process {
         id: avatarProc
@@ -1025,24 +1033,25 @@ ShellRoot {
     Process {
         running: root.page === "perf"
         command: [root.hx, "disk", "10"]
-        stdout: SplitParser { onRead: d => { try { root.disks = JSON.parse(d) } catch (e) {} } }
+        stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.disks = JSON.parse(d) } catch (e) {} } }
     }
     Process {
         running: root.page === "perf"
         command: ["bash", root.cfg + "/island/scripts/gpu.sh", "2"]
-        stdout: SplitParser { onRead: d => { try { root.gpu = JSON.parse(d) } catch (e) {} } }
+        stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.gpu = JSON.parse(d) } catch (e) {} } }
     }
     Process {
         running: true
         command: ["bash", root.cfg + "/island/scripts/net.sh", "4"]
-        stdout: SplitParser { onRead: d => { try { root.net = JSON.parse(d) } catch (e) {} } }
+        stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.net = JSON.parse(d) } catch (e) {} } }
     }
     Process {
         id: profProc
         command: ["powerprofilesctl", "get"]
         stdout: SplitParser { onRead: d => { if (d.trim()) root.profile = d.trim() } }
     }
-    Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: profProc.running = true }
+    // one slow poll for the three state readers (gaming flag, caffeine unit, power profile): one wake-up instead of three
+    Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: { gamingProc.running = true; caffeineProc.running = true; profProc.running = true } }
     Timer { id: profKick; interval: 3500; onTriggered: profProc.running = true }
 
     // volume / brightness, only polled while the bottom-right panel is open
@@ -1095,6 +1104,7 @@ ShellRoot {
         onRunningChanged: if (!running) root.cava = []
     }
 
+    readonly property var compactEvents: ({ workspacev2: 1, focusedmonv2: 1, openwindow: 1, closewindow: 1, movewindowv2: 1, destroyworkspacev2: 1 })
     // which special workspace is open ("" = none)
     Connections {
         target: Hyprland
@@ -1103,7 +1113,7 @@ ShellRoot {
                 root.activeSpecial = event.data.split(",")[0].replace("special:", "")
             else if (event.name === "openwindow")
                 root.routeSoon()
-            if (["workspacev2", "focusedmonv2", "openwindow", "closewindow", "movewindowv2", "destroyworkspacev2"].indexOf(event.name) >= 0)
+            if (root.compactEvents[event.name] === 1)
                 compactT.restart()
         }
     }

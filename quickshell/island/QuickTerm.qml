@@ -98,13 +98,23 @@ Scope {
     }
 
     // ---------- output ----------
+    property var pend: []                 // lines waiting to be shown (flushed every 40 ms)
     function push(text, kind) {
         var lines = String(text).split("\n")
-        for (var i = 0; i < lines.length; i++) out.append({ t: lines[i], k: kind })
-        if (out.count > maxOut) out.remove(0, out.count - maxOut)
-        Qt.callLater(function () { view.positionViewAtEnd() })
+        for (var i = 0; i < lines.length; i++) pend.push({ t: lines[i], k: kind })
+        if (!flushT.running) flushT.start()
     }
-    function clearOut() { out.clear() }
+    function toEnd() { view.positionViewAtEnd() }
+    function flushOut() {
+        var p = pend
+        pend = []
+        if (p.length > maxOut) p = p.slice(p.length - maxOut)      // only the last maxOut lines could stay anyway
+        for (var i = 0; i < p.length; i++) out.append(p[i])
+        if (out.count > maxOut) out.remove(0, out.count - maxOut)
+        Qt.callLater(toEnd)
+    }
+    Timer { id: flushT; interval: 40; onTriggered: root.flushOut() }
+    function clearOut() { pend = []; out.clear() }
     function cancelRun() { askPass = false; runner.running = false }
 
     // ---------- running a command ----------
@@ -196,9 +206,11 @@ Scope {
     Process {
         id: statusProc
         command: [root.hx, "status"]
-        stdout: StdioCollector { onStreamFinished: { try { root.st = JSON.parse(text) } catch (e) {} } }
+        property string last: ""
+        stdout: StdioCollector { onStreamFinished: { if (text === statusProc.last) return; statusProc.last = text; try { root.st = JSON.parse(text) } catch (e) {} } }
     }
-    Timer { interval: 3000; running: root.shown; repeat: true; triggeredOnStart: true; onTriggered: if (!statusProc.running) statusProc.running = true }
+    // 3 s while the idle status rows are what you see, a slow 15 s once the console holds output
+    Timer { interval: out.count === 0 ? 3000 : 15000; running: root.shown; repeat: true; triggeredOnStart: true; onTriggered: if (!statusProc.running) statusProc.running = true }
 
     function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
     function dot(on, label) {

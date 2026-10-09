@@ -17,7 +17,7 @@ return {
     -- size of windows on special workspaces: compact (Settings / SUPER+TAB tree switch ON) or full (OFF); the island applies it live
     specialScaleCompact        = 0.84,
     specialScaleFull           = 1.0,
-    sysmonCmd                  = "~/.config/Halcyon/scripts/apps.sh term-exec btop",      -- CTRL+SHIFT+ESC special workspace
+    sysmonCmd                  = "~/.config/Halcyon/scripts/apps.sh term-exec btop --force-utf",      -- CTRL+SHIFT+ESC special workspace
     todoCmd                    = "sh -c 'command -v todoist >/dev/null && exec todoist || exec xdg-open https://app.todoist.com'",  -- SUPER+R special workspace
 
     -- Touchpad
