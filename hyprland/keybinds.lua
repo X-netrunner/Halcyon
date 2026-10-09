@@ -70,6 +70,18 @@ hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl set 10%-"))
 hl.bind("XF86KbdBrightnessUp", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/kbd-backlight.sh up"))
 hl.bind("XF86KbdBrightnessDown", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/kbd-backlight.sh down"))
 hl.bind("XF86KbdLightOnOff", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/kbd-backlight.sh toggle"))
+-- ASUS laptops: Fn+F3 / Fn+F4 are handled inside the kernel (no key event, so nothing above can fire) and can need two presses.
+-- SUPER+F3 steps the light down one level, SUPER+F4 cycles it up and wraps to off, through the script (works on the lock screen too). Only bound when the
+-- device exists, so other laptops are not affected.
+do
+    local f = io.open("/sys/class/leds/asus::kbd_backlight/brightness", "r")
+    if f then
+        f:close()
+        local kb = home .. "/.config/Halcyon/scripts/kbd-backlight.sh"
+        hl.bind("SUPER + F3", hl.dsp.exec_cmd(kb .. " down"), { locked = true })
+        hl.bind("SUPER + F4", hl.dsp.exec_cmd(kb .. " cycle"), { locked = true })   -- 0 -> 1 -> 2 -> 3 -> 0
+    end
+end
 
 hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"))
 hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"))

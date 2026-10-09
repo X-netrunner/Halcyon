@@ -56,6 +56,7 @@ Item {
                 source: root.has ? root.player.trackArtUrl : ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
+                sourceSize: Qt.size(208, 208)      // shown at 104 px: decode at 2x, not at the cover's own size
             }
         }
 

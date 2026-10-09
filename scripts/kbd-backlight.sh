@@ -4,6 +4,7 @@
 #   kbd-backlight.sh up|down [pct]   step (default 25%; the hardware has few levels, so a step always moves at least one)
 #   kbd-backlight.sh set PCT         0-100
 #   kbd-backlight.sh toggle          off <-> last level
+#   kbd-backlight.sh cycle           one level up, back to 0 after the top (0 -> 1 -> 2 -> 3 -> 0)
 #   kbd-backlight.sh doctor          is there a driver? can you write it? what to install  (add --load to try modprobe, asks sudo)
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bl="$here/backlight.sh"
@@ -73,10 +74,14 @@ case "$1" in
     [ "$cur" -gt 0 ] && echo "$cur" > "$last"
     setraw "$new" ;;
   set) need_dev; new=$(( max * ${2:-0} / 100 )); [ "$new" -gt "$max" ] && new=$max; [ "$cur" -gt 0 ] && echo "$cur" > "$last"; setraw "$new" ;;
+  cycle)
+    need_dev
+    [ "$cur" -gt 0 ] && echo "$cur" > "$last"
+    setraw $(( (cur + 1) % (max + 1) )) ;;
   toggle)
     need_dev
     if [ "$cur" -gt 0 ]; then echo "$cur" > "$last"; setraw 0
     else v=$(cat "$last" 2>/dev/null); case "$v" in ''|*[!0-9]*) v=$max ;; esac; [ "$v" -lt 1 ] && v=$max; setraw "$v"; fi ;;
   doctor) doctor "$2" ;;
-  *) echo "usage: kbd-backlight.sh status | up|down [pct] | set PCT | toggle | doctor [--load]" >&2; exit 2 ;;
+  *) echo "usage: kbd-backlight.sh status | up|down [pct] | set PCT | toggle | cycle | doctor [--load]" >&2; exit 2 ;;
 esac

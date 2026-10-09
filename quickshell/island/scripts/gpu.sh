@@ -4,6 +4,8 @@
 #   NVIDIA dGPU: "off" when it is runtime-suspended (we never poke nvidia-smi then, so this can't wake it)
 #   AMD: /sys/class/drm/card*/device/gpu_busy_percent      none: no discrete GPU found
 iv=${1:-2}
+# wait without starting a `sleep` process: a timed read on a pipe nobody writes to
+exec {nap}<> <(:)
 pci=${PCI_ROOT:-/sys/bus/pci/devices}
 
 nv=""
@@ -23,7 +25,7 @@ num() { case "$1" in ''|*[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
 while true; do
   state=none; gpu=0
   if [ -n "$nv" ]; then
-    rs=$(cat "$nv/power/runtime_status" 2>/dev/null)
+    rs=""; { read -r rs < "$nv/power/runtime_status"; } 2>/dev/null
     case "$rs" in
       suspended|suspending) state=off ;;
       *)
@@ -35,5 +37,5 @@ while true; do
     state=on; gpu=$(num "$(cat "$amd" 2>/dev/null)")
   fi
   printf '{"gpu":%d,"state":"%s"}\n' "$gpu" "$state"
-  sleep "$iv"
+  read -r -t "$iv" -u "$nap" _
 done

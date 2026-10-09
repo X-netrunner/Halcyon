@@ -4,6 +4,17 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Options to use less RAM and CPU (Settings > Performance & memory, Startup & background)
+
+- **Background refresh** (Normal / Relaxed / Slow): `stats.sh` (CPU, battery, sysmode) and `net.sh` (Wi-Fi / Bluetooth state) look again every 2 s / 4 s normally, 5 s / 10 s relaxed, 10 s / 20 s slow. The performance page and the bar's CPU / RAM / TEMP hover row keep the normal pace, and connecting to Wi-Fi or Bluetooth updates the bar label at once. Both scripts wait on a pipe in `$XDG_RUNTIME_DIR` that the island pokes when a flag changes.
+- **Music bars** (Full / Light / Off): Light runs `cava` at 15 fps (`cava-light.conf`), Off does not start it. Low / Medium / High now set both options above too.
+- **Clipboard history**, **Touchpad edge gestures** and **Screen-sharing helper** (at login / on demand) can be switched off in Startup & background. They used to be fixed lines in `hyprland/execs.lua`; `scripts/autostart-extras.sh` starts them from `~/.config/Halcyon/autostart.conf` now (new keys `CLIPBOARD`, `GESTURES`, `PORTAL`; defaults keep today's behaviour).
+- **Fewer process starts**: `net.sh` goes from about 16 program launches per tick to 5; `net.sh`, `stats.sh`, `gpu.sh` and `osd-watch.sh` no longer start a `sleep` per tick (`osd-watch.sh` did it 4 times a second).
+- The lock-screen picture and the music cover are decoded at their shown size (2x) instead of the file's own size.
+- **Wi-Fi & Bluetooth: only tell me about errors** (Settings > Notifications): skips the "Connected" / "Disconnected" notifications and keeps the failures.
+
+---
+
 ## Smaller Thunar icons and a lighter stats loop
 
 - **Thunar icons** (`scripts/thunar-look.sh`): every preset is one step smaller. Medium (default) is now side bar 22, lists 24 px, icon view 48 px (was 24 / 36 / 72). Small and Large moved down the same way. The sizes are re-applied once on the next login for everyone who already had the old ones; a size you set by hand afterwards is left alone.

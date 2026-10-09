@@ -48,6 +48,8 @@ ShellRoot {
         notifSpot: "edge",         // edge | corner : where the notification centre is opened from: a strip on the right edge, or the top-right corner
         notifIcon: "pfp",          // pfp | app : the picture of a notification is your profile picture (app icon as a badge), or the app's icon
         connErrOnly: false,        // Wi-Fi / Bluetooth: false = a notification for every connect / disconnect, true = only when connecting fails (scripts/wifi-connect.sh, bt-set.sh read the flag conn-errors-only)
+        bgRefresh: "normal",       // normal | relaxed | slow : how often the always-on readers (CPU / battery / network state) look again while nothing needs them fresh (see syncRefresh below)
+        viz: "full",               // full | light | off : the music bars in the bar: cava at 30 fps / 15 fps / not started at all
         wsSwipe4: "left",          // left | right : which 4-finger swipe goes to the NEXT workspace (scripts/ws-nav.sh)
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
         nightTemp: 4000,           // night light colour temperature (K)
@@ -87,6 +89,8 @@ ShellRoot {
         case "wsInvert": writeFlag("ws-invert", v ? "1" : "0"); break
         case "wsSwipe4": writeFlag("ws-swipe4", v); break
         case "connErrOnly": writeFlag("conn-errors-only", v ? "1" : "0"); break
+        case "bgRefresh": syncRefresh(); break
+        case "viz": vizHold = true; vizHoldT.restart(); break
         case "termMode": writeFlag("term-mode", v); termRun.restart(); break
         case "termDrift": termRun.restart(); break
         case "accentMode": termRun.restart(); break
@@ -96,16 +100,36 @@ ShellRoot {
         saveSettings()
     }
 
+    // ---- background refresh (Settings > Performance & memory > Background refresh) ----------------------------------------
+    // The always-on readers (scripts/stats.sh: CPU / battery / sysmode, scripts/net.sh: Wi-Fi / Bluetooth state) look again every
+    // 2 s / 4 s. "Relaxed" and "Slow" stretch that to 2.5x / 5x while nothing needs fresh numbers. Two flag files in
+    // ~/.local/state/island tell them: bg-refresh (normal | relaxed | slow) and stats-fast (1 while the performance page or the
+    // bar's CPU / RAM / TEMP hover row can be on screen: stats.sh then keeps its normal pace). The scripts wait on a pipe in
+    // $XDG_RUNTIME_DIR and writing the flags pokes that pipe, so a change shows within a second instead of after a slow wait.
+    readonly property bool statsFast: page === "perf" || hoverAction === "stats"
+    onStatsFastChanged: syncRefresh()
+    function syncRefresh() {
+        Quickshell.execDetached(["sh", "-c",
+            "mkdir -p \"$1\" && printf '%s\\n' \"$2\" > \"$1/bg-refresh\" && printf '%s\\n' \"$3\" > \"$1/stats-fast\"; " +
+            "for w in stats net; do f=\"${XDG_RUNTIME_DIR:-/tmp}/halcyon-$w.wake\"; [ -p \"$f\" ] && printf '\\n' 1<>\"$f\"; done; exit 0",
+            "sh", stateDir, opt.bgRefresh || "normal", statsFast ? "1" : "0"])
+    }
+    // the Wi-Fi / Bluetooth switches show the new state at once; this makes net.sh confirm it a moment later
+    Timer { id: netPokeT; interval: 1500; onTriggered: Quickshell.execDetached(["sh", "-c", "f=\"${XDG_RUNTIME_DIR:-/tmp}/halcyon-net.wake\"; [ -p \"$f\" ] && printf '\\n' 1<>\"$f\"; exit 0"]) }
+    // music bars: changing the choice stops cava for a moment so it starts again with the new settings
+    property bool vizHold: false
+    Timer { id: vizHoldT; interval: 250; onTriggered: root.vizHold = false }
+
     // Settings > Performance > Resource use: three presets that set many options at once. The options stay changeable afterwards.
     // (Startup items and the GPU are NOT part of it: they only change at the next login, see Settings > Startup & background.)
     readonly property var resPresets: ({
-        low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, accentMode: "fixed", termDrift: false, clockSeconds: false },
+        low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, accentMode: "fixed", termDrift: false, clockSeconds: false, bgRefresh: "slow", viz: "light" },
                   blur: false, shadows: false, hyprAnim: false, motion: 0.5, profileStars: false, notifHistoryMax: 10, notifMax: 3,
                   hy: { blurSize: 4, blurPasses: 1 } },
-        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true },
+        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true, bgRefresh: "relaxed", viz: "full" },
                   blur: true,  shadows: false, hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 20, notifMax: 5,
                   hy: { blurSize: 6, blurPasses: 2 } },
-        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true },
+        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true, bgRefresh: "normal", viz: "full" },
                   blur: true,  shadows: true,  hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 30, notifMax: 5,
                   hy: { blurSize: 7, blurPasses: 3 } }
     })
@@ -117,6 +141,7 @@ ShellRoot {
         for (var y in p.opt) o[y] = p.opt[y]
         o.resMode = m
         opt = o
+        syncRefresh()
         blur = p.blur; shadows = p.shadows; hyprAnim = p.hyprAnim; motion = p.motion
         profileStars = p.profileStars; notifHistoryMax = p.notifHistoryMax; notifMax = p.notifMax
         hyprTouched = true
@@ -830,11 +855,13 @@ ShellRoot {
         var on = net.wifi === "on"
         Quickshell.execDetached(["nmcli", "radio", "wifi", on ? "off" : "on"])
         net = Object.assign({}, net, { wifi: on ? "off" : "on" })
+        netPokeT.restart()
     }
     function toggleBt() {
         var on = net.bt === "on"
         Quickshell.execDetached(["bluetoothctl", "power", on ? "off" : "on"])
         net = Object.assign({}, net, { bt: on ? "off" : "on" })
+        netPokeT.restart()
     }
 
     // picking a mode by hand stops the daemon (it would re-assert its own profile every 15s);
@@ -937,6 +964,7 @@ ShellRoot {
                         for (var ox in root.opt) oo[ox] = root.opt[ox]
                         for (var oy in s.opt) oo[oy] = s.opt[oy]
                         root.opt = oo
+                        root.syncRefresh()
                     }
                     if (s.hy) {
                         root.hy = s.hy
@@ -1094,8 +1122,8 @@ ShellRoot {
 
     // visualizer feed, only runs while something is playing
     Process {
-        running: root.playing && !root.gaming
-        command: ["cava", "-p", Quickshell.shellPath("cava.conf")]
+        running: root.playing && !root.gaming && root.opt.viz !== "off" && !root.vizHold
+        command: ["cava", "-p", Quickshell.shellPath(root.opt.viz === "light" ? "cava-light.conf" : "cava.conf")]
         stdout: SplitParser {
             onRead: d => {
                 var a = d.split(";"), out = []

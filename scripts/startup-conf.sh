@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # startup-conf.sh : the startup choices the Settings window shows (Settings > Startup & background).
 #   startup-conf.sh list               one line of JSON: the current values + what is installed
-#   startup-conf.sh set KEY VALUE      KEY = NM_APPLET | BLUEMAN | POLKIT | GPU | FILE_ICONS
+#   startup-conf.sh set KEY VALUE      KEY = NM_APPLET | BLUEMAN | POLKIT | GPU | FILE_ICONS | CLIPBOARD | GESTURES | PORTAL
 #       NM_APPLET / BLUEMAN  0 | 1     takes effect at once (the applet is started / stopped)
 #       POLKIT               auto | hyprpolkitagent | gnome | kde | none    takes effect at the next login
 #       GPU                  igpu | dgpu                                    takes effect at the next login
 #       FILE_ICONS           small | medium | large                         Thunar icon size (scripts/thunar-look.sh), at once
+#       CLIPBOARD            0 | 1     clipboard history (the two wl-paste watchers + cliphist), started / stopped at once
+#       GESTURES             0 | 1     touchpad edge gestures (touchpad-gestures.service), started / stopped at once
+#       PORTAL               login | demand   screen-sharing helper: started at login, or only when an app first asks   next login
 # The values live in ~/.config/Halcyon/autostart.conf (read by scripts/autostart-extras.sh) and ~/.config/Halcyon/gpu-mode.
 RICE="${HALCYON_DIR:-$HOME/.config/Halcyon}"
 conf="$RICE/autostart.conf"
 
-NM_APPLET=0; BLUEMAN=0; POLKIT=auto
+NM_APPLET=0; BLUEMAN=0; POLKIT=auto; CLIPBOARD=1; GESTURES=1; PORTAL=login
 [ -f "$conf" ] && . "$conf" 2>/dev/null
 
 gpu_now() { local m=igpu; [ -s "$RICE/gpu-mode" ] && m="$(head -n1 "$RICE/gpu-mode")"; case "$m" in dgpu) echo dgpu ;; *) echo igpu ;; esac; }
@@ -19,11 +22,11 @@ exists() { for p in "$@"; do [ -x "$p" ] && return 0; done; return 1; }
 b() { "$@" && echo true || echo false; }
 files_now() { bash "$RICE/scripts/thunar-look.sh" status 2>/dev/null || echo medium; }
 
-write_conf() {   # rewrite the three keys, keep any other line the user added
+write_conf() {   # rewrite our keys, keep any other line the user added
   mkdir -p "$(dirname "$conf")"
   local tmp; tmp="$(mktemp)"
-  { printf 'NM_APPLET=%s\nBLUEMAN=%s\nPOLKIT=%s\n' "$NM_APPLET" "$BLUEMAN" "$POLKIT"
-    if [ -f "$conf" ]; then grep -v -E '^(NM_APPLET|BLUEMAN|POLKIT)=' "$conf" || true; fi
+  { printf 'NM_APPLET=%s\nBLUEMAN=%s\nPOLKIT=%s\nCLIPBOARD=%s\nGESTURES=%s\nPORTAL=%s\n' "$NM_APPLET" "$BLUEMAN" "$POLKIT" "$CLIPBOARD" "$GESTURES" "$PORTAL"
+    if [ -f "$conf" ]; then grep -v -E '^(NM_APPLET|BLUEMAN|POLKIT|CLIPBOARD|GESTURES|PORTAL)=' "$conf" || true; fi
   } > "$tmp" && mv "$tmp" "$conf"
 }
 
@@ -36,9 +39,10 @@ case "${1:-list}" in
     exists /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1 && gn=true
     exists /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 && kd=true
     [ -r /proc/driver/nvidia/version ] && nv=true
-    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s}}\n' \
+    case "$PORTAL" in demand) ;; *) PORTAL=login ;; esac
+    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","CLIPBOARD":%s,"GESTURES":%s,"PORTAL":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s}}\n' \
       "$([ "$NM_APPLET" = 1 ] && echo true || echo false)" "$([ "$BLUEMAN" = 1 ] && echo true || echo false)" \
-      "$POLKIT" "$(gpu_now)" "$(files_now)" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv"
+      "$POLKIT" "$(gpu_now)" "$(files_now)" "$([ "$CLIPBOARD" = 1 ] && echo true || echo false)" "$([ "$GESTURES" = 1 ] && echo true || echo false)" "$PORTAL" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv"
     ;;
   set)
     key="$2"; val="$3"
@@ -55,6 +59,22 @@ case "${1:-list}" in
         if [ "$BLUEMAN" = 1 ]; then
           have blueman-applet && ! pgrep -f blueman-applet >/dev/null && setsid -f blueman-applet >/dev/null 2>&1 </dev/null
         else pkill -f blueman-applet 2>/dev/null; fi ;;
+      CLIPBOARD)
+        case "$val" in 1|true|on) CLIPBOARD=1 ;; *) CLIPBOARD=0 ;; esac
+        write_conf
+        if [ "$CLIPBOARD" = 1 ]; then
+          if have wl-paste && have cliphist && ! pgrep -f 'wl-pas[t].*--watch cliphist' >/dev/null; then
+            setsid -f wl-paste --type text --watch cliphist store >/dev/null 2>&1 </dev/null
+            setsid -f wl-paste --type image --watch cliphist store >/dev/null 2>&1 </dev/null
+          fi
+        else pkill -f 'wl-pas[t].*--watch cliphist' 2>/dev/null; fi ;;
+      GESTURES)
+        case "$val" in 1|true|on) GESTURES=1 ;; *) GESTURES=0 ;; esac
+        write_conf
+        if [ "$GESTURES" = 1 ]; then systemctl --user start touchpad-gestures.service >/dev/null 2>&1
+        else systemctl --user stop touchpad-gestures.service >/dev/null 2>&1; fi ;;
+      PORTAL)
+        case "$val" in login|demand) PORTAL="$val"; write_conf ;; *) echo "bad PORTAL value: $val" >&2; exit 2 ;; esac ;;
       POLKIT)
         case "$val" in auto|hyprpolkitagent|gnome|kde|none) POLKIT="$val"; write_conf ;; *) echo "bad POLKIT value: $val" >&2; exit 2 ;; esac ;;
       GPU)
