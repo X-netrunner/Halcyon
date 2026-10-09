@@ -75,7 +75,7 @@ Scope {
     }
 
     // ---- Startup & background (scripts/startup-conf.sh): tray applets, polkit agent, GPU. Keys \"st:NAME\" in the tree below.
-    property var startup: ({ NM_APPLET: false, BLUEMAN: false, POLKIT: "auto", GPU: "igpu", FILE_ICONS: "medium", has: ({ nm: true, blueman: true, hyprpolkit: true, gnome: true, kde: true, nvidia: false }) })
+    property var startup: ({ NM_APPLET: false, BLUEMAN: false, POLKIT: "auto", GPU: "igpu", FILE_ICONS: "medium", CLIPBOARD: true, GESTURES: true, PORTAL: "login", has: ({ nm: true, blueman: true, hyprpolkit: true, gnome: true, kde: true, nvidia: false }) })
     property string startupNote: ""        // "applies at the next login" hint after changing the agent or the GPU
     readonly property string startupScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-conf.sh"
     // every change in the tree goes through here: "st:" values are written by the script, everything else goes to shell.qml
@@ -86,7 +86,7 @@ Scope {
             st[k] = v
             startup = st                                   // show it at once; the real state is read again below
             Quickshell.execDetached(["bash", startupScript, "set", k, (v === true ? "1" : v === false ? "0" : String(v))])
-            if (k === "POLKIT" || k === "GPU") startupNote = "Applies the next time you log in."
+            if (k === "POLKIT" || k === "GPU" || k === "PORTAL") startupNote = "Applies the next time you log in."
             startupAgain.restart()
             return
         }
@@ -292,17 +292,22 @@ Scope {
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] }
         ] },
         { id: "performance", title: "Performance & memory", section: "System", items: [
-            { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars, 30 fps, small notification lists. Medium: light blur, no shadows, 60 fps. High: everything on, as designed. It sets the options on this page and in Look, Motion and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
+            { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars, 30 fps, small notification lists, slow background refresh, light music bars. Medium: light blur, no shadows, 60 fps, relaxed background refresh. High: everything on, as designed. It sets the options on this page and in Look, Motion and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "toggle", key: "gaming", label: "Gaming mode", desc: "CPU / GPU at full speed, turbo on, Wi-Fi power saving off, effects off, Caffeine and Do not disturb on, background helpers stopped. SUPER+F10." },
             { type: "seg", key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
             { type: "seg", key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
+            { type: "seg", key: "opt:bgRefresh", label: "Background refresh", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. Normal: every 2 s / 4 s. Relaxed: 5 s / 10 s. Slow: 10 s / 20 s. Fewer wake-ups and far fewer small processes, nothing looks different. The performance page and the bar's CPU / RAM / TEMP row stay at the normal pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "Normal"), o("relaxed", "Relaxed"), o("slow", "Slow")] },
+            { type: "seg", key: "opt:viz", label: "Music bars in the bar", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
             { type: "action", id: "mem-report", label: "Memory report", btn: "Show what uses my RAM", done: "Opening…", desc: "Opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh), so you can see where the RAM goes." },
             { type: "action", id: "detect-ram", label: "Memory details", btn: "Detect RAM", done: "Asking…", desc: "Asks for your password once to read the memory type and speed." }
         ] },
         { id: "startup", title: "Startup & background", section: "System", items: [
             { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
             { type: "toggle", key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
+            { type: "toggle", key: "st:CLIPBOARD", label: "Clipboard history", desc: "The two small watchers that remember what you copy (text and pictures) for the clipboard picker. Off stops them at once and saves a few MB; the picker then only shows what was saved before." },
+            { type: "toggle", key: "st:GESTURES", label: "Touchpad edge gestures", desc: "Slide on the touchpad edge for volume, brightness and track skip. Off stops the helper at once; the normal touchpad keeps working." },
+            { type: "seg", key: "st:PORTAL", label: "Screen-sharing helper", desc: "At login: it is always ready (Hyprland's own screen-share portal). On demand: it is not started until the first app asks to share or record the screen (browser, OBS), which then takes a moment longer once. Saves its memory until then.", opts: [o("login", "At login"), o("demand", "On demand")] },
             { type: "seg", key: "st:POLKIT", label: "Password prompt helper (polkit agent)", desc: "The small program that shows the 'enter your password' window for apps that need admin rights. Auto picks the lightest one installed: Hyprland's, then GNOME's, then KDE's (the heaviest). None = no password windows at all. Takes effect at the next login.", opts: [o("auto", "Auto"), o("hyprpolkitagent", "Hyprland"), o("gnome", "GNOME"), o("kde", "KDE"), o("none", "None")] },
             { type: "seg", key: "st:GPU", label: "Graphics card for the desktop", desc: "Integrated: the Intel / AMD graphics draw the desktop; the NVIDIA card sleeps until you run a program with prime-run. Lowest RAM and battery use. NVIDIA: the NVIDIA card draws the desktop; smoother with heavy blur, but it loads the NVIDIA libraries (+100 MB or more RAM) and uses a lot more battery. Takes effect at the next login.", opts: [o("igpu", "Integrated (saves RAM)"), o("dgpu", "NVIDIA")] }
         ] },
@@ -974,7 +979,7 @@ Scope {
                                                                             : (leaf.m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet)"
                                                                             : (leaf.m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
                                                                             : (leaf.m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (leaf.m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
-                                                                            : ((leaf.m.key === "st:POLKIT" || leaf.m.key === "st:GPU") && root.startupNote !== "") ? (leaf.m.desc || "") + "  \u2192 " + root.startupNote
+                                                                            : ((leaf.m.key === "st:POLKIT" || leaf.m.key === "st:GPU" || leaf.m.key === "st:PORTAL") && root.startupNote !== "") ? (leaf.m.desc || "") + "  \u2192 " + root.startupNote
                                                                             : (leaf.m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (leaf.m.desc || ""))
                                                                         color: root.pal.muted
                                                                         font.family: root.pal.uiFont

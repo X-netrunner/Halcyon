@@ -23,12 +23,9 @@ hl.on("hyprland.start", function()
     -- tray applets (nm-applet / blueman-applet are OFF by default: the island has its own Wi-Fi / Bluetooth lists, and the two
     -- applets cost ~60-100 MB. Turn them on in ~/.config/Halcyon/autostart.conf)
     hl.exec_cmd(rice .. "/scripts/autostart-extras.sh &")
-    hl.exec_cmd("for p in /usr/lib/hyprland/xdg-desktop-portal-hyprland /usr/lib/xdg-desktop-portal-hyprland; do [ -x \"$p\" ] && exec \"$p\"; done &")
+    -- (the Hyprland portal, the clipboard history watchers and the touchpad gestures are started by autostart-extras.sh too, so
+    -- Settings > Startup & background can switch each of them off)
     hl.exec_cmd("XDG_MENU_PREFIX=arch- kbuildsycoca6 --noincremental &")
-    hl.exec_cmd("wl-paste --type text --watch cliphist store &")
-    hl.exec_cmd("wl-paste --type image --watch cliphist store &")
-    -- touchpad edge gestures (volume / brightness / track skip); install.sh sets the service up
-    hl.exec_cmd("systemctl --user start touchpad-gestures.service &")
     -- started from the tty1 login (launch/halcyon-login.sh)? then make sure the lock screen really came up
     hl.exec_cmd(rice .. "/scripts/login-watchdog.sh &")
     -- idle lock + sleep, set in Settings > Sleep & lock (scripts/idle.sh runs hypridle with its own config)

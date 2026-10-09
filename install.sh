@@ -1232,7 +1232,7 @@ setup_kbd_backlight() {
             [[ "$q" == *-dkms ]] && { mapfile -t HDRS < <(kernel_headers); install_pkgs "${HDRS[@]}"; break; }
         done
         install_pkgs "${pkgs[@]}"
-        if systemctl cat asusd.service >/dev/null 2>&1; then enable_service asusd.service --now; fi
+        if systemctl cat asusd.service >/dev/null 2>&1; then try run_cmd "Starting asusd" as_root systemctl start asusd.service; fi   # static unit: no "enable"
         for m in "${mods[@]}"; do modinfo "$m" >/dev/null 2>&1 && as_root modprobe "$m" >>"$LOG_FILE" 2>&1 && loaded+=("$m"); done
         sleep 1
     fi
@@ -1249,6 +1249,29 @@ setup_kbd_backlight() {
     fi
 }
 if [[ "$SKIP_DRIVERS" != "true" ]]; then setup_kbd_backlight; else log_info "Keyboard light driver check skipped (--no-drivers)."; fi
+
+# ASUS laptops (Vivobook, Zenbook, TUF, ROG, ...): the kernel's asus-wmi driver already creates asus::kbd_backlight, but the Fn
+# key for it is handled inside the kernel (no key event reaches Hyprland) and its own copy of the level can go stale, so the
+# key may need two presses. asusd (asusctl) takes over those keys and keeps the level in sync. The extra SUPER+F3 / SUPER+F4
+# keys (hyprland/keybinds.lua, only when asus::kbd_backlight exists) always work, with or without asusd.
+setup_asus_extras() {
+    local id
+    id="$(tr 'A-Z' 'a-z' < /sys/class/dmi/id/sys_vendor 2>/dev/null)"
+    [[ "$id" == *asus* ]] || return 0
+    is_laptop || return 0
+    if [[ "$DRY_RUN" == "true" ]]; then log_task "[DRY-RUN] ASUS laptop: install asusctl and start asusd (Fn keyboard-light key)"; return 0; fi
+    log_info "ASUS laptop: setting up asusd (keyboard light Fn keys)"
+    if [[ "$PACKAGES" == "true" ]]; then install_pkgs asusctl; fi
+    if systemctl cat asusd.service >/dev/null 2>&1; then
+        # a static unit (udev / D-Bus start it at boot): "systemctl enable" would only complain
+        systemctl is-active --quiet asusd.service || try run_cmd "Starting asusd" as_root systemctl start asusd.service
+        log_success "asusd is running: Fn keyboard-light keys and 'asusctl leds next|prev' work. SUPER+F3 / SUPER+F4 also step the light."
+        log_info "asusd also manages the ASUS power profile; if it fights Halcyon's power manager, stop it with: sudo systemctl mask asusd"
+    else
+        log_info "asusctl is not installed (AUR build failed or --no-packages). SUPER+F3 / SUPER+F4 still step the keyboard light."
+    fi
+}
+if [[ "$SKIP_DRIVERS" != "true" ]]; then setup_asus_extras; fi
 
 # a udev rule so your user may write the screen backlight (group video) and the keyboard light (group input) without root
 if [[ -f "$TARGET_RICE/udev/90-halcyon-backlight.rules" ]]; then

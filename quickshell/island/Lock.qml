@@ -94,13 +94,16 @@ Scope {
                 energy: root.energy
                 opacity: surf.appear
             }
-            Rectangle {   // soft vignette so the middle reads clearly
+            // (no vignette gradient here: bg-over-bg with varying alpha is invisible in theory but Qt's 8-bit premultiplied
+            // vertex colours round per row, which showed up as colour bands on a solid background)
+
+            // any mouse movement / click on the lock screen hands keyboard focus to the password box
+            MouseArea {
                 anchors.fill: parent
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.alpha(root.pal.bg, 0.55) }
-                    GradientStop { position: 0.5; color: Qt.alpha(root.pal.bg, 0.10) }
-                    GradientStop { position: 1.0; color: Qt.alpha(root.pal.bg, 0.65) }
-                }
+                hoverEnabled: true
+                acceptedButtons: Qt.AllButtons
+                onPositionChanged: input.forceActiveFocus()
+                onPressed: input.forceActiveFocus()
             }
 
             // ---- clock
@@ -197,6 +200,7 @@ Scope {
                             source: root.avatarPath !== "" ? "file://" + root.avatarPath : ""
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
+                            sourceSize: Qt.size(184, 184)      // shown at 92 px: decode at 2x, not at the picture's own size
                             visible: status === Image.Ready
                         }
                     }
@@ -298,6 +302,13 @@ Scope {
                         onAccepted: root.tryUnlock()
                         Component.onCompleted: forceActiveFocus()
                         Connections { target: root; function onLockedChanged() { if (root.locked) input.forceActiveFocus() } }
+                        // the lock surface only receives keyboard focus after the compositor maps it, which is later than
+                        // Component.onCompleted: retry until the box really has focus, and re-take it whenever it is lost
+                        Timer {
+                            interval: 80; repeat: true
+                            running: root.locked && !input.activeFocus
+                            onTriggered: input.forceActiveFocus()
+                        }
                     }
                     Text {
                         anchors.centerIn: parent

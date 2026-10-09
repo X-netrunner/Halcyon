@@ -15,6 +15,8 @@ for d in /sys/class/leds/*kbd_backlight* /sys/class/leds/*kbd-backlight*; do
   [ -r "$d/max_brightness" ] && { kbd=$d; kmax=$(<"$d/max_brightness"); break; }
 done
 [ -n "$screen" ] || [ -n "$kbd" ] || exit 0
+# wait without starting a `sleep` process: a timed read on a pipe nobody writes to
+exec {nap}<> <(:)
 lb=-1; lk=-1; quiet=0
 while :; do
   if [ -e /dev/shm/halcyon-dim ]; then quiet=8
@@ -33,5 +35,5 @@ while :; do
       lk=$k
     fi
   fi
-  sleep 0.25
+  read -r -t 0.25 -u "$nap" _
 done

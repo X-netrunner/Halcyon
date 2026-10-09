@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # wifi-connect.sh <ssid> [password]: saved network -> bring it up; otherwise create it (password if given)
 ssid=$1; pw=$2
+# wake net.sh (the bar's Wi-Fi / Bluetooth label) so it shows the result now, not at its next slow tick
+poke_net() { local f="${XDG_RUNTIME_DIR:-/tmp}/halcyon-net.wake"; [ -p "$f" ] && printf '\n' 1<>"$f"; }
+trap poke_net EXIT
 saved=false
 nmcli -t -f NAME connection show | grep -Fxq -- "$ssid" && saved=true
 

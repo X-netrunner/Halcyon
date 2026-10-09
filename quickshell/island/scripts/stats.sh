@@ -3,6 +3,25 @@
 # + sysmode (/etc/sysmode.mode, written by the `sysmode` CLI)
 # + auto / pmode / pprofile (power-manager daemon: running? + its state file, see src/power-manager)
 iv=${1:-2}
+# Pace: $1 seconds normally. Settings > Performance & memory > "Background refresh" writes ~/.local/state/island/bg-refresh
+# (normal | relaxed | slow = 1x / 2.5x / 5x). While the performance page (or the bar's CPU / RAM / TEMP row) can be on screen the
+# island writes stats-fast=1 and the pace stays at $1. Missing flag files = the old behaviour (every $1 seconds).
+# The wait is a timed read on a pipe in $XDG_RUNTIME_DIR (no `sleep` process); the island pokes the pipe when a flag changes,
+# so a change shows within a second instead of at the end of a slow wait.
+sdir="$HOME/.local/state/island"     # (not `st`: that name is the CPU steal counter below)
+wake="${XDG_RUNTIME_DIR:-/tmp}/halcyon-stats.wake"
+[ -e "$wake" ] && [ ! -p "$wake" ] && rm -f "$wake"
+[ -p "$wake" ] || mkfifo -m 600 "$wake" 2>/dev/null
+if [ -p "$wake" ]; then exec {nap}<>"$wake"; else exec {nap}<> <(:); fi
+wait_tick() {
+  local m f n=$iv
+  { read -r m < "$sdir/bg-refresh"; } 2>/dev/null || m=normal
+  { read -r f < "$sdir/stats-fast"; } 2>/dev/null || f=1
+  if [ "$f" != 1 ]; then case "$m" in relaxed) n=$(( iv * 5 / 2 )) ;; slow) n=$(( iv * 5 )) ;; esac; fi
+  # poked (a flag changed): give it a second so the first sample after the change is not a tiny window
+  if read -r -t "$n" -u "$nap" _; then read -r -t 1 -u "$nap" _; fi
+}
+tprev=${EPOCHREALTIME/[.,]/}
 
 read -r _ u n s i io irq sirq st _ < /proc/stat
 pt=$((u+n+s+i+io+irq+sirq+st)); pi=$((i+io))
@@ -32,7 +51,8 @@ upower_read() {
 fmt() { local m=$1; if [ "$m" -ge 60 ]; then printf '%dh %02dm' $((m/60)) $((m%60)); else printf '%dm' "$m"; fi; }
 
 while true; do
-  sleep "$iv"
+  wait_tick
+  tnow=${EPOCHREALTIME/[.,]/}; ems=$(( (tnow - tprev) / 1000 )); [ "$ems" -lt 1 ] && ems=1; tprev=$tnow
 
   read -r _ u n s i io irq sirq st _ < /proc/stat
   t=$((u+n+s+i+io+irq+sirq+st)); idl=$((i+io))
@@ -75,7 +95,7 @@ while true; do
         ;;
     esac
   done < /proc/net/dev
-  down=$(( (rx - prx) / iv )); up=$(( (tx - ptx) / iv ))
+  down=$(( (rx - prx) * 1000 / ems )); up=$(( (tx - ptx) * 1000 / ems ))
   [ "$down" -lt 0 ] && down=0; [ "$up" -lt 0 ] && up=0
   prx=$rx; ptx=$tx
 
