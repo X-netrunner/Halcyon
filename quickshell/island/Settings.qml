@@ -250,6 +250,7 @@ Scope {
         ] },
         { id: "notifications", title: "Notifications", section: "Desktop", items: [
             { type: "toggle", key: "dnd", label: "Do not disturb" },
+            { type: "toggle", key: "opt:connErrOnly", label: "Wi-Fi & Bluetooth: only tell me about errors", desc: "Off: a notification for every connect and disconnect. On: only when connecting fails (wrong password, device out of range...)." },
             { type: "seg", key: "opt:notifSpot", label: "Notification trigger spot", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Panels & on-screen display.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
             { type: "seg", key: "opt:notifIcon", label: "Notification picture", desc: "Profile picture: your picture, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
             { type: "seg", key: "notifMax", label: "Popups on screen at once", desc: "When it is full the oldest goes.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },

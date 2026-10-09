@@ -47,6 +47,7 @@ ShellRoot {
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
         notifSpot: "edge",         // edge | corner : where the notification centre is opened from: a strip on the right edge, or the top-right corner
         notifIcon: "pfp",          // pfp | app : the picture of a notification is your profile picture (app icon as a badge), or the app's icon
+        connErrOnly: false,        // Wi-Fi / Bluetooth: false = a notification for every connect / disconnect, true = only when connecting fails (scripts/wifi-connect.sh, bt-set.sh read the flag conn-errors-only)
         wsSwipe4: "left",          // left | right : which 4-finger swipe goes to the NEXT workspace (scripts/ws-nav.sh)
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
         nightTemp: 4000,           // night light colour temperature (K)
@@ -85,6 +86,7 @@ ShellRoot {
         case "wsMax": writeFlag("ws-max", v); break
         case "wsInvert": writeFlag("ws-invert", v ? "1" : "0"); break
         case "wsSwipe4": writeFlag("ws-swipe4", v); break
+        case "connErrOnly": writeFlag("conn-errors-only", v ? "1" : "0"); break
         case "termMode": writeFlag("term-mode", v); termRun.restart(); break
         case "termDrift": termRun.restart(); break
         case "accentMode": termRun.restart(); break
