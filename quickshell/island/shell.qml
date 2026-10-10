@@ -365,6 +365,7 @@ ShellRoot {
         gaming: root.gaming
         profileStars: root.profileStars
         starData: root.starData
+        onFocusOptionsChanged: focusConfProc.running = true
         glassShift: root.glassShift
         motion: root.motion
         rounding: root.rounding
@@ -413,6 +414,7 @@ ShellRoot {
             else if (id === "reset-look") root.resetLook()
             else if (id === "mem-report") { var h = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", h + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\"; echo; read -n1 -r -p 'Press any key to close '", "x", h + "/halcyon-mem.sh"]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
+            else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x"]) }
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
         }
     }
@@ -826,6 +828,50 @@ ShellRoot {
         stdout: StdioCollector { onStreamFinished: { if (Date.now() > root.caffeineGuard) root.caffeine = text.trim() === "on" } }
     }
 
+    // ---- Focus mode (scripts/focus.sh): an advanced do-not-disturb for studying / work. A timer (optionally Pomodoro), Do not
+    // disturb + Caffeine while it runs, and the apps in the block list are closed when they open. The helper process owns the
+    // session; this only shows it and sends commands. The countdown is computed here from the end time, so nothing is polled per second.
+    property var focusState: ({ on: false })
+    property double focusNow: Date.now() / 1000
+    readonly property int focusLeft: !focusState.on ? 0 : (focusState.paused ? focusState.left : Math.max(0, Math.round(focusState.end - focusNow)))
+    readonly property string focusText: {
+        var s = focusLeft, m = Math.floor(s / 60), r = s % 60
+        return (m < 10 ? "0" : "") + m + ":" + (r < 10 ? "0" : "") + r
+    }
+    readonly property string focusScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/focus.sh"
+    function focusRun(args) {
+        Quickshell.execDetached(["bash", focusScript].concat(args))
+        focusKick.restart()
+    }
+    property var focusConf: ({ LENGTH: 25, POMODORO: false, apps: [] })
+    function focusSet(mins, pomo) {
+        var c = JSON.parse(JSON.stringify(focusConf))
+        c.LENGTH = mins; c.POMODORO = pomo
+        focusConf = c                                   // show it at once
+        Quickshell.execDetached(["bash", "-c", "bash \"$0\" set LENGTH " + mins + " && bash \"$0\" set POMODORO " + (pomo ? 1 : 0), focusScript])
+    }
+    Process {
+        id: focusConfProc
+        command: ["bash", root.focusScript, "conf"]
+        running: true
+        stdout: StdioCollector { onStreamFinished: { try { root.focusConf = JSON.parse(text) } catch (e) {} } }
+    }
+    function focusToggle() { focusRun(focusState.on ? ["stop"] : ["start"]) }
+    Timer { id: focusKick; interval: 700; onTriggered: if (!focusProc.running) focusProc.running = true }
+    Timer {
+        // ticks only while a session runs; when the phase is over it asks the helper what comes next (break / done)
+        interval: 1000; running: root.focusState.on; repeat: true
+        onTriggered: {
+            root.focusNow = Date.now() / 1000
+            if (root.focusState.on && !root.focusState.paused && root.focusNow >= root.focusState.end + 0.5 && !focusProc.running) focusProc.running = true
+        }
+    }
+    Process {
+        id: focusProc
+        command: ["bash", root.focusScript, "status"]
+        stdout: StdioCollector { onStreamFinished: { try { root.focusState = JSON.parse(text); root.focusNow = Date.now() / 1000 } catch (e) {} } }
+    }
+
     // ---- special workspaces: music / communication start their app the first time (scripts/special.sh)
     function toggleSpecial(name) {
         if (name === "music" || name === "communication")
@@ -1102,7 +1148,7 @@ ShellRoot {
         stdout: SplitParser { onRead: d => { if (d.trim()) root.profile = d.trim() } }
     }
     // one slow poll for the three state readers (gaming flag, caffeine unit, power profile): one wake-up instead of three
-    Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: { gamingProc.running = true; caffeineProc.running = true; profProc.running = true } }
+    Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: { gamingProc.running = true; caffeineProc.running = true; profProc.running = true; if (!focusProc.running) focusProc.running = true } }
     Timer { id: profKick; interval: 3500; onTriggered: profProc.running = true }
 
     // volume / brightness, only polled while the bottom-right panel is open
@@ -1233,6 +1279,8 @@ ShellRoot {
         function power(): void { powerMenu.show() }
         function gaming(): void { root.setGaming(!root.gaming) }
         function caffeine(): void { root.setCaffeine(!root.caffeine, 0) }
+        function focus(): void { root.focusToggle() }                 // start / stop a Focus session (SUPER+ALT+F)
+        function focuspause(): void { root.focusRun([root.focusState.paused ? "resume" : "pause"]) }
         function apps(): void { appsWin.pinFor(9000) }
         function routing(): void { root.runCommand("routing") }
         function lock(): void { lockScreen.lock() }
@@ -1462,6 +1510,8 @@ ShellRoot {
                     playing: root.playing
                     activeSpecial: root.activeSpecial
                     caffeine: root.caffeine
+                    focusText: root.focusState.on ? root.focusText : ""
+                    focusPaused: root.focusState.on && root.focusState.paused === true
                     showStats: root.hoverAction === "stats" && hov.hovered
                     bgCount: bgPanel.count
                     showBgCount: root.opt.bgWhere !== "corner"
@@ -1560,6 +1610,8 @@ ShellRoot {
             playing: root.playing
             activeSpecial: root.activeSpecial
             caffeine: root.caffeine
+            focusText: root.focusState.on ? root.focusText : ""
+            focusPaused: root.focusState.on && root.focusState.paused === true
             bgCount: bgPanel.count
             opt: root.opt
             barPadding: root.barPadding
@@ -1633,11 +1685,11 @@ ShellRoot {
         id: corner
 
         anchors { bottom: true; right: true }
-        // only as big as the box while it is open or fading out; closed it is a small corner tab (a 450x900 surface = ~5 MB of
-        // buffers here and again in Hyprland for nothing). The box fades in over ~200 ms, so the resize is not visible.
-        readonly property bool big: open || panel.visible
-        implicitWidth: big ? pal.boxW + pal.boxEdge + 30 : 48     // same box width / edge gap as the notification centre
-        implicitHeight: big ? 900 : 48
+        // FIXED size on purpose: it used to grow / shrink with the box (48 px tab <-> full size). Each resize made the compositor
+        // re-pick the pointer focus, so a pointer parked in the corner got a leave + enter, which closed and re-opened the box
+        // over and over. The input region (mask below) is what keeps the surface from catching clicks while it is closed.
+        implicitWidth: pal.boxW + pal.boxEdge + 30     // same box width / edge gap as the notification centre
+        implicitHeight: 1000
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
 
@@ -1654,13 +1706,16 @@ ShellRoot {
         readonly property real reveal: hovering ? 1 : 0
         // hover mode: touching the corner opens it and leaving closes it. click mode: click the corner to open / close it.
         // auto-hide on closes it when the pointer leaves, in both modes
+        // after it closes, a pointer that is still sitting in the corner must not re-open it by itself: enter events that come from
+        // the box shrinking back are ignored for a moment (move out and in again to open it)
+        property double blockUntil: 0
         function setHover(on) {
-            if (on) { closeT.stop(); if (!root.clickMode) hovering = true }
+            if (on) { closeT.stop(); if (!root.clickMode && Date.now() >= blockUntil) hovering = true }
             else if (!panel.wantsKeys && (!root.clickMode || root.autoHide)) { closeT.interval = 450; closeT.restart() }
         }
         // open it from the launcher / keybind; closes by itself if you don't touch it
         function pinFor(ms) { hovering = true; closeT.interval = ms; closeT.restart() }
-        Timer { id: closeT; interval: 450; onTriggered: corner.hovering = false }
+        Timer { id: closeT; interval: 450; onTriggered: { corner.hovering = false; corner.blockUntil = Date.now() + 600 } }
 
         // one hover zone for corner + panel (see QuickTerm.qml): no flicker when the panel slides in under the pointer
         mask: Region { item: zone }
@@ -1704,6 +1759,12 @@ ShellRoot {
             autoHide: root.autoHide
             gaming: root.gaming
             caffeine: root.caffeine
+            focusInfo: root.focusState
+            focusText: root.focusText
+            focusSecs: root.focusLeft
+            focusMins: root.focusConf.LENGTH
+            focusPomo: root.focusConf.POMODORO
+            focusBlocked: (root.focusConf.apps || []).length
             mic: root.mic
             micMuted: root.micMuted
             vol: root.vol
@@ -1727,6 +1788,10 @@ ShellRoot {
             onOpenSettings: settingsWin.show()
             onToggleGaming: root.setGaming(!root.gaming)
             onToggleCaffeine: root.setCaffeine(!root.caffeine, 0)
+            onFocusStart: (mins, pomo) => root.focusRun(["start", String(mins), pomo ? "pomo" : "single"])
+            onFocusCommand: what => root.focusRun(what.split(" "))
+            onFocusPick: (mins, pomo) => root.focusSet(mins, pomo)
+            onOpenFocusSettings: settingsWin.show("focus")
             onCaffeineHour: root.setCaffeine(true, 60)
             onOpenApps: appsWin.pinFor(9000)
             onOpenPower: powerMenu.show()
@@ -1745,9 +1810,9 @@ ShellRoot {
         id: appsWin
 
         anchors { bottom: true; left: true }
-        readonly property bool big: open || bgPanel.visible      // see the utilities box: small corner tab while closed
-        implicitWidth: big ? pal.boxW + pal.boxEdge + 30 : 48
-        implicitHeight: big ? 700 : 48
+        // fixed size, see the utilities box (a surface that resizes under a parked pointer makes the box flicker)
+        implicitWidth: pal.boxW + pal.boxEdge + 30
+        implicitHeight: 700
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
 
@@ -1762,12 +1827,13 @@ ShellRoot {
         function syncHover() { setHover(zoneHover || panelHover) }
         readonly property bool open: hovering
         readonly property real reveal: hovering ? 1 : 0
+        property double blockUntil: 0
         function setHover(on) {
-            if (on) { aClose.stop(); if (!root.clickMode) hovering = true }
+            if (on) { aClose.stop(); if (!root.clickMode && Date.now() >= blockUntil) hovering = true }
             else if (!root.clickMode || root.autoHide) { aClose.interval = 450; aClose.restart() }
         }
         function pinFor(ms) { hovering = true; aClose.interval = ms; aClose.restart() }
-        Timer { id: aClose; interval: 450; onTriggered: appsWin.hovering = false }
+        Timer { id: aClose; interval: 450; onTriggered: { appsWin.hovering = false; appsWin.blockUntil = Date.now() + 600 } }
 
         mask: Region { item: aZone }
         Item {

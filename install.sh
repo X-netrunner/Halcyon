@@ -16,7 +16,7 @@
 #    3  graphics drivers + CPU microcode: NVIDIA (open / legacy, by GPU generation), Intel, AMD, hybrid laptops (detected)
 #    4  audio (+ firmware), Bluetooth, network, power services, input / video groups
 #    5  Hyprland, Quickshell and the desktop packages + YOUR apps: you pick the web browser, the file manager (Thunar, Yazi,
-#       Dolphin, ...), the code editor (VSCodium, Zed, ...) and whether to install sysmode; plus foot, Spotify, Discord
+#       Dolphin, ...), the code editor (VSCodium, Zed, ...) and whether to install sysmode and the safety check; plus foot, Spotify, Discord
 #    6  Rust toolchain (for the helpers below)
 #    7  copies the rice to ~/.config/Halcyon (an older copy is backed up; your hypr-user.lua, scheme/current.lua and
 #       gamemode.conf are kept)
@@ -25,7 +25,8 @@
 #       this machine? Then the Halcyon LOCK SCREEN becomes the login screen (tty1 logs you in, Halcyon starts locked)
 #   10  user services (gestures, auto power) + the boot service that saves RAM details for the performance page
 #   11  root helpers: halcyon-tune (Gaming mode CPU/GPU boost, power-manager switch, Wi-Fi power saving: ONE narrow sudo
-#       rule) + gaming tools, sysmode (hardening CLI + every tool it uses, honeypot / IDS at boot), backlight udev rule and
+#       rule) + gaming tools, sysmode (hardening CLI + every tool it uses, honeypot / IDS at boot), the optional safety check
+#       (root-owned /usr/local/bin/safety-check, started from Settings), backlight udev rule and
 #       the keyboard-light driver for your laptop (ASUS, ThinkPad, Dell, HP, MSI, Tuxedo, System76 ...)
 #   12  wallpaper -> colours of the island AND your terminals
 #   13  checks everything (also that Hyprland accepts the config) and prints a report
@@ -46,7 +47,9 @@
 #   --files ID[,ID]        thunar | yazi | dolphin | nautilus | nemo | pcmanfm | none   (the first one opens folders: SUPER+E)
 #   --editor ID[,ID]       codium | zeditor | neovim | none                              (the first one is SUPER+C)
 #   --sysmode              install sysmode without asking (--no-sysmode: skip it)
-#   --choose               ask the four questions above again (they are asked once, then remembered for update.sh)
+#   --safety-check         install the safety check (system update, malware / rootkit scan, firewall, audit, backup) without asking
+#                          (--no-safety-check: skip it; its entry in Settings > Backup is then greyed out and disabled)
+#   --choose               ask the questions above again (they are asked once, then remembered for update.sh)
 #                          Without these options and in a terminal you get a short menu; with --yes the saved / default choice is used.
 #   -v, --verbose          show the output of every command (this is the default)
 #   -q, --quiet            only the steps, the output goes to the log file          -h, --help      this text
@@ -73,6 +76,7 @@ AUTO_CONFIRM=false; DRY_RUN=false; VERBOSE=true        # verbose by default: you
 INSTALL_APPS=true
 PACKAGES=true; SKIP_DRIVERS=false; SKIP_AUR=false; UPGRADE=auto; SKIP_TUNE=false
 SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=false; SYSMODE_ASKED=true; }
+SAFETY=false; SAFETY_ASKED=false            # the safety check is opt-in: it updates the system, scans and can back up to a disk
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 LINK_CONFIG=false; REQUESTED_USER=""; TTY_AUTOSTART=false; LOCK_LOGIN=auto; REMOVE_LOGIN=false
 
@@ -137,6 +141,8 @@ while [[ $# -gt 0 ]]; do
         --upgrade)          UPGRADE=yes ;;
         --sysmode)          SYSMODE=true; SYSMODE_ASKED=true ;;
         --no-sysmode)       SYSMODE=false; SYSMODE_ASKED=true ;;
+        --safety-check)     SAFETY=true; SAFETY_ASKED=true ;;
+        --no-safety-check)  SAFETY=false; SAFETY_ASKED=true ;;
         --browser)          shift; PICK_BROWSER="${1:-}"; [[ -n "$PICK_BROWSER" ]] || die "--browser needs a name (see --help)" ;;
         --browser=*)        PICK_BROWSER="${1#--browser=}" ;;
         --files|--file-manager) shift; PICK_FILES="${1:-}"; [[ -n "$PICK_FILES" ]] || die "--files needs a name (see --help)" ;;
@@ -385,6 +391,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
     echo "  - build the Rust helpers, set up the Hyprland entry, the login-screen session and the user services"
     [[ "$SKIP_TUNE" != "true" ]] && echo "  - install halcyon-tune and ONE sudo rule so Gaming mode / power manager / Wi-Fi power saving work without a password prompt"
     [[ "$SYSMODE" == "true" ]]   && echo "  - install the sysmode hardening CLI and its boot service"
+    [[ "$SAFETY" == "true" ]]    && echo "  - install the safety check (ClamAV, rkhunter, lynis, AIDE, ufw, rsync) and add it to Settings > Backup"
     confirm "Go ahead?" || { echo "Nothing was changed."; exit 0; }
 fi
 
@@ -746,20 +753,23 @@ choice_valid() { local kind=$1 id=$2 fn; case "$kind" in browser) fn=browser_pkg
 apps_id()      { [[ "$1:$2" == editor:neovim ]] && echo nvim || echo "$2"; }      # the id Settings > Default apps (apps.sh) uses
 
 choose_apps() {
-    local interactive=false have_b have_e s_b s_f s_e s_s ask_b=false ask_f=false ask_e=false ask_s=false id kind
+    local interactive=false have_b have_e s_b s_f s_e s_s s_c ask_b=false ask_f=false ask_e=false ask_s=false ask_c=false id kind
     local flag_b="$PICK_BROWSER" flag_f="$PICK_FILES" flag_e="$PICK_EDITOR"      # given on the command line
     [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
-    s_b=$(saved_choice BROWSER); s_f=$(saved_choice FILES); s_e=$(saved_choice EDITOR); s_s=$(saved_choice SYSMODE)
+    s_b=$(saved_choice BROWSER); s_f=$(saved_choice FILES); s_e=$(saved_choice EDITOR); s_s=$(saved_choice SYSMODE); s_c=$(saved_choice SAFETY_CHECK)
     have_any firefox chromium google-chrome-stable brave vivaldi-stable zen-browser librewolf floorp qutebrowser && have_b=true || have_b=false
     have_any codium code code-oss cursor zeditor zed subl kate nvim && have_e=true || have_e=false
     # saved sysmode answer (only when nothing on the command line decided it)
     [[ "$SYSMODE_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_s" ]] && { [[ "$s_s" == yes ]] && SYSMODE=true || SYSMODE=false; SYSMODE_ASKED=true; }
+    # saved safety-check answer (same rule: the command line wins, --choose asks again)
+    [[ "$SAFETY_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_c" ]] && { [[ "$s_c" == yes ]] && SAFETY=true || SAFETY=false; SAFETY_ASKED=true; }
     if [[ "$interactive" == "true" ]]; then
         [[ -z "$PICK_BROWSER" && ( "$CHOOSE" == "true" || -z "$s_b" ) ]] && ask_b=true
         [[ -z "$PICK_FILES"   && ( "$CHOOSE" == "true" || -z "$s_f" ) && "$INSTALL_APPS" == "true" ]] && ask_f=true
         [[ -z "$PICK_EDITOR"  && ( "$CHOOSE" == "true" || -z "$s_e" ) ]] && ask_e=true
         [[ "$SYSMODE_ASKED" != "true" ]] && ask_s=true
-        if [[ "$ask_b$ask_f$ask_e$ask_s" == *true* ]]; then
+        [[ "$SAFETY_ASKED" != "true" ]] && ask_c=true
+        if [[ "$ask_b$ask_f$ask_e$ask_s$ask_c" == *true* ]]; then
             echo -e "\n${BOLD}Make it yours${RESET} ${DIM}(Enter takes the marked choice; ./install.sh --choose asks again later)${RESET}"
         fi
     fi
@@ -788,6 +798,13 @@ choose_apps() {
         if ask "  Install sysmode?"; then SYSMODE=true; else SYSMODE=false; fi
         SYSMODE_ASKED=true
     fi
+    # ---- safety check (default NO: it is only installed when you say yes; otherwise its Settings entry is greyed out)
+    if [[ "$ask_c" == "true" ]]; then
+        echo -e "\n  ${CYAN}${BOLD}Safety check${RESET}  ${DIM}one command that updates the system, scans for malware and rootkits, checks the firewall, audits and can back up to a disk${RESET}"
+        echo -e "   ${DIM}installs clamav, rkhunter, lynis, aide, ufw and rsync, and adds \"Safety check\" to Settings > Backup. Say no and that entry stays greyed out and disabled.${RESET}"
+        if confirm "  Add the safety check?"; then SAFETY=true; else SAFETY=false; fi
+        SAFETY_ASKED=true
+    fi
     # ---- check the names (a typo in --browser must not silently install nothing)
     local lst
     for kind in browser files editor; do
@@ -804,7 +821,7 @@ choose_apps() {
     [[ ( -n "$flag_b" || "$ask_b" == true ) && "$PICK_BROWSER" != keep ]] && APPLY_PICKS+=("browser=$PICK_BROWSER")
     id="${PICK_FILES%% *}";  [[ ( -n "$flag_f" || "$ask_f" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("files=$id")
     id="${PICK_EDITOR%% *}"; [[ ( -n "$flag_e" || "$ask_e" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("editor=$(apps_id editor "$id")")
-    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)"
+    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)"
 }
 if [[ "$PACKAGES" == "true" && "$REMOVE_LOGIN" != "true" ]]; then choose_apps
 else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; fi
@@ -818,7 +835,7 @@ if [[ "$PACKAGES" == "true" ]]; then
           hypridle hyprlock hyprsunset hyprutils
           qt6-base qt6-declarative qt6-svg qt6-wayland qt6-5compat qt6-multimedia qt5-wayland qt6ct kvantum kservice
           imagemagick cava btop fish starship poppler fd ripgrep fzf grim slurp wl-clipboard cliphist fuzzel
-          dmidecode util-linux lsof jq zenity gamemode
+          dmidecode util-linux lsof jq zenity gamemode python libnotify
           inter-font ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji adwaita-icon-theme)
     # (the browser, file manager and editor you chose are installed below)
     install_pkgs "${CORE[@]}"
@@ -937,6 +954,8 @@ BUILD_ROOT="$TARGET_HOME/.cache/halcyon-build"           # outside the rice: the
 run_as_user_cmd "Creating $BIN_DIR" mkdir -p "$BIN_DIR" "$BUILD_ROOT" \
     || die "Cannot create $BIN_DIR$([[ "$LINK_CONFIG" == "true" ]] && echo " (with --link the Halcyon folder itself must be writable by $TARGET_USER)")"
 BUILD_FAILED=()
+CRATES=(hx power-manager touchpad-gestures recon-deceiver log-analyst attacker-dossier setStaticMac)
+[[ "$SAFETY" == "true" ]] && CRATES+=(safety-check)
 
 if [[ "$DRY_RUN" != "true" ]]; then
     user_bus_ready && user_systemctl stop power-manager.service touchpad-gestures.service >/dev/null 2>&1 || true
@@ -944,9 +963,9 @@ if [[ "$DRY_RUN" != "true" ]]; then
 fi
 if [[ "$DRY_RUN" != "true" ]] && ! rust_ok; then
     warn_later "No Rust toolchain: skipped building the helpers. Install it (sudo pacman -S rust), then run install.sh again."
-    BUILD_FAILED=(hx power-manager touchpad-gestures recon-deceiver log-analyst attacker-dossier setStaticMac)
+    BUILD_FAILED=("${CRATES[@]}")
 else
-    for crate in hx power-manager touchpad-gestures recon-deceiver log-analyst attacker-dossier setStaticMac; do
+    for crate in "${CRATES[@]}"; do
         MANIFEST="$TARGET_RICE/src/$crate/Cargo.toml"; [[ -f "$MANIFEST" ]] || MANIFEST="$RICE_SOURCE/src/$crate/Cargo.toml"
         log_info "Building ${BOLD}${crate}${RESET} (the first time takes a few minutes)..."
         if run_as_user_cmd "cargo build --release: $crate" env "CARGO_TARGET_DIR=$BUILD_ROOT/$crate" cargo build --release --manifest-path "$MANIFEST" \
@@ -1093,7 +1112,7 @@ if command -v dmidecode >/dev/null 2>&1; then
 else warn_later "dmidecode is missing: the RAM card shows the size only (sudo pacman -S dmidecode, then run this again)."; fi
 
 # ---------------------------------------------------------------------------------------------- step 11
-log_step "Step 11: Root helpers (halcyon-tune, sysmode, backlight)"
+log_step "Step 11: Root helpers (halcyon-tune, sysmode, safety check, backlight)"
 
 # ---- halcyon-tune: the ONE thing allowed to run as root without a password
 # /usr/local/bin/halcyon-tune is a root-owned copy (you cannot edit what runs as root) and takes no free-form arguments
@@ -1285,6 +1304,26 @@ if [[ "$DRY_RUN" != "true" ]] && ! kbd_led_present && is_laptop; then
     run_as_user bash "$TARGET_RICE/scripts/kbd-backlight.sh" doctor 2>&1 | sed 's/^/   /' | head -n 8 || true
 fi
 
+# ---- safety check (optional): the program Settings > Backup > "Safety check" starts
+# Like sysmode it runs as root (system update, scans, firewall, backup), so the installed copy is root-owned: nothing running
+# as you can change what you later start with sudo. Settings greys the entry out when /usr/local/bin/safety-check is missing.
+if [[ "$SAFETY" == "true" ]]; then
+    if [[ "$PACKAGES" == "true" ]]; then
+        log_info "The safety check uses: clamav rkhunter lynis aide ufw rsync libnotify"
+        install_pkgs clamav rkhunter lynis aide ufw rsync libnotify
+    fi
+    if [[ "$DRY_RUN" == "true" ]] || [[ -f "$BIN_DIR/safety-check" ]]; then
+        try run_cmd "Installing /usr/local/bin/safety-check (root-owned)" as_root install -Dm755 -o root -g root "$BIN_DIR/safety-check" /usr/local/bin/safety-check
+        log_info "Run it from Settings > Backup > Safety check, or in a terminal:  sudo safety-check   (logs: ~/logs/safety_check/)"
+    else
+        warn_later "safety-check was not built, so it is not installed (its Settings entry stays greyed out). Retry: ./install.sh --safety-check"
+    fi
+elif [[ "$SAFETY_ASKED" == "true" && "$PACKAGES" == "true" && "$DRY_RUN" != "true" && -e /usr/local/bin/safety-check ]]; then
+    try run_cmd "Removing /usr/local/bin/safety-check (you chose no safety check)" as_root rm -f /usr/local/bin/safety-check
+else
+    log_info "Safety check skipped: its entry in Settings > Backup stays greyed out (add it later: ./install.sh --safety-check)."
+fi
+
 # ---------------------------------------------------------------------------------------------- step 12
 log_step "Step 12: Wallpaper and colours"
 user_setup wallpaper  || warn_later "Wallpaper / colours: something did not work (is ImageMagick installed?)"
@@ -1293,7 +1332,7 @@ user_setup app-themes || warn_later "App themes (Starship, fish, btop, yazi, Spo
 if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
-    user_setup save-choices "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" || true
+    user_setup save-choices "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" || true
 fi
 [[ "$PACKAGES" == "true" && "$SKIP_DRIVERS" != "true" ]] && { user_setup gpu-env "$GPU_ENV_MODE" || true; }
 
@@ -1385,8 +1424,9 @@ echo
 echo -e "${BOLD}First keys${RESET}"
 echo -e "  ${MAGENTA}Super (tap)${RESET}       Launcher          ${MAGENTA}Super + T${RESET}         Terminal"
 echo -e "  ${MAGENTA}Super + Q${RESET}         Close window      ${MAGENTA}Super + Tab${RESET}       Workspace tree"
-echo -e "  ${MAGENTA}Super + Alt + /${RESET}   All shortcuts     ${MAGENTA}Super + L${RESET}         Lock screen"
+echo -e "  ${MAGENTA}Super + /${RESET}         All shortcuts     ${MAGENTA}Super + L${RESET}         Lock screen"
 echo -e "  ${MAGENTA}Super + Ctrl + ←/→${RESET}  Previous / next workspace (a new one after the last)"
+[[ "$SAFETY" == "true" ]] && echo -e "  ${MAGENTA}Settings > Backup${RESET}   Safety check (update, malware / rootkit scan, firewall, backup)"
 echo
 echo -e "${DIM}Update later: ~/.config/Halcyon/update.sh     ·     Settings: from the island     ·     Log of this run: ${LOG_FILE}${RESET}"
 echo

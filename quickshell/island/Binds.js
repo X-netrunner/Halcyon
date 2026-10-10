@@ -57,6 +57,7 @@ var groups = [
     { id: "toggles", title: "Toggles", items: [
         { id: "power", label: "Auto power manager", keys: "SUPER + ALT + P" },
         { id: "caffeine", label: "Caffeine (screen stays awake)", keys: "SUPER + ALT + C" },
+        { id: "focus", label: "Focus mode (timer, do not disturb, blocked apps)", keys: "SUPER + ALT + F" },
         { id: "gestures", label: "Touchpad edge gestures", keys: "SUPER + ALT + G" },
         { id: "livewall", label: "Live wallpaper", keys: "SUPER + ALT + W" },
         { id: "nextwall", label: "Next wallpaper", keys: "SUPER + SHIFT + W" },

@@ -32,17 +32,18 @@ write_conf() {   # rewrite our keys, keep any other line the user added
 
 case "${1:-list}" in
   list)
-    nm=false; bl=false; hp=false; gn=false; kd=false; nv=false
+    nm=false; bl=false; hp=false; gn=false; kd=false; nv=false; sf=false
     have nm-applet && nm=true
     have blueman-applet && bl=true
     exists /usr/lib/hyprpolkitagent/hyprpolkitagent && hp=true
     exists /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1 && gn=true
     exists /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 && kd=true
     [ -r /proc/driver/nvidia/version ] && nv=true
+    [ -x /usr/local/bin/safety-check ] && sf=true      # the optional safety check (install.sh asks): Settings greys its entry out without it
     case "$PORTAL" in demand) ;; *) PORTAL=login ;; esac
-    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","CLIPBOARD":%s,"GESTURES":%s,"PORTAL":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s}}\n' \
+    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","CLIPBOARD":%s,"GESTURES":%s,"PORTAL":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s,"safety":%s}}\n' \
       "$([ "$NM_APPLET" = 1 ] && echo true || echo false)" "$([ "$BLUEMAN" = 1 ] && echo true || echo false)" \
-      "$POLKIT" "$(gpu_now)" "$(files_now)" "$([ "$CLIPBOARD" = 1 ] && echo true || echo false)" "$([ "$GESTURES" = 1 ] && echo true || echo false)" "$PORTAL" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv"
+      "$POLKIT" "$(gpu_now)" "$(files_now)" "$([ "$CLIPBOARD" = 1 ] && echo true || echo false)" "$([ "$GESTURES" = 1 ] && echo true || echo false)" "$PORTAL" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv" "$sf"
     ;;
   set)
     key="$2"; val="$3"

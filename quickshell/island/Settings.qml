@@ -75,11 +75,25 @@ Scope {
     }
 
     // ---- Startup & background (scripts/startup-conf.sh): tray applets, polkit agent, GPU. Keys \"st:NAME\" in the tree below.
-    property var startup: ({ NM_APPLET: false, BLUEMAN: false, POLKIT: "auto", GPU: "igpu", FILE_ICONS: "medium", CLIPBOARD: true, GESTURES: true, PORTAL: "login", has: ({ nm: true, blueman: true, hyprpolkit: true, gnome: true, kde: true, nvidia: false }) })
+    property var startup: ({ NM_APPLET: false, BLUEMAN: false, POLKIT: "auto", GPU: "igpu", FILE_ICONS: "medium", CLIPBOARD: true, GESTURES: true, PORTAL: "login", has: ({ nm: true, blueman: true, hyprpolkit: true, gnome: true, kde: true, nvidia: false, safety: false }) })
     property string startupNote: ""        // "applies at the next login" hint after changing the agent or the GPU
     readonly property string startupScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-conf.sh"
     // every change in the tree goes through here: "st:" values are written by the script, everything else goes to shell.qml
     function change(key, v) {
+        if (typeof key === "string" && key.indexOf("pair:") === 0) {
+            var pr = pairs[key.substring(5)]
+            for (var i = 0; i < pr.length; i++) setting("opt:" + pr[i], v)
+            return
+        }
+        if (typeof key === "string" && key.indexOf("fc:") === 0) {
+            var fk = key.substring(3)
+            var fc = JSON.parse(JSON.stringify(focusConf))
+            fc[fk] = v
+            focusConf = fc
+            Quickshell.execDetached(["bash", focusScript, "set", fk, (v === true ? "1" : v === false ? "0" : String(v))])
+            focusAgain.restart()
+            return
+        }
         if (typeof key === "string" && key.indexOf("st:") === 0) {
             var k = key.substring(3)
             var st = JSON.parse(JSON.stringify(startup))
@@ -98,6 +112,38 @@ Scope {
         command: ["bash", root.startupScript, "list"]
         stdout: StdioCollector { onStreamFinished: { try { root.startup = JSON.parse(text) } catch (e) {} } }
     }
+
+    // ---- Focus mode (scripts/focus.sh): options are keys "fc:NAME" in the tree below; the block list is the custom leaf at the end
+    property var focusConf: ({ LENGTH: 25, POMODORO: false, BREAK: 5, LONG_BREAK: 15, CYCLES: 4, DND: true, CAFFEINE: true, BLOCK: true, CLOSE_RUNNING: true, BREAK_FREE: true, apps: [] })
+    property var focusApps: ({ blocked: [], open: [] })
+    readonly property string focusScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/focus.sh"
+    signal focusOptionsChanged()              // shell.qml reloads what the utilities box shows
+    function focusLoad() { if (!focusConfProc.running) focusConfProc.running = true; if (!focusAppsProc.running) focusAppsProc.running = true }
+    function focusApp(what, cls) {         // block | unblock
+        Quickshell.execDetached(["bash", focusScript, what, cls])
+        focusAgain.restart()
+    }
+    Timer { id: focusAgain; interval: 500; onTriggered: { root.focusLoad(); root.focusOptionsChanged() } }
+    Timer { interval: 4000; running: root.open && !root.collapsed.focus; repeat: true; onTriggered: if (!focusAppsProc.running) focusAppsProc.running = true }
+    Process {
+        id: focusConfProc
+        command: ["bash", root.focusScript, "conf"]
+        stdout: StdioCollector { onStreamFinished: { try { root.focusConf = JSON.parse(text) } catch (e) {} } }
+    }
+    Process {
+        id: focusAppsProc
+        command: ["bash", root.focusScript, "apps"]
+        stdout: StdioCollector { onStreamFinished: { try { root.focusApps = JSON.parse(text) } catch (e) {} } }
+    }
+
+    // ---- options that exist twice (island AND notch): ONE entry in the tree writes both. Keys "pair:NAME".
+    readonly property var pairs: ({
+        ws: ["islWs", "notchWs"], wsMin: ["islWsMin", "notchWsMin"], specials: ["islSpecials", "notchSpecials"],
+        viz: ["islViz", "notchViz"], time: ["islTime", "notchTime"], date: ["clockDate", "notchDate"],
+        combo: ["islCombo", "notchCombo"], wifi: ["islWifi", "notchWifi"], wifiStyle: ["islWifiStyle", "notchWifiStyle"],
+        bt: ["islBtMode", "notchBtMode"], bat: ["islBat", "notchBat"], batPct: ["islBatPct", "notchBatPct"],
+        caffeine: ["islCaffeine", "notchCaffeine"], spacing: ["islSpacing", "notchSpacing"]
+    })
 
     // default apps (scripts/apps.sh): what is installed per kind, and the one in use
     property var apps: ({ terminal: [], browser: [], files: [], editor: [], music: [], chat: [], current: ({ terminal: "", browser: "", files: "", editor: "", music: "", chat: "" }) })
@@ -151,7 +197,19 @@ Scope {
     signal wallpaperSet(string path)  // a thumbnail was clicked
     signal action(string id)          // wallpaper | config | cheatsheet | reload
 
-    function show() { open = true }
+    // show("focus") opens Settings with only that group unfolded (the utilities box's "Blocked apps" button uses it)
+    property string pendingGroup: ""
+    function unfoldOnly(id) {
+        setAll(true)
+        var c = {}
+        for (var k in collapsed) if (k !== id) c[k] = collapsed[k]
+        collapsed = c
+        section = ""
+    }
+    function show(group) {
+        if (group) { if (open) unfoldOnly(group); else pendingGroup = group }
+        open = true
+    }
     function hide() { open = false }
     function toggle() { open = !open }
 
@@ -223,41 +281,26 @@ Scope {
         ] },
         { id: "barstyle", title: "Bar style", section: "Desktop", items: [
             { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Everything else (pages, launcher, panels) works the same in both.", opts: [o("island", "Island"), o("notch", "Notch")] },
-            { type: "toggle", key: "opt:islWs", label: "Show workspaces", when: "opt:barStyle=island" },
+            { type: "toggle", key: "pair:ws", label: "Show workspaces" },
             { type: "seg", key: "opt:islWsLook", label: "Workspace look", desc: "Numbers: the island's own 1 2 3 ... with a sliding pill. Capsules: the notch look, small vertical capsules, the current one big and vivid.", opts: [o("numbers", "Numbers"), o("capsules", "Capsules")], when: "opt:barStyle=island" },
-            { type: "seg", key: "opt:islWsMin", label: "Capsules always shown", desc: "For the capsule look: workspaces 1 to N are always drawn.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")], when: "opt:barStyle=island" },
-            { type: "toggle", key: "opt:islSpecials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)", when: "opt:barStyle=island" },
-            { type: "toggle", key: "opt:islViz", label: "Music bars", desc: "Only while something plays.", when: "opt:barStyle=island" },
-            { type: "toggle", key: "opt:islTime", label: "Show the time", desc: "The day and date are in the Clock group.", when: "opt:barStyle=island" },
-            { type: "seg", key: "opt:islSpacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding. Either way the time stays dead centre, with the workspaces and status icons balanced on both sides.", opts: [o("compact", "Compact"), o("spacious", "Spacious")], when: "opt:barStyle=island" },
-            { type: "toggle", key: "opt:islCombo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island" },
-            { type: "toggle", key: "opt:islWifi", label: "Show Wi-Fi", when: "opt:barStyle=island" },
-            { type: "seg", key: "opt:islWifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "opt:barStyle=island&opt:islCombo=false" },
-            { type: "seg", key: "opt:islBtMode", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")], when: "opt:barStyle=island" },
-            { type: "toggle", key: "opt:islBat", label: "Show battery", when: "opt:barStyle=island" },
-            { type: "toggle", key: "opt:islBatPct", label: "Show battery percentage", when: "opt:barStyle=island" },
-            { type: "toggle", key: "opt:islCaffeine", label: "Show the Caffeine icon", when: "opt:barStyle=island" },
-            { type: "toggle", key: "opt:notchWs", label: "Show workspaces", when: "opt:barStyle=notch" },
-            { type: "seg", key: "opt:notchWsMin", label: "Workspaces always shown", desc: "Capsules for workspaces 1 to N are always drawn (empty ones dim, ones with windows in a faded colour, the current one big and vivid). More show up when you use them.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")], when: "opt:barStyle=notch" },
-            { type: "toggle", key: "opt:notchSpecials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)", when: "opt:barStyle=notch" },
-            { type: "seg", key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&opt:notchSpecials=true" },
-            { type: "toggle", key: "opt:notchViz", label: "Music bars next to the time", desc: "Only while something plays.", when: "opt:barStyle=notch" },
-            { type: "toggle", key: "opt:notchTime", label: "Show the time", desc: "12 / 24 hour and seconds are in the Clock group.", when: "opt:barStyle=notch" },
-            { type: "toggle", key: "opt:notchDate", label: "Show the day and date", desc: "Separate from the time: show either, both or neither.", when: "opt:barStyle=notch" },
-            { type: "seg", key: "opt:notchAccent", label: "Accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch" },
-            { type: "toggle", key: "opt:notchCombo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=notch" },
-            { type: "toggle", key: "opt:notchWifi", label: "Show Wi-Fi", when: "opt:barStyle=notch" },
-            { type: "seg", key: "opt:notchWifiStyle", label: "Wi-Fi look", desc: "Bars and dots light up with the signal strength. Symbol is the classic Wi-Fi icon. (Not used by the combined icon.)", opts: [o("bars", "Bars"), o("symbol", "Symbol"), o("dots", "Dots")], when: "opt:barStyle=notch&opt:notchCombo=false" },
-            { type: "seg", key: "opt:notchBtMode", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")], when: "opt:barStyle=notch" },
-            { type: "seg", key: "opt:notchSpacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the clock always dead centre.", opts: [o("compact", "Compact"), o("spacious", "Spacious")], when: "opt:barStyle=notch" },
+            { type: "seg", key: "pair:wsMin", label: "Capsules always shown", desc: "Workspaces 1 to N are always drawn as capsules (empty ones dim, ones with windows faded, the current one big and vivid). More show up when you use them. The notch always draws capsules; the island only with the capsule look.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")] },
+            { type: "toggle", key: "pair:specials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)" },
+            { type: "seg", key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&pair:specials=true" },
+            { type: "toggle", key: "pair:viz", label: "Music bars", desc: "Only while something plays." },
+            { type: "seg", key: "opt:viz", label: "Music bars quality", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
+            { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons." },
+            { type: "toggle", key: "pair:wifi", label: "Show Wi-Fi" },
+            { type: "seg", key: "pair:wifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "pair:combo=false" },
+            { type: "seg", key: "pair:bt", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")] },
+            { type: "toggle", key: "pair:bat", label: "Show battery" },
+            { type: "toggle", key: "pair:batPct", label: "Show battery percentage" },
+            { type: "toggle", key: "pair:caffeine", label: "Show the Caffeine icon" },
             { type: "toggle", key: "opt:notchCenter", label: "Keep the clock centred", desc: "Off: the bar is only as wide as what it shows, no gaps. On: the clock stays in the exact middle and the shorter side keeps empty space.", when: "opt:barStyle=notch" },
-            { type: "toggle", key: "opt:notchBat", label: "Show battery", when: "opt:barStyle=notch" },
-            { type: "toggle", key: "opt:notchBatPct", label: "Show battery percentage", when: "opt:barStyle=notch" },
-            { type: "toggle", key: "opt:notchCaffeine", label: "Show the Caffeine icon", when: "opt:barStyle=notch" },
-            { type: "toggle", key: "opt:notchBg", label: "Show the background apps count", desc: "Needs Bar > Background apps count = Bar.", when: "opt:barStyle=notch" }
+            { type: "seg", key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch" }
         ] },
         { id: "bar", title: "Bar", section: "Desktop", items: [
             { type: "seg", key: "barPadding", label: "Bar size and padding", desc: "How tall the bar is. Island: also how far it floats from the top edge and the space at its sides.", opts: [o("low", "Low"), o("normal", "Normal"), o("high", "High")] },
+            { type: "seg", key: "pair:spacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the time always dead centre. (Bar size and padding above is the bar's height and its distance from the edge.)", opts: [o("compact", "Compact"), o("spacious", "Spacious")] },
             { type: "toggle", key: "autoHide", label: "Auto-hide the bar" },
             { type: "seg", key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
             { type: "seg", key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")] },
@@ -267,7 +310,8 @@ Scope {
         { id: "clock", title: "Clock", section: "Desktop", items: [
             { type: "seg", key: "clock24", label: "Clock", opts: [o(false, "12 hour"), o(true, "24 hour")] },
             { type: "toggle", key: "opt:clockSeconds", label: "Show seconds" },
-            { type: "toggle", key: "opt:clockDate", label: "Show the day and date" }
+            { type: "toggle", key: "pair:time", label: "Show the time" },
+            { type: "toggle", key: "pair:date", label: "Show the day and date", desc: "Separate from the time: show either, both or neither." }
         ] },
         { id: "workspaces", title: "Workspaces & windows", section: "Desktop", items: [
             { type: "action", id: "layout", label: "Tiling layout", btn: "Switch dwindle / scrolling", done: "Switched" },
@@ -292,6 +336,19 @@ Scope {
             { type: "seg", key: "opt:toastSecs", label: "How long a popup stays", desc: "Urgent ones always wait for a click.", opts: [o(0, "App decides"), o(3, "3 s"), o(5, "5 s"), o(8, "8 s"), o(12, "12 s")] },
             { type: "seg", key: "notifHistoryMax", label: "Notifications the centre keeps", opts: [o(10, "10"), o(20, "20"), o(30, "30"), o(50, "50"), o(100, "100")] }
         ] },
+        { id: "focus", title: "Focus mode", section: "Desktop", items: [
+            { type: "seg", key: "fc:LENGTH", label: "Session length", desc: "Start it from the utilities box (bottom-right corner, Focus) or SUPER+ALT+F. A timer runs, Do not disturb is on and the apps below are kept closed. When it ends everything goes back to how it was.", opts: [o(15, "15"), o(25, "25"), o(45, "45"), o(50, "50"), o(60, "60"), o(90, "90")] },
+            { type: "toggle", key: "fc:POMODORO", label: "Pomodoro", desc: "Work, a short break, work again ... and a long break after the last round. A reminder shows up at every change, even with Do not disturb on." },
+            { type: "seg", key: "fc:BREAK", label: "Short break (minutes)", opts: [o(3, "3"), o(5, "5"), o(10, "10")], when: "fc:POMODORO=true" },
+            { type: "seg", key: "fc:LONG_BREAK", label: "Long break (minutes)", opts: [o(10, "10"), o(15, "15"), o(20, "20"), o(30, "30")], when: "fc:POMODORO=true" },
+            { type: "seg", key: "fc:CYCLES", label: "Rounds", opts: [o(2, "2"), o(3, "3"), o(4, "4"), o(6, "6")], when: "fc:POMODORO=true" },
+            { type: "toggle", key: "fc:DND", label: "Do not disturb while focusing", desc: "Popups are muted, new notifications are still kept in the notification centre. Urgent ones get through." },
+            { type: "toggle", key: "fc:CAFFEINE", label: "Keep the screen awake", desc: "No dimming, lock or sleep while a session runs." },
+            { type: "toggle", key: "fc:BLOCK", label: "Close blocked apps", desc: "Windows of the apps in the list below are closed the moment they open. It is a normal close request, never a kill, so an app can still ask about unsaved work." },
+            { type: "toggle", key: "fc:CLOSE_RUNNING", label: "Also close the ones already open", desc: "When a session starts. Off: only apps opened during the session are closed.", when: "fc:BLOCK=true" },
+            { type: "toggle", key: "fc:BREAK_FREE", label: "Allow blocked apps in breaks", desc: "Pomodoro breaks and Pause lift the block.", when: "fc:BLOCK=true&fc:POMODORO=true" },
+            { type: "custom", name: "focusApps" }
+        ] },
         { id: "panels", title: "Panels & on-screen display", section: "Desktop", items: [
             { type: "seg", key: "clickMode", label: "Edge boxes (notifications, console, utilities)", opts: [o(false, "Hover"), o(true, "Click")] },
             { type: "toggle", key: "osdOn", label: "Volume / brightness bar", desc: "Slides up from the bottom whenever volume, brightness or the keyboard light changes." },
@@ -310,7 +367,7 @@ Scope {
             { type: "toggle", key: "hy:tapToClick", label: "Tap to click" },
             { type: "toggle", key: "hy:disableTyping", label: "Pause the touchpad while typing" },
             { type: "slider", key: "scrollTouch", label: "Touchpad scroll speed", min: 0.1, max: 1.5, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
-            { type: "tool", key: "gestures", label: "Edge gestures", desc: "Volume, brightness and track skipping from the touchpad edges." }
+            { type: "toggle", key: "st:GESTURES", label: "Edge gestures", desc: "Slide along a touchpad edge: right = volume, top = brightness, left = previous / next track. Off stops the helper at once (and it stays off after login); the normal touchpad keeps working. SUPER+ALT+G only mutes them for a moment." }
         ] },
         { id: "keyboard", title: "Keyboard", section: "Input & power", items: [
             { type: "slider", key: "hy:repeatDelay", def: 600, label: "Key repeat delay", min: 150, max: 800, step: 10, unit: " ms" },
@@ -333,7 +390,6 @@ Scope {
             { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
             { type: "seg", key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
             { type: "seg", key: "opt:bgRefresh", label: "Background refresh", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. Normal: every 2 s / 4 s. Relaxed: 5 s / 10 s. Slow: 10 s / 20 s. Fewer wake-ups and far fewer small processes, nothing looks different. The performance page and the bar's CPU / RAM / TEMP row stay at the normal pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "Normal"), o("relaxed", "Relaxed"), o("slow", "Slow")] },
-            { type: "seg", key: "opt:viz", label: "Music bars in the bar", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
             { type: "action", id: "mem-report", label: "Memory report", btn: "Show what uses my RAM", done: "Opening…", desc: "Opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh), so you can see where the RAM goes." },
             { type: "action", id: "detect-ram", label: "Memory details", btn: "Detect RAM", done: "Asking…", desc: "Asks for your password once to read the memory type and speed." }
         ] },
@@ -341,7 +397,6 @@ Scope {
             { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
             { type: "toggle", key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
             { type: "toggle", key: "st:CLIPBOARD", label: "Clipboard history", desc: "The two small watchers that remember what you copy (text and pictures) for the clipboard picker. Off stops them at once and saves a few MB; the picker then only shows what was saved before." },
-            { type: "toggle", key: "st:GESTURES", label: "Touchpad edge gestures", desc: "Slide on the touchpad edge for volume, brightness and track skip. Off stops the helper at once; the normal touchpad keeps working." },
             { type: "seg", key: "st:PORTAL", label: "Screen-sharing helper", desc: "At login: it is always ready (Hyprland's own screen-share portal). On demand: it is not started until the first app asks to share or record the screen (browser, OBS), which then takes a moment longer once. Saves its memory until then.", opts: [o("login", "At login"), o("demand", "On demand")] },
             { type: "seg", key: "st:POLKIT", label: "Password prompt helper (polkit agent)", desc: "The small program that shows the 'enter your password' window for apps that need admin rights. Auto picks the lightest one installed: Hyprland's, then GNOME's, then KDE's (the heaviest). None = no password windows at all. Takes effect at the next login.", opts: [o("auto", "Auto"), o("hyprpolkitagent", "Hyprland"), o("gnome", "GNOME"), o("kde", "KDE"), o("none", "None")] },
             { type: "seg", key: "st:GPU", label: "Graphics card for the desktop", desc: "Integrated: the Intel / AMD graphics draw the desktop; the NVIDIA card sleeps until you run a program with prime-run. Lowest RAM and battery use. NVIDIA: the NVIDIA card draws the desktop; smoother with heavy blur, but it loads the NVIDIA libraries (+100 MB or more RAM) and uses a lot more battery. Takes effect at the next login.", opts: [o("igpu", "Integrated (saves RAM)"), o("dgpu", "NVIDIA")] }
@@ -352,7 +407,8 @@ Scope {
         ] },
         { id: "backup", title: "Backup", section: "System", items: [
             { type: "action", id: "backup-device", label: "Backup this device", btn: "Choose a disk and back up", done: "Opening…", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the whole system is copied onto it (scripts/backup-device.sh). Nothing on the disk is erased; every backup goes in its own dated folder." },
-            { type: "action", id: "backup-home", label: "Backup my home folder only", btn: "Choose a disk and back up", done: "Opening…", desc: "Same, but only your files in your home folder. Needs no admin password." }
+            { type: "action", id: "backup-home", label: "Backup my home folder only", btn: "Choose a disk and back up", done: "Opening…", desc: "Same, but only your files in your home folder. Needs no admin password." },
+            { type: "action", id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in ~/logs/safety_check/." }
         ] },
         { id: "rice", title: "Rice", section: "System", items: [
             { type: "action", id: "config", label: "Config files", btn: "Edit config", close: true },
@@ -367,6 +423,11 @@ Scope {
         if (key.indexOf("opt:") === 0) return opt ? opt[key.substring(4)] : undefined
         if (key.indexOf("hy:") === 0) return hyCur ? hyCur[key.substring(3)] : undefined
         if (key.indexOf("st:") === 0) return startup ? startup[key.substring(3)] : undefined
+        if (key.indexOf("fc:") === 0) return focusConf ? focusConf[key.substring(3)] : undefined
+        if (key.indexOf("pair:") === 0) {            // the value of the bar that is showing now (both get written together)
+            var pr = pairs[key.substring(5)]
+            return opt ? opt[(opt.barStyle === "notch") ? pr[1] : pr[0]] : undefined
+        }
         return root[key]
     }
     // item.when = "key=value": the item is only listed while that setting has that value (e.g. the notch options)
@@ -442,7 +503,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -479,6 +540,8 @@ Scope {
         if (!startupProc.running) startupProc.running = true
         startupNote = ""
         query = ""
+        focusLoad()
+        if (pendingGroup !== "") { unfoldOnly(pendingGroup); pendingGroup = "" }
     }
 
     // ======================================================================== custom leaves
@@ -629,6 +692,85 @@ Scope {
             Text {
                 Layout.fillWidth: true
                 text: "Only installed apps are listed. A browser or file manager you pick also becomes the system default for links and folders. Something missing? Add a line to ~/.config/Halcyon/apps.custom (see the top of scripts/apps.sh)."
+                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    Component {
+        id: cFocusApps
+        ColumnLayout {
+            width: parent ? parent.width : 0
+            spacing: 12
+            Text { text: "Blocked apps"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 10
+                Repeater {
+                    model: root.focusApps.blocked || []
+                    delegate: SChip {
+                        required property var modelData
+                        pal: root.pal
+                        glyph: String.fromCodePoint(0xF0156)
+                        label: modelData
+                        on: true
+                        onClicked: root.focusApp("unblock", modelData)
+                    }
+                }
+                Text {
+                    visible: (root.focusApps.blocked || []).length === 0
+                    text: "nothing yet: click an open app below, or type its window class"
+                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                }
+            }
+            Text { text: "Open right now (click to block)"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 10
+                Repeater {
+                    model: root.focusApps.open || []
+                    delegate: SChip {
+                        required property var modelData
+                        visible: !modelData.blocked
+                        pal: root.pal
+                        glyph: String.fromCodePoint(0xF0415)
+                        label: modelData.class
+                        onClicked: root.focusApp("block", modelData.class)
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 36; radius: 18
+                    color: Qt.alpha(root.pal.surface, 0.8)
+                    border.width: 1
+                    border.color: fcIn.activeFocus ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
+                    TextInput {
+                        id: fcIn
+                        anchors.fill: parent
+                        anchors.leftMargin: 16; anchors.rightMargin: 16
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: root.pal.text
+                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                        clip: true
+                        selectByMouse: true
+                        onAccepted: { if (text.trim() !== "") { root.focusApp("block", text.trim()); text = "" } }
+                        Text {
+                            visible: !parent.text && !parent.activeFocus
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "window class, e.g. discord or steam_app_*"
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                        }
+                    }
+                }
+                SChip { pal: root.pal; label: "Add"; onClicked: { if (fcIn.text.trim() !== "") { root.focusApp("block", fcIn.text.trim()); fcIn.text = "" } } }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "The class is what `hyprctl clients` calls the window's class; * works as a wildcard and case does not matter. Saved in ~/.config/Halcyon/focus-apps.conf."
                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
             }
         }
@@ -977,6 +1119,7 @@ Scope {
                                                         required property int index
                                                         readonly property var m: leaf.modelData
                                                         readonly property bool lastLeaf: leaf.index === grp.modelData.items.length - 1
+                                                        readonly property bool off: m.needs !== undefined && !(root.startup.has && root.startup.has[m.needs] === true)   // an optional part that was not installed: greyed out
                                                         readonly property bool inline: m.type === "toggle" || m.type === "tool" || m.type === "action"
                                                         width: leaves.width
                                                         height: Math.max(56, content.implicitHeight + 32)
@@ -1005,6 +1148,7 @@ Scope {
                                                                 Layout.fillWidth: true
                                                                 spacing: 20
                                                                 visible: leaf.m.type !== "custom"
+                                                                opacity: leaf.off ? 0.45 : 1
                                                                 ColumnLayout {
                                                                     Layout.fillWidth: true
                                                                     spacing: 5
@@ -1020,7 +1164,8 @@ Scope {
                                                                     Text {
                                                                         Layout.fillWidth: true
                                                                         visible: text !== ""
-                                                                        text: (leaf.m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset)"
+                                                                        text: leaf.off ? "Not installed, so this is switched off. Add it with ./install.sh --safety-check (or ./install.sh --choose and answer yes), then open Settings again."
+                                                                            : (leaf.m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset)"
                                                                             : (leaf.m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet)"
                                                                             : (leaf.m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
                                                                             : (leaf.m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (leaf.m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
@@ -1047,7 +1192,8 @@ Scope {
                                                                     pal: root.pal
                                                                     label: leaf.m.btn || ""
                                                                     doneLabel: leaf.m.done || ""
-                                                                    onClicked: { root.action(leaf.m.id); if (leaf.m.close) root.hide() }
+                                                                    disabled: leaf.off
+                                                                    onClicked: { if (leaf.off) return; root.action(leaf.m.id); if (leaf.m.close) root.hide() }
                                                                 }
                                                             }
 
@@ -1090,6 +1236,7 @@ Scope {
                                                                 active: leaf.m.type === "custom" && !grp.shut
                                                                 sourceComponent: leaf.m.name === "wallpaper" ? cWallpaper
                                                                                : leaf.m.name === "apps" ? cApps
+                                                                               : leaf.m.name === "focusApps" ? cFocusApps
                                                                                : leaf.m.name === "growth" ? cGrowth : cSwatches
                                                             }
                                                         }

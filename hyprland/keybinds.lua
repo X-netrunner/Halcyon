@@ -125,6 +125,7 @@ bind("nextwall", "SUPER + SHIFT + W", hl.dsp.exec_cmd("quickshell ipc -p " .. ho
 bind("gestures", "SUPER + ALT + G", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_gestures.sh"))
 bind("power", "SUPER + ALT + P", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/toggle_power.sh"))
 bind("caffeine", "SUPER + ALT + C", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/caffeine.sh toggle"))   -- caffeine: screen stays awake
+bind("focus", "SUPER + ALT + F", hl.dsp.exec_cmd(ipc .. "focus"))   -- focus mode: timer + do not disturb + blocked apps (start / stop)
 
 -- Island
 bind("quickterm", "SUPER + SHIFT + Return", hl.dsp.exec_cmd(ipc .. "quickterm"))   -- top-left quick terminal

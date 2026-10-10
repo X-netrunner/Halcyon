@@ -5,7 +5,7 @@
 #   ~/.config/Halcyon/update.sh              check, and update when there is a new version
 #   ~/.config/Halcyon/update.sh --check      only say whether an update is available
 #   ~/.config/Halcyon/update.sh --force      run the setup again even when already up to date
-#   options: --yes (no questions)   --no-packages / --no-sysmode (passed on to install.sh)   -h
+#   options: --yes (no questions)   --no-packages / --no-sysmode / --safety-check / --no-safety-check (passed on to install.sh)   -h
 #
 # If ~/.config/Halcyon is a git checkout it is updated in place (git pull --rebase --autostash, so your own edits
 # stay). If it is a plain copy, the latest version is cloned to ~/.cache/halcyon-update and installed over it
@@ -24,7 +24,7 @@ for a in "$@"; do
     --check) CHECK=1 ;;
     --force) FORCE=1 ;;
     -y|--yes) YES=1 ;;
-    --no-packages|--no-sysmode) PASS+=("$a") ;;
+    --no-packages|--no-sysmode|--safety-check|--no-safety-check) PASS+=("$a") ;;
     -h|--help) sed -n 2,14p "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $a (try --help)"; exit 2 ;;
   esac

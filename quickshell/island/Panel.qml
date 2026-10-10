@@ -15,6 +15,12 @@ Glass {
     property bool autoHide: false
     property bool gaming: false
     property bool caffeine: false
+    property var focusInfo: ({ on: false })  // the Focus session (shell.qml focusState); not called `focus`: that is an Item property
+    property int focusSecs: 0                // seconds left in the running phase
+    property string focusText: "00:00"       // time left in the running phase
+    property int focusMins: 25               // length picked for the next session
+    property bool focusPomo: false           // Pomodoro for the next session
+    property int focusBlocked: 0             // how many apps are on the block list
     property real mic: 0
     property bool micMuted: false
     property real vol: 0
@@ -138,6 +144,10 @@ Glass {
     signal toggleGaming()
     signal toggleCaffeine()
     signal caffeineHour()
+    signal focusStart(int mins, bool pomo)
+    signal focusCommand(string what)         // stop | pause | resume | skip | add 5
+    signal focusPick(int mins, bool pomo)    // remember the length / Pomodoro choice
+    signal openFocusSettings()
     signal openApps()
     signal openPower()
     signal micMoved(real v)
@@ -343,6 +353,123 @@ Glass {
                 onRightClicked: root.caffeineHour()
             }
             Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF003B); label: "Background apps"; onClicked: root.openApps() }
+        }
+
+        // focus mode: a timer + do-not-disturb + closing the apps on the block list (scripts/focus.sh)
+        Text { text: "FOCUS"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4; Layout.topMargin: 10 }
+
+        // idle: pick a length, then start
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            visible: !root.focusInfo.on
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Repeater {
+                    model: [25, 50, 90]
+                    delegate: Chip {
+                        required property int modelData
+                        Layout.fillWidth: true; pal: root.pal
+                        label: modelData + "m"
+                        on: root.focusMins === modelData
+                        onClicked: root.focusPick(modelData, root.focusPomo)
+                    }
+                }
+                Chip {
+                    Layout.fillWidth: true; pal: root.pal
+                    label: "Pomodoro"
+                    on: root.focusPomo
+                    onClicked: root.focusPick(root.focusMins, !root.focusPomo)
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Chip {
+                    Layout.fillWidth: true; pal: root.pal
+                    glyph: String.fromCodePoint(0xF040A)
+                    label: "Start focus"
+                    onClicked: root.focusStart(root.focusMins, root.focusPomo)
+                }
+                Chip {
+                    Layout.fillWidth: true; pal: root.pal
+                    glyph: String.fromCodePoint(0xF009E)
+                    label: root.focusBlocked > 0 ? "Blocked apps · " + root.focusBlocked : "Block apps"
+                    onClicked: root.openFocusSettings()
+                }
+            }
+        }
+
+        // running: a countdown card with the phase, a progress line and the controls
+        Rectangle {
+            Layout.fillWidth: true
+            visible: root.focusInfo.on
+            implicitHeight: runCol.implicitHeight + 24
+            radius: root.pal.rLg
+            color: Qt.alpha(root.pal.accent, 0.10)
+            border.width: 1
+            border.color: Qt.alpha(root.pal.accent, 0.35)
+
+            ColumnLayout {
+                id: runCol
+                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                anchors.margins: 12
+                spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Text {
+                        text: root.focusText
+                        color: root.pal.text
+                        font.family: root.pal.uiFont; font.pixelSize: 30; font.weight: Font.DemiBold
+                        opacity: root.focusInfo.paused ? 0.55 : 1
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        Text {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            text: root.focusInfo.paused ? "Paused" : (root.focusInfo.phase === "work" ? "Focusing" : (root.focusInfo.phase === "long" ? "Long break" : "Break"))
+                            color: root.pal.accent
+                            font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            text: (root.focusInfo.pomodoro ? "Round " + root.focusInfo.cycle + " of " + root.focusInfo.cycles + " · " : "")
+                                  + (root.focusInfo.blocking ? "apps blocked" : "apps allowed")
+                                  + (root.focusInfo.closed > 0 ? " · " + root.focusInfo.closed + " closed" : "")
+                            color: root.pal.muted
+                            font.family: root.pal.uiFont; font.pixelSize: 11
+                        }
+                    }
+                }
+
+                // progress of the running phase
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 4; radius: 2
+                    color: Qt.alpha(root.pal.text, 0.10)
+                    Rectangle {
+                        height: parent.height; radius: 2
+                        color: root.pal.accent
+                        width: parent.width * (root.focusInfo.total > 0 ? Math.max(0, Math.min(1, 1 - root.focusSecs / root.focusInfo.total)) : 0)
+                        Behavior on width { NumberAnimation { duration: 900 } }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Chip { Layout.fillWidth: true; pal: root.pal; label: root.focusInfo.paused ? "Resume" : "Pause"; onClicked: root.focusCommand(root.focusInfo.paused ? "resume" : "pause") }
+                    Chip { Layout.fillWidth: true; pal: root.pal; label: "+5 min"; onClicked: root.focusCommand("add 5") }
+                    Chip { Layout.fillWidth: true; pal: root.pal; label: root.focusInfo.pomodoro ? "Skip" : "Done"; onClicked: root.focusCommand("skip") }
+                    RoundBtn { pal: root.pal; glyph: String.fromCodePoint(0xF0156); size: 36; onClicked: root.focusCommand("stop") }
+                }
+            }
         }
 
         // one quiet row: settings gear, gaming mode, power button
