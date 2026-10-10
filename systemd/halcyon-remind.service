@@ -1,0 +1,6 @@
+[Unit]
+Description=Halcyon: reminders to back up / run the safety check (only started while a reminder is on, see Settings > Backup)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/Halcyon/scripts/remind.sh check

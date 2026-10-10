@@ -1,0 +1,11 @@
+[Unit]
+Description=Halcyon: look once a day whether a backup / safety check reminder is due
+
+[Timer]
+# a few minutes after login (the laptop may be off at the usual time), then every day at 10:00; Persistent catches up a missed one
+OnStartupSec=5min
+OnCalendar=*-*-* 10:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

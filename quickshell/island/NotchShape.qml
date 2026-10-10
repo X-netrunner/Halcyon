@@ -8,7 +8,7 @@ Item {
     property var pal
     property real earR: 13
     property real cornR: 13
-    property color fillCol: Qt.alpha(pal.bg, 0.88)
+    property color fillCol: Qt.alpha(pal.bg, pal.solid ? 1 : 0.88)
 
     readonly property real r: Math.max(0, Math.min(earR, height - cornR))
     readonly property real cr: Math.max(0, Math.min(cornR, height / 2, (width - 2 * r) / 2))

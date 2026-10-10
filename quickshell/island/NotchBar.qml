@@ -516,8 +516,11 @@ PanelWindow {
 
         // clicking the status icons opens the performance page (under the row, so the background-apps count keeps its own click)
         MouseArea {
-            anchors.fill: rightMain
-            anchors.margins: -6
+            x: rightGroup.x + rightMain.x - 6
+            y: rightGroup.y + rightMain.y - 6
+            width: rightMain.width + 12
+            height: rightMain.height + 12
+            z: -1
             cursorShape: Qt.PointingHandCursor
             onClicked: win.statusClicked()
         }

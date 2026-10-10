@@ -66,14 +66,14 @@ host=$(hostname 2>/dev/null || echo pc); stamp=$(date +%Y-%m-%d_%H-%M-%S)
 root="$mnt/Halcyon-backup/$host"; dest="$root/$stamp"
 src=/; excl=(--exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/mnt --exclude=/media
   --exclude=/lost+found --exclude=/var/tmp --exclude=/var/cache --exclude=/var/lib/pacman/sync "--exclude=$mnt" --exclude=/swapfile --exclude=/.snapshots)
-if [ "$HOME_ONLY" = 1 ]; then src="$HOME/"; excl=(--exclude=.cache --exclude=.local/share/Trash "--exclude=$mnt"); fi
+if [ "$HOME_ONLY" = 1 ]; then src="$HOME/"; excl=(--exclude=.cache --exclude=.local/share/Trash --exclude=.local/share/gvfs-metadata --exclude="*.sock" "--exclude=$mnt"); fi
 
 printf '\n%sFrom:%s  %s\n%sTo:%s    %s   (%s, %s free)\n' "$B" "$N" "$([ "$HOME_ONLY" = 1 ] && echo "your home folder" || echo "the whole system")" "$B" "$N" "$dest" "$fs" "$(df -h --output=avail "$mnt" | tail -n1 | tr -d ' ')"
 if [ "$HOME_ONLY" != 1 ]; then
   need=$(df -B1 --output=used / | tail -n1 | tr -d ' '); have_b=$(df -B1 --output=avail "$mnt" | tail -n1 | tr -d ' ')
   [ "$have_b" -gt "$need" ] 2>/dev/null || printf '%s!%s The disk looks smaller than the used space on this computer (%s used): it may fill up.\n' "$Y" "$N" "$(df -h --output=used / | tail -n1 | tr -d ' ')"
 fi
-[ "$DRY" = 1 ] || { printf 'Start the backup? [y/N] '; read -r ok; case "$ok" in y|Y|yes) ;; *) echo cancelled; exit 0 ;; esac; }
+[ "$DRY" = 1 ] || { printf 'Start the backup? [Y/n] '; read -r ok; case "$ok" in n|N|no|No|NO) echo cancelled; exit 0 ;; esac; }
 
 opts=("${flags[@]}" --info=progress2 --human-readable --numeric-ids "${excl[@]}")
 [ "$link" = 1 ] && [ -e "$root/latest" ] && opts+=("--link-dest=$(readlink -f "$root/latest")")
@@ -86,6 +86,7 @@ else sudo rsync "${opts[@]}" "$src" "$dest/"; rc=$?; fi
 if [ "$rc" = 0 ] || [ "$rc" = 24 ]; then
   if [ "$DRY" = 1 ]; then rmdir "$dest" 2>/dev/null; printf '\n%sDry run finished: nothing was copied.%s\n' "$G" "$N"
   else ln -sfn "$stamp" "$root/latest"; sync; printf '\n%s✔ Backup finished:%s %s\n' "$G" "$N" "$dest"
-    have udisksctl && { printf 'Safely eject the disk now? [y/N] '; read -r e; case "$e" in y|Y) udisksctl unmount -b "$dev" >/dev/null 2>&1 && udisksctl power-off -b "${dev%%[0-9]*}" >/dev/null 2>&1; echo "You can unplug it." ;; esac; }
+    bash "${HALCYON_DIR:-$HOME/.config/Halcyon}/scripts/remind.sh" done backup 2>/dev/null   # for Settings > Backup > Remind me
+    have udisksctl && { printf 'Safely eject the disk now? [Y/n] '; read -r e; case "$e" in n|N|no|No|NO) ;; *) udisksctl unmount -b "$dev" >/dev/null 2>&1 && udisksctl power-off -b "${dev%%[0-9]*}" >/dev/null 2>&1; echo "You can unplug it." ;; esac; }
   fi
 else printf '\n%s✘ rsync stopped with code %s.%s The unfinished copy is in %s : run again to continue (it is not marked as "latest").\n' "$R" "$rc" "$N" "$dest"; exit "$rc"; fi

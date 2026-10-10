@@ -76,7 +76,7 @@ AUTO_CONFIRM=false; DRY_RUN=false; VERBOSE=true        # verbose by default: you
 INSTALL_APPS=true
 PACKAGES=true; SKIP_DRIVERS=false; SKIP_AUR=false; UPGRADE=auto; SKIP_TUNE=false
 SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=false; SYSMODE_ASKED=true; }
-SAFETY=false; SAFETY_ASKED=false            # the safety check is opt-in: it updates the system, scans and can back up to a disk
+SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default (answer n, or --no-safety-check, to skip it)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 LINK_CONFIG=false; REQUESTED_USER=""; TTY_AUTOSTART=false; LOCK_LOGIN=auto; REMOVE_LOGIN=false
 
@@ -257,7 +257,13 @@ enable_service() {   # enable_service UNIT [--now]
     fi
 }
 
-confirm() {   # default NO: for anything that changes a lot
+confirm() {   # default YES (Enter = yes). No terminal to ask on = no, so a piped install never goes ahead by itself
+    [[ "$AUTO_CONFIRM" == "true" ]] && return 0
+    [[ -t 0 ]] || return 1
+    local ans; read -rp "$1 [Y/n]: " ans || return 1
+    [[ ! "$ans" =~ ^[Nn]$ ]]
+}
+confirm_no() {   # default NO: only for the one thing that must never happen by pressing Enter (the lock-screen login)
     [[ "$AUTO_CONFIRM" == "true" ]] && return 0
     [[ -t 0 ]] || return 1
     local ans; read -rp "$1 [y/N]: " ans || return 1
@@ -798,10 +804,10 @@ choose_apps() {
         if ask "  Install sysmode?"; then SYSMODE=true; else SYSMODE=false; fi
         SYSMODE_ASKED=true
     fi
-    # ---- safety check (default NO: it is only installed when you say yes; otherwise its Settings entry is greyed out)
+    # ---- safety check (default YES; say no and it is not installed, and its Settings entry is greyed out)
     if [[ "$ask_c" == "true" ]]; then
         echo -e "\n  ${CYAN}${BOLD}Safety check${RESET}  ${DIM}one command that updates the system, scans for malware and rootkits, checks the firewall, audits and can back up to a disk${RESET}"
-        echo -e "   ${DIM}installs clamav, rkhunter, lynis, aide, ufw and rsync, and adds \"Safety check\" to Settings > Backup. Say no and that entry stays greyed out and disabled.${RESET}"
+        echo -e "   ${DIM}installs clamav, rkhunter, lynis, aide, ufw and rsync, and adds \"Safety check\" to Settings > Backup. Enter = yes. Say no and that entry stays greyed out and disabled.${RESET}"
         if confirm "  Add the safety check?"; then SAFETY=true; else SAFETY=false; fi
         SAFETY_ASKED=true
     fi
@@ -1053,7 +1059,7 @@ else
         echo "   Optional: Halcyon can use its own lock screen as the login screen: tty1 logs you in by itself, Halcyon starts ALREADY"
         echo "   LOCKED, and you type your password on the lock screen. Other consoles (Ctrl+Alt+F2) stay normal text logins."
         echo "   Undo any time: ./install.sh --remove-lock-login"
-        if [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && confirm "   Set that up? (answer n if you are not sure: start-halcyon works from any text console)"; then WANT_LOCK_LOGIN=true
+        if [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && confirm_no "   Set that up? (Enter = no; start-halcyon works from any text console)"; then WANT_LOCK_LOGIN=true
         else log_info "Not set up. Add --lock-login (or answer y when asked) to enable it later."; fi
     fi
 fi
@@ -1090,7 +1096,8 @@ log_step "Step 10: Services"
 
 UNITS="$TARGET_HOME/.config/systemd/user"
 try run_as_user_cmd "Installing the user services (gestures start with the desktop, Auto power from the island)" \
-    install -m644 "$TARGET_RICE/systemd/power-manager.service" "$TARGET_RICE/systemd/touchpad-gestures.service" "$UNITS/"
+    install -m644 "$TARGET_RICE/systemd/power-manager.service" "$TARGET_RICE/systemd/touchpad-gestures.service" \
+        "$TARGET_RICE/systemd/halcyon-remind.service" "$TARGET_RICE/systemd/halcyon-remind.timer" "$UNITS/"
 if [[ "$DRY_RUN" != "true" ]] && have_systemd && user_bus_ready; then
     try run_cmd "Reloading the user systemd" user_systemctl daemon-reload
     # only inside a running desktop (the gestures need it); otherwise they start with the next login via execs.lua
