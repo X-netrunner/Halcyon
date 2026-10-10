@@ -7,6 +7,7 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 ## Smart special icons, SUPER+/ cheatsheet, Enter saves, SUPER+Q closes overlays
 
 - **Notch bar: special workspace icons pick a side** (`NotchBar.qml`, Settings > Bar style > Special icons side: Auto / Left / Right). Auto with the clock centred puts them on whichever side does not widen the bar.
+- **Island bar: Compact / Spacious (Settings > Bar style) and a truly centred time.** Left and right halves are equal, so the time is dead centre; the music bar floats between the workspaces and the time, the day / date between the time and the status icons.
 - **Bar spacing: Compact / Spacious** (Settings > Bar style); spacious keeps the time dead centre with roomier gaps and the music bar floating between the workspaces and the time.
 - **Cheatsheet is now SUPER+/** (was SUPER+ALT+/), in `keybinds.lua` and `Binds.js`. Enter saves a shortcut you are adding / editing.
 - **SUPER+Q closes the top island overlay first** (power menu, settings, shortcuts, tree view, quick console, notification centre, launcher / perf / media page) and only closes the focused window when none is open (`scripts/close.sh`, IPC `closeTop`).

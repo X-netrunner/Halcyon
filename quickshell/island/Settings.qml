@@ -229,6 +229,7 @@ Scope {
             { type: "toggle", key: "opt:islSpecials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)", when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islViz", label: "Music bars", desc: "Only while something plays.", when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islTime", label: "Show the time", desc: "The day and date are in the Clock group.", when: "opt:barStyle=island" },
+            { type: "seg", key: "opt:islSpacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding. Either way the time stays dead centre, with the workspaces and status icons balanced on both sides.", opts: [o("compact", "Compact"), o("spacious", "Spacious")], when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islCombo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islWifi", label: "Show Wi-Fi", when: "opt:barStyle=island" },
             { type: "seg", key: "opt:islWifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "opt:barStyle=island&opt:islCombo=false" },
