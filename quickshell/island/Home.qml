@@ -18,6 +18,38 @@ RowLayout {
     property int bgCount: 0              // apps alive in the background (BgApps.count)
     property bool showBgCount: false     // Settings > Panels > Background apps count: on the bar instead of the bottom-left corner
     signal bgClicked()                   // opens the background-apps box (it stays bottom-left)
+    // Settings > Bar style > what the island shows (all on = how it always looked)
+    property bool showWs: true
+    property bool showSpecials: true
+    property string wsLook: "numbers"        // numbers (the island's own) | capsules (the notch's: vertical capsules, current one big and vivid)
+    property int wsMin: 5                    // capsules: workspaces 1..N are always drawn
+    readonly property int curH: 20
+    readonly property int curW: 11
+    readonly property int offH: 17
+    readonly property int offW: 9
+    readonly property int wsCount: {
+        var l = Hyprland.workspaces.values, m = Math.max(1, Math.min(10, wsMin))
+        for (var i = 0; i < l.length; i++) if (l[i].id > m) m = l[i].id
+        return Math.min(10, m)
+    }
+    function findWs(id) {
+        var l = Hyprland.workspaces.values
+        for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]
+        return null
+    }
+    function wsWindows(w) {
+        try { return w.toplevels.values.length } catch (e) { return 0 }
+    }
+    property bool showViz: true
+    property bool showTime: true
+    property bool showWifi: true
+    property string wifiLook: "symbol"       // symbol | bars | dots
+    property string btMode: "on"             // off | connected | on
+    property bool showBat: true
+    property bool showBatPct: true
+    property bool showCaffeine: true
+    readonly property bool statusAny: showWifi || btShown || (showBat && stats.hasBat === true) || (showCaffeine && caffeine) || (showBgCount && bgCount > 0)
+    readonly property bool btShown: net.bt === "on" && (btMode === "on" || (btMode === "connected" && (net.btdev || "") !== ""))
     property bool showStats: false       // Settings > Bar: CPU / memory / temperature slide out while the pointer is on the bar
     signal statusClicked()
     signal workspaceClicked(int wsId)
@@ -58,6 +90,7 @@ RowLayout {
         Layout.alignment: Qt.AlignVCenter
         implicitWidth: wsInner.implicitWidth
         implicitHeight: 26
+        visible: row.showWs || row.showSpecials
         readonly property int spacing: 4
 
         // index of the focused workspace in the list (-1 while a special workspace has focus)
@@ -84,7 +117,7 @@ RowLayout {
             width: wsRow.cellW
             radius: height / 2
             color: row.pal.accent
-            visible: wsRow.curIdx >= 0
+            visible: row.showWs && row.wsLook === "numbers" && wsRow.curIdx >= 0
             opacity: wsRow.curIdx >= 0 ? 1 : 0
             property real target: Math.max(0, wsRow.curIdx) * (wsRow.cellW + wsRow.spacing)
             x: target
@@ -98,10 +131,45 @@ RowLayout {
         // the numbers and special icons sit in their own Row; the pill above floats over it, outside the layout
         Row {
         id: wsInner
-        spacing: wsRow.spacing
+        spacing: row.wsLook === "capsules" ? 6 : wsRow.spacing
 
         Repeater {
-            model: row.wsList
+            model: (row.showWs && row.wsLook === "capsules") ? row.wsCount : 0
+            delegate: Item {
+                id: cItem
+                required property int index
+                readonly property var ws: row.findWs(index + 1)
+                readonly property bool cur: ws !== null && ws.focused
+                readonly property bool occ: ws !== null && row.wsWindows(ws) > 0
+                z: 1
+                width: cur ? row.curW : row.offW
+                height: 26
+                Behavior on width { enabled: row.pal.motion > 0.01; NumberAnimation { duration: Math.round(row.pal.dMed * 1.1); easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve } }
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width
+                    height: cItem.cur ? row.curH : row.offH
+                    radius: width / 2
+                    color: cItem.cur ? row.pal.accent
+                         : cItem.occ ? Qt.alpha(row.pal.accent, cMa.containsMouse ? 0.55 : 0.36)
+                         : Qt.alpha(row.pal.text, cMa.containsMouse ? 0.28 : 0.14)
+                    Behavior on height { enabled: row.pal.motion > 0.01; NumberAnimation { duration: Math.round(row.pal.dMed * 1.1); easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve } }
+                    Behavior on color { ColorAnimation { duration: row.pal.dMed } }
+                }
+                MouseArea {
+                    id: cMa
+                    anchors.fill: parent
+                    anchors.leftMargin: -3
+                    anchors.rightMargin: -3
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: row.workspaceClicked(cItem.index + 1)
+                }
+            }
+        }
+
+        Repeater {
+            model: (row.showWs && row.wsLook === "numbers") ? row.wsList : []
             delegate: Item {
                 id: wsItem
                 required property var modelData
@@ -136,7 +204,7 @@ RowLayout {
         }
 
         Repeater {
-            model: row.specials
+            model: row.showSpecials ? row.specials : []
             delegate: Item {
                 id: spItem
                 required property var modelData
@@ -165,10 +233,11 @@ RowLayout {
         }
     }
 
-    Item { implicitWidth: 18 }
+    Item { implicitWidth: 18; visible: row.showWs || row.showSpecials }
 
     Visualizer {
         Layout.alignment: Qt.AlignVCenter
+        visible: row.showViz
         pal: row.pal
         values: row.cava
         active: row.playing
@@ -178,7 +247,9 @@ RowLayout {
     Row {
         Layout.alignment: Qt.AlignVCenter
         spacing: 10
+        visible: row.showTime || row.clockDate
         Text {
+            visible: row.showTime
             text: Qt.formatDateTime(clock.date, (row.clock24 ? "HH:mm" : "hh:mm") + (row.clockSeconds ? ":ss" : "") + (row.clock24 ? "" : " AP"))
             color: row.pal.text
             font.family: row.pal.uiFont
@@ -186,7 +257,7 @@ RowLayout {
             font.weight: Font.DemiBold
         }
         Rectangle {
-            visible: row.clockDate
+            visible: row.showTime && row.clockDate
             width: 3; height: 3; radius: 1.5
             color: Qt.alpha(row.pal.muted, 0.7)
             anchors.verticalCenter: parent.verticalCenter
@@ -231,16 +302,18 @@ RowLayout {
         }
     }
 
-    Item { implicitWidth: 18 }
+    Item { implicitWidth: 18; visible: row.statusAny }
 
     // wifi / bluetooth / battery  (click -> performance page)
     Item {
         Layout.alignment: Qt.AlignVCenter
         Layout.preferredWidth: status.implicitWidth
         Layout.preferredHeight: status.implicitHeight
+        visible: row.statusAny
 
         Row {
             id: status
+            visible: row.statusAny
             z: 1                                   // above the status MouseArea so the count chip gets its own clicks
             spacing: 10
 
@@ -276,7 +349,7 @@ RowLayout {
 
             // caffeine is on: the screen will not sleep or lock
             Text {
-                visible: row.caffeine
+                visible: row.showCaffeine && row.caffeine
                 text: String.fromCodePoint(0xF0176)
                 color: row.pal.accent2
                 font.family: row.pal.font
@@ -288,15 +361,17 @@ RowLayout {
                     NumberAnimation { to: 1.0; duration: 1600; easing.type: Easing.InOutSine }
                 }
             }
-            Text {
-                text: row.net.eth ? row.icoEth : row.icoWifi
-                color: (row.net.wifi === "on" && row.net.ssid !== "") || row.net.eth ? row.pal.accent : Qt.alpha(row.pal.muted, 0.5)
-                font.family: row.pal.font
-                font.pixelSize: 14
+            WifiIcon {
+                visible: row.showWifi
                 anchors.verticalCenter: parent.verticalCenter
+                pal: row.pal
+                net: row.net
+                look: row.wifiLook
+                tint: row.pal.accent
+                size: 14
             }
             Text {
-                visible: row.net.bt === "on"
+                visible: row.btShown
                 text: row.icoBt
                 color: row.net.btdev !== "" ? row.pal.accent2 : row.pal.muted
                 font.family: row.pal.font
@@ -304,7 +379,7 @@ RowLayout {
                 anchors.verticalCenter: parent.verticalCenter
             }
             Row {
-                visible: row.stats.hasBat === true
+                visible: row.showBat && row.stats.hasBat === true
                 spacing: 5
                 anchors.verticalCenter: parent.verticalCenter
 
@@ -327,6 +402,7 @@ RowLayout {
                     Rectangle { x: 21.5; y: 4; width: 2; height: 4; radius: 1; color: row.pal.text }
                 }
                 Text {
+                    visible: row.showBatPct
                     text: row.stats.bat + "%" + (row.stats.batEst ? " (" + row.stats.batEst + ")" : "")
                     color: row.pal.text
                     font.family: row.pal.uiFont

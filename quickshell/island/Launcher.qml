@@ -113,6 +113,7 @@ Item {
         { id: "quickterm", name: "Quick terminal", desc: "Pop-out terminal for one-shot commands and sysmode", glyph: 0xF0489, kw: "terminal shell command console sysmode run" },
         { id: "edgemode", name: "Edge boxes: hover / click", desc: "Open notifications, console and utilities by hovering the edge, or by clicking it", glyph: 0xF0A2D, kw: "edge hover click corner notifications console utilities toggle" },
         { id: "dnd", name: "Toggle do not disturb", desc: "Silence popups, keep storing notifications", glyph: 0xF009B, kw: "notifications mute quiet focus" },
+        { id: "barstyle", name: "Switch bar style", desc: "Island (floating pill) or Notch (hangs from the top edge)", glyph: 0xF0208, kw: "bar style notch island" },
         { id: "autohide", name: "Toggle bar auto-hide", desc: "Hide the bar until you touch the top edge", glyph: 0xF0208, kw: "bar hide" },
         { id: "profile-auto", name: "Power mode: Auto", desc: "Let the power manager decide (load, battery, heat)", glyph: 0xF0079, kw: "battery profile" },
         { id: "profile-power-saver", name: "Power mode: Battery saver", desc: "", glyph: 0xF0079, kw: "battery profile" },

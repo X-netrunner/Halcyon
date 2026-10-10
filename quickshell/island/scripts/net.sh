@@ -23,6 +23,7 @@ nl=$'\n'
 
 while true; do
   wifi=off
+  sig=0
   [ "$(nmcli -t radio wifi 2>/dev/null)" = "enabled" ] && wifi=on
 
   # one call for both: is a Wi-Fi network up, is the cable plugged in
@@ -32,8 +33,9 @@ while true; do
   case "$nl$devs" in
     *"${nl}wifi:connected"*)
       while IFS= read -r l; do
-        case "$l" in yes:*) ssid=$(esc "${l#yes:}"); break ;; esac
-      done < <(nmcli -t -f active,ssid dev wifi 2>/dev/null)
+        case "$l" in yes:*) l=${l#yes:}; sig=${l%%:*}; ssid=$(esc "${l#*:}"); break ;; esac
+      done < <(nmcli -t -f active,signal,ssid dev wifi 2>/dev/null)
+      case "$sig" in ''|*[!0-9]*) sig=0 ;; esac
       ;;
   esac
 
@@ -46,6 +48,6 @@ while true; do
       ;;
   esac
 
-  printf '{"wifi":"%s","ssid":"%s","eth":%s,"bt":"%s","btdev":"%s"}\n' "$wifi" "$ssid" "$eth" "$bt" "$btdev"
+  printf '{"wifi":"%s","ssid":"%s","eth":%s,"bt":"%s","btdev":"%s","signal":%s}\n' "$wifi" "$ssid" "$eth" "$bt" "$btdev" "$sig"
   wait_tick
 done
