@@ -440,6 +440,7 @@ PanelWindow {
                 font.family: win.pal.uiFont
                 font.pixelSize: win.textPx
                 font.weight: Font.DemiBold
+                TapHandler { acceptedButtons: Qt.LeftButton; onTapped: { if (win.dropOn) win.pageDrop(1); else win.statusClicked() } }
                 TapHandler { acceptedButtons: Qt.RightButton; onTapped: win.clockToggled("24h") }
                 TapHandler { acceptedButtons: Qt.MiddleButton; onTapped: win.clockToggled("seconds") }
             }
@@ -522,7 +523,10 @@ PanelWindow {
             height: rightMain.height + 12
             z: -1
             cursorShape: Qt.PointingHandCursor
-            onClicked: win.statusClicked()
+            onClicked: {
+                if (win.dropOn) win.pageDrop(1)
+                else win.statusClicked()
+            }
         }
 
         // right: background apps, caffeine, Wi-Fi, Bluetooth, battery (click = performance page).

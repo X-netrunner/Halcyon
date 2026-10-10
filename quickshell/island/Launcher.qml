@@ -99,6 +99,7 @@ Item {
 
     // ---- commands (">" mode). confirm = needs Enter twice.
     readonly property var commands: [
+        { id: "wallgallery", name: "Wallpaper gallery", desc: "Interactive 3D carousel & search gallery (Tide style)", glyph: 0xF024B, kw: "wallpapers gallery background images picker choose coverflow" },
         { id: "wallpaper", name: "Random wallpaper", desc: "Switch to a new wallpaper now", glyph: 0xF02E9, kw: "background change image" },
         { id: "calc", name: "Calculator", desc: "Type = then an expression", glyph: 0xF00EB, kw: "math calculate" },
         { id: "theme", name: "Light / dark theme", desc: "Switch the whole desktop between the dark and the light theme (toggle)", glyph: 0xF0594, kw: "dark light mode appearance colours day night" },

@@ -55,6 +55,10 @@ end
 bind("wsnext", "SUPER + CTRL + Right", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh next"))
 bind("wsprev", "SUPER + CTRL + Left", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh prev"))
 
+-- Mouse scroll: hold SUPER and scroll wheel to cycle workspaces (wheel-down = next, wheel-up = prev)
+bind("ws_scroll_down", "SUPER + mouse_down", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh wheel-down"))
+bind("ws_scroll_up", "SUPER + mouse_up", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh wheel-up"))
+
 -- Special workspaces (overlay on top of the current workspace)
 --   SUPER+S            scratch workspace   (SUPER+ALT+S sends the focused window there)
 --   SUPER+M            music               (starts Spotify the first time / when it has no window: scripts/special.sh)

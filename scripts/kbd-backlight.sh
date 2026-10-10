@@ -24,6 +24,11 @@ doctor() {
   echo "machine: ${vendor:-?} ${prod:-?}"
   if [ -n "$dev" ]; then
     f="/sys/class/leds/$dev/brightness"
+    if [ "$dev" = "asus::kbd_backlight" ]; then
+      if [ -d /sys/kernel/debug/asus-nb-wmi ]; then
+        echo "ASUS detected: if keyboard light stays at 0 and ignores commands, run: sudo $here/asus-kbd-fix.sh (or kbd-backlight.sh fix)"
+      fi
+    fi
     if [ -w "$f" ]; then echo "writable: yes"; else
       echo "writable: no directly (brightnessctl / logind can still do it)."
       id -nG | tr ' ' '\n' | grep -qx input || echo "  -> you are not in the 'input' group: sudo usermod -aG input \$USER  (then log in again)"
@@ -82,6 +87,15 @@ case "$1" in
     need_dev
     if [ "$cur" -gt 0 ]; then echo "$cur" > "$last"; setraw 0
     else v=$(cat "$last" 2>/dev/null); case "$v" in ''|*[!0-9]*) v=$max ;; esac; [ "$v" -lt 1 ] && v=$max; setraw "$v"; fi ;;
+  fix)
+    fix_script="$here/asus-kbd-fix.sh"
+    if [ -f "$fix_script" ]; then
+      sudo bash "$fix_script"
+    else
+      echo "Fix script not found at $fix_script" >&2
+      exit 1
+    fi
+    ;;
   doctor) doctor "$2" ;;
-  *) echo "usage: kbd-backlight.sh status | up|down [pct] | set PCT | toggle | cycle | doctor [--load]" >&2; exit 2 ;;
+  *) echo "usage: kbd-backlight.sh status | up|down [pct] | set PCT | toggle | cycle | fix | doctor [--load]" >&2; exit 2 ;;
 esac

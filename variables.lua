@@ -90,6 +90,8 @@ return {
     kbGoToWsGroup              = "CTRL + SUPER",
     kbNextWs                   = "CTRL + SUPER + Right",
     kbPrevWs                   = "CTRL + SUPER + Left",
+    kbScrollNextWs             = "SUPER + mouse_down",
+    kbScrollPrevWs             = "SUPER + mouse_up",
 
     -- Window Group
     kbWindowGroupCycleNext     = "ALT + TAB",

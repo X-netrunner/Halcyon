@@ -232,6 +232,10 @@ Scope {
         if (group) { if (open) unfoldOnly(group); else pendingGroup = group }
         open = true
     }
+    function openGallery() {
+        show("wallpaper")
+        Qt.callLater(function() { if (wallpaperGallery) wallpaperGallery.show() })
+    }
     function hide() { open = false }
     function toggle() { open = !open }
 
@@ -632,6 +636,7 @@ Scope {
             Flow {
                 Layout.fillWidth: true
                 spacing: 12
+                ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF03E); label: "Gallery (Search & 3D Carousel)"; onClicked: wallpaperGallery.show() }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0976); label: "Next wallpaper"; onClicked: root.action("wallpaper") }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0770); label: "Open folder"; onClicked: root.wpAct("open") }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0415); label: "Add wallpapers…"; onClicked: root.wpAct("add") }
@@ -1452,7 +1457,16 @@ Scope {
                     }
                 }
             }
+            WallpaperGallery {
+                id: wallpaperGallery
+                anchors.fill: parent
+                pal: root.pal
+                wp: root.wp
+                onPicked: path => root.pickWallpaper(path)
+                onAction: act => root.wpAct(act)
+            }
         }
     }
 }
 }
+
