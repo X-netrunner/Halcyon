@@ -6,7 +6,8 @@ import Quickshell.Hyprland
 
 // Bar style "Notch" (Settings > Bar style): a bar that hangs from the very top edge of the screen.
 // Its top corners flare outwards into the screen edge (inverted corners), its bottom corners are rounded.
-//   left: workspaces (the focused one is a long pill, the others small dots)   middle: time   right: Wi-Fi bars + battery
+//   left: workspaces (the focused one is a long pill, the others small dots)   middle: time   right: Wi-Fi + Bluetooth + battery,
+//   either as three separate icons or as one round icon (StatusRing.qml, Settings > Bar style > Combined status icon)
 // What is shown is chosen in Settings > Bar style (opt.notch*). The "island" style (the floating pill) is untouched:
 // shell.qml only loads this file while opt.barStyle === "notch".
 //
@@ -27,6 +28,7 @@ PanelWindow {
     property var opt: ({})
     property string barPadding: "normal"      // low | normal | high (Settings > Bar > Bar size and padding)
     property bool autoHide: false
+    property bool clickMode: false            // Settings > Edge boxes = Click: an auto-hidden bar comes back on a click on the top edge, not on a hover
     property bool clock24: false
     property bool showStats: false            // Settings > Bar > "When you hover the bar" = Live stats
     property bool pageOpen: false             // the performance / media page or the launcher is open (bar is not clickable behind it)
@@ -58,15 +60,43 @@ PanelWindow {
     }
     readonly property bool showSeconds: opt.clockSeconds === true
     readonly property bool showWifi: opt.notchWifi !== false
+    readonly property bool combo: opt.notchCombo !== false               // Wi-Fi + Bluetooth + battery as one round icon
     // Bluetooth: off | connected (only while a device is connected) | on (whenever Bluetooth is on)
     readonly property string btMode: opt.notchBtMode || "connected"
     readonly property bool btShown: net.bt === "on" && (btMode === "on" || (btMode === "connected" && (net.btdev || "") !== ""))
     readonly property string wifiLook: opt.notchWifiStyle || "bars"      // bars | symbol | dots
-    readonly property bool centerClock: opt.notchCenter === true         // true: the clock is dead centre (empty space on the shorter side)
-    readonly property int groupGap: Math.round(barH * 0.7)               // space between workspaces, clock and status icons
+    readonly property bool spacious: opt.notchSpacing === "spacious"    // Spacious: roomier gaps everywhere, clock always dead centre
+    readonly property bool centerClock: spacious || opt.notchCenter === true         // true: the clock is dead centre (empty space on the shorter side)
+    readonly property int midGap: Math.round(barH * (spacious ? 0.7 : 0.3))      // gap between music bar, time, date, stats
+    readonly property int groupGap: Math.round(barH * (spacious ? 1.1 : 0.3))              // space between workspaces, clock and status icons
     readonly property bool showBat: opt.notchBat !== false
     readonly property bool showBatPct: opt.notchBatPct === true
     readonly property bool showCaffeine: opt.notchCaffeine !== false
+    // Where the special workspace icons (scratch, music, ...) sit. Auto (default): with the clock centred, the side that does not
+    // make the bar wider (so an icon uses free room to the right of the clock instead of growing the left side); otherwise left.
+    readonly property string specSide: opt.notchSpecialsSide || "auto"      // auto | left | right
+    readonly property int itemGap: Math.max(4, Math.round(barH * (spacious ? 0.28 : 0.17)))     // space between capsules / icons on the left
+    readonly property int rightGap: Math.round(barH * (spacious ? 0.5 : 0.3))                  // space between icons on the right
+    readonly property int specCount: {
+        if (!showSpecials) return 0
+        var n = 0
+        for (var i = 0; i < specials.length; i++)
+            if (activeSpecial === specials[i].name || hasSpecial(specials[i].name)) n++
+        return n
+    }
+    readonly property real specW: specCount > 0 ? specCount * (icoH + 4) + (specCount - 1) * itemGap : 0
+    // width of the workspace capsules without animation (one current + the others), so the choice below never flips while they grow
+    readonly property real wsEst: (showWs && wsCount > 0) ? (wsCount * offW + (curW - offW) + (wsCount - 1) * itemGap) : 0
+    readonly property bool specOnRight: {
+        if (specCount === 0) return false
+        if (specSide === "left") return false
+        if (specSide === "right") return true
+        if (!centerClock) return false
+        var L = wsEst, R = rightMain.width
+        var Lw = L + (L > 0 ? itemGap : 0) + specW
+        var Rw = R + (R > 0 ? rightGap : 0) + specW
+        return Math.max(L, Rw) < Math.max(Lw, R)        // strictly narrower on the right, otherwise stay on the left
+    }
     readonly property bool showBg: opt.notchBg !== false && opt.bgWhere !== "corner"
 
     // ---- size (Bar size and padding)
@@ -74,7 +104,7 @@ PanelWindow {
     readonly property int barH: sizeSet.h
     readonly property real earR: Math.round(barH * 0.42)       // radius of the flare into the screen edge
     readonly property real cornR: Math.round(barH * 0.42)      // radius of the bottom corners
-    readonly property int padX: Math.round(barH * 0.62)        // space between the edge of the bar and its content
+    readonly property int padX: Math.round(barH * (spacious ? 0.95 : 0.62))        // space between the edge of the bar and its content
     readonly property int textPx: Math.round(barH * 0.44)               // the time
     // workspace capsules: the current one is as tall as the time, the others 15 % smaller. Wi-Fi / battery / Bluetooth use that smaller size.
     readonly property int curH: Math.round(textPx * 1.3)
@@ -83,11 +113,14 @@ PanelWindow {
     readonly property int offW: Math.round(curW * 0.8)
     readonly property int icoH: offH
     readonly property int iconPx: icoH
+    readonly property int comboSize: Math.round(barH * 0.78)           // diameter of the combined status icon
 
     readonly property real bodyWidth: notch.bw        // the straight part of the bar (shell.qml grows the pages out of it)
     readonly property bool shown: !autoHide || peek || hov.hovered
     property bool peek: false
     Timer { id: peekT; interval: 700; onTriggered: win.peek = false }
+    // click mode: if the pointer never reaches the bar after the click, let it go again
+    Timer { id: graceT; interval: 2500; onTriggered: if (!hov.hovered) win.peek = false }
 
     anchors { top: true; left: true; right: true }
     implicitHeight: barH + 34                       // room for the soft shadow under the bar
@@ -102,14 +135,23 @@ PanelWindow {
     // while a page / the launcher is open the drop-down belongs to the island: keep this window out of the way of the mouse
     mask: Region { regions: [ Region { item: strip }, Region { item: win.pageOpen ? null : notch } ] }
 
-    // thin hot strip along the top edge that brings back an auto-hidden bar
+    // thin hot strip along the top edge that brings back an auto-hidden bar:
+    //   Edge boxes = Hover: touching it is enough     Edge boxes = Click: nothing happens until you click it
     Item {
         id: strip
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
         width: 420
         height: 5
-        HoverHandler { onHoveredChanged: { if (hovered) { peekT.stop(); win.peek = true } else peekT.restart() } }
+        HoverHandler {
+            enabled: !win.clickMode
+            onHoveredChanged: { if (hovered) { peekT.stop(); win.peek = true } else peekT.restart() }
+        }
+        TapHandler {
+            enabled: win.clickMode
+            gesturePolicy: TapHandler.ReleaseWithinBounds
+            onTapped: { peekT.stop(); win.peek = true; graceT.restart() }
+        }
     }
 
     // ------------------------------------------------------------------ the bar
@@ -120,9 +162,16 @@ PanelWindow {
         // The bar is only as wide as what it shows: groups that are empty take no room and no gap, so nothing hangs in the air.
         // (Settings > Bar style > "Keep the clock centred" gives both sides the same width instead.)
         readonly property real sideW: Math.max(leftGroup.width, rightGroup.width)
-        readonly property int parts: (leftGroup.width > 0 ? 1 : 0) + (midGroup.width > 0 ? 1 : 0) + (rightGroup.width > 0 ? 1 : 0)
-        readonly property real flowW: leftGroup.width + midGroup.width + rightGroup.width + Math.max(0, parts - 1) * win.groupGap
-        readonly property real bodyW: win.centerClock ? (sideW * 2 + midGroup.width + win.groupGap * 2 + win.padX * 2) : (flowW + win.padX * 2)
+        readonly property int parts: (leftGroup.width > 0 ? 1 : 0) + ((midGroup.width > 0 || dateRow.width > 0) ? 1 : 0) + (rightGroup.width > 0 ? 1 : 0)
+        readonly property real flowW: leftGroup.width + midGroup.width + (dateRow.width > 0 ? dateRow.width + (midGroup.width > 0 ? win.midGap : 0) : 0) + rightGroup.width + Math.max(0, parts - 1) * win.groupGap
+        // centred clock: the time itself is dead centre, the music bar floats halfway between the workspaces and the time,
+        // the date floats halfway between the time and the right-hand icons
+        readonly property real timeHalf: win.showTime ? timeText.width / 2 : 0
+        readonly property real vizExt: vizSp.width > 0 ? vizSp.width + win.midGap : 0
+        readonly property real dateExt: dateRow.width > 0 ? dateRow.width + win.midGap : 0
+        readonly property real midHalf: win.showTime ? Math.max(timeHalf + vizExt, timeHalf + dateExt)
+                                                     : Math.max(dateRow.width / 2 + vizExt, dateRow.width / 2)
+        readonly property real bodyW: win.centerClock ? (sideW * 2 + midHalf * 2 + win.groupGap * 2 + win.padX * 2) : (flowW + win.padX * 2)
         width: bodyW + win.earR * 2
         height: win.barH
         anchors.horizontalCenter: parent.horizontalCenter
@@ -259,61 +308,9 @@ PanelWindow {
         // ------------------------------------------------------------ content
         // left: workspaces. Vertical capsules (rounded top and bottom, straight sides):
         //   current = the size of the time, vivid wallpaper colour;  with windows = 15 % smaller, faded colour;  empty = 15 % smaller, dim
-        Row {
-            id: leftGroup
-            anchors.left: parent.left
-            anchors.leftMargin: notch.r + win.padX
-            y: 0
-            height: notch.bh
-            spacing: Math.max(4, Math.round(win.barH * 0.17))
-
-            WheelHandler {
-                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                onWheel: function (e) {
-                    if (e.angleDelta.y !== 0) win.workspaceScrolled(e.angleDelta.y > 0 ? 1 : -1)
-                }
-            }
-
-            Repeater {
-                model: win.showWs ? win.wsCount : 0
-                delegate: Item {
-                    id: wsItem
-                    required property int index
-                    readonly property int wsId: index + 1
-                    readonly property var ws: win.findWs(wsId)
-                    readonly property bool cur: ws !== null && ws.focused
-                    readonly property bool occ: ws !== null && win.wsWindows(ws) > 0
-                    width: cur ? win.curW : win.offW
-                    height: notch.bh
-                    Behavior on width { NumberAnimation { duration: Math.round(win.pal.dMed * 1.1); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
-
-                    Rectangle {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width
-                        height: wsItem.cur ? win.curH : win.offH
-                        radius: width / 2
-                        color: wsItem.cur ? win.ac
-                             : wsItem.occ ? Qt.alpha(win.ac, wsMa.containsMouse ? 0.55 : 0.36)
-                             : Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.28 : 0.14)
-                        Behavior on height { NumberAnimation { duration: Math.round(win.pal.dMed * 1.1); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
-                        Behavior on color { ColorAnimation { duration: win.pal.dMed } }
-                    }
-                    MouseArea {
-                        id: wsMa
-                        anchors.fill: parent
-                        anchors.leftMargin: -3
-                        anchors.rightMargin: -3
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: win.workspaceClicked(wsItem.wsId)
-                    }
-                }
-            }
-
-            Repeater {
-                model: win.showSpecials ? win.specials : []
-                delegate: Item {
+        Component {
+            id: specDelegate
+            Item {
                     id: spItem
                     required property var modelData
                     readonly property bool lit: win.activeSpecial === modelData.name
@@ -336,23 +333,90 @@ PanelWindow {
                         onClicked: win.specialClicked(spItem.modelData.name)
                     }
                 }
+        }
+
+        Row {
+            id: leftGroup
+            x: notch.r + win.padX
+            y: 0
+            height: notch.bh
+            spacing: win.itemGap
+
+            Row {
+                id: wsRow
+                height: notch.bh
+                spacing: win.itemGap
+                visible: win.showWs && win.wsCount > 0
+
+                WheelHandler {
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: function (e) {
+                        if (e.angleDelta.y !== 0) win.workspaceScrolled(e.angleDelta.y > 0 ? 1 : -1)
+                    }
+                }
+
+                Repeater {
+                    model: win.showWs ? win.wsCount : 0
+                    delegate: Item {
+                        id: wsItem
+                        required property int index
+                        readonly property int wsId: index + 1
+                        readonly property var ws: win.findWs(wsId)
+                        readonly property bool cur: ws !== null && ws.focused
+                        readonly property bool occ: ws !== null && win.wsWindows(ws) > 0
+                        width: cur ? win.curW : win.offW
+                        height: notch.bh
+                        Behavior on width { NumberAnimation { duration: Math.round(win.pal.dMed * 1.1); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
+
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width
+                            height: wsItem.cur ? win.curH : win.offH
+                            radius: width / 2
+                            color: wsItem.cur ? win.ac
+                                 : wsItem.occ ? Qt.alpha(win.ac, wsMa.containsMouse ? 0.55 : 0.36)
+                                 : Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.28 : 0.14)
+                            Behavior on height { NumberAnimation { duration: Math.round(win.pal.dMed * 1.1); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
+                            Behavior on color { ColorAnimation { duration: win.pal.dMed } }
+                        }
+                        MouseArea {
+                            id: wsMa
+                            anchors.fill: parent
+                            anchors.leftMargin: -3
+                            anchors.rightMargin: -3
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: win.workspaceClicked(wsItem.wsId)
+                        }
+                    }
+                }
+            }
+
+            // special workspaces on the left (see specSide)
+            Row {
+                id: specRowL
+                height: notch.bh
+                spacing: win.itemGap
+                visible: !win.specOnRight && win.specCount > 0
+                Repeater { model: win.showSpecials && !win.specOnRight ? win.specials : []; delegate: specDelegate }
             }
         }
 
         // middle: music bars, time, date, (live stats while hovering). Every child is as tall as the bar.
         Row {
             id: midGroup
-            x: win.centerClock ? Math.round((notch.width - width) / 2) : (notch.r + win.padX + (leftGroup.width > 0 ? leftGroup.width + win.groupGap : 0))
+            x: win.centerClock ? Math.round(notch.width / 2 - notch.timeHalf) : (notch.r + win.padX + (leftGroup.width > 0 ? leftGroup.width + win.groupGap : 0))
             y: 0
             height: notch.bh
-            spacing: Math.round(win.barH * 0.3)
+            spacing: win.midGap
 
             Visualizer {
-                visible: win.showViz && win.opt.viz !== "off" && win.playing
+                visible: win.showViz && win.opt.viz !== "off" && win.playing && !win.centerClock
                 y: Math.round((notch.bh - height) / 2)
                 pal: win.pal
                 values: win.cava
-                active: win.showViz && win.playing
+                active: win.showViz && win.playing && !win.centerClock
             }
             Text {
                 id: timeText
@@ -365,6 +429,22 @@ PanelWindow {
                 font.pixelSize: win.textPx
                 font.weight: Font.DemiBold
             }
+        }
+
+        // date / day (+ live stats while hovering). Centred mode: floats halfway between the time and the right-hand icons;
+        // otherwise it simply follows the time.
+        Row {
+            id: dateRow
+            height: notch.bh
+            spacing: win.midGap
+            y: 0
+            x: {
+                if (!win.centerClock) return Math.round(midGroup.x + midGroup.width + (midGroup.width > 0 ? win.midGap : 0))
+                if (!win.showTime) return Math.round(notch.width / 2 - width / 2)
+                var from = notch.width / 2 + notch.timeHalf, to = rightGroup.x
+                return Math.round(Math.max(from + 4, from + (to - from - width) / 2))
+            }
+
             Text {
                 visible: win.showDate
                 height: notch.bh
@@ -380,6 +460,7 @@ PanelWindow {
                 height: notch.bh
                 implicitWidth: win.showStats ? statsRow.implicitWidth : 0
                 width: implicitWidth
+                visible: implicitWidth > 0.5        // no spacing slot while the stats are folded away
                 clip: true
                 opacity: win.showStats ? 1 : 0
                 Behavior on implicitWidth { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
@@ -405,9 +486,22 @@ PanelWindow {
             }
         }
 
+        Visualizer {
+            id: vizSp
+            visible: win.centerClock && win.showViz && win.opt.viz !== "off" && win.playing
+            y: Math.round((notch.bh - height) / 2)
+            x: {
+                var from = leftGroup.x + leftGroup.width, to = win.showTime ? notch.width / 2 - notch.timeHalf : dateRow.x
+                return Math.round(Math.max(from + 4, from + (to - from - width) / 2))
+            }
+            pal: win.pal
+            values: win.cava
+            active: win.centerClock && win.showViz && win.opt.viz !== "off" && win.playing
+        }
+
         // clicking the status icons opens the performance page (under the row, so the background-apps count keeps its own click)
         MouseArea {
-            anchors.fill: rightGroup
+            anchors.fill: rightMain
             anchors.margins: -6
             cursorShape: Qt.PointingHandCursor
             onClicked: win.statusClicked()
@@ -421,7 +515,21 @@ PanelWindow {
             anchors.rightMargin: notch.r + win.padX
             y: 0
             height: notch.bh
-            spacing: Math.round(win.barH * 0.3)
+            spacing: win.rightGap
+
+            // special workspaces on the right (see specSide)
+            Row {
+                id: specRowR
+                height: notch.bh
+                spacing: win.itemGap
+                visible: win.specOnRight && win.specCount > 0
+                Repeater { model: win.showSpecials && win.specOnRight ? win.specials : []; delegate: specDelegate }
+            }
+
+            Row {
+                id: rightMain
+                height: notch.bh
+                spacing: win.rightGap
 
             // apps alive in the background (Settings > Bar > Background apps count: Bar)
             Item {
@@ -446,9 +554,33 @@ PanelWindow {
                 Text { id: cafText; anchors.centerIn: parent; text: String.fromCodePoint(0xF0176); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH }
             }
 
+            // Combined status icon: Wi-Fi in the middle, battery as a ring around it, Bluetooth devices as dots under it
+            // (Settings > Bar style > Combined status icon). Off: the separate Wi-Fi / Bluetooth / battery icons below.
+            Item {
+                visible: win.combo && comboRing.any
+                width: visible ? comboRing.width : 0
+                height: notch.bh
+                StatusRing {
+                    id: comboRing
+                    anchors.verticalCenter: parent.verticalCenter
+                    pal: win.pal
+                    net: win.net
+                    stats: win.stats
+                    tint: win.ac
+                    size: win.comboSize
+                    showWifi: win.showWifi
+                    showBat: win.showBat
+                    btMode: win.btMode
+                    showPct: win.showBatPct
+                    textColor: win.pal.text
+                    textFont: win.pal.uiFont
+                    textPx: Math.max(10, win.textPx - 2)
+                }
+            }
+
             // Wi-Fi: bars, the classic symbol or dots (Settings > Bar style > Wi-Fi look)
             Item {
-                visible: win.showWifi
+                visible: win.showWifi && !win.combo
                 width: visible ? wifiIcon.width : 0
                 height: notch.bh
                 WifiIcon {
@@ -465,7 +597,7 @@ PanelWindow {
 
             // Bluetooth: see Settings > Bar style > Bluetooth (off / only when connected / whenever it is on)
             Item {
-                visible: win.btShown
+                visible: win.btShown && !win.combo
                 width: visible ? btText.implicitWidth : 0
                 height: notch.bh
                 Text {
@@ -481,7 +613,7 @@ PanelWindow {
             // battery: a smooth pill with a pill-shaped fill (green while charging, red when low)
             Item {
                 id: bat
-                visible: win.showBat && win.stats.hasBat === true
+                visible: win.showBat && win.stats.hasBat === true && !win.combo
                 readonly property int bh: Math.round(win.icoH * 0.8)
                 readonly property int bw: Math.round(win.icoH * 1.75)
                 width: visible ? bw + (win.showBatPct ? pctText.implicitWidth + 5 : 0) : 0
@@ -520,6 +652,7 @@ PanelWindow {
                 }
             }
 
+            }
         }
     }
 

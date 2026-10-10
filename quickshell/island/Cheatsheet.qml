@@ -6,9 +6,9 @@ import "Binds.js" as Binds
 
 // Every shortcut, gesture and command as a tree (same look as the SUPER+TAB tree): the root splits into branches
 // (Apps, Windows, ...), each branch has its leaves, a leaf is a keycap row.
-//   Type to search.   Click a shortcut to change it: pick the modifiers, press the key, Save.
+//   Type to search.   Click a shortcut to change it: pick the modifiers, press the key, Enter (or Save).
 //   "Your shortcuts" holds the ones you added (key combination -> command).   Esc closes (or cancels an edit).
-// Open: SUPER+ALT+/, `>cheatsheet` in the launcher, Settings > Shortcuts.
+// Open: SUPER+/, `>cheatsheet` in the launcher, Settings > Shortcuts.
 // Changes are saved by shell.qml (binds.json + binds.lua) and applied with a Hyprland reload.
 Scope {
     id: root
@@ -226,7 +226,10 @@ Scope {
             opacity: root.open ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             focus: root.open
-            Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { if (root.editId !== "") root.cancelEdit(); else root.hide(); e.accepted = true } }
+            Keys.onPressed: e => {
+                if (e.key === Qt.Key_Escape) { if (root.editId !== "") root.cancelEdit(); else root.hide(); e.accepted = true }
+                else if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && root.editId !== "" && !root.capturing) { root.saveEdit(); e.accepted = true }
+            }
             // focus the search box from in here, where `search` is visible
             Timer { running: root.open; interval: 80; onTriggered: search.forceActiveFocus() }
             Connections { target: root; function onFocusReqChanged() { search.forceActiveFocus() } }
@@ -284,6 +287,8 @@ Scope {
                             onTextChanged: { root.typing = true; typingT.restart(); qDebounce.restart() }
                             Timer { id: qDebounce; interval: 130; onTriggered: root.query = search.text }
                             Keys.onEscapePressed: { if (root.editId !== "") root.cancelEdit(); else root.hide() }
+                            Keys.onReturnPressed: { if (root.editId !== "") root.saveEdit() }
+                            Keys.onEnterPressed: { if (root.editId !== "") root.saveEdit() }
                         }
                     }
                     Text {
@@ -549,6 +554,7 @@ Scope {
                                                                 placeholder: "Name (optional), e.g. Screen recorder"
                                                                 onVisibleChanged: if (visible) text = root.editLabel
                                                                 onTextChanged: root.editLabel = text
+                                                                onAccepted: root.saveEdit()
                                                                 onEscaped: root.cancelEdit()
                                                             }
                                                             Field {
@@ -613,6 +619,7 @@ Scope {
                                                                         if (any) root.editMods = held
                                                                         root.capturing = false
                                                                         root.editError = ""
+                                                                        root.focusReq++
                                                                     }
                                                                 }
                                                             }
@@ -638,7 +645,7 @@ Scope {
                                                             Flow {
                                                                 Layout.fillWidth: true
                                                                 spacing: 6
-                                                                Chip { pal: root.pal; implicitHeight: 30; label: "Save"; on: true; onClicked: root.saveEdit() }
+                                                                Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; on: true; onClicked: root.saveEdit() }
                                                                 Chip {
                                                                     visible: !leaf.isCustom && root.editId !== "custom:new"
                                                                     pal: root.pal; implicitHeight: 30; label: "Default"
@@ -707,6 +714,7 @@ Scope {
                                                             placeholder: "Name (optional), e.g. Screen recorder"
                                                             onVisibleChanged: if (visible) text = root.editLabel
                                                             onTextChanged: root.editLabel = text
+                                                            onAccepted: root.saveEdit()
                                                             onEscaped: root.cancelEdit()
                                                         }
                                                         Field {
@@ -761,6 +769,7 @@ Scope {
                                                                     if (any) root.editMods = held
                                                                     root.capturing = false
                                                                     root.editError = ""
+                                                                    root.focusReq++
                                                                 }
                                                             }
                                                         }
@@ -774,7 +783,7 @@ Scope {
                                                         Flow {
                                                             Layout.fillWidth: true
                                                             spacing: 6
-                                                            Chip { pal: root.pal; implicitHeight: 30; label: "Save"; on: true; onClicked: root.saveEdit() }
+                                                            Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; on: true; onClicked: root.saveEdit() }
                                                             Chip { pal: root.pal; implicitHeight: 30; label: "Cancel"; onClicked: root.cancelEdit() }
                                                         }
                                                     }

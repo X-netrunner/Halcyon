@@ -21,6 +21,8 @@ var groups = [
         { id: "fullscreen", label: "Fullscreen", keys: "SUPER + F" },
         { id: "pin", label: "Pin window", keys: "SUPER + P" },
         { id: "float", label: "Toggle floating", keys: "SUPER + ALT + space" },
+        { label: "Move a window with the mouse", kind: "text", keys: "Super + right button, drag" },
+        { label: "Resize a window with the mouse", kind: "text", keys: "Super + left button, drag" },
         { id: "swapsplit", label: "Swap split", keys: "SUPER + Y" },
         { id: "layout", label: "Layout: dwindle / scrolling", keys: "SUPER + ALT + T" }
     ] },
@@ -39,7 +41,7 @@ var groups = [
     { id: "island", title: "Island", items: [
         { id: "launcher", label: "Launcher", keys: "Super" },
         { id: "overview", label: "Live workspace tree", keys: "SUPER + TAB" },
-        { id: "cheatsheet", label: "This cheatsheet", keys: "SUPER + ALT + slash" },
+        { id: "cheatsheet", label: "This cheatsheet", keys: "SUPER + slash" },
         { id: "settings", label: "Rice settings", keys: "SUPER + F11" },
         { id: "theme", label: "Light / dark theme", keys: "SUPER + SHIFT + T" },
         { id: "notifcenter", label: "Notification centre", keys: "SUPER + SHIFT + N" },

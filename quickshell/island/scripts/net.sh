@@ -39,15 +39,19 @@ while true; do
       ;;
   esac
 
-  bt=off; btdev=""
+  # btdev = the first connected device (its name), btn = how many are connected (the dots in the combined status icon)
+  bt=off; btdev=""; btn=0
   case "$(bluetoothctl show 2>/dev/null)" in
     *"Powered: yes"*)
       bt=on
-      IFS= read -r l < <(bluetoothctl devices Connected 2>/dev/null)
-      if [ -n "$l" ]; then read -r _ _ l <<<"$l"; btdev=$(esc "$l"); fi
+      while IFS= read -r l; do
+        [ -n "$l" ] || continue
+        btn=$((btn + 1))
+        if [ -z "$btdev" ]; then read -r _ _ l <<<"$l"; btdev=$(esc "$l"); fi
+      done < <(bluetoothctl devices Connected 2>/dev/null)
       ;;
   esac
 
-  printf '{"wifi":"%s","ssid":"%s","eth":%s,"bt":"%s","btdev":"%s","signal":%s}\n' "$wifi" "$ssid" "$eth" "$bt" "$btdev" "$sig"
+  printf '{"wifi":"%s","ssid":"%s","eth":%s,"bt":"%s","btdev":"%s","btn":%s,"signal":%s}\n' "$wifi" "$ssid" "$eth" "$bt" "$btdev" "$btn" "$sig"
   wait_tick
 done
