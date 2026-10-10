@@ -18,6 +18,8 @@ ShellRoot {
     readonly property string powerService: "power-manager.service"
     // Settings > Bar > Padding: low | normal | high  ->  bar height, side padding, and the space ABOVE the bar (to the screen edge)
     // = the space BELOW it (to the windows): the same number, so the bar sits evenly. "low" is almost touching both.
+    readonly property bool notchStyle: opt.barStyle === "notch"
+    property bool notchHovered: false
     readonly property var padSet: ({ low: { h: 32, top: 3, gap: 3, x: 28 }, normal: { h: 44, top: 12, gap: 12, x: 56 }, high: { h: 54, top: 20, gap: 20, x: 76 } })[barPadding] || ({ h: 44, top: 12, gap: 12, x: 56 })
     property int notifMax: 5                 // popups on screen at once (Settings > Notifications); a new one past this hides the oldest popup (it stays in the centre)
     // notifications kept in the notification centre (Settings > Notifications, remembered); a new one past this replaces the oldest
@@ -59,6 +61,11 @@ ShellRoot {
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
         pageClose: 600,            // ms the performance / media page waits after the pointer leaves the bar before it folds back (150 / 600 / 4000)
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
+        barStyle: "island",        // island | notch : the floating pill, or a bar hanging from the top edge (NotchBar.qml)
+        notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
+        notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchCenter: false,
+        islWs: true, islWsLook: "numbers", islWsMin: 5, islSpecials: true, islViz: true, islTime: true, islWifi: true, islWifiStyle: "symbol", islBtMode: "on", islBat: true, islBatPct: true, islCaffeine: true,   // what the island shows
+        notchBat: true, notchBatPct: false, notchCaffeine: true, notchBg: true,
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
         stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true
@@ -916,6 +923,7 @@ ShellRoot {
         case "apps": appsWin.pinFor(9000); break
         case "routing": routeApps = !routeApps; saveSettings(); break
         case "autohide": setAutoHide(!autoHide); break
+        case "barstyle": setOpt("barStyle", notchStyle ? "island" : "notch"); break
         case "notifications": notifs.toggleCenter(); break
         case "quickterm": quickTerm.toggle(); break
         case "edgemode": toggleEdgeMode(); break
@@ -1196,6 +1204,7 @@ ShellRoot {
         function perf(): void { root.page = "perf" }
         function panel(): void { corner.pinFor(6000) }
         function autohide(): void { root.setAutoHide(!root.autoHide) }
+        function barstyle(): void { root.runCommand("barstyle") }
         function clearnotifs(): void { notifs.clearAll() }
         function notifcenter(): void { notifs.toggleCenter() }
         function dnd(): void { root.setDnd(!root.dnd) }
@@ -1225,7 +1234,10 @@ ShellRoot {
         // auto-hide frees the strip the bar reserves; otherwise windows start below the bar
         // Hyprland starts windows at (this zone + the outer gap), so the outer gap is taken off to get exactly padSet.gap between bar and windows
         // (it can not go lower than the outer gap itself: Settings > Look > Gaps)
-        exclusiveZone: root.autoHide ? 0 : Math.max(0, root.padSet.top + root.padSet.h + root.padSet.gap - root.gaps * 2)
+        exclusiveZone: (root.autoHide || root.notchStyle) ? 0 : Math.max(0, root.padSet.top + root.padSet.h + root.padSet.gap - root.gaps * 2)
+        // style Notch: the bar (NotchBar) reserves the strip at the top, and a layer surface is normally placed BELOW the strips reserved by
+        // others. This window must start at the very top edge so the pages hang from it, so it ignores them.
+        exclusionMode: root.notchStyle ? ExclusionMode.Ignore : ExclusionMode.Normal
         color: "transparent"
 
         WlrLayershell.namespace: "island"
@@ -1240,8 +1252,9 @@ ShellRoot {
         }
         Timer { id: hideTimer; interval: 700; onTriggered: win.peek = false }
 
-        mask: root.page === "launcher" ? launcherMask : normalMask
+        mask: root.page === "launcher" ? launcherMask : ((root.notchStyle && root.page === "home") ? stripMask : normalMask)
         Region { id: launcherMask; item: backdrop }
+        Region { id: stripMask; item: strip }
         Region { id: normalMask; regions: [ Region { item: strip }, Region { item: island } ] }
 
         Item {
@@ -1271,7 +1284,31 @@ ShellRoot {
             radius: island.radius
             spread: 22
             peak: 0.18
-            opacity: win.shown ? 1 : 0
+            opacity: (win.shown && !root.notchStyle) ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: pal.dMed } }
+        }
+
+        // style Notch: the same silhouette as the bar, for the pages. Its halo reaches above the screen edge so only the sides and bottom show.
+        HaloShadow {
+            anchors.fill: island
+            anchors.topMargin: -60
+            radius: island.radius
+            spread: 22
+            peak: 0.18
+            opacity: (root.notchStyle && root.page !== "home") ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: pal.dMed } }
+        }
+        NotchShape {
+            pal: pal
+            earR: root.notchEar
+            cornR: island.radius
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 0
+            width: island.width + root.notchEar * 2
+            height: island.height
+            fillCol: Qt.alpha(pal.bg, Math.min(0.97, pal.glassBarOpen + 0.16))
+            opacity: (root.notchStyle && root.page !== "home") ? 1 : 0
+            visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: pal.dMed } }
         }
 
@@ -1279,23 +1316,28 @@ ShellRoot {
             id: island
             pal: pal
             shadow: false           // drawn by the HaloShadow above (this item clips its content)
+            flat: root.notchStyle   // style Notch: the NotchShape behind it is the surface
             // light glass as the bar, a bit more solid once it grows into a page / the launcher
             opacityBody: root.page === "home" ? pal.glassBar : pal.glassBarOpen
             Behavior on opacityBody { NumberAnimation { duration: pal.dMed } }
             anchors.top: parent.top
-            anchors.topMargin: win.shown ? root.padSet.top : -(height + 30)
+            anchors.topMargin: root.notchStyle ? 0 : (win.shown ? root.padSet.top : -(height + 30))
             anchors.horizontalCenter: parent.horizontalCenter
             clip: true
+            // notch style: at rest the island is not there (the notch is); the pages drop down from under it
+            opacity: (root.notchStyle && root.page === "home") ? 0 : 1
+            visible: opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: pal.dMed } }
 
-            width: root.page === "home" ? home.implicitWidth + root.padSet.x
+            width: root.page === "home" ? (root.notchStyle ? root.notchBodyW : home.implicitWidth + root.padSet.x)
                  : root.page === "media" ? 500
                  : root.page === "perf" ? 720
                  : launcher.wantedWidth
-            height: root.page === "home" ? root.padSet.h
-                  : root.page === "media" ? 156
+            height: root.page === "home" ? (root.notchStyle ? root.notchBarH : root.padSet.h)
+                  : (root.page === "media" ? 156
                   : root.page === "perf" ? 316
-                  : launcher.wantedHeight
-            radius: root.page === "home" ? height / 2 : pal.rXl
+                  : launcher.wantedHeight) + (root.notchStyle ? root.notchPad : 0)
+            radius: root.page === "home" ? (root.notchStyle ? root.notchEar : height / 2) : (root.notchStyle ? 26 : pal.rXl)
 
             property real dragX: 0
 
@@ -1367,6 +1409,7 @@ ShellRoot {
             Item {
                 id: pager
                 anchors.fill: parent
+                anchors.topMargin: root.notchStyle ? root.notchPad : 0
                 x: island.dragX * 0.35
                 Behavior on x { enabled: !dragH.active; NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
@@ -1380,6 +1423,18 @@ ShellRoot {
                     clock24: root.clock24
                     clockSeconds: root.opt.clockSeconds
                     clockDate: root.opt.clockDate
+                    showWs: root.opt.islWs !== false
+                    showSpecials: root.opt.islSpecials !== false
+                    wsLook: root.opt.islWsLook === "capsules" ? "capsules" : "numbers"
+                    wsMin: root.opt.islWsMin || 5
+                    showViz: root.opt.islViz !== false
+                    showTime: root.opt.islTime !== false
+                    showWifi: root.opt.islWifi !== false
+                    wifiLook: root.opt.islWifiStyle || "symbol"
+                    btMode: root.opt.islBtMode || "on"
+                    showBat: root.opt.islBat !== false
+                    showBatPct: root.opt.islBatPct !== false
+                    showCaffeine: root.opt.islCaffeine !== false
                     playing: root.playing
                     activeSpecial: root.activeSpecial
                     caffeine: root.caffeine
@@ -1433,7 +1488,7 @@ ShellRoot {
                 // fixed at the FINAL size and pinned to the top: the pill grows over it like a curtain. With
                 // anchors.fill the whole grid was re-laid out on every frame of the grow animation (that was the roughness).
                 anchors.top: parent.top
-                anchors.topMargin: 22
+                anchors.topMargin: 22 + (root.notchStyle ? root.notchPad : 0)
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: launcher.wantedWidth - 44
                 height: launcher.wantedHeight - 44
@@ -1451,6 +1506,53 @@ ShellRoot {
                 onCloseRequested: root.page = "home"
                 onCommandRequested: c => root.runCommand(c)
             }
+        }
+    }
+
+    // =====================================================================
+    //  TOP, style "Notch": a bar hanging from the top edge (NotchBar.qml). The island above keeps the pages and the launcher.
+    // =====================================================================
+    // style Notch: the pages (media / performance / launcher) hang from the top edge in the same notch silhouette and grow out of the bar
+    readonly property int notchBarH: ({ low: 26, normal: 32, high: 40 })[barPadding] || 32
+    readonly property real notchEar: Math.round(notchBarH * 0.42)
+    // The pages have 22 px of padding inside already. Here they sit right under the screen edge, so that is cut by 8 px (14 px left on top,
+    // 22 px at the bottom). Negative = less room above the content. 0 would give the full 22 px, -14 would leave 8 px.
+    readonly property int notchPad: -8
+    property real notchBodyW: 260                   // width of the bar (set by NotchBar)
+    // hovering the notch opens perf / media after a moment (Settings > Bar > When you hover the bar), like hovering the island
+    Timer {
+        interval: 350
+        running: root.notchStyle && root.notchHovered && root.page === "home" && !island.hoverSpent && (root.hoverAction === "perf" || root.hoverAction === "media")
+        onTriggered: { root.hoverOpened = true; root.page = root.hoverAction }
+    }
+    onNotchHoveredChanged: if (!notchHovered) island.hoverSpent = false
+    LazyLoader {
+        active: root.notchStyle
+        NotchBar {
+            pal: root.palObj
+            stats: root.stats
+            net: root.net
+            cava: root.cava
+            playing: root.playing
+            activeSpecial: root.activeSpecial
+            caffeine: root.caffeine
+            bgCount: bgPanel.count
+            opt: root.opt
+            barPadding: root.barPadding
+            autoHide: root.autoHide
+            clock24: root.clock24
+            gaps: root.gaps
+            Component.onCompleted: root.notchBodyW = bodyWidth
+            onBodyWidthChanged: root.notchBodyW = bodyWidth
+            showStats: root.hoverAction === "stats" && root.notchHovered
+            pageOpen: root.page !== "home"
+            onWorkspaceClicked: n => root.hypr("hl.dsp.focus({ workspace = " + n + " })")
+            onWorkspaceScrolled: d => Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", d > 0 ? "wheel-up" : "wheel-down"])
+            onSpecialClicked: name => root.toggleSpecial(name)
+            onStatusClicked: root.page = "perf"
+            onBgClicked: appsWin.pinFor(9000)
+            onPageStep: dir => root.go(dir)
+            onHoverEdited: on => root.notchHovered = on
         }
     }
 
