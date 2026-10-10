@@ -319,9 +319,12 @@ symbol = "◇ "
 format = " spack [$symbol$environment]($style)"
 
 [custom.sysmode]
+# halcyon-sysmode-badge v2
+# `shell` matters: without it Starship runs the command in YOUR shell (fish), and this one-liner is POSIX sh, so it printed nothing.
 # Reads /etc/sysmode.mode directly (one tiny sh per prompt; `sysmode status` ran ~15 commands every time, docker included).
 # Old names still work: cyber = relaxed, hacking = stealth. No file yet (sysmode never switched): fall back to asking sysmode.
 command = '''m=; [ -r /etc/sysmode.mode ] && read -r m < /etc/sysmode.mode; case "$m" in relaxed|cyber) echo "[rx]";; secure) echo "[se]";; lockdown) echo "[ld]";; stealth|hacking) echo "[st]";; "") command -v sysmode >/dev/null || exit 0; sysmode status 2>/dev/null | awk '/Mode:/ {if ($0 ~ /RELAXED/) print "[rx]"; else if ($0 ~ /SECURE/) print "[se]"; else if ($0 ~ /LOCKDOWN/) print "[ld]"; else if ($0 ~ /STEALTH/) print "[st]"; else print "[mx]"}';; *) echo "[mx]";; esac'''
+shell = ["sh"]
 when = true
 style = "bold accent2"
 format = "[$output]($style) "

@@ -48,6 +48,7 @@ ShellRoot {
         clockAlign: "colon",       // colon | text : which part of the clock sits on the screen's centre line (Settings > Clock)
         clockNudge: 0,             // extra px to push the clock right (negative = left), on top of clockAlign
         accentBorder: true,        // the focused window's border takes the wallpaper accent (off = neutral white hairline)
+        surface: "tint",           // tint | matte | black : the box background (Settings > Look > Box background); matte / black are solid and need the dark theme
         dropDown: "off",           // off | stack | side : drag the bar down for the utilities box (stack: drag again for the notifications; side: notifications beside it)
         osdHold: 1700,             // ms the volume / brightness bar stays
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
@@ -393,6 +394,7 @@ ShellRoot {
     Pal {
         id: pal
         light: root.theme === "light"
+        surfaceStyle: root.opt.surface || "tint"
         glassShift: root.glassShift
         motion: root.gaming ? 0.25 : root.motion
         growth: root.growth
@@ -469,7 +471,7 @@ ShellRoot {
             else if (id === "reset-look") root.resetLook()
             else if (id === "mem-report") { var h = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", h + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\"; echo; read -n1 -r -p 'Press any key to close '", "x", h + "/halcyon-mem.sh"]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
-            else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x"]) }
+            else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \\\"$1/remind.sh\\\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
         }
     }

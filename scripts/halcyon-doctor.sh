@@ -101,3 +101,48 @@ sudo -n /usr/local/bin/halcyon-tune >/dev/null 2>&1; [ $? -eq 2 ] && ok "halcyon
 have gamemoded && ok "GameMode installed" || warn "gamemode missing (sudo pacman -S gamemode)"
 have powerprofilesctl && ok "power profile: $(powerprofilesctl get 2>/dev/null)" || warn "power-profiles-daemon missing"
 echo
+
+hdr "sysmode, prompt badge, reminders"
+if have sysmode; then
+  if [ -f "$RICE/sysmode/sysmode" ] && ! cmp -s "$RICE/sysmode/sysmode" "$(command -v sysmode)"; then warn "the installed sysmode differs from the one in $RICE/sysmode (run ./update.sh to install the new one)"; else ok "sysmode is the one from the rice"; fi
+  m=; [ -r /etc/sysmode.mode ] && read -r m < /etc/sysmode.mode
+  case "$m" in
+    relaxed|secure|stealth|lockdown) ok "mode file: $m" ;;
+    cyber|hacking) warn "mode file still says '$m' (the old name): current sysmode reads it fine; any switch ('sudo sysmode relaxed') rewrites it" ;;
+    "") warn "no /etc/sysmode.mode yet: the prompt asks 'sysmode status' until you switch mode once" ;;
+    *) warn "mode file says '$m': the prompt shows [mx]" ;;
+  esac
+  sc="$HOME/.config/starship.toml"
+  if [ -f "$sc" ] && grep -q '^\[custom\.sysmode\]' "$sc"; then
+    grep -qF "halcyon-sysmode-badge v2" "$sc" && ok "starship badge: current" || warn "starship.toml has an old sysmode badge (./update.sh or scripts/app-themes.sh fixes it)"
+  fi
+else ok "sysmode is not installed (skipped)"; fi
+if [ -f "$RICE/scripts/remind.sh" ]; then bash "$RICE/scripts/remind.sh" status 2>/dev/null | sed 's/^/  /'; fi
+echo
+
+hdr "System & Process Health"
+gvfs_pid=$(pgrep -x gvfsd-metadata 2>/dev/null | head -n1)
+if [ -n "$gvfs_pid" ]; then
+  gvfs_cpu=$(ps -p "$gvfs_pid" -o %cpu= 2>/dev/null | tr -d ' ' | cut -d. -f1)
+  if [ -n "$gvfs_cpu" ] && [ "$gvfs_cpu" -gt 50 ]; then
+    bad "gvfsd-metadata (PID $gvfs_pid) is consuming ${gvfs_cpu}% CPU! Corrupted GVFS metadata loop (fix: pkill -x gvfsd-metadata; rm -f ~/.local/share/gvfs-metadata/home*)"
+  else
+    ok "gvfsd-metadata healthy"
+  fi
+else
+  ok "no gvfsd-metadata process running"
+fi
+zombies=$(ps -eo stat 2>/dev/null | grep -c '^[Zz]' || true)
+zombies=${zombies:-0}
+if [ "$zombies" -gt 0 ] 2>/dev/null; then
+  warn "$zombies zombie (defunct) process(es) detected"
+else
+  ok "no zombie processes"
+fi
+avail_mb=$(awk '/MemAvailable:/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+if [ "$avail_mb" -gt 0 ] && [ "$avail_mb" -lt 1024 ]; then
+  warn "Low available memory: ${avail_mb} MB available"
+else
+  ok "available RAM: ${avail_mb} MB"
+fi
+echo

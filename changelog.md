@@ -4,6 +4,83 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Yes by default, backup / safety-check reminders, automatic safety check, pitch-black boxes
+
+- **Starship badge really fixed.** Starship ran the badge command in fish (your login shell) and it was POSIX `sh`, so it printed nothing. The table now has `shell = ["sh"]`; `app-themes.sh` repairs an installed starship.toml that has either earlier version of the badge (a copy is kept as `starship.toml.before-sysmode-fix`).
+- **Questions default to yes** ([Y/n], Enter = yes): the installer's confirmations (including adding the safety check, which is now on by default; `--no-safety-check` skips it), and `backup-device.sh` (start the backup, eject the disk). The one exception is setting up the lock-screen login, which stays [y/N]: it was deliberately made opt-in after it left a machine booting into a broken desktop. With no terminal to ask on, `confirm` still answers no, so a piped install never goes ahead by itself.
+- **Settings > Backup > Remind me**: a toggle for backups and one for the safety check, each with Day / Week / Month / 3 months / Custom (1-365 days). `scripts/remind.sh`, a user timer (`halcyon-remind.timer`) that only runs while a reminder is on, one notification when it is due. "Done" is noted by `backup-device.sh` and by the Settings safety-check button.
+- **Settings > Backup > Safety check > Run it automatically**: a root timer (`scripts/safety-auto.sh`) with the same schedule choices. Switching it on, changing how often and switching it off all need your sudo password (`sudo -k -S`: a password you typed a minute ago does not count). Everything that runs as root is root-owned (`/usr/local/bin/safety-check`, a small wrapper written to `/usr/local/bin`, the unit files), nothing in your home folder. New `safety-check --auto`: never updates the system, never asks, never formats; the backup step only runs when the known backup disk is plugged in; waits for AC power. Needs the safety-check binary rebuilt (`./update.sh`).
+- **Settings > Look > Box background**: Wallpaper tint (as before) / Matte black / Pitch black. Matte and black make every box, the bar and the Settings window solid. The drifting dots and constellations keep the accent colour and get brighter so they still show on black. Dark theme only.
+- `halcyon-doctor.sh` now also checks the installed sysmode, the mode file, the starship badge and the reminders.
+
+---
+
+## Performance, Memory Leak, CPU Usage & Daemon Optimization Audit (October 2026)
+
+### 1. Root Cause Analysis: Unusually High CPU & RAM Usage
+- **Root Cause Identified:** A runaway `gvfsd-metadata` daemon process (PID 24128) was trapped in an infinite spin loop, consuming **96.8% CPU (104+ minutes of cumulative CPU time) and 1.2 GB RSS / 1.3 GB VmPeak RAM**.
+- **Underlying Cause:** `scripts/backup-device.sh` executed `rsync` recursively across `$HOME` (`HOME_ONLY=1`) without excluding volatile lockfiles and internal socket structures, notably `~/.local/share/gvfs-metadata`. When rsync accessed active metadata journals while file operations were occurring, GVFS metadata journals corrupted, causing `gvfsd-metadata` to endlessly spin attempting to parse corrupted journal structures.
+- **Resolution:**
+  - Terminated the hung `gvfsd-metadata` process and cleaned invalid journal locks; system RAM usage dropped from 4.3 GiB to 2.8 GiB, and CPU utilization normalized to near zero.
+  - Updated `scripts/backup-device.sh` to explicitly exclude `--exclude=.local/share/gvfs-metadata` and `--exclude=*.sock`.
+
+---
+
+### 2. Fork Storm & CPU Optimization in `src/hx/src/ctl.rs`
+- **Issue:** The main control loop in `hx ctl` runs every 60ms to deliver instant slider feedback. In `bright(&bl)`, when `/sys/class/backlight` is unavailable (e.g. desktop systems, external monitors, or unexposed GPU backlights), the function fell back to executing `util::run("brightnessctl", &["-m"], 2)`. This resulted in **16 subprocess forks every second**, causing continuous CPU thrashing and process churn.
+- **Resolution:** Introduced cached state tracking with an `Instant` rate limiter. If sysfs is unavailable, `brightnessctl` is now queried at most once every 1,500ms, returning the cached brightness value between checks.
+
+---
+
+### 3. Memory Spike & Allocation Optimization in `src/hx/src/status.rs`
+- **Issue:** `hx status` read entire log files (`fs::read(format!("{}/recon-attempts.log", logs))` and `ids-alerts.log`) into memory buffers on every status poll, converting whole files into lossy UTF-8 strings before splitting into lines. As attack and IDS logs accumulate tens or hundreds of megabytes, this triggered periodic multimegabyte heap allocations and memory spikes.
+- **Resolution:** Replaced full-file reads with `std::io::BufReader` line streaming. Lines are now processed sequentially with fixed memory footprint ($O(1)$ RAM buffer of ~8 KB) regardless of file size.
+
+---
+
+### 4. Power Manager Daemon (`src/power-manager/src/main.rs`) Optimizations & Bug Fixes
+- **Eliminated Synchronous 500ms Thread Sleep:**
+  - *Issue:* `get_cpu_usage()` previously called `thread::sleep(Duration::from_millis(500))` inside the polling loop to measure CPU usage deltas. This blocked the daemon thread for half a second on every poll tick.
+  - *Fix:* Extended `LoadState` to track previous `/proc/stat` CPU snapshots across normal 15-second loop iterations, computing deltas asynchronously with zero sleep.
+- **Fixed evdev Input Polling & File Descriptor Thrashing:**
+  - *Issue:* `has_input_activity()` previously iterated `/dev/input`, opened every `event*` device, ran `poll(timeout = 0)`, and immediately closed them. Because newly opened evdev file descriptors have empty kernel buffers, this almost never detected real user activity and generated dozens of wasteful syscalls per poll.
+  - *Fix:* `LoadState` now retains open `Device` handles across poll ticks, allowing the kernel to buffer input events over the 15-second interval. It drains events non-blockingly each tick and gracefully re-enumerates on device disconnects. In addition, it checks `/dev/shm/halcyon-dim` to immediately detect hypridle dim states.
+- **Fixed Game Mode Detection:**
+  - *Issue:* `is_gaming_mode()` invoked `qs -c caelestia ipc call gameMode isEnabled`, which always failed because Halcyon uses the Island shell rather than Caelestia, spawning a failed subprocess every 15s. It also failed to check Halcyon's active gamemode indicator.
+  - *Fix:* Added an instant check for `/dev/shm/halcyon-gamemode` before falling back to `gamemoded -s`, and removed the defunct Caelestia command.
+- **Fixed PPM Binary Image Parsing in `get_dominant_color_from_video()`:**
+  - *Issue:* Attempted to parse binary PPM (`P6`) frames from ffmpeg by converting raw stdout into UTF-8 strings and splitting on `\n`. Binary pixel bytes containing `0x0A` were misinterpreted as newlines, corrupting color calculations.
+  - *Fix:* Replaced UTF-8 splitting with a robust binary PPM header parser operating directly on raw byte slices.
+
+---
+
+### 5. Memory & Process Leaks in Security Daemons
+- **`src/recon-deceiver/src/main.rs`:**
+  - *Socket Panic / Resource Fix:* Replaced redundant `s.try_clone().unwrap()` on accepted TCP sockets by directly moving `s` into connection handler threads, eliminating file descriptor duplication and panics on abrupt client disconnects.
+  - *Zombie Process Leak:* Spawning `notify-send` previously dropped child process handles without waiting for exit, leaking zombie processes. Wrapped child process invocations with asynchronous waiter threads.
+- **`src/log-analyst/src/main.rs`:**
+  - *Zombie Process Leak:* Reaped `notify-send` child processes via background helper threads to prevent zombie process leaks.
+  - *Log Rotation Truncation:* Added file size inspection to reset seek position to beginning of file if log files are rotated or truncated.
+
+---
+
+### 6. Shell Script Reliability Fixes
+- **`scripts/osd-watch.sh`:**
+  - Guarded against bash division-by-zero crashes when brightness or keyboard backlight maximum values are reported as 0 (`[ "$bmax" -gt 0 ]` and `[ "$kmax" -gt 0 ]`).
+  - Added fallback sleep (`|| sleep 0.25`) to prevent tight CPU spin in case `inotifywait` fails or is interrupted.
+- **`scripts/halcyon-doctor.sh`:**
+  - Added new automated **"System & Process Health"** diagnostics section checking for runaway `gvfsd-metadata` processes, zombie processes, and low available memory.
+
+---
+
+### 7. Quickshell & QML UI Bug Fixes
+- **`quickshell/island/NotchBar.qml`:**
+  - Fixed Qt Quick runtime warning: `Cannot anchor to an item that isn't a parent or sibling` by replacing invalid cross-hierarchy `anchors.fill: rightMain` with bound geometry coordinates (`x`, `y`, `width`, `height`).
+- **`quickshell/island/Cheatsheet.qml`:**
+  - Fixed recurring `ReferenceError: search is not defined` runtime exceptions (triggered whenever the cheatsheet was opened or closed) by relocating the focus `Timer` and `Connections` inside `TextInput { id: search }` where `search` is in scope.
+
+---
+
 ## Drag the bar down: utilities box and notifications inside the bar, launcher arrow keys
 
 - **Settings > Bar style > Drag the bar down** (Off / Two steps / Side by side; default Off). Pull the bar down (island or notch) and the utilities box drops out of it as a page, the same box as the bottom-right corner one (Wi-Fi, Bluetooth, audio, sliders, power mode, Focus, Settings, power). **Two steps**: drag down again for the notifications, drag up to go back. **Side by side**: the notifications sit next to the utilities box. The corner box and the right-edge notification centre keep working as before.

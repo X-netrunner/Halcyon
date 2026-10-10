@@ -71,11 +71,15 @@ starship_adopt() {   # make ~/.config/starship.toml use the halcyon palette: you
   return 0
 }
 # an installed ~/.config/starship.toml is never replaced (it is yours), so swap ONLY the old [custom.sysmode] table (it ran
-# `sysmode status` before every prompt and showed [mx] for the old "cyber" mode name) for the one in the rice
+# `sysmode status` before every prompt and showed [mx] for the old "cyber" mode name, or the first fix that was missing
+# `shell = ["sh"]`, so Starship ran it in fish and it printed nothing) for the one in the rice
 starship_sysmode_migrate() {
   local f="$HOME/.config/starship.toml" src="$RICE/config/starship.toml" blk
   [ -f "$f" ] && [ -f "$src" ] || return 0
-  grep -qF "sysmode status | grep 'Mode:'" "$f" 2>/dev/null || return 0
+  grep -q '^\[custom\.sysmode\]' "$f" 2>/dev/null || return 0
+  grep -qF "halcyon-sysmode-badge v2" "$f" 2>/dev/null && return 0
+  # only the two commands the rice itself shipped (the very first one and the one without `shell = ["sh"]`), never one you wrote
+  grep -qF "sysmode status | grep 'Mode:'" "$f" 2>/dev/null || grep -qF "read -r m < /etc/sysmode.mode" "$f" 2>/dev/null || return 0
   blk=$(mktemp) || return 0
   awk '/^\[custom\.sysmode\]/{p=1} p && /^# >>> HALCYON/{exit} p' "$src" > "$blk"
   grep -q '^\[custom\.sysmode\]' "$blk" || { rm -f "$blk"; return 0; }

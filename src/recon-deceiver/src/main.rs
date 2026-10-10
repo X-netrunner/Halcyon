@@ -205,7 +205,11 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
     let title_clean = title.replace('\0', "");
     let msg_clean = message.replace('\0', "");
     cmd.args(["-u", urgency, "-i", icon, &title_clean, &msg_clean]);
-    let _ = cmd.spawn();
+    thread::spawn(move || {
+        if let Ok(mut child) = cmd.spawn() {
+            let _ = child.wait();
+        }
+    });
 }
 
 impl AppState {
@@ -1911,7 +1915,6 @@ fn start_listener(port: u16, state: AppState) {
     for stream in listener.incoming() {
         match stream {
             Ok(s) => {
-                let s_clone = s.try_clone().unwrap();
                 let addr = match s.peer_addr() {
                     Ok(a) => a,
                     Err(_) => continue,
@@ -1924,12 +1927,12 @@ fn start_listener(port: u16, state: AppState) {
                     state_clone.scan_attacker(&ip);
 
                     match port {
-                        21 => handle_ftp(s_clone, addr, &state_clone),
-                        22 => handle_ssh(s_clone, addr, &state_clone),
-                        23 => handle_telnet(s_clone, addr, &state_clone),
-                        25 => handle_smtp(s_clone, addr, &state_clone),
-                        80 => handle_http(s_clone, addr, &state_clone),
-                        _ => handle_generic(s_clone, port, addr, &state_clone),
+                        21 => handle_ftp(s, addr, &state_clone),
+                        22 => handle_ssh(s, addr, &state_clone),
+                        23 => handle_telnet(s, addr, &state_clone),
+                        25 => handle_smtp(s, addr, &state_clone),
+                        80 => handle_http(s, addr, &state_clone),
+                        _ => handle_generic(s, port, addr, &state_clone),
                     }
 
                     state_clone.ban_ip(&ip);
