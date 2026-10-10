@@ -45,6 +45,9 @@ ShellRoot {
         wpEvery: 0,                // minutes between automatic wallpaper changes (0 = off)
         clockSeconds: false,       // show seconds in the bar clock
         clockDate: true,           // show the weekday and date next to the clock
+        clockAlign: "colon",       // colon | text : which part of the clock sits on the screen's centre line (Settings > Clock)
+        clockNudge: 0,             // extra px to push the clock right (negative = left), on top of clockAlign
+        dropDown: "off",           // off | stack | side : drag the bar down for the utilities box (stack: drag again for the notifications; side: notifications beside it)
         osdHold: 1700,             // ms the volume / brightness bar stays
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
         notifSpot: "edge",         // edge | corner : where the notification centre is opened from: a strip on the right edge, or the top-right corner
@@ -63,7 +66,7 @@ ShellRoot {
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
         barStyle: "island",        // island | notch : the floating pill, or a bar hanging from the top edge (NotchBar.qml)
         notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
-        notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchCenter: false, notchSpacing: "compact",
+        notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchSpacing: "compact",
         islWs: true, islWsLook: "numbers", islWsMin: 5, islSpecials: true, islViz: true, islTime: true, islWifi: true, islWifiStyle: "symbol", islBtMode: "on", islBat: true, islBatPct: true, islCaffeine: true,   // what the island shows
         notchBat: true, notchBatPct: false, notchCaffeine: true, notchBg: true,
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
@@ -228,6 +231,55 @@ ShellRoot {
     // ---------- state ----------
     // media | home | perf | launcher
     property string page: "home"
+
+    // ---- Settings > Bar style > Drag the bar down: the utilities box (and the notifications) hang from the bar as two more pages, "util" and "notif"
+    readonly property string dropMode: (opt.dropDown === "stack" || opt.dropDown === "side") ? opt.dropDown : "off"
+    readonly property bool dropOn: dropMode !== "off"
+    readonly property bool dropSide: dropMode === "side"
+    readonly property bool dropStack: dropMode === "stack"      // "Swipe pages": utilities <-> notifications, with a header, arrows and swipe
+    readonly property int dropHdrH: dropStack ? 44 : 0
+    readonly property int dropHdr: dropStack ? dropHdrH + 12 : 0
+    readonly property int dropPad: 14
+    readonly property int dropHandleH: 18
+    readonly property real dropW: (dropSide ? pal.boxW * 2 + dropPad : pal.boxW) + dropPad * 2
+    readonly property real dropH: Math.min(540, Math.max(barPanel.implicitHeight, dropSide ? barNotifs.implicitHeight : 0)) + dropPad * 2 + dropHandleH + dropHdr
+    readonly property real dropNotifW: pal.boxW + dropPad * 2
+    readonly property real dropNotifH: Math.min(540, barNotifs.implicitHeight) + dropPad * 2 + dropHandleH + dropHdr
+    // drag the bar down (+1) / up (-1): bar <-> the drop-down. The two pages (utilities / notifications) are side by side, see dropGo.
+    function drop(dir) {
+        if (!dropOn) return
+        hoverOpened = false
+        island.hoverSpent = true
+        if (dir > 0) { if (page === "home") page = "util" }
+        else if (page === "util" || page === "notif") page = "home"
+    }
+    // Swipe pages: the next page to the right (+1: notifications) or to the left (-1: utilities). Arrows, tabs, swipe and Left / Right all land here.
+    function dropGo(dir) {
+        if (!dropStack) return
+        if (dir > 0 && page === "util") page = "notif"
+        else if (dir < 0 && page === "notif") page = "util"
+    }
+    function dropStep() {                      // a tap on the handle: back up into the bar
+        if (page === "util" || page === "notif") page = "home"
+    }
+    // keybind / IPC: open (or close) the utilities box / the notifications from the bar. false = the drop-down is off (the old boxes do it).
+    function dropShow(which) {
+        if (!dropOn) return false
+        var target = (which === "notif" && dropSide) ? "util" : which
+        hoverOpened = false
+        island.hoverSpent = true
+        page = (page === target) ? "home" : target
+        return true
+    }
+    // with the drop-down on, the corner utilities box and the right-edge notification box are switched off (the drop-down replaces them)
+    onDropOnChanged: {
+        if (!dropOn && (page === "util" || page === "notif")) page = "home"
+        if (dropOn) { corner.hovering = false; notifs.centerOpen = false }
+    }
+    // looking at the notifications here counts as reading them (and the popups get out of the way)
+    function markSeen() { if (page === "notif" || (page === "util" && dropSide)) { notifs.unread = 0; notifs.hideToasts() } }
+    onPageChanged: markSeen()
+    Connections { target: notifs; function onUnreadChanged() { if (notifs.unread > 0) root.markSeen() } }
 
     property var stats: ({ cpu: 0, mem: 0, memGb: "0.0", temp: 0, down: 0, up: 0, bat: 0, charging: false, ac: false, hasBat: false,
                                sysmode: "", auto: false, pmode: "", pprofile: "" })
@@ -451,7 +503,7 @@ ShellRoot {
             onRead: d => {
                 try {
                     var m = JSON.parse(d)
-                    if (corner.open) return          // the panel's own sliders are on screen already
+                    if (corner.open || root.page === "util") return          // the panel's own sliders are on screen already
                     osd.show(m.k, m.p / 100, false)
                 } catch (e) {}
             }
@@ -476,7 +528,7 @@ ShellRoot {
                 if (!m) return
                 var v = parseFloat(m[1]), mu = text.indexOf("MUTED") >= 0
                 var changed = Math.abs(v - root.lastVol) > 0.004 || mu !== root.lastMuted
-                if (root.volPrimed && changed && !corner.open) osd.show("vol", v, mu)
+                if (root.volPrimed && changed && !(corner.open || root.page === "util")) osd.show("vol", v, mu)
                 root.lastVol = v; root.lastMuted = mu; root.volPrimed = true
             }
         }
@@ -524,6 +576,7 @@ ShellRoot {
         usePfp: root.opt.notifIcon !== "app"
         spot: root.opt.notifSpot === "corner" ? "corner" : "edge"
         dnd: root.dnd
+        edgeOn: !root.dropOn
         clickMode: root.clickMode
         autoHide: root.autoHide
         sysmode: root.sysmode
@@ -546,7 +599,7 @@ ShellRoot {
 
     // ---------- actions ----------
     function go(dir) {
-        if (page === "launcher") return
+        if (page === "launcher" || page === "util" || page === "notif") return
         hoverOpened = false
         island.hoverSpent = true      // you chose a page yourself: do not re-open one by hover until the pointer has left
         if (dir < 0) page = (page === "perf") ? "home" : "media"
@@ -1029,7 +1082,7 @@ ShellRoot {
                     if (s.opt) {
                         var oo = {}
                         for (var ox in root.opt) oo[ox] = root.opt[ox]
-                        for (var oy in s.opt) oo[oy] = s.opt[oy]
+                        for (var oy in s.opt) if (oy !== "notchCenter") oo[oy] = s.opt[oy]      // notchCenter is gone: the notch clock is always centred
                         root.opt = oo
                         root.syncRefresh()
                     }
@@ -1153,7 +1206,7 @@ ShellRoot {
 
     // volume / brightness, only polled while the bottom-right panel is open
     Process {
-        running: corner.open
+        running: corner.open || root.page === "util"
         command: [root.hx, "ctl"]
         stdout: SplitParser {
             onRead: d => {
@@ -1261,11 +1314,11 @@ ShellRoot {
         function home(): void { root.page = "home" }
         function media(): void { root.page = "media" }
         function perf(): void { root.page = "perf" }
-        function panel(): void { corner.pinFor(6000) }
+        function panel(): void { if (!root.dropShow("util")) corner.pinFor(6000) }
         function autohide(): void { root.setAutoHide(!root.autoHide) }
         function barstyle(): void { root.runCommand("barstyle") }
         function clearnotifs(): void { notifs.clearAll() }
-        function notifcenter(): void { notifs.toggleCenter() }
+        function notifcenter(): void { if (!root.dropShow("notif")) notifs.toggleCenter() }
         function dnd(): void { root.setDnd(!root.dnd) }
         function dndset(on: bool): void { root.setDnd(on) }          // set (gamemode.sh): dnd() above only toggles
         function cheatsheet(): void { root.runCommand("cheatsheet") }
@@ -1306,7 +1359,8 @@ ShellRoot {
 
         WlrLayershell.namespace: "island"
         WlrLayershell.layer: WlrLayer.Top
-        WlrLayershell.keyboardFocus: root.page === "launcher" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: root.page === "launcher" ? WlrKeyboardFocus.Exclusive
+                                   : ((root.page === "util" && barPanel.wantsKeys) || (root.dropStack && (root.page === "util" || root.page === "notif"))) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
         // ---- auto-hide: the bar slides away until the pointer touches the top edge
         property bool peek: false
@@ -1401,14 +1455,19 @@ ShellRoot {
             width: root.page === "home" ? (root.notchStyle ? root.notchBodyW : home.implicitWidth + root.padSet.x)
                  : root.page === "media" ? 500
                  : root.page === "perf" ? 720
+                 : root.page === "util" ? root.dropW
+                 : root.page === "notif" ? root.dropNotifW
                  : launcher.wantedWidth
             height: root.page === "home" ? (root.notchStyle ? root.notchBarH : root.padSet.h)
                   : (root.page === "media" ? 156
                   : root.page === "perf" ? 316
+                  : root.page === "util" ? root.dropH
+                  : root.page === "notif" ? root.dropNotifH
                   : launcher.wantedHeight) + (root.notchStyle ? root.notchPad : 0)
             radius: root.page === "home" ? (root.notchStyle ? root.notchEar : height / 2) : (root.notchStyle ? 26 : pal.rXl)
 
             property real dragX: 0
+            property real dragY: 0
 
             // one soft curve for everything: fast start, long gentle landing, no overshoot
             Behavior on anchors.topMargin { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
@@ -1432,7 +1491,7 @@ ShellRoot {
             // media/perf fall back to the bar when the pointer leaves (quickly if hovering opened them)
             Timer {
                 interval: root.opt.pageClose !== undefined ? root.opt.pageClose : 600
-                running: (root.page === "media" || root.page === "perf") && !hov.hovered
+                running: (root.page === "media" || root.page === "perf" || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered
                 onTriggered: { root.page = "home"; root.hoverOpened = false }
             }
 
@@ -1461,15 +1520,16 @@ ShellRoot {
             DragHandler {
                 id: dragH
                 target: null
-                enabled: root.page !== "launcher"
+                enabled: root.page !== "launcher" && root.page !== "util" && root.page !== "notif"     // those two have their own handle (dropPage below)
                 xAxis.enabled: true
-                yAxis.enabled: false
-                onTranslationChanged: if (active) island.dragX = translation.x
+                yAxis.enabled: root.dropOn
+                onTranslationChanged: if (active) { island.dragX = translation.x; island.dragY = translation.y }
                 onActiveChanged: {
                     if (active) return
-                    var dx = island.dragX
-                    island.dragX = 0
-                    if (dx < -50) root.go(1)
+                    var dx = island.dragX, dy = island.dragY
+                    island.dragX = 0; island.dragY = 0
+                    if (root.dropOn && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 40) root.drop(dy > 0 ? 1 : -1)
+                    else if (dx < -50) root.go(1)
                     else if (dx > 50) root.go(-1)
                 }
             }
@@ -1492,6 +1552,9 @@ ShellRoot {
                     clock24: root.clock24
                     clockSeconds: root.opt.clockSeconds
                     clockDate: root.opt.clockDate
+                    clockAlign: root.opt.clockAlign === "text" ? "text" : "colon"
+                    clockNudge: Math.round(Number(root.opt.clockNudge || 0))
+                    onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
                     showWs: root.opt.islWs !== false
                     showSpecials: root.opt.islSpecials !== false
                     wsLook: root.opt.islWsLook === "capsules" ? "capsules" : "numbers"
@@ -1554,6 +1617,194 @@ ShellRoot {
                     onToggleBt: root.toggleBt()
                     onSetProfile: p => root.setProfile(p)
                     onSetAuto: root.setAuto()
+                }
+
+                // ---- drop-down pages (Settings > Bar > Drag the bar down): the utilities box and the notifications
+                //   Swipe pages:   a header (arrows + two tabs) over two pages that slide: swipe, tap an arrow / tab, or press Left / Right
+                //   Side by side:  both boxes at once
+                Item {
+                    id: dropPage
+                    anchors.fill: parent
+                    opacity: (root.page === "util" || root.page === "notif") ? 1 : 0
+                    visible: opacity > 0.01
+                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+
+                    // where the pages are: 0 = utilities, 1 = notifications. It keeps its place while the drop-down folds away.
+                    property real slideTo: 0
+                    property real slide: slideTo
+                    Behavior on slide { enabled: !swipe.active && dropPage.opacity > 0.5; NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
+                    // how far the finger has pulled it, in pages
+                    property real swipeN: 0
+                    Behavior on swipeN { enabled: !swipe.active; NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
+                    readonly property real pos: root.dropStack ? Math.max(-0.12, Math.min(1.12, slide + swipeN)) : 0
+                    readonly property real posC: Math.max(0, Math.min(1, pos))
+                    readonly property real pitch: pal.boxW + root.dropPad * 2        // one page to the next
+
+                    Connections {
+                        target: root
+                        function onPageChanged() {
+                            if (root.page === "util") dropPage.slideTo = 0
+                            else if (root.page === "notif") dropPage.slideTo = 1
+                        }
+                    }
+
+                    // hold and drag sideways: turn the page. It does not take a drag away from a slider (items keep theirs).
+                    DragHandler {
+                        id: swipe
+                        target: null
+                        enabled: root.dropStack
+                        xAxis.enabled: true
+                        yAxis.enabled: false
+                        grabPermissions: PointerHandler.CanTakeOverFromHandlersOfDifferentType | PointerHandler.ApprovesTakeOverByAnything
+                        onTranslationChanged: if (active) dropPage.swipeN = -translation.x / dropPage.pitch
+                        onActiveChanged: {
+                            if (active) return
+                            var n = dropPage.swipeN
+                            dropPage.swipeN = 0
+                            if (n > 0.16) root.dropGo(1)
+                            else if (n < -0.16) root.dropGo(-1)
+                        }
+                    }
+                    // Left / Right (click the drop-down once so it has the keyboard; not while the Wi-Fi password is being typed)
+                    Shortcut { sequence: "Left"; enabled: root.dropStack && root.page === "notif"; onActivated: root.dropGo(-1) }
+                    Shortcut { sequence: "Right"; enabled: root.dropStack && root.page === "util" && !barPanel.wantsKeys; onActivated: root.dropGo(1) }
+
+                    DropHeader {
+                        visible: root.dropStack
+                        pal: pal
+                        anchors.top: parent.top
+                        anchors.topMargin: root.dropPad
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: pal.boxW
+                        height: root.dropHdrH
+                        pos: dropPage.pos
+                        unread: notifs.unread
+                        dnd: root.dnd
+                        onStep: dir => root.dropGo(dir)
+                        onPick: i => root.dropGo(i === 1 ? 1 : -1)
+                    }
+
+                    Item {
+                        id: dropView
+                        anchors.top: parent.top
+                        anchors.topMargin: root.dropPad + root.dropHdr
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: root.dropHandleH
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: root.dropSide ? pal.boxW * 2 + root.dropPad : pal.boxW
+                        clip: root.dropStack
+
+                        Row {
+                            id: dropRow
+                            x: root.dropStack ? -dropPage.pos * dropPage.pitch : 0
+                            spacing: root.dropStack ? root.dropPad * 2 : root.dropPad
+
+                            Item {
+                                id: paneUtil
+                                width: pal.boxW
+                                height: barPanel.implicitHeight
+                                // the page you are leaving fades and shrinks a little
+                                opacity: root.dropStack ? 1 - dropPage.posC * 0.85 : 1
+                                scale: root.dropStack ? 1 - dropPage.posC * 0.04 : 1
+
+                                Panel {
+                                    id: barPanel
+                                    visible: root.dropStack ? dropPage.posC < 0.99 : root.page === "util"
+                                    flat: true
+                                    shadow: false
+                                    pal: pal
+                                    active: root.page === "util"
+                                    stats: root.stats
+                                    net: root.net
+                                    profile: root.profile
+                                    autoPower: root.autoPower
+                                    autoHide: root.autoHide
+                                    gaming: root.gaming
+                                    caffeine: root.caffeine
+                                    focusInfo: root.focusState
+                                    focusText: root.focusText
+                                    focusSecs: root.focusLeft
+                                    focusMins: root.focusConf.LENGTH
+                                    focusPomo: root.focusConf.POMODORO
+                                    focusBlocked: (root.focusConf.apps || []).length
+                                    mic: root.mic
+                                    micMuted: root.micMuted
+                                    vol: root.vol
+                                    muted: root.muted
+                                    bright: root.bright
+
+                                    onToggleWifi: root.toggleWifi()
+                                    onToggleBt: root.toggleBt()
+                                    onSetProfile: p => root.setProfile(p)
+                                    onSetAuto: root.setAuto()
+                                    onOpenSettings: settingsWin.show()
+                                    onToggleGaming: root.setGaming(!root.gaming)
+                                    onToggleCaffeine: root.setCaffeine(!root.caffeine, 0)
+                                    onFocusStart: (mins, pomo) => root.focusRun(["start", String(mins), pomo ? "pomo" : "single"])
+                                    onFocusCommand: what => root.focusRun(what.split(" "))
+                                    onFocusPick: (mins, pomo) => root.focusSet(mins, pomo)
+                                    onOpenFocusSettings: settingsWin.show("focus")
+                                    onCaffeineHour: root.setCaffeine(true, 60)
+                                    onOpenApps: appsWin.pinFor(9000)
+                                    onOpenPower: powerMenu.show()
+                                    onToggleMute: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+                                    onToggleMic: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
+                                    onMicMoved: v => { root.pendMic = v; root.mic = v * 100; if (!sliderT.running) sliderT.start() }
+                                    onVolumeMoved: v => { root.pendVol = v; root.vol = v * 100; if (!sliderT.running) sliderT.start() }
+                                    onBrightnessMoved: v => { root.pendBright = v; root.bright = v * 100; if (!sliderT.running) sliderT.start() }
+                                }
+                            }
+
+                            Item {
+                                id: paneNotif
+                                width: pal.boxW
+                                height: barNotifs.implicitHeight
+                                opacity: root.dropStack ? 0.15 + dropPage.posC * 0.85 : 1
+                                scale: root.dropStack ? 0.96 + dropPage.posC * 0.04 : 1
+
+                                NotifCentre {
+                                    id: barNotifs
+                                    visible: root.dropStack ? dropPage.posC > 0.01 : root.page === "util"
+                                    pal: pal
+                                    notifs: notifs
+                                    active: visible && (!root.dropStack || dropPage.posC > 0.5)
+                                }
+                            }
+                        }
+                    }
+
+                    // the handle: tap it or drag it up to fold the drop-down back into the bar (drag the bar down to open it)
+                    Item {
+                        id: dropHandle
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 160
+                        height: root.dropHandleH + 8
+                        property real dy: 0
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 8
+                            width: 28
+                            height: 4
+                            radius: 2
+                            color: pal.accent
+                        }
+                        TapHandler { onTapped: root.dropStep() }
+                        DragHandler {
+                            target: null
+                            xAxis.enabled: false
+                            yAxis.enabled: true
+                            onTranslationChanged: if (active) dropHandle.dy = translation.y
+                            onActiveChanged: {
+                                if (active) return
+                                var d = dropHandle.dy
+                                dropHandle.dy = 0
+                                if (d > 30) root.drop(1)
+                                else if (d < -30) root.drop(-1)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1627,7 +1878,9 @@ ShellRoot {
             onWorkspaceScrolled: d => Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", d > 0 ? "wheel-up" : "wheel-down"])
             onSpecialClicked: name => root.toggleSpecial(name)
             onStatusClicked: root.page = "perf"
+            onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
             onBgClicked: appsWin.pinFor(9000)
+            onPageDrop: dir => root.drop(dir)
             onPageStep: dir => root.go(dir)
             onHoverEdited: on => root.notchHovered = on
         }
@@ -1683,6 +1936,7 @@ ShellRoot {
     // =====================================================================
     PanelWindow {
         id: corner
+        visible: !root.dropOn       // the drop-down (Settings > Bar > Drag the bar down) replaces this box
 
         anchors { bottom: true; right: true }
         // FIXED size on purpose: it used to grow / shrink with the box (48 px tab <-> full size). Each resize made the compositor

@@ -40,6 +40,8 @@ PanelWindow {
     signal workspaceScrolled(int dir)         // +1 wheel up, -1 wheel down
     signal specialClicked(string name)
     signal statusClicked()
+    signal pageDrop(int dir)                  // drag the bar down (+1) / up (-1): the utilities box and notifications (Settings > Bar style)
+    signal clockToggled(string what)          // right click on the time = 12 / 24 hour, middle click = seconds (shell.qml flips the setting)
     signal bgClicked()
     signal pageStep(int dir)                  // wheel / drag on the bar: -1 = media, +1 = performance (shell.qml go())
     signal hoverEdited(bool on)               // the pointer is on the bar / left it (shell.qml opens perf / media after a moment)
@@ -99,6 +101,7 @@ PanelWindow {
         var Rw = R + (R > 0 ? rightGap : 0) + specW
         return Math.max(L, Rw) < Math.max(Lw, R)        // strictly narrower on the right, otherwise stay on the left
     }
+    readonly property bool dropOn: opt.dropDown === "stack" || opt.dropDown === "side"     // Settings > Bar style > Drag the bar down
     readonly property bool showBg: opt.bgWhere !== "corner"
 
     // ---- size (Bar size and padding)
@@ -172,10 +175,11 @@ PanelWindow {
         // the ":" (not the middle of "05:57 PM") sits on the screen's centre line: the clock is pushed right by this much
         TextMetrics { id: tmHH; font: timeText.font; text: notch.timeStr.substring(0, 2) }
         TextMetrics { id: tmColon; font: timeText.font; text: ":" }
-        readonly property real colonShift: win.showTime ? Math.max(0, Math.round(timeText.width / 2 - (tmHH.advanceWidth + tmColon.advanceWidth / 2))) : 0
+        // (Settings > Clock: "Centre the" picks colon or whole text; "Nudge the clock" adds pixels, negative = left)
+        readonly property real colonShift: win.showTime ? (win.opt.clockAlign === "text" ? 0 : Math.max(0, Math.round(timeText.width / 2 - (tmHH.advanceWidth + tmColon.advanceWidth / 2)))) + Number(win.opt.clockNudge || 0) : 0
         readonly property real vizExt: vizSp.width > 0 ? vizSp.width + win.midGap : 0
         readonly property real dateExt: dateRow.width > 0 ? dateRow.width + win.midGap : 0
-        readonly property real midHalf: win.showTime ? Math.max(timeHalf + vizExt, timeHalf + colonShift + dateExt)
+        readonly property real midHalf: win.showTime ? Math.max(timeHalf - colonShift + vizExt, timeHalf + colonShift + dateExt)
                                                      : Math.max(dateRow.width / 2 + vizExt, dateRow.width / 2)
         readonly property real bodyW: win.centerClock ? (sideW * 2 + midHalf * 2 + win.groupGap * 2 + win.padX * 2) : (flowW + win.padX * 2)
         width: bodyW + win.earR * 2
@@ -296,17 +300,19 @@ PanelWindow {
         }
         // hold + drag sideways: left = performance, right = media (like the island)
         property real dragX: 0
+        property real dragY: 0
         DragHandler {
             id: dragH
             target: null
             xAxis.enabled: true
-            yAxis.enabled: false
-            onTranslationChanged: if (active) notch.dragX = translation.x
+            yAxis.enabled: win.dropOn
+            onTranslationChanged: if (active) { notch.dragX = translation.x; notch.dragY = translation.y }
             onActiveChanged: {
                 if (active) return
-                var dx = notch.dragX
-                notch.dragX = 0
-                if (dx < -50) win.pageStep(1)
+                var dx = notch.dragX, dy = notch.dragY
+                notch.dragX = 0; notch.dragY = 0
+                if (win.dropOn && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 40) win.pageDrop(dy > 0 ? 1 : -1)
+                else if (dx < -50) win.pageStep(1)
                 else if (dx > 50) win.pageStep(-1)
             }
         }
@@ -434,6 +440,8 @@ PanelWindow {
                 font.family: win.pal.uiFont
                 font.pixelSize: win.textPx
                 font.weight: Font.DemiBold
+                TapHandler { acceptedButtons: Qt.RightButton; onTapped: win.clockToggled("24h") }
+                TapHandler { acceptedButtons: Qt.MiddleButton; onTapped: win.clockToggled("seconds") }
             }
         }
 

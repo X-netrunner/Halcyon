@@ -12,6 +12,9 @@ RowLayout {
     property bool clock24: false
     property bool clockSeconds: false    // Settings > Bar: seconds in the clock
     property bool clockDate: true        // Settings > Bar: the weekday and date next to the clock
+    property string clockAlign: "colon"  // Settings > Clock: colon = the ":" sits on the screen's centre line | text = the whole text is centred
+    property int clockNudge: 0           // Settings > Clock: extra pixels to push the clock right (negative = left)
+    signal clockToggled(string what)     // right click = 12 / 24 hour, middle click = seconds (shell.qml flips the setting)
     property bool playing: false
     property string activeSpecial: ""
     property bool caffeine: false
@@ -103,10 +106,10 @@ RowLayout {
     // webcam: the clock is pushed right by colonShift, which the left slot makes room for. The pill itself stays centred.
     TextMetrics { id: tmHH; font: timeText.font; text: timeText.text.substring(0, 2) }
     TextMetrics { id: tmColon; font: timeText.font; text: ":" }
-    readonly property real colonShift: showTime ? Math.max(0, Math.round(timeText.implicitWidth / 2 - (tmHH.advanceWidth + tmColon.advanceWidth / 2))) : 0
+    readonly property real colonShift: showTime ? (clockAlign === "colon" ? Math.max(0, Math.round(timeText.implicitWidth / 2 - (tmHH.advanceWidth + tmColon.advanceWidth / 2))) : 0) + clockNudge : 0
     readonly property real slotW: Math.max(leftBase, rightBase + statsW)
-    readonly property real leftSlotW: slotW + 2 * colonShift
-    readonly property real rightSlotW: slotW
+    readonly property real leftSlotW: slotW + 2 * Math.max(0, colonShift)      // pushing the clock right = more room on the left
+    readonly property real rightSlotW: slotW + 2 * Math.max(0, -colonShift)    // pushing it left = more room on the right
 
     spacing: 0
 
@@ -299,6 +302,8 @@ RowLayout {
             font.family: row.pal.uiFont
             font.pixelSize: row.pal.tTitle
             font.weight: Font.DemiBold
+            TapHandler { acceptedButtons: Qt.RightButton; onTapped: row.clockToggled("24h") }
+            TapHandler { acceptedButtons: Qt.MiddleButton; onTapped: row.clockToggled("seconds") }
         }
         Text {
             visible: !row.showTime && row.clockDate
