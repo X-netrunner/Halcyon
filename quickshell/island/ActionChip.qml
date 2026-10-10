@@ -10,6 +10,7 @@ Rectangle {
     property string label: ""
     property string doneLabel: ""      // what it says for a moment after the click ("" = the same label, with a tick)
     property bool on: false
+    property bool disabled: false      // greyed out: no hover, no click (e.g. a tool that was not installed)
     property bool flashing: false
     property int maxLabel: 1000
     signal clicked()
@@ -17,12 +18,13 @@ Rectangle {
     implicitHeight: 36
     implicitWidth: content.implicitWidth + 32
     radius: height / 2
-    color: flashing ? Qt.alpha(pal.accent, 0.30)
+    color: disabled ? Qt.alpha(pal.surface, 0.35)
+         : flashing ? Qt.alpha(pal.accent, 0.30)
          : on ? Qt.alpha(pal.accent, 0.18)
          : (ma.pressed ? pal.surfaceHi : (ma.containsMouse ? Qt.alpha(pal.surfaceHi, 0.9) : Qt.alpha(pal.surface, 0.8)))
     border.width: 1
-    border.color: flashing ? pal.accent : (on ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft)
-    scale: ma.pressed ? 0.95 : 1
+    border.color: disabled ? Qt.alpha(pal.lineSoft, 0.5) : flashing ? pal.accent : (on ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft)
+    scale: ma.pressed && !disabled ? 0.95 : 1
     Behavior on color { ColorAnimation { duration: pal.dFast } }
     Behavior on border.color { ColorAnimation { duration: pal.dFast } }
     Behavior on scale { NumberAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
@@ -46,7 +48,7 @@ Rectangle {
             text: root.flashing && root.doneLabel !== "" ? root.doneLabel : root.label
             width: Math.min(implicitWidth, root.maxLabel)
             elide: Text.ElideRight
-            color: root.flashing || root.on ? root.pal.text : Qt.alpha(root.pal.text, 0.78)
+            color: root.disabled ? Qt.alpha(root.pal.muted, 0.55) : (root.flashing || root.on ? root.pal.text : Qt.alpha(root.pal.text, 0.78))
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tBody
             font.weight: Font.Medium
@@ -56,6 +58,7 @@ Rectangle {
     MouseArea {
         id: ma
         anchors.fill: parent
+        enabled: !root.disabled
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: { root.flashing = true; doneT.restart(); root.clicked() }

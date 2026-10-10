@@ -4,6 +4,31 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Optional safety check in install.sh and Settings, install.sh shows SUPER+/
+
+- **install.sh now says SUPER + / (not SUPER + Alt + /)** for the shortcut tree in the "First keys" list at the end; the comment in `scripts/cheatsheet.sh` matches. (The binding itself was already SUPER+/ in `keybinds.lua` and `Binds.js`.)
+- **Safety check** (new, optional): the `safety-check` program (`src/safety-check`, Rust) runs a system update, a ClamAV malware scan, an rkhunter rootkit check, a firewall check, a Lynis audit, an AIDE integrity check (every 30 days) and a backup to an external disk, with a log in `~/logs/safety_check/`.
+  - `./install.sh` asks "Add the safety check?" (default **no**; answer remembered as `SAFETY_CHECK` in `install-choices.env`, so `update.sh` does not ask again). Command line: `--safety-check` / `--no-safety-check` (`update.sh` passes both on); `--choose` asks again.
+  - Yes: installs `clamav rkhunter lynis aide ufw rsync libnotify`, builds the crate with the other helpers and installs it **root-owned** as `/usr/local/bin/safety-check` (it runs as root through sudo, so nothing running as you may be able to change it).
+  - No: nothing is installed, and a binary left from an earlier "yes" is removed.
+  - **Settings > Backup > Safety check** starts it in a terminal (asks for your password). When it is not installed the entry is **greyed out and disabled** and says how to add it (`startup-conf.sh list` reports `has.safety`; `ActionChip` has a new `disabled` state; any Settings item can use `needs: "<has key>"` for the same effect).
+
+---
+
+## Focus mode, corner-box flicker fix, one copy of every duplicated setting
+
+- **Focus mode** (new): utilities box > FOCUS, SUPER+ALT+F, `scripts/focus.sh` + `scripts/focus.py`. Timer (25 / 50 / 90 min, optional Pomodoro with short / long breaks), Do not disturb + Caffeine for the session (restored to what they were afterwards), a block list of window classes that are closed when they open, Pause / +5 min / Skip / Stop, the time left in both bars. Options and the list are in Settings > Focus mode. The "Blocked apps" button in the box opens that group directly (`Settings.show("focus")`).
+- **Bottom-right (and bottom-left) box no longer flickers when the pointer rests in the corner.** The layer surface used to grow from a 48 px tab to the full box and shrink back, and every resize made the compositor re-pick the pointer focus: leave, close, shrink, enter, open, again. The surface now keeps one size (the input region still limits what it catches), and a box that has just closed ignores enter events for 600 ms. Costs about the 1.5 MB buffer the old code saved while the box was closed.
+- **Settings: duplicates merged, options placed where you look for them.**
+  - Bar style had every option twice (island and notch). Each is now ONE entry that writes both (`pair:` keys in `Settings.qml`): workspaces, capsules shown, special icons, music bars, combined status icon, Wi-Fi / look, Bluetooth, battery, battery %, Caffeine icon.
+  - The time and the day / date moved from Bar style into **Clock** (the notch's separate "Show the day and date" is gone: one switch for both bars). "Bar spacing" moved into **Bar** next to "Bar size and padding".
+  - "Show the background apps count" (notch only) is gone: Bar > Background apps count already decides it.
+  - **Edge gestures** existed twice (Touchpad, a temporary mute; Startup, start at login). Now one switch in **Touchpad** (starts / stops the helper and is remembered across logins). SUPER+ALT+G still mutes them for a moment.
+  - "Music bars in the bar" (quality Full / Light / Off) moved from Performance to Bar style, right under the Music bars switch, and is called "Music bars quality".
+  - The notch's "Accent colour" is now "Notch accent colour" (it had the same name as Colours > Accent colour).
+
+---
+
 ## Smart special icons, SUPER+/ cheatsheet, Enter saves, SUPER+Q closes overlays
 
 - **Notch bar: special workspace icons pick a side** (`NotchBar.qml`, Settings > Bar style > Special icons side: Auto / Left / Right). Auto with the clock centred puts them on whichever side does not widen the bar.

@@ -24,6 +24,8 @@ PanelWindow {
     property bool playing: false
     property string activeSpecial: ""
     property bool caffeine: false
+    property string focusText: ""        // Focus mode running: the time left ("" = no session)
+    property bool focusPaused: false
     property int bgCount: 0
     property var opt: ({})
     property string barPadding: "normal"      // low | normal | high (Settings > Bar > Bar size and padding)
@@ -97,7 +99,7 @@ PanelWindow {
         var Rw = R + (R > 0 ? rightGap : 0) + specW
         return Math.max(L, Rw) < Math.max(Lw, R)        // strictly narrower on the right, otherwise stay on the left
     }
-    readonly property bool showBg: opt.notchBg !== false && opt.bgWhere !== "corner"
+    readonly property bool showBg: opt.bgWhere !== "corner"
 
     // ---- size (Bar size and padding)
     readonly property var sizeSet: ({ low: { h: 26, gap: 3 }, normal: { h: 32, gap: 8 }, high: { h: 40, gap: 12 } })[barPadding] || ({ h: 32, gap: 8 })
@@ -436,7 +438,7 @@ PanelWindow {
         Row {
             id: dateRow
             height: notch.bh
-            spacing: win.midGap
+            spacing: 0
             y: 0
             x: {
                 if (!win.centerClock) return Math.round(midGroup.x + midGroup.width + (midGroup.width > 0 ? win.midGap : 0))
@@ -458,9 +460,8 @@ PanelWindow {
             // live stats: slide out while the pointer is on the bar (Settings > Bar > When you hover the bar)
             Item {
                 height: notch.bh
-                implicitWidth: win.showStats ? statsRow.implicitWidth : 0
+                implicitWidth: win.showStats ? statsRow.implicitWidth + win.midGap : 0     // the gap before the stats grows with them
                 width: implicitWidth
-                visible: implicitWidth > 0.5        // no spacing slot while the stats are folded away
                 clip: true
                 opacity: win.showStats ? 1 : 0
                 Behavior on implicitWidth { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
@@ -468,6 +469,8 @@ PanelWindow {
                 Row {
                     id: statsRow
                     anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: win.midGap
                     spacing: 12
                     Repeater {
                         model: [
@@ -544,6 +547,21 @@ PanelWindow {
                     Text { text: win.bgCount; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: Math.max(10, win.textPx - 2); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
                 }
                 MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.bgClicked() }
+            }
+
+            // Focus mode: the time left (the utilities box has the controls)
+            Item {
+                visible: win.focusText !== ""
+                width: visible ? focusRow.implicitWidth : 0
+                height: notch.bh
+                opacity: win.focusPaused ? 0.55 : 1
+                Row {
+                    id: focusRow
+                    anchors.centerIn: parent
+                    spacing: 5
+                    Text { text: String.fromCodePoint(0xF051B); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: win.focusText; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: Math.max(10, win.textPx - 2); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
+                }
             }
 
             // the screen will not sleep or lock

@@ -15,6 +15,8 @@ RowLayout {
     property bool playing: false
     property string activeSpecial: ""
     property bool caffeine: false
+    property string focusText: ""        // Focus mode running: the time left ("" = no session)
+    property bool focusPaused: false
     property int bgCount: 0              // apps alive in the background (BgApps.count)
     property bool showBgCount: false     // Settings > Panels > Background apps count: on the bar instead of the bottom-left corner
     signal bgClicked()                   // opens the background-apps box (it stays bottom-left)
@@ -50,7 +52,7 @@ RowLayout {
     property bool showCaffeine: true
     property bool combo: true                // Wi-Fi + Bluetooth + battery as one round icon (StatusRing.qml) instead of three
     property int comboSize: 24
-    readonly property bool statusAny: showWifi || btShown || (showBat && stats.hasBat === true) || (showCaffeine && caffeine) || (showBgCount && bgCount > 0)
+    readonly property bool statusAny: focusText !== "" || showWifi || btShown || (showBat && stats.hasBat === true) || (showCaffeine && caffeine) || (showBgCount && bgCount > 0)
     readonly property bool btShown: net.bt === "on" && (btMode === "on" || (btMode === "connected" && (net.btdev || "") !== ""))
     property bool showStats: false       // Settings > Bar: CPU / memory / temperature slide out while the pointer is on the bar
     signal statusClicked()
@@ -401,6 +403,25 @@ RowLayout {
                     MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: row.bgClicked() }
                 }
 
+                // Focus mode: the time left (the utilities box has the controls)
+                Row {
+                    visible: row.focusText !== ""
+                    spacing: 5
+                    anchors.verticalCenter: parent.verticalCenter
+                    opacity: row.focusPaused ? 0.55 : 1
+                    Text {
+                        text: String.fromCodePoint(0xF051B)
+                        color: row.pal.accent
+                        font.family: row.pal.font; font.pixelSize: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: row.focusText
+                        color: row.pal.text
+                        font.family: row.pal.uiFont; font.pixelSize: row.pal.tCap; font.weight: Font.Medium
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
                 // caffeine is on: the screen will not sleep or lock
                 Text {
                     visible: row.showCaffeine && row.caffeine
