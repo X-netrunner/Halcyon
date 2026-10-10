@@ -66,7 +66,7 @@ ShellRoot {
         notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchCenter: false, notchSpacing: "compact",
         islWs: true, islWsLook: "numbers", islWsMin: 5, islSpecials: true, islViz: true, islTime: true, islWifi: true, islWifiStyle: "symbol", islBtMode: "on", islBat: true, islBatPct: true, islCaffeine: true,   // what the island shows
         notchBat: true, notchBatPct: false, notchCaffeine: true, notchBg: true,
-        notchCombo: true, islCombo: true,   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
+        notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
         stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true
@@ -1457,6 +1457,7 @@ ShellRoot {
                     showBatPct: root.opt.islBatPct !== false
                     showCaffeine: root.opt.islCaffeine !== false
                     combo: root.opt.islCombo !== false
+                    spacious: root.opt.islSpacing === "spacious"
                     comboSize: Math.round(root.padSet.h * 0.55)
                     playing: root.playing
                     activeSpecial: root.activeSpecial
