@@ -1296,6 +1296,20 @@ setup_asus_extras() {
     else
         log_info "asusctl is not installed (AUR build failed or --no-packages). SUPER+F3 / SUPER+F4 still step the keyboard light."
     fi
+
+    # Fix ASUS Vivobook/Zenbook keyboard backlight OOBE bug (unlocks asus::kbd_backlight)
+    if [[ -f "$TARGET_RICE/scripts/asus-kbd-fix.sh" ]]; then
+        try run_cmd "Installing ASUS keyboard backlight fix helper" \
+            as_root install -Dm755 "$TARGET_RICE/scripts/asus-kbd-fix.sh" /usr/local/bin/halcyon-asus-kbd-fix
+        if [[ -f "$TARGET_RICE/systemd/halcyon-asus-kbd.service" ]]; then
+            try run_cmd "Installing ASUS keyboard backlight systemd service" \
+                as_root install -Dm644 "$TARGET_RICE/systemd/halcyon-asus-kbd.service" /etc/systemd/system/halcyon-asus-kbd.service
+            try run_cmd "Enabling and running ASUS keyboard backlight service" \
+                as_root systemctl enable --now halcyon-asus-kbd.service
+        fi
+        try run_cmd "Clearing ASUS keyboard backlight OOBE flag" \
+            as_root /usr/local/bin/halcyon-asus-kbd-fix || true
+    fi
 }
 if [[ "$SKIP_DRIVERS" != "true" ]]; then setup_asus_extras; fi
 

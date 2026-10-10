@@ -1,0 +1,12 @@
+[Unit]
+Description=Clear ASUS Vivobook Keyboard Backlight OOBE Flag
+After=sys-kernel-debug.mount systemd-modules-load.service
+ConditionPathExists=/sys/kernel/debug/asus-nb-wmi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/halcyon-asus-kbd-fix
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -49,7 +49,7 @@ ShellRoot {
         clockNudge: 0,             // extra px to push the clock right (negative = left), on top of clockAlign
         accentBorder: true,        // the focused window's border takes the wallpaper accent (off = neutral white hairline)
         surface: "tint",           // tint | matte | black : the box background (Settings > Look > Box background); matte / black are solid and need the dark theme
-        dropDown: "off",           // off | stack | side : drag the bar down for the utilities box (stack: drag again for the notifications; side: notifications beside it)
+        dropDown: "side",          // off | stack | side : drag the bar down for the utilities box (stack: drag again for the notifications; side: notifications beside it)
         osdHold: 1700,             // ms the volume / brightness bar stays
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
         notifSpot: "edge",         // edge | corner : where the notification centre is opened from: a strip on the right edge, or the top-right corner
@@ -1058,6 +1058,7 @@ ShellRoot {
         }
         switch (id) {
         case "wallpaper": randomWallpaper(); break
+        case "wallgallery": settingsWin.openGallery(); break
         case "settings": settingsWin.show(); break
         case "power": powerMenu.show(); break
         case "gaming": setGaming(!gaming); break
@@ -1359,6 +1360,8 @@ ShellRoot {
         function quickterm(): void { quickTerm.toggle() }
         function edgemode(): void { root.toggleEdgeMode() }
         function settings(): void { settingsWin.toggle() }
+        function gallery(): void { settingsWin.openGallery() }
+        function wallpaperpicker(): void { settingsWin.openGallery() }
         function power(): void { powerMenu.show() }
         function gaming(): void { root.setGaming(!root.gaming) }
         function caffeine(): void { root.setCaffeine(!root.caffeine, 0) }
@@ -1612,7 +1615,10 @@ ShellRoot {
                     opacity: root.page === "home" ? 1 : 0
                     visible: opacity > 0.01
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
-                    onStatusClicked: root.page = "perf"
+                    onStatusClicked: {
+                        if (root.dropOn) root.dropShow("util")
+                        else root.page = (root.page === "perf" ? "home" : "perf")
+                    }
                     onWorkspaceClicked: n => root.hypr("hl.dsp.focus({ workspace = " + n + " })")
                     onWorkspaceScrolled: d => Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", d > 0 ? "wheel-up" : "wheel-down"])
                     onSpecialClicked: name => root.toggleSpecial(name)
@@ -1907,7 +1913,10 @@ ShellRoot {
             onWorkspaceClicked: n => root.hypr("hl.dsp.focus({ workspace = " + n + " })")
             onWorkspaceScrolled: d => Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", d > 0 ? "wheel-up" : "wheel-down"])
             onSpecialClicked: name => root.toggleSpecial(name)
-            onStatusClicked: root.page = "perf"
+            onStatusClicked: {
+                if (root.dropOn) root.dropShow("util")
+                else root.page = (root.page === "perf" ? "home" : "perf")
+            }
             onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
             onBgClicked: appsWin.pinFor(9000)
             onPageDrop: dir => root.drop(dir)

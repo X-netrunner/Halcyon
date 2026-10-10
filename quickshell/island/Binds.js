@@ -31,6 +31,8 @@ var groups = [
         { label: "Move window to workspace", kind: "text", keys: "Super + Alt + 1..9" },
         { id: "wsnext", label: "Next workspace (a new one after the last)", keys: "SUPER + CTRL + Right" },
         { id: "wsprev", label: "Previous workspace (first wraps to last)", keys: "SUPER + CTRL + Left" },
+        { id: "ws_scroll_down", label: "Next workspace (scroll down)", keys: "SUPER + mouse_down" },
+        { id: "ws_scroll_up", label: "Previous workspace (scroll up)", keys: "SUPER + mouse_up" },
         { id: "scratch", label: "Scratch workspace (overlay)", keys: "SUPER + S" },
         { id: "toscratch", label: "Send window to scratch", keys: "SUPER + ALT + S" },
         { id: "music", label: "Music (your default player)", keys: "SUPER + M" },
@@ -82,6 +84,14 @@ var groups = [
         { label: "Sleep", kind: "text", keys: "4 fingers, down" },
         { label: "Workspace tree", kind: "text", keys: "3-finger pinch" }
     ] },
+    { id: "mouse", title: "Mouse & Gestures", items: [
+        { label: "Move a window", kind: "text", keys: "Super + right drag" },
+        { label: "Resize a window", kind: "text", keys: "Super + left drag" },
+        { label: "Switch workspaces", kind: "text", keys: "Super + scroll wheel" },
+        { label: "Toggle island control center", kind: "text", keys: "Click status ring / notch" },
+        { label: "Media / performance page", kind: "text", keys: "Drag island bar left / right" },
+        { label: "Cycle workspaces on bar", kind: "text", keys: "Scroll on island bar" }
+    ] },
     { id: "sysmode", title: "Sysmode (terminal, sudo)", items: [
         { label: "Active profile and kernel metrics", kind: "cli", keys: "sysmode status" },
         { label: "Daily hardening", kind: "cli", keys: "sysmode secure" },
@@ -99,7 +109,8 @@ var keyNames = {
     "slash": "/", "period": ".", "comma": ",", "space": "Space", "return": "Enter", "escape": "Esc", "tab": "Tab",
     "grave": "`", "backslash": "\\", "delete": "Del", "backspace": "⌫", "print": "Print", "left": "←", "right": "→",
     "up": "↑", "down": "↓", "minus": "-", "equal": "=", "semicolon": ";", "apostrophe": "'", "bracketleft": "[",
-    "bracketright": "]", "pageup": "PgUp", "pagedown": "PgDn", "home": "Home", "end": "End", "insert": "Ins"
+    "bracketright": "]", "pageup": "PgUp", "pagedown": "PgDn", "home": "Home", "end": "End", "insert": "Ins",
+    "mouse_down": "Scroll Down", "mouse_up": "Scroll Up", "mouse:272": "Left Click", "mouse:273": "Right Click", "mouse:274": "Middle Click"
 }
 
 // "SUPER + ALT + slash" -> { mods: { SUPER: true, ALT: true }, key: "slash" }
