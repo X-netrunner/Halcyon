@@ -76,9 +76,10 @@ RowLayout {
         out.sort(function (a, b) { return a.id - b.id })
         return out
     }
+    // a special workspace shows its icon only while it has a window in it (or is open right now: "lit"), so an empty one leaves no blank space
     function hasSpecial(n) {
         var l = Hyprland.workspaces.values
-        for (var i = 0; i < l.length; i++) if (l[i].name === "special:" + n) return true
+        for (var i = 0; i < l.length; i++) if (l[i].name === "special:" + n) return wsWindows(l[i]) > 0
         return false
     }
 

@@ -18,7 +18,7 @@ ShellRoot {
     readonly property string powerService: "power-manager.service"
     // Settings > Bar > Padding: low | normal | high  ->  bar height, side padding, and the space ABOVE the bar (to the screen edge)
     // = the space BELOW it (to the windows): the same number, so the bar sits evenly. "low" is almost touching both.
-    readonly property bool notchStyle: opt.barStyle === "notch"
+    readonly property bool notchStyle: opt.barStyle === "notch" || opt.barStyle === "custom"      // custom = the bar builder (CustomBar.qml): the same hanging bar
     property bool notchHovered: false
     readonly property var padSet: ({ low: { h: 32, top: 3, gap: 3, x: 28 }, normal: { h: 44, top: 12, gap: 12, x: 56 }, high: { h: 54, top: 20, gap: 20, x: 76 } })[barPadding] || ({ h: 44, top: 12, gap: 12, x: 56 })
     property int notifMax: 5                 // popups on screen at once (Settings > Notifications); a new one past this hides the oldest popup (it stays in the centre)
@@ -66,11 +66,12 @@ ShellRoot {
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
         pageClose: 600,            // ms the performance / media page waits after the pointer leaves the bar before it folds back (150 / 600 / 4000)
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
-        barStyle: "island",        // island | notch : the floating pill, or a bar hanging from the top edge (NotchBar.qml)
+        barStyle: "island",        // island | notch | custom : the floating pill, or a bar hanging from the top edge (NotchBar.qml)
         notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
         notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchSpacing: "compact",
         islWs: true, islWsLook: "numbers", islWsMin: 5, islSpecials: true, islViz: true, islTime: true, islWifi: true, islWifiStyle: "symbol", islBtMode: "on", islBat: true, islBatPct: true, islCaffeine: true,   // what the island shows
         notchBat: true, notchBatPct: false, notchCaffeine: true, notchBg: true,
+        barLayout: null,           // the bar builder's layout { left, center, right } (BarLayout.js); null = the default one
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
         stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
@@ -1891,8 +1892,47 @@ ShellRoot {
     }
     onNotchHoveredChanged: if (!notchHovered) island.hoverSpent = false
     LazyLoader {
-        active: root.notchStyle
+        active: root.opt.barStyle === "notch"
         NotchBar {
+            pal: root.palObj
+            stats: root.stats
+            net: root.net
+            cava: root.cava
+            playing: root.playing
+            activeSpecial: root.activeSpecial
+            caffeine: root.caffeine
+            focusText: root.focusState.on ? root.focusText : ""
+            focusPaused: root.focusState.on && root.focusState.paused === true
+            bgCount: bgPanel.count
+            opt: root.opt
+            barPadding: root.barPadding
+            autoHide: root.autoHide
+            clickMode: root.clickMode
+            clock24: root.clock24
+            gaps: root.gaps
+            Component.onCompleted: root.notchBodyW = bodyWidth
+            onBodyWidthChanged: root.notchBodyW = bodyWidth
+            showStats: root.hoverAction === "stats" && root.notchHovered
+            pageOpen: root.page !== "home"
+            onWorkspaceClicked: n => root.hypr("hl.dsp.focus({ workspace = " + n + " })")
+            onWorkspaceScrolled: d => Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", d > 0 ? "wheel-up" : "wheel-down"])
+            onSpecialClicked: name => root.toggleSpecial(name)
+            onStatusClicked: {
+                if (root.dropOn) root.dropShow("util")
+                else root.page = (root.page === "perf" ? "home" : "perf")
+            }
+            onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
+            onBgClicked: appsWin.pinFor(9000)
+            onPageDrop: dir => root.drop(dir)
+            onPageStep: dir => root.go(dir)
+            onHoverEdited: on => root.notchHovered = on
+        }
+    }
+
+    // style Custom: the same bar, with the widgets and places picked in Settings > Bar style > Bar builder
+    LazyLoader {
+        active: root.opt.barStyle === "custom"
+        CustomBar {
             pal: root.palObj
             stats: root.stats
             net: root.net

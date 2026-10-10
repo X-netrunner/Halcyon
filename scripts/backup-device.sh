@@ -8,11 +8,13 @@
 #   backup-device.sh            interactive: pick the disk, confirm, back up
 #   backup-device.sh --home     only your home folder (no root needed)
 #   backup-device.sh --dry-run  show what would be copied, copy nothing
+#   backup-device.sh --everything  turn the smart skip list off (normally caches, trash, game files, node_modules ... are left out)
+#   Your own skip list: ~/.config/Halcyon/backup-exclude.conf   (a folder with a .nobackup file inside is skipped too)
 G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'
 have() { command -v "$1" >/dev/null 2>&1; }
 die()  { printf '%s✘%s %s\n' "$R" "$N" "$*" >&2; exit 1; }
-HOME_ONLY=0; DRY=0
-for a in "$@"; do case "$a" in --home) HOME_ONLY=1 ;; --dry-run) DRY=1 ;; -h|--help) sed -n 2,11p "$0"; exit 0 ;; esac; done
+HOME_ONLY=0; DRY=0; SMART=1
+for a in "$@"; do case "$a" in --home) HOME_ONLY=1 ;; --everything) SMART=0 ;; --dry-run) DRY=1 ;; -h|--help) sed -n 2,12p "$0"; exit 0 ;; esac; done
 have rsync  || die "rsync is not installed (sudo pacman -S rsync)"
 have lsblk  || die "lsblk is missing (util-linux)"
 [ "$HOME_ONLY" = 1 ] || have sudo || die "sudo is needed to back up the whole system (or use --home)"
@@ -68,10 +70,60 @@ src=/; excl=(--exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --excl
   --exclude=/lost+found --exclude=/var/tmp --exclude=/var/cache --exclude=/var/lib/pacman/sync "--exclude=$mnt" --exclude=/swapfile --exclude=/.snapshots)
 if [ "$HOME_ONLY" = 1 ]; then src="$HOME/"; excl=(--exclude=.cache --exclude=.local/share/Trash --exclude=.local/share/gvfs-metadata --exclude="*.sock" "--exclude=$mnt"); fi
 
+# ---- smart skip list: things that rebuild themselves (caches, trash, package downloads, game files, node_modules ...).
+#      They are not backed up, so the backup is smaller and faster. --everything turns this off.
+smart_rel=( .cache .thumbnails .local/share/Trash .local/share/gvfs-metadata .local/share/baloo .local/state/halcyon/restore-undo
+  .npm .yarn/cache .local/share/pnpm .cargo/registry .cargo/git .gradle/caches .m2/repository .ccache go/pkg/mod
+  .local/share/containers/storage '.var/app/*/cache' '.var/app/*/.cache'
+  .local/share/Steam/steamapps/common .local/share/Steam/steamapps/shadercache .local/share/Steam/steamapps/downloading .local/share/Steam/steamapps/temp
+  '.var/app/*/.local/share/Steam/steamapps/common'
+  '.config/*/Cache' '.config/*/Code Cache' '.config/*/GPUCache' '.config/*/GrShaderCache' '.config/*/ShaderCache'
+  '.config/*/*/Cache' '.config/*/*/Code Cache' '.config/*/*/GPUCache' '.config/*/*/Service Worker/CacheStorage' )
+smart_any=( node_modules __pycache__ )
+conf="$HOME/.config/Halcyon/backup-exclude.conf"      # your own additions: one rsync pattern per line
+if [ "$SMART" = 1 ]; then
+  excl+=(--exclude-if-present=CACHEDIR.TAG --exclude-if-present=.nobackup)
+  if [ "$HOME_ONLY" = 1 ]; then
+    for r in "${smart_rel[@]}"; do excl+=("--exclude=/$r"); done
+    for a in "${smart_any[@]}"; do excl+=("--exclude=$a"); done
+  else
+    for r in "${smart_rel[@]}"; do excl+=("--exclude=/home/*/$r" "--exclude=/root/$r"); done
+    for a in "${smart_any[@]}"; do excl+=("--exclude=/home/*/$a" "--exclude=/home/*/**/$a"); done
+    excl+=(--exclude=/var/lib/systemd/coredump)
+  fi
+  if [ ! -e "$conf" ] && mkdir -p "$(dirname "$conf")" 2>/dev/null; then
+    cat > "$conf" 2>/dev/null <<'CONF_EOF'
+# Extra things to leave out of backups (backup-device.sh). One rsync pattern per line, # = comment.
+# Home backup: paths are relative to your home folder, e.g.    Videos/raw      or      *.iso
+# Whole system backup: write the full path, e.g.               /home/you/Videos/raw
+# To skip a whole folder without editing this file, put an empty file called .nobackup inside it.
+CONF_EOF
+  fi
+  if [ -f "$conf" ]; then
+    while IFS= read -r l; do
+      l=$(printf '%s' "$l" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+      case "$l" in ""|"#"*) continue ;; esac
+      excl+=("--exclude=$l")
+    done < "$conf"
+  fi
+fi
+
 printf '\n%sFrom:%s  %s\n%sTo:%s    %s   (%s, %s free)\n' "$B" "$N" "$([ "$HOME_ONLY" = 1 ] && echo "your home folder" || echo "the whole system")" "$B" "$N" "$dest" "$fs" "$(df -h --output=avail "$mnt" | tail -n1 | tr -d ' ')"
 if [ "$HOME_ONLY" != 1 ]; then
   need=$(df -B1 --output=used / | tail -n1 | tr -d ' '); have_b=$(df -B1 --output=avail "$mnt" | tail -n1 | tr -d ' ')
   [ "$have_b" -gt "$need" ] 2>/dev/null || printf '%s!%s The disk looks smaller than the used space on this computer (%s used): it may fill up.\n' "$Y" "$N" "$(df -h --output=used / | tail -n1 | tr -d ' ')"
+fi
+if [ "$SMART" = 1 ]; then
+  big=""
+  for r in "${smart_rel[@]}"; do
+    case "$r" in *\**) continue ;; esac
+    [ -e "$HOME/$r" ] || continue
+    k=$(timeout 6 du -sk "$HOME/$r" 2>/dev/null | cut -f1)
+    [ "${k:-0}" -ge 51200 ] 2>/dev/null && big+=$(printf '\n    %-46s %s MB' "~/$r" "$((k / 1024))")
+  done
+  printf '%sLeft out on purpose%s (they rebuild by themselves): caches, trash, package downloads, game files, node_modules ...\n' "$B" "$N"
+  [ -n "$big" ] && printf '  The big ones on this computer:%s\n' "$big"
+  printf '  %sAdd your own in %s, or run with --everything to turn the skip list off.%s\n' "$D" "$conf" "$N"
 fi
 [ "$DRY" = 1 ] || { printf 'Start the backup? [Y/n] '; read -r ok; case "$ok" in n|N|no|No|NO) echo cancelled; exit 0 ;; esac; }
 

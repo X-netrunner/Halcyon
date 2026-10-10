@@ -335,22 +335,23 @@ Scope {
             { type: "custom", name: "growth" }
         ] },
         { id: "barstyle", title: "Bar style", section: "Desktop", items: [
-            { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Everything else (pages, launcher, panels) works the same in both.", opts: [o("island", "Island"), o("notch", "Notch")] },
-            { type: "toggle", key: "pair:ws", label: "Show workspaces" },
+            { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Custom: the same hanging bar, but you choose what is on it and where (Bar builder below). Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("custom", "Custom")] },
+            { type: "custom", name: "barBuilder", when: "opt:barStyle=custom" },
+            { type: "toggle", key: "pair:ws", label: "Show workspaces", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "opt:islWsLook", label: "Workspace look", desc: "Numbers: the island's own 1 2 3 ... with a sliding pill. Capsules: the notch look, small vertical capsules, the current one big and vivid.", opts: [o("numbers", "Numbers"), o("capsules", "Capsules")], when: "opt:barStyle=island" },
             { type: "seg", key: "pair:wsMin", label: "Capsules always shown", desc: "Workspaces 1 to N are always drawn as capsules (empty ones dim, ones with windows faded, the current one big and vivid). More show up when you use them. The notch always draws capsules; the island only with the capsule look.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")] },
-            { type: "toggle", key: "pair:specials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)" },
+            { type: "toggle", key: "pair:specials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&pair:specials=true" },
-            { type: "toggle", key: "pair:viz", label: "Music bars", desc: "Only while something plays." },
+            { type: "toggle", key: "pair:viz", label: "Music bars", desc: "Only while something plays.", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "opt:viz", label: "Music bars quality", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
-            { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons." },
-            { type: "toggle", key: "pair:wifi", label: "Show Wi-Fi" },
-            { type: "seg", key: "pair:wifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "pair:combo=false" },
+            { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island|notch" },
+            { type: "toggle", key: "pair:wifi", label: "Show Wi-Fi", when: "opt:barStyle=island|notch" },
+            { type: "seg", key: "pair:wifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "pair:combo=false||opt:barStyle=custom" },
             { type: "seg", key: "pair:bt", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")] },
-            { type: "toggle", key: "pair:bat", label: "Show battery" },
+            { type: "toggle", key: "pair:bat", label: "Show battery", when: "opt:barStyle=island|notch" },
             { type: "toggle", key: "pair:batPct", label: "Show battery percentage" },
-            { type: "toggle", key: "pair:caffeine", label: "Show the Caffeine icon" },
-            { type: "seg", key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch" }
+            { type: "toggle", key: "pair:caffeine", label: "Show the Caffeine icon", when: "opt:barStyle=island|notch" },
+            { type: "seg", key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch|custom" }
         ] },
         { id: "bar", title: "Bar", section: "Desktop", items: [
             { type: "seg", key: "barPadding", label: "Bar size and padding", desc: "How tall the bar is. Island: also how far it floats from the top edge and the space at its sides.", opts: [o("low", "Low"), o("normal", "Normal"), o("high", "High")] },
@@ -463,7 +464,7 @@ Scope {
             { type: "seg", key: "st:FILE_ICONS", label: "File manager icons", desc: "How big the icons are in Thunar (side bar, lists, icon view, toolbar). Thunar picks it up at once; windows that are already open may need a reopen.", opts: [o("small", "Small"), o("medium", "Medium"), o("large", "Large")] }
         ] },
         { id: "backup", title: "Backup", section: "System", items: [
-            { type: "action", id: "backup-device", label: "Backup this device", btn: "Choose a disk and back up", done: "Opening…", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the whole system is copied onto it (scripts/backup-device.sh). Nothing on the disk is erased; every backup goes in its own dated folder." },
+            { type: "action", id: "backup-device", label: "Backup this device", btn: "Choose a disk and back up", done: "Opening…", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the whole system is copied onto it (scripts/backup-device.sh). Nothing on the disk is erased; every backup goes in its own dated folder. Caches, trash, package downloads and game files are skipped (they rebuild by themselves); add your own in ~/.config/Halcyon/backup-exclude.conf." },
             { type: "action", id: "backup-home", label: "Backup my home folder only", btn: "Choose a disk and back up", done: "Opening…", desc: "Same, but only your files in your home folder. Needs no admin password." },
             { type: "action", id: "restore-device", label: "Restore from a backup", btn: "Choose a disk and restore", done: "Opening…", desc: "Plug in the backup disk and pick a backup in the terminal that opens. A home-folder backup can only be restored to your home folder; a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder." },
             { type: "action", id: "restore-home", label: "Restore my home folder only", btn: "Choose a disk and restore", done: "Opening…", desc: "Same, but it only ever touches your home folder (any backup works), and you can restore just one folder or file from it. Needs no admin password." },
@@ -493,19 +494,23 @@ Scope {
         if (key.indexOf("rm:") === 0) return remind ? remind[key.substring(3)] : undefined
         if (key.indexOf("pair:") === 0) {            // the value of the bar that is showing now (both get written together)
             var pr = pairs[key.substring(5)]
-            return opt ? opt[(opt.barStyle === "notch") ? pr[1] : pr[0]] : undefined
+            return opt ? opt[(opt.barStyle === "notch" || opt.barStyle === "custom") ? pr[1] : pr[0]] : undefined
         }
         return root[key]
     }
     // item.when = "key=value": the item is only listed while that setting has that value (e.g. the notch options)
     // several conditions can be joined with "&": "opt:barStyle=notch&opt:notchCombo=false"
     function whenOk(w) {
-        var parts = w.split("&")
-        for (var i = 0; i < parts.length; i++) {
-            var p = parts[i].split("=")
-            if (String(get(p[0])) !== p[1]) return false
+        var alts = w.split("||")                       // several ways to be shown: any one is enough
+        for (var a = 0; a < alts.length; a++) {
+            var parts = alts[a].split("&"), ok = true
+            for (var i = 0; i < parts.length && ok; i++) {
+                var p = parts[i].split("=")
+                if (p[1].split("|").indexOf(String(get(p[0]))) < 0) ok = false      // "key=a|b": that setting is a or b
+            }
+            if (ok) return true
         }
-        return true
+        return false
     }
     function num(m) {
         var v = get(m.key)
@@ -570,7 +575,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "barBuilder" ? 16 : 4)
                : (t.type === "seg" || t.type === "slider") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -1005,6 +1010,15 @@ Scope {
                 text: "Apps from the list are matched by the window class their launcher entry gives (plus the program name). If one still opens, click it under \"Open right now\" while it runs: that is its exact class. The class is what `hyprctl clients` shows; * works as a wildcard and case does not matter. Saved in ~/.config/Halcyon/focus-apps.conf."
                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
             }
+        }
+    }
+
+    Component {
+        id: cBarBuilder
+        BarBuilder {
+            pal: root.pal
+            layout: root.get("opt:barLayout")
+            onEdited: l => root.setting("opt:barLayout", l)
         }
     }
 
@@ -1472,6 +1486,7 @@ Scope {
                                                                                : leaf.m.name === "apps" ? cApps
                                                                                : leaf.m.name === "focusApps" ? cFocusApps
                                                                                : leaf.m.name === "safetyAuto" ? cSafetyAuto
+                                                                               : leaf.m.name === "barBuilder" ? cBarBuilder
                                                                                : leaf.m.name === "growth" ? cGrowth : cSwatches
                                                             }
                                                         }

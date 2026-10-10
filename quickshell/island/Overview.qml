@@ -169,6 +169,8 @@ Item {
     // win by window address (no 0x). Kept out of the node list so the tree doesn't rebuild every 2 s.
     property var wsRes: ({})
     property var winRes: ({})
+    property var halRes: ({ cpu: 0, mem: 0, n: 0, top: [] })   // Halcyon's own processes (island, bar, hx, daemons)
+    property var sysRes: ({ total: 0, avail: 0 })
     Process {
         running: ov.open
         command: [Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "wsres", "2"]
@@ -178,6 +180,8 @@ Item {
                     var r = JSON.parse(d)
                     ov.wsRes = r.ws || {}
                     ov.winRes = r.win || {}
+                    if (r.hal) ov.halRes = r.hal
+                    if (r.sys) ov.sysRes = r.sys
                 } catch (e) {}
             }
         }
@@ -1174,6 +1178,137 @@ Item {
             color: ov.pal.muted
             font.family: ov.pal.uiFont
             font.pixelSize: 12
+        }
+    }
+
+
+    // ---- Halcyon's own footprint, under the header on the left
+    Rectangle {
+        id: halCard
+        x: 40
+        y: 34 + 52
+        width: 262
+        height: halCol.implicitHeight + 28
+        radius: 16
+        color: Qt.alpha(ov.pal.surface, 0.80)
+        border.width: 1
+        border.color: Qt.alpha(ov.pal.accent, 0.28)
+        opacity: ov.open ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.InOutSine } }
+
+        readonly property real memFrac: ov.sysRes.total > 0 ? Math.min(1, ov.halRes.mem / ov.sysRes.total) : 0
+        readonly property real cpuFrac: Math.min(1, ov.halRes.cpu / 100)
+
+        Column {
+            id: halCol
+            x: 16; y: 14
+            width: parent.width - 32
+            spacing: 10
+
+            Row {
+                spacing: 8
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: String.fromCodePoint(0xF0493)
+                    color: ov.pal.accent
+                    font.family: ov.pal.font
+                    font.pixelSize: 14
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Halcyon"
+                    color: ov.pal.text
+                    font.family: ov.pal.uiFont
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: ov.halRes.n + (ov.halRes.n === 1 ? " process" : " processes")
+                    color: ov.pal.muted
+                    font.family: ov.pal.uiFont
+                    font.pixelSize: 11
+                }
+            }
+
+            // CPU
+            Column {
+                width: parent.width
+                spacing: 4
+                Row {
+                    width: parent.width
+                    Text { text: "CPU"; color: ov.pal.muted; font.family: ov.pal.uiFont; font.pixelSize: 11; width: parent.width - cpuVal.implicitWidth }
+                    Text { id: cpuVal; text: ov.halRes.cpu.toFixed(1) + "%"; color: ov.pal.text; font.family: ov.pal.font; font.pixelSize: 11 }
+                }
+                Rectangle {
+                    width: parent.width; height: 5; radius: 3
+                    color: Qt.alpha(ov.pal.muted, 0.22)
+                    Rectangle {
+                        height: parent.height; radius: 3
+                        width: Math.max(4, parent.width * halCard.cpuFrac)
+                        color: ov.pal.accent
+                        Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
+                    }
+                }
+            }
+
+            // RAM
+            Column {
+                width: parent.width
+                spacing: 4
+                Row {
+                    width: parent.width
+                    Text { text: "RAM"; color: ov.pal.muted; font.family: ov.pal.uiFont; font.pixelSize: 11; width: parent.width - memVal.implicitWidth }
+                    Text {
+                        id: memVal
+                        text: ov.fmtMem(ov.halRes.mem) + (ov.sysRes.total > 0 ? "  ·  " + (halCard.memFrac * 100).toFixed(1) + "%" : "")
+                        color: ov.pal.text; font.family: ov.pal.font; font.pixelSize: 11
+                    }
+                }
+                Rectangle {
+                    width: parent.width; height: 5; radius: 3
+                    color: Qt.alpha(ov.pal.muted, 0.22)
+                    Rectangle {
+                        height: parent.height; radius: 3
+                        width: Math.max(4, parent.width * halCard.memFrac)
+                        color: ov.pal.accent2
+                        Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
+                    }
+                }
+            }
+
+            // heaviest parts
+            Rectangle { width: parent.width; height: 1; color: Qt.alpha(ov.pal.muted, 0.18); visible: ov.halRes.top && ov.halRes.top.length > 0 }
+            Repeater {
+                model: ov.halRes.top || []
+                delegate: Row {
+                    width: halCol.width
+                    Text {
+                        text: modelData.name
+                        color: ov.pal.muted
+                        font.family: ov.pal.font
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                        width: parent.width - 96
+                    }
+                    Text {
+                        text: modelData.cpu.toFixed(1) + "%"
+                        color: ov.pal.muted
+                        font.family: ov.pal.font
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignRight
+                        width: 44
+                    }
+                    Text {
+                        text: ov.fmtMem(modelData.mem)
+                        color: ov.pal.text
+                        font.family: ov.pal.font
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignRight
+                        width: 52
+                    }
+                }
+            }
         }
     }
 
