@@ -222,29 +222,33 @@ Scope {
             { type: "custom", name: "growth" }
         ] },
         { id: "barstyle", title: "Bar style", section: "Desktop", items: [
-            { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi and battery on the right. Everything else (pages, launcher, panels) works the same in both.", opts: [o("island", "Island"), o("notch", "Notch")] },
+            { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Everything else (pages, launcher, panels) works the same in both.", opts: [o("island", "Island"), o("notch", "Notch")] },
             { type: "toggle", key: "opt:islWs", label: "Show workspaces", when: "opt:barStyle=island" },
             { type: "seg", key: "opt:islWsLook", label: "Workspace look", desc: "Numbers: the island's own 1 2 3 ... with a sliding pill. Capsules: the notch look, small vertical capsules, the current one big and vivid.", opts: [o("numbers", "Numbers"), o("capsules", "Capsules")], when: "opt:barStyle=island" },
             { type: "seg", key: "opt:islWsMin", label: "Capsules always shown", desc: "For the capsule look: workspaces 1 to N are always drawn.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")], when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islSpecials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)", when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islViz", label: "Music bars", desc: "Only while something plays.", when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islTime", label: "Show the time", desc: "The day and date are in the Clock group.", when: "opt:barStyle=island" },
+            { type: "toggle", key: "opt:islCombo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islWifi", label: "Show Wi-Fi", when: "opt:barStyle=island" },
-            { type: "seg", key: "opt:islWifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength.", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "opt:barStyle=island" },
-            { type: "seg", key: "opt:islBtMode", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")], when: "opt:barStyle=island" },
+            { type: "seg", key: "opt:islWifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "opt:barStyle=island&opt:islCombo=false" },
+            { type: "seg", key: "opt:islBtMode", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")], when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islBat", label: "Show battery", when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islBatPct", label: "Show battery percentage", when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:islCaffeine", label: "Show the Caffeine icon", when: "opt:barStyle=island" },
             { type: "toggle", key: "opt:notchWs", label: "Show workspaces", when: "opt:barStyle=notch" },
             { type: "seg", key: "opt:notchWsMin", label: "Workspaces always shown", desc: "Capsules for workspaces 1 to N are always drawn (empty ones dim, ones with windows in a faded colour, the current one big and vivid). More show up when you use them.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")], when: "opt:barStyle=notch" },
             { type: "toggle", key: "opt:notchSpecials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)", when: "opt:barStyle=notch" },
+            { type: "seg", key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&opt:notchSpecials=true" },
             { type: "toggle", key: "opt:notchViz", label: "Music bars next to the time", desc: "Only while something plays.", when: "opt:barStyle=notch" },
             { type: "toggle", key: "opt:notchTime", label: "Show the time", desc: "12 / 24 hour and seconds are in the Clock group.", when: "opt:barStyle=notch" },
             { type: "toggle", key: "opt:notchDate", label: "Show the day and date", desc: "Separate from the time: show either, both or neither.", when: "opt:barStyle=notch" },
             { type: "seg", key: "opt:notchAccent", label: "Accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch" },
+            { type: "toggle", key: "opt:notchCombo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=notch" },
             { type: "toggle", key: "opt:notchWifi", label: "Show Wi-Fi", when: "opt:barStyle=notch" },
-            { type: "seg", key: "opt:notchWifiStyle", label: "Wi-Fi look", desc: "Bars and dots light up with the signal strength. Symbol is the classic Wi-Fi icon.", opts: [o("bars", "Bars"), o("symbol", "Symbol"), o("dots", "Dots")], when: "opt:barStyle=notch" },
-            { type: "seg", key: "opt:notchBtMode", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")], when: "opt:barStyle=notch" },
+            { type: "seg", key: "opt:notchWifiStyle", label: "Wi-Fi look", desc: "Bars and dots light up with the signal strength. Symbol is the classic Wi-Fi icon. (Not used by the combined icon.)", opts: [o("bars", "Bars"), o("symbol", "Symbol"), o("dots", "Dots")], when: "opt:barStyle=notch&opt:notchCombo=false" },
+            { type: "seg", key: "opt:notchBtMode", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")], when: "opt:barStyle=notch" },
+            { type: "seg", key: "opt:notchSpacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the clock always dead centre.", opts: [o("compact", "Compact"), o("spacious", "Spacious")], when: "opt:barStyle=notch" },
             { type: "toggle", key: "opt:notchCenter", label: "Keep the clock centred", desc: "Off: the bar is only as wide as what it shows, no gaps. On: the clock stays in the exact middle and the shorter side keeps empty space.", when: "opt:barStyle=notch" },
             { type: "toggle", key: "opt:notchBat", label: "Show battery", when: "opt:barStyle=notch" },
             { type: "toggle", key: "opt:notchBatPct", label: "Show battery percentage", when: "opt:barStyle=notch" },
@@ -365,9 +369,14 @@ Scope {
         return root[key]
     }
     // item.when = "key=value": the item is only listed while that setting has that value (e.g. the notch options)
+    // several conditions can be joined with "&": "opt:barStyle=notch&opt:notchCombo=false"
     function whenOk(w) {
-        var p = w.split("=")
-        return String(get(p[0])) === p[1]
+        var parts = w.split("&")
+        for (var i = 0; i < parts.length; i++) {
+            var p = parts[i].split("=")
+            if (String(get(p[0])) !== p[1]) return false
+        }
+        return true
     }
     function num(m) {
         var v = get(m.key)

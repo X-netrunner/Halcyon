@@ -62,10 +62,11 @@ ShellRoot {
         pageClose: 600,            // ms the performance / media page waits after the pointer leaves the bar before it folds back (150 / 600 / 4000)
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
         barStyle: "island",        // island | notch : the floating pill, or a bar hanging from the top edge (NotchBar.qml)
-        notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
-        notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchCenter: false,
+        notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
+        notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchCenter: false, notchSpacing: "compact",
         islWs: true, islWsLook: "numbers", islWsMin: 5, islSpecials: true, islViz: true, islTime: true, islWifi: true, islWifiStyle: "symbol", islBtMode: "on", islBat: true, islBatPct: true, islCaffeine: true,   // what the island shows
         notchBat: true, notchBatPct: false, notchCaffeine: true, notchBg: true,
+        notchCombo: true, islCombo: true,   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
         stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true
@@ -230,7 +231,7 @@ ShellRoot {
 
     property var stats: ({ cpu: 0, mem: 0, memGb: "0.0", temp: 0, down: 0, up: 0, bat: 0, charging: false, ac: false, hasBat: false,
                                sysmode: "", auto: false, pmode: "", pprofile: "" })
-    property var net: ({ wifi: "off", ssid: "", eth: false, bt: "off", btdev: "" })
+    property var net: ({ wifi: "off", ssid: "", eth: false, bt: "off", btdev: "", btn: 0 })
     property string profile: "balanced"
     property var cava: []
     property string activeSpecial: ""
@@ -563,6 +564,18 @@ ShellRoot {
     function startTapWatch() { Quickshell.execDetached(["sh", "-c", "echo 0 > \"$1\"", "sh", superTapFile]); tapWatchT.start() }
     Timer { id: tapWatchT; interval: 600; onTriggered: tapWatch.path = root.superTapFile }
     FileView { id: tapWatch; path: ""; watchChanges: true; onFileChanged: root.superTapFired() }
+    // the top-most thing the island has on screen (power menu > settings > shortcuts > tree view > quick console >
+    // notification centre > launcher / performance / media page). Returns false when there is nothing to close.
+    function closeOverlay() {
+        if (powerMenu.open) { powerMenu.hide(); return true }
+        if (settingsWin.open) { settingsWin.hide(); return true }
+        if (cheat.open) { if (cheat.editId !== "") cheat.cancelEdit(); else cheat.hide(); return true }
+        if (overviewOpen) { overviewOpen = false; return true }
+        if (quickTerm.open && (quickTerm.pinned || quickTerm.focused)) { quickTerm.close(); return true }
+        if (notifs.centerOpen) { notifs.toggleCenter(); return true }
+        if (page !== "home") { page = "home"; return true }
+        return false
+    }
     function toggleLauncher() {
         overviewOpen = false
         page = (page === "launcher") ? "home" : "launcher"
@@ -1210,6 +1223,9 @@ ShellRoot {
         function dnd(): void { root.setDnd(!root.dnd) }
         function dndset(on: bool): void { root.setDnd(on) }          // set (gamemode.sh): dnd() above only toggles
         function cheatsheet(): void { root.runCommand("cheatsheet") }
+        // SUPER+Q (scripts/close.sh): closes the top-most island overlay and answers "closed"; "none" = nothing was open,
+        // so the script closes the focused window instead
+        function closeTop(): string { return root.closeOverlay() ? "closed" : "none" }
         function theme(): void { root.toggleTheme() }
         function quickterm(): void { quickTerm.toggle() }
         function edgemode(): void { root.toggleEdgeMode() }
@@ -1250,7 +1266,11 @@ ShellRoot {
         function peekHover(on) {
             if (on) { hideTimer.stop(); peek = true } else hideTimer.restart()
         }
+        // Edge boxes = Click (Settings > Edge boxes): touching the top edge does nothing, a click on it brings the bar back
+        function peekClick() { hideTimer.stop(); peek = true; clickGrace.restart() }
         Timer { id: hideTimer; interval: 700; onTriggered: win.peek = false }
+        // if the pointer never reaches the bar after the click, let it go again
+        Timer { id: clickGrace; interval: 2500; onTriggered: if (!hov.hovered) win.peek = false }
 
         mask: root.page === "launcher" ? launcherMask : ((root.notchStyle && root.page === "home") ? stripMask : normalMask)
         Region { id: launcherMask; item: backdrop }
@@ -1274,7 +1294,8 @@ ShellRoot {
             anchors.horizontalCenter: parent.horizontalCenter
             width: 420
             height: 5
-            HoverHandler { onHoveredChanged: win.peekHover(hovered) }
+            HoverHandler { enabled: !root.clickMode; onHoveredChanged: win.peekHover(hovered) }
+            TapHandler { enabled: root.clickMode; gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: win.peekClick() }
         }
 
         // soft halo around the island; follows its size while it grows and shrinks.
@@ -1435,6 +1456,8 @@ ShellRoot {
                     showBat: root.opt.islBat !== false
                     showBatPct: root.opt.islBatPct !== false
                     showCaffeine: root.opt.islCaffeine !== false
+                    combo: root.opt.islCombo !== false
+                    comboSize: Math.round(root.padSet.h * 0.55)
                     playing: root.playing
                     activeSpecial: root.activeSpecial
                     caffeine: root.caffeine
@@ -1540,6 +1563,7 @@ ShellRoot {
             opt: root.opt
             barPadding: root.barPadding
             autoHide: root.autoHide
+            clickMode: root.clickMode
             clock24: root.clock24
             gaps: root.gaps
             Component.onCompleted: root.notchBodyW = bodyWidth

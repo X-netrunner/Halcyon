@@ -98,6 +98,10 @@ return {
     kbToggleGroup              = "SUPER + Comma",
 
     -- Window Action
+    -- Mouse: hold SUPER and drag. RIGHT button moves the window, LEFT button resizes it (the reverse of Hyprland's stock
+    -- layout). Buttons: mouse:272 = left, mouse:273 = right, mouse:274 = middle. Swap the two lines to get the stock layout back.
+    kbMouseMove                = "SUPER + mouse:273",
+    kbMouseResize              = "SUPER + mouse:272",
     kbMoveWindow               = "SUPER + Z",
     kbResizeWindow             = "SUPER + X",
     kbWindowPip                = "SUPER + ALT + backslash",

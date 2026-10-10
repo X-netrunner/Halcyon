@@ -48,6 +48,8 @@ RowLayout {
     property bool showBat: true
     property bool showBatPct: true
     property bool showCaffeine: true
+    property bool combo: true                // Wi-Fi + Bluetooth + battery as one round icon (StatusRing.qml) instead of three
+    property int comboSize: 24
     readonly property bool statusAny: showWifi || btShown || (showBat && stats.hasBat === true) || (showCaffeine && caffeine) || (showBgCount && bgCount > 0)
     readonly property bool btShown: net.bt === "on" && (btMode === "on" || (btMode === "connected" && (net.btdev || "") !== ""))
     property bool showStats: false       // Settings > Bar: CPU / memory / temperature slide out while the pointer is on the bar
@@ -361,8 +363,27 @@ RowLayout {
                     NumberAnimation { to: 1.0; duration: 1600; easing.type: Easing.InOutSine }
                 }
             }
+            // combined status icon: Wi-Fi in the middle, battery as a ring, Bluetooth devices as dots (Settings > Bar style)
+            StatusRing {
+                id: comboRing
+                visible: row.combo && comboRing.any
+                anchors.verticalCenter: parent.verticalCenter
+                pal: row.pal
+                net: row.net
+                stats: row.stats
+                tint: row.pal.accent
+                btTint: row.pal.accent2
+                size: row.comboSize
+                showWifi: row.showWifi
+                showBat: row.showBat
+                btMode: row.btMode
+                showPct: row.showBatPct
+                textColor: row.pal.text
+                textFont: row.pal.uiFont
+                textPx: row.pal.tBody
+            }
             WifiIcon {
-                visible: row.showWifi
+                visible: row.showWifi && !row.combo
                 anchors.verticalCenter: parent.verticalCenter
                 pal: row.pal
                 net: row.net
@@ -371,7 +392,7 @@ RowLayout {
                 size: 14
             }
             Text {
-                visible: row.btShown
+                visible: row.btShown && !row.combo
                 text: row.icoBt
                 color: row.net.btdev !== "" ? row.pal.accent2 : row.pal.muted
                 font.family: row.pal.font
@@ -379,7 +400,7 @@ RowLayout {
                 anchors.verticalCenter: parent.verticalCenter
             }
             Row {
-                visible: row.showBat && row.stats.hasBat === true
+                visible: row.showBat && row.stats.hasBat === true && !row.combo
                 spacing: 5
                 anchors.verticalCenter: parent.verticalCenter
 

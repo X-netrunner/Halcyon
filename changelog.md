@@ -4,6 +4,23 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Smart special icons, SUPER+/ cheatsheet, Enter saves, SUPER+Q closes overlays
+
+- **Notch bar: special workspace icons pick a side** (`NotchBar.qml`, Settings > Bar style > Special icons side: Auto / Left / Right). Auto with the clock centred puts them on whichever side does not widen the bar.
+- **Bar spacing: Compact / Spacious** (Settings > Bar style); spacious keeps the time dead centre with roomier gaps and the music bar floating between the workspaces and the time.
+- **Cheatsheet is now SUPER+/** (was SUPER+ALT+/), in `keybinds.lua` and `Binds.js`. Enter saves a shortcut you are adding / editing.
+- **SUPER+Q closes the top island overlay first** (power menu, settings, shortcuts, tree view, quick console, notification centre, launcher / perf / media page) and only closes the focused window when none is open (`scripts/close.sh`, IPC `closeTop`).
+
+---
+
+## Mouse move / resize, click-to-reveal auto-hide, combined status icon
+
+- **SUPER + right button drag moves a window, SUPER + left button drag resizes it** (`hyprland/keybinds.lua`, buttons in `variables.lua` as `kbMouseMove` / `kbMouseResize`; listed in the cheatsheet under Windows).
+- **Auto-hide now respects Settings > Edge boxes = Click** (island and notch). The hot strip along the top edge used to reveal the bar on hover whatever that setting said; in Click mode it now needs a click, and the bar hides again once the pointer has left it (or after 2.5 s if it never reached it). Hover mode is unchanged.
+- **Combined status icon** (`island/StatusRing.qml`, Settings > Bar style > Combined status icon, on by default for both bar styles): Wi-Fi in the centre, the battery as a ring around it, Bluetooth devices as dots closing the ring's gap. `net.sh` now also reports `btn`, the number of connected Bluetooth devices. "Wi-Fi look" is hidden while the combined icon is on. `Settings.qml` `when:` conditions can now be joined with `&`.
+
+---
+
 ## Options to use less RAM and CPU (Settings > Performance & memory, Startup & background)
 
 - **Background refresh** (Normal / Relaxed / Slow): `stats.sh` (CPU, battery, sysmode) and `net.sh` (Wi-Fi / Bluetooth state) look again every 2 s / 4 s normally, 5 s / 10 s relaxed, 10 s / 20 s slow. The performance page and the bar's CPU / RAM / TEMP hover row keep the normal pace, and connecting to Wi-Fi or Bluetooth updates the bar label at once. Both scripts wait on a pipe in `$XDG_RUNTIME_DIR` that the island pokes when a flag changes.

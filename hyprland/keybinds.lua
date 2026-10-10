@@ -2,7 +2,7 @@ local vars = require("variables")
 local home = os.getenv("HOME")
 local ipc = "quickshell ipc -p " .. home .. "/.config/Halcyon/quickshell/island call island "
 
--- Shortcuts you changed (or added) in the island's cheatsheet (SUPER+ALT+/) are saved in this file; it is rewritten
+-- Shortcuts you changed (or added) in the island's cheatsheet (SUPER+/) are saved in this file; it is rewritten
 -- by the island and applied with a Hyprland reload. Every bind below goes through bind(id, default keys, ...), so
 -- a changed entry simply replaces the default keys ("none" turns it off). The ids and default keys must match
 -- quickshell/island/Binds.js (that is what the cheatsheet draws).
@@ -30,10 +30,19 @@ bind("editor", vars.kbEditor, hl.dsp.exec_cmd(vars.editor))
 bind("files", vars.kbFileExplorer, hl.dsp.exec_cmd(vars.fileExplorer))
 
 -- Window actions
-bind("close", vars.kbCloseWindow, hl.dsp.window.close())
+-- SUPER+Q closes whatever island overlay is on top (settings, shortcuts, tree view, launcher ...) and only closes the
+-- focused window when there is none (scripts/close.sh asks the island)
+bind("close", vars.kbCloseWindow, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/close.sh"))
 bind("float", vars.kbToggleWindowFloating, hl.dsp.window.float())
 bind("fullscreen", vars.kbWindowFullscreen, hl.dsp.window.fullscreen())
 bind("pin", vars.kbPinWindow, hl.dsp.window.pin())
+
+-- Mouse: hold SUPER and drag. Right button = move the window, left button = resize it (buttons are in variables.lua:
+-- kbMouseMove / kbMouseResize). On a floating window it moves / resizes freely; on a tiled one, moving drops it onto
+-- another tile (it swaps) and resizing drags the split. They are plain binds with { mouse = true } on purpose: the
+-- cheatsheet only lists them (kind "text"), it does not remap them.
+hl.bind(vars.kbMouseMove, hl.dsp.window.drag(), { mouse = true })
+hl.bind(vars.kbMouseResize, hl.dsp.window.resize(), { mouse = true })
 
 -- Workspaces 1-9  (SUPER+N goes to workspace N, SUPER+ALT+N moves the window there)
 for i = 1, 9 do
@@ -99,7 +108,7 @@ bind("shotarea", "SUPER + SHIFT + S", hl.dsp.exec_cmd(home .. "/.config/Halcyon/
 bind("clipboard", "SUPER + V", hl.dsp.exec_cmd("cliphist list | fuzzel -d | cliphist decode | wl-copy"))
 
 -- Cheatsheet: searchable list of every bind / gesture / sysmode command (also ">keybinds" in the launcher)
-bind("cheatsheet", "SUPER + ALT + slash", hl.dsp.exec_cmd(ipc .. "cheatsheet"))
+bind("cheatsheet", "SUPER + slash", hl.dsp.exec_cmd(ipc .. "cheatsheet"))
 
 -- Lock / Session
 bind("lock", vars.kbLock, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/lock.sh"))
