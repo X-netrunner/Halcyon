@@ -241,9 +241,6 @@ Scope {
                 if (e.key === Qt.Key_Escape) { if (root.editId !== "") root.cancelEdit(); else root.hide(); e.accepted = true }
                 else if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && root.editId !== "" && !root.capturing) { root.saveEdit(); e.accepted = true }
             }
-            // focus the search box from in here, where `search` is visible
-            Timer { running: root.open; interval: 80; onTriggered: search.forceActiveFocus() }
-            Connections { target: root; function onFocusReqChanged() { search.forceActiveFocus() } }
             Timer { id: typingT; interval: 220; onTriggered: root.typing = false }
 
             Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.55) }
@@ -297,6 +294,8 @@ Scope {
                             // one filter + rebuild after a short pause instead of one per key
                             onTextChanged: { root.typing = true; typingT.restart(); qDebounce.restart() }
                             Timer { id: qDebounce; interval: 130; onTriggered: root.query = search.text }
+                            Timer { running: root.open; interval: 80; onTriggered: search.forceActiveFocus() }
+                            Connections { target: root; function onFocusReqChanged() { search.forceActiveFocus() } }
                             Keys.onEscapePressed: { if (root.editId !== "") root.cancelEdit(); else root.hide() }
                             Keys.onReturnPressed: { if (root.editId !== "") root.saveEdit() }
                             Keys.onEnterPressed: { if (root.editId !== "") root.saveEdit() }

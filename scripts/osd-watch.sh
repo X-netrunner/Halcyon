@@ -24,16 +24,16 @@ while :; do
   if [ -n "$screen" ]; then
     read -r b < "$screen/brightness" 2>/dev/null || b=$lb
     if [ "$b" != "$lb" ]; then
-      [ "$lb" != -1 ] && [ "$quiet" -eq 0 ] && printf '{"k":"bright","p":%d}\n' $(( b * 100 / bmax ))
+      [ "$lb" != -1 ] && [ "$quiet" -eq 0 ] && [ "$bmax" -gt 0 ] && printf '{"k":"bright","p":%d}\n' $(( b * 100 / bmax ))
       lb=$b
     fi
   fi
   if [ -n "$kbd" ]; then
     read -r k < "$kbd/brightness" 2>/dev/null || k=$lk
     if [ "$k" != "$lk" ]; then
-      [ "$lk" != -1 ] && [ "$quiet" -eq 0 ] && printf '{"k":"kbd","p":%d}\n' $(( k * 100 / kmax ))
+      [ "$lk" != -1 ] && [ "$quiet" -eq 0 ] && [ "$kmax" -gt 0 ] && printf '{"k":"kbd","p":%d}\n' $(( k * 100 / kmax ))
       lk=$k
     fi
   fi
-  read -r -t 0.25 -u "$nap" _
+  read -r -t 0.25 -u "$nap" _ 2>/dev/null || sleep 0.25
 done

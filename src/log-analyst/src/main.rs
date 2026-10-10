@@ -157,7 +157,11 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
     };
 
     cmd.args(["-u", urgency, "-i", icon, title, message]);
-    let _ = cmd.spawn();
+    thread::spawn(move || {
+        if let Ok(mut child) = cmd.spawn() {
+            let _ = child.wait();
+        }
+    });
 }
 
 fn log_alert(alert_log: &str, signature_name: &str, raw_log: &str) {
@@ -252,6 +256,13 @@ fn main() {
         line.clear();
         match reader.read_line(&mut line) {
             Ok(0) => {
+                if let Ok(meta) = reader.get_ref().metadata() {
+                    if let Ok(pos) = reader.stream_position() {
+                        if pos > meta.len() {
+                            let _ = reader.seek(SeekFrom::Start(0));
+                        }
+                    }
+                }
                 thread::sleep(Duration::from_millis(500));
             }
             Ok(_) => {

@@ -23,14 +23,19 @@ fn backlight() -> Option<(String, f64)> {
     best
 }
 
-fn bright(bl: &Option<(String, f64)>) -> i32 {
+fn bright(bl: &Option<(String, f64)>, last_bctl: &mut Instant, cached_b: &mut i32) -> i32 {
     if let Some((p, max)) = bl {
         if let Ok(v) = util::read(&format!("{}/brightness", p)).trim().parse::<f64>() {
-            return (v * 100.0 / max).round() as i32;
+            *cached_b = (v * 100.0 / max).round() as i32;
+            return *cached_b;
         }
     }
-    let o = util::run("brightnessctl", &["-m"], 2);
-    o.lines().next().and_then(|l| l.split(',').nth(3)).map(|s| s.trim_end_matches('%').parse().unwrap_or(0)).unwrap_or(0)
+    if last_bctl.elapsed() >= Duration::from_millis(1500) {
+        let o = util::run("brightnessctl", &["-m"], 2);
+        *cached_b = o.lines().next().and_then(|l| l.split(',').nth(3)).map(|s| s.trim_end_matches('%').parse().unwrap_or(0)).unwrap_or(*cached_b);
+        *last_bctl = Instant::now();
+    }
+    *cached_b
 }
 
 fn volume(target: &str) -> (i32, bool) {
@@ -66,11 +71,13 @@ pub fn run() {
     let mut last = String::new();
     let mut vol = (0, false);
     let mut mic = (0, false);
-    let mut b = bright(&bl);
+    let mut last_bctl = Instant::now() - Duration::from_secs(10);
+    let mut cached_b = 0;
+    let mut b = bright(&bl, &mut last_bctl, &mut cached_b);
     let mut last_poll = Instant::now() - Duration::from_secs(1);
     let stdout = std::io::stdout();
     loop {
-        let nb = bright(&bl);
+        let nb = bright(&bl, &mut last_bctl, &mut cached_b);
         let poll = !have_pactl && last_poll.elapsed() > Duration::from_millis(250);
         let slow = last_poll.elapsed() > Duration::from_secs(3); // safety net if an event was missed
         if dirty.swap(false, Ordering::Relaxed) || poll || slow {

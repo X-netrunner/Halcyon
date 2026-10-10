@@ -94,6 +94,16 @@ Scope {
             focusAgain.restart()
             return
         }
+        if (typeof key === "string" && key.indexOf("rm:") === 0) {
+            var rk = key.substring(3)
+            if (rk.indexOf("SAFETY") === 0 && !(startup.has && startup.has.safety)) return       // the safety check is not installed
+            var rc = JSON.parse(JSON.stringify(remind))
+            rc[rk] = v
+            remind = rc
+            Quickshell.execDetached(["bash", remindScript, "set", rk, (v === true ? "1" : v === false ? "0" : String(v))])
+            remindAgain.restart()
+            return
+        }
         if (typeof key === "string" && key.indexOf("st:") === 0) {
             var k = key.substring(3)
             var st = JSON.parse(JSON.stringify(startup))
@@ -111,6 +121,18 @@ Scope {
         id: startupProc
         command: ["bash", root.startupScript, "list"]
         stdout: StdioCollector { onStreamFinished: { try { root.startup = JSON.parse(text) } catch (e) {} } }
+    }
+
+    // ---- Backup / safety-check reminders (scripts/remind.sh): keys "rm:NAME" in the tree below. The automatic safety-check run
+    // (root, behind your sudo password) is the custom leaf at the end of Settings > Backup; its state comes in as remind.auto.
+    property var remind: ({ BACKUP_REMIND: false, BACKUP_EVERY: "7", BACKUP_DAYS: 14, SAFETY_REMIND: false, SAFETY_EVERY: "30", SAFETY_DAYS: 14, backupAgo: "never", safetyAgo: "never", auto: ({ on: false, days: 0, every: "custom" }) })
+    readonly property string remindScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/remind.sh"
+    readonly property string autoScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/safety-auto.sh"
+    Timer { id: remindAgain; interval: 700; onTriggered: if (!remindProc.running) remindProc.running = true }
+    Process {
+        id: remindProc
+        command: ["bash", root.remindScript, "conf"]
+        stdout: StdioCollector { onStreamFinished: { try { root.remind = JSON.parse(text) } catch (e) {} } }
     }
 
     // ---- Focus mode (scripts/focus.sh): options are keys "fc:NAME" in the tree below; the block list is the custom leaf at the end
@@ -228,6 +250,7 @@ Scope {
     readonly property var groups: [
         { id: "look", title: "Look", section: "Appearance", items: [
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
+            { type: "seg", key: "opt:surface", label: "Box background", desc: "What every box, the bar and this window are filled with. Wallpaper tint: dark, coloured by the wallpaper and a little see-through. Matte black: dark grey, solid. Pitch black: true black, solid (best on OLED). The little stars and drifting dots turn up their brightness and keep the accent colour so they still show on black. Dark theme only.", opts: [o("tint", "Wallpaper tint"), o("matte", "Matte black"), o("black", "Pitch black")], when: "theme=dark" },
             { type: "slider", key: "rounding", label: "Corner rounding", desc: "Window corners", min: 0, max: 28, step: 1, unit: " px", glyph: 0xF0A39 },
             { type: "slider", key: "gaps", label: "Gaps", desc: "Between windows (the outer gap is double)", min: 0, max: 20, step: 1, unit: " px", glyph: 0xF0B36 },
             { type: "slider", key: "hy:borderSize", def: 2, label: "Border width", min: 0, max: 6, step: 1, unit: " px" },
@@ -411,7 +434,14 @@ Scope {
         { id: "backup", title: "Backup", section: "System", items: [
             { type: "action", id: "backup-device", label: "Backup this device", btn: "Choose a disk and back up", done: "Opening…", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the whole system is copied onto it (scripts/backup-device.sh). Nothing on the disk is erased; every backup goes in its own dated folder." },
             { type: "action", id: "backup-home", label: "Backup my home folder only", btn: "Choose a disk and back up", done: "Opening…", desc: "Same, but only your files in your home folder. Needs no admin password." },
-            { type: "action", id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in ~/logs/safety_check/." }
+            { type: "action", id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in ~/logs/safety_check/." },
+            { type: "toggle", key: "rm:BACKUP_REMIND", label: "Remind me to back up", desc: "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off." },
+            { type: "seg", key: "rm:BACKUP_EVERY", label: "Remind me every", opts: [o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")], when: "rm:BACKUP_REMIND=true" },
+            { type: "slider", key: "rm:BACKUP_DAYS", label: "Custom: every how many days", min: 1, max: 365, step: 1, unit: " days", glyph: 0xF0E17, when: "rm:BACKUP_REMIND=true&rm:BACKUP_EVERY=custom" },
+            { type: "toggle", key: "rm:SAFETY_REMIND", needs: "safety", label: "Remind me to run the safety check", desc: "Same, for the safety check (by hand or automatic, either counts as done)." },
+            { type: "seg", key: "rm:SAFETY_EVERY", needs: "safety", label: "Remind me every", opts: [o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")], when: "rm:SAFETY_REMIND=true" },
+            { type: "slider", key: "rm:SAFETY_DAYS", needs: "safety", label: "Custom: every how many days", min: 1, max: 365, step: 1, unit: " days", glyph: 0xF0E17, when: "rm:SAFETY_REMIND=true&rm:SAFETY_EVERY=custom" },
+            { type: "custom", name: "safetyAuto" }
         ] },
         { id: "rice", title: "Rice", section: "System", items: [
             { type: "action", id: "config", label: "Config files", btn: "Edit config", close: true },
@@ -427,6 +457,7 @@ Scope {
         if (key.indexOf("hy:") === 0) return hyCur ? hyCur[key.substring(3)] : undefined
         if (key.indexOf("st:") === 0) return startup ? startup[key.substring(3)] : undefined
         if (key.indexOf("fc:") === 0) return focusConf ? focusConf[key.substring(3)] : undefined
+        if (key.indexOf("rm:") === 0) return remind ? remind[key.substring(3)] : undefined
         if (key.indexOf("pair:") === 0) {            // the value of the bar that is showing now (both get written together)
             var pr = pairs[key.substring(5)]
             return opt ? opt[(opt.barStyle === "notch") ? pr[1] : pr[0]] : undefined
@@ -506,7 +537,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : 4)
                : (t.type === "seg" || t.type === "slider") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -541,6 +572,7 @@ Scope {
     onOpenChanged: if (open) {
         if (!appsProc.running) appsProc.running = true
         if (!startupProc.running) startupProc.running = true
+        if (!remindProc.running) remindProc.running = true
         startupNote = ""
         query = ""
         focusLoad()
@@ -696,6 +728,156 @@ Scope {
                 Layout.fillWidth: true
                 text: "Only installed apps are listed. A browser or file manager you pick also becomes the system default for links and folders. Something missing? Add a line to ~/.config/Halcyon/apps.custom (see the top of scripts/apps.sh)."
                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    // Safety check, automatic run: root, so every change (on, how often, off) asks for the sudo password. The password goes to
+    // `sudo -k -S` once (-k = a password you typed a minute ago in a terminal does not count) and is never stored or logged.
+    Component {
+        id: cSafetyAuto
+        ColumnLayout {
+            id: sa
+            width: parent ? parent.width : 0
+            spacing: 12
+            readonly property bool installed: root.startup.has && root.startup.has.safety === true
+            readonly property bool isOn: !!(root.remind.auto && root.remind.auto.on)
+            property string every: isOn ? String(root.remind.auto.every) : "30"      // the schedule picked here
+            property int days: isOn && root.remind.auto.days > 0 ? root.remind.auto.days : 14   // used when every = custom
+            property string wanted: ""         // "on" (turn on / apply) | "off", while the password row is open
+            property string msg: ""
+            property bool bad: false
+            property bool busy: false
+            opacity: installed ? 1 : 0.45
+            function effDays() { return every === "custom" ? days : Number(every) }
+            function ask(what) { if (!installed || busy) return; wanted = what; msg = ""; bad = false; Qt.callLater(function () { pwIn.forceActiveFocus() }) }
+            function go() {
+                if (pwIn.text === "" || run.running || wanted === "") return
+                busy = true; msg = ""; bad = false
+                run.pw = pwIn.text
+                pwIn.text = ""
+                run.running = true
+            }
+            onEveryChanged: if (isOn && effDays() > 0 && effDays() !== root.remind.auto.days) ask("on")
+            Process {
+                id: run
+                property string pw: ""
+                property int code: 0
+                stdinEnabled: true
+                command: ["sudo", "-k", "-S", "-p", "", "bash", root.autoScript].concat(sa.wanted === "off" ? ["off"] : ["on", String(sa.effDays()), Quickshell.env("USER")])
+                stdout: StdioCollector { id: so }
+                stderr: StdioCollector { id: se }
+                onRunningChanged: if (running && pw !== "") { write(pw + "\n"); pw = "" }
+                onExited: (c, st) => { code = c; fin.restart() }
+            }
+            Timer {            // a moment after the exit, so the output has been collected
+                id: fin
+                interval: 250
+                onTriggered: {
+                    sa.busy = false
+                    var err = String(se.text || "").trim()
+                    if (run.code === 0) {
+                        sa.wanted = ""
+                        sa.msg = String(so.text || "").trim().split("\n").pop()
+                        sa.bad = false
+                    } else if (err.indexOf("incorrect password") >= 0 || err.indexOf("no password was provided") >= 0 || err.indexOf("Sorry, try again") >= 0 || err.indexOf("a password is required") >= 0) {
+                        sa.msg = "That password is not right. Try again."
+                        sa.bad = true
+                        Qt.callLater(function () { pwIn.forceActiveFocus() })
+                    } else {
+                        sa.msg = err.split("\n").pop() || ("It did not work (code " + run.code + ").")
+                        sa.bad = true
+                    }
+                    remindAgain.restart()
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Text { text: "Run the safety check automatically"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
+                    Text {
+                        Layout.fillWidth: true
+                        text: !sa.installed ? "Not installed, so this is switched off. Add it with ./install.sh --safety-check, then open Settings again."
+                            : "It runs by itself in the background (as root) at the chosen interval: malware and rootkit scans, firewall, audit and file integrity, plus a backup when your backup disk is plugged in. It never updates the system, asks nothing, formats nothing, and waits for AC power. Because it is root, switching it on, changing how often and switching it off all ask for your sudo password."
+                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; lineHeight: 1.3; wrapMode: Text.WordWrap
+                    }
+                }
+                Toggle {
+                    Layout.alignment: Qt.AlignTop
+                    pal: root.pal
+                    on: sa.isOn
+                    busy: sa.busy
+                    onToggled: sa.ask(sa.isOn ? "off" : "on")
+                }
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 10
+                Text { text: "Every"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; height: 30; verticalAlignment: Text.AlignVCenter }
+                Repeater {
+                    model: [{ v: "1", t: "Day" }, { v: "7", t: "Week" }, { v: "30", t: "Month" }, { v: "90", t: "3 months" }, { v: "custom", t: "Custom" }]
+                    delegate: SChip {
+                        required property var modelData
+                        pal: root.pal
+                        label: modelData.t
+                        on: sa.every === modelData.v
+                        onClicked: { if (!sa.installed) return; sa.every = modelData.v; if (!sa.isOn) sa.ask("on") }
+                    }
+                }
+            }
+            Slider {
+                Layout.fillWidth: true
+                visible: sa.every === "custom"
+                pal: root.pal
+                glyph: String.fromCodePoint(0xF0E17)
+                value: (sa.days - 1) / 364
+                readout: sa.days + " days"
+                onMoved: v => { sa.days = Math.round(1 + v * 364); if (sa.isOn && sa.days !== root.remind.auto.days) sa.ask("on") }
+            }
+            RowLayout {
+                id: pwRow
+                Layout.fillWidth: true
+                spacing: 10
+                visible: sa.wanted !== ""
+                Rectangle {
+                    id: pwBox
+                    Layout.fillWidth: true
+                    height: 36; radius: 18
+                    color: Qt.alpha(root.pal.surface, 0.8)
+                    border.width: 1
+                    border.color: pwIn.activeFocus ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
+                    TextInput {
+                        id: pwIn
+                        anchors.fill: parent
+                        anchors.leftMargin: 16; anchors.rightMargin: 16
+                        verticalAlignment: TextInput.AlignVCenter
+                        echoMode: TextInput.Password
+                        passwordCharacter: "\u2022"
+                        color: root.pal.text
+                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                        clip: true
+                        enabled: !sa.busy
+                        onAccepted: sa.go()
+                        Text {
+                            visible: !parent.text && !parent.activeFocus
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: sa.wanted === "off" ? "your sudo password, to switch it off" : "your sudo password, to switch it on" + (sa.isOn ? " with this schedule" : "")
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                        }
+                    }
+                }
+                SChip { pal: root.pal; label: sa.busy ? "Working…" : (sa.wanted === "off" ? "Turn off" : (sa.isOn ? "Apply" : "Turn on")); on: true; onClicked: sa.go() }
+                SChip { pal: root.pal; label: "Cancel"; onClicked: { sa.wanted = ""; pwIn.text = ""; sa.msg = ""; sa.every = sa.isOn ? String(root.remind.auto.every) : "30" } }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: sa.msg !== ""
+                text: sa.msg
+                color: sa.bad ? root.pal.bad : root.pal.good
+                font.family: root.pal.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap
             }
         }
     }
@@ -857,7 +1039,7 @@ Scope {
                 width: Math.min(parent.width - 100, 1320)
                 height: parent.height - 80
                 radius: root.pal.rXl
-                opacityBody: root.opt.settingsGlass !== undefined ? root.opt.settingsGlass : 0.72
+                opacityBody: root.pal.solid ? 1 : (root.opt.settingsGlass !== undefined ? root.opt.settingsGlass : 0.72)
                 border.color: Qt.alpha(root.pal.accent, 0.35)
                 scale: root.open ? 1 : 0.96
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
@@ -1186,6 +1368,8 @@ Scope {
                                                                             : (leaf.m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
                                                                             : (leaf.m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (leaf.m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
                                                                             : ((leaf.m.key === "st:POLKIT" || leaf.m.key === "st:GPU" || leaf.m.key === "st:PORTAL") && root.startupNote !== "") ? (leaf.m.desc || "") + "  \u2192 " + root.startupNote
+                                                                            : leaf.m.key === "rm:BACKUP_REMIND" ? (leaf.m.desc || "") + "  Last backup made here: " + root.remind.backupAgo + "."
+                                                                            : leaf.m.key === "rm:SAFETY_REMIND" ? (leaf.m.desc || "") + "  Last safety check: " + root.remind.safetyAgo + "."
                                                                             : (leaf.m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (leaf.m.desc || ""))
                                                                         color: root.pal.muted
                                                                         font.family: root.pal.uiFont
@@ -1253,6 +1437,7 @@ Scope {
                                                                 sourceComponent: leaf.m.name === "wallpaper" ? cWallpaper
                                                                                : leaf.m.name === "apps" ? cApps
                                                                                : leaf.m.name === "focusApps" ? cFocusApps
+                                                                               : leaf.m.name === "safetyAuto" ? cSafetyAuto
                                                                                : leaf.m.name === "growth" ? cGrowth : cSwatches
                                                             }
                                                         }

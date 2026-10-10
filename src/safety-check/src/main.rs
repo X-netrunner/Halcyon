@@ -77,6 +77,10 @@ fn main() {
         exit(1);
     }
 
+    // --auto: started by the timer that Settings > Backup > Safety check > "Run it automatically" installs (nobody is there to
+    // answer questions, so it never updates the system, never asks for a disk and never formats anything)
+    let auto = std::env::args().any(|a| a == "--auto");
+
     let real_user = std::env::var("SUDO_USER").unwrap_or_else(|_| std::env::var("USER").unwrap_or_else(|_| "root".to_string()));
     let real_home = if real_user == "root" { "/root".to_string() } else { format!("/home/{}", real_user) };
     let log_dir = format!("{}/logs/safety_check", real_home);
@@ -91,7 +95,9 @@ fn main() {
     // 1. System Update
     section("1/7 — System Update");
     notify("1/7 — System Update", "normal", &real_user);
-    if run_command("pacman", &["-Syu", "--noconfirm"]) {
+    if auto {
+        log_warn("Automatic run: the system is not updated unattended (run the safety check by hand, or pacman -Syu, for that)");
+    } else if run_command("pacman", &["-Syu", "--noconfirm"]) {
         log_success("System updated successfully");
     } else {
         log_error("System update failed");
@@ -395,6 +401,8 @@ fn main() {
         println!("✓ Auto-detected backup partition with UUID: {}", target_uuid.cyan());
         backup_dev = uuid_path;
         auto_backup = true;
+    } else if auto {
+        backup_dev = String::new();       // automatic run: no question can be answered, so no disk = no backup this time
     } else {
         println!("\nAvailable disks:");
         Command::new("lsblk").args(&["-o", "NAME,SIZE,TYPE,MOUNTPOINT"]).status().ok();
@@ -413,7 +421,9 @@ fn main() {
         backup_dev = input_dev;
     }
 
-    if !Path::new(&backup_dev).exists() {
+    if auto && backup_dev.is_empty() {
+        log_warn("Automatic run: the backup disk is not connected, so there is no backup this time");
+    } else if !Path::new(&backup_dev).exists() {
         log_error(&format!("Device {} not found — skipping backup", backup_dev));
         notify("⚠ Backup skipped — drive not found", "critical", &real_user);
     } else {

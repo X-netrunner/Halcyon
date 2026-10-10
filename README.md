@@ -16,7 +16,7 @@ Lightweight, minimal, smooth and fast Hyprland setup in Lua, independent of cael
 - **File manager** (several allowed, the first one opens folders with SUPER+E): Thunar, Yazi, Dolphin, Nautilus, Nemo, PCManFM
 - **Code editor** (several allowed, the first one is SUPER+C): VSCodium, Zed, Neovim
 - **sysmode**: the hardening / honeypot lab and its ~10 security tools, or skip it
-- **Safety check** (default no): a one-command system update, malware / rootkit scan, firewall + audit check and backup (`src/safety-check`). Yes installs clamav, rkhunter, lynis, aide, ufw and rsync plus a root-owned `/usr/local/bin/safety-check`, and **Settings > Backup > Safety check** starts it. No leaves that Settings entry greyed out and disabled. `--safety-check` / `--no-safety-check` skip the question
+- **Safety check** (default yes): a one-command system update, malware / rootkit scan, firewall + audit check and backup (`src/safety-check`). Yes installs clamav, rkhunter, lynis, aide, ufw and rsync plus a root-owned `/usr/local/bin/safety-check`, and **Settings > Backup > Safety check** starts it. No leaves that Settings entry greyed out and disabled. `--safety-check` / `--no-safety-check` skip the question
 
 No questions: `--browser zen --files yazi,thunar --editor codium,zeditor --no-sysmode --no-safety-check` (see `./install.sh --help`). `--yes` uses the saved choice or the default (keep your browser or Firefox, Thunar, no extra editor, sysmode). `./install.sh --choose` asks again. What you pick also becomes the default in Settings > Default apps (and the system default for links, folders and text files).
 

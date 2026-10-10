@@ -42,10 +42,11 @@ Item {
             required property int index
             readonly property real fx: ((index * 0.6180339) % 1)
             readonly property real fy: ((index * 0.4142135 + 0.17) % 1)
-            width: 2 + index % 3
+            width: 2 + index % 3 + (root.pal.solid ? 1 : 0)
             height: width
             radius: width / 2
-            color: Qt.alpha(root.pal.accent, 0.10 + (index % 4) * 0.03)
+            // on a solid black box the faint tinted dots would vanish: same accent colour, much brighter
+            color: root.pal.solid ? Qt.alpha(Qt.lighter(root.pal.accent, 1.25), 0.45 + (index % 4) * 0.09) : Qt.alpha(root.pal.accent, 0.10 + (index % 4) * 0.03)
             x: root.width * fx + 8 * Math.sin(6.2832 * (40 + index * 11 % 50) * root.tt / 1000 + index)
             y: root.height * fy + 8 * Math.cos(6.2832 * (40 + index * 17 % 50) * root.tt / 1000 + index * 2)
         }

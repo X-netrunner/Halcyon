@@ -115,6 +115,8 @@ fn live_wallpaper_enabled() -> bool {
 /// Persisted state between polls, used for debounce/hysteresis.
 struct LoadState {
     idle_streak: u32,
+    last_cpu: Option<(u64, u64)>,
+    input_devices: Option<Vec<Device>>,
 }
 
 fn send_hyprland_cmd(socket_path: &str, cmd: &str) -> Result<String, std::io::Error> {
@@ -265,7 +267,11 @@ fn main() {
     let mut conn = HyprlandConnection::new();
     let mut last_mode = None;
     let mut gslapper_running = is_process_running("gslapper");
-    let mut load_state = LoadState { idle_streak: 0 };
+    let mut load_state = LoadState {
+        idle_streak: 0,
+        last_cpu: cpu_snapshot(),
+        input_devices: None,
+    };
 
     loop {
         let current_mode = determine_mode(&mut conn, last_mode, &mut load_state);
@@ -348,41 +354,65 @@ fn get_cpu_temp() -> Option<f64> {
 }
 
 /// Check if there has been recent keyboard or mouse input activity.
-/// Reads non-blocking from /dev/input/event* devices using poll().
-fn has_input_activity() -> bool {
+/// Keeps evdev descriptors open across polls to catch buffered events without open/close thrashing.
+fn check_input_activity(state: &mut LoadState) -> bool {
     use std::os::unix::io::AsRawFd;
 
-    let Ok(dir) = fs::read_dir("/dev/input") else {
+    // If hypridle dimmed the screen, we are definitely idle
+    if std::path::Path::new("/dev/shm/halcyon-dim").exists() {
         return false;
-    };
-    for entry in dir.flatten() {
-        let path = entry.path();
-        if !path.file_name().and_then(|n| n.to_str()).map_or(false, |s| s.starts_with("event")) {
-            continue;
+    }
+
+    if state.input_devices.is_none() {
+        let mut devs = Vec::new();
+        if let Ok(dir) = fs::read_dir("/dev/input") {
+            for entry in dir.flatten() {
+                let path = entry.path();
+                if !path.file_name().and_then(|n| n.to_str()).map_or(false, |s| s.starts_with("event")) {
+                    continue;
+                }
+                if let Ok(dev) = Device::open(&path) {
+                    let dominated_name = dev.name().map(|n| n.to_lowercase());
+                    let dominated = dominated_name.as_deref().unwrap_or("");
+                    let is_keyboard = dominated.contains("keyboard") || dominated.contains("kbd");
+                    let is_mouse = dominated.contains("mouse") || dominated.contains("logitech") || dominated.contains("bcm5974") || dominated.contains("touchpad");
+                    if is_keyboard || is_mouse {
+                        devs.push(dev);
+                    }
+                }
+            }
         }
-        let Ok(dev) = Device::open(&path) else {
-            continue;
-        };
-        let dominated_name = dev.name().map(|n| n.to_lowercase());
-        let dominated = dominated_name.as_deref().unwrap_or("");
-        let is_keyboard = dominated.contains("keyboard") || dominated.contains("kbd");
-        let is_mouse = dominated.contains("mouse") || dominated.contains("logitech") || dominated.contains("bcm5974");
-        if !is_keyboard && !is_mouse {
-            continue;
-        }
-        // Use poll() with zero timeout to check for pending events without blocking
-        let fd = dev.as_raw_fd();
-        let mut pollfd = libc::pollfd {
-            fd,
-            events: libc::POLLIN,
-            revents: 0,
-        };
-        let ret = unsafe { libc::poll(&mut pollfd, 1, 0) };
-        if ret > 0 && (pollfd.revents & libc::POLLIN) != 0 {
-            return true;
+        state.input_devices = Some(devs);
+    }
+
+    let mut had_activity = false;
+    let mut device_error = false;
+    if let Some(devs) = &mut state.input_devices {
+        for dev in devs.iter_mut() {
+            let fd = dev.as_raw_fd();
+            let mut pollfd = libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let ret = unsafe { libc::poll(&mut pollfd, 1, 0) };
+            if ret > 0 {
+                if (pollfd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL)) != 0 {
+                    device_error = true;
+                }
+                if (pollfd.revents & libc::POLLIN) != 0 {
+                    had_activity = true;
+                    if let Ok(mut events) = dev.fetch_events() {
+                        while events.next().is_some() {}
+                    }
+                }
+            }
         }
     }
-    false
+    if device_error {
+        state.input_devices = None;
+    }
+    had_activity
 }
 
 fn determine_mode(conn: &mut HyprlandConnection, last_mode: Option<PowerMode>, state: &mut LoadState) -> PowerMode {
@@ -402,12 +432,21 @@ fn determine_mode(conn: &mut HyprlandConnection, last_mode: Option<PowerMode>, s
         }
     }
 
+    // Gaming mode
+    if gaming_active {
+        state.idle_streak = 0;
+        return PowerMode::Gaming;
+    }
+
+    // Sample telemetry once per cycle
+    let cpu_pct = get_cpu_usage(state);
+    let gpu_pct = get_gpu_utilization();
+    let input_active = check_input_activity(state);
+    let heavy_window = is_heavy_load(conn);
+
     if !ac_online {
         // Only enter Idle (dimmed) mode after sustained inactivity on battery
-        let cpu_pct = get_cpu_usage();
-        let gpu_pct = get_gpu_utilization();
-        let input_active = has_input_activity();
-        let is_idle_now = !input_active && cpu_pct < CPU_IDLE_PCT && gpu_pct < GPU_IDLE_PCT && !is_heavy_load(conn);
+        let is_idle_now = !input_active && cpu_pct < CPU_IDLE_PCT && gpu_pct < GPU_IDLE_PCT && !heavy_window;
 
         if is_idle_now {
             state.idle_streak += 1;
@@ -420,18 +459,7 @@ fn determine_mode(conn: &mut HyprlandConnection, last_mode: Option<PowerMode>, s
         return PowerMode::Battery;
     }
 
-    // 2. Check Gaming Mode (IPC to Quickshell Caelestia)
-    if gaming_active {
-        state.idle_streak = 0;
-        return PowerMode::Gaming;
-    }
-
-    // 3. Load sensing: heavy AI/compile/video work -> performance
-    let heavy_window = is_heavy_load(conn);
-    let cpu_pct = get_cpu_usage();
-    let gpu_pct = get_gpu_utilization();
-    let input_active = has_input_activity();
-
+    // AC mode - Load sensing: heavy AI/compile/video work -> performance
     let is_heavy = heavy_window || cpu_pct > CPU_HEAVY_PCT || gpu_pct > GPU_HEAVY_PCT;
     let is_idle = !input_active
         && !heavy_window
@@ -482,27 +510,29 @@ fn ac_online() -> bool {
     false
 }
 
-/// Instantaneous CPU busy% from /proc/stat deltas (~500ms sample).
-fn get_cpu_usage() -> f64 {
-    fn snapshot() -> Option<(u64, u64)> {
-        let line = fs::read_to_string("/proc/stat").ok()?.lines().next()?.to_string();
-        let nums: Vec<u64> = line
-            .split_whitespace()
-            .skip(1)
-            .filter_map(|f| f.parse().ok())
-            .collect();
-        if nums.len() < 4 {
-            return None;
-        }
-        let busy = nums[0] + nums[1] + nums[2];
-        let total: u64 = nums.iter().sum();
-        Some((busy, total))
+fn cpu_snapshot() -> Option<(u64, u64)> {
+    let line = fs::read_to_string("/proc/stat").ok()?.lines().next()?.to_string();
+    let nums: Vec<u64> = line
+        .split_whitespace()
+        .skip(1)
+        .filter_map(|f| f.parse().ok())
+        .collect();
+    if nums.len() < 4 {
+        return None;
     }
+    let busy = nums[0] + nums[1] + nums[2];
+    let total: u64 = nums.iter().sum();
+    Some((busy, total))
+}
 
-    let Some((busy1, total1)) = snapshot() else { return 0.0 };
-    thread::sleep(Duration::from_millis(500));
-    let Some((busy2, total2)) = snapshot() else { return 0.0 };
-
+/// Instantaneous CPU busy% from /proc/stat deltas across poll intervals (no thread::sleep).
+fn get_cpu_usage(state: &mut LoadState) -> f64 {
+    let Some(curr) = cpu_snapshot() else { return 0.0 };
+    let prev = state.last_cpu.replace(curr);
+    let Some((busy1, total1)) = prev else {
+        return 0.0;
+    };
+    let (busy2, total2) = curr;
     let dt = total2.saturating_sub(total1);
     if dt == 0 {
         return 0.0;
@@ -690,7 +720,11 @@ fn enable_nvidia_gpu() {
 }
 
 fn is_gaming_mode() -> bool {
-    // gamemoded (Steam/Lutris launch options, `gamemoderun`) works under any shell...
+    // 1. Check Halcyon gamemode state in /dev/shm/halcyon-gamemode (instant, no subprocess)
+    if std::path::Path::new("/dev/shm/halcyon-gamemode").exists() {
+        return true;
+    }
+    // 2. gamemoded (Steam/Lutris launch options, `gamemoderun`) works under any shell...
     let gamemoded = Command::new("gamemoded")
         .arg("-s")
         .output()
@@ -699,12 +733,7 @@ fn is_gaming_mode() -> bool {
     if gamemoded {
         return true;
     }
-    // ...and the old caelestia game-mode toggle still counts when that shell is running.
-    Command::new("qs")
-        .args(["-c", "caelestia", "ipc", "call", "gameMode", "isEnabled"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("true"))
-        .unwrap_or(false)
+    false
 }
 
 fn toggle_gaming_optimizations(conn: &mut HyprlandConnection, enable: bool) {
@@ -846,7 +875,7 @@ fn is_heavy_load(conn: &mut HyprlandConnection) -> bool {
 /// Extract the dominant color from a video file using ffmpeg.
 /// Takes a frame at the given timestamp and computes the average RGB.
 fn get_dominant_color_from_video(video_path: &str) -> (u8, u8, u8) {
-    // Take a frame at 2 seconds into the video
+    let fallback = (248, 184, 157); // fallback peach color
     let timestamp = "00:00:02";
     let output = Command::new("ffmpeg")
         .args([
@@ -854,56 +883,77 @@ fn get_dominant_color_from_video(video_path: &str) -> (u8, u8, u8) {
             "-ss", timestamp,
             "-i", video_path,
             "-vframes", "1",
- "-vsync", "vfr",
-            "-f", "image2",
+            "-vsync", "vfr",
+            "-f", "image2pipe",
+            "-vcodec", "ppm",
             "-",
         ])
         .output();
 
-    let Some(output) = output.ok().and_then(|o| {
-        if o.status.success() {
-            Some(o.stdout)
-        } else {
-            None
-        }
-    }) else {
-        return (248, 184, 157); // fallback peach color
-    };
+    let Ok(out) = output else { return fallback; };
+    if !out.status.success() || out.stdout.len() < 16 {
+        return fallback;
+    }
 
-    // Calculate average color from the PPM data
-    let stdout = String::from_utf8_lossy(&output);
-    // PPM format: P6\nwidth height\n255\npixel data
-    let lines: Vec<&str> = stdout.lines().collect();
-    if lines.len() >= 4 {
-        let mut r_total: u32 = 0;
-        let mut g_total: u32 = 0;
-        let mut b_total: u32 = 0;
-        let mut pixel_count: u32 = 0;
+    let data = &out.stdout;
+    if !data.starts_with(b"P6") {
+        return fallback;
+    }
 
-        // Skip header lines, pixel data starts after "255\n"
-        let mut start_idx = 3;
-        if lines.get(3).map_or(false, |l| *l == "255") {
-            start_idx = 4;
-        }
-
-        for line in lines.iter().skip(start_idx) {
-            let bytes = line.as_bytes();
-            if bytes.len() >= 3 && pixel_count < 1000 { // limit for performance
-                r_total = r_total + bytes[0] as u32;
-                g_total = g_total + bytes[1] as u32;
-                b_total = b_total + bytes[2] as u32;
-                pixel_count += 1;
+    // Parse PPM header tokens (magic, width, height, maxval)
+    let mut idx = 2;
+    let mut tokens = 0;
+    while idx < data.len() && tokens < 3 {
+        // Skip whitespace and comments
+        while idx < data.len() && (data[idx].is_ascii_whitespace() || data[idx] == b'#') {
+            if data[idx] == b'#' {
+                while idx < data.len() && data[idx] != b'\n' {
+                    idx += 1;
+                }
+            } else {
+                idx += 1;
             }
         }
-
-        if pixel_count > 0 {
-            let r = (r_total / pixel_count) as u8;
-            let g = (g_total / pixel_count) as u8;
-            let b = (b_total / pixel_count) as u8;
-            return (r, g, b);
+        if idx >= data.len() {
+            break;
         }
+        // Read token
+        while idx < data.len() && !data[idx].is_ascii_whitespace() {
+            idx += 1;
+        }
+        tokens += 1;
     }
-    (248, 184, 157) // fallback peach color
+
+    // Skip the single whitespace character after maxval
+    if idx < data.len() && data[idx].is_ascii_whitespace() {
+        idx += 1;
+    }
+
+    let pixels = &data[idx..];
+    if pixels.len() < 3 {
+        return fallback;
+    }
+
+    let mut r_total: u64 = 0;
+    let mut g_total: u64 = 0;
+    let mut b_total: u64 = 0;
+    let mut count: u64 = 0;
+
+    let step = (pixels.len() / 3 / 2000).max(1) * 3;
+    let mut i = 0;
+    while i + 2 < pixels.len() {
+        r_total += pixels[i] as u64;
+        g_total += pixels[i + 1] as u64;
+        b_total += pixels[i + 2] as u64;
+        count += 1;
+        i += step;
+    }
+
+    if count > 0 {
+        ((r_total / count) as u8, (g_total / count) as u8, (b_total / count) as u8)
+    } else {
+        fallback
+    }
 }
 
 /// Update the Hyprland scheme primary color.

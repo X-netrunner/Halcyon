@@ -27,7 +27,7 @@ Item {
     visible: art !== null && art !== undefined && strength > 0
     opacity: strength
 
-    readonly property color tone: pal.accent
+    readonly property color tone: pal.solid ? Qt.lighter(pal.accent, 1.2) : pal.accent      // a touch brighter on a solid black box
 
     // Settings > Performance (pal.artQuality: 0 low, 1 medium, 2 high; pal.artFps: 0 = every frame, else steps per second)
     readonly property int quality: pal && pal.artQuality !== undefined ? pal.artQuality : 2

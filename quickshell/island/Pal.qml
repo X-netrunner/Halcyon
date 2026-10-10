@@ -14,6 +14,11 @@ Scope {
     // the wallpaper still tints the island, only the lightness is turned around.
     property bool light: false
     onLightChanged: refresh()
+    // Settings > Look > Box background: tint (the wallpaper colours every box) | matte (dark grey, no tint) | black (pitch black).
+    // matte / black make every box solid (no see-through glass) and only apply to the dark theme.
+    property string surfaceStyle: "tint"
+    onSurfaceStyleChanged: refresh()
+    readonly property bool solid: !light && (surfaceStyle === "matte" || surfaceStyle === "black")
     Component.onCompleted: refresh()
 
     // what `hx palette` last wrote (dark)
@@ -124,7 +129,9 @@ Scope {
 
     function refresh() {
         if (!light) {
-            bg = rawBg; surface = rawSurface; surfaceHi = rawSurfaceHi
+            if (surfaceStyle === "black") { bg = "#000000"; surface = "#0c0c0e"; surfaceHi = "#18181b" }
+            else if (surfaceStyle === "matte") { bg = "#0f0f11"; surface = "#19191c"; surfaceHi = "#232327" }
+            else { bg = rawBg; surface = rawSurface; surfaceHi = rawSurfaceHi }
             accent = rawAccent; accent2 = rawAccent2; text = rawText; muted = rawMuted
             return
         }
@@ -152,10 +159,10 @@ Scope {
     property real wallLum: 0.3
     readonly property real glassBoost: light ? 0 : Math.max(0, Math.min(0.12, (wallLum - 0.45) * 0.45))
     Behavior on wallLum { NumberAnimation { duration: 900; easing.type: Easing.InOutSine } }
-    readonly property real glass: 0.80 + glassShift + glassBoost
-    readonly property real glassSolid: Math.min(1, 0.94 + glassShift + glassBoost)  // for things that must stay legible over anything (overlays)
-    readonly property real glassBar: 0.58 + glassShift + glassBoost      // the top bar at rest: lighter = more wallpaper shows through
-    readonly property real glassBarOpen: 0.74 + glassShift + glassBoost  // the bar once it has grown into media / perf / the launcher
+    readonly property real glass: solid ? 1 : (0.80 + glassShift + glassBoost)
+    readonly property real glassSolid: solid ? 1 : Math.min(1, 0.94 + glassShift + glassBoost)  // for things that must stay legible over anything (overlays)
+    readonly property real glassBar: solid ? 1 : (0.58 + glassShift + glassBoost)      // the top bar at rest: lighter = more wallpaper shows through
+    readonly property real glassBarOpen: solid ? 1 : (0.74 + glassShift + glassBoost)  // the bar once it has grown into media / perf / the launcher
     // hairlines are neutral and work with every wallpaper; panels (Glass.qml) add a faint accent tint on top (lineTint)
     readonly property color line: Qt.alpha(text, 0.09)
     readonly property color lineTint: Qt.tint(line, Qt.alpha(accent, 0.12))
