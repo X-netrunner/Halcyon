@@ -37,6 +37,8 @@ Scope {
     property string editLabel: ""
     property string editCmd: ""
     property string editError: ""
+    property bool pickOpen: false      // the "pick an app" list under the command box is open
+    property string autoLabel: ""      // the name filled in by picking an app (replaced when you pick another one)
     property bool capturing: false
     property int focusReq: 0           // bumped to ask the window to put the cursor back in the search box
     property bool typing: false        // true while keys are being typed: the starfield rests
@@ -50,9 +52,18 @@ Scope {
         editKey = rec.id === "custom:new" ? "" : p.key
         editError = ""
         capturing = false
+        pickOpen = false
+        autoLabel = ""
         editId = rec.id
     }
-    function cancelEdit() { editId = ""; capturing = false; editError = ""; focusReq++ }
+    function cancelEdit() { editId = ""; capturing = false; editError = ""; pickOpen = false; focusReq++ }
+    // an app chosen in the list fills the command (and the name, unless you typed your own)
+    function useApp(app) {
+        editCmd = app.cmd
+        if (editLabel.trim() === "" || editLabel === autoLabel) { editLabel = app.name; autoLabel = app.name }
+        pickOpen = false
+        editError = ""
+    }
     function toggleMod(m) {
         var o = {}
         for (var k in editMods) o[k] = editMods[k]
@@ -548,6 +559,7 @@ Scope {
                                                             spacing: 8
 
                                                             Field {
+                                                                id: edLabelF
                                                                 pal: root.pal
                                                                 visible: leaf.isCustom
                                                                 Layout.fillWidth: true
@@ -558,6 +570,7 @@ Scope {
                                                                 onEscaped: root.cancelEdit()
                                                             }
                                                             Field {
+                                                                id: edCmdF
                                                                 pal: root.pal
                                                                 visible: leaf.isCustom
                                                                 Layout.fillWidth: true
@@ -566,6 +579,28 @@ Scope {
                                                                 onTextChanged: root.editCmd = text
                                                                 onAccepted: root.saveEdit()
                                                                 onEscaped: root.cancelEdit()
+                                                            }
+                                                            // the boxes follow what picking an app fills in
+                                                            Connections {
+                                                                target: root
+                                                                function onEditCmdChanged() { if (edCmdF.text !== root.editCmd) edCmdF.text = root.editCmd }
+                                                                function onEditLabelChanged() { if (edLabelF.text !== root.editLabel) edLabelF.text = root.editLabel }
+                                                            }
+                                                            Chip {
+                                                                visible: leaf.isCustom
+                                                                Layout.alignment: Qt.AlignLeft
+                                                                pal: root.pal
+                                                                implicitHeight: 28
+                                                                label: root.pickOpen ? "Hide the app list" : "Pick an app instead of typing"
+                                                                on: root.pickOpen
+                                                                onClicked: root.pickOpen = !root.pickOpen
+                                                            }
+                                                            AppPicker {
+                                                                visible: leaf.isCustom && root.pickOpen
+                                                                Layout.fillWidth: true
+                                                                pal: root.pal
+                                                                placeholder: "Search your apps, click one to use it…"
+                                                                onPicked: app => root.useApp(app)
                                                             }
 
                                                             // modifiers + the key
@@ -709,6 +744,7 @@ Scope {
                                                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
                                                         spacing: 8
                                                         Field {
+                                                            id: newLabelF
                                                             pal: root.pal
                                                             Layout.fillWidth: true
                                                             placeholder: "Name (optional), e.g. Screen recorder"
@@ -718,6 +754,7 @@ Scope {
                                                             onEscaped: root.cancelEdit()
                                                         }
                                                         Field {
+                                                            id: newCmdF
                                                             pal: root.pal
                                                             Layout.fillWidth: true
                                                             placeholder: "Command to run, e.g. firefox --private-window"
@@ -725,6 +762,27 @@ Scope {
                                                             onTextChanged: root.editCmd = text
                                                             onAccepted: root.saveEdit()
                                                             onEscaped: root.cancelEdit()
+                                                        }
+                                                        // the boxes follow what picking an app fills in
+                                                        Connections {
+                                                            target: root
+                                                            function onEditCmdChanged() { if (newCmdF.text !== root.editCmd) newCmdF.text = root.editCmd }
+                                                            function onEditLabelChanged() { if (newLabelF.text !== root.editLabel) newLabelF.text = root.editLabel }
+                                                        }
+                                                        Chip {
+                                                            Layout.alignment: Qt.AlignLeft
+                                                            pal: root.pal
+                                                            implicitHeight: 28
+                                                            label: root.pickOpen ? "Hide the app list" : "Pick an app instead of typing"
+                                                            on: root.pickOpen
+                                                            onClicked: root.pickOpen = !root.pickOpen
+                                                        }
+                                                        AppPicker {
+                                                            visible: root.pickOpen
+                                                            Layout.fillWidth: true
+                                                            pal: root.pal
+                                                            placeholder: "Search your apps, click one to use it…"
+                                                            onPicked: app => root.useApp(app)
                                                         }
                                                         Flow {
                                                             Layout.fillWidth: true

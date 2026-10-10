@@ -10,7 +10,7 @@
   focus.sh conf                     JSON: saved options + the blocked apps list
   focus.sh set KEY VALUE            save an option (LENGTH POMODORO BREAK LONG_BREAK CYCLES DND CAFFEINE BLOCK CLOSE_RUNNING BREAK_FREE)
   focus.sh apps                     JSON: blocked apps + the windows that are open right now
-  focus.sh block CLASS | unblock CLASS
+  focus.sh block CLASS [CLASS...] | unblock CLASS
 
 While a session runs (a tiny background process, the transient user unit halcyon-focus.service):
   * Do not disturb is on (urgent notifications still get through), Caffeine is on (no dim / lock / sleep)
@@ -447,12 +447,20 @@ def cmd_apps(_a=None):
 
 
 def cmd_block(args):
-    if not args or not CLASS_OK.match(args[0]):
+    # one or more classes (Settings sends an app's class plus its program name in ONE call: the list is read-modify-written once)
+    good = [a for a in args if CLASS_OK.match(a)]
+    if not good:
         print("not a window class")
         return 2
     items = blocked_list()
-    if args[0].lower() not in [x.lower() for x in items]:
-        items.append(args[0])
+    have = [x.lower() for x in items]
+    changed = False
+    for a in good:
+        if a.lower() not in have:
+            items.append(a)
+            have.append(a.lower())
+            changed = True
+    if changed:
         save_blocked(items)
     return 0
 

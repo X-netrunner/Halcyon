@@ -4,6 +4,33 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Clock centring: island and notch
+
+- **Notch: the clock is now always dead centre of the screen.** Before, it only was with Bar spacing "Spacious" or the "Keep the clock centred" switch; by default the bar was just as wide as its content, so the clock sat wherever the content put it. `centerClock` in `NotchBar.qml` is now always on (the shorter side keeps empty space) and the "Keep the clock centred" switch is gone from Settings > Bar style.
+- **The ":" of the clock is on the screen's centre line (both bars).** The whole text "05:57 PM" was centred, so the colon sat a few pixels left of the middle (over a centre webcam it looked off). The clock is pushed right by exactly the distance between the middle of the text and the colon, measured from the real font (`colonShift` in `Home.qml` and `NotchBar.qml`); the bar stays centred, the left side gets the extra room.
+- **Island: the time stays centred when one side is empty and while the hover stats slide out.** `Home.qml` used to size the two slots equally only when both had content, and grew only the right slot on hover (which pushed the time left). Both slots now always share one width.
+
+---
+
+## sysmode "mixed" badge fixed, lighter prompt and greeting
+
+- **`[mx]` / "CUSTOM / MIXED" instead of relaxed is fixed.** `sysmode`'s `detect_mode` returned `/etc/sysmode.mode` as written, so a file that still said `cyber` (or `hacking`) matched no mode and was shown as mixed. It now reads `cyber` as `relaxed` and `hacking` as `stealth`, like `stats.sh` and `hx status` already did. Needs the new `sysmode` installed to `/usr/local/bin` (`./update.sh`).
+- **Starship no longer runs `sysmode status` on every prompt.** That call ran ~15 commands (systemctl x4, docker inspect, auditctl, pgrep, sysctl ...) before each prompt. The badge now reads `/etc/sysmode.mode` in one small `sh` (`[rx]` relaxed, `[se]` secure, `[st]` stealth, `[ld]` lockdown, `[mx]` anything else), and only asks `sysmode status` when the file does not exist yet. The old badge command also had an escape-code regex that never matched; that is gone with it.
+- **`app-themes.sh` fixes an installed `~/.config/starship.toml`** too (the file is yours and is never replaced): only its old `[custom.sysmode]` table is swapped for the new one, once, with a copy kept as `starship.toml.before-sysmode-fix`.
+- **The `halcyon` badge is plain text in the prompt format**, so it no longer starts a shell per prompt just to print a constant.
+- **fish greeting**: reads the mode file directly (same names and colours as `sysmode status`), uses `$version` and `$USER` instead of `fish --version` / `id -un`, and one `free` call instead of two.
+
+---
+
+## App picker menus (Focus block list, shortcuts) and "cyber" is now "relaxed"
+
+- **New `AppPicker.qml`**: a searchable, scrollable list of every installed app (the launcher's own list, from the desktop entries). Click one and it hands back the app's name, a window class guess, its program name and a ready-to-run command (terminal apps are wrapped so they open in your terminal; arguments are quoted).
+- **Settings > Focus > Blocked apps**: "Pick from all your installed apps" blocks an app that is not open right now. It adds the class from the app's launcher entry plus its program name in one write (`focus.sh block CLASS [CLASS...]` now takes several classes). The open-windows chips and the typed class box are still there; if a picked app still opens, click it under "Open right now" while it runs to get its exact class.
+- **Shortcuts (SUPER+/) > Your shortcuts**: both the "+ Add a shortcut" form and the editor of a shortcut you added have a **Pick an app instead of typing** button. Choosing an app fills the command (and the name, unless you typed your own); you can still edit the command afterwards.
+- **sysmode: the `cyber` mode is now `relaxed`** (`sudo sysmode relaxed`). `cyber` still works as an alias, and an old `/etc/sysmode.mode` that says `cyber` is read as `relaxed` until the next switch. Renamed in the CLI, `sysmode status` (shows RELAXED), the man page, bash completion, the Performance page colour, the quick terminal (`relaxed`, `cyber` still typed as a one-word command), the shortcut tree, the installer text, the README and the Starship prompt badge (`[rx]`, was `[cy]`).
+
+---
+
 ## Optional safety check in install.sh and Settings, install.sh shows SUPER+/
 
 - **install.sh now says SUPER + / (not SUPER + Alt + /)** for the shortcut tree in the "First keys" list at the end; the comment in `scripts/cheatsheet.sh` matches. (The binding itself was already SUPER+/ in `keybinds.lua` and `Binds.js`.)

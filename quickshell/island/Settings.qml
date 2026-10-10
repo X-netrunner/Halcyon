@@ -119,8 +119,8 @@ Scope {
     readonly property string focusScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/focus.sh"
     signal focusOptionsChanged()              // shell.qml reloads what the utilities box shows
     function focusLoad() { if (!focusConfProc.running) focusConfProc.running = true; if (!focusAppsProc.running) focusAppsProc.running = true }
-    function focusApp(what, cls) {         // block | unblock
-        Quickshell.execDetached(["bash", focusScript, what, cls])
+    function focusApp(what, cls) {         // block | unblock; cls may be one class or a list of them (one call, one write)
+        Quickshell.execDetached(["bash", focusScript, what].concat(cls))
         focusAgain.restart()
     }
     Timer { id: focusAgain; interval: 500; onTriggered: { root.focusLoad(); root.focusOptionsChanged() } }
@@ -295,7 +295,6 @@ Scope {
             { type: "toggle", key: "pair:bat", label: "Show battery" },
             { type: "toggle", key: "pair:batPct", label: "Show battery percentage" },
             { type: "toggle", key: "pair:caffeine", label: "Show the Caffeine icon" },
-            { type: "toggle", key: "opt:notchCenter", label: "Keep the clock centred", desc: "Off: the bar is only as wide as what it shows, no gaps. On: the clock stays in the exact middle and the shorter side keeps empty space.", when: "opt:barStyle=notch" },
             { type: "seg", key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch" }
         ] },
         { id: "bar", title: "Bar", section: "Desktop", items: [
@@ -719,7 +718,7 @@ Scope {
                 }
                 Text {
                     visible: (root.focusApps.blocked || []).length === 0
-                    text: "nothing yet: click an open app below, or type its window class"
+                    text: "nothing yet: pick an app below (open or installed), or type its window class"
                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                 }
             }
@@ -739,6 +738,19 @@ Scope {
                     }
                 }
             }
+            Text { text: "Pick from all your installed apps"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+            AppPicker {
+                Layout.fillWidth: true
+                pal: root.pal
+                placeholder: "Search your apps, click one to block it…"
+                exclude: (root.focusApps.blocked || []).map(function (x) { return String(x).toLowerCase() })
+                onPicked: app => {
+                    var l = [app.cls]
+                    if (app.bin !== "" && app.bin.toLowerCase() !== app.cls.toLowerCase()) l.push(app.bin)   // its program name is a second guess for the class
+                    root.focusApp("block", l)
+                }
+            }
+            Text { text: "Or type a window class yourself"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
@@ -770,7 +782,7 @@ Scope {
             }
             Text {
                 Layout.fillWidth: true
-                text: "The class is what `hyprctl clients` calls the window's class; * works as a wildcard and case does not matter. Saved in ~/.config/Halcyon/focus-apps.conf."
+                text: "Apps from the list are matched by the window class their launcher entry gives (plus the program name). If one still opens, click it under \"Open right now\" while it runs: that is its exact class. The class is what `hyprctl clients` shows; * works as a wildcard and case does not matter. Saved in ~/.config/Halcyon/focus-apps.conf."
                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
             }
         }

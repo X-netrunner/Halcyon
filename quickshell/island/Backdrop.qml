@@ -11,7 +11,7 @@ Item {
     property real artFit: 0.9
     property real artShift: 0          // push the art sideways (px), e.g. towards a corner
     property real energy: 0            // 0..1 flare of the constellation (the lock screen kicks it on every key press)
-    // secure / cyber (and any non-flagship mode): the user's profile picture as a constellation (`hx stars`, owned by shell.qml)
+    // secure / relaxed (and any non-flagship mode): the user's profile picture as a constellation (`hx stars`, owned by shell.qml)
     property var avatarStars: null
     property bool profileStars: true
     property bool paused: false        // freeze the animation clocks (e.g. while the page above scrolls); nothing is torn down

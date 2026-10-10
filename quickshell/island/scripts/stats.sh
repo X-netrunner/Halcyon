@@ -147,11 +147,12 @@ while true; do
     fi
   done
 
-  # sysmode: secure | stealth | cyber | lockdown ("" = never set). `hacking` is an alias of stealth.
+  # sysmode: secure | stealth | relaxed | lockdown ("" = never set). `hacking` is an alias of stealth, `cyber` (old name) of relaxed.
   sm=""
   { read -r sm < /etc/sysmode.mode; } 2>/dev/null || sm=""
   sm=${sm//[^a-z-]/}
   [ "$sm" = "hacking" ] && sm="stealth"
+  [ "$sm" = "cyber" ] && sm="relaxed"      # a file written before the rename
 
   # Auto power = the power-manager daemon is running
   auto=false; pmode=""; pprof=""

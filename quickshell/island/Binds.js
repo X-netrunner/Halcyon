@@ -85,7 +85,7 @@ var groups = [
     { id: "sysmode", title: "Sysmode (terminal, sudo)", items: [
         { label: "Active profile and kernel metrics", kind: "cli", keys: "sysmode status" },
         { label: "Daily hardening", kind: "cli", keys: "sysmode secure" },
-        { label: "Relaxed training lab", kind: "cli", keys: "sysmode cyber" },
+        { label: "Relaxed mode (training lab)", kind: "cli", keys: "sysmode relaxed" },
         { label: "Decoy / counter-recon lab", kind: "cli", keys: "sysmode stealth" },
         { label: "Fortress mode (reboot to exit)", kind: "cli", keys: "sysmode lockdown" },
         { label: "Audit the profile / check dependencies", kind: "cli", keys: "sysmode verify | doctor" }

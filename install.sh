@@ -793,7 +793,7 @@ choose_apps() {
     elif [[ -z "$PICK_EDITOR" ]]; then PICK_EDITOR="${s_e:-none}"; fi
     # ---- sysmode
     if [[ "$ask_s" == "true" ]]; then
-        echo -e "\n  ${CYAN}${BOLD}sysmode${RESET}  ${DIM}hardening profiles + a honeypot / IDS lab: secure | cyber | stealth | lockdown${RESET}"
+        echo -e "\n  ${CYAN}${BOLD}sysmode${RESET}  ${DIM}hardening profiles + a honeypot / IDS lab: secure | relaxed | stealth | lockdown${RESET}"
         echo -e "   ${DIM}installs ~10 security tools (nmap, ufw, audit, docker, lynis ...) and a boot service; skip it if you only want the desktop${RESET}"
         if ask "  Install sysmode?"; then SYSMODE=true; else SYSMODE=false; fi
         SYSMODE_ASKED=true
@@ -1195,7 +1195,7 @@ if [[ "$SYSMODE" == "true" ]]; then
         log_info "sysmode doctor:"
         as_root /usr/local/bin/sysmode doctor 2>&1 | sed 's/^/   /' | tee -a "$LOG_FILE" || true
     fi
-    log_info "Switch modes (as you need them):  sudo sysmode secure | cyber | stealth | lockdown    status:  sysmode status"
+    log_info "Switch modes (as you need them):  sudo sysmode secure | relaxed | stealth | lockdown    status:  sysmode status"
 else
     log_info "sysmode skipped (--no-sysmode)."
 fi

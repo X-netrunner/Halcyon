@@ -82,7 +82,7 @@ $gcloud\
 $openstack\
 $azure\
 $crystal\
-${custom.halcyon}\
+[◈ halcyon](bold italic accent) \
 ${custom.sysmode}\
 $status\
 $os\
@@ -318,16 +318,11 @@ unknown_msg = '[◌](bold dimmed yellow)'
 symbol = "◇ "
 format = " spack [$symbol$environment]($style)"
 
-# the rice name, next to the other stats on the right of the prompt
-[custom.halcyon]
-command = "printf halcyon"
-when = true
-style = "bold italic accent"
-format = "[◈ $output]($style) "
-
 [custom.sysmode]
-command = "sysmode status | grep 'Mode:' | sed -E 's/Mode: //g; s/\\x1b\\[[0-9;]*m//g' | awk '{if ($0 ~ /CYBER/) print \"[cy]\"; else if ($0 ~ /SECURE/) print \"[se]\"; else if ($0 ~ /LOCKDOWN/) print \"[ld]\"; else if ($0 ~ /STEALTH|HACKING/) print \"[st]\"; else print \"[mx]\";}'"
-when = "command -v sysmode"
+# Reads /etc/sysmode.mode directly (one tiny sh per prompt; `sysmode status` ran ~15 commands every time, docker included).
+# Old names still work: cyber = relaxed, hacking = stealth. No file yet (sysmode never switched): fall back to asking sysmode.
+command = '''m=; [ -r /etc/sysmode.mode ] && read -r m < /etc/sysmode.mode; case "$m" in relaxed|cyber) echo "[rx]";; secure) echo "[se]";; lockdown) echo "[ld]";; stealth|hacking) echo "[st]";; "") command -v sysmode >/dev/null || exit 0; sysmode status 2>/dev/null | awk '/Mode:/ {if ($0 ~ /RELAXED/) print "[rx]"; else if ($0 ~ /SECURE/) print "[se]"; else if ($0 ~ /LOCKDOWN/) print "[ld]"; else if ($0 ~ /STEALTH/) print "[st]"; else print "[mx]"}';; *) echo "[mx]";; esac'''
+when = true
 style = "bold accent2"
 format = "[$output]($style) "
 

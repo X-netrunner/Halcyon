@@ -612,7 +612,7 @@ write_sysctl_mode() {
             dis6=0; wscale=; ttl=
             ptrace=1; bpf=1; modules=; rpf=1
             ;;
-        cyber)
+        relaxed)
             fwd=1; f6=1; pf=0; pr=0; icmp=0; ldisc=1; sd=2
             rdr=1; srdr=1; src=1; lgm=0; rfc=0
             dmesg=0; kptr=0; perf=2; jit=0; srq=16
@@ -705,7 +705,13 @@ EOF
 
 detect_mode() {
     if [[ -f "$SYSMODE_MODE" ]]; then
-        cat "$SYSMODE_MODE"
+        local saved
+        saved=$(tr -d '[:space:]' < "$SYSMODE_MODE")
+        case "$saved" in
+            cyber)   saved="relaxed" ;;   # a file written before the rename
+            hacking) saved="stealth" ;;
+        esac
+        printf '%s\n' "$saved"
         return 0
     fi
     local ptrace forward compilers icmp_ignore
@@ -724,7 +730,7 @@ detect_mode() {
     elif [[ "$forward" == "1" && "$compilers" == "Relaxed (All Users)" && "$icmp_ignore" == "1" ]]; then
         echo "stealth"
     elif [[ "$forward" == "1" && "$compilers" == "Relaxed (All Users)" && "$icmp_ignore" == "0" ]]; then
-        echo "cyber"
+        echo "relaxed"
     else
         echo "custom"
     fi
@@ -756,7 +762,7 @@ show_status() {
         lockdown) mode_display="\e[1;31mLOCKDOWN / FORTRESS\e[0m" ;;
         secure) mode_display="\e[1;32mSECURE\e[0m" ;;
         stealth|hacking) mode_display="\e[1;36mSTEALTH\e[0m" ;;
-        cyber) mode_display="\e[1;33mCYBERSECURITY LEARNING\e[0m" ;;
+        relaxed) mode_display="\e[1;33mRELAXED\e[0m" ;;
         *) mode_display="\e[1;35mCUSTOM / MIXED\e[0m" ;;
     esac
     echo -e "Mode: $mode_display"
@@ -847,7 +853,7 @@ verify_mode() {
             systemctl is-active --quiet dnscrypt-proxy 2>/dev/null && dns_act="Yes"
             check_val "dnscrypt-proxy Active" "Yes" "$dns_act"
             ;;
-        cyber)
+        relaxed)
             check_val "IP Forwarding (net.ipv4.ip_forward)" "1" "$fwd"
             check_val "Compiler Permissions (gcc/clang/etc)" "Relaxed" "$compilers"
             check_val "ICMP Ignore All" "0" "$icmp"
@@ -1021,7 +1027,7 @@ Profiles:
     - Mounts transient RAM-backed secure workspace at ~/Workspace/Stealth
     - Forces volatile systemd logging (system logs held only in memory)
 
-  cyber
+  relaxed (old name: cyber)
     Relaxed security learning profile for general practice and labs.
     - Restores standard network configurations (packet forwarding enabled)
     - Relaxes ICMP redirects to permit network protocol testing (MITM labs)
@@ -1438,18 +1444,18 @@ EOF
     echo ""
     echo "[!] Warning: Extreme hardening parameters are active."
     echo "    To exit LOCKDOWN mode and restore full relaxed access,"
-    echo "    you must switch mode (e.g. secure/cyber) AND reboot your system."
+    echo "    you must switch mode (e.g. secure/relaxed) AND reboot your system."
 }
 
-set_cyber() {
+set_relaxed() {
     cleanup_stealth
-    echo "[*] Switching to CYBER Mode..."
-    set_mode_file cyber
+    echo "[*] Switching to RELAXED Mode..."
+    set_mode_file relaxed
     stop_daemons
 
     set_ufw_sysctl 1 0 "ACCEPT"
     set_hardening_conf disable enable
-    write_sysctl_mode cyber
+    write_sysctl_mode relaxed
     sysctl --system >/dev/null 2>&1 || true
 
     set_ufw_logging low
@@ -1461,17 +1467,17 @@ set_cyber() {
     rm -f /etc/ssh/sshd_config.d/sysmode-lockdown.conf
 
     remove_sudo_logging
-    set_compilers cyber
+    set_compilers relaxed
     remove_blacklist
     remove_audit_rules
-    write_banner cyber
-    set_login_defs cyber
-    set_shell_umask cyber
-    set_core_dumps cyber
-    set_home_perms cyber
+    write_banner relaxed
+    set_login_defs relaxed
+    set_shell_umask relaxed
+    set_core_dumps relaxed
+    set_home_perms relaxed
     remove_lynis
 
-    echo "[+] Mode changed to: CYBERSECURITY LEARNING (Relaxed)"
+    echo "[+] Mode changed to: RELAXED"
     randomize_wallpaper
 
     local modules unpriv_bpf ptrace
@@ -1916,7 +1922,7 @@ reapply() {
         lockdown) set_lockdown ;;
         secure) set_secure ;;
         stealth|hacking) set_stealth ;;
-        cyber) set_cyber ;;
+        relaxed) set_relaxed ;;
         *)
             echo "[*] Custom/Mixed mode ($mode) detected, skipping automatic reapplication."
             ;;
@@ -1942,8 +1948,8 @@ case "$action" in
         set_secure
         show_status
         ;;
-    cyber)
-        set_cyber
+    relaxed|cyber)        # "cyber" is the old name of this mode
+        set_relaxed
         show_status
         ;;
     hacking|stealth)
@@ -2018,7 +2024,7 @@ case "$action" in
         show_help
         ;;
     *)
-        echo "Usage: $0 {secure|cyber|stealth [--persona cisco|synology|ubuntu] [--hotspot|--no-hotspot]|lockdown|reapply|daemons|boot-late|status|verify|doctor|logs|dossier [IP]|help}" >&2
+        echo "Usage: $0 {secure|relaxed|stealth [--persona cisco|synology|ubuntu] [--hotspot|--no-hotspot]|lockdown|reapply|daemons|boot-late|status|verify|doctor|logs|dossier [IP]|help}" >&2
         exit 1
         ;;
 esac

@@ -14,7 +14,7 @@ Item {
     property string profileLabel: "Balanced"
     property bool autoPower: false
     property string autoNote: ""      // why Auto picked it: "on battery", "heavy load", "thermal hold", ...
-    property string sysmode: ""       // /etc/sysmode.mode: secure | stealth | cyber | lockdown ("" = not set)
+    property string sysmode: ""       // /etc/sysmode.mode: secure | stealth | relaxed | lockdown ("" = not set)
     signal toggleWifi()
     signal toggleBt()
     signal setProfile(string p)
