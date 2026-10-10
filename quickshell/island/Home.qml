@@ -457,7 +457,7 @@ RowLayout {
                     pal: row.pal
                     net: row.net
                     stats: row.stats
-                    tint: row.pal.accent
+                    tint: row.pal.text
                     btTint: row.pal.accent2
                     size: row.comboSize
                     showWifi: row.showWifi
@@ -474,7 +474,7 @@ RowLayout {
                     pal: row.pal
                     net: row.net
                     look: row.wifiLook
-                    tint: row.pal.accent
+                    tint: row.pal.text
                     size: 14
                 }
                 Text {
@@ -503,7 +503,7 @@ RowLayout {
                                 height: parent.height - 4
                                 width: Math.max(2, (parent.width - 4) * row.stats.bat / 100)
                                 radius: 1.5
-                                color: row.stats.charging ? row.pal.good : (row.stats.bat <= 20 ? row.pal.bad : row.pal.accent)
+                                color: row.stats.charging ? row.pal.good : (row.stats.bat <= 20 ? row.pal.bad : Qt.alpha(row.pal.text, 0.85))
                             }
                         }
                         Rectangle { x: 21.5; y: 4; width: 2; height: 4; radius: 1; color: row.pal.text }

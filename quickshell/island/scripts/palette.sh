@@ -58,7 +58,7 @@ function around(k,    j, kk, cx, cy, ws, ss_, vs, rs, gs, bs) {
 BEGIN { BINS = 36; PI2 = 6.283185307 }
 NF >= 3 {
     r = $1 / 255; g = $2 / 255; b = $3 / 255
-    n++; mr += r; mg += g; mb += b
+    n++; mr += r; mg += g; mb += b; lsum += 0.2126 * r + 0.7152 * g + 0.0722 * b
     mx = max3(r, g, b); mn = min3(r, g, b); v = mx; d = mx - mn
     if (mx <= 0) next
     s = d / mx
@@ -106,9 +106,9 @@ END {
         }
         for (i = 0; i < nsw; i++) sws = sws (i ? "," : "") "\"" SW[i] "\""
     }
-    printf "{\"bg\":\"%s\",\"surface\":\"%s\",\"surfaceHi\":\"%s\",\"accent\":\"%s\",\"accent2\":\"%s\",\"text\":\"%s\",\"muted\":\"%s\",\"dominant\":\"%s\",\"swatches\":[%s]}\n", \
+    printf "{\"bg\":\"%s\",\"surface\":\"%s\",\"surfaceHi\":\"%s\",\"accent\":\"%s\",\"accent2\":\"%s\",\"text\":\"%s\",\"muted\":\"%s\",\"dominant\":\"%s\",\"lum\":%.3f,\"swatches\":[%s]}\n", \
         hsl(h1, sbg, 0.095), hsl(h1, sbg - 0.04, 0.155), hsl(h1, sbg - 0.04, 0.205), \
-        hsl(h1, sa, 0.70), hsl(h2, sa2, 0.72), hsl(h1, 0.20, 0.89), hsl(h1, 0.10, 0.64), dom, sws
+        hsl(h1, sa, 0.70), hsl(h2, sa2, 0.72), hsl(h1, 0.20, 0.89), hsl(h1, 0.10, 0.64), dom, lsum / n, sws
 }')
 [ -n "$json" ] || exit 1
 # in place (no rename), so `tail -F` in the island sees it
