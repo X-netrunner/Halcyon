@@ -86,7 +86,7 @@ RowLayout {
     // ---- layout: [ left slot ] time [ right slot ]. Both slots get the same width, so the time sits dead centre and the
     //      padding is symmetric. Left slot: workspaces at the edge, the music bar floating halfway between them and the time.
     //      Right slot: the day / date floating halfway between the time and the status icons, which sit at the edge.
-    //      (The live stats that slide out on hover only grow the right slot, so nothing jumps while you hover.)
+    //      (The live stats that slide out on hover grow BOTH slots by the same amount, so the time never moves.)
     property bool spacious: false            // Settings > Bar style > Bar spacing
     readonly property int g: spacious ? 26 : 14           // smallest gap between neighbours
     readonly property int edgePad: spacious ? 8 : 0       // extra room at both ends of the pill
@@ -97,9 +97,16 @@ RowLayout {
     readonly property real statsW: statsItem.implicitWidth
     readonly property real leftBase: (wsW > 0 ? wsW + g : 0) + (vizW > 0 ? vizW + g : 0)
     readonly property real rightBase: (dateW > 0 ? g + dateW : 0) + (statusW > 0 ? g + statusW : 0)
-    readonly property bool balanced: leftBase > 0 && rightBase > 0
-    readonly property real leftSlotW: balanced ? Math.max(leftBase, rightBase) : leftBase
-    readonly property real rightSlotW: Math.max(balanced ? Math.max(leftBase, rightBase) : rightBase, rightBase + statsW)
+    // Both slots are ALWAYS the same width (even when one side is empty, and while the hover stats slide out), so the pill
+    // stays centred on the screen and the time stays dead centre inside it.
+    // The ":" of the clock (not the middle of the whole text, which includes " PM") sits on the screen's centre line, e.g. over a
+    // webcam: the clock is pushed right by colonShift, which the left slot makes room for. The pill itself stays centred.
+    TextMetrics { id: tmHH; font: timeText.font; text: timeText.text.substring(0, 2) }
+    TextMetrics { id: tmColon; font: timeText.font; text: ":" }
+    readonly property real colonShift: showTime ? Math.max(0, Math.round(timeText.implicitWidth / 2 - (tmHH.advanceWidth + tmColon.advanceWidth / 2))) : 0
+    readonly property real slotW: Math.max(leftBase, rightBase + statsW)
+    readonly property real leftSlotW: slotW + 2 * colonShift
+    readonly property real rightSlotW: slotW
 
     spacing: 0
 
@@ -285,6 +292,7 @@ RowLayout {
         spacing: 10
         visible: row.showTime || row.clockDate
         Text {
+            id: timeText
             visible: row.showTime
             text: Qt.formatDateTime(clock.date, (row.clock24 ? "HH:mm" : "hh:mm") + (row.clockSeconds ? ":ss" : "") + (row.clock24 ? "" : " AP"))
             color: row.pal.text

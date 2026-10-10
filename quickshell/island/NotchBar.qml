@@ -68,7 +68,7 @@ PanelWindow {
     readonly property bool btShown: net.bt === "on" && (btMode === "on" || (btMode === "connected" && (net.btdev || "") !== ""))
     readonly property string wifiLook: opt.notchWifiStyle || "bars"      // bars | symbol | dots
     readonly property bool spacious: opt.notchSpacing === "spacious"    // Spacious: roomier gaps everywhere, clock always dead centre
-    readonly property bool centerClock: spacious || opt.notchCenter === true         // true: the clock is dead centre (empty space on the shorter side)
+    readonly property bool centerClock: true         // the clock is always dead centre of the screen (empty space on the shorter side)
     readonly property int midGap: Math.round(barH * (spacious ? 0.7 : 0.3))      // gap between music bar, time, date, stats
     readonly property int groupGap: Math.round(barH * (spacious ? 1.1 : 0.3))              // space between workspaces, clock and status icons
     readonly property bool showBat: opt.notchBat !== false
@@ -169,9 +169,13 @@ PanelWindow {
         // centred clock: the time itself is dead centre, the music bar floats halfway between the workspaces and the time,
         // the date floats halfway between the time and the right-hand icons
         readonly property real timeHalf: win.showTime ? timeText.width / 2 : 0
+        // the ":" (not the middle of "05:57 PM") sits on the screen's centre line: the clock is pushed right by this much
+        TextMetrics { id: tmHH; font: timeText.font; text: notch.timeStr.substring(0, 2) }
+        TextMetrics { id: tmColon; font: timeText.font; text: ":" }
+        readonly property real colonShift: win.showTime ? Math.max(0, Math.round(timeText.width / 2 - (tmHH.advanceWidth + tmColon.advanceWidth / 2))) : 0
         readonly property real vizExt: vizSp.width > 0 ? vizSp.width + win.midGap : 0
         readonly property real dateExt: dateRow.width > 0 ? dateRow.width + win.midGap : 0
-        readonly property real midHalf: win.showTime ? Math.max(timeHalf + vizExt, timeHalf + dateExt)
+        readonly property real midHalf: win.showTime ? Math.max(timeHalf + vizExt, timeHalf + colonShift + dateExt)
                                                      : Math.max(dateRow.width / 2 + vizExt, dateRow.width / 2)
         readonly property real bodyW: win.centerClock ? (sideW * 2 + midHalf * 2 + win.groupGap * 2 + win.padX * 2) : (flowW + win.padX * 2)
         width: bodyW + win.earR * 2
@@ -408,7 +412,7 @@ PanelWindow {
         // middle: music bars, time, date, (live stats while hovering). Every child is as tall as the bar.
         Row {
             id: midGroup
-            x: win.centerClock ? Math.round(notch.width / 2 - notch.timeHalf) : (notch.r + win.padX + (leftGroup.width > 0 ? leftGroup.width + win.groupGap : 0))
+            x: win.centerClock ? Math.round(notch.width / 2 - notch.timeHalf + notch.colonShift) : (notch.r + win.padX + (leftGroup.width > 0 ? leftGroup.width + win.groupGap : 0))
             y: 0
             height: notch.bh
             spacing: win.midGap
@@ -443,7 +447,7 @@ PanelWindow {
             x: {
                 if (!win.centerClock) return Math.round(midGroup.x + midGroup.width + (midGroup.width > 0 ? win.midGap : 0))
                 if (!win.showTime) return Math.round(notch.width / 2 - width / 2)
-                var from = notch.width / 2 + notch.timeHalf, to = rightGroup.x
+                var from = notch.width / 2 + notch.timeHalf + notch.colonShift, to = rightGroup.x
                 return Math.round(Math.max(from + 4, from + (to - from - width) / 2))
             }
 
@@ -494,7 +498,7 @@ PanelWindow {
             visible: win.centerClock && win.showViz && win.opt.viz !== "off" && win.playing
             y: Math.round((notch.bh - height) / 2)
             x: {
-                var from = leftGroup.x + leftGroup.width, to = win.showTime ? notch.width / 2 - notch.timeHalf : dateRow.x
+                var from = leftGroup.x + leftGroup.width, to = win.showTime ? notch.width / 2 - notch.timeHalf + notch.colonShift : dateRow.x
                 return Math.round(Math.max(from + 4, from + (to - from - width) / 2))
             }
             pal: win.pal

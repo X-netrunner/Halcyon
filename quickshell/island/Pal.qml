@@ -116,7 +116,7 @@ Scope {
     readonly property var modeColor: ({
         "secure": light ? "#2e8a4d" : "#8fd19e",
         "stealth": light ? "#0f7f8c" : "#56b6c2",
-        "cyber": light ? "#a8730f" : "#e5c07b",
+        "relaxed": light ? "#a8730f" : "#e5c07b",
         "lockdown": light ? "#c2303c" : "#e06c75"
     })
 

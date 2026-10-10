@@ -294,7 +294,7 @@ ShellRoot {
     property string profileName: ""
     property string profileAvatar: ""
     property bool settingsLoaded: false
-    // the profile picture as a constellation (secure / cyber backdrops everywhere); redone when the picture changes
+    // the profile picture as a constellation (secure / relaxed backdrops everywhere); redone when the picture changes
     property var starData: null
     // Settings > Performance: 0 low, 1 medium, 2 high. Also sets how detailed the picture constellation is (grid of the picture)
     readonly property int perfLevel: opt.perf === "low" ? 0 : (opt.perf === "medium" ? 1 : 2)

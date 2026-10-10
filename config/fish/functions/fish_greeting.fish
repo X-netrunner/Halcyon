@@ -6,20 +6,37 @@ function fish_greeting
         set in_kali 1
     end
 
-    # Fetch system info
-    set -l user_host (id -un)"@"(prompt_hostname)
+    # Fetch system info (no `fish --version` / second `free` / `sysmode status`: those cost a process each on every new terminal)
+    set -l user_host $USER"@"(prompt_hostname)
     set -l kernel (uname -r)
     set -l uptime (uptime -p | sed 's/^up //')
-    set -l shell_ver (fish --version | awk '{print $3}')
-    set -l shell "fish $shell_ver"
-    set -l mem_used (free -h | awk '/^Mem:/ {print $3}' | sed 's/i/B/')
-    set -l mem_total (free -h | awk '/^Mem:/ {print $2}' | sed 's/i/B/')
-    set -l memory "$mem_used / $mem_total"
+    set -l shell "fish $version"
+    set -l mem (free -h | awk '/^Mem:/ {print $3, $2}' | sed 's/i/B/g' | string split ' ')
+    set -q mem[2]; or set mem "?" "?"
+    set -l memory "$mem[1] / $mem[2]"
 
+    # sysmode: read the mode file directly (cyber = old name of relaxed, hacking = old name of stealth)
     set -l mode "N/A"
     if test "$in_kali" = 0
-        and command -v sysmode &>/dev/null
-        set mode (sysmode status 2>/dev/null | command grep 'Mode:' | sed -E 's/Mode: //g')
+        set -l sm
+        test -r /etc/sysmode.mode; and read -l sm </etc/sysmode.mode
+        switch "$sm"
+            case relaxed cyber
+                set mode (set_color -o yellow)"RELAXED"(set_color normal)
+            case secure
+                set mode (set_color -o green)"SECURE"(set_color normal)
+            case stealth hacking
+                set mode (set_color -o cyan)"STEALTH"(set_color normal)
+            case lockdown
+                set mode (set_color -o red)"LOCKDOWN / FORTRESS"(set_color normal)
+            case ''
+                # never switched yet: ask sysmode once
+                if command -q sysmode
+                    set mode (sysmode status 2>/dev/null | command grep 'Mode:' | sed -E 's/Mode: //g')
+                end
+            case '*'
+                set mode (set_color -o magenta)"CUSTOM / MIXED"(set_color normal)
+        end
     end
 
     # Wallpaper accent color from Halcyon (with fallback to red)

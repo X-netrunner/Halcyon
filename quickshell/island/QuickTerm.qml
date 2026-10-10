@@ -34,7 +34,7 @@ Scope {
     readonly property string sysmodeBin: "/usr/local/bin/sysmode"
     readonly property string hx: Quickshell.env("HOME") + "/.config/Halcyon/bin/hx"
     readonly property string pwMarker: "SUDO_PW"
-    readonly property var modes: ["secure", "stealth", "cyber", "lockdown"]
+    readonly property var modes: ["secure", "stealth", "relaxed", "cyber", "lockdown"]   // "cyber" = old name of relaxed (the CLI still takes it)
     readonly property var rootless: ["status", "logs", "dossier", "verify", "check", "doctor", "help", "-h", "--help"]
     readonly property var tuis: ["vim", "nvim", "vi", "nano", "emacs", "htop", "btop", "top", "less", "more", "man", "ssh",
                                  "mosh", "tmux", "screen", "ncmpcpp", "mutt", "ranger", "yazi", "fzf", "python", "python3", "node", "irb"]
@@ -146,7 +146,7 @@ Scope {
         if (line === "clear" || line === "cls") { clearOut(); return }
         if (line === "exit" || line === "quit") { close(); return }
         if (line === "help") {
-            push("sysmode: secure | stealth | cyber | lockdown | status | logs | dossier [ip]   (sm = sysmode)\n" +
+            push("sysmode: secure | stealth | relaxed | lockdown | status | logs | dossier [ip]   (sm = sysmode)\n" +
                  "sudo works here: it asks for your password in this line.\n" +
                  "cd, clear, exit, Ctrl+C stop, Ctrl+L clear, Up/Down history. Anything else runs in bash.\n" +
                  "vim / htop / ssh ... open in a real terminal.", "info")
@@ -389,7 +389,7 @@ Scope {
                     }
                     Text {
                         topPadding: 6
-                        text: "type a command · secure · stealth · cyber · lockdown"
+                        text: "type a command · secure · stealth · relaxed · lockdown"
                         color: Qt.alpha(root.pal.muted, 0.8)
                         font.family: root.mono
                         font.pixelSize: 10

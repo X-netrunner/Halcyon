@@ -39,6 +39,9 @@ pub fn run() {
     if mode == "hacking" {
         mode = "stealth".into();
     }
+    if mode == "cyber" {
+        mode = "relaxed".into(); // a file written before the rename
+    }
     let persona = util::read("/etc/sysmode.persona").trim().to_string();
     let decoy_wifi = util::read("/etc/sysmode.decoy-wifi").trim().to_string();
 

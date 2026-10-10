@@ -70,6 +70,22 @@ starship_adopt() {   # make ~/.config/starship.toml use the halcyon palette: you
   } > "$f.new" && mv "$f.new" "$f" && echo "   starship: your prompt now uses the wallpaper colours (your old file: starship.toml.before-halcyon)"
   return 0
 }
+# an installed ~/.config/starship.toml is never replaced (it is yours), so swap ONLY the old [custom.sysmode] table (it ran
+# `sysmode status` before every prompt and showed [mx] for the old "cyber" mode name) for the one in the rice
+starship_sysmode_migrate() {
+  local f="$HOME/.config/starship.toml" src="$RICE/config/starship.toml" blk
+  [ -f "$f" ] && [ -f "$src" ] || return 0
+  grep -qF "sysmode status | grep 'Mode:'" "$f" 2>/dev/null || return 0
+  blk=$(mktemp) || return 0
+  awk '/^\[custom\.sysmode\]/{p=1} p && /^# >>> HALCYON/{exit} p' "$src" > "$blk"
+  grep -q '^\[custom\.sysmode\]' "$blk" || { rm -f "$blk"; return 0; }
+  [ -e "$f.before-sysmode-fix" ] || cp -p "$f" "$f.before-sysmode-fix"
+  awk -v blk="$blk" '
+    /^\[custom\.sysmode\]/ { while ((getline l < blk) > 0) print l; skip=1; next }
+    skip && (/^\[/ || /^# >>>/) { skip=0 }
+    !skip { print }' "$f" > "$f.new" && mv "$f.new" "$f" && echo "   starship: sysmode badge updated (your old file: starship.toml.before-sysmode-fix)"
+  rm -f "$blk"
+}
 starship_theme() {
   local f="$HOME/.config/starship.toml" B="# >>> HALCYON STARSHIP PALETTE >>>" E="# <<< HALCYON STARSHIP PALETTE <<<"
   [ -f "$f" ] && grep -qF "$B" "$f" || { log "starship: $f has no halcyon block (starship installed: $(have starship && echo yes || echo no))"; return 0; }
@@ -473,6 +489,7 @@ ensure_choices() {
 
 # every run: pick the halcyon theme where an app still has another one (existing choices are backed up once), then write the files
 starship_adopt
+starship_sysmode_migrate
 starship_theme; fish_theme; btop_theme; yazi_theme; spotify_theme; discord_theme
 if declare -F editors_theme >/dev/null; then editors_theme; browser_theme; qt_theme; fi
 ensure_choices >/dev/null          # after the files exist (Vesktop needs its theme file first)
