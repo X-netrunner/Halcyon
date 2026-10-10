@@ -32,6 +32,7 @@ Scope {
     property bool usePfp: true              // Settings > Panels & notifications > Notification picture: profile picture / app icon
     property string spot: "edge"            // Settings > Panels & notifications > Notification trigger spot: edge = strip on the right edge, corner = the top-right corner
     readonly property bool corner: spot === "corner"
+    property bool edgeOn: true              // false while the bar's drop-down is on (Settings > Bar > Drag the bar down): no edge strip, no edge box; popups still show
     property bool clickMode: false          // Edge toggle: false = hover opens it, true = click the edge to open / close it
     property bool autoHide: false           // auto-hide on: it closes as soon as the pointer leaves, in either mode
     property string sysmode: ""             // lockdown / stealth get their background art
@@ -105,10 +106,13 @@ Scope {
     //   close  only after it has been away for a moment (closeT)
     //   after closing, the strip ignores the pointer for a short while (lockT)
     function setHover(on) {
+        if (!edgeOn) return
         if (on) { closeT.stop(); if (!clickMode && !centerOpen && !lockT.running) openT.restart() }
         else { openT.stop(); if (centerOpen && (!clickMode || autoHide)) { closeT.interval = 700; closeT.restart() } }
     }
+    onEdgeOnChanged: if (!edgeOn) { openT.stop(); closeT.stop(); centerOpen = false }
     function toggleCenter() {
+        if (!edgeOn) return
         if (centerOpen) { closeT.stop(); centerOpen = false }
         else { centerOpen = true; if (!clickMode || autoHide) { closeT.interval = 6000; closeT.restart() } }
     }
@@ -211,11 +215,12 @@ Scope {
         // corner: a small spot in the very top-right corner of the screen
         EdgeGrab {
             id: hot
+            visible: root.edgeOn
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.topMargin: root.corner ? 0 : root.pal.boxTop
-            width: root.corner ? (root.clickMode ? 28 : 16) : (root.clickMode ? 16 : 12)
-            height: root.corner ? (root.clickMode ? 28 : 16) : 260
+            width: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 16) : (root.clickMode ? 16 : 12)
+            height: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 16) : 260
             clickMode: root.clickMode
             onHoverChanged: on => root.setHover(on)
             onTapped: root.toggleCenter()

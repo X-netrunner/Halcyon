@@ -397,25 +397,33 @@ Item {
                 clip: true
                 onTextChanged: { root.query = text; root.pendingConfirm = ""; if (!root.histBusy) root.histIdx = -1; root.refresh() }
 
-                // Up / Down: older / newer searches (in the command list they move the selection instead)
-                // Left / Right: move the text cursor (default behaviour)
+                // Up / Down / Left / Right: with something typed they walk through the apps; with the box empty, Up / Down are older / newer
+                // searches (in the command list Up / Down move the selection) and Left / Right move the text cursor
                 // Tab / Shift+Tab (or Ctrl+N / Ctrl+P): next / previous result;  Ctrl+Up / Ctrl+Down: a row up / down
                 Keys.onPressed: e => {
                     var cmd = root.mode === "cmd", calc = root.mode === "calc"
                     var ctrl = (e.modifiers & Qt.ControlModifier) !== 0
+                    // once something is typed (and you are not paging through old searches), the arrow keys walk through the apps:
+                    // Up / Down a row, Left / Right one app. Shift / Alt + Left / Right and Ctrl + Left / Right still move the text cursor.
+                    var nav = root.gridMode && root.results.length > 0 && root.query !== "" && root.histIdx === -1
+                    var plain = (e.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
                     if (e.key === Qt.Key_Escape) { root.closeRequested(); e.accepted = true }
                     else if (e.key === Qt.Key_Down) {
                         if (cmd) { cmdList.incrementCurrentIndex(); root.pendingConfirm = "" }
                         else if (ctrl) { if (!calc) grid.moveCurrentIndexDown() }
+                        else if (nav) grid.moveCurrentIndexDown()
                         else root.histStep(-1)
                         e.accepted = true
                     }
                     else if (e.key === Qt.Key_Up) {
                         if (cmd) { cmdList.decrementCurrentIndex(); root.pendingConfirm = "" }
                         else if (ctrl) { if (!calc) grid.moveCurrentIndexUp() }
+                        else if (nav) grid.moveCurrentIndexUp()
                         else root.histStep(1)
                         e.accepted = true
                     }
+                    else if (nav && plain && e.key === Qt.Key_Right) { grid.moveCurrentIndexRight(); e.accepted = true }
+                    else if (nav && plain && e.key === Qt.Key_Left) { grid.moveCurrentIndexLeft(); e.accepted = true }
                     else if (e.key === Qt.Key_Tab || (ctrl && e.key === Qt.Key_N)) {
                         if (cmd) { cmdList.incrementCurrentIndex(); root.pendingConfirm = "" } else if (!calc) root.stepResult(1)
                         e.accepted = true

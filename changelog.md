@@ -4,10 +4,23 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Drag the bar down: utilities box and notifications inside the bar, launcher arrow keys
+
+- **Settings > Bar style > Drag the bar down** (Off / Two steps / Side by side; default Off). Pull the bar down (island or notch) and the utilities box drops out of it as a page, the same box as the bottom-right corner one (Wi-Fi, Bluetooth, audio, sliders, power mode, Focus, Settings, power). **Two steps**: drag down again for the notifications, drag up to go back. **Side by side**: the notifications sit next to the utilities box. The corner box and the right-edge notification centre keep working as before.
+  - The page has a small handle at the bottom: drag it down / up or tap it to move between the bar, the utilities box and the notifications. It folds back by itself when the pointer leaves (like the media and performance pages), and with Esc / SUPER+Q.
+  - New `NotifCentre.qml` (same header and rows as the notification centre, no window of its own). Looking at the notifications here marks them read and hides the popups. The Wi-Fi password field works in the page (it asks for the keyboard like the corner box does); the volume OSD stays quiet while the box is open, like with the corner box.
+  - Scrolling over the bar no longer changes pages while one of these two pages is open (it would have fired while moving a slider).
+- **Launcher: the arrow keys walk through the apps once you have typed something.** Up / Down move a row, Left / Right one app. With the box empty (or while paging through old searches) Up / Down still step through search history as before; Shift / Alt / Ctrl + Left / Right still move the text cursor.
+
+---
+
 ## Clock centring: island and notch
 
 - **Notch: the clock is now always dead centre of the screen.** Before, it only was with Bar spacing "Spacious" or the "Keep the clock centred" switch; by default the bar was just as wide as its content, so the clock sat wherever the content put it. `centerClock` in `NotchBar.qml` is now always on (the shorter side keeps empty space) and the "Keep the clock centred" switch is gone from Settings > Bar style.
 - **The ":" of the clock is on the screen's centre line (both bars).** The whole text "05:57 PM" was centred, so the colon sat a few pixels left of the middle (over a centre webcam it looked off). The clock is pushed right by exactly the distance between the middle of the text and the colon, measured from the real font (`colonShift` in `Home.qml` and `NotchBar.qml`); the bar stays centred, the left side gets the extra room.
+- **Settings > Clock: "Centre the" (Colon / Whole text) and "Nudge the clock" (4 left ... 6 right).** The colon alignment is on by default; "Whole text" gives the old behaviour, and the nudge adds pixels on top for a screen or webcam that sits a little off. Both bars follow it.
+- **Clock shortcuts in the bar (both styles):** right-click the time = 12 / 24 hour, middle-click = seconds.
+- **Settings cleanup:** the dead `notchCenter` option is dropped from the defaults and ignored when an old `settings.json` still has it.
 - **Island: the time stays centred when one side is empty and while the hover stats slide out.** `Home.qml` used to size the two slots equally only when both had content, and grew only the right slot on hover (which pushed the time left). Both slots now always share one width.
 
 ---

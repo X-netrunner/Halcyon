@@ -299,6 +299,7 @@ Scope {
         ] },
         { id: "bar", title: "Bar", section: "Desktop", items: [
             { type: "seg", key: "barPadding", label: "Bar size and padding", desc: "How tall the bar is. Island: also how far it floats from the top edge and the space at its sides.", opts: [o("low", "Low"), o("normal", "Normal"), o("high", "High")] },
+            { type: "seg", key: "opt:dropDown", label: "Drag the bar down", desc: "Pull the bar down (or use the little handle under the open page) to get the utilities box inside the bar. Swipe pages: the notifications are the next page to the right. Swipe sideways, tap the arrows or the tabs, or press Left / Right (click the box once first). Side by side: the notifications sit next to the utilities box. Drag up, or tap the handle, to go back. While this is on, the corner utilities box and the right-edge notification box are switched off. Off: the boxes stay in their corners.", opts: [o("off", "Off"), o("stack", "Swipe pages"), o("side", "Side by side")] },
             { type: "seg", key: "pair:spacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the time always dead centre. (Bar size and padding above is the bar's height and its distance from the edge.)", opts: [o("compact", "Compact"), o("spacious", "Spacious")] },
             { type: "toggle", key: "autoHide", label: "Auto-hide the bar" },
             { type: "seg", key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
@@ -308,9 +309,11 @@ Scope {
         ] },
         { id: "clock", title: "Clock", section: "Desktop", items: [
             { type: "seg", key: "clock24", label: "Clock", opts: [o(false, "12 hour"), o(true, "24 hour")] },
-            { type: "toggle", key: "opt:clockSeconds", label: "Show seconds" },
+            { type: "toggle", key: "opt:clockSeconds", label: "Show seconds", desc: "Shortcut: middle-click the time in the bar. Right-click it to switch 12 / 24 hour." },
             { type: "toggle", key: "pair:time", label: "Show the time" },
-            { type: "toggle", key: "pair:date", label: "Show the day and date", desc: "Separate from the time: show either, both or neither." }
+            { type: "toggle", key: "pair:date", label: "Show the day and date", desc: "Separate from the time: show either, both or neither." },
+            { type: "seg", key: "opt:clockAlign", label: "Centre the", desc: "Colon: the \":\" sits exactly on the screen's centre line (over a centre webcam). Whole text: the time including AM / PM is centred.", opts: [o("colon", "Colon"), o("text", "Whole text")] },
+            { type: "seg", key: "opt:clockNudge", label: "Nudge the clock", desc: "Extra pixels to the right (or left) on top of the above, for a screen or webcam that sits a little off.", opts: [o(-4, "4 left"), o(-2, "2 left"), o(0, "None"), o(2, "2 right"), o(4, "4 right"), o(6, "6 right")] }
         ] },
         { id: "workspaces", title: "Workspaces & windows", section: "Desktop", items: [
             { type: "action", id: "layout", label: "Tiling layout", btn: "Switch dwindle / scrolling", done: "Switched" },
