@@ -11,7 +11,7 @@ Rectangle {
 
     color: flat ? "transparent" : Qt.alpha(pal.bg, opacityBody)
     border.width: flat ? 0 : 1
-    border.color: pal.line
+    border.color: pal.lineTint
 
     // sheen: lighter at the top edge, gone by ~45% height
     Rectangle {
@@ -22,6 +22,24 @@ Rectangle {
         gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.alpha(root.pal.text, 0.055) }
             GradientStop { position: 0.45; color: Qt.alpha(root.pal.text, 0.0) }
+        }
+    }
+
+    // top-edge highlight: a crisp 1px light line that fades out toward the corners, so the pane looks raised
+    Rectangle {
+        visible: !root.flat && root.height > 40
+        anchors.top: parent.top
+        anchors.topMargin: 1
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: Math.max(8, root.radius * 0.6)
+        anchors.rightMargin: Math.max(8, root.radius * 0.6)
+        height: 1
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: Qt.alpha(root.pal.text, 0.0) }
+            GradientStop { position: 0.5; color: Qt.alpha(root.pal.text, 0.20) }
+            GradientStop { position: 1.0; color: Qt.alpha(root.pal.text, 0.0) }
         }
     }
 

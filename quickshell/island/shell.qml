@@ -47,6 +47,7 @@ ShellRoot {
         clockDate: true,           // show the weekday and date next to the clock
         clockAlign: "colon",       // colon | text : which part of the clock sits on the screen's centre line (Settings > Clock)
         clockNudge: 0,             // extra px to push the clock right (negative = left), on top of clockAlign
+        accentBorder: true,        // the focused window's border takes the wallpaper accent (off = neutral white hairline)
         dropDown: "off",           // off | stack | side : drag the bar down for the utilities box (stack: drag again for the notifications; side: notifications beside it)
         osdHold: 1700,             // ms the volume / brightness bar stays
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
@@ -107,6 +108,7 @@ ShellRoot {
         case "accentMode": termRun.restart(); break
         case "nightTemp": nightT.restart(); break
         case "resMode": applyResMode(v); break
+        case "accentBorder": hyprKick.restart(); break
         }
         saveSettings()
     }
@@ -318,6 +320,7 @@ ShellRoot {
     property bool shadows: true
     property bool hyprAnim: true
     property bool profileStars: true
+    property bool accentApplied: false  // the focused-window border currently has the accent colour (so "off" must put the neutral one back)
     property bool hyprTouched: false    // only push Hyprland values once the user changed one (otherwise the Lua config rules)
     // theme (Settings > Look): dark | light. Everything reads pal, which flips with it
     property string theme: "dark"
@@ -831,6 +834,24 @@ ShellRoot {
             cfg.general["col.inactive_border"] = ina
             cfg.group = { "col.border_active": act, "col.border_inactive": ina, groupbar: { text_color: dk ? "rgb(dcdce6)" : "rgb(1b1d27)" } }
         }
+        // focused window: a hairline in the wallpaper accent (not while the accent is cycling: that would restart Hyprland's border fade every 100 ms)
+        if (opt.accentBorder !== false && !pal.cycling) {
+            var ac = String(pal.accent)                   // "#rrggbb"
+            var acc = "rgba(" + ac.slice(1, 7) + (theme === "light" ? "a0" : "90") + ")"
+            if (!cfg.general) cfg.general = {}
+            cfg.general["col.active_border"] = acc
+            if (!cfg.group) cfg.group = {}
+            cfg.group["col.border_active"] = acc
+            accentApplied = true
+        } else if (opt.accentBorder === false && accentApplied) {
+            // switched off: back to the neutral hairline
+            var neutral = theme === "light" ? "rgba(00000038)" : "rgba(ffffff30)"
+            if (!cfg.general) cfg.general = {}
+            cfg.general["col.active_border"] = neutral
+            if (!cfg.group) cfg.group = {}
+            cfg.group["col.border_active"] = neutral
+            accentApplied = false
+        }
         if (scrollTouched) cfg.input = { scroll_factor: scrollMouse, touchpad: { scroll_factor: scrollTouch } }
         // the values changed in Settings > Look / Windows / Input: each one into its place in the config table
         for (var hk in hy) {
@@ -849,6 +870,13 @@ ShellRoot {
         Quickshell.execDetached(["hyprctl", "eval", "hl.config(" + luaVal(cfg) + ")"])
     }
     Timer { id: hyprKick; interval: 250; onTriggered: root.applyHypr() }
+    // the wallpaper (or the accent colour setting) changed: re-colour the focused-window border a moment later
+    Timer { id: accentKick; interval: 1200; onTriggered: root.applyHypr() }
+    Connections {
+        target: pal
+        function onAccentChanged() { if (root.opt.accentBorder !== false && !pal.cycling && root.settingsLoaded) accentKick.restart() }
+        function onCyclingChanged() { if (!pal.cycling && root.settingsLoaded) accentKick.restart() }
+    }
 
     property double gamingGuard: 0      // ignore the state-file poll until this time (ms): the script needs a moment
     function setGaming(on) {
@@ -1095,7 +1123,7 @@ ShellRoot {
                     }
                     root.syncOptFlags()
                     if (root.themeTouched) root.applyThemeApps()
-                    if (root.hyprTouched || root.themeTouched || root.scrollTouched || Object.keys(root.hy).length > 0) hyprKick.restart()
+                    if (root.hyprTouched || root.themeTouched || root.scrollTouched || root.opt.accentBorder !== false || Object.keys(root.hy).length > 0) hyprKick.restart()
                     if (root.autoPower && root.powerMgr === "halcyon") {
                         root.autoGuard = Date.now() + 10000
                         Quickshell.execDetached(["systemctl", "--user", "start", root.powerService])

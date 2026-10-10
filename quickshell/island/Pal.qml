@@ -147,12 +147,18 @@ Scope {
     // Settings > Transparency moves all four together by glassShift (-0.15 .. +0.05; keep the bar above the
     // compositor's blur threshold, see hyprland/rules.lua)
     property real glassShift: 0
-    readonly property real glass: 0.80 + glassShift
-    readonly property real glassSolid: Math.min(1, 0.94 + glassShift)  // for things that must stay legible over anything (overlays)
-    readonly property real glassBar: 0.58 + glassShift      // the top bar at rest: lighter = more wallpaper shows through
-    readonly property real glassBarOpen: 0.74 + glassShift  // the bar once it has grown into media / perf / the launcher
-    // hairlines are neutral, never tinted: they work with every wallpaper
+    // A bright wallpaper makes dark see-through glass look grey and muddy, so the glass gets a little more body the brighter the
+    // picture is (wallLum: 0 = black .. 1 = white, from scripts/palette.sh). Only on the dark theme; at most +0.12.
+    property real wallLum: 0.3
+    readonly property real glassBoost: light ? 0 : Math.max(0, Math.min(0.12, (wallLum - 0.45) * 0.45))
+    Behavior on wallLum { NumberAnimation { duration: 900; easing.type: Easing.InOutSine } }
+    readonly property real glass: 0.80 + glassShift + glassBoost
+    readonly property real glassSolid: Math.min(1, 0.94 + glassShift + glassBoost)  // for things that must stay legible over anything (overlays)
+    readonly property real glassBar: 0.58 + glassShift + glassBoost      // the top bar at rest: lighter = more wallpaper shows through
+    readonly property real glassBarOpen: 0.74 + glassShift + glassBoost  // the bar once it has grown into media / perf / the launcher
+    // hairlines are neutral and work with every wallpaper; panels (Glass.qml) add a faint accent tint on top (lineTint)
     readonly property color line: Qt.alpha(text, 0.09)
+    readonly property color lineTint: Qt.tint(line, Qt.alpha(accent, 0.12))
     readonly property color lineSoft: Qt.alpha(text, 0.05)
     readonly property color lineFocus: Qt.alpha(accent, 0.55)
 
@@ -238,6 +244,7 @@ Scope {
             if (p.accent2) pal.fixedAccent2 = p.accent2
             if (p.text) pal.rawText = p.text
             if (p.muted) pal.rawMuted = p.muted
+            if (p.lum !== undefined) pal.wallLum = p.lum
             var sw = p.swatches || []
             if (JSON.stringify(sw) !== JSON.stringify(pal.swatches)) pal.swatches = sw     // rebuilds the ring, then syncs the accent
             else pal.syncAccent()
