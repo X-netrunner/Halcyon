@@ -85,7 +85,9 @@ else sudo rsync "${opts[@]}" "$src" "$dest/"; rc=$?; fi
 # 0 = ok, 24 = some files vanished while copying (normal on a running system)
 if [ "$rc" = 0 ] || [ "$rc" = 24 ]; then
   if [ "$DRY" = 1 ]; then rmdir "$dest" 2>/dev/null; printf '\n%sDry run finished: nothing was copied.%s\n' "$G" "$N"
-  else ln -sfn "$stamp" "$root/latest"; sync; printf '\n%s✔ Backup finished:%s %s\n' "$G" "$N" "$dest"
+  else
+    printf 'scope=%s\nuser=%s\nhome=%s\nhost=%s\ndate=%s\nfs=%s\n' "$([ "$HOME_ONLY" = 1 ] && echo home || echo system)" "$(id -un)" "$HOME" "$host" "$stamp" "$fs" > "$dest/.halcyon-backup"
+    ln -sfn "$stamp" "$root/latest"; sync; printf '\n%s✔ Backup finished:%s %s\n' "$G" "$N" "$dest"
     bash "${HALCYON_DIR:-$HOME/.config/Halcyon}/scripts/remind.sh" done backup 2>/dev/null   # for Settings > Backup > Remind me
     have udisksctl && { printf 'Safely eject the disk now? [Y/n] '; read -r e; case "$e" in n|N|no|No|NO) ;; *) udisksctl unmount -b "$dev" >/dev/null 2>&1 && udisksctl power-off -b "${dev%%[0-9]*}" >/dev/null 2>&1; echo "You can unplug it." ;; esac; }
   fi

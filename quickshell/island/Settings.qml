@@ -194,8 +194,32 @@ Scope {
         wallpaperSet(path)
         wpAgain.restart()
     }
+    // the colours of every wallpaper (scripts/wallpapers.sh colors): { path: ["#accent", "#accent2", ...] }, read while the gallery is open
+    property var wpColors: ({})
+    property var wpColorsNew: ({})
+    Timer {
+        id: wpColorFlush
+        interval: 120
+        onTriggered: { root.wpColors = Object.assign({}, root.wpColors, root.wpColorsNew); root.wpColorsNew = ({}) }
+    }
+    Process {
+        id: wpColorProc
+        command: ["bash", root.wpScript, "colors"]
+        stdout: SplitParser {
+            onRead: line => {
+                var i = line.indexOf("\t")
+                if (i <= 0) return
+                try { root.wpColorsNew[line.substring(0, i)] = JSON.parse(line.substring(i + 1)) } catch (e) { return }
+                wpColorFlush.restart()
+            }
+        }
+    }
+    onGalleryOpenChanged: {
+        if (galleryOpen) { galleryUnload.stop(); galleryLoaded = true; if (!wpColorProc.running) wpColorProc.running = true }
+        else galleryUnload.restart()
+    }
     Timer { id: wpAgain; interval: 1500; onTriggered: if (!wpProc.running) wpProc.running = true }
-    Timer { id: wpPoll; interval: 4000; running: root.open; repeat: true; triggeredOnStart: true; onTriggered: if (!wpProc.running) wpProc.running = true }
+    Timer { id: wpPoll; interval: 4000; running: root.open || root.galleryOpen; repeat: true; triggeredOnStart: true; onTriggered: if (!wpProc.running) wpProc.running = true }
     Process {
         id: wpProc
         command: ["bash", root.wpScript, "list"]
@@ -204,6 +228,7 @@ Scope {
                 if (text === root.wpText) return          // nothing changed: keep the thumbnails as they are
                 root.wpText = text
                 try { root.wp = JSON.parse(text) } catch (e) {}
+                if (root.galleryOpen && !wpColorProc.running) wpColorProc.running = true      // new pictures: read their colours
             }
         }
     }
@@ -232,11 +257,13 @@ Scope {
         if (group) { if (open) unfoldOnly(group); else pendingGroup = group }
         open = true
     }
-    function openGallery() {
-        show("wallpaper")
-        Qt.callLater(function() { if (wallpaperGallery) wallpaperGallery.show() })
-    }
-    function hide() { open = false }
+    // The Wallpaper Gallery lives inside the window below, which only exists while Settings is open, and ids inside that window are
+    // not visible from here. So whether the gallery is open is kept up here, and the gallery follows it.
+    property bool galleryOpen: false
+    property bool galleryLoaded: false          // the gallery window exists (a moment longer than galleryOpen, so it can fade out)
+    Timer { id: galleryUnload; interval: 320; onTriggered: root.galleryLoaded = false }
+    function openGallery() { galleryOpen = true }      // its own window: no need to go through Settings
+    function hide() { galleryOpen = false; open = false }
     function toggle() { open = !open }
 
     component SChip: Chip { maxLabel: 1000 }
@@ -438,6 +465,8 @@ Scope {
         { id: "backup", title: "Backup", section: "System", items: [
             { type: "action", id: "backup-device", label: "Backup this device", btn: "Choose a disk and back up", done: "Opening…", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the whole system is copied onto it (scripts/backup-device.sh). Nothing on the disk is erased; every backup goes in its own dated folder." },
             { type: "action", id: "backup-home", label: "Backup my home folder only", btn: "Choose a disk and back up", done: "Opening…", desc: "Same, but only your files in your home folder. Needs no admin password." },
+            { type: "action", id: "restore-device", label: "Restore from a backup", btn: "Choose a disk and restore", done: "Opening…", desc: "Plug in the backup disk and pick a backup in the terminal that opens. A home-folder backup can only be restored to your home folder; a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder." },
+            { type: "action", id: "restore-home", label: "Restore my home folder only", btn: "Choose a disk and restore", done: "Opening…", desc: "Same, but it only ever touches your home folder (any backup works), and you can restore just one folder or file from it. Needs no admin password." },
             { type: "action", id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in ~/logs/safety_check/." },
             { type: "toggle", key: "rm:BACKUP_REMIND", label: "Remind me to back up", desc: "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off." },
             { type: "seg", key: "rm:BACKUP_EVERY", label: "Remind me every", opts: [o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")], when: "rm:BACKUP_REMIND=true" },
@@ -636,7 +665,7 @@ Scope {
             Flow {
                 Layout.fillWidth: true
                 spacing: 12
-                ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF03E); label: "Gallery (Search & 3D Carousel)"; onClicked: wallpaperGallery.show() }
+                ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF03E); label: "Gallery (Cascade, Carousel & Grid)"; onClicked: root.galleryOpen = true }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0976); label: "Next wallpaper"; onClicked: root.action("wallpaper") }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0770); label: "Open folder"; onClicked: root.wpAct("open") }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0415); label: "Add wallpapers…"; onClicked: root.wpAct("add") }
@@ -1032,7 +1061,7 @@ Scope {
             focus: root.open
             Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true } }
             // the search box must be focused from in here: `search` is not visible from the root scope (this window is built by a LazyLoader)
-            Timer { running: root.open; interval: 80; onTriggered: search.forceActiveFocus() }
+            Timer { running: root.open; interval: 80; onTriggered: if (!root.galleryOpen) search.forceActiveFocus() }
 
             Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.40) }
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
@@ -1457,16 +1486,39 @@ Scope {
                     }
                 }
             }
+        }
+    }
+}
+    // ======================================================================== the Wallpaper Gallery window
+    // Opens on its own (`>wallpaper gallery`, the Settings chip, IPC): a full-screen overlay with the gallery on it.
+    LazyLoader {
+        active: root.galleryLoaded
+        PanelWindow {
+            id: gwin
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            WlrLayershell.namespace: "island-gallery"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: root.galleryOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+            // opens one frame after the window exists, so the fade-in plays
+            property bool shown: false
+            Timer { running: true; interval: 30; onTriggered: gwin.shown = true }
+
             WallpaperGallery {
                 id: wallpaperGallery
                 anchors.fill: parent
+                open: root.galleryOpen && gwin.shown
+                onClosed: root.galleryOpen = false
                 pal: root.pal
                 wp: root.wp
+                colors: root.wpColors
                 onPicked: path => root.pickWallpaper(path)
                 onAction: act => root.wpAct(act)
             }
         }
     }
-}
 }
 

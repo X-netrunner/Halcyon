@@ -3,9 +3,11 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Wayland
+import QtQuick.Effects
 
 // WallpaperGallery: A sleek, interactive wallpaper selector inspired by Tide-island
 // - Live search query filtering
+// - Cascade (the default): cards step down and back from the front one, the colours of each wallpaper hang under it as circles
 // - Coverflow Carousel (PathView) & Card Grid views
 // - Active selection halo & checkmark badge
 // - Keyboard navigation (Left/Right to browse, Enter to apply, Esc to close, / to search)
@@ -17,28 +19,44 @@ Item {
     property bool open: false
     property var wp: ({ dir: "", current: "", files: [] })
     property string searchQuery: ""
-    property string viewMode: "carousel" // carousel | grid
+    property string viewMode: "cascade" // cascade | carousel | grid
+    // the colours of every wallpaper ({ path: ["#accent", "#accent2", ...swatches] }, filled by scripts/wallpapers.sh colors)
+    property var colors: ({})
+    readonly property int maxDots: 5
+
+    // up to maxDots clearly different colours of one wallpaper (the accent and the strongest swatch are often the same colour)
+    function colorsFor(path) {
+        var raw = (colors && colors[path]) ? colors[path] : []
+        var out = [], rgb = []
+        for (var i = 0; i < raw.length && out.length < maxDots; i++) {
+            var c = String(raw[i])
+            if (!/^#[0-9a-fA-F]{6}$/.test(c)) continue
+            var a = [parseInt(c.substr(1, 2), 16), parseInt(c.substr(3, 2), 16), parseInt(c.substr(5, 2), 16)]
+            var dup = false
+            for (var j = 0; j < rgb.length; j++) {
+                var dr = a[0] - rgb[j][0], dg = a[1] - rgb[j][1], db = a[2] - rgb[j][2]
+                if (dr * dr + dg * dg + db * db < 1444) { dup = true; break }
+            }
+            if (!dup) { out.push(c); rgb.push(a) }
+        }
+        return out
+    }
 
     signal picked(string path)
     signal action(string name)
     signal closed()
 
-    function show() {
-        open = true
+    // `open` is set from outside (Settings.galleryOpen); the gallery only asks to be closed (closed()).
+    function enter() {
         searchQuery = ""
         searchInput.text = ""
-        root.forceActiveFocus()
+        cascade.snap(activeIndex)            // open on the wallpaper in use, without a sweep
+        Qt.callLater(function () { root.forceActiveFocus() })
     }
+    onOpenChanged: if (open) enter()
+    Component.onCompleted: if (open) enter()
 
-    function hide() {
-        open = false
-        closed()
-    }
-
-    function toggle() {
-        if (open) hide()
-        else show()
-    }
+    function hide() { closed() }
 
     // Filtered list based on searchQuery
     readonly property var filteredFiles: {
@@ -82,18 +100,16 @@ Item {
             searchInput.forceActiveFocus()
             e.accepted = true
         } else if (e.key === Qt.Key_Left && !searchInput.activeFocus) {
-            if (viewMode === "carousel" && carousel.count > 0) {
-                carousel.decrementCurrentIndex()
-            }
+            if (viewMode === "cascade") cascade.step(-1)
+            else if (viewMode === "carousel" && carousel.count > 0) carousel.decrementCurrentIndex()
             e.accepted = true
         } else if (e.key === Qt.Key_Right && !searchInput.activeFocus) {
-            if (viewMode === "carousel" && carousel.count > 0) {
-                carousel.incrementCurrentIndex()
-            }
+            if (viewMode === "cascade") cascade.step(1)
+            else if (viewMode === "carousel" && carousel.count > 0) carousel.incrementCurrentIndex()
             e.accepted = true
         } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
             if (!searchInput.activeFocus && filteredFiles.length > 0) {
-                var idx = viewMode === "carousel" ? carousel.currentIndex : 0
+                var idx = viewMode === "cascade" ? cascade.cur : (viewMode === "carousel" ? carousel.currentIndex : 0)
                 if (idx >= 0 && idx < filteredFiles.length) {
                     root.picked(filteredFiles[idx].path)
                 }
@@ -235,9 +251,9 @@ Item {
                     }
                 }
 
-                // View Mode Toggle (Carousel vs Grid)
+                // View Mode Toggle (Cascade / Carousel / Grid)
                 Rectangle {
-                    Layout.preferredWidth: 64
+                    Layout.preferredWidth: 100
                     Layout.preferredHeight: 34
                     radius: 12
                     color: Qt.alpha(root.pal ? root.pal.bg : "#10121c", 0.6)
@@ -246,37 +262,29 @@ Item {
 
                     Row {
                         anchors.centerIn: parent
-                        spacing: 8
-                        Rectangle {
-                            width: 24; height: 24; radius: 8
-                            color: root.viewMode === "carousel" ? (root.pal ? root.pal.accent : "#8aadf4") : "transparent"
-                            Text {
-                                anchors.centerIn: parent
-                                text: "\uf03e" // Carousel icon
-                                font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"
-                                font.pixelSize: 12
-                                color: root.viewMode === "carousel" ? (root.pal ? root.pal.bg : "#000") : (root.pal ? root.pal.muted : "#888")
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.viewMode = "carousel"
-                            }
-                        }
-                        Rectangle {
-                            width: 24; height: 24; radius: 8
-                            color: root.viewMode === "grid" ? (root.pal ? root.pal.accent : "#8aadf4") : "transparent"
-                            Text {
-                                anchors.centerIn: parent
-                                text: "\uf00a" // Grid icon
-                                font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"
-                                font.pixelSize: 12
-                                color: root.viewMode === "grid" ? (root.pal ? root.pal.bg : "#000") : (root.pal ? root.pal.muted : "#888")
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.viewMode = "grid"
+                        spacing: 6
+                        Repeater {
+                            model: [
+                                { mode: "cascade", glyph: "\uf24d" },
+                                { mode: "carousel", glyph: "\uf03e" },
+                                { mode: "grid", glyph: "\uf00a" }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: 26; height: 24; radius: 8
+                                color: root.viewMode === modelData.mode ? (root.pal ? root.pal.accent : "#8aadf4") : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.glyph
+                                    font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"
+                                    font.pixelSize: 12
+                                    color: root.viewMode === modelData.mode ? (root.pal ? root.pal.bg : "#000") : (root.pal ? root.pal.muted : "#888")
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.viewMode = modelData.mode
+                                }
                             }
                         }
                     }
@@ -332,6 +340,238 @@ Item {
                         font.family: root.pal ? root.pal.uiFont : "Inter"
                         font.pixelSize: 14
                         color: root.pal ? root.pal.muted : "#888"
+                    }
+                }
+
+                // MODE 0: Cascade. The pictures step down and back from the front card, a little tilted and overlapping; the colours
+                //   of every wallpaper hang under its card as circles. Drag, scroll, click a card, or Left / Right.
+                Item {
+                    id: cascade
+                    anchors.fill: parent
+                    visible: root.viewMode === "cascade" && root.filteredFiles.length > 0
+
+                    readonly property int count: root.filteredFiles.length
+                    readonly property real cardW: Math.round(Math.min(width * 0.48, (height * 0.86 - 72) / 0.62))
+                    readonly property real cardH: Math.round(cardW * 0.62)
+                    readonly property real cardR: 20
+                    readonly property real unitH: cardH + 70                // card + colour capsule + name
+                    readonly property real pitch: cardW * 0.60              // one card to the next, for dragging
+
+                    property int cur: 0                                     // the front card
+                    property bool snapping: false
+                    property real base: cur
+                    Behavior on base { enabled: !pan.active && !cascade.snapping; NumberAnimation { duration: 480; easing.type: Easing.OutQuint } }
+                    property real dragN: 0                                  // how far a drag has pulled it, in cards
+                    Behavior on dragN { enabled: !pan.active && !cascade.snapping; NumberAnimation { duration: 480; easing.type: Easing.OutQuint } }
+                    readonly property real pos: base + dragN
+
+                    function snap(i) { snapping = true; cur = Math.max(0, Math.min(count - 1, i)); dragN = 0; snapping = false }
+                    function step(d) { cur = Math.max(0, Math.min(count - 1, cur + d)) }
+                    Connections { target: root; function onFilteredFilesChanged() { cascade.snap(cascade.cur) } }
+
+                    // the look of a card at distance |d| from the front (0 = front); in between it is blended
+                    readonly property var tX: [0, 0.60, 0.93, 1.12, 1.24]      // sideways, in card widths
+                    readonly property var tY: [0, 0.05, 0.09, 0.12, 0.14]      // down, in view heights
+                    readonly property var tS: [1, 0.84, 0.70, 0.58, 0.50]      // size
+                    readonly property var tO: [1, 0.92, 0.68, 0.34, 0]         // opacity
+                    readonly property var tR: [0, 5, 8, 10, 12]                // tilt, degrees
+                    function tab(arr, a) {
+                        a = Math.max(0, Math.min(arr.length - 1.0001, a))
+                        var i = Math.floor(a), t = a - i
+                        return arr[i] * (1 - t) + arr[i + 1] * t
+                    }
+
+                    // ambient glow behind the front card, in that wallpaper's accent
+                    Rectangle {
+                        readonly property int fi: Math.max(0, Math.min(cascade.count - 1, Math.round(cascade.pos)))
+                        readonly property var fc: cascade.count > 0 ? root.colorsFor(root.filteredFiles[fi].path) : []
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: (cascade.height - cascade.unitH) / 2 + cascade.cardH * 0.1
+                        width: cascade.cardW * 1.5
+                        height: cascade.cardH * 1.1
+                        radius: height / 2
+                        color: fc.length > 0 ? fc[0] : (root.pal ? root.pal.accent : "#8aadf4")
+                        opacity: 0.22
+                        Behavior on color { ColorAnimation { duration: 500 } }
+                        layer.enabled: true
+                        layer.effect: MultiEffect { blurEnabled: true; blur: 1.0; blurMax: 64 }
+                    }
+
+                    // nine cards are enough: a card only changes picture while it is far off to the side and invisible
+                    Repeater {
+                        model: 9
+                        delegate: Item {
+                            id: cd
+                            required property int index
+                            readonly property int front: Math.round(cascade.pos)
+                            readonly property int f: {
+                                var r = ((index - front) % 9 + 9) % 9
+                                if (r > 4) r -= 9
+                                return front + r
+                            }
+                            readonly property real d: f - cascade.pos
+                            readonly property real ad: Math.abs(d)
+                            readonly property real sg: d < 0 ? -1 : 1
+                            readonly property bool valid: f >= 0 && f < cascade.count
+                            readonly property var file: (f >= 0 && f < cascade.count) ? root.filteredFiles[f] : null
+                            readonly property bool isFront: ad < 0.5
+                            readonly property bool isCurrent: file !== null && root.wp.current === file.path
+                            readonly property var cols: file !== null ? root.colorsFor(file.path) : []
+
+                            visible: valid && opacity > 0.01
+                            width: cascade.cardW
+                            height: cascade.unitH
+                            x: (cascade.width - width) / 2 + sg * cascade.tab(cascade.tX, ad) * cascade.cardW
+                            y: (cascade.height - height) / 2 + cascade.tab(cascade.tY, ad) * cascade.height
+                            scale: cascade.tab(cascade.tS, ad)
+                            opacity: cascade.tab(cascade.tO, ad)
+                            z: 1000 - ad * 100
+
+                            Item {
+                                id: cardBox
+                                width: parent.width
+                                height: cascade.cardH
+                                rotation: cd.sg * cascade.tab(cascade.tR, cd.ad)
+                                antialiasing: true
+
+                                // body + soft shadow (also what shows while the picture is still loading)
+                                Rectangle {
+                                    id: body
+                                    anchors.fill: parent
+                                    radius: cascade.cardR
+                                    color: root.pal ? root.pal.surface : "#1e2130"
+                                    visible: false
+                                }
+                                MultiEffect {
+                                    anchors.fill: body
+                                    source: body
+                                    visible: cd.ad < 1.6
+                                    shadowEnabled: true
+                                    shadowColor: "#000000"
+                                    shadowOpacity: 0.55
+                                    shadowBlur: 1.0
+                                    shadowVerticalOffset: 16
+                                    shadowScale: 0.96
+                                }
+
+                                // the picture, cut to the rounded shape with a soft (anti-aliased) mask
+                                Image {
+                                    id: img
+                                    anchors.fill: parent
+                                    source: cd.file !== null ? "file://" + cd.file.path : ""
+                                    sourceSize.width: 720
+                                    sourceSize.height: 450
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    cache: true
+                                    mipmap: true
+                                    smooth: true
+                                    visible: false
+                                }
+                                Item {
+                                    id: maskItem
+                                    anchors.fill: parent
+                                    visible: false
+                                    layer.enabled: true
+                                    Rectangle { anchors.fill: parent; radius: cascade.cardR; color: "black"; antialiasing: true }
+                                }
+                                MultiEffect {
+                                    anchors.fill: img
+                                    source: img
+                                    maskEnabled: true
+                                    maskSource: maskItem
+                                    maskThresholdMin: 0.5
+                                    maskSpreadAtMin: 1.0
+                                    opacity: img.status === Image.Ready ? 1 : 0
+                                    Behavior on opacity { NumberAnimation { duration: 260 } }
+                                }
+
+                                // edge: a fine light line, the wallpaper's own accent when it is the one in use
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: cascade.cardR
+                                    color: "transparent"
+                                    antialiasing: true
+                                    border.width: cd.isCurrent ? 2 : 1
+                                    border.color: cd.isCurrent ? (cd.cols.length > 0 ? cd.cols[0] : (root.pal ? root.pal.accent : "#8aadf4"))
+                                                  : Qt.alpha(root.pal ? root.pal.text : "#ffffff", cd.isFront ? 0.30 : 0.12)
+                                    Behavior on border.color { ColorAnimation { duration: 200 } }
+                                }
+
+                                // "in use" badge
+                                Rectangle {
+                                    visible: cd.isCurrent
+                                    anchors { right: parent.right; top: parent.top; margins: 12 }
+                                    width: 26; height: 26; radius: 13
+                                    antialiasing: true
+                                    color: cd.cols.length > 0 ? cd.cols[0] : (root.pal ? root.pal.accent : "#8aadf4")
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "\u2713"
+                                        color: root.pal ? root.pal.bg : "#000"
+                                        font.pixelSize: 14
+                                        font.weight: Font.Bold
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (cd.isFront) root.picked(cd.file.path)
+                                        else cascade.cur = cd.f
+                                    }
+                                }
+                            }
+
+                            // the wallpaper's colours, under its card
+                            SwatchDots {
+                                id: dots
+                                pal: root.pal
+                                colors: cd.cols
+                                size: 18
+                                lit: cd.isFront
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: cardBox.bottom
+                                anchors.topMargin: 14
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: dots.bottom
+                                anchors.topMargin: 8
+                                width: parent.width - 24
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideMiddle
+                                text: cd.file !== null ? cd.file.name.replace(/\.[^.]+$/, "") : ""
+                                opacity: Math.max(0, 1 - cd.ad * 2.4)
+                                color: root.pal ? root.pal.text : "#fff"
+                                font.family: root.pal ? root.pal.uiFont : "Inter"
+                                font.pixelSize: 12
+                                font.weight: Font.Medium
+                            }
+                        }
+                    }
+
+                    // drag sideways, or scroll, to move through the cards
+                    DragHandler {
+                        id: pan
+                        target: null
+                        yAxis.enabled: false
+                        onTranslationChanged: if (active) cascade.dragN = -translation.x / cascade.pitch
+                        onActiveChanged: {
+                            if (active) return
+                            var n = cascade.dragN
+                            var k = Math.abs(n) < 1 ? (Math.abs(n) > 0.18 ? (n > 0 ? 1 : -1) : 0) : Math.round(n)
+                            cascade.cur = Math.max(0, Math.min(cascade.count - 1, cascade.cur + k))
+                            cascade.dragN = 0
+                        }
+                    }
+                    WheelHandler {
+                        property real acc: 0
+                        onWheel: e => {
+                            acc += (e.angleDelta.x !== 0 ? -e.angleDelta.x : e.angleDelta.y)
+                            if (Math.abs(acc) >= 100) { cascade.step(acc < 0 ? 1 : -1); acc = 0 }
+                        }
                     }
                 }
 
@@ -416,9 +656,20 @@ Item {
                                         GradientStop { position: 0.0; color: "transparent" }
                                         GradientStop { position: 1.0; color: Qt.alpha(root.pal.bg, 0.85) }
                                     }
+                                    SwatchDots {
+                                        pal: root.pal
+                                        colors: root.colorsFor(cDelegate.modelData.path)
+                                        capsule: false
+                                        size: 9
+                                        slots: 0
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 10
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
                                     Text {
                                         anchors.fill: parent
                                         anchors.margins: 6
+                                        anchors.rightMargin: 100
                                         text: cDelegate.modelData.name || ""
                                         elide: Text.ElideMiddle
                                         color: root.pal ? root.pal.text : "#fff"
@@ -504,9 +755,20 @@ Item {
                                     anchors.right: parent.right
                                     height: 28
                                     color: Qt.alpha(root.pal.bg, 0.75)
+                                    SwatchDots {
+                                        pal: root.pal
+                                        colors: root.colorsFor(gDelegate.modelData.path)
+                                        capsule: false
+                                        size: 8
+                                        slots: 0
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
                                     Text {
                                         anchors.fill: parent
                                         anchors.margins: 4
+                                        anchors.rightMargin: 84
                                         text: gDelegate.modelData.name || ""
                                         elide: Text.ElideMiddle
                                         color: root.pal ? root.pal.text : "#fff"

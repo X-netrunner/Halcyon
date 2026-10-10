@@ -111,6 +111,8 @@ END {
         hsl(h1, sa, 0.70), hsl(h2, sa2, 0.72), hsl(h1, 0.20, 0.89), hsl(h1, 0.10, 0.64), dom, lsum / n, sws
 }')
 [ -n "$json" ] || exit 1
+# palette.sh <image> --print: just print the json (scripts/wallpapers.sh colors uses it to read every wallpaper's colours)
+if [ "${2:-}" = "--print" ]; then printf '%s\n' "$json"; exit 0; fi
 # in place (no rename), so `tail -F` in the island sees it
 printf '%s\n' "$json" > "$out"
 

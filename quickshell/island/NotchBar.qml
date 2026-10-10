@@ -504,7 +504,7 @@ PanelWindow {
 
         Visualizer {
             id: vizSp
-            visible: win.centerClock && win.showViz && win.opt.viz !== "off" && win.playing
+            visible: win.centerClock && win.showViz && win.opt.viz !== "off"      // always: dots while nothing plays, so the bar keeps its width
             y: Math.round((notch.bh - height) / 2)
             x: {
                 var from = leftGroup.x + leftGroup.width, to = win.showTime ? notch.width / 2 - notch.timeHalf + notch.colonShift : dateRow.x
@@ -512,7 +512,7 @@ PanelWindow {
             }
             pal: win.pal
             values: win.cava
-            active: win.centerClock && win.showViz && win.opt.viz !== "off" && win.playing
+            active: win.playing
         }
 
         // clicking the status icons opens the performance page (under the row, so the background-apps count keeps its own click)
