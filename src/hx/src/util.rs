@@ -106,6 +106,29 @@ pub fn sys_conf(key: &str, default: &str) -> String {
     default.to_string()
 }
 
-pub fn sys_user() -> String { sys_conf("SYS_USER", "netrunner") }
+/// The account the rice lives in: SYS_USER (env / sysmode.conf), else sudo's caller, else the login user,
+/// else the first normal account in /etc/passwd. Never a fixed name.
+fn detect_user() -> String {
+    for k in ["SUDO_USER", "USER", "LOGNAME"] {
+        if let Ok(u) = std::env::var(k) {
+            if !u.is_empty() && u != "root" {
+                return u;
+            }
+        }
+    }
+    for line in read("/etc/passwd").lines() {
+        let f: Vec<&str> = line.split(':').collect();
+        if f.len() > 2 {
+            if let Ok(uid) = f[2].parse::<u32>() {
+                if (1000..60000).contains(&uid) {
+                    return f[0].to_string();
+                }
+            }
+        }
+    }
+    "root".to_string()
+}
+
+pub fn sys_user() -> String { sys_conf("SYS_USER", &detect_user()) }
 pub fn sys_home() -> String { sys_conf("SYS_HOME", &format!("/home/{}", sys_user())) }
 pub fn logs_dir() -> String { format!("{}/logs", sys_home()) }

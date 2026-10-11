@@ -79,7 +79,7 @@ var groups = [
         { label: "Volume up / down", kind: "text", keys: "right edge, slide" },
         { label: "Brightness up / down", kind: "text", keys: "top edge, slide" },
         { label: "Next / previous track", kind: "text", keys: "left edge, flick" },
-        { label: "Next / previous workspace (new one at the end)", kind: "text", keys: "3 fingers right = next; 4 fingers left = next" },
+        { label: "Next / previous workspace (new one at the end)", kind: "text", keys: "4 fingers left = next; 4 fingers right = previous" },
         { label: "Scratch workspace", kind: "text", keys: "3 fingers, up / down" },
         { label: "Sleep", kind: "text", keys: "4 fingers, down" },
         { label: "Workspace tree", kind: "text", keys: "3-finger pinch" }

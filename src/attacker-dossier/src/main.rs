@@ -125,7 +125,14 @@ fn logs_dir() -> String {
             return format!("{}/logs", home);
         }
     }
-    "/home/sushanth/logs".to_string()
+    for k in ["SUDO_USER", "USER", "LOGNAME"] {
+        if let Ok(u) = std::env::var(k) {
+            if !u.is_empty() && u != "root" {
+                return format!("/home/{}/logs", u);
+            }
+        }
+    }
+    "/root/logs".to_string()
 }
 
 fn load_cowrie(logs: &str) -> (HashMap<String, CowrieData>, Vec<(String, String, String, String)>) {

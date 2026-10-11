@@ -4,7 +4,7 @@
 SERVICE_NAME="power-manager.service"
 
 # Set Wayland/XDG environment variables if not set
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 if [ -z "$WAYLAND_DISPLAY" ]; then
     if [ -S "$XDG_RUNTIME_DIR/wayland-1" ]; then
         export WAYLAND_DISPLAY="wayland-1"

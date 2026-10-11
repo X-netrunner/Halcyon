@@ -13,7 +13,7 @@ if [[ -z "${SYS_USER:-}" ]]; then
     SYS_USER="${SUDO_USER:-}"
     [[ -n "$SYS_USER" && "$SYS_USER" != root ]] || SYS_USER="$(logname 2>/dev/null || true)"
     [[ -n "$SYS_USER" && "$SYS_USER" != root ]] || SYS_USER="$(getent passwd | awk -F: '$3>=1000 && $3<60000 {print $1; exit}')"
-    [[ -n "$SYS_USER" ]] || SYS_USER=netrunner
+    [[ -n "$SYS_USER" ]] || SYS_USER="$(id -un)"
 fi
 if [[ -z "${SYS_HOME:-}" ]]; then
     SYS_HOME="$(getent passwd "$SYS_USER" | cut -d: -f6)"
@@ -1042,7 +1042,7 @@ Profiles:
     - Disables SSH remote access completely and masks sshd
     - Enforces idle shell timeouts (10-minute auto-logout)
     - Configures /proc to hidepid=2 (cannot see other users' running processes)
-    - Restricts netrunner home directory permissions
+    - Restricts the home directory permissions of the rice user
     - Enforces strict UFW default DROP policies
     * Note: Requires a reboot to fully revert after switching back to another mode.
 
