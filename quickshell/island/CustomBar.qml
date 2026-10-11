@@ -246,11 +246,11 @@ PanelWindow {
             }
         }
 
-        // a few drifting stars behind the widgets (Settings > Look > Constellations > Bar)
+        // a few drifting stars behind the widgets (Settings > Look > Moving stars)
         BarStars {
             pal: win.pal
             active: !win.pageOpen
-            visible: win.shown && win.opt.stars !== false && win.opt.starsBar !== false
+            visible: win.shown && win.opt.starsBar !== false
             x: notch.r + notch.cr
             y: 3
             width: Math.max(0, notch.bw - notch.cr * 2)
