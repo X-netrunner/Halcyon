@@ -169,6 +169,8 @@ Item {
     // win by window address (no 0x). Kept out of the node list so the tree doesn't rebuild every 2 s.
     property var wsRes: ({})
     property var winRes: ({})
+    property var halRes: ({ cpu: 0, mem: 0, n: 0, top: [] })   // Halcyon's own processes (island, bar, hx, daemons)
+    property var sysRes: ({ total: 0, avail: 0 })
     Process {
         running: ov.open
         command: [Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "wsres", "2"]
@@ -178,6 +180,8 @@ Item {
                     var r = JSON.parse(d)
                     ov.wsRes = r.ws || {}
                     ov.winRes = r.win || {}
+                    if (r.hal) ov.halRes = r.hal
+                    if (r.sys) ov.sysRes = r.sys
                 } catch (e) {}
             }
         }
@@ -1174,6 +1178,49 @@ Item {
             color: ov.pal.muted
             font.family: ov.pal.uiFont
             font.pixelSize: 12
+        }
+    }
+
+
+    // ---- Halcyon's own footprint, under the header on the left: just a few quiet lines, a faint star for each bullet.
+    Column {
+        id: halCard
+        x: 40
+        y: 34 + 54
+        width: 240
+        spacing: 1
+        opacity: ov.open ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.InOutSine } }
+
+        readonly property real memFrac: ov.sysRes.total > 0 ? Math.min(1, ov.halRes.mem / ov.sysRes.total) : 0
+        readonly property var procs: ov.halRes.top || []
+
+        Text {
+            bottomPadding: 4
+            text: "Halcyon  ·  " + ov.halRes.n + (ov.halRes.n === 1 ? " process" : " processes")
+            color: ov.pal.muted
+            opacity: 0.7
+            font.family: ov.pal.uiFont
+            font.pixelSize: 11
+            font.letterSpacing: 0.4
+        }
+        HalRow { pal: ov.pal; label: "CPU"; value: ov.halRes.cpu.toFixed(1) + "%" }
+        HalRow {
+            pal: ov.pal
+            tint: ov.pal.accent2
+            label: "RAM"
+            value: ov.fmtMem(ov.halRes.mem) + (ov.sysRes.total > 0 ? "  ·  " + (halCard.memFrac * 100).toFixed(1) + "%" : "")
+        }
+        Repeater {
+            model: halCard.procs
+            delegate: HalRow {
+                required property var modelData
+                pal: ov.pal
+                main: false
+                tint: ov.pal.accent2
+                label: modelData.name
+                value: ov.fmtMem(modelData.mem)
+            }
         }
     }
 

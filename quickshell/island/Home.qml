@@ -76,9 +76,10 @@ RowLayout {
         out.sort(function (a, b) { return a.id - b.id })
         return out
     }
+    // a special workspace shows its icon only while it has a window in it (or is open right now: "lit"), so an empty one leaves no blank space
     function hasSpecial(n) {
         var l = Hyprland.workspaces.values
-        for (var i = 0; i < l.length; i++) if (l[i].name === "special:" + n) return true
+        for (var i = 0; i < l.length; i++) if (l[i].name === "special:" + n) return wsWindows(l[i]) > 0
         return false
     }
 
@@ -91,7 +92,8 @@ RowLayout {
     //      Right slot: the day / date floating halfway between the time and the status icons, which sit at the edge.
     //      (The live stats that slide out on hover grow BOTH slots by the same amount, so the time never moves.)
     property bool spacious: false            // Settings > Bar style > Bar spacing
-    readonly property int g: spacious ? 26 : 14           // smallest gap between neighbours
+    property int barH: 44                                  // the island's height (shell.qml): the gaps grow and shrink with it
+    readonly property int g: Math.round(barH * (spacious ? 0.6 : 0.32))   // smallest gap between neighbours (14 / 26 at the Normal size)
     readonly property int edgePad: spacious ? 8 : 0       // extra room at both ends of the pill
     readonly property real wsW: wsRow.visible ? wsRow.implicitWidth : 0
     readonly property real vizW: showViz ? vizItem.implicitWidth : 0

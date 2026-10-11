@@ -117,6 +117,7 @@ struct LoadState {
     idle_streak: u32,
     last_cpu: Option<(u64, u64)>,
     input_devices: Option<Vec<Device>>,
+    gpu_cache: (u32, f64),      // (polls since the last nvidia-smi, its last answer)
 }
 
 fn send_hyprland_cmd(socket_path: &str, cmd: &str) -> Result<String, std::io::Error> {
@@ -267,10 +268,12 @@ fn main() {
     let mut conn = HyprlandConnection::new();
     let mut last_mode = None;
     let mut gslapper_running = is_process_running("gslapper");
+    let mut prof_tick: u32 = 0;
     let mut load_state = LoadState {
         idle_streak: 0,
         last_cpu: cpu_snapshot(),
         input_devices: None,
+        gpu_cache: (0, 0.0),
     };
 
     loop {
@@ -283,7 +286,7 @@ fn main() {
 
         // Always re-assert the profile even if the mode is unchanged, so any
         // external override (e.g. sysmode forcing performance) is corrected.
-        assert_power_profile(current_mode);
+        assert_power_profile(current_mode, &mut prof_tick);
         write_state(current_mode.name(), current_mode.profile());
 
         // Handle wallpaper separately as it depends on fullscreen too
@@ -440,7 +443,7 @@ fn determine_mode(conn: &mut HyprlandConnection, last_mode: Option<PowerMode>, s
 
     // Sample telemetry once per cycle
     let cpu_pct = get_cpu_usage(state);
-    let gpu_pct = get_gpu_utilization();
+    let gpu_pct = get_gpu_utilization(&mut state.gpu_cache);
     let input_active = check_input_activity(state);
     let heavy_window = is_heavy_load(conn);
 
@@ -548,10 +551,22 @@ fn dgpu_asleep() -> bool {
         .unwrap_or(false)
 }
 
-fn get_gpu_utilization() -> f64 {
+fn get_gpu_utilization(cache: &mut (u32, f64)) -> f64 {
     if dgpu_asleep() {
+        *cache = (0, 0.0);
         return 0.0;
     }
+    // nvidia-smi is a heavy start (~0.2 s of CPU): ask it every 3rd poll (~45 s) and reuse the answer in between
+    if cache.0 % 3 != 0 {
+        cache.0 += 1;
+        return cache.1;
+    }
+    cache.0 += 1;
+    cache.1 = query_gpu_utilization();
+    cache.1
+}
+
+fn query_gpu_utilization() -> f64 {
     Command::new("nvidia-smi")
         .args(["--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"])
         .output()
@@ -676,10 +691,27 @@ fn set_power_profile(profile: &str) {
     let _ = Command::new("powerprofilesctl").args(["set", profile]).status();
 }
 
-/// Re-assert the power profile for the current mode so external overrides
-/// (e.g. sysmode forcing performance on battery) get reverted next poll.
-fn assert_power_profile(mode: PowerMode) {
-    set_power_profile(mode.profile());
+/// The profile the kernel is running right now (ACPI platform_profile, which power-profiles-daemon drives), as a
+/// power-profiles-daemon name. None when the machine has no such file: then the caller falls back to a timed re-assert.
+fn active_profile() -> Option<&'static str> {
+    let raw = fs::read_to_string("/sys/firmware/acpi/platform_profile").ok()?;
+    match raw.trim() {
+        "low-power" | "quiet" | "cool" => Some("power-saver"),
+        "balanced" | "balanced-performance" => Some("balanced"),
+        "performance" => Some("performance"),
+        _ => None,
+    }
+}
+
+/// Re-assert the power profile for the current mode so external overrides (e.g. sysmode forcing performance on
+/// battery) get reverted next poll. `powerprofilesctl` is a Python script (~100 ms of CPU per start), so it only runs
+/// when the kernel says the profile is actually different; without that file it re-asserts every 8th poll (~2 min).
+fn assert_power_profile(mode: PowerMode, tick: &mut u32) {
+    *tick = tick.wrapping_add(1);
+    match active_profile() {
+        Some(p) => { if p != mode.profile() { set_power_profile(mode.profile()); } }
+        None => { if *tick % 8 == 0 { set_power_profile(mode.profile()); } }
+    }
 }
 
 /// `~/.config/Halcyon/gpu-mode` says `dgpu` (scripts/gpu-mode.sh): the NVIDIA GPU draws the desktop, so it must never be
@@ -719,12 +751,27 @@ fn enable_nvidia_gpu() {
     }
 }
 
+/// A process with this exact name exists (reads /proc/<pid>/comm: no process is started).
+fn process_exists(name: &str) -> bool {
+    let Ok(dir) = fs::read_dir("/proc") else { return false };
+    for e in dir.flatten() {
+        let fname = e.file_name();
+        let Some(pid) = fname.to_str() else { continue };
+        if !pid.bytes().all(|b| b.is_ascii_digit()) { continue; }
+        if let Ok(c) = fs::read_to_string(e.path().join("comm")) {
+            if c.trim() == name { return true; }
+        }
+    }
+    false
+}
+
 fn is_gaming_mode() -> bool {
     // 1. Check Halcyon gamemode state in /dev/shm/halcyon-gamemode (instant, no subprocess)
     if std::path::Path::new("/dev/shm/halcyon-gamemode").exists() {
         return true;
     }
     // 2. gamemoded (Steam/Lutris launch options, `gamemoderun`) works under any shell...
+    if !process_exists("gamemoded") { return false; }
     let gamemoded = Command::new("gamemoded")
         .arg("-s")
         .output()

@@ -4,6 +4,22 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## SUPER+D is yours: WhatsApp and any website
+
+- **Settings > Default apps > Chat** now also lists websites that open in your browser as their own window: WhatsApp, Telegram (web), Messenger, Google Messages, Discord (web), Teams (web). They show whenever a browser is installed. SUPER+D still opens whatever is picked, on the communication workspace.
+- **Add website**: type a name and an address (`web.whatsapp.com`) and it is added and chosen at once; the **×** next to one you added removes it. Same from a terminal: `apps.sh add-web <Name> <url>` / `apps.sh remove-web <id>`. Chromium-family browsers (Chromium, Chrome, Brave, Vivaldi) open it with `--app` (no tabs or address bar); other browsers open a new window.
+- A website is never picked for you: with no chat app installed, SUPER+D starts nothing until you choose one. Windows of the built-in sites are moved to the communication workspace like Discord and Telegram are.
+- Fixed: the bar builder failed to load (`Slot is not a type`); its inline components are renamed.
+
+---
+
+## Bar builder: Island or Notch, the real bar as the editor, padding you can type
+
+- **Shape.** Style = Custom can now be a **Notch** (hangs from the top edge, flared corners, as before) or an **Island** (a floating rounded pill a little below the edge). Pick it in Settings > Bar style > Bar builder, or at the top of the builder window. Saved in `opt.barLayout.shape`; layouts saved before this stay Notch.
+- **The bar is the editor.** The builder window now draws the bar itself, with the same widgets, sizes and spacing as the real one (samples for the time, battery, Wi-Fi ...), at the chosen shape. Drag a widget along it to reorder, onto another place to move it, onto the shelf to take it off. Widgets that only show sometimes (Caffeine, Focus, Bg apps) are always shown there so they can be placed.
+- **Symmetry help.** While you drag, a line marks the exact centre of the screen and the drop shows what Left / Right would come to ("✓ the sides match" or "N px apart"). When the sides differ, the builder suggests the one move that evens them out, with a button to apply it. The middle is always centred.
+- **Padding.** Type px (or use - / +, or leave "auto") for the edge padding, the gap between widgets and the clearance around the middle. Click a widget on the bar to give just that one its own padding. Saved in `opt.barLayout` (`edge`, `gap`, `clear`, `pads`); `null` = the automatic spacing, so nothing changes until you type a number.
+
 ## Yes by default, backup / safety-check reminders, automatic safety check, pitch-black boxes
 
 - **Starship badge really fixed.** Starship ran the badge command in fish (your login shell) and it was POSIX `sh`, so it printed nothing. The table now has `shell = ["sh"]`; `app-themes.sh` repairs an installed starship.toml that has either earlier version of the badge (a copy is kept as `starship.toml.before-sysmode-fix`).
