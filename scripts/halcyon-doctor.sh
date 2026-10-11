@@ -92,6 +92,7 @@ have thunar && { grep -q ">>> halcyon >>>" "$HOME/.config/gtk-3.0/gtk.css" 2>/de
 if have spicetify; then
   [ -f "$HOME/.config/spotify/prefs" ] && ok "Spotify (spicetify): theme written; after a Spotify update run $RICE/scripts/app-themes.sh --now" || warn "Spotify: start it once and log in, then run $RICE/scripts/app-themes.sh --now"
 else warn "spicetify not installed (AUR: spicetify-cli): Spotify keeps its own colours"; fi
+have spotify_player && { grep -q 'name = "halcyon"' "$HOME/.config/spotify-player/theme.toml" 2>/dev/null && grep -q '^theme *= *"halcyon"' "$HOME/.config/spotify-player/app.toml" 2>/dev/null && ok "spotify-player: halcyon theme (first run: spotify_player authenticate)" || warn "spotify-player: not using the halcyon theme (run user-setup.sh app-themes)"; }
 if have vesktop || [ -d "$HOME/.config/Vencord" ]; then [ -f "$HOME/.config/vesktop/themes/halcyon.theme.css" ] || [ -f "$HOME/.config/Vencord/themes/halcyon.theme.css" ] && ok "Discord (Vesktop / Vencord): halcyon theme file written" || warn "Discord theme missing: run $RICE/scripts/app-themes.sh --setup"
 else warn "Discord: stock Discord cannot be themed. Install Vesktop (AUR: vesktop) to get the Halcyon colours"; fi
 

@@ -4,6 +4,17 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## spotify-player in the rice, and a much shorter Settings
+
+- **spotify-player** (the terminal Spotify client) is installed by `install.sh` (official repositories, AUR otherwise; skipped with `--no-apps`) and themed like btop / yazi: `app-themes.sh` writes a `halcyon` theme to `~/.config/spotify-player/theme.toml` from the wallpaper colours (your own themes in that file are kept, the terminal's background and blur show through) and sets `theme = "halcyon"` in `app.toml` (the old file is saved as `app.toml.before-halcyon`). It is read each time spotify-player starts. First run: `spotify_player authenticate`. It is also a choice in Settings > Default apps > Music (opens in your terminal on SUPER+M), and `halcyon-doctor.sh` checks it.
+- **Settings is shorter: 152 rows became 123, and 26 groups became 24**, with nothing removed:
+  - **Backup & safety** reads as one flow: **Backup** (Whole system / Home folder only), **Restore** (From a backup / Home folder only), **Remind me to back up** (Off / Day / Week / Month / 3 months / Custom in one row; the day count only shows for Custom), then the safety check, its reminder and the automatic run. Before: 14 rows in the order backup, backup home, restore, restore home, safety check, then six reminder rows.
+  - Two new row kinds do most of it: **several buttons in one row** (Backup, Restore, Memory report + Detect RAM, Edit config + Shortcuts + Reload) and **several switches in one row** (what the bar shows, the clock, the constellation boxes, touchpad behaviour, focus options, workspace behaviour, Do not disturb + Wi-Fi errors only).
+  - Options that only matter while another is on now hide until it is: time per colour (colour cycling), terminal colour options (terminals follow the wallpaper), blur strength / quality (blur), the page-close speed (hover opens a page), how long the volume bar stays (volume bar on), the constellation boxes (constellations on).
+  - **Colours** now includes the terminal colours, and **Workspaces & windows** includes switching workspaces.
+
+---
+
 ## SUPER+D is yours: WhatsApp and any website
 
 - **Settings > Default apps > Chat** now also lists websites that open in your browser as their own window: WhatsApp, Telegram (web), Messenger, Google Messages, Discord (web), Teams (web). They show whenever a browser is installed. SUPER+D still opens whatever is picked, on the communication workspace.

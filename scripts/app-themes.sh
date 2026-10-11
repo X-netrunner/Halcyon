@@ -4,6 +4,7 @@
 #   btop      ~/.config/btop/themes/halcyon.theme
 #   yazi      ~/.config/yazi/flavors/halcyon.yazi
 #   Spotify   ~/.config/spicetify/Themes/halcyon  (spicetify; needs `spicetify apply`, which --now / --setup do)
+#   spotify-player  ~/.config/spotify-player/theme.toml (the terminal Spotify client; re-read every time it starts)
 #   Discord   Vesktop / Vencord theme file halcyon.theme.css (stock Discord cannot be themed: Vesktop is installed for that)
 #   fish      static (config/fish/halcyon.fish uses the terminal's ANSI names, so it follows the wallpaper on its own)
 #   + scripts/app-themes-extra.sh: VSCodium / Code - OSS / VS Code / Cursor, Zed, Firefox / Zen / LibreWolf / Floorp, Qt apps (Dolphin, Kate)
@@ -271,6 +272,51 @@ Y
   return 0
 }
 
+# ================================================================== spotify-player (terminal Spotify client)
+spotify_player_theme() {
+  have spotify_player || return 0
+  local d="$HOME/.config/spotify-player" f B="# >>> HALCYON SPOTIFY-PLAYER THEME >>>" E="# <<< HALCYON SPOTIFY-PLAYER THEME <<<" brd
+  f="$d/theme.toml"; mkdir -p "$d"
+  mixv "$surf" "$acc" 45; brd=$MIX
+  {
+    strip_block "$f" "$B" "$E"        # your own themes in the same file are kept; only this block is rewritten
+    echo "$B"
+    echo "# written by scripts/app-themes.sh from the wallpaper colours: do not edit this block (it is rewritten)"
+    echo "[[themes]]"
+    echo 'name = "halcyon"'
+    echo "[themes.palette]"
+    # no background on purpose: the terminal's own (foot's blur / opacity) shows through, like btop
+    echo "foreground = \"$fg\""
+    for pair in black:$A_C0 red:$A_C1 green:$A_C2 yellow:$A_C3 blue:$A_C4 magenta:$A_C5 cyan:$A_C6 white:$A_C7 \
+                bright_black:$A_C8 bright_red:$A_C9 bright_green:$A_C10 bright_yellow:$A_C11 bright_blue:$A_C12 \
+                bright_magenta:$A_C13 bright_cyan:$A_C14 bright_white:$A_C15; do
+      [ -n "${pair#*:}" ] && printf '%s = "%s"\n' "${pair%%:*}" "${pair#*:}"
+    done
+    echo "[themes.component_style]"
+    echo "block_title = { fg = \"$acc\", modifiers = [\"Bold\"] }"
+    echo "border = { fg = \"$brd\" }"
+    echo "playback_status = { fg = \"$acc\", modifiers = [\"Bold\"] }"
+    echo "playback_track = { fg = \"$fg\", modifiers = [\"Bold\"] }"
+    echo "playback_artists = { fg = \"$acc\", modifiers = [\"Bold\"] }"
+    echo "playback_album = { fg = \"$acc2\" }"
+    echo "playback_genres = { fg = \"$mut\", modifiers = [\"Italic\"] }"
+    echo "playback_metadata = { fg = \"$mut\" }"
+    echo "playback_progress_bar = { fg = \"$acc\", bg = \"$hi\" }"
+    echo "playback_progress_bar_unfilled = { bg = \"$hi\" }"
+    echo "current_playing = { fg = \"$acc\", modifiers = [\"Bold\"] }"
+    echo "page_desc = { fg = \"$acc\", modifiers = [\"Bold\"] }"
+    echo "playlist_desc = { fg = \"$mut\", modifiers = [\"Dim\"] }"
+    echo "table_header = { fg = \"$acc2\", modifiers = [\"Bold\"] }"
+    echo "selection = { fg = \"$bg\", bg = \"$acc\", modifiers = [\"Bold\"] }"
+    echo "like = { fg = \"$red\" }"
+    echo "lyrics_played = { fg = \"$mut\" }"
+    echo "lyrics_playing = { fg = \"$acc\", modifiers = [\"Bold\"] }"
+    echo "visualization = { low = \"$cyan\", mid = \"$acc\", high = \"$acc2\" }"
+    echo "$E"
+  } > "$f.tmp" && mv "$f.tmp" "$f" && log "spotify-player: theme written (accent $acc)"
+  return 0
+}
+
 # ================================================================== Spotify (spicetify)
 SP_LAUNCHER="$HOME/.local/share/spotify-launcher/install/usr/share/spotify"
 spotify_theme() {
@@ -478,6 +524,16 @@ ensure_choices() {
     fi
     echo "   yazi: flavor halcyon"
   fi
+  # spotify-player: theme = "halcyon" in app.toml (a top-level key: it has to stay above any [table])
+  if have spotify_player; then
+    f="$HOME/.config/spotify-player/app.toml"; mkdir -p "$(dirname "$f")"
+    if [ ! -f "$f" ]; then echo 'theme = "halcyon"' > "$f"
+    elif ! grep -q '^theme *= *"halcyon"' "$f"; then
+      [ -e "$f.before-halcyon" ] || cp -p "$f" "$f.before-halcyon"
+      if grep -q '^theme *=' "$f"; then sed -i 's|^theme *=.*|theme = "halcyon"|' "$f"; else sed -i '1i theme = "halcyon"' "$f"; fi
+    fi
+    echo "   spotify-player: theme halcyon"
+  fi
   # Vesktop / Vencord: enable the theme
   if command -v jq >/dev/null 2>&1; then
     for base in "$HOME/.config/vesktop" "$HOME/.config/Vencord"; do
@@ -494,7 +550,7 @@ ensure_choices() {
 # every run: pick the halcyon theme where an app still has another one (existing choices are backed up once), then write the files
 starship_adopt
 starship_sysmode_migrate
-starship_theme; fish_theme; btop_theme; yazi_theme; spotify_theme; discord_theme
+starship_theme; fish_theme; btop_theme; yazi_theme; spotify_player_theme; spotify_theme; discord_theme
 if declare -F editors_theme >/dev/null; then editors_theme; browser_theme; qt_theme; fi
 ensure_choices >/dev/null          # after the files exist (Vesktop needs its theme file first)
 have btop && pkill -USR2 -x btop 2>/dev/null     # a running btop re-reads its config and theme

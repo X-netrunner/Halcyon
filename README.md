@@ -22,7 +22,7 @@ No questions: `--browser zen --files yazi,thunar --editor codium,zeditor --no-sy
 
 ## Themed apps
 Everything follows the wallpaper colours (`scripts/app-themes.sh`, run by the island after every wallpaper change; `app-follow = off` in `~/.local/state/island` stops it):
-- terminals, fish, Starship, btop, Yazi, Spotify (spicetify), Discord (Vesktop), Thunar / Nautilus / Nemo / GTK file dialogs
+- terminals, fish, Starship, btop, Yazi, Spotify (spicetify), spotify-player, Discord (Vesktop), Thunar / Nautilus / Nemo / GTK file dialogs
 - **VSCodium / Code - OSS / VS Code / Cursor**: a "Halcyon" colour theme (installed once as a tiny extension; after a wallpaper change use *Reload Window*)
 - **Zed**: `~/.config/zed/themes/halcyon.json`, reloads live
 - **Firefox / Zen / LibreWolf / Floorp**: toolbar, tabs, address bar, new tab page and about: pages (`userChrome.css` + `userContent.css`, the browser must have been started once and needs one restart). Chromium-based browsers cannot be themed from a file: they only get dark mode
@@ -267,6 +267,7 @@ tiling layout switch.
   - **btop** (`color_theme = "halcyon"`), **yazi** (flavor `halcyon`), **foot** and the other terminals (`term-colors.sh`), **Thunar** (`gtk-theme.sh`).
   - **Spotify**: spicetify theme `halcyon` (`spicetify-cli` from the AUR). A theme only shows after `spicetify apply`, which the island does after a wallpaper change while Spotify is closed (`--now` does it right away; a Spotify update needs `--now` once, and the first time Spotify must have been started once).
   - **Discord**: stock Discord cannot be themed, so the installer adds **Vesktop** (AUR) and writes + enables `halcyon.theme.css` there (Vencord too, if you have it). Vesktop is also the default chat app when you have not chosen one. Discord renames its CSS variables now and then: if a part stays unthemed, tell me which.
+  - **spotify-player** (terminal Spotify): theme `halcyon` in `~/.config/spotify-player/theme.toml` (your own themes in that file are kept) and `theme = "halcyon"` in `app.toml`; it follows the wallpaper and is read each time it starts. First run: `spotify_player authenticate`. Pick it as the music app in Settings > Default apps to open it on SUPER+M.
   Spotify and Discord always use the dark palette.
 - **GTK apps (Thunar, file dialogs)**: `scripts/gtk-theme.sh` writes `~/.config/gtk-3.0/gtk.css` and `gtk-4.0/gtk.css` (between `halcyon` markers, the rest of those files is untouched) from the island palette, and re-runs on every wallpaper and dark / light change. Reopen Thunar (`thunar -q`) to see it. `gtk-theme.sh --remove` takes it out; `echo off > ~/.local/state/island/gtk-follow` stops the automatic runs.
 - **Invert workspace scrolling**: Settings > Workspaces. Applies to the wheel over the workspace numbers in the bar and the 3 / 4 finger swipes.

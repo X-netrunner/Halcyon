@@ -16,7 +16,7 @@
 #    3  graphics drivers + CPU microcode: NVIDIA (open / legacy, by GPU generation), Intel, AMD, hybrid laptops (detected)
 #    4  audio (+ firmware), Bluetooth, network, power services, input / video groups
 #    5  Hyprland, Quickshell and the desktop packages + YOUR apps: you pick the web browser, the file manager (Thunar, Yazi,
-#       Dolphin, ...), the code editor (VSCodium, Zed, ...) and whether to install sysmode and the safety check; plus foot, Spotify, Discord
+#       Dolphin, ...), the code editor (VSCodium, Zed, ...) and whether to install sysmode and the safety check; plus foot, Spotify (+ spotify-player), Discord
 #    6  Rust toolchain (for the helpers below)
 #    7  copies the rice to ~/.config/Halcyon (an older copy is backed up; your hypr-user.lua, scheme/current.lua and
 #       gamemode.conf are kept)
@@ -42,7 +42,7 @@
 #   --lock-login           use the lock screen as login screen even if a login manager exists
 #   --no-lock-login        never set that up (you log in on the text console and start Halcyon by hand)
 #   --remove-lock-login    undo it: no more auto-login on tty1, tty1 is an ordinary text login again
-#   --no-apps              do not install foot / Spotify / Discord (and no file manager unless you ask for one)
+#   --no-apps              do not install foot / Spotify / spotify-player / Discord (and no file manager unless you ask for one)
 #   --browser ID           firefox | zen | librewolf | floorp | chromium | brave | vivaldi | chrome | qutebrowser | keep
 #   --files ID[,ID]        thunar | yazi | dolphin | nautilus | nemo | pcmanfm | none   (the first one opens folders: SUPER+E)
 #   --editor ID[,ID]       codium | zeditor | neovim | none                              (the first one is SUPER+C)
@@ -859,7 +859,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     fi
     # ---- terminal, music, chat: installed unless --no-apps
     if [[ "$INSTALL_APPS" == "true" ]]; then
-        log_info "Apps: foot (terminal), Spotify, Discord (+ spicetify and Vesktop so they can wear the rice colours)"
+        log_info "Apps: foot (terminal), Spotify (+ spotify-player, the terminal client), Discord (+ spicetify and Vesktop so they can wear the rice colours)"
         install_pkgs foot
         # Spotify: spotify-launcher is in the official repositories and downloads the official Spotify client the first time
         # you start it. Only when that package does not exist is the AUR package 'spotify' used.
@@ -867,10 +867,12 @@ if [[ "$PACKAGES" == "true" ]]; then
             if pacman -Si spotify-launcher >/dev/null 2>&1; then install_pkgs spotify-launcher; else install_pkgs spotify; fi
         fi
         install_pkgs discord
+        # spotify-player: Spotify in the terminal (official repositories, AUR otherwise); themed by scripts/app-themes.sh
+        install_pkgs spotify-player
         # themes: spicetify patches Spotify (AUR); stock Discord cannot be themed, Vesktop (AUR) is a themeable Discord client
         install_pkgs spicetify-cli vesktop
     else
-        log_info "Apps skipped (--no-apps): foot, Spotify, Discord."
+        log_info "Apps skipped (--no-apps): foot, Spotify, spotify-player, Discord."
     fi
     try run_as_user_cmd "Creating the standard user folders" xdg-user-dirs-update
 else
@@ -1349,7 +1351,7 @@ fi
 log_step "Step 12: Wallpaper and colours"
 user_setup wallpaper  || warn_later "Wallpaper / colours: something did not work (is ImageMagick installed?)"
 user_setup terminals  || warn_later "Terminal colour files could not be written."
-user_setup app-themes || warn_later "App themes (Starship, fish, btop, yazi, Spotify, Discord, Thunar) could not all be set up: run ~/.config/Halcyon/scripts/user-setup.sh app-themes"
+user_setup app-themes || warn_later "App themes (Starship, fish, btop, yazi, Spotify, spotify-player, Discord, Thunar) could not all be set up: run ~/.config/Halcyon/scripts/user-setup.sh app-themes"
 if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
@@ -1394,6 +1396,7 @@ fi
 if [[ "$INSTALL_APPS" == "true" && "$PACKAGES" == "true" ]]; then
     command -v spotify >/dev/null 2>&1 && check_cmd spotify spotify || check_cmd spotify-launcher spotify-launcher
     check_cmd discord discord
+    check_cmd spotify_player spotify_player
 fi
 for c in foot fuzzel brightnessctl playerctl wpctl nmcli bluetoothctl powerprofilesctl cava grim slurp wl-copy cliphist \
          hypridle hyprlock hyprsunset pkexec lspci nm-applet blueman-applet kbuildsycoca6 wayfreeze bemoji wlogout iw; do
