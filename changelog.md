@@ -4,6 +4,15 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Terminal music player routing, blurred lock screen, focus mode in Rust
+
+- **spotify-player (and other terminal music players) now go to the music workspace.** The island only recognised the Spotify *app* by its window class; a terminal player has the terminal's class (`foot`, `kitty` ...), so it was never moved. `scripts/apps.sh run music` now starts a terminal music player with the window class `halcyon-music` (foot / kitty / alacritty / ghostty / wezterm / xterm / gnome-terminal) and `Routes.js` sends that class to SUPER+M. (konsole has no class option, so it keeps its own.)
+- **Lock screen background option** (Settings > Sleep & lock): *Solid colour* (as before) or *Blurred wallpaper*, with **Lock screen blur** and **Lock screen tint** sliders. The tint is the opacity of the theme colour over the wallpaper (0 % = wallpaper as it is). The wallpaper is only decoded while the screen is locked; the blur is drawn once into a layer, not every frame.
+- **Settings read Hyprland on/off options correctly**: `hypr-values.sh` also understands `"bool": true|false` (newer Hyprland), so switches like *Pause while typing* show what Hyprland really has.
+- **Focus mode helper is native**: `hx focus ...` (`src/hx/src/focus.rs`) replaces `focus.py`; same files, same JSON. A running session no longer keeps a Python interpreter in RAM. `scripts/focus.sh` uses `hx focus` when the installed `hx` has it and falls back to `focus.py` otherwise.
+
+---
+
 ## spotify-player in the rice, and a much shorter Settings
 
 - **spotify-player** (the terminal Spotify client) is a choice in the installer: `./install.sh --choose` now asks "Music player" (Spotify, spotify-player, None; **several can be picked**, the first is SUPER+M), or `--music spotify,spotify-player`; the answer is remembered for update.sh. It is themed like btop / yazi: `app-themes.sh` writes a `halcyon` theme to `~/.config/spotify-player/theme.toml` from the wallpaper colours (your own themes in that file are kept, the terminal's background and blur show through) and sets `theme = "halcyon"` in `app.toml` (the old file is saved as `app.toml.before-halcyon`). It is read each time spotify-player starts. First run: `spotify_player authenticate`. It is also a choice in Settings > Default apps > Music (opens in your terminal on SUPER+M), and `halcyon-doctor.sh` checks it.

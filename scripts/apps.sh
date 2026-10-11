@@ -146,7 +146,12 @@ case "$1" in
     fi
     bin=$(field "$k" "$id" 3); tui=$(field "$k" "$id" 5)
     case "$bin" in web:*) open_web "${bin#web:}" ;; esac
-    if [ "$tui" = 1 ]; then exec bash "$0" term-exec "$bin" "$@"; fi
+    # a terminal music player (spotify_player, ncmpcpp ...) gets its own window class: the island's app routing (Routes.js)
+    # sends it to the music workspace like the Spotify desktop app. Other TUIs keep the terminal's normal class.
+    if [ "$tui" = 1 ]; then
+      [ "$k" = music ] && export TERM_CLASS="halcyon-music"
+      exec bash "$0" term-exec "$bin" "$@"
+    fi
     exec "$bin" "$@"
     ;;
   add-web)
@@ -168,12 +173,18 @@ case "$1" in
     id=$(current terminal); [ -n "$id" ] || { notify-send -a Halcyon "No terminal found" 2>/dev/null; exit 1; }
     bin=$(field terminal "$id" 3)
     # the terminals inherit the working directory of this process, so `cd` before calling is enough for all of them
+    # TERM_CLASS (optional) = the window class / app-id the terminal should get (Hyprland rules and app routing match on it)
+    cls="${TERM_CLASS:-}"
     case "$id" in
-      foot|alacritty|xterm|konsole|ghostty) exec "$bin" -e "$@" ;;
-      kitty) exec "$bin" "$@" ;;
-      wezterm) exec "$bin" start -- "$@" ;;
-      gnome-terminal) exec "$bin" -- "$@" ;;
-      *) exec "$bin" -e "$@" ;;
+      foot)           exec "$bin" ${cls:+--app-id "$cls"} -e "$@" ;;
+      alacritty)      exec "$bin" ${cls:+--class "$cls"} -e "$@" ;;
+      ghostty)        exec "$bin" ${cls:+--class="$cls"} -e "$@" ;;
+      xterm)          exec "$bin" ${cls:+-class "$cls"} -e "$@" ;;
+      konsole)        exec "$bin" -e "$@" ;;
+      kitty)          exec "$bin" ${cls:+--class "$cls"} "$@" ;;
+      wezterm)        exec "$bin" start ${cls:+--class "$cls"} -- "$@" ;;
+      gnome-terminal) exec "$bin" ${cls:+--class "$cls"} -- "$@" ;;
+      *)              exec "$bin" -e "$@" ;;
     esac
     ;;
   *) echo "usage: apps.sh list | set <terminal|browser|files|editor|music|chat> <id> | run <kind> [args] | add-web <Name> <url> | remove-web <id> | term-exec cmd [args]" >&2; exit 2 ;;

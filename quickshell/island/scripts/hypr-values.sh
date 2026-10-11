@@ -14,6 +14,9 @@ get() {   # get <json key> <hyprland option>
     out+=("\"$1\":$num")
     return
   fi
+  # newer Hyprland builds report an on / off option as "bool": true|false instead of "int": 1|0
+  num=$(printf '%s' "$raw" | sed -n 's/.*"bool": *\(true\|false\).*/\1/p' | head -n1)
+  if [ -n "$num" ]; then out+=("\"$1\":$num"); return; fi
   str=$(printf '%s' "$raw" | sed -n 's/.*"str": *"\([^"]*\)".*/\1/p' | head -n1)
   [ -n "$str" ] && out+=("\"$1\":\"$str\"")
 }

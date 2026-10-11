@@ -61,6 +61,9 @@ ShellRoot {
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
         nightTemp: 4000,           // night light colour temperature (K)
         settingsGlass: 0.72,       // how opaque the Settings window is (lower = more see-through)
+        lockBg: "solid",           // solid | wallpaper : the lock screen's background is the plain theme colour, or the current wallpaper blurred (Lock.qml)
+        lockBlur: 40,              // blur radius of that wallpaper (4 .. 64)
+        lockTint: 0.55,            // how opaque the theme-colour sheet over the blurred wallpaper is (0 = wallpaper as it is .. 0.95); yours to set
         resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
         perf: "high",              // low | medium | high : how much the tree view and constellations animate (and how many stars the picture gets)
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
@@ -556,6 +559,10 @@ ShellRoot {
         profileStars: root.profileStars
         name: root.profileName !== "" ? root.profileName : Quickshell.env("USER")
         avatarPath: root.avatarPath
+        bgMode: root.opt.lockBg === "wallpaper" ? "wallpaper" : "solid"
+        wallpaper: wallpaperLayer.currentPath
+        blurRadius: root.opt.lockBlur !== undefined ? root.opt.lockBlur : 40
+        tint: root.opt.lockTint !== undefined ? root.opt.lockTint : 0.55
     }
     // Login-screen mode (install.sh > "lock screen as login"): launch/halcyon-login.sh leaves a flag file before it starts
     // Hyprland, and the first thing the island does is take it and lock. So after boot the Halcyon lock screen IS the login

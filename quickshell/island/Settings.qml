@@ -463,6 +463,9 @@ Scope {
         { id: "sleep", title: "Sleep & lock", section: "Input & power", items: [
             { type: "seg", key: "idleDim", label: "Dim the screen and keyboard light after", opts: [o(0, "Never"), o(1, "1 min"), o(2, "2 min"), o(3, "3 min"), o(5, "5 min"), o(10, "10 min")] },
             { type: "seg", key: "idleLock", label: "Lock the screen after", opts: [o(0, "Never"), o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")] },
+            { type: "seg", key: "opt:lockBg", label: "Lock screen background", desc: "Solid: the plain colour of your theme. Blurred wallpaper: your current wallpaper, blurred, behind the clock and the password box. The wallpaper is only loaded while the screen is locked.", opts: [o("solid", "Solid colour"), o("wallpaper", "Blurred wallpaper")] },
+            { type: "slider", key: "opt:lockBlur", def: 40, label: "Lock screen blur", desc: "How strongly the wallpaper is blurred.", min: 4, max: 64, step: 2, unit: "", when: "opt:lockBg=wallpaper" },
+            { type: "slider", key: "opt:lockTint", def: 0.55, label: "Lock screen tint", desc: "How much of the theme colour covers the wallpaper. 0 % = the wallpaper as it is, 100 % = no wallpaper visible.", min: 0, max: 0.95, step: 0.05, scale: 100, unit: " %", when: "opt:lockBg=wallpaper" },
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] }
         ] },
         { id: "performance", title: "Performance & memory", section: "System", items: [

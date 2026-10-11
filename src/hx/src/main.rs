@@ -1,6 +1,7 @@
 mod ctl;
 mod dossier;
 mod feeds;
+mod focus;
 mod ids;
 mod palette;
 mod specs;
@@ -19,6 +20,7 @@ fn usage() {
     eprintln!(
         "hx: Halcyon helper multitool\n\
          island feeds : audio | bt | wifi | disk [secs] | specs | wsres [secs] | stats [secs] | net [secs] | states | palette <image> | portrait <image> [grid] [max] | status | ctl | stars <image> [n]\n\
+         focus mode   : focus start|stop|toggle|pause|resume|add|skip|status|conf|set|apps|block|unblock (see scripts/focus.sh)\n\
          sysmode      : ids (IDS daemon) | dossier [ip]"
     );
 }
@@ -44,6 +46,7 @@ fn main() {
         Some("stats") => sysfeeds::stats(num(rest, 0, 2.0)),
         Some("net") => sysfeeds::net(num(rest, 0, 4.0)),
         Some("states") => sysfeeds::states(),
+        Some("focus") => std::process::exit(focus::run(rest)),
         Some("ids") => ids::run(),
         Some("dossier") => dossier::run(rest.first().map(|s| s.as_str())),
         Some("palette") => palette::palette(rest.first().map(|s| s.as_str())),

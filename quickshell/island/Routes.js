@@ -12,6 +12,10 @@
 var apps = [
     { id: "spotify",  name: "Spotify",  ws: "music",         glyph: 0xF04C7, classes: ["spotify", "com.spotify.client"],
       match: "(^|/)spotify( |$)", cmd: "sh -c 'command -v spotify >/dev/null && exec spotify; exec spotify-launcher'" },
+    // a music player that runs inside a terminal (spotify_player, ncmpcpp, cmus ...): scripts/apps.sh starts it with the window
+    // class "halcyon-music", so it is sent to SUPER+M like the Spotify app
+    { id: "music-tui", name: "Terminal music player", ws: "music", glyph: 0xF075A, classes: ["halcyon-music"],
+      match: "(^|/)(spotify_player|ncmpcpp|cmus|rmpc|termusic|musikcube)( |$)", cmd: "bash \"$HOME/.config/Halcyon/scripts/apps.sh\" run music" },
     { id: "discord",  name: "Discord",  ws: "communication", glyph: 0xF066F, classes: ["discord"],
       match: "/[Dd]iscord( |$)", cmd: "discord" },
     { id: "vesktop",  name: "Vesktop",  ws: "communication", glyph: 0xF066F, classes: ["vesktop"],
