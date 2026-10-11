@@ -309,7 +309,13 @@ Scope {
     Timer { id: settingsGc; interval: 2500; onTriggered: gc() }
     onBuilderOpenChanged: { if (builderOpen) { builderUnload.stop(); builderLoaded = true } else builderUnload.restart() }
     function openBuilder() { builderOpen = true }
-    function hide() { galleryOpen = false; builderOpen = false; open = false }
+    // the Startup & processes window (StartupWindow.qml): what starts with the desktop and what is running, with RAM and CPU
+    property bool startupOpen: false
+    property bool startupLoaded: false
+    Timer { id: startupUnload; interval: 320; onTriggered: { root.startupLoaded = false; settingsGc.restart() } }
+    onStartupOpenChanged: { if (startupOpen) { startupUnload.stop(); startupLoaded = true } else startupUnload.restart() }
+    function openStartup() { startupOpen = true }
+    function hide() { galleryOpen = false; builderOpen = false; startupOpen = false; open = false }
     function toggle() { open = !open }
 
     component SChip: Chip { maxLabel: 1000 }
@@ -480,6 +486,7 @@ Scope {
             { type: "acts", adv: true, label: "Memory", desc: "Show what uses my RAM: opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
         ] },
         { id: "startup", title: "Startup & background", section: "System", items: [
+            { type: "action", id: "startup-view", label: "Startup & processes", btn: "Open the window", done: "", desc: "Everything that starts with the desktop (Halcyon's parts, your hypr-user.lua lines, systemd user services, autostart files) with the processes it runs, their RAM and CPU, a switch for each, and every other process of yours with an End button. Also `>startup` in the launcher." },
             { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
             { type: "toggle", key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
             { type: "toggle", key: "st:CLIPBOARD", label: "Clipboard history", desc: "The two small watchers that remember what you copy (text and pictures) for the clipboard picker. Off stops them at once and saves a few MB; the picker then only shows what was saved before." },
@@ -2130,5 +2137,31 @@ Scope {
             }
         }
     }
-}
 
+    // ======================================================================== the Startup & processes window
+    // A full-screen overlay with one card on it. It reads scripts/startup-view.py every 5 s while it is open, and nothing otherwise.
+    LazyLoader {
+        active: root.startupLoaded
+        PanelWindow {
+            id: swin
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            WlrLayershell.namespace: "island-startup"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: root.startupOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+            // opens one frame after the window exists, so the fade-in plays
+            property bool shown: false
+            Timer { running: true; interval: 30; onTriggered: swin.shown = true }
+
+            StartupWindow {
+                anchors.fill: parent
+                pal: root.pal
+                open: root.startupOpen && swin.shown
+                onClosed: root.startupOpen = false
+            }
+        }
+    }
+}
