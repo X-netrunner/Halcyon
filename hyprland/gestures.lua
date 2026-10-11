@@ -1,7 +1,7 @@
 -- Multi-finger touchpad gestures, handled by Hyprland itself.
 -- (The single-finger edge gestures for volume / brightness / tracks are the touchpad-gestures Rust service.)
 --
---   3 fingers right / left        next / previous workspace (Settings > Workspaces > "Invert workspace scrolling" swaps them)
+--   3 fingers right / left        (nothing: left free on purpose, apps get the swipe)
 --   4 fingers left / right        next / previous workspace (Settings > Workspaces > "4-finger swipe" flips it)
 --                                 scripts/ws-nav.sh: "next" on the last workspace opens a new one,
 --                                 "previous" on the first one jumps to the last; Settings > Workspaces
@@ -23,9 +23,7 @@ end
 
 -- plain "e+1" / "e-1" wrap around (the last workspace goes back to 1): ws-nav.sh makes a new workspace instead
 local wsNav = home .. "/.config/Halcyon/scripts/ws-nav.sh"
--- 3 fingers: right = next, left = previous
-hl.gesture({ fingers = vars.gestureFingers, direction = "right", action = run(wsNav .. " gesture-right") })
-hl.gesture({ fingers = vars.gestureFingers, direction = "left",  action = run(wsNav .. " gesture-left") })
+-- 3 fingers left / right: no gesture any more (to bring it back: hl.gesture({ fingers = vars.gestureFingers, direction = "right", action = run(wsNav .. " gesture-right") }) and the same with "left" / "gesture-left")
 -- 4 fingers: left = next, right = previous (default; Settings > Workspaces > "4-finger swipe" flips it)
 hl.gesture({ fingers = vars.gestureFingersMore, direction = "left",  action = run(wsNav .. " gesture4-left") })
 hl.gesture({ fingers = vars.gestureFingersMore, direction = "right", action = run(wsNav .. " gesture4-right") })

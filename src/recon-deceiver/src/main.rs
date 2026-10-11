@@ -95,7 +95,7 @@ fn sys_user() -> String {
             }
         }
     }
-    "sushanth".to_string()
+    std::env::var("LOGNAME").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| "root".to_string())
 }
 
 fn sys_home() -> String {

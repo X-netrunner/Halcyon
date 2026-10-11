@@ -69,6 +69,7 @@ ShellRoot {
         resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
         perf: "high",              // low | medium | high : how much the tree view and constellations animate (and how many stars the picture gets)
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
+        scrollLinger: 3000,        // ms a performance / media page opened by scrolling / swiping the bar stays after the pointer leaves (never shorter than pageClose)
         pageClose: 600,            // ms the performance / media page waits after the pointer leaves the bar before it folds back (150 / 600 / 4000)
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
         barStyle: "island",        // island | notch | custom : the floating pill, or a bar hanging from the top edge (NotchBar.qml)
@@ -287,7 +288,7 @@ ShellRoot {
     }
     // looking at the notifications here counts as reading them (and the popups get out of the way)
     function markSeen() { if (page === "notif" || (page === "util" && dropSide)) { notifs.unread = 0; notifs.hideToasts() } }
-    onPageChanged: markSeen()
+    onPageChanged: { markSeen(); if (page === "home") scrollOpened = false }
     Connections { target: notifs; function onUnreadChanged() { if (notifs.unread > 0) root.markSeen() } }
 
     property var stats: ({ cpu: 0, mem: 0, memGb: "0.0", temp: 0, down: 0, up: 0, bat: 0, charging: false, ac: false, hasBat: false,
@@ -619,9 +620,11 @@ ShellRoot {
     }
 
     // ---------- actions ----------
+    property bool scrollOpened: false
     function go(dir) {
         if (page === "launcher" || page === "util" || page === "notif") return
         hoverOpened = false
+        scrollOpened = true           // opened by scroll / swipe: stays a bit longer once the pointer leaves (scrollLinger)
         island.hoverSpent = true      // you chose a page yourself: do not re-open one by hover until the pointer has left
         if (dir < 0) page = (page === "perf") ? "home" : "media"
         else page = (page === "media") ? "home" : "perf"
@@ -1598,9 +1601,13 @@ ShellRoot {
             }
             // media/perf fall back to the bar when the pointer leaves (quickly if hovering opened them)
             Timer {
-                interval: root.opt.pageClose !== undefined ? root.opt.pageClose : 600
+                interval: {
+                    var c = root.opt.pageClose !== undefined ? root.opt.pageClose : 600
+                    var l = root.opt.scrollLinger !== undefined ? root.opt.scrollLinger : 3000
+                    return root.scrollOpened ? Math.max(c, l) : c
+                }
                 running: (root.page === "media" || root.page === "perf" || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered
-                onTriggered: { root.page = "home"; root.hoverOpened = false }
+                onTriggered: { root.page = "home"; root.hoverOpened = false; root.scrollOpened = false }
             }
 
             // scroll / two-finger swipe to move between pages

@@ -80,7 +80,7 @@ Scope {
     }
     Timer {
         id: cycleT
-        interval: 100
+        interval: 200
         repeat: true
         running: pal.cycling
         property double last: 0

@@ -82,8 +82,13 @@ impl PowerMode {
     }
 }
 
+/// XDG_RUNTIME_DIR, or /run/user/<this user's uid> when the service did not inherit it (never a fixed uid).
+fn default_runtime_dir() -> String {
+    format!("/run/user/{}", unsafe { libc::getuid() })
+}
+
 fn runtime_dir() -> String {
-    std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string())
+    std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| default_runtime_dir())
 }
 
 /// "<mode> <profile> <unix-epoch>", rewritten every poll. The island reads it (via
@@ -133,7 +138,7 @@ fn send_hyprland_cmd(socket_path: &str, cmd: &str) -> Result<String, std::io::Er
 fn get_hyprland_socket() -> Option<String> {
     // 1. Check if HYPRLAND_INSTANCE_SIGNATURE is set
     if let Ok(sig) = std::env::var("HYPRLAND_INSTANCE_SIGNATURE") {
-        let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string());
+        let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| default_runtime_dir());
         let path = format!("{}/hypr/{}/.socket.sock", xdg_runtime, sig);
         if std::path::Path::new(&path).exists() {
             return Some(path);
@@ -145,7 +150,7 @@ fn get_hyprland_socket() -> Option<String> {
     }
     
     // 2. If not set, search in XDG_RUNTIME_DIR/hypr or /tmp/hypr
-    let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string());
+    let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| default_runtime_dir());
     let search_paths = [
         format!("{}/hypr", xdg_runtime),
         "/tmp/hypr".to_string(),
@@ -213,7 +218,7 @@ impl HyprlandConnection {
 fn main() {
     println!("Power Manager Daemon started...");
 
-    let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string());
+    let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| default_runtime_dir());
     let lock_socket_path = format!("{}/power-manager.lock.sock", xdg_runtime);
     
     // Check if another instance is running
@@ -817,7 +822,19 @@ fn get_user_home() -> String {
             }
         }
     }
-    std::env::var("HOME").unwrap_or_else(|_| "/home/sushanth".to_string())
+    if let Ok(h) = std::env::var("HOME") {
+        if !h.is_empty() {
+            return h;
+        }
+    }
+    for k in ["SUDO_USER", "USER", "LOGNAME"] {
+        if let Ok(u) = std::env::var(k) {
+            if !u.is_empty() && u != "root" {
+                return format!("/home/{}", u);
+            }
+        }
+    }
+    "/root".to_string()
 }
 
 fn manage_ui_elements(mode: PowerMode, mut gslapper_running: bool, conn: &mut HyprlandConnection) -> bool {
@@ -834,8 +851,11 @@ fn manage_ui_elements(mode: PowerMode, mut gslapper_running: bool, conn: &mut Hy
         if !gslapper_running || !is_process_running("gslapper") {
             let live_dir = format!("{}/Pictures/Wallpapers/live", home);
             let wallpaper_path = pick_random_wallpaper(&live_dir);
+            if wallpaper_path.is_empty() {
+                return gslapper_running;
+            }
             
-            let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string());
+            let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| default_runtime_dir());
             let wayland_display = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| {
                 if std::path::Path::new(&format!("{}/wayland-1", xdg_runtime)).exists() {
                     "wayland-1".to_string()
@@ -888,9 +908,8 @@ fn pick_random_wallpaper(dir: &str) -> String {
     if let Some(chosen) = videos.choose(&mut rand::thread_rng()) {
         chosen.clone()
     } else {
-        // Fallback to the default if no videos found
-        let home = get_user_home();
-        format!("{}/Pictures/Wallpapers/jinx-mayhem-in-arcane.3840x2160.mp4", home)
+        // no videos in the folder: nothing to play (the caller skips starting gslapper)
+        String::new()
     }
 }
 
