@@ -22,7 +22,7 @@ Item {
     signal closed()
 
     readonly property string script: Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-view.py"
-    readonly property var empty: ({ items: [], procs: [], n_procs: 0, session_mb: 0, startup_mb: 0, total_mb: 0, avail_mb: 0 })
+    readonly property var empty: ({ items: [], procs: [], suggest: [], ncpu: 1, n_procs: 0, session_mb: 0, startup_mb: 0, total_mb: 0, avail_mb: 0 })
     property var info: empty
     property bool loaded: false
     property string tab: "startup"            // startup | procs
@@ -30,7 +30,10 @@ Item {
     property string sortBy: "mem"             // processes tab: mem | cpu
     property var busyIds: ({})
     property string note: ""
-    property string query: ""                 // the search box: filters whichever list is showing
+    property string query: ""
+    property var cpuMemo: ({})                // smoothed CPU per item / process (see smoothCpu)
+    readonly property int ncpu: Math.max(1, info.ncpu || 1)
+    readonly property var shownTips: info.suggest || []                 // the search box: filters whichever list is showing
 
     component Cap: Text { color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.2 }
 
@@ -43,6 +46,23 @@ Item {
         return k === "halcyon" ? "Halcyon" : k === "service" ? "Service" : k === "autostart" ? "Autostart" : k === "hypr" ? "hypr-user.lua" : k
     }
     function runningOf(it) { return it.count > 0 }
+    // CPU as the script measures it is "percent of ONE core" over a 0.4 s snapshot: a helper process that happens to run at that
+    // moment (power-manager starts nvidia-smi / powerprofilesctl every poll) can read above 100. Every refresh is blended into a
+    // running average (60 % old, 40 % new), so a one-off burst fades and a steady load shows its true size after a few seconds.
+    function smoothCpu(d) {
+        var memo = root.cpuMemo, next = {}
+        function f(k, v) {
+            var o = memo[k], sv = (o === undefined) ? v : o * 0.6 + v * 0.4
+            next[k] = sv
+            return Math.round(sv * 10) / 10
+        }
+        var i
+        for (i = 0; i < (d.items || []).length; i++) d.items[i].cpu = f("i" + d.items[i].id, d.items[i].cpu)
+        for (i = 0; i < (d.procs || []).length; i++) d.procs[i].cpu = f("p" + d.procs[i].pid, d.procs[i].cpu)
+        root.cpuMemo = next
+    }
+    function pct(v) { return v.toFixed(1) + "%" }                       // a share of the whole processor
+    function ofCore(v) { return (v < 10 ? v.toFixed(1) : Math.round(v)) + "% core" }   // the same, as a part of one core
 
     function hit(q, parts) { return q === "" || parts.join(" ").toLowerCase().indexOf(q) >= 0 }
     readonly property var shownItems: {
@@ -75,8 +95,10 @@ Item {
     // so a refresh every 5 s does not make rows flash, lose their hover or jump the scroll position.
     ListModel { id: itemModel; dynamicRoles: true }
     ListModel { id: procModel; dynamicRoles: true }
+    ListModel { id: tipModel; dynamicRoles: true }
     property var itemKeys: []
     property var procKeys: []
+    property var tipKeys: []
     function syncModel(model, keys, rows, key) {
         for (var i = 0; i < rows.length; i++) {
             var k = rows[i][key], j = keys.indexOf(k, i)
@@ -90,6 +112,7 @@ Item {
     }
     onShownItemsChanged: syncModel(itemModel, itemKeys, shownItems, "id")
     onShownProcsChanged: syncModel(procModel, procKeys, shownProcs, "pid")
+    onShownTipsChanged: syncModel(tipModel, tipKeys, shownTips, "id")
 
     Process {
         id: poll
@@ -98,6 +121,7 @@ Item {
             onStreamFinished: {
                 try {
                     var d = JSON.parse(text)
+                    root.smoothCpu(d)
                     root.info = d
                     root.loaded = true
                     root.busyIds = ({})
@@ -115,6 +139,24 @@ Item {
         note = it.toggle.login ? it.name + ": applies the next time you log in." : ""
         again.restart()
     }
+    function itemById(id) {
+        var all = info.items || []
+        for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i]
+        return null
+    }
+    function turnOff(id) {
+        var it = itemById(id)
+        if (!it || !it.toggle) return
+        var b = Object.assign({}, busyIds); b[id] = true; busyIds = b
+        Quickshell.execDetached(["python3", script, "toggle", it.toggle.mode, it.toggle.key, "0"])
+        note = it.name + (it.toggle.mode === "xdg" ? ": will not start at the next login. It keeps running until you end it (Processes tab) or log out."
+                          : it.toggle.login ? ": turned off from the next login on." : ": turned off.")
+        again.restart()
+    }
+    function keepTip(id) {
+        Quickshell.execDetached(["python3", script, "keep", id])
+        again.restart()
+    }
     function endProc(p) {
         Quickshell.execDetached(["python3", script, "end", String(p.pid)])
         note = "Asked " + p.name + " (" + p.pid + ") to quit."
@@ -128,7 +170,7 @@ Item {
     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
     onOpenChanged: {
         if (open) { note = ""; Qt.callLater(function () { root.forceActiveFocus() }) }
-        else { info = empty; loaded = false; busyIds = ({}); query = ""; searchInput.text = "" }       // let go of the numbers: nothing is kept while it is closed
+        else { info = empty; loaded = false; busyIds = ({}); cpuMemo = ({}); query = ""; searchInput.text = "" }       // let go of the numbers: nothing is kept while it is closed
     }
     Component.onCompleted: if (open) Qt.callLater(function () { root.forceActiveFocus() })
     Keys.onPressed: function (e) {
@@ -138,7 +180,7 @@ Item {
             e.accepted = true
         }
         else if (e.key === Qt.Key_Slash && !searchInput.activeFocus) { searchInput.forceActiveFocus(); e.accepted = true }
-        else if (e.key === Qt.Key_Tab) { root.tab = root.tab === "startup" ? "procs" : "startup"; e.accepted = true }
+        else if (e.key === Qt.Key_Tab) { root.tab = root.tab === "startup" ? "procs" : root.tab === "procs" ? "tips" : "startup"; e.accepted = true }
         else if (e.key === Qt.Key_F5) { root.refresh(); e.accepted = true }
     }
 
@@ -189,6 +231,7 @@ Item {
                 Item { Layout.fillWidth: true }
 
                 Rectangle {
+                    visible: root.tab !== "tips"
                     Layout.preferredWidth: 230
                     Layout.preferredHeight: 34
                     radius: 12
@@ -229,7 +272,7 @@ Item {
                 }
                 SegSwitch {
                     pal: root.pal
-                    options: [ { k: "startup", t: "Startup" }, { k: "procs", t: "Processes" } ]
+                    options: [ { k: "startup", t: "Startup" }, { k: "procs", t: "Processes" }, { k: "tips", t: "Suggestions" + (root.shownTips.length > 0 ? "  " + root.shownTips.length : "") } ]
                     current: root.tab
                     onPicked: k => root.tab = k
                 }
@@ -303,6 +346,7 @@ Item {
 
             // ---- filters / sorting
             RowLayout {
+                visible: root.tab !== "tips"
                 Layout.fillWidth: true
                 spacing: 10
                 SegSwitch {
@@ -321,6 +365,13 @@ Item {
                     onPicked: k => root.sortBy = k
                 }
                 Item { Layout.fillWidth: true }
+                Chip {
+                    visible: root.tab === "startup" && root.shownTips.length > 0
+                    pal: root.pal; implicitHeight: 28; maxLabel: 1000
+                    label: root.shownTips.length + (root.shownTips.length === 1 ? " suggestion" : " suggestions")
+                    on: true
+                    onClicked: root.tab = "tips"
+                }
                 Text {
                     visible: root.loaded
                     text: root.tab === "startup" ? root.shownItems.length + " shown" : root.shownProcs.length + " shown"
@@ -330,6 +381,7 @@ Item {
 
             // ---- column titles
             RowLayout {
+                visible: root.tab !== "tips"
                 Layout.fillWidth: true
                 Layout.leftMargin: 16; Layout.rightMargin: 24
                 spacing: 12
@@ -337,8 +389,8 @@ Item {
                 Cap { Layout.fillWidth: true; text: root.tab === "startup" ? "ITEM" : "PROCESS" }
                 Cap { visible: root.tab === "procs"; Layout.preferredWidth: 130; text: "STARTED BY" }
                 Cap { Layout.preferredWidth: 84; horizontalAlignment: Text.AlignRight; text: "MEMORY" }
-                Cap { Layout.preferredWidth: 52; horizontalAlignment: Text.AlignRight; text: "CPU" }
-                Cap { visible: root.tab === "startup"; Layout.preferredWidth: 34; horizontalAlignment: Text.AlignRight; text: "PROC" }
+                Cap { Layout.preferredWidth: 76; horizontalAlignment: Text.AlignRight; text: "CPU" }
+                Cap { visible: root.tab === "startup"; Layout.preferredWidth: 46; horizontalAlignment: Text.AlignRight; text: "PROCS" }
                 Item { Layout.preferredWidth: 60; height: 1 }
             }
 
@@ -419,8 +471,14 @@ Item {
                                     }
                                 }
                             }
-                            Text { Layout.preferredWidth: 52; horizontalAlignment: Text.AlignRight; text: row.running ? row.model.cpu.toFixed(1) + "%" : "—"; color: row.model.cpu > 25 ? root.pal.warn : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
-                            Text { Layout.preferredWidth: 34; horizontalAlignment: Text.AlignRight; text: row.running ? row.model.count : "—"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            Column {
+                                Layout.preferredWidth: 76
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 1
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: row.running ? root.pct(row.model.cpu / root.ncpu) : "—"; color: row.model.cpu > 50 ? root.pal.warn : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; visible: row.running; text: root.ofCore(row.model.cpu); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
+                            }
+                            Text { Layout.preferredWidth: 46; horizontalAlignment: Text.AlignRight; text: row.running ? row.model.count : "—"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                             Item {
                                 Layout.preferredWidth: 60
                                 Layout.fillHeight: true
@@ -500,7 +558,13 @@ Item {
                                     }
                                 }
                             }
-                            Text { Layout.preferredWidth: 52; horizontalAlignment: Text.AlignRight; text: prow.model.cpu.toFixed(1) + "%"; color: prow.model.cpu > 25 ? root.pal.warn : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            Column {
+                                Layout.preferredWidth: 76
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 1
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: root.pct(prow.model.cpu / root.ncpu); color: prow.model.cpu > 50 ? root.pal.warn : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: root.ofCore(prow.model.cpu); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
+                            }
                             Item {
                                 Layout.preferredWidth: 60
                                 Layout.fillHeight: true
@@ -524,6 +588,90 @@ Item {
                     }
                 }
 
+                // ---- suggestions: what is running at startup and is not earning its place
+                ListView {
+                    id: tipList
+                    anchors.fill: parent
+                    visible: root.tab === "tips"
+                    clip: true
+                    spacing: 8
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: tipModel
+                    delegate: Rectangle {
+                        id: trow
+                        required property var model
+                        readonly property bool safe: model.level === "safe"
+                        readonly property color tone: safe ? root.pal.good : root.pal.warn
+                        width: ListView.view ? ListView.view.width - 8 : 0
+                        height: 88
+                        radius: root.pal.rLg
+                        color: tipHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.75)
+                        border.width: 1
+                        border.color: tipHover.hovered ? Qt.alpha(root.pal.accent, 0.3) : root.pal.lineSoft
+                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                        HoverHandler { id: tipHover }
+
+                        Rectangle {
+                            anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                            anchors.margins: 12
+                            width: 3; radius: 1.5
+                            color: trow.tone
+                        }
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 28; anchors.rightMargin: 16; anchors.topMargin: 10; anchors.bottomMargin: 10
+                            spacing: 16
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 5
+                                RowLayout {
+                                    spacing: 10
+                                    Text { text: trow.model.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                    Rectangle {
+                                        implicitWidth: pillText.implicitWidth + 16; implicitHeight: 18; radius: 9
+                                        color: Qt.alpha(trow.tone, 0.16)
+                                        Text {
+                                            id: pillText
+                                            anchors.centerIn: parent
+                                            text: trow.safe ? "SAFE TO TURN OFF" : "WORTH A LOOK"
+                                            color: trow.tone
+                                            font.family: root.pal.uiFont; font.pixelSize: 9; font.weight: Font.DemiBold; font.letterSpacing: 1
+                                        }
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: trow.model.why
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 3
+                                    elide: Text.ElideRight
+                                    color: root.pal.muted
+                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1
+                                }
+                            }
+                            Column {
+                                Layout.alignment: Qt.AlignVCenter
+                                Layout.preferredWidth: 78
+                                visible: trow.model.mb >= 1
+                                spacing: 0
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: "−" + root.fmt(trow.model.mb); color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: "memory"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
+                            }
+                            Chip { Layout.alignment: Qt.AlignVCenter; pal: root.pal; maxLabel: 1000; implicitHeight: 32; label: "Turn off"; on: true; onClicked: root.turnOff(trow.model.id) }
+                            Chip { Layout.alignment: Qt.AlignVCenter; pal: root.pal; maxLabel: 1000; implicitHeight: 32; label: "Keep"; onClicked: root.keepTip(trow.model.id) }
+                        }
+                    }
+                }
+                Column {
+                    anchors.centerIn: parent
+                    visible: root.loaded && root.tab === "tips" && root.shownTips.length === 0
+                    spacing: 6
+                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Nothing stands out"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
+                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Everything that starts with your desktop is doing a job on this machine."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                }
+
                 Text {
                     anchors.centerIn: parent
                     visible: root.loaded && ((root.tab === "startup" && root.shownItems.length === 0) || (root.tab === "procs" && root.shownProcs.length === 0))
@@ -541,7 +689,8 @@ Item {
             // ---- footer
             Text {
                 Layout.fillWidth: true
-                text: root.note !== "" ? root.note : "Memory is PSS (shared pages split fairly). The switch changes what starts next login; polkit and portal need a new login. / searches, Tab switches view, F5 refreshes, Esc closes."
+                text: root.note !== "" ? root.note : (root.tab === "tips" ? "Nothing is turned off until you press the button. Keep hides a suggestion for good. Startup items change at the next login."
+                                                              : "PSS memory. CPU: big number = share of the whole processor, small = of one core. PROCS = processes the item runs. / searches, Tab switches view, F5 refreshes.")
                 color: root.pal.muted
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tCap

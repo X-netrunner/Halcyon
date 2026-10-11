@@ -183,7 +183,7 @@ micro_theme() {
   local d="$HOME/.config/micro/colorschemes" cur sel dim bred bgreen byellow bblue bmagenta bcyan
   mkdir -p "$d"
   bred=${A_C9:-$red}; bgreen=${A_C10:-$green}; byellow=${A_C11:-$yellow}; bblue=${A_C12:-$blue}; bmagenta=${A_C13:-$magenta}; bcyan=${A_C14:-$cyan}
-  mixv "$surf" "$acc" 14; cur=$MIX          # the line the cursor is on: a faint accent tint
+  mixv "$bg" "$acc" 24; cur=$MIX            # the line the cursor is on: the background colour pulled a little towards the accent (darker than the text, never the text colour)
   mixv "$hi" "$acc" 40; sel=$MIX            # the selection
   mixv "$mut" "$fg" 30; dim=$MIX            # comments / line numbers: the muted colour, lifted a little so it stays readable
   {
@@ -217,8 +217,10 @@ micro_theme() {
     echo "color-link gutter-error \"bold $bred\""
     echo "color-link gutter-warning \"$byellow\""
     echo "color-link divider \"$dim\""
-    echo "color-link cursor-line \"$fg,$cur\""
-    echo "color-link color-column \"$fg,$cur\""
+    # micro paints the current line / colour column with the FOREGROUND colour of these two groups (that is how its own schemes
+    # write them, one colour alone), so give them just the dark tint: "fg,bg" here made the line the colour of the text
+    echo "color-link cursor-line \"$cur\""
+    echo "color-link color-column \"$cur\""
     echo "color-link selection \"$fg,$sel\""
   } > "$d/halcyon.micro.tmp" && mv "$d/halcyon.micro.tmp" "$d/halcyon.micro" && log "micro: colorscheme written (accent $acc)"
   return 0
