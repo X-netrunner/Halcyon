@@ -4,6 +4,15 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Startup window: Suggestions, honest CPU numbers
+
+- **Suggestions tab** (and a "N suggestions" chip on the Startup tab): startup items that are running and can be turned off, each with the reason, the memory it would free, *Turn off* and *Keep* (Keep hides it for good, `~/.local/state/island/startup-keep`). It flags things that do nothing on this machine (touchpad gestures service without a touchpad, blueman without a Bluetooth adapter), things Halcyon already covers (nm-applet, the screen-sharing portal, which starts by itself when needed), file indexers / Evolution helpers, and chat / sync apps or heavy autostart entries (Steam, Discord ...) that can be opened by hand. Audio, portals, polkit, the keyring and the desktop itself are never suggested. Nothing is switched off without the button.
+- **CPU** now shows the share of the whole processor (matches your overall usage) with the share of one core under it. Values are averaged over the last refreshes, so a short burst (power-manager starting `nvidia-smi` / `powerprofilesctl` during the 0.4 s snapshot read 116 %) fades instead of reading as a steady load.
+- *PROC* is now *PROCS* (how many processes the item runs) with a wider column.
+- micro: the current line was the colour of the text (micro paints it with the foreground colour of `cursor-line`); it is now a dark tint of the accent, text colours stay as they are.
+
+---
+
 ## micro follows the wallpaper, and is transparent
 
 - `scripts/app-themes.sh` writes `~/.config/micro/colorschemes/halcyon.micro` and selects it (`"colorscheme": "halcyon"` in micro's `settings.json`; your old file is kept once as `settings.json.before-halcyon`). The scheme gives the text, status bar, tabs and gutter no background, so micro shows the terminal's own translucent background (the grey blob was micro's built-in scheme painting over it). Syntax colours are the wallpaper's bright colours so they stay readable over it; only the current line, the selection and search hits have a background.

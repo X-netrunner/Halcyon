@@ -6,9 +6,15 @@ nothing stays running in the background.
   startup-view.py list                     one line of JSON: startup items (+ their processes) and every process of yours
   startup-view.py toggle MODE KEY 1|0      MODE = conf (Halcyon's own, via startup-conf.sh) | unit (systemd --user) | xdg (autostart .desktop)
   startup-view.py end PID                  asks one of your own processes to quit (SIGTERM); the desktop itself is protected
+  startup-view.py keep ID                  "Keep it": that startup item is not suggested for turning off any more
+
+"suggest" in the list is the window's Suggestions tab: startup items that are running and can be turned off because they do
+nothing useful on THIS machine (no touchpad, no Bluetooth adapter ...), because Halcyon already covers what they do, or because
+they are chat / sync apps that can simply be opened when you need them. Nothing is ever turned off without you pressing the button.
 
 Memory is PSS (shared pages split fairly between the processes that map them, the same number halcyon-mem-where.sh uses),
-so the total is not inflated by shared libraries. CPU is sampled over ~0.4 s.
+so the total is not inflated by shared libraries. CPU is sampled over ~0.4 s and is "percent of ONE core" (100 = one core
+busy, a process with several threads can pass 100); the window also shows it as a share of the whole processor (ncpu).
 """
 import json, os, re, shlex, signal, subprocess, sys, time
 
@@ -17,6 +23,8 @@ UID = os.getuid()
 RICE = os.environ.get("HALCYON_DIR", HOME + "/.config/Halcyon")
 TICK = os.sysconf("SC_CLK_TCK")
 PAGE_KB = os.sysconf("SC_PAGE_SIZE") // 1024
+STATE = HOME + "/.local/state/island"
+KEEP = STATE + "/startup-keep"
 PROTECTED = re.compile(r"(^|/)(Hyprland|quickshell|systemd|dbus-broker|dbus-daemon|dbus-broker-launch|start-shell\.sh|login|sddm|greetd)( |$)")
 
 
@@ -203,6 +211,78 @@ def systemd_units():
     return out
 
 
+# ------------------------------------------------------------------ suggestions
+def has_touchpad():
+    try:
+        with open("/proc/bus/input/devices", errors="replace") as f:
+            return any(l.startswith("N:") and re.search(r"touchpad|trackpad", l, re.I) for l in f)
+    except Exception:
+        return True            # cannot tell: do not claim it is missing
+
+
+def has_bluetooth():
+    try:
+        return len(os.listdir("/sys/class/bluetooth")) > 0
+    except Exception:
+        return False
+
+
+def load_keep():
+    try:
+        with open(KEEP) as f:
+            return {l.strip() for l in f if l.strip()}
+    except Exception:
+        return set()
+
+
+# chat / sync / launcher style apps: nothing breaks when they start later, by hand
+CHATTY = re.compile(r"steam|discord|vesktop|spotify|telegram|slack|teams|zoom|skype|signal|element|whatsapp|dropbox|onedrive|"
+                    r"nextcloud|megasync|insync|syncthing|obsidian|thunderbird|evolution|kdeconnect|razer|piper|ratbag|solaar|"
+                    r"flameshot|ollama|docker|onedriver|rclone", re.I)
+# user services that are safe to switch off (audio, portals, keyring, polkit ... are never in this list)
+UNIT_TIPS = [
+    (r"^(tracker-|localsearch)", "safe", "Indexes your files for desktop search and reads the disk in the background. Halcyon's launcher does not use it."),
+    (r"^evolution-", "safe", "Contacts / calendar helpers for the Evolution mail app. Only needed if you use Evolution."),
+    (r"^kdeconnect", "maybe", "The phone link (KDE Connect). Turn it off if you do not use it."),
+    (r"^syncthing", "maybe", "File sync in the background. Start it by hand when you want to sync."),
+]
+
+
+def suggestions(items):
+    keep = load_keep()
+    out = []
+
+    def add(it, level, why):
+        tg = it.get("toggle")
+        if it["id"] in keep or not tg or not tg.get("on") or it.get("core") or it.get("missing") or it["count"] == 0:
+            return
+        out.append(dict(id=it["id"], name=it["name"], level=level, why=why, mb=it["mem"]))
+
+    touchpad, bluetooth = has_touchpad(), has_bluetooth()
+    for it in items:
+        i = it["id"]
+        if i == "cat:gestures" and not touchpad:
+            add(it, "safe", "No touchpad was found on this machine, so it has nothing to react to.")
+        elif i == "cat:blueman" and not bluetooth:
+            add(it, "safe", "No Bluetooth adapter was found.")
+        elif i == "cat:nm":
+            add(it, "maybe", "The island has its own Wi-Fi list. The applet is only needed for VPN and 802.1x (work / campus Wi-Fi) password prompts.")
+        elif i == "cat:portal":
+            add(it, "maybe", "Nothing needs it until an app wants to share the screen, and with it off it starts by itself at that moment. Applies at the next login.")
+        elif i.startswith("unit:"):
+            for rx, lvl, why in UNIT_TIPS:
+                if re.search(rx, it["name"]):
+                    add(it, lvl, why)
+                    break
+        elif i.startswith("xdg:"):
+            if CHATTY.search(it["name"] + " " + it.get("desc", "")):
+                add(it, "maybe", "A chat / sync / launcher app that starts with the desktop and keeps %d MB in memory. You can open it yourself when you need it." % round(it["mem"]))
+            elif it["mem"] >= 150:
+                add(it, "maybe", "Starts with the desktop and keeps %d MB in memory all the time. If you do not need it right away, open it by hand instead." % round(it["mem"]))
+    out.sort(key=lambda t: (t["level"] != "safe", -t["mb"]))
+    return out
+
+
 # ------------------------------------------------------------------ list
 def cmd_list():
     procs = scan()
@@ -283,7 +363,7 @@ def cmd_list():
         pass
     items.sort(key=lambda it: (-it["mem"], it["name"].lower()))
     print(json.dumps(dict(
-        items=items, procs=plist, n_procs=len(procs),
+        items=items, procs=plist, n_procs=len(procs), suggest=suggestions(items), ncpu=os.cpu_count() or 1,
         session_mb=round(sum(p["pss"] for p in procs.values()) / 1024, 1),
         startup_mb=round(sum(it["mem"] for it in items), 1),
         total_mb=round(meminfo.get("MemTotal", 0) / 1024), avail_mb=round(meminfo.get("MemAvailable", 0) / 1024))))
@@ -325,6 +405,14 @@ def main():
         if mode == "xdg":
             return set_xdg(key, on)
         return 2
+    elif a[0] == "keep" and len(a) >= 2 and re.fullmatch(r"[\w:.@+-]+", a[1]):
+        try:
+            os.makedirs(STATE, exist_ok=True)
+            if a[1] not in load_keep():
+                with open(KEEP, "a") as f:
+                    f.write(a[1] + "\n")
+        except Exception:
+            return 1
     elif a[0] == "end" and len(a) >= 2 and a[1].isdigit():
         pid = int(a[1])
         if pid < 2:
