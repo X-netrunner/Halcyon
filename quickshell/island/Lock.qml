@@ -24,6 +24,14 @@ Scope {
     property string avatarPath: ""
     property bool locked: false
 
+    // background: "solid" = the theme colour (pal.bg); "wallpaper" = the current wallpaper, blurred, with a sheet of the
+    // theme colour over it. The sheet's opacity (tint) is the user's: 0 shows the wallpaper as it is.
+    property string bgMode: "solid"
+    property string wallpaper: ""         // path of the wallpaper on screen (Wallpaper.qml currentPath)
+    property real blurRadius: 40          // 4 .. 64
+    property real tint: 0.55              // 0 .. 0.95
+    readonly property bool useWall: bgMode === "wallpaper" && wallpaper !== ""
+
     // shared by every screen's surface
     property string buffer: ""
     property bool busy: false
@@ -79,6 +87,37 @@ Scope {
             // the whole screen eases in when it locks
             property real appear: 0
             NumberAnimation on appear { from: 0; to: 1; duration: 1100; easing.type: Easing.OutCubic }
+
+            // ---- blurred wallpaper (only exists while locked and only when chosen in Settings > Sleep & lock)
+            // The blur sits in its own layer, so it is drawn once and kept as a texture, not redone every frame the stars move.
+            Item {
+                id: wallBox
+                anchors.fill: parent
+                visible: root.useWall
+                opacity: surf.appear
+                layer.enabled: root.useWall
+                Image {
+                    id: wallImg
+                    anchors.fill: parent
+                    visible: false
+                    asynchronous: true
+                    fillMode: Image.PreserveAspectCrop
+                    // decode at the screen's size, like Wallpaper.qml does, not at the picture's own (maybe 4K) size
+                    source: root.useWall && surf.width > 0 ? "file://" + root.wallpaper : ""
+                    sourceSize: Qt.size(Math.max(1, Math.round(surf.width)), Math.max(1, Math.round(surf.height)))
+                }
+                MultiEffect {
+                    anchors.fill: parent
+                    source: wallImg
+                    visible: wallImg.status === Image.Ready
+                    autoPaddingEnabled: false
+                    blurEnabled: true
+                    blurMax: Math.max(4, Math.min(64, Math.round(root.blurRadius)))
+                    blur: 1.0
+                }
+                // theme-colour sheet: this is the "opacity" of the lock screen
+                Rectangle { anchors.fill: parent; color: root.pal.bg; opacity: root.tint }
+            }
 
             // ---- constellation + drifting dots (same quiet look as everything else)
             Backdrop {
