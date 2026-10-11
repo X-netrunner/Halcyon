@@ -1182,132 +1182,44 @@ Item {
     }
 
 
-    // ---- Halcyon's own footprint, under the header on the left
-    Rectangle {
+    // ---- Halcyon's own footprint, under the header on the left: just a few quiet lines, a faint star for each bullet.
+    Column {
         id: halCard
         x: 40
-        y: 34 + 52
-        width: 262
-        height: halCol.implicitHeight + 28
-        radius: 16
-        color: Qt.alpha(ov.pal.surface, 0.80)
-        border.width: 1
-        border.color: Qt.alpha(ov.pal.accent, 0.28)
+        y: 34 + 54
+        width: 240
+        spacing: 1
         opacity: ov.open ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.InOutSine } }
 
         readonly property real memFrac: ov.sysRes.total > 0 ? Math.min(1, ov.halRes.mem / ov.sysRes.total) : 0
-        readonly property real cpuFrac: Math.min(1, ov.halRes.cpu / 100)
+        readonly property var procs: ov.halRes.top || []
 
-        Column {
-            id: halCol
-            x: 16; y: 14
-            width: parent.width - 32
-            spacing: 10
-
-            Row {
-                spacing: 8
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: String.fromCodePoint(0xF0493)
-                    color: ov.pal.accent
-                    font.family: ov.pal.font
-                    font.pixelSize: 14
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Halcyon"
-                    color: ov.pal.text
-                    font.family: ov.pal.uiFont
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: ov.halRes.n + (ov.halRes.n === 1 ? " process" : " processes")
-                    color: ov.pal.muted
-                    font.family: ov.pal.uiFont
-                    font.pixelSize: 11
-                }
-            }
-
-            // CPU
-            Column {
-                width: parent.width
-                spacing: 4
-                Row {
-                    width: parent.width
-                    Text { text: "CPU"; color: ov.pal.muted; font.family: ov.pal.uiFont; font.pixelSize: 11; width: parent.width - cpuVal.implicitWidth }
-                    Text { id: cpuVal; text: ov.halRes.cpu.toFixed(1) + "%"; color: ov.pal.text; font.family: ov.pal.font; font.pixelSize: 11 }
-                }
-                Rectangle {
-                    width: parent.width; height: 5; radius: 3
-                    color: Qt.alpha(ov.pal.muted, 0.22)
-                    Rectangle {
-                        height: parent.height; radius: 3
-                        width: Math.max(4, parent.width * halCard.cpuFrac)
-                        color: ov.pal.accent
-                        Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
-                    }
-                }
-            }
-
-            // RAM
-            Column {
-                width: parent.width
-                spacing: 4
-                Row {
-                    width: parent.width
-                    Text { text: "RAM"; color: ov.pal.muted; font.family: ov.pal.uiFont; font.pixelSize: 11; width: parent.width - memVal.implicitWidth }
-                    Text {
-                        id: memVal
-                        text: ov.fmtMem(ov.halRes.mem) + (ov.sysRes.total > 0 ? "  ·  " + (halCard.memFrac * 100).toFixed(1) + "%" : "")
-                        color: ov.pal.text; font.family: ov.pal.font; font.pixelSize: 11
-                    }
-                }
-                Rectangle {
-                    width: parent.width; height: 5; radius: 3
-                    color: Qt.alpha(ov.pal.muted, 0.22)
-                    Rectangle {
-                        height: parent.height; radius: 3
-                        width: Math.max(4, parent.width * halCard.memFrac)
-                        color: ov.pal.accent2
-                        Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
-                    }
-                }
-            }
-
-            // heaviest parts
-            Rectangle { width: parent.width; height: 1; color: Qt.alpha(ov.pal.muted, 0.18); visible: ov.halRes.top && ov.halRes.top.length > 0 }
-            Repeater {
-                model: ov.halRes.top || []
-                delegate: Row {
-                    width: halCol.width
-                    Text {
-                        text: modelData.name
-                        color: ov.pal.muted
-                        font.family: ov.pal.font
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
-                        width: parent.width - 96
-                    }
-                    Text {
-                        text: modelData.cpu.toFixed(1) + "%"
-                        color: ov.pal.muted
-                        font.family: ov.pal.font
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignRight
-                        width: 44
-                    }
-                    Text {
-                        text: ov.fmtMem(modelData.mem)
-                        color: ov.pal.text
-                        font.family: ov.pal.font
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignRight
-                        width: 52
-                    }
-                }
+        Text {
+            bottomPadding: 4
+            text: "Halcyon  ·  " + ov.halRes.n + (ov.halRes.n === 1 ? " process" : " processes")
+            color: ov.pal.muted
+            opacity: 0.7
+            font.family: ov.pal.uiFont
+            font.pixelSize: 11
+            font.letterSpacing: 0.4
+        }
+        HalRow { pal: ov.pal; label: "CPU"; value: ov.halRes.cpu.toFixed(1) + "%" }
+        HalRow {
+            pal: ov.pal
+            tint: ov.pal.accent2
+            label: "RAM"
+            value: ov.fmtMem(ov.halRes.mem) + (ov.sysRes.total > 0 ? "  ·  " + (halCard.memFrac * 100).toFixed(1) + "%" : "")
+        }
+        Repeater {
+            model: halCard.procs
+            delegate: HalRow {
+                required property var modelData
+                pal: ov.pal
+                main: false
+                tint: ov.pal.accent2
+                label: modelData.name
+                value: ov.fmtMem(modelData.mem)
             }
         }
     }

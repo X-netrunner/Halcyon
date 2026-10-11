@@ -103,3 +103,12 @@ function hop(l, zone, i, d) {
     if (d > 0) o[zones[zi]].unshift(id); else o[zones[zi]].push(id)
     return o
 }
+
+// drop a widget into a zone at position idx (moves it if it was somewhere else). idx counts the zone WITHOUT the widget.
+function place(l, id, zone, idx) {
+    var o = remove(l, id)
+    var a = o[zone]
+    var i = Math.max(0, Math.min(a.length, idx))
+    a.splice(i, 0, id)
+    return o
+}

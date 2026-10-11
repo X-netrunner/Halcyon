@@ -261,9 +261,16 @@ Scope {
     // not visible from here. So whether the gallery is open is kept up here, and the gallery follows it.
     property bool galleryOpen: false
     property bool galleryLoaded: false          // the gallery window exists (a moment longer than galleryOpen, so it can fade out)
-    Timer { id: galleryUnload; interval: 320; onTriggered: root.galleryLoaded = false }
+    Timer { id: galleryUnload; interval: 320; onTriggered: { root.galleryLoaded = false; settingsGc.restart() } }
     function openGallery() { galleryOpen = true }      // its own window: no need to go through Settings
-    function hide() { galleryOpen = false; open = false }
+    // the Bar builder window works the same way (Settings > Bar style > Bar builder > "Open the bar builder")
+    property bool builderOpen: false
+    property bool builderLoaded: false
+    Timer { id: builderUnload; interval: 320; onTriggered: { root.builderLoaded = false; settingsGc.restart() } }
+    Timer { id: settingsGc; interval: 2500; onTriggered: gc() }
+    onBuilderOpenChanged: { if (builderOpen) { builderUnload.stop(); builderLoaded = true } else builderUnload.restart() }
+    function openBuilder() { builderOpen = true }
+    function hide() { galleryOpen = false; builderOpen = false; open = false }
     function toggle() { open = !open }
 
     component SChip: Chip { maxLabel: 1000 }
@@ -575,7 +582,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "barBuilder" ? 16 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "barBuilder" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -1018,6 +1025,7 @@ Scope {
         BarBuilder {
             pal: root.pal
             layout: root.get("opt:barLayout")
+            onOpenRequested: root.builderOpen = true
             onEdited: l => root.setting("opt:barLayout", l)
         }
     }
@@ -1532,6 +1540,35 @@ Scope {
                 colors: root.wpColors
                 onPicked: path => root.pickWallpaper(path)
                 onAction: act => root.wpAct(act)
+            }
+        }
+    }
+
+    // ======================================================================== the Bar builder window
+    // A full-screen overlay with the builder on it (drag widgets into the left / middle / right of the bar).
+    LazyLoader {
+        active: root.builderLoaded
+        PanelWindow {
+            id: bwin
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            WlrLayershell.namespace: "island-barbuilder"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: root.builderOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+            // opens one frame after the window exists, so the fade-in plays
+            property bool shown: false
+            Timer { running: true; interval: 30; onTriggered: bwin.shown = true }
+
+            BarBuilderWindow {
+                anchors.fill: parent
+                open: root.builderOpen && bwin.shown
+                pal: root.pal
+                layout: root.get("opt:barLayout")
+                onClosed: root.builderOpen = false
+                onEdited: l => root.setting("opt:barLayout", l)
             }
         }
     }

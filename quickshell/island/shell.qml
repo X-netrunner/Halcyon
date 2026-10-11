@@ -374,6 +374,10 @@ ShellRoot {
 
     // SUPER+TAB tree overview
     property bool overviewOpen: false
+    // the tree view (and its thousands of constellation lines) is gone once it closes, but the JS heap that held them is only
+    // freed by a collection: do one a moment after it closes, so the island goes back to its small size
+    onOverviewOpenChanged: if (!overviewOpen) overviewGc.restart()
+    Timer { id: overviewGc; interval: 2500; onTriggered: gc() }
 
     // why Auto is where it is (from the daemon's current mode); "" for the plain AC-balanced case
     readonly property string autoNote: ({ "battery": "on battery", "ac-performance": "heavy load", "idle": "idle",
@@ -630,6 +634,7 @@ ShellRoot {
     // notification centre > launcher / performance / media page). Returns false when there is nothing to close.
     function closeOverlay() {
         if (powerMenu.open) { powerMenu.hide(); return true }
+        if (settingsWin.builderOpen) { settingsWin.builderOpen = false; return true }
         if (settingsWin.galleryOpen) { settingsWin.galleryOpen = false; return true }
         if (settingsWin.open) { settingsWin.hide(); return true }
         if (cheat.open) { if (cheat.editId !== "") cheat.cancelEdit(); else cheat.hide(); return true }
@@ -1036,9 +1041,20 @@ ShellRoot {
     onStatsChanged: {
         if (Date.now() > autoGuard) {
             var a = stats.auto === true
-            if (a !== autoPower) { autoPower = a; saveSettings() }
+            if (a && !autoPower) { autoPower = true; saveSettings() }
+            // the state file can go stale while the daemon is perfectly alive (a slow poll, suspend / resume), so a missing or old
+            // file alone must not switch Auto off (and save that): ask systemd whether the daemon really is gone first
+            else if (!a && autoPower && !autoCheck.running) autoCheck.running = true
         }
         if (autoPower && stats.pprofile) profile = stats.pprofile
+    }
+
+    Process {
+        id: autoCheck
+        command: ["systemctl", "--user", "is-active", "--quiet", root.powerService]
+        onExited: code => {
+            if (code !== 0 && root.stats.auto !== true && Date.now() > root.autoGuard && root.autoPower) { root.autoPower = false; root.saveSettings() }
+        }
     }
 
     function session(action) {
@@ -1062,6 +1078,8 @@ ShellRoot {
         switch (id) {
         case "wallpaper": randomWallpaper(); break
         case "wallgallery": settingsWin.openGallery(); break
+        case "barbuilder": settingsWin.openBuilder(); break
+        case "reload": fullReloadProc.running = true; break
         case "settings": settingsWin.show(); break
         case "power": powerMenu.show(); break
         case "gaming": setGaming(!gaming); break

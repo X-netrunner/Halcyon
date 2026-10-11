@@ -18,7 +18,6 @@ conf_backup/
 *.log
 *.orig
 *.before-halcyon*
-*.before-*
 
 # Editor & OS files
 .DS_Store
