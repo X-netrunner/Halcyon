@@ -280,6 +280,17 @@ PanelWindow {
             }
         }
 
+        // a few drifting stars behind the widgets (Settings > Look > Constellations > Bar)
+        BarStars {
+            pal: win.pal
+            active: !win.pageOpen
+            visible: win.shown && win.opt.stars !== false && win.opt.starsBar !== false
+            x: notch.r + notch.cr
+            y: 3
+            width: Math.max(0, notch.bw - notch.cr * 2)
+            height: notch.bh - 6
+        }
+
         // scroll / two-finger swipe on the bar = change page (the wheel over the workspaces walks through workspaces instead)
         property real wheelAcc: 0
         Timer { id: wheelCool; interval: 450 }
@@ -504,7 +515,7 @@ PanelWindow {
 
         Visualizer {
             id: vizSp
-            visible: win.centerClock && win.showViz && win.opt.viz !== "off" && win.playing
+            visible: win.centerClock && win.showViz && win.opt.viz !== "off"      // always: dots while nothing plays, so the bar keeps its width
             y: Math.round((notch.bh - height) / 2)
             x: {
                 var from = leftGroup.x + leftGroup.width, to = win.showTime ? notch.width / 2 - notch.timeHalf + notch.colonShift : dateRow.x
@@ -512,7 +523,7 @@ PanelWindow {
             }
             pal: win.pal
             values: win.cava
-            active: win.centerClock && win.showViz && win.opt.viz !== "off" && win.playing
+            active: win.playing
         }
 
         // clicking the status icons opens the performance page (under the row, so the background-apps count keeps its own click)
@@ -716,9 +727,10 @@ PanelWindow {
     function wsWindows(w) {
         try { return w.toplevels.values.length } catch (e) { return 0 }
     }
+    // a special workspace shows its icon only while it has a window in it (or is open right now: "lit"), so an empty one leaves no blank space
     function hasSpecial(n) {
         var l = Hyprland.workspaces.values
-        for (var i = 0; i < l.length; i++) if (l[i].name === "special:" + n) return true
+        for (var i = 0; i < l.length; i++) if (l[i].name === "special:" + n) return wsWindows(l[i]) > 0
         return false
     }
 }

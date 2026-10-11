@@ -16,7 +16,7 @@ hl.layer_rule({ match = { namespace = "notification" }, blur = true })
 -- glass 0.80, glassSolid 0.94). The bar is the lightest, so it needs the lowest threshold.
 local glass = { island = 0.40, ["island-notch"] = 0.40, ["island-panel"] = 0.55, ["island-notifs"] = 0.55, ["island-term"] = 0.55, ["island-overview"] = 0.55,
     -- full-screen overlays (power menu, settings): a dim sheet over everything, blurred behind it
-    ["island-power"] = 0.2, ["island-settings"] = 0.2,
+    ["island-power"] = 0.2, ["island-settings"] = 0.2, ["island-barbuilder"] = 0.2, ["island-gallery"] = 0.2,
     -- bottom-left background-apps box
     ["island-apps"] = 0.55 }
 for ns, a in pairs(glass) do

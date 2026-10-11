@@ -24,10 +24,19 @@ var apps = [
       match: "(^|/)slack( |$)", cmd: "slack" }
 ]
 
+// Chat sites opened as a web app by a browser (Settings > Default apps > Chat, e.g. WhatsApp). A Chromium-family browser run with
+// --app=URL gives the window a class like "chrome-web.whatsapp.com__-Default": the browser's name, the site, the profile.
+var webBrowsers = ["chrome", "chromium", "brave", "google-chrome", "vivaldi", "microsoft-edge"]
+var webHosts = ["web.whatsapp.com", "web.telegram.org", "messenger.com", "messages.google.com", "discord.com", "teams.microsoft.com", "instagram.com"]
+
 function appForClass(cls) {
     var c = String(cls || "").toLowerCase()
     if (c === "") return null
     for (var i = 0; i < apps.length; i++)
         if (apps[i].classes.indexOf(c) >= 0) return apps[i]
+    for (var b = 0; b < webBrowsers.length; b++)
+        if (c.indexOf(webBrowsers[b] + "-") === 0)
+            for (var h = 0; h < webHosts.length; h++)
+                if (c.indexOf(webHosts[h]) > 0) return { id: "web-" + webHosts[h], name: webHosts[h], ws: "communication" }
     return null
 }

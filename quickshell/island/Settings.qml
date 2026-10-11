@@ -177,6 +177,15 @@ Scope {
         apps = a                     // show it at once; the list is re-read below
         appsAgain.restart()
     }
+    // a website as a chat app (scripts/apps.sh add-web): it is chosen at once, and SUPER+D opens it in your browser
+    function addWebApp(name, url) {
+        Quickshell.execDetached(["bash", appsScript, "add-web", name, url])
+        appsAgain.restart()
+    }
+    function removeWebApp(id) {
+        Quickshell.execDetached(["bash", appsScript, "remove-web", id])
+        appsAgain.restart()
+    }
     // wallpaper folder (scripts/wallpapers.sh): the folder, the wallpaper in use, every image in it
     property var wp: ({ dir: "", current: "", files: [] })
     property string wpText: ""
@@ -194,8 +203,32 @@ Scope {
         wallpaperSet(path)
         wpAgain.restart()
     }
+    // the colours of every wallpaper (scripts/wallpapers.sh colors): { path: ["#accent", "#accent2", ...] }, read while the gallery is open
+    property var wpColors: ({})
+    property var wpColorsNew: ({})
+    Timer {
+        id: wpColorFlush
+        interval: 120
+        onTriggered: { root.wpColors = Object.assign({}, root.wpColors, root.wpColorsNew); root.wpColorsNew = ({}) }
+    }
+    Process {
+        id: wpColorProc
+        command: ["bash", root.wpScript, "colors"]
+        stdout: SplitParser {
+            onRead: line => {
+                var i = line.indexOf("\t")
+                if (i <= 0) return
+                try { root.wpColorsNew[line.substring(0, i)] = JSON.parse(line.substring(i + 1)) } catch (e) { return }
+                wpColorFlush.restart()
+            }
+        }
+    }
+    onGalleryOpenChanged: {
+        if (galleryOpen) { galleryUnload.stop(); galleryLoaded = true; if (!wpColorProc.running) wpColorProc.running = true }
+        else galleryUnload.restart()
+    }
     Timer { id: wpAgain; interval: 1500; onTriggered: if (!wpProc.running) wpProc.running = true }
-    Timer { id: wpPoll; interval: 4000; running: root.open; repeat: true; triggeredOnStart: true; onTriggered: if (!wpProc.running) wpProc.running = true }
+    Timer { id: wpPoll; interval: 4000; running: root.open || root.galleryOpen; repeat: true; triggeredOnStart: true; onTriggered: if (!wpProc.running) wpProc.running = true }
     Process {
         id: wpProc
         command: ["bash", root.wpScript, "list"]
@@ -204,6 +237,7 @@ Scope {
                 if (text === root.wpText) return          // nothing changed: keep the thumbnails as they are
                 root.wpText = text
                 try { root.wp = JSON.parse(text) } catch (e) {}
+                if (root.galleryOpen && !wpColorProc.running) wpColorProc.running = true      // new pictures: read their colours
             }
         }
     }
@@ -232,11 +266,20 @@ Scope {
         if (group) { if (open) unfoldOnly(group); else pendingGroup = group }
         open = true
     }
-    function openGallery() {
-        show("wallpaper")
-        Qt.callLater(function() { if (wallpaperGallery) wallpaperGallery.show() })
-    }
-    function hide() { open = false }
+    // The Wallpaper Gallery lives inside the window below, which only exists while Settings is open, and ids inside that window are
+    // not visible from here. So whether the gallery is open is kept up here, and the gallery follows it.
+    property bool galleryOpen: false
+    property bool galleryLoaded: false          // the gallery window exists (a moment longer than galleryOpen, so it can fade out)
+    Timer { id: galleryUnload; interval: 320; onTriggered: { root.galleryLoaded = false; settingsGc.restart() } }
+    function openGallery() { galleryOpen = true }      // its own window: no need to go through Settings
+    // the Bar builder window works the same way (Settings > Bar style > Bar builder > "Open the bar builder")
+    property bool builderOpen: false
+    property bool builderLoaded: false
+    Timer { id: builderUnload; interval: 320; onTriggered: { root.builderLoaded = false; settingsGc.restart() } }
+    Timer { id: settingsGc; interval: 2500; onTriggered: gc() }
+    onBuilderOpenChanged: { if (builderOpen) { builderUnload.stop(); builderLoaded = true } else builderUnload.restart() }
+    function openBuilder() { builderOpen = true }
+    function hide() { galleryOpen = false; builderOpen = false; open = false }
     function toggle() { open = !open }
 
     component SChip: Chip { maxLabel: 1000 }
@@ -304,26 +347,28 @@ Scope {
             { type: "toggle", key: "opt:starsPower", label: "Power menu" },
             { type: "toggle", key: "opt:starsLock", label: "Lock screen" },
             { type: "toggle", key: "opt:starsTerm", label: "Console (quick terminal)" },
+            { type: "toggle", key: "opt:starsBar", label: "Bar (a few drifting stars)", desc: "A handful of tiny stars flying slowly along the top bar. Very light: they stop while the bar is hidden or a page is open." },
             { type: "toggle", key: "profileStars", label: "Profile picture constellation" },
             { type: "custom", name: "growth" }
         ] },
         { id: "barstyle", title: "Bar style", section: "Desktop", items: [
-            { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Everything else (pages, launcher, panels) works the same in both.", opts: [o("island", "Island"), o("notch", "Notch")] },
-            { type: "toggle", key: "pair:ws", label: "Show workspaces" },
+            { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Custom: you choose the shape (Notch or Island), what is on the bar, where it goes and how much padding it has (Bar builder below). Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("custom", "Custom")] },
+            { type: "custom", name: "barBuilder", when: "opt:barStyle=custom" },
+            { type: "toggle", key: "pair:ws", label: "Show workspaces", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "opt:islWsLook", label: "Workspace look", desc: "Numbers: the island's own 1 2 3 ... with a sliding pill. Capsules: the notch look, small vertical capsules, the current one big and vivid.", opts: [o("numbers", "Numbers"), o("capsules", "Capsules")], when: "opt:barStyle=island" },
             { type: "seg", key: "pair:wsMin", label: "Capsules always shown", desc: "Workspaces 1 to N are always drawn as capsules (empty ones dim, ones with windows faded, the current one big and vivid). More show up when you use them. The notch always draws capsules; the island only with the capsule look.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")] },
-            { type: "toggle", key: "pair:specials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)" },
+            { type: "toggle", key: "pair:specials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&pair:specials=true" },
-            { type: "toggle", key: "pair:viz", label: "Music bars", desc: "Only while something plays." },
+            { type: "toggle", key: "pair:viz", label: "Music bars", desc: "Only while something plays.", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "opt:viz", label: "Music bars quality", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
-            { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons." },
-            { type: "toggle", key: "pair:wifi", label: "Show Wi-Fi" },
-            { type: "seg", key: "pair:wifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "pair:combo=false" },
+            { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island|notch" },
+            { type: "toggle", key: "pair:wifi", label: "Show Wi-Fi", when: "opt:barStyle=island|notch" },
+            { type: "seg", key: "pair:wifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "pair:combo=false||opt:barStyle=custom" },
             { type: "seg", key: "pair:bt", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")] },
-            { type: "toggle", key: "pair:bat", label: "Show battery" },
+            { type: "toggle", key: "pair:bat", label: "Show battery", when: "opt:barStyle=island|notch" },
             { type: "toggle", key: "pair:batPct", label: "Show battery percentage" },
-            { type: "toggle", key: "pair:caffeine", label: "Show the Caffeine icon" },
-            { type: "seg", key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch" }
+            { type: "toggle", key: "pair:caffeine", label: "Show the Caffeine icon", when: "opt:barStyle=island|notch" },
+            { type: "seg", key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch|custom" }
         ] },
         { id: "bar", title: "Bar", section: "Desktop", items: [
             { type: "seg", key: "barPadding", label: "Bar size and padding", desc: "How tall the bar is. Island: also how far it floats from the top edge and the space at its sides.", opts: [o("low", "Low"), o("normal", "Normal"), o("high", "High")] },
@@ -436,8 +481,10 @@ Scope {
             { type: "seg", key: "st:FILE_ICONS", label: "File manager icons", desc: "How big the icons are in Thunar (side bar, lists, icon view, toolbar). Thunar picks it up at once; windows that are already open may need a reopen.", opts: [o("small", "Small"), o("medium", "Medium"), o("large", "Large")] }
         ] },
         { id: "backup", title: "Backup", section: "System", items: [
-            { type: "action", id: "backup-device", label: "Backup this device", btn: "Choose a disk and back up", done: "Opening…", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the whole system is copied onto it (scripts/backup-device.sh). Nothing on the disk is erased; every backup goes in its own dated folder." },
+            { type: "action", id: "backup-device", label: "Backup this device", btn: "Choose a disk and back up", done: "Opening…", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the whole system is copied onto it (scripts/backup-device.sh). Nothing on the disk is erased; every backup goes in its own dated folder. Caches, trash, package downloads and game files are skipped (they rebuild by themselves); add your own in ~/.config/Halcyon/backup-exclude.conf." },
             { type: "action", id: "backup-home", label: "Backup my home folder only", btn: "Choose a disk and back up", done: "Opening…", desc: "Same, but only your files in your home folder. Needs no admin password." },
+            { type: "action", id: "restore-device", label: "Restore from a backup", btn: "Choose a disk and restore", done: "Opening…", desc: "Plug in the backup disk and pick a backup in the terminal that opens. A home-folder backup can only be restored to your home folder; a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder." },
+            { type: "action", id: "restore-home", label: "Restore my home folder only", btn: "Choose a disk and restore", done: "Opening…", desc: "Same, but it only ever touches your home folder (any backup works), and you can restore just one folder or file from it. Needs no admin password." },
             { type: "action", id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in ~/logs/safety_check/." },
             { type: "toggle", key: "rm:BACKUP_REMIND", label: "Remind me to back up", desc: "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off." },
             { type: "seg", key: "rm:BACKUP_EVERY", label: "Remind me every", opts: [o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")], when: "rm:BACKUP_REMIND=true" },
@@ -464,19 +511,23 @@ Scope {
         if (key.indexOf("rm:") === 0) return remind ? remind[key.substring(3)] : undefined
         if (key.indexOf("pair:") === 0) {            // the value of the bar that is showing now (both get written together)
             var pr = pairs[key.substring(5)]
-            return opt ? opt[(opt.barStyle === "notch") ? pr[1] : pr[0]] : undefined
+            return opt ? opt[(opt.barStyle === "notch" || opt.barStyle === "custom") ? pr[1] : pr[0]] : undefined
         }
         return root[key]
     }
     // item.when = "key=value": the item is only listed while that setting has that value (e.g. the notch options)
     // several conditions can be joined with "&": "opt:barStyle=notch&opt:notchCombo=false"
     function whenOk(w) {
-        var parts = w.split("&")
-        for (var i = 0; i < parts.length; i++) {
-            var p = parts[i].split("=")
-            if (String(get(p[0])) !== p[1]) return false
+        var alts = w.split("||")                       // several ways to be shown: any one is enough
+        for (var a = 0; a < alts.length; a++) {
+            var parts = alts[a].split("&"), ok = true
+            for (var i = 0; i < parts.length && ok; i++) {
+                var p = parts[i].split("=")
+                if (p[1].split("|").indexOf(String(get(p[0]))) < 0) ok = false      // "key=a|b": that setting is a or b
+            }
+            if (ok) return true
         }
-        return true
+        return false
     }
     function num(m) {
         var v = get(m.key)
@@ -541,7 +592,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "barBuilder" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -636,7 +687,7 @@ Scope {
             Flow {
                 Layout.fillWidth: true
                 spacing: 12
-                ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF03E); label: "Gallery (Search & 3D Carousel)"; onClicked: wallpaperGallery.show() }
+                ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF03E); label: "Gallery (Cascade, Carousel & Grid)"; onClicked: root.galleryOpen = true }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0976); label: "Next wallpaper"; onClicked: root.action("wallpaper") }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0770); label: "Open folder"; onClicked: root.wpAct("open") }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0415); label: "Add wallpapers…"; onClicked: root.wpAct("add") }
@@ -701,7 +752,7 @@ Scope {
             Repeater {
                 model: [ { kind: "terminal", title: "Terminal" }, { kind: "browser", title: "Browser" }, { kind: "files", title: "File manager" },
                          { kind: "editor", title: "Code editor  (also used by Edit config)" }, { kind: "music", title: "Music player  (opens on the music workspace)" },
-                         { kind: "chat", title: "Chat  (opens on the communication workspace)" } ]
+                         { kind: "chat", title: "Chat  (SUPER+D, opens on the communication workspace)" } ]
                 delegate: ColumnLayout {
                     id: appRow
                     required property var modelData
@@ -713,12 +764,25 @@ Scope {
                         spacing: 12
                         Repeater {
                             model: root.apps[appRow.modelData.kind] || []
-                            delegate: SChip {
+                            delegate: Row {
+                                id: appChip
                                 required property var modelData
-                                pal: root.pal
-                                label: modelData.name
-                                on: root.apps.current && root.apps.current[appRow.modelData.kind] === modelData.id
-                                onClicked: root.setApp(appRow.modelData.kind, modelData.id)
+                                spacing: 4
+                                SChip {
+                                    pal: root.pal
+                                    label: appChip.modelData.name
+                                    on: root.apps.current && root.apps.current[appRow.modelData.kind] === appChip.modelData.id
+                                    onClicked: root.setApp(appRow.modelData.kind, appChip.modelData.id)
+                                }
+                                // a website you added yourself: × takes it away again
+                                Text {
+                                    visible: appChip.modelData.custom === true
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "×"
+                                    color: rmMa.containsMouse ? root.pal.accent : root.pal.muted
+                                    font.family: root.pal.uiFont; font.pixelSize: 16
+                                    MouseArea { id: rmMa; anchors.fill: parent; anchors.margins: -5; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.removeWebApp(appChip.modelData.id) }
+                                }
                             }
                         }
                         Text {
@@ -727,11 +791,52 @@ Scope {
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                         }
                     }
+                    // Chat only: any website, opened in your browser as its own window (WhatsApp Web is already in the list)
+                    RowLayout {
+                        visible: appRow.modelData.kind === "chat"
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Rectangle {
+                            Layout.preferredWidth: 150; Layout.preferredHeight: 36; radius: 18
+                            color: Qt.alpha(root.pal.bg, 0.5); border.width: 1; border.color: webName.activeFocus ? root.pal.accent : root.pal.lineSoft
+                            TextInput {
+                                id: webName
+                                anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                                verticalAlignment: TextInput.AlignVCenter
+                                color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                                clip: true; selectByMouse: true
+                                Text { visible: !parent.text && !parent.activeFocus; anchors.verticalCenter: parent.verticalCenter; text: "Name"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            }
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true; Layout.preferredHeight: 36; radius: 18
+                            color: Qt.alpha(root.pal.bg, 0.5); border.width: 1; border.color: webUrl.activeFocus ? root.pal.accent : root.pal.lineSoft
+                            TextInput {
+                                id: webUrl
+                                anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                                verticalAlignment: TextInput.AlignVCenter
+                                color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                                clip: true; selectByMouse: true
+                                onAccepted: addWeb.clicked()
+                                Text { visible: !parent.text && !parent.activeFocus; anchors.verticalCenter: parent.verticalCenter; text: "Website, e.g. web.whatsapp.com"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            }
+                        }
+                        SChip {
+                            id: addWeb
+                            pal: root.pal
+                            label: "Add website"
+                            onClicked: {
+                                if (webName.text.trim() === "" || webUrl.text.trim() === "") return
+                                root.addWebApp(webName.text.trim(), webUrl.text.trim())
+                                webName.text = ""; webUrl.text = ""
+                            }
+                        }
+                    }
                 }
             }
             Text {
                 Layout.fillWidth: true
-                text: "Only installed apps are listed. A browser or file manager you pick also becomes the system default for links and folders. Something missing? Add a line to ~/.config/Halcyon/apps.custom (see the top of scripts/apps.sh)."
+                text: "Only installed apps are listed. A browser or file manager you pick also becomes the system default for links and folders. Websites (WhatsApp, Telegram, Messenger ...) open in your browser as their own window and are listed whenever a browser is installed; add any other site above. Something else missing? Add a line to ~/.config/Halcyon/apps.custom (see the top of scripts/apps.sh)."
                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
             }
         }
@@ -980,6 +1085,16 @@ Scope {
     }
 
     Component {
+        id: cBarBuilder
+        BarBuilder {
+            pal: root.pal
+            layout: root.get("opt:barLayout")
+            onOpenRequested: root.builderOpen = true
+            onEdited: l => root.setting("opt:barLayout", l)
+        }
+    }
+
+    Component {
         id: cGrowth
         ColumnLayout {
             width: parent ? parent.width : 0
@@ -1032,7 +1147,7 @@ Scope {
             focus: root.open
             Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true } }
             // the search box must be focused from in here: `search` is not visible from the root scope (this window is built by a LazyLoader)
-            Timer { running: root.open; interval: 80; onTriggered: search.forceActiveFocus() }
+            Timer { running: root.open; interval: 80; onTriggered: if (!root.galleryOpen) search.forceActiveFocus() }
 
             Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.40) }
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
@@ -1443,6 +1558,7 @@ Scope {
                                                                                : leaf.m.name === "apps" ? cApps
                                                                                : leaf.m.name === "focusApps" ? cFocusApps
                                                                                : leaf.m.name === "safetyAuto" ? cSafetyAuto
+                                                                               : leaf.m.name === "barBuilder" ? cBarBuilder
                                                                                : leaf.m.name === "growth" ? cGrowth : cSwatches
                                                             }
                                                         }
@@ -1457,16 +1573,81 @@ Scope {
                     }
                 }
             }
+        }
+    }
+}
+    // ======================================================================== the Wallpaper Gallery window
+    // Opens on its own (`>wallpaper gallery`, the Settings chip, IPC): a full-screen overlay with the gallery on it.
+    LazyLoader {
+        active: root.galleryLoaded
+        PanelWindow {
+            id: gwin
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            WlrLayershell.namespace: "island-gallery"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: root.galleryOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+            // opens one frame after the window exists, so the fade-in plays
+            property bool shown: false
+            Timer { running: true; interval: 30; onTriggered: gwin.shown = true }
+
             WallpaperGallery {
                 id: wallpaperGallery
                 anchors.fill: parent
+                sysmode: root.sysmode
+                starData: root.starData
+                profileStars: root.profileStars
+                stars: root.opt.stars !== false && root.opt.starsSettings !== false
+                open: root.galleryOpen && gwin.shown
+                onClosed: root.galleryOpen = false
                 pal: root.pal
                 wp: root.wp
+                colors: root.wpColors
                 onPicked: path => root.pickWallpaper(path)
                 onAction: act => root.wpAct(act)
             }
         }
     }
-}
+
+    // ======================================================================== the Bar builder window
+    // A full-screen overlay with the builder on it (drag widgets into the left / middle / right of the bar).
+    LazyLoader {
+        active: root.builderLoaded
+        PanelWindow {
+            id: bwin
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            WlrLayershell.namespace: "island-barbuilder"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: root.builderOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+            // opens one frame after the window exists, so the fade-in plays
+            property bool shown: false
+            Timer { running: true; interval: 30; onTriggered: bwin.shown = true }
+
+            BarBuilderWindow {
+                anchors.fill: parent
+                open: root.builderOpen && bwin.shown
+                pal: root.pal
+                layout: root.get("opt:barLayout")
+                barPadding: root.barPadding
+                spacious: root.get("opt:notchSpacing") === "spacious"
+                wifiLook: root.get("opt:notchWifiStyle") || "bars"
+                btMode: root.get("opt:notchBtMode") || "connected"
+                showBatPct: root.get("opt:notchBatPct") === true
+                sysmode: root.sysmode
+                starData: root.starData
+                profileStars: root.profileStars
+                stars: root.opt.stars !== false && root.opt.starsSettings !== false
+                onClosed: root.builderOpen = false
+                onEdited: l => root.setting("opt:barLayout", l)
+            }
+        }
+    }
 }
 
