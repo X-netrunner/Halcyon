@@ -27,5 +27,9 @@ end
 -- music and communication are NOT here any more: SUPER+M / SUPER+D run scripts/special.sh, which starts the app whenever
 -- the workspace has no window (not only the first time). Which app: MUSIC_CMD / COMM_CMD at the top of that script,
 -- or in ~/.config/Halcyon/special.conf. The island moves Spotify / Discord windows there when they open (island/Routes.js).
-hl.workspace_rule({ workspace = "special:sysmon", on_created_empty = vars.sysmonCmd })
-hl.workspace_rule({ workspace = "special:todo", on_created_empty = vars.todoCmd })
+-- All three go through special.sh --run: your own command for that workspace (Settings > Workspaces & windows > Special
+-- workspace commands) wins, else the default (variables.lua). SUPER+S (scratch) has no default: it opens empty unless you set one.
+local run = (os.getenv("HOME") or "") .. "/.config/Halcyon/scripts/special.sh --run "
+hl.workspace_rule({ workspace = "special:special", on_created_empty = run .. "special" })
+hl.workspace_rule({ workspace = "special:sysmon", on_created_empty = run .. "sysmon " .. vars.sysmonCmd })
+hl.workspace_rule({ workspace = "special:todo", on_created_empty = run .. "todo " .. vars.todoCmd })
