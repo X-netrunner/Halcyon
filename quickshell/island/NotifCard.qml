@@ -14,13 +14,14 @@ Item {
     property var notif
     property string avatar: ""   // profile picture shown as the notification picture ("" = none)
     property bool usePfp: true   // Settings > Panels & notifications > Notification picture
-    property int override: 0     // seconds from Settings (0 = the app's own timeout, 3..15 s); critical ones still wait for a click
+    property int override: 0     // seconds from Settings (0 = the app's own timeout, 3..15 s)
+    property int critSecs: 30    // critical ones: seconds before the popup hides itself (0 = they wait for a click); the notification stays in the centre
     signal dismissed()      // the user clicked it: remove it everywhere
     signal timedOut()       // the countdown ran out: hide the popup only
     signal hideAll()        // right click
 
     readonly property bool critical: notif ? notif.urgency === NotificationUrgency.Critical : false
-    readonly property int dur: critical ? 0
+    readonly property int dur: critical ? critSecs * 1000
         : override > 0 ? override * 1000
         : Math.max(3000, Math.min(15000, notif && notif.expireTimeout > 0 ? notif.expireTimeout * 1000
                                          : (notif && notif.urgency === NotificationUrgency.Low ? 4000 : 6000)))
@@ -163,11 +164,17 @@ Item {
                         font.letterSpacing: 0.8
                         elide: Text.ElideRight
                     }
-                    Text {
+                    // a real button: removes it without running the app's default action (a click anywhere else opens the app)
+                    Item {
                         visible: hov.hovered
-                        text: "✕"
-                        color: card.pal.muted
-                        font.pixelSize: 11
+                        implicitWidth: 20; implicitHeight: 20
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✕"
+                            color: xMa.containsMouse ? card.pal.text : card.pal.muted
+                            font.pixelSize: 12
+                        }
+                        MouseArea { id: xMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: card.close(false) }
                     }
                 }
                 Text {

@@ -14,7 +14,11 @@ import Quickshell.Services.Notifications
 //  coalescing        from apps in coalesceApps, same app + same title replaces the earlier one (status toggles
 //                    sent by your scripts through notify-send don't pile up). From every other app only an exact
 //                    repeat (same title AND text) replaces, so chat messages are all kept.
-//  transient         notifications that ask to be transient show a popup but are never stored.
+//  transient         kept too: some apps mark everything transient, and "not in the box" was the result.
+//  closed by the app an app may withdraw its own notification (read in the chat, tab focused ...). The popup goes, but the
+//                    centre keeps a copy until YOU remove it (see snapshot() below).
+//  urgent popups     critical ones used to wait for a click for ever (browsers send "requires interaction" as critical).
+//                    They now hide after critSecs; the notification itself stays in the centre.
 //  do not disturb    no popups (critical ones still show); everything is still stored. DND chip in the panel, or SUPER+SHIFT+D.
 //  the panel         no button: touch the right edge of the screen (upper part) and the centre slides out; leave and it
 //                    slides back. A thin glowing bar on that edge says something is unread (muted bar = do not disturb).
@@ -27,6 +31,7 @@ Scope {
     property int maxToasts: 5
     property int maxHistory: 30
     property int toastSecs: 0               // Settings > Notifications > "How long a popup stays": 0 = what the app asks for (else this many seconds)
+    property int critSecs: 30               // Settings > Notifications > "Urgent popups": seconds before an urgent popup hides itself (0 = waits for a click)
     property bool dnd: false
     property string avatar: ""              // your profile picture (shell.qml avatarPath): the picture of every notification
     property bool usePfp: true              // Settings > Panels & notifications > Notification picture: profile picture / app icon
@@ -75,6 +80,29 @@ Scope {
     // a popup that is no longer shown and was never stored (transient) has nothing left to live for
     function retire(n) {
         if (history.indexOf(n) < 0) n.expire()
+    }
+
+    // When an app withdraws its notification the Notification object dies with it. Keeping that object in the list would show
+    // an empty row (or throw), so the centre swaps it for a plain copy of what it said. Same property names, so the rows and
+    // the icon do not care. The app's picture is dropped (its image provider goes away with the notification).
+    function snapshot(n) {
+        var acts = []
+        return {
+            id: n.id, appName: n.appName || "", summary: n.summary || "", body: n.body || "", appIcon: n.appIcon || "",
+            image: "", urgency: n.urgency, desktopEntry: n.desktopEntry || "", actions: acts, transient: false,
+            dismiss: function () {}, expire: function () {}
+        }
+    }
+    // the app closed it (not us: our own dismiss already took it out of both lists before this runs)
+    function closedByApp(n) {
+        var i = history.indexOf(n)
+        toasts = without(toasts, n)
+        if (i < 0) { delete arrived[n.id]; return }
+        var snap = snapshot(n)
+        arrived[snap.id] = arrived[n.id] || Date.now()
+        var h = history.slice()
+        h[i] = snap
+        history = h
     }
 
     // ---------- actions ----------
@@ -133,7 +161,7 @@ Scope {
     function add(n) {
         var critical = n.urgency === NotificationUrgency.Critical
         var toast = !centerOpen && (!dnd || critical)
-        var keep = !n.transient
+        var keep = true                          // transient ones are stored too
 
         if (!keep && !toast) { n.dismiss(); return }
 
@@ -181,7 +209,7 @@ Scope {
         onNotification: n => {
             n.tracked = true
             root.arrived[n.id] = Date.now()
-            n.closed.connect(function () { root.forget(n) })
+            n.closed.connect(function () { root.closedByApp(n) })
             root.add(n)
         }
     }
@@ -270,6 +298,7 @@ Scope {
                     avatar: root.avatar
                     usePfp: root.usePfp
                     override: root.toastSecs
+                    critSecs: root.critSecs
                     width: root.cardW
                     onDismissed: root.dismiss(modelData)
                     onTimedOut: root.toastTimedOut(modelData)

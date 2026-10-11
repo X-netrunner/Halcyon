@@ -21,6 +21,7 @@ Glass {
     property int focusMins: 25               // length picked for the next session
     property bool focusPomo: false           // Pomodoro for the next session
     property int focusBlocked: 0             // how many apps are on the block list
+    property bool focusOpen: false           // the Focus section is folded into one row; click it to open the picker / controls
     property real mic: 0
     property bool micMuted: false
     property real vol: 0
@@ -356,13 +357,24 @@ Glass {
         }
 
         // focus mode: a timer + do-not-disturb + closing the apps on the block list (scripts/focus.sh)
-        Text { text: "FOCUS"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4; Layout.topMargin: 10 }
+        // One row while folded: "Focus", or the countdown while a session runs. Click it to open / fold the rest.
+        Chip {
+            Layout.fillWidth: true
+            Layout.topMargin: 10
+            pal: root.pal
+            glyph: String.fromCodePoint(0xF051B)
+            label: (root.focusInfo.on
+                    ? root.focusText + "  ·  " + (root.focusInfo.paused ? "Paused" : (root.focusInfo.phase === "work" ? "Focusing" : "Break"))
+                    : "Focus") + (root.focusOpen ? "   \u25B4" : "   \u25BE")
+            on: root.focusInfo.on || root.focusOpen
+            onClicked: root.focusOpen = !root.focusOpen
+        }
 
         // idle: pick a length, then start
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 8
-            visible: !root.focusInfo.on
+            visible: !root.focusInfo.on && root.focusOpen
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
@@ -404,7 +416,7 @@ Glass {
         // running: a countdown card with the phase, a progress line and the controls
         Rectangle {
             Layout.fillWidth: true
-            visible: root.focusInfo.on
+            visible: root.focusInfo.on && root.focusOpen
             implicitHeight: runCol.implicitHeight + 24
             radius: root.pal.rLg
             color: Qt.alpha(root.pal.accent, 0.10)

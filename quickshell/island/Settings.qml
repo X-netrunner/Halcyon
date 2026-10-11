@@ -285,6 +285,7 @@ Scope {
     // show("focus") opens Settings with only that group unfolded (the utilities box's "Blocked apps" button uses it)
     property string pendingGroup: ""
     function unfoldOnly(id) {
+        page = pageOf(id)
         setAll(true)
         var c = {}
         for (var k in collapsed) if (k !== id) c[k] = collapsed[k]
@@ -326,102 +327,113 @@ Scope {
     // key: "theme" = a property of this window, "opt:x" / "hy:x" = shell.qml's opt / Hyprland values
     function o(v, t) { return { v: v, t: t } }
     function ch(k, t, w) { return { k: k, t: t, when: w } }        // one chip of a "chips" row: a switch (key k) with an optional when
+    // Backup and Safety-check reminders share one shape: how often + a custom number of days (shown only for "Custom")
+    function remindRows(rw, label, desc, needs) {
+        var opts = [o("off", "Off"), o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")]
+        return [
+            { type: "seg", adv: true, key: "rmwhen:" + rw, needs: needs, label: label, desc: desc, opts: opts },
+            { type: "slider", adv: true, key: "rm:" + rw + "_DAYS", needs: needs, label: "Custom: every how many days", min: 1, max: 365, step: 1, unit: " days", glyph: 0xF0E17, when: "rmwhen:" + rw + "=custom" }
+        ]
+    }
+
+    // Groups were merged on purpose (24 -> 16): Mouse + Touchpad + Keyboard, Power + Sleep, Bar style + Bar, Motion + Shadows + Blur,
+    // Night light into Colours, Panels into Notifications, Rice into Apps. Items marked adv: true sit behind each group's "Advanced" row
+    // (a search or the header switch shows them all). The two reminder blocks of Backup / Safety come from remind() below.
     readonly property var groups: [
         { id: "look", title: "Look", section: "Appearance", items: [
+            { type: "seg", key: "opt:settingsStyle", label: "Settings layout", desc: "Tree: the branching view. Pages: a menu on the left and one page at a time. Same settings in both.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
             { type: "seg", key: "opt:surface", label: "Box background", desc: "What every box, the bar and this window are filled with. Wallpaper tint: dark, coloured by the wallpaper and a little see-through. Matte black: dark grey, solid. Pitch black: true black, solid (best on OLED). The little stars and drifting dots turn up their brightness and keep the accent colour so they still show on black. Dark theme only.", opts: [o("tint", "Wallpaper tint"), o("matte", "Matte black"), o("black", "Pitch black")], when: "theme=dark" },
             { type: "slider", key: "rounding", label: "Corner rounding", desc: "Window corners", min: 0, max: 28, step: 1, unit: " px", glyph: 0xF0A39 },
             { type: "slider", key: "gaps", label: "Gaps", desc: "Between windows (the outer gap is double)", min: 0, max: 20, step: 1, unit: " px", glyph: 0xF0B36 },
-            { type: "slider", key: "hy:borderSize", def: 2, label: "Border width", min: 0, max: 6, step: 1, unit: " px" },
-            { type: "toggle", key: "shadows", label: "Shadows" },
-            { type: "action", id: "reset-look", label: "Look values", btn: "Back to the config files", done: "Reset", desc: "Forgets every window / look value changed here; hyprland/*.lua rules again." }
+            { type: "slider", adv: true, key: "hy:borderSize", def: 2, label: "Border width", min: 0, max: 6, step: 1, unit: " px" },
+            { type: "action", adv: true, id: "reset-look", label: "Look values", btn: "Back to the config files", done: "Reset", desc: "Forgets every window / look value changed here; hyprland/*.lua rules again." }
         ] },
-        { id: "colours", title: "Colours", section: "Appearance", items: [
+        { id: "colours", title: "Colours & night light", section: "Appearance", items: [
             { type: "custom", name: "swatches" },
             { type: "seg", key: "opt:accentMode", label: "Accent colour", desc: "Fixed: the wallpaper's strongest colour. Cycle: the accent drifts slowly through every colour the wallpaper has, e.g. red, then purple, then back.", opts: [o("fixed", "Fixed"), o("cycle", "Cycle through the wallpaper")] },
             { type: "seg", key: "opt:cycleSecs", label: "Time per colour", desc: "How long the accent takes to go from one wallpaper colour to the next", opts: [o(10, "10 s"), o(20, "20 s"), o(30, "30 s"), o(60, "1 min"), o(120, "2 min"), o(300, "5 min")], when: "opt:accentMode=cycle" },
             { type: "slider", key: "colorBoost", label: "Colour intensity", desc: "How strongly the wallpaper's colour shows in the accent. 100 % is natural.", min: 0.5, max: 1.5, step: 0.05, scale: 100, unit: " %", glyph: 0xF03D8 },
             { type: "toggle", key: "termFollow", label: "Terminals follow the wallpaper" },
-            { type: "seg", key: "opt:termMode", label: "Terminal colours", desc: "Spectrum: red, green, blue, magenta ... each come from a colour the wallpaper really has. Accent: everything is pulled towards the one accent.", opts: [o("spectrum", "Spectrum"), o("accent", "One accent")], when: "termFollow=true" },
-            { type: "toggle", key: "opt:termDrift", label: "Open terminals cycle too", desc: "Cursor, blue and magenta follow the accent while it cycles (repainted every few seconds).", when: "termFollow=true" },
-            { type: "action", id: "termcolors", label: "Repaint terminals", btn: "Repaint now", done: "Repainted" }
+            { type: "seg", adv: true, key: "opt:termMode", label: "Terminal colours", desc: "Spectrum: red, green, blue, magenta ... each come from a colour the wallpaper really has. Accent: everything is pulled towards the one accent.", opts: [o("spectrum", "Spectrum"), o("accent", "One accent")], when: "termFollow=true" },
+            { type: "toggle", adv: true, key: "opt:termDrift", label: "Open terminals cycle too", desc: "Cursor, blue and magenta follow the accent while it cycles (repainted every few seconds).", when: "termFollow=true" },
+            { type: "action", adv: true, id: "termcolors", label: "Repaint terminals", btn: "Repaint now", done: "Repainted" },
+            { type: "tool", key: "nightlight", label: "Night light", desc: "Warmer screen colours (hyprsunset)." },
+            { type: "slider", adv: true, key: "opt:nightTemp", def: 4000, label: "Night light warmth", desc: "Lower is warmer", min: 2500, max: 6500, step: 100, unit: " K" }
         ] },
         { id: "wallpaper", title: "Wallpaper", section: "Appearance", items: [
             { type: "custom", name: "wallpaper" },
             { type: "seg", key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] }
         ] },
-        { id: "glass", title: "Transparency, blur & dimming", section: "Appearance", items: [
+        { id: "glass", title: "Effects: transparency, blur & motion", section: "Appearance", items: [
             { type: "toggle", key: "opt:accentBorder", label: "Accent colour on the focused window", desc: "A thin border in the wallpaper's accent colour around the window you are using. Off = the neutral white hairline." },
             { type: "slider", key: "glassShift", label: "Transparency", desc: "Of the island, panels and overlays", min: -0.15, max: 0.05, step: 0.01, scale: 100, signed: true, glyph: 0xF0335 },
-            { type: "slider", key: "opt:settingsGlass", def: 0.72, label: "Settings window opacity", desc: "Lower = more see-through: the blurred wallpaper and windows show through the Settings window.", min: 0.35, max: 1, step: 0.01, scale: 100, unit: " %", glyph: 0xF0335 },
-            { type: "slider", key: "hy:inactiveOpacity", def: 1, label: "Unfocused window opacity", desc: "Below 100 % windows you are not using turn see-through", min: 0.5, max: 1, step: 0.05, scale: 100, unit: " %" },
+            { type: "slider", adv: true, key: "opt:settingsGlass", def: 0.72, label: "Settings window opacity", desc: "Lower = more see-through: the blurred wallpaper and windows show through the Settings window.", min: 0.35, max: 1, step: 0.01, scale: 100, unit: " %", glyph: 0xF0335 },
+            { type: "slider", adv: true, key: "hy:inactiveOpacity", def: 1, label: "Unfocused window opacity", desc: "Below 100 % windows you are not using turn see-through", min: 0.5, max: 1, step: 0.05, scale: 100, unit: " %" },
             { type: "toggle", key: "blur", label: "Blur" },
             { type: "slider", key: "hy:blurSize", def: 8, label: "Blur strength", min: 1, max: 16, step: 1, when: "blur=true" },
-            { type: "slider", key: "hy:blurPasses", def: 2, label: "Blur quality", desc: "More passes look smoother and cost more GPU", min: 1, max: 5, step: 1, when: "blur=true" },
+            { type: "slider", adv: true, key: "hy:blurPasses", def: 2, label: "Blur quality", desc: "More passes look smoother and cost more GPU", min: 1, max: 5, step: 1, when: "blur=true" },
             { type: "toggle", key: "hy:dimInactive", label: "Dim unfocused windows" },
-            { type: "slider", key: "hy:dimStrength", def: 0.3, label: "Dim amount", min: 0, max: 0.8, step: 0.05, scale: 100, unit: " %" }
-        ] },
-        { id: "motion", title: "Motion", section: "Appearance", items: [
+            { type: "slider", key: "hy:dimStrength", def: 0.3, label: "Dim amount", min: 0, max: 0.8, step: 0.05, scale: 100, unit: " %", when: "hy:dimInactive=true|1" },
+            { type: "toggle", key: "shadows", label: "Shadows" },
             { type: "seg", key: "motion", label: "Island animations", opts: [o(0, "Off"), o(0.5, "Fast"), o(1, "Normal")] },
             { type: "toggle", key: "hyprAnim", label: "Window animations" }
-        ] },
-        { id: "nightlight", title: "Night light", section: "Appearance", items: [
-            { type: "tool", key: "nightlight", label: "Night light", desc: "Warmer screen colours (hyprsunset)." },
-            { type: "slider", key: "opt:nightTemp", def: 4000, label: "Night light warmth", desc: "Lower is warmer", min: 2500, max: 6500, step: 100, unit: " K" }
         ] },
         { id: "growth", title: "Constellations", section: "Appearance", items: [
             { type: "toggle", key: "opt:starsBar", label: "Moving stars", desc: "A handful of tiny stars flying slowly across the bar (island, notch and custom bar), the bar builder and the wallpaper picker. Independent of the constellation switches below. Very light: they stand still while the bar is hidden or a page is open. Off in the Low resource preset." },
             { type: "toggle", key: "opt:stars", label: "Constellations in the boxes", desc: "The drifting dots and lines behind the Settings, notification centre, cheat sheet, power menu, lock screen and console. Off = none anywhere, whatever the switches below say (the moving stars above are separate)." },
-            { type: "chips", label: "Show the constellations in", desc: "Pick the boxes that get them. (Needs the master switch above.)", opts: [ch("opt:starsSettings", "Settings"), ch("opt:starsNotifs", "Notification centre"), ch("opt:starsCheatsheet", "Cheat sheet"), ch("opt:starsPower", "Power menu"), ch("opt:starsLock", "Lock screen"), ch("opt:starsTerm", "Console")], when: "opt:stars=true" },
-            { type: "toggle", key: "profileStars", label: "Profile picture constellation" },
-            { type: "custom", name: "growth" }
+            { type: "chips", adv: true, label: "Show the constellations in", desc: "Pick the boxes that get them. (Needs the master switch above.)", opts: [ch("opt:starsSettings", "Settings"), ch("opt:starsNotifs", "Notification centre"), ch("opt:starsCheatsheet", "Cheat sheet"), ch("opt:starsPower", "Power menu"), ch("opt:starsLock", "Lock screen"), ch("opt:starsTerm", "Console")], when: "opt:stars=true" },
+            { type: "toggle", adv: true, key: "profileStars", label: "Profile picture constellation" },
+            { type: "custom", adv: true, name: "growth" }
         ] },
-        { id: "barstyle", title: "Bar style", section: "Desktop", items: [
+        { id: "bar", title: "Bar", section: "Desktop", items: [
             { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Custom: you choose the shape (Notch or Island), what is on the bar, where it goes and how much padding it has (Bar builder below). Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("custom", "Custom")] },
             { type: "custom", name: "barBuilder", when: "opt:barStyle=custom" },
             { type: "chips", label: "Show in the bar", desc: "Special icons: scratch, music, monitor ... (only the ones that exist). Music bars: only while something plays. Battery % needs the battery or the combined icon.", opts: [ch("pair:ws", "Workspaces", "opt:barStyle=island|notch"), ch("pair:specials", "Special icons", "opt:barStyle=island|notch"), ch("pair:viz", "Music bars", "opt:barStyle=island|notch"), ch("pair:wifi", "Wi-Fi", "opt:barStyle=island|notch"), ch("pair:bat", "Battery", "opt:barStyle=island|notch"), ch("pair:batPct", "Battery %"), ch("pair:caffeine", "Caffeine icon", "opt:barStyle=island|notch")] },
-            { type: "seg", key: "opt:islWsLook", label: "Workspace look", desc: "Numbers: the island's own 1 2 3 ... with a sliding pill. Capsules: the notch look, small vertical capsules, the current one big and vivid.", opts: [o("numbers", "Numbers"), o("capsules", "Capsules")], when: "opt:barStyle=island" },
-            { type: "seg", key: "pair:wsMin", label: "Capsules always shown", desc: "Workspaces 1 to N are always drawn as capsules (empty ones dim, ones with windows faded, the current one big and vivid). More show up when you use them. The notch always draws capsules; the island only with the capsule look.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")] },
-            { type: "seg", key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&pair:specials=true" },
-            { type: "seg", key: "opt:viz", label: "Music bars quality", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
-            { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island|notch" },
-            { type: "seg", key: "pair:wifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "pair:combo=false||opt:barStyle=custom" },
-            { type: "seg", key: "pair:bt", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")] },
-            { type: "seg", key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch|custom" }
-        ] },
-        { id: "bar", title: "Bar", section: "Desktop", items: [
             { type: "seg", key: "barPadding", label: "Bar size and padding", desc: "How tall the bar is. Island: also how far it floats from the top edge and the space at its sides.", opts: [o("low", "Low"), o("normal", "Normal"), o("high", "High")] },
             { type: "seg", key: "opt:dropDown", label: "Drag the bar down", desc: "Pull the bar down (or use the little handle under the open page) to get the utilities box inside the bar. Swipe pages: the notifications are the next page to the right. Swipe sideways, tap the arrows or the tabs, or press Left / Right (click the box once first). Side by side: the notifications sit next to the utilities box. Drag up, or tap the handle, to go back. While this is on, the corner utilities box and the right-edge notification box are switched off. Off: the boxes stay in their corners.", opts: [o("off", "Off"), o("stack", "Swipe pages"), o("side", "Side by side")] },
-            { type: "seg", key: "pair:spacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the time always dead centre. (Bar size and padding above is the bar's height and its distance from the edge.)", opts: [o("compact", "Compact"), o("spacious", "Spacious")] },
+            { type: "seg", key: "opt:islWsLook", label: "Workspace look", desc: "Numbers: the island's own 1 2 3 ... with a sliding pill. Capsules: the notch look, small vertical capsules, the current one big and vivid.", opts: [o("numbers", "Numbers"), o("capsules", "Capsules")], when: "opt:barStyle=island" },
+            { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island|notch" },
             { type: "toggle", key: "autoHide", label: "Auto-hide the bar" },
             { type: "seg", key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
-            { type: "seg", key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")], when: "hoverAction=perf|media" },
-            { type: "seg", key: "barScroll", label: "Scroll / swipe on the bar to change page", opts: [o("low", "Long swipe"), o("medium", "Medium"), o("high", "Sensitive")] },
-            { type: "seg", key: "opt:bgWhere", label: "Background apps count", desc: "Where the number of apps running in the background is shown. The box with the apps always opens bottom-left (on the bar, click the number to open it).", opts: [o("corner", "Corner"), o("bar", "Bar")] }
+            { type: "seg", adv: true, key: "pair:wsMin", label: "Capsules always shown", desc: "Workspaces 1 to N are always drawn as capsules (empty ones dim, ones with windows faded, the current one big and vivid). More show up when you use them. The notch always draws capsules; the island only with the capsule look.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")] },
+            { type: "seg", adv: true, key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&pair:specials=true" },
+            { type: "seg", adv: true, key: "opt:viz", label: "Music bars quality", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
+            { type: "seg", adv: true, key: "pair:wifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "pair:combo=false||opt:barStyle=custom" },
+            { type: "seg", adv: true, key: "pair:bt", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")] },
+            { type: "seg", adv: true, key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch|custom" },
+            { type: "seg", adv: true, key: "pair:spacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the time always dead centre. (Bar size and padding above is the bar's height and its distance from the edge.)", opts: [o("compact", "Compact"), o("spacious", "Spacious")] },
+            { type: "seg", adv: true, key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")], when: "hoverAction=perf|media" },
+            { type: "seg", adv: true, key: "barScroll", label: "Scroll / swipe on the bar to change page", opts: [o("low", "Long swipe"), o("medium", "Medium"), o("high", "Sensitive")] },
+            { type: "seg", adv: true, key: "opt:bgWhere", label: "Background apps count", desc: "Where the number of apps running in the background is shown. The box with the apps always opens bottom-left (on the bar, click the number to open it).", opts: [o("corner", "Corner"), o("bar", "Bar")] }
         ] },
         { id: "clock", title: "Clock", section: "Desktop", items: [
-            { type: "seg", key: "clock24", label: "Clock", opts: [o(false, "12 hour"), o(true, "24 hour")] },
-            { type: "chips", label: "Show", desc: "Time and date are separate: show either, both or neither. Seconds: middle-click the time in the bar. Right-click it to switch 12 / 24 hour.", opts: [ch("pair:time", "Time"), ch("pair:date", "Day and date"), ch("opt:clockSeconds", "Seconds")] },
-            { type: "seg", key: "opt:clockAlign", label: "Centre the", desc: "Colon: the \":\" sits exactly on the screen's centre line (over a centre webcam). Whole text: the time including AM / PM is centred.", opts: [o("colon", "Colon"), o("text", "Whole text")] },
-            { type: "seg", key: "opt:clockNudge", label: "Nudge the clock", desc: "Extra pixels to the right (or left) on top of the above, for a screen or webcam that sits a little off.", opts: [o(-4, "4 left"), o(-2, "2 left"), o(0, "None"), o(2, "2 right"), o(4, "4 right"), o(6, "6 right")] }
+            { type: "seg", key: "clock24", label: "Time format", opts: [o(false, "12 hour"), o(true, "24 hour")] },
+            { type: "chips", label: "Show in the clock", desc: "Time and date are separate: show either, both or neither. Seconds: middle-click the time in the bar. Right-click it to switch 12 / 24 hour.", opts: [ch("pair:time", "Time"), ch("pair:date", "Day and date"), ch("opt:clockSeconds", "Seconds")] },
+            { type: "seg", adv: true, key: "opt:clockAlign", label: "Centre the", desc: "Colon: the \":\" sits exactly on the screen's centre line (over a centre webcam). Whole text: the time including AM / PM is centred.", opts: [o("colon", "Colon"), o("text", "Whole text")] },
+            { type: "seg", adv: true, key: "opt:clockNudge", label: "Nudge the clock", desc: "Extra pixels to the right (or left) on top of the above, for a screen or webcam that sits a little off.", opts: [o(-4, "4 left"), o(-2, "2 left"), o(0, "None"), o(2, "2 right"), o(4, "4 right"), o(6, "6 right")] }
         ] },
         { id: "workspaces", title: "Workspaces & windows", section: "Desktop", items: [
             { type: "action", id: "layout", label: "Tiling layout", btn: "Switch dwindle / scrolling", done: "Switched" },
-            { type: "chips", label: "Workspaces & windows", desc: "Compact: on workspace 3 with nothing on 1 and 2, its windows move to workspace 1. Compact special: scratch / music / communication / monitor / tasks windows are smaller. Jump: go to a window that asks for attention. Send: Spotify / Discord open on their own workspace.", opts: [ch("compactWs", "Keep workspaces compact"), ch("compactSpecial", "Compact special workspaces"), ch("hy:focusOnActivate", "Jump to a window that asks for attention"), ch("routeApps", "Send Spotify / Discord to their workspace")] },
-            { type: "seg", key: "opt:wsEnd", label: "Next workspace, from the last one", desc: "With workspaces 1 and 2, going next from 2 opens a new workspace 3 (never from an empty one).", opts: [o("new", "Open a new one"), o("wrap", "Go back to 1"), o("stay", "Stay")] },
-            { type: "seg", key: "opt:wsStart", label: "Previous workspace, from the first one", desc: "Wrap: from 1 you land on the highest workspace.", opts: [o("wrap", "Jump to the last"), o("stay", "Stay")] },
-            { type: "seg", key: "opt:wsMax", label: "Never open more than", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(9, "9"), o(10, "10")] },
-            { type: "seg", key: "opt:wsSwipe4", label: "4-finger swipe", desc: "Which way you swipe with four fingers to go to the next workspace.", opts: [o("left", "Left = next"), o("right", "Right = next")] },
-            { type: "toggle", key: "opt:wsInvert", label: "Invert workspace scrolling", desc: "Flips the direction when you scroll or 3-finger swipe through workspaces: the mouse wheel / two-finger scroll over the workspace numbers in the bar, and the 3 finger swipes (the 4 finger swipe has its own option above). Off: scroll down / swipe right = next workspace.", },
-            { type: "custom", name: "specialCmds" }
+            { type: "chips", label: "Behaviour", desc: "Compact: on workspace 3 with nothing on 1 and 2, its windows move to workspace 1. Compact special: scratch / music / communication / monitor / tasks windows are smaller. Jump: go to a window that asks for attention. Send: Spotify / Discord open on their own workspace.", opts: [ch("compactWs", "Keep workspaces compact"), ch("compactSpecial", "Compact special workspaces"), ch("hy:focusOnActivate", "Jump to a window that asks for attention"), ch("routeApps", "Send Spotify / Discord to their workspace")] },
+            { type: "seg", adv: true, key: "opt:wsEnd", label: "Next workspace, from the last one", desc: "With workspaces 1 and 2, going next from 2 opens a new workspace 3 (never from an empty one).", opts: [o("new", "Open a new one"), o("wrap", "Go back to 1"), o("stay", "Stay")] },
+            { type: "seg", adv: true, key: "opt:wsStart", label: "Previous workspace, from the first one", desc: "Wrap: from 1 you land on the highest workspace.", opts: [o("wrap", "Jump to the last"), o("stay", "Stay")] },
+            { type: "seg", adv: true, key: "opt:wsMax", label: "Never open more than", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(9, "9"), o(10, "10")] },
+            { type: "seg", adv: true, key: "opt:wsSwipe4", label: "4-finger swipe", desc: "Which way you swipe with four fingers to go to the next workspace.", opts: [o("left", "Left = next"), o("right", "Right = next")] },
+            { type: "toggle", adv: true, key: "opt:wsInvert", label: "Invert workspace scrolling", desc: "Flips the direction when you scroll or 3-finger swipe through workspaces: the mouse wheel / two-finger scroll over the workspace numbers in the bar, and the 3 finger swipes (the 4 finger swipe has its own option above). Off: scroll down / swipe right = next workspace.", },
+            { type: "custom", adv: true, name: "specialCmds" }
         ] },
-        { id: "notifications", title: "Notifications", section: "Desktop", items: [
+        { id: "notifications", title: "Notifications & panels", section: "Desktop", items: [
             { type: "chips", label: "Quiet", desc: "Do not disturb: no popups, everything is still kept in the centre. Errors only: Wi-Fi and Bluetooth only tell you when connecting fails (wrong password, device out of range ...).", opts: [ch("dnd", "Do not disturb"), ch("opt:connErrOnly", "Wi-Fi & Bluetooth: errors only")] },
-            { type: "seg", key: "opt:notifSpot", label: "Notification trigger spot", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Panels & on-screen display.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
-            { type: "seg", key: "opt:notifIcon", label: "Notification picture", desc: "Profile picture: your picture, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
-            { type: "seg", key: "notifMax", label: "Popups on screen at once", desc: "When it is full the oldest goes.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },
-            { type: "seg", key: "opt:toastSecs", label: "How long a popup stays", desc: "Urgent ones always wait for a click.", opts: [o(0, "App decides"), o(3, "3 s"), o(5, "5 s"), o(8, "8 s"), o(12, "12 s")] },
-            { type: "seg", key: "notifHistoryMax", label: "Notifications the centre keeps", opts: [o(10, "10"), o(20, "20"), o(30, "30"), o(50, "50"), o(100, "100")] }
+            { type: "seg", adv: true, key: "opt:notifSpot", label: "Notification trigger spot", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Edge boxes below.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
+            { type: "seg", adv: true, key: "opt:notifIcon", label: "Notification picture", desc: "Profile picture: your picture, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
+            { type: "seg", adv: true, key: "notifMax", label: "Popups on screen at once", desc: "When it is full the oldest goes.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },
+            { type: "seg", adv: true, key: "opt:toastSecs", label: "How long a popup stays", desc: "Urgent ones follow their own setting below.", opts: [o(0, "App decides"), o(3, "3 s"), o(5, "5 s"), o(8, "8 s"), o(12, "12 s")] },
+            { type: "seg", adv: true, key: "opt:critSecs", label: "Urgent popups", desc: "Browsers and some apps mark a notification urgent so it would stay for ever. It now hides after this long; it always stays in the notification centre until you remove it.", opts: [o(15, "15 s"), o(30, "30 s"), o(60, "1 min"), o(0, "Wait for a click")] },
+            { type: "seg", adv: true, key: "notifHistoryMax", label: "Notifications the centre keeps", opts: [o(10, "10"), o(20, "20"), o(30, "30"), o(50, "50"), o(100, "100")] },
+            { type: "seg", key: "clickMode", label: "Edge boxes (notifications, console, utilities)", opts: [o(false, "Hover"), o(true, "Click")] },
+            { type: "toggle", key: "osdOn", label: "Volume / brightness bar", desc: "Slides up from the bottom whenever volume, brightness or the keyboard light changes." },
+            { type: "seg", key: "opt:osdHold", label: "How long that bar stays", opts: [o(1000, "Short"), o(1700, "Normal"), o(3000, "Long")], when: "osdOn=true" }
         ] },
         { id: "focus", title: "Focus mode", section: "Desktop", items: [
             { type: "seg", key: "fc:LENGTH", label: "Session length", desc: "Start it from the utilities box (bottom-right corner, Focus) or SUPER+ALT+F. A timer runs, Do not disturb is on and the apps below are kept closed. When it ends everything goes back to how it was.", opts: [o(15, "15"), o(25, "25"), o(45, "45"), o(50, "50"), o(60, "60"), o(90, "90")] },
@@ -429,79 +441,64 @@ Scope {
             { type: "seg", key: "fc:BREAK", label: "Short break (minutes)", opts: [o(3, "3"), o(5, "5"), o(10, "10")], when: "fc:POMODORO=true" },
             { type: "seg", key: "fc:LONG_BREAK", label: "Long break (minutes)", opts: [o(10, "10"), o(15, "15"), o(20, "20"), o(30, "30")], when: "fc:POMODORO=true" },
             { type: "seg", key: "fc:CYCLES", label: "Rounds", opts: [o(2, "2"), o(3, "3"), o(4, "4"), o(6, "6")], when: "fc:POMODORO=true" },
-            { type: "toggle", key: "fc:CLOSE_RUNNING", label: "Also close the ones already open", desc: "When a session starts. Off: only apps opened during the session are closed.", when: "fc:BLOCK=true" },
-            { type: "toggle", key: "fc:BREAK_FREE", label: "Allow blocked apps in breaks", desc: "Pomodoro breaks and Pause lift the block.", when: "fc:BLOCK=true&fc:POMODORO=true" },
+            { type: "toggle", adv: true, key: "fc:CLOSE_RUNNING", label: "Also close the ones already open", desc: "When a session starts. Off: only apps opened during the session are closed.", when: "fc:BLOCK=true" },
+            { type: "toggle", adv: true, key: "fc:BREAK_FREE", label: "Allow blocked apps in breaks", desc: "Pomodoro breaks and Pause lift the block.", when: "fc:BLOCK=true&fc:POMODORO=true" },
             { type: "custom", name: "focusApps" }
         ] },
-        { id: "panels", title: "Panels & on-screen display", section: "Desktop", items: [
-            { type: "seg", key: "clickMode", label: "Edge boxes (notifications, console, utilities)", opts: [o(false, "Hover"), o(true, "Click")] },
-            { type: "toggle", key: "osdOn", label: "Volume / brightness bar", desc: "Slides up from the bottom whenever volume, brightness or the keyboard light changes." },
-            { type: "seg", key: "opt:osdHold", label: "How long that bar stays", opts: [o(1000, "Short"), o(1700, "Normal"), o(3000, "Long")], when: "osdOn=true" }
-        ] },
-        { id: "mouse", title: "Mouse & pointer", section: "Input & power", items: [
+        { id: "mouse", title: "Mouse, touchpad & keyboard", section: "Input & power", items: [
             { type: "slider", key: "scrollMouse", label: "Mouse wheel scroll speed", desc: "In every app. Higher is faster.", min: 0.25, max: 3, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
             { type: "slider", key: "hy:sensitivity", def: 0, label: "Pointer speed", min: -1, max: 1, step: 0.1, dec: 1, signed: true },
-            { type: "seg", key: "hy:accelProfile", label: "Pointer acceleration", desc: "Flat = the pointer moves exactly as far as your hand does.", opts: [o("adaptive", "Adaptive"), o("flat", "Flat")] },
-            { type: "toggle", key: "hy:leftHanded", label: "Left-handed buttons" },
-            { type: "seg", key: "hy:followMouse", label: "Focus follows the pointer", opts: [o(0, "Click to focus"), o(1, "Hover"), o(2, "Hover, no raise")] }
-        ] },
-        { id: "touchpad", title: "Touchpad", section: "Input & power", items: [
             { type: "tool", key: "touchpad", label: "Touchpad" },
             { type: "chips", label: "Touchpad behaviour", desc: "", opts: [ch("hy:naturalScroll", "Natural scrolling"), ch("hy:tapToClick", "Tap to click"), ch("hy:disableTyping", "Pause while typing")] },
             { type: "slider", key: "scrollTouch", label: "Touchpad scroll speed", min: 0.1, max: 1.5, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
-            { type: "toggle", key: "st:GESTURES", label: "Edge gestures", desc: "Slide along a touchpad edge: right = volume, top = brightness, left = previous / next track. Off stops the helper at once (and it stays off after login); the normal touchpad keeps working. SUPER+ALT+G only mutes them for a moment." }
+            { type: "toggle", key: "superTap", label: "Tap Super to open the launcher" },
+            { type: "seg", adv: true, key: "hy:accelProfile", label: "Pointer acceleration", desc: "Flat = the pointer moves exactly as far as your hand does.", opts: [o("adaptive", "Adaptive"), o("flat", "Flat")] },
+            { type: "toggle", adv: true, key: "hy:leftHanded", label: "Left-handed buttons" },
+            { type: "seg", adv: true, key: "hy:followMouse", label: "Focus follows the pointer", opts: [o(0, "Click to focus"), o(1, "Hover"), o(2, "Hover, no raise")] },
+            { type: "toggle", adv: true, key: "st:GESTURES", label: "Edge gestures", desc: "Slide along a touchpad edge: right = volume, top = brightness, left = previous / next track. Off stops the helper at once (and it stays off after login); the normal touchpad keeps working. SUPER+ALT+G only mutes them for a moment." },
+            { type: "slider", adv: true, key: "hy:repeatDelay", def: 600, label: "Key repeat delay", min: 150, max: 800, step: 10, unit: " ms" },
+            { type: "slider", adv: true, key: "hy:repeatRate", def: 25, label: "Key repeat speed", min: 5, max: 70, step: 1, unit: "/s" }
         ] },
-        { id: "keyboard", title: "Keyboard", section: "Input & power", items: [
-            { type: "slider", key: "hy:repeatDelay", def: 600, label: "Key repeat delay", min: 150, max: 800, step: 10, unit: " ms" },
-            { type: "slider", key: "hy:repeatRate", def: 25, label: "Key repeat speed", min: 5, max: 70, step: 1, unit: "/s" },
-            { type: "toggle", key: "superTap", label: "Tap Super to open the launcher" }
-        ] },
-        { id: "power", title: "Power", section: "Input & power", items: [
+        { id: "power", title: "Power & lock", section: "Input & power", items: [
             { type: "seg", key: "powerMgr", label: "Power manager", desc: "Which program controls CPU power. Only one runs at a time; the others are stopped. Halcyon Auto drives power-profiles-daemon by itself.", opts: [o("halcyon", "Halcyon Auto"), o("power-profiles-daemon", "power-profiles-daemon"), o("tlp", "TLP"), o("auto-cpufreq", "auto-cpufreq"), o("tuned", "Tuned")] },
-            { type: "tool", key: "wifips", label: "Wi-Fi power saving", desc: "On saves battery. Off gives the lowest latency (Gaming mode switches it off by itself)." }
-        ] },
-        { id: "sleep", title: "Sleep & lock", section: "Input & power", items: [
             { type: "seg", key: "idleDim", label: "Dim the screen and keyboard light after", opts: [o(0, "Never"), o(1, "1 min"), o(2, "2 min"), o(3, "3 min"), o(5, "5 min"), o(10, "10 min")] },
             { type: "seg", key: "idleLock", label: "Lock the screen after", opts: [o(0, "Never"), o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")] },
             { type: "seg", key: "opt:lockBg", label: "Lock screen background", desc: "Solid: the plain colour of your theme. Blurred wallpaper: your current wallpaper, blurred, behind the clock and the password box. The wallpaper is only loaded while the screen is locked.", opts: [o("solid", "Solid colour"), o("wallpaper", "Blurred wallpaper")] },
             { type: "slider", key: "opt:lockBlur", def: 40, label: "Lock screen blur", desc: "How strongly the wallpaper is blurred.", min: 4, max: 64, step: 2, unit: "", when: "opt:lockBg=wallpaper" },
             { type: "slider", key: "opt:lockTint", def: 0.55, label: "Lock screen tint", desc: "How much of the theme colour covers the wallpaper. 0 % = the wallpaper as it is, 100 % = no wallpaper visible.", min: 0, max: 0.95, step: 0.05, scale: 100, unit: " %", when: "opt:lockBg=wallpaper" },
-            { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] }
+            { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] },
+            { type: "tool", adv: true, key: "wifips", label: "Wi-Fi power saving", desc: "On saves battery. Off gives the lowest latency (Gaming mode switches it off by itself)." }
         ] },
         { id: "performance", title: "Performance & memory", section: "System", items: [
-            { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars (no moving stars in the bar), 30 fps, small notification lists, slow background refresh, light music bars. Medium: light blur, no shadows, 60 fps, relaxed background refresh. High: everything on, as designed. It sets the options on this page and in Look, Motion and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
+            { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars (no moving stars in the bar), 30 fps, small notification lists, slow background refresh, light music bars. Medium: light blur, no shadows, 60 fps, relaxed background refresh. High: everything on, as designed. It sets the options on this page and in Effects and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "toggle", key: "gaming", label: "Gaming mode", desc: "CPU / GPU at full speed, turbo on, Wi-Fi power saving off, effects off, Caffeine and Do not disturb on, background helpers stopped. SUPER+F10." },
-            { type: "seg", key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
-            { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
-            { type: "seg", key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
-            { type: "seg", key: "opt:bgRefresh", label: "Background refresh", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. Normal: every 2 s / 4 s. Relaxed: 5 s / 10 s. Slow: 10 s / 20 s. Fewer wake-ups and far fewer small processes, nothing looks different. The performance page and the bar's CPU / RAM / TEMP row stay at the normal pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "Normal"), o("relaxed", "Relaxed"), o("slow", "Slow")] },
-            { type: "acts", label: "Memory", desc: "Show what uses my RAM: opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
+            { type: "seg", adv: true, key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
+            { type: "seg", adv: true, key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
+            { type: "seg", adv: true, key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
+            { type: "seg", adv: true, key: "opt:bgRefresh", label: "Background refresh", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. Normal: every 2 s / 4 s. Relaxed: 5 s / 10 s. Slow: 10 s / 20 s. Fewer wake-ups and far fewer small processes, nothing looks different. The performance page and the bar's CPU / RAM / TEMP row stay at the normal pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "Normal"), o("relaxed", "Relaxed"), o("slow", "Slow")] },
+            { type: "acts", adv: true, label: "Memory", desc: "Show what uses my RAM: opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
         ] },
         { id: "startup", title: "Startup & background", section: "System", items: [
             { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
             { type: "toggle", key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
             { type: "toggle", key: "st:CLIPBOARD", label: "Clipboard history", desc: "The two small watchers that remember what you copy (text and pictures) for the clipboard picker. Off stops them at once and saves a few MB; the picker then only shows what was saved before." },
-            { type: "seg", key: "st:PORTAL", label: "Screen-sharing helper", desc: "At login: it is always ready (Hyprland's own screen-share portal). On demand: it is not started until the first app asks to share or record the screen (browser, OBS), which then takes a moment longer once. Saves its memory until then.", opts: [o("login", "At login"), o("demand", "On demand")] },
-            { type: "seg", key: "st:POLKIT", label: "Password prompt helper (polkit agent)", desc: "The small program that shows the 'enter your password' window for apps that need admin rights. Auto picks the lightest one installed: Hyprland's, then GNOME's, then KDE's (the heaviest). None = no password windows at all. Takes effect at the next login.", opts: [o("auto", "Auto"), o("hyprpolkitagent", "Hyprland"), o("gnome", "GNOME"), o("kde", "KDE"), o("none", "None")] },
-            { type: "seg", key: "st:GPU", label: "Graphics card for the desktop", desc: "Integrated: the Intel / AMD graphics draw the desktop; the NVIDIA card sleeps until you run a program with prime-run. Lowest RAM and battery use. NVIDIA: the NVIDIA card draws the desktop; smoother with heavy blur, but it loads the NVIDIA libraries (+100 MB or more RAM) and uses a lot more battery. Takes effect at the next login.", opts: [o("igpu", "Integrated (saves RAM)"), o("dgpu", "NVIDIA")] }
+            { type: "seg", adv: true, key: "st:PORTAL", label: "Screen-sharing helper", desc: "At login: it is always ready (Hyprland's own screen-share portal). On demand: it is not started until the first app asks to share or record the screen (browser, OBS), which then takes a moment longer once. Saves its memory until then.", opts: [o("login", "At login"), o("demand", "On demand")] },
+            { type: "seg", adv: true, key: "st:POLKIT", label: "Password prompt helper (polkit agent)", desc: "The small program that shows the 'enter your password' window for apps that need admin rights. Auto picks the lightest one installed: Hyprland's, then GNOME's, then KDE's (the heaviest). None = no password windows at all. Takes effect at the next login.", opts: [o("auto", "Auto"), o("hyprpolkitagent", "Hyprland"), o("gnome", "GNOME"), o("kde", "KDE"), o("none", "None")] },
+            { type: "seg", adv: true, key: "st:GPU", label: "Graphics card for the desktop", desc: "Integrated: the Intel / AMD graphics draw the desktop; the NVIDIA card sleeps until you run a program with prime-run. Lowest RAM and battery use. NVIDIA: the NVIDIA card draws the desktop; smoother with heavy blur, but it loads the NVIDIA libraries (+100 MB or more RAM) and uses a lot more battery. Takes effect at the next login.", opts: [o("igpu", "Integrated (saves RAM)"), o("dgpu", "NVIDIA")] }
         ] },
-        { id: "apps", title: "Default apps", section: "System", items: [
+        { id: "apps", title: "Apps & config", section: "System", items: [
             { type: "custom", name: "apps" },
-            { type: "seg", key: "st:FILE_ICONS", label: "File manager icons", desc: "How big the icons are in Thunar (side bar, lists, icon view, toolbar). Thunar picks it up at once; windows that are already open may need a reopen.", opts: [o("small", "Small"), o("medium", "Medium"), o("large", "Large")] }
+            { type: "seg", key: "st:FILE_ICONS", label: "File manager icons", desc: "How big the icons are in Thunar (side bar, lists, icon view, toolbar). Thunar picks it up at once; windows that are already open may need a reopen.", opts: [o("small", "Small"), o("medium", "Medium"), o("large", "Large")] },
+            { type: "acts", label: "Rice", desc: "Edit config: opens the config files. Shortcuts: the shortcut tree. Reload: re-reads the config files and puts the island's own values back on top.", btns: [{ id: "config", btn: "Edit config", done: "", close: true }, { id: "cheatsheet", btn: "Shortcuts", done: "", close: true }, { id: "reload", btn: "Reload Hyprland", done: "Reloading…" }] }
         ] },
         { id: "backup", title: "Backup & safety", section: "System", items: [
             { type: "acts", label: "Backup", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the files are copied onto it (scripts/backup-device.sh). Whole system: everything (asks for your admin password). Home folder: only your files, no password. Nothing on the disk is erased; every backup goes in its own dated folder. Caches, trash, package downloads and game files are skipped; add your own in ~/.config/Halcyon/backup-exclude.conf.", btns: [{ id: "backup-device", btn: "Whole system", done: "Opening…" }, { id: "backup-home", btn: "Home folder only", done: "Opening…" }] },
-            { type: "acts", label: "Restore", desc: "Plug in the backup disk and pick a backup in the terminal that opens. Whole system: a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Home folder only: only ever touches your home folder (any backup works), you can restore just one folder or file, no password. Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder.", btns: [{ id: "restore-device", btn: "From a backup", done: "Opening…" }, { id: "restore-home", btn: "Home folder only", done: "Opening…" }] },
-            { type: "seg", key: "rmwhen:BACKUP", label: "Remind me to back up", desc: "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off.", opts: [o("off", "Off"), o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")] },
-            { type: "slider", key: "rm:BACKUP_DAYS", label: "Custom: every how many days", min: 1, max: 365, step: 1, unit: " days", glyph: 0xF0E17, when: "rmwhen:BACKUP=custom" },
-            { type: "action", id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in ~/logs/safety_check/." },
-            { type: "seg", key: "rmwhen:SAFETY", needs: "safety", label: "Remind me to run the safety check", desc: "Same, for the safety check (by hand or automatic, either counts as done).", opts: [o("off", "Off"), o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")] },
-            { type: "slider", key: "rm:SAFETY_DAYS", needs: "safety", label: "Custom: every how many days", min: 1, max: 365, step: 1, unit: " days", glyph: 0xF0E17, when: "rmwhen:SAFETY=custom" },
-            { type: "custom", name: "safetyAuto" }
-        ] },
-        { id: "rice", title: "Rice", section: "System", items: [
-            { type: "acts", label: "Rice", desc: "Edit config: opens the config files. Shortcuts: the shortcut tree. Reload: re-reads the config files and puts the island's own values back on top.", btns: [{ id: "config", btn: "Edit config", done: "", close: true }, { id: "cheatsheet", btn: "Shortcuts", done: "", close: true }, { id: "reload", btn: "Reload Hyprland", done: "Reloading…" }] }
-        ] }
+            { type: "acts", label: "Restore", desc: "Plug in the backup disk and pick a backup in the terminal that opens. Whole system: a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Home folder only: only ever touches your home folder (any backup works), you can restore just one folder or file, no password. Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder.", btns: [{ id: "restore-device", btn: "From a backup", done: "Opening…" }, { id: "restore-home", btn: "Home folder only", done: "Opening…" }] }
+        ].concat(root.remindRows("BACKUP", "Remind me to back up", "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off.")).concat([
+            { type: "action", adv: true, id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in ~/logs/safety_check/." }
+        ]).concat(root.remindRows("SAFETY", "Remind me to run the safety check", "Same, for the safety check (by hand or automatic, either counts as done).", "safety")).concat([
+            { type: "custom", adv: true, name: "safetyAuto" }
+        ]) }
     ]
 
     // ---- reading and formatting values
@@ -521,6 +518,20 @@ Scope {
             return opt ? opt[(opt.barStyle === "notch" || opt.barStyle === "custom") ? pr[1] : pr[0]] : undefined
         }
         return root[key]
+    }
+    // ---- shared by both layouts: what to say under a row
+    function isOff(m) { return m.needs !== undefined && !(startup.has && startup.has[m.needs] === true) }   // an optional part that is not installed
+    function descOf(m) {
+        var off = isOff(m)
+        return off ? "Not installed, so this is switched off. Add it with ./install.sh --safety-check (or ./install.sh --choose and answer yes), then open Settings again."
+            : (m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset)"
+            : (m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet)"
+            : (m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
+            : (m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
+            : ((m.key === "st:POLKIT" || m.key === "st:GPU" || m.key === "st:PORTAL") && root.startupNote !== "") ? (m.desc || "") + "  \u2192 " + root.startupNote
+            : m.key === "rmwhen:BACKUP" ? (m.desc || "") + "  Last backup made here: " + root.remind.backupAgo + "."
+            : m.key === "rmwhen:SAFETY" ? (m.desc || "") + "  Last safety check: " + root.remind.safetyAgo + "."
+            : (m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (m.desc || ""))
     }
     // item.when = "key=value": the item is only listed while that setting has that value (e.g. the notch options)
     // several conditions can be joined with "&": "opt:barStyle=notch&opt:notchCombo=false"
@@ -558,6 +569,31 @@ Scope {
     property string section: ""             // "" = every section; else Appearance | Desktop | Input & power | System
     readonly property var sections: ["Appearance", "Desktop", "Input & power", "System"]
     property var collapsed: ({ apps: true, growth: true })
+
+    // ---- two layouts: "tree" (the branching view, the default) and "pages" (a menu on the left, one page at a time).
+    // Both read the same groups / items and write through the same change(), so nothing is lost by switching.
+    readonly property bool pagesMode: opt && opt.settingsStyle === "pages"
+    readonly property var pages: [
+        { id: "Appearance", sub: "Look, colours, wallpaper and effects.", groups: ["look", "colours", "wallpaper", "glass", "growth"] },
+        { id: "Bar", sub: "The bar and the clock.", groups: ["bar", "clock"] },
+        { id: "Desktop", sub: "Workspaces, notifications and focus mode.", groups: ["workspaces", "notifications", "focus"] },
+        { id: "Input", sub: "Mouse, touchpad and keyboard.", groups: ["mouse"] },
+        { id: "Power & lock", sub: "Power manager, dimming, lock screen and sleep.", groups: ["power"] },
+        { id: "System", sub: "Performance, startup and default apps.", groups: ["performance", "startup", "apps"] },
+        { id: "Backup", sub: "Backups, restore and the safety check.", groups: ["backup"] }
+    ]
+    property string page: "Appearance"
+    function pageOf(gid) { for (var i = 0; i < pages.length; i++) if (pages[i].groups.indexOf(gid) >= 0) return pages[i].id; return "Appearance" }
+    function pageInfo(id) { for (var i = 0; i < pages.length; i++) if (pages[i].id === id) return pages[i]; return pages[0] }
+    // "Advanced" rows: items marked adv: true stay behind a fold in each group (a search always finds them; advAll shows them everywhere)
+    property bool advAll: false
+    property var advMap: ({})
+    function toggleAdv(id) {
+        var c = {}
+        for (var k in advMap) c[k] = advMap[k]
+        if (c[id]) delete c[id]; else c[id] = true
+        advMap = c
+    }
     function toggleGroup(id) {
         var c = {}
         for (var k in collapsed) c[k] = collapsed[k]
@@ -583,14 +619,31 @@ Scope {
         var q = query.toLowerCase().trim()
         var out = [], sig = ""
         for (var g = 0; g < groups.length; g++) {
-            var grp = groups[g], items = [], idx = ""
-            if (q === "" && section !== "" && grp.section !== section) continue
-            for (var i = 0; i < grp.items.length; i++)
-                if ((!grp.items[i].when || whenOk(grp.items[i].when)) && (q === "" || itemText(grp, grp.items[i]).indexOf(q) >= 0)) { items.push(grp.items[i]); idx += i + "," }
-            if (items.length > 0) { out.push({ id: grp.id, title: grp.title, section: grp.section, items: items }); sig += grp.id + ":" + idx + ";" }
+            var grp = groups[g], items = [], idx = "", advN = 0
+            var advShow = advAll || !!advMap[grp.id]
+            if (q === "" && !pagesMode && section !== "" && grp.section !== section) continue
+            for (var i = 0; i < grp.items.length; i++) {
+                var it = grp.items[i]
+                if (it.when && !whenOk(it.when)) continue
+                if (q !== "" && itemText(grp, it).indexOf(q) < 0) continue
+                if (q === "" && it.adv === true) { advN++; if (!advShow) continue }
+                items.push(it); idx += i + ","
+            }
+            if (items.length > 0) { out.push({ id: grp.id, title: grp.title, section: grp.section, items: items, advN: advN, advShow: advShow }); sig += grp.id + ":" + idx + advN + (advShow ? "A" : "a") + ";" }
         }
         if (sig === _fc.sig) return _fc.out
         _fc.sig = sig; _fc.out = out
+        return out
+    }
+    readonly property var _pc: ({ out: [] })
+    readonly property var pageGroupsNow: {
+        var src = groupsNow, ids = null, out = []
+        if (query === "") ids = pageInfo(page).groups
+        for (var g = 0; g < src.length; g++) if (ids === null || ids.indexOf(src[g].id) >= 0) out.push(src[g])
+        var prev = _pc.out, same = prev.length === out.length
+        for (var i = 0; same && i < out.length; i++) if (prev[i] !== out[i]) same = false
+        if (same) return prev
+        _pc.out = out
         return out
     }
     readonly property int shownCount: { var n = 0; for (var g = 0; g < groupsNow.length; g++) n += groupsNow[g].items.length; return n }
@@ -604,6 +657,7 @@ Scope {
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
+        if (grp.advN > 0) w += 1
         return w
     }
     // the groups keep their order: top to bottom in the first column, then the next one (the split is by height, so the columns stay about even)
@@ -1266,14 +1320,17 @@ Scope {
                     }
                     Text { text: root.shownCount + " settings"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                     Item { Layout.fillWidth: true }
-                    SChip { pal: root.pal; label: "Collapse all"; onClicked: root.setAll(true) }
-                    SChip { pal: root.pal; label: "Expand all"; onClicked: root.setAll(false) }
+                    SChip { pal: root.pal; label: root.advAll ? "Advanced: shown" : "Advanced: hidden"; on: root.advAll; onClicked: root.advAll = !root.advAll }
+                    SChip { pal: root.pal; label: root.pagesMode ? "Tree view" : "Pages view"; onClicked: root.setting("opt:settingsStyle", root.pagesMode ? "tree" : "pages") }
+                    SChip { visible: !root.pagesMode; pal: root.pal; label: "Collapse all"; onClicked: root.setAll(true) }
+                    SChip { visible: !root.pagesMode; pal: root.pal; label: "Expand all"; onClicked: root.setAll(false) }
                     RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
                 }
 
                 // ---------------- section tabs: All / Appearance / Desktop / Input & power / System
                 Flow {
                     id: sectionRow
+                    visible: !root.pagesMode
                     anchors { left: parent.left; right: parent.right; top: head.bottom; leftMargin: 36; rightMargin: 36; topMargin: 14 }
                     spacing: 10
                     opacity: root.query === "" ? 1 : 0.45
@@ -1290,9 +1347,305 @@ Scope {
                     }
                 }
 
+                // ---------------- the pages layout: a trunk of pages on the left, flat cards on the right
+                Item {
+                    id: pagesView
+                    visible: root.pagesMode
+                    anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 36; topMargin: 22 }
+
+                    // the trunk: one node per page
+                    Item {
+                        id: pagesNav
+                        width: 190
+                        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                        opacity: root.query === "" ? 1 : 0.45
+                        Rectangle { x: 5; y: 14; width: 1; height: navCol.height - 28; color: Qt.alpha(root.pal.accent, 0.4) }
+                        Column {
+                            id: navCol
+                            width: parent.width
+                            Repeater {
+                                model: root.pages
+                                delegate: Item {
+                                    id: navItem
+                                    required property var modelData
+                                    readonly property bool cur: root.query === "" && root.page === navItem.modelData.id
+                                    width: navCol.width
+                                    height: 40
+                                    Rectangle {
+                                        x: 1; anchors.verticalCenter: parent.verticalCenter
+                                        width: 9; height: 9; radius: 4.5
+                                        color: navItem.cur ? root.pal.accent : root.pal.bg
+                                        border.width: navItem.cur ? 0 : 1; border.color: root.pal.muted
+                                        Rectangle { visible: navItem.cur; anchors.centerIn: parent; width: 17; height: 17; radius: 8.5; color: "transparent"; border.width: 4; border.color: Qt.alpha(root.pal.accent, 0.2) }
+                                    }
+                                    Text {
+                                        x: 28; anchors.verticalCenter: parent.verticalCenter
+                                        text: navItem.modelData.id
+                                        color: navItem.cur ? root.pal.text : (navMa.containsMouse ? root.pal.text : root.pal.muted)
+                                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1
+                                        font.weight: navItem.cur ? Font.Medium : Font.Normal
+                                    }
+                                    MouseArea { id: navMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { if (search.text !== "") search.text = ""; root.query = ""; root.page = navItem.modelData.id; pscroll.contentY = 0 } }
+                                }
+                            }
+                        }
+                    }
+
+                    Flickable {
+                        id: pscroll
+                        anchors { left: pagesNav.right; leftMargin: 28; right: parent.right; top: parent.top; bottom: parent.bottom }
+                        contentWidth: width
+                        contentHeight: pcol.height + 24
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        pixelAligned: true
+                        flickDeceleration: 2800
+                        maximumFlickVelocity: 3200
+                        readonly property real maxY: Math.max(0, contentHeight - height)
+                        onContentYChanged: { root.scrolling = true; settleT.restart() }
+                        onMovementStarted: pwheelAnim.stop()
+                        NumberAnimation { id: pwheelAnim; target: pscroll; property: "contentY"; duration: 230; easing.type: Easing.OutCubic }
+                        WheelHandler {
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            onWheel: event => {
+                                var pd = event.pixelDelta.y
+                                if (pd !== 0) { pwheelAnim.stop(); pscroll.contentY = Math.max(0, Math.min(pscroll.maxY, pscroll.contentY - pd)) }
+                                else {
+                                    var base = pwheelAnim.running ? pwheelAnim.to : pscroll.contentY
+                                    var to = Math.max(0, Math.min(pscroll.maxY, base - event.angleDelta.y / 120 * 90))
+                                    pwheelAnim.stop(); pwheelAnim.to = to; pwheelAnim.start()
+                                }
+                                event.accepted = true
+                            }
+                        }
+
+                        Column {
+                            id: pcol
+                            width: pscroll.width - 6
+                            spacing: 0
+                            Text {
+                                text: root.query === "" ? root.page : "Search results"
+                                color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.DemiBold
+                            }
+                            Text {
+                                width: parent.width
+                                topPadding: 6; bottomPadding: 22
+                                text: root.query === "" ? root.pageInfo(root.page).sub + "  Rarely used options sit behind Advanced." : root.shownCount + " settings match, from every page."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; wrapMode: Text.WordWrap
+                            }
+
+                            Repeater {
+                                model: root.pageGroupsNow
+                                delegate: Column {
+                                    id: pg
+                                    required property var modelData
+                                    width: pcol.width
+                                    bottomPadding: 22
+                                    spacing: 10
+                                    Text {
+                                        leftPadding: 4
+                                        text: pg.modelData.title.toUpperCase() + (root.query !== "" ? "   \u00b7   " + root.pageOf(pg.modelData.id) : "")
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 1.6
+                                    }
+                                    Rectangle {
+                                        width: pg.width
+                                        height: rowsCol.height
+                                        radius: 16
+                                        color: Qt.alpha(root.pal.surface, 0.55)
+                                        border.width: 1; border.color: root.pal.lineSoft
+                                        clip: true
+                                        Column {
+                                            id: rowsCol
+                                            width: parent.width
+                                            Repeater {
+                                                model: pg.modelData.items
+                                                delegate: Item {
+                                                    id: pr
+                                                    required property var modelData
+                                                    required property int index
+                                                    readonly property var m: pr.modelData
+                                                    readonly property bool off: root.isOff(pr.m)
+                                                    readonly property string descText: root.descOf(pr.m)
+                                                    readonly property bool longDesc: descText.length > 80
+                                                    property bool descOpen: false
+                                                    readonly property bool child: pr.m.when !== undefined && root.query === ""      // depends on the row above: a short branch
+                                                    readonly property bool shortSeg: pr.m.type === "seg" && pr.m.opts.length <= 3 && pr.m.opts.every(function (x) { return String(x.t).length <= 14 })
+                                                    readonly property bool side: pr.m.type === "toggle" || pr.m.type === "tool" || pr.m.type === "action" || pr.m.type === "slider" || pr.shortSeg
+                                                    width: rowsCol.width
+                                                    height: body.implicitHeight + 28
+
+                                                    Rectangle { visible: pr.index > 0; x: 18; width: parent.width - 36; height: 1; color: root.pal.lineSoft }
+                                                    Rectangle { anchors.fill: parent; color: prMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.35) : "transparent" }
+                                                    MouseArea { id: prMa; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+                                                    // a dependent row hangs off the one above it
+                                                    Rectangle { visible: pr.child; x: 30; y: 0; width: 1; height: 30; color: Qt.alpha(root.pal.accent, 0.45) }
+                                                    Rectangle { visible: pr.child; x: 30; y: 30; width: 12; height: 1; color: Qt.alpha(root.pal.accent, 0.45) }
+
+                                                    ColumnLayout {
+                                                        id: body
+                                                        x: pr.child ? 52 : 20; y: 14
+                                                        width: pr.width - x - 20
+                                                        spacing: 12
+                                                        opacity: pr.off ? 0.45 : 1
+
+                                                        RowLayout {
+                                                            Layout.fillWidth: true
+                                                            visible: pr.m.type !== "custom"
+                                                            spacing: 20
+                                                            ColumnLayout {
+                                                                Layout.fillWidth: true
+                                                                spacing: 4
+                                                                RowLayout {
+                                                                    Layout.fillWidth: true
+                                                                    spacing: 8
+                                                                    Text {
+                                                                        Layout.maximumWidth: Math.max(60, body.width - 120)
+                                                                        text: pr.m.label || ""
+                                                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium; wrapMode: Text.WordWrap
+                                                                    }
+                                                                    Rectangle {
+                                                                        visible: pr.longDesc
+                                                                        Layout.preferredWidth: 18; Layout.preferredHeight: 18; radius: 9
+                                                                        color: pr.descOpen ? Qt.alpha(root.pal.accent, 0.22) : "transparent"
+                                                                        border.width: 1; border.color: pr.descOpen ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
+                                                                        Text { anchors.centerIn: parent; text: "?"; color: pr.descOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
+                                                                        MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: pr.descOpen = !pr.descOpen }
+                                                                    }
+                                                                    Item { Layout.fillWidth: true }
+                                                                }
+                                                                Text {
+                                                                    Layout.fillWidth: true
+                                                                    visible: text !== ""
+                                                                    text: pr.descText
+                                                                    maximumLineCount: pr.longDesc && !pr.descOpen ? 1 : 100
+                                                                    elide: pr.longDesc && !pr.descOpen ? Text.ElideRight : Text.ElideNone
+                                                                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 12; lineHeight: 1.25; wrapMode: Text.WordWrap
+                                                                    MouseArea { anchors.fill: parent; enabled: pr.longDesc; cursorShape: Qt.PointingHandCursor; onClicked: pr.descOpen = !pr.descOpen }
+                                                                }
+                                                            }
+                                                            // the control sits on the right
+                                                            Toggle {
+                                                                visible: pr.m.type === "toggle" || pr.m.type === "tool"
+                                                                Layout.alignment: Qt.AlignVCenter
+                                                                pal: root.pal
+                                                                on: root.boolVal(pr.m)
+                                                                busy: pr.m.type === "tool" && root.toolPending === pr.m.key
+                                                                onToggled: pr.m.type === "tool" ? root.toolFlip(pr.m.key) : root.change(pr.m.key, !root.boolVal(pr.m))
+                                                            }
+                                                            ActionChip {
+                                                                visible: pr.m.type === "action"
+                                                                Layout.alignment: Qt.AlignVCenter
+                                                                pal: root.pal
+                                                                label: pr.m.btn || ""
+                                                                doneLabel: pr.m.done || ""
+                                                                disabled: pr.off
+                                                                onClicked: { if (pr.off) return; root.action(pr.m.id); if (pr.m.close) root.hide() }
+                                                            }
+                                                            Slider {
+                                                                visible: pr.m.type === "slider"
+                                                                Layout.alignment: Qt.AlignVCenter
+                                                                Layout.preferredWidth: 280
+                                                                pal: root.pal
+                                                                glyph: String.fromCodePoint(pr.m.glyph || 0xF0335)
+                                                                value: pr.m.type === "slider" ? Math.max(0, Math.min(1, (root.num(pr.m) - pr.m.min) / (pr.m.max - pr.m.min))) : 0
+                                                                readout: pr.m.type === "slider" ? root.fmt(pr.m, root.num(pr.m)) : ""
+                                                                onMoved: v => {
+                                                                    var raw = pr.m.min + v * (pr.m.max - pr.m.min)
+                                                                    var q = Math.round(raw / pr.m.step) * pr.m.step
+                                                                    root.change(pr.m.key, Math.round(q * 1000) / 1000)
+                                                                }
+                                                            }
+                                                            Row {
+                                                                visible: pr.shortSeg
+                                                                Layout.alignment: Qt.AlignVCenter
+                                                                spacing: 8
+                                                                Repeater {
+                                                                    model: pr.shortSeg ? pr.m.opts : []
+                                                                    delegate: SChip {
+                                                                        required property var modelData
+                                                                        pal: root.pal
+                                                                        label: modelData.t
+                                                                        on: root.same(root.get(pr.m.key), modelData.v)
+                                                                        onClicked: root.change(pr.m.key, modelData.v)
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // the wide ones sit under the label: long option lists, several switches in one row
+                                                        Flow {
+                                                            Layout.fillWidth: true
+                                                            visible: (pr.m.type === "seg" && !pr.shortSeg) || pr.m.type === "chips"
+                                                            spacing: 10
+                                                            Repeater {
+                                                                model: ((pr.m.type === "seg" && !pr.shortSeg) || pr.m.type === "chips") ? pr.m.opts : []
+                                                                delegate: SChip {
+                                                                    required property var modelData
+                                                                    visible: pr.m.type !== "chips" || !modelData.when || root.whenOk(modelData.when)
+                                                                    pal: root.pal
+                                                                    label: modelData.t
+                                                                    on: pr.m.type === "chips" ? !!root.get(modelData.k) : root.same(root.get(pr.m.key), modelData.v)
+                                                                    onClicked: pr.m.type === "chips" ? root.change(modelData.k, !root.get(modelData.k)) : root.change(pr.m.key, modelData.v)
+                                                                }
+                                                            }
+                                                        }
+                                                        Flow {
+                                                            Layout.fillWidth: true
+                                                            visible: pr.m.type === "acts"
+                                                            spacing: 10
+                                                            Repeater {
+                                                                model: pr.m.type === "acts" ? pr.m.btns : []
+                                                                delegate: ActionChip {
+                                                                    required property var modelData
+                                                                    pal: root.pal
+                                                                    label: modelData.btn || ""
+                                                                    doneLabel: modelData.done || ""
+                                                                    disabled: pr.off
+                                                                    onClicked: { if (pr.off) return; root.action(modelData.id); if (modelData.close) root.hide() }
+                                                                }
+                                                            }
+                                                        }
+                                                        Loader {
+                                                            Layout.fillWidth: true
+                                                            visible: pr.m.type === "custom"
+                                                            active: pr.m.type === "custom"
+                                                            sourceComponent: pr.m.name === "wallpaper" ? cWallpaper
+                                                                           : pr.m.name === "apps" ? cApps
+                                                                           : pr.m.name === "specialCmds" ? cSpecialCmds
+                                                                           : pr.m.name === "focusApps" ? cFocusApps
+                                                                           : pr.m.name === "safetyAuto" ? cSafetyAuto
+                                                                           : pr.m.name === "barBuilder" ? cBarBuilder
+                                                                           : pr.m.name === "growth" ? cGrowth : cSwatches
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            // the fold for this card's less used settings
+                                            Item {
+                                                visible: pg.modelData.advN > 0 && root.query === "" && !root.advAll
+                                                width: rowsCol.width
+                                                height: visible ? 46 : 0
+                                                Rectangle { x: 18; y: 0; width: parent.width - 36; height: 1; color: root.pal.lineSoft }
+                                                Text {
+                                                    x: 20; anchors.verticalCenter: parent.verticalCenter
+                                                    text: (pg.modelData.advShow ? "\u25be  Hide advanced" : "\u25b8  Advanced  \u00b7  " + pg.modelData.advN)
+                                                    color: advPMa.containsMouse ? root.pal.text : root.pal.muted
+                                                    font.family: root.pal.uiFont; font.pixelSize: 13
+                                                }
+                                                MouseArea { id: advPMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.toggleAdv(pg.modelData.id) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ---------------- the tree
                 Flickable {
                     id: scroll
+                    visible: !root.pagesMode
                     anchors { left: parent.left; right: parent.right; top: sectionRow.bottom; bottom: parent.bottom; margins: 36; topMargin: 20 }
                     contentWidth: width
                     contentHeight: tree.height + 12
@@ -1501,6 +1854,18 @@ Scope {
                                                         readonly property bool lastLeaf: leaf.index === grp.modelData.items.length - 1
                                                         readonly property bool off: m.needs !== undefined && !(root.startup.has && root.startup.has[m.needs] === true)   // an optional part that was not installed: greyed out
                                                         readonly property bool inline: m.type === "toggle" || m.type === "tool" || m.type === "action"
+                                                        // the description as one line; the full text opens with the small "?" (or a click on the line)
+                                                        readonly property string descText: leaf.off ? "Not installed, so this is switched off. Add it with ./install.sh --safety-check (or ./install.sh --choose and answer yes), then open Settings again."
+                                                            : (leaf.m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset)"
+                                                            : (leaf.m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet)"
+                                                            : (leaf.m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
+                                                            : (leaf.m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (leaf.m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
+                                                            : ((leaf.m.key === "st:POLKIT" || leaf.m.key === "st:GPU" || leaf.m.key === "st:PORTAL") && root.startupNote !== "") ? (leaf.m.desc || "") + "  \u2192 " + root.startupNote
+                                                            : leaf.m.key === "rmwhen:BACKUP" ? (leaf.m.desc || "") + "  Last backup made here: " + root.remind.backupAgo + "."
+                                                            : leaf.m.key === "rmwhen:SAFETY" ? (leaf.m.desc || "") + "  Last safety check: " + root.remind.safetyAgo + "."
+                                                            : (leaf.m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (leaf.m.desc || ""))
+                                                        readonly property bool longDesc: descText.length > 80
+                                                        property bool descOpen: false
                                                         width: leaves.width
                                                         height: Math.max(56, content.implicitHeight + 32)
 
@@ -1532,32 +1897,42 @@ Scope {
                                                                 ColumnLayout {
                                                                     Layout.fillWidth: true
                                                                     spacing: 5
-                                                                    Text {
+                                                                    RowLayout {
                                                                         Layout.fillWidth: true
-                                                                        text: leaf.m.label || ""
-                                                                        color: root.pal.text
-                                                                        font.family: root.pal.uiFont
-                                                                        font.pixelSize: root.pal.tBody
-                                                                        font.weight: Font.Medium
-                                                                        wrapMode: Text.WordWrap
+                                                                        spacing: 8
+                                                                        Text {
+                                                                            Layout.maximumWidth: Math.max(60, content.width - 140)
+                                                                            text: leaf.m.label || ""
+                                                                            color: root.pal.text
+                                                                            font.family: root.pal.uiFont
+                                                                            font.pixelSize: root.pal.tBody
+                                                                            font.weight: Font.Medium
+                                                                            wrapMode: Text.WordWrap
+                                                                        }
+                                                                        Rectangle {
+                                                                            visible: leaf.longDesc
+                                                                            Layout.preferredWidth: 18; Layout.preferredHeight: 18
+                                                                            radius: 9
+                                                                            color: leaf.descOpen ? Qt.alpha(root.pal.accent, 0.22) : (qMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.9) : "transparent")
+                                                                            border.width: 1
+                                                                            border.color: leaf.descOpen ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
+                                                                            Text { anchors.centerIn: parent; text: "?"; color: leaf.descOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
+                                                                            MouseArea { id: qMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: leaf.descOpen = !leaf.descOpen }
+                                                                        }
+                                                                        Item { Layout.fillWidth: true }
                                                                     }
                                                                     Text {
                                                                         Layout.fillWidth: true
                                                                         visible: text !== ""
-                                                                        text: leaf.off ? "Not installed, so this is switched off. Add it with ./install.sh --safety-check (or ./install.sh --choose and answer yes), then open Settings again."
-                                                                            : (leaf.m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset)"
-                                                                            : (leaf.m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet)"
-                                                                            : (leaf.m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
-                                                                            : (leaf.m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (leaf.m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
-                                                                            : ((leaf.m.key === "st:POLKIT" || leaf.m.key === "st:GPU" || leaf.m.key === "st:PORTAL") && root.startupNote !== "") ? (leaf.m.desc || "") + "  \u2192 " + root.startupNote
-                                                                            : leaf.m.key === "rmwhen:BACKUP" ? (leaf.m.desc || "") + "  Last backup made here: " + root.remind.backupAgo + "."
-                                                                            : leaf.m.key === "rmwhen:SAFETY" ? (leaf.m.desc || "") + "  Last safety check: " + root.remind.safetyAgo + "."
-                                                                            : (leaf.m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (leaf.m.desc || ""))
+                                                                        text: leaf.descText
+                                                                        maximumLineCount: leaf.longDesc && !leaf.descOpen ? 1 : 100
+                                                                        elide: leaf.longDesc && !leaf.descOpen ? Text.ElideRight : Text.ElideNone
                                                                         color: root.pal.muted
                                                                         font.family: root.pal.uiFont
                                                                         font.pixelSize: 11
                                                                         lineHeight: 1.3
                                                                         wrapMode: Text.WordWrap
+                                                                        MouseArea { anchors.fill: parent; enabled: leaf.longDesc; cursorShape: Qt.PointingHandCursor; onClicked: leaf.descOpen = !leaf.descOpen }
                                                                     }
                                                                 }
                                                                 Toggle {
@@ -1644,6 +2019,29 @@ Scope {
                                                                                : leaf.m.name === "growth" ? cGrowth : cSwatches
                                                             }
                                                         }
+                                                    }
+                                                }
+
+                                                // fold for the less used settings of this group
+                                                Item {
+                                                    visible: grp.modelData.advN > 0 && root.query === "" && !root.advAll
+                                                    width: leaves.width
+                                                    height: visible ? 44 : 0
+                                                    Rectangle { x: 34; y: 0; width: 1; height: 22; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                    Rectangle { x: 34; y: 22; width: 16; height: 1; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                    Rectangle {
+                                                        x: 62; anchors.verticalCenter: parent.verticalCenter
+                                                        width: advRow.implicitWidth + 24; height: 28; radius: 14
+                                                        color: advMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : Qt.alpha(root.pal.surface, 0.5)
+                                                        border.width: 1; border.color: grp.modelData.advShow ? Qt.alpha(root.pal.accent, 0.4) : root.pal.lineSoft
+                                                        Row {
+                                                            id: advRow
+                                                            anchors.centerIn: parent
+                                                            spacing: 8
+                                                            Text { text: grp.modelData.advShow ? "▾" : "▸"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
+                                                            Text { text: grp.modelData.advShow ? "Hide advanced" : "Advanced  ·  " + grp.modelData.advN; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
+                                                        }
+                                                        MouseArea { id: advMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.toggleAdv(grp.modelData.id) }
                                                     }
                                                 }
                                             }
