@@ -24,4 +24,3 @@ conf_backup/
 Thumbs.db
 *.swp
 *~
-sync-and-push.sh

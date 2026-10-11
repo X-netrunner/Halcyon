@@ -94,6 +94,20 @@ Scope {
             focusAgain.restart()
             return
         }
+        if (typeof key === "string" && key.indexOf("rmwhen:") === 0) {     // "off" = reminder off; else it is on with that interval
+            var rw = key.substring(7)                                       // BACKUP | SAFETY
+            if (rw === "SAFETY" && !(startup.has && startup.has.safety)) return
+            if (v === "off") { change("rm:" + rw + "_REMIND", false); return }
+            var wasOn = !!(remind && remind[rw + "_REMIND"])
+            var rcw = JSON.parse(JSON.stringify(remind))
+            rcw[rw + "_EVERY"] = v
+            rcw[rw + "_REMIND"] = true
+            remind = rcw
+            // one shell, so the two writes of the script never overlap; turning it on again only when it was off keeps the running count
+            Quickshell.execDetached(["bash", "-c", "bash \"$1\" set \"$2\" \"$3\"" + (wasOn ? "" : " && bash \"$1\" set \"$4\" 1"), "x", remindScript, rw + "_EVERY", String(v), rw + "_REMIND"])
+            remindAgain.restart()
+            return
+        }
         if (typeof key === "string" && key.indexOf("rm:") === 0) {
             var rk = key.substring(3)
             if (rk.indexOf("SAFETY") === 0 && !(startup.has && startup.has.safety)) return       // the safety check is not installed
@@ -291,9 +305,12 @@ Scope {
     //   seg     { key, label, desc, opts: [{v, t}] }         pick one
     //   slider  { key, label, desc, min, max, step, ... }    drag
     //   action  { id, label, btn, done, desc }               a button that does something
+    //   acts    { label, desc, btns: [{id, btn, done, close}] }  several buttons in one row (Backup: whole system / home folder)
+    //   chips   { label, desc, opts: [ch(key, text, when)] } several on / off switches in one row (each chip flips its key)
     //   custom  { name }                                     wallpaper picker, default apps, constellations, colour swatches
     // key: "theme" = a property of this window, "opt:x" / "hy:x" = shell.qml's opt / Hyprland values
     function o(v, t) { return { v: v, t: t } }
+    function ch(k, t, w) { return { k: k, t: t, when: w } }        // one chip of a "chips" row: a switch (key k) with an optional when
     readonly property var groups: [
         { id: "look", title: "Look", section: "Appearance", items: [
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
@@ -307,13 +324,11 @@ Scope {
         { id: "colours", title: "Colours", section: "Appearance", items: [
             { type: "custom", name: "swatches" },
             { type: "seg", key: "opt:accentMode", label: "Accent colour", desc: "Fixed: the wallpaper's strongest colour. Cycle: the accent drifts slowly through every colour the wallpaper has, e.g. red, then purple, then back.", opts: [o("fixed", "Fixed"), o("cycle", "Cycle through the wallpaper")] },
-            { type: "seg", key: "opt:cycleSecs", label: "Time per colour", desc: "How long the accent takes to go from one wallpaper colour to the next", opts: [o(10, "10 s"), o(20, "20 s"), o(30, "30 s"), o(60, "1 min"), o(120, "2 min"), o(300, "5 min")] },
-            { type: "slider", key: "colorBoost", label: "Colour intensity", desc: "How strongly the wallpaper's colour shows in the accent. 100 % is natural.", min: 0.5, max: 1.5, step: 0.05, scale: 100, unit: " %", glyph: 0xF03D8 }
-        ] },
-        { id: "termcolours", title: "Terminal colours", section: "Appearance", items: [
+            { type: "seg", key: "opt:cycleSecs", label: "Time per colour", desc: "How long the accent takes to go from one wallpaper colour to the next", opts: [o(10, "10 s"), o(20, "20 s"), o(30, "30 s"), o(60, "1 min"), o(120, "2 min"), o(300, "5 min")], when: "opt:accentMode=cycle" },
+            { type: "slider", key: "colorBoost", label: "Colour intensity", desc: "How strongly the wallpaper's colour shows in the accent. 100 % is natural.", min: 0.5, max: 1.5, step: 0.05, scale: 100, unit: " %", glyph: 0xF03D8 },
             { type: "toggle", key: "termFollow", label: "Terminals follow the wallpaper" },
-            { type: "seg", key: "opt:termMode", label: "Terminal colours", desc: "Spectrum: red, green, blue, magenta ... each come from a colour the wallpaper really has. Accent: everything is pulled towards the one accent.", opts: [o("spectrum", "Spectrum"), o("accent", "One accent")] },
-            { type: "toggle", key: "opt:termDrift", label: "Open terminals cycle too", desc: "Cursor, blue and magenta follow the accent while it cycles (repainted every few seconds)." },
+            { type: "seg", key: "opt:termMode", label: "Terminal colours", desc: "Spectrum: red, green, blue, magenta ... each come from a colour the wallpaper really has. Accent: everything is pulled towards the one accent.", opts: [o("spectrum", "Spectrum"), o("accent", "One accent")], when: "termFollow=true" },
+            { type: "toggle", key: "opt:termDrift", label: "Open terminals cycle too", desc: "Cursor, blue and magenta follow the accent while it cycles (repainted every few seconds).", when: "termFollow=true" },
             { type: "action", id: "termcolors", label: "Repaint terminals", btn: "Repaint now", done: "Repainted" }
         ] },
         { id: "wallpaper", title: "Wallpaper", section: "Appearance", items: [
@@ -326,8 +341,8 @@ Scope {
             { type: "slider", key: "opt:settingsGlass", def: 0.72, label: "Settings window opacity", desc: "Lower = more see-through: the blurred wallpaper and windows show through the Settings window.", min: 0.35, max: 1, step: 0.01, scale: 100, unit: " %", glyph: 0xF0335 },
             { type: "slider", key: "hy:inactiveOpacity", def: 1, label: "Unfocused window opacity", desc: "Below 100 % windows you are not using turn see-through", min: 0.5, max: 1, step: 0.05, scale: 100, unit: " %" },
             { type: "toggle", key: "blur", label: "Blur" },
-            { type: "slider", key: "hy:blurSize", def: 8, label: "Blur strength", min: 1, max: 16, step: 1 },
-            { type: "slider", key: "hy:blurPasses", def: 2, label: "Blur quality", desc: "More passes look smoother and cost more GPU", min: 1, max: 5, step: 1 },
+            { type: "slider", key: "hy:blurSize", def: 8, label: "Blur strength", min: 1, max: 16, step: 1, when: "blur=true" },
+            { type: "slider", key: "hy:blurPasses", def: 2, label: "Blur quality", desc: "More passes look smoother and cost more GPU", min: 1, max: 5, step: 1, when: "blur=true" },
             { type: "toggle", key: "hy:dimInactive", label: "Dim unfocused windows" },
             { type: "slider", key: "hy:dimStrength", def: 0.3, label: "Dim amount", min: 0, max: 0.8, step: 0.05, scale: 100, unit: " %" }
         ] },
@@ -342,32 +357,21 @@ Scope {
         { id: "growth", title: "Constellations", section: "Appearance", items: [
             { type: "toggle", key: "opt:starsBar", label: "Moving stars", desc: "A handful of tiny stars flying slowly across the bar (island, notch and custom bar), the bar builder and the wallpaper picker. Independent of the constellation switches below. Very light: they stand still while the bar is hidden or a page is open. Off in the Low resource preset." },
             { type: "toggle", key: "opt:stars", label: "Constellations in the boxes", desc: "The drifting dots and lines behind the Settings, notification centre, cheat sheet, power menu, lock screen and console. Off = none anywhere, whatever the switches below say (the moving stars above are separate)." },
-            { type: "toggle", key: "opt:starsSettings", label: "Settings" },
-            { type: "toggle", key: "opt:starsNotifs", label: "Notification centre" },
-            { type: "toggle", key: "opt:starsCheatsheet", label: "Cheat sheet (keys)" },
-            { type: "toggle", key: "opt:starsPower", label: "Power menu" },
-            { type: "toggle", key: "opt:starsLock", label: "Lock screen" },
-            { type: "toggle", key: "opt:starsTerm", label: "Console (quick terminal)" },
+            { type: "chips", label: "Show the constellations in", desc: "Pick the boxes that get them. (Needs the master switch above.)", opts: [ch("opt:starsSettings", "Settings"), ch("opt:starsNotifs", "Notification centre"), ch("opt:starsCheatsheet", "Cheat sheet"), ch("opt:starsPower", "Power menu"), ch("opt:starsLock", "Lock screen"), ch("opt:starsTerm", "Console")], when: "opt:stars=true" },
             { type: "toggle", key: "profileStars", label: "Profile picture constellation" },
             { type: "custom", name: "growth" }
         ] },
         { id: "barstyle", title: "Bar style", section: "Desktop", items: [
             { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Custom: you choose the shape (Notch or Island), what is on the bar, where it goes and how much padding it has (Bar builder below). Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("custom", "Custom")] },
             { type: "custom", name: "barBuilder", when: "opt:barStyle=custom" },
-            { type: "toggle", key: "pair:ws", label: "Show workspaces", when: "opt:barStyle=island|notch" },
+            { type: "chips", label: "Show in the bar", desc: "Special icons: scratch, music, monitor ... (only the ones that exist). Music bars: only while something plays. Battery % needs the battery or the combined icon.", opts: [ch("pair:ws", "Workspaces", "opt:barStyle=island|notch"), ch("pair:specials", "Special icons", "opt:barStyle=island|notch"), ch("pair:viz", "Music bars", "opt:barStyle=island|notch"), ch("pair:wifi", "Wi-Fi", "opt:barStyle=island|notch"), ch("pair:bat", "Battery", "opt:barStyle=island|notch"), ch("pair:batPct", "Battery %"), ch("pair:caffeine", "Caffeine icon", "opt:barStyle=island|notch")] },
             { type: "seg", key: "opt:islWsLook", label: "Workspace look", desc: "Numbers: the island's own 1 2 3 ... with a sliding pill. Capsules: the notch look, small vertical capsules, the current one big and vivid.", opts: [o("numbers", "Numbers"), o("capsules", "Capsules")], when: "opt:barStyle=island" },
             { type: "seg", key: "pair:wsMin", label: "Capsules always shown", desc: "Workspaces 1 to N are always drawn as capsules (empty ones dim, ones with windows faded, the current one big and vivid). More show up when you use them. The notch always draws capsules; the island only with the capsule look.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")] },
-            { type: "toggle", key: "pair:specials", label: "Show special workspace icons", desc: "Scratch, music, monitor ... (only the ones that exist)", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&pair:specials=true" },
-            { type: "toggle", key: "pair:viz", label: "Music bars", desc: "Only while something plays.", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "opt:viz", label: "Music bars quality", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
             { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island|notch" },
-            { type: "toggle", key: "pair:wifi", label: "Show Wi-Fi", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "pair:wifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "pair:combo=false||opt:barStyle=custom" },
             { type: "seg", key: "pair:bt", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")] },
-            { type: "toggle", key: "pair:bat", label: "Show battery", when: "opt:barStyle=island|notch" },
-            { type: "toggle", key: "pair:batPct", label: "Show battery percentage" },
-            { type: "toggle", key: "pair:caffeine", label: "Show the Caffeine icon", when: "opt:barStyle=island|notch" },
             { type: "seg", key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch|custom" }
         ] },
         { id: "bar", title: "Bar", section: "Desktop", items: [
@@ -376,26 +380,19 @@ Scope {
             { type: "seg", key: "pair:spacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the time always dead centre. (Bar size and padding above is the bar's height and its distance from the edge.)", opts: [o("compact", "Compact"), o("spacious", "Spacious")] },
             { type: "toggle", key: "autoHide", label: "Auto-hide the bar" },
             { type: "seg", key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
-            { type: "seg", key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")] },
+            { type: "seg", key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")], when: "hoverAction=perf|media" },
             { type: "seg", key: "barScroll", label: "Scroll / swipe on the bar to change page", opts: [o("low", "Long swipe"), o("medium", "Medium"), o("high", "Sensitive")] },
             { type: "seg", key: "opt:bgWhere", label: "Background apps count", desc: "Where the number of apps running in the background is shown. The box with the apps always opens bottom-left (on the bar, click the number to open it).", opts: [o("corner", "Corner"), o("bar", "Bar")] }
         ] },
         { id: "clock", title: "Clock", section: "Desktop", items: [
             { type: "seg", key: "clock24", label: "Clock", opts: [o(false, "12 hour"), o(true, "24 hour")] },
-            { type: "toggle", key: "opt:clockSeconds", label: "Show seconds", desc: "Shortcut: middle-click the time in the bar. Right-click it to switch 12 / 24 hour." },
-            { type: "toggle", key: "pair:time", label: "Show the time" },
-            { type: "toggle", key: "pair:date", label: "Show the day and date", desc: "Separate from the time: show either, both or neither." },
+            { type: "chips", label: "Show", desc: "Time and date are separate: show either, both or neither. Seconds: middle-click the time in the bar. Right-click it to switch 12 / 24 hour.", opts: [ch("pair:time", "Time"), ch("pair:date", "Day and date"), ch("opt:clockSeconds", "Seconds")] },
             { type: "seg", key: "opt:clockAlign", label: "Centre the", desc: "Colon: the \":\" sits exactly on the screen's centre line (over a centre webcam). Whole text: the time including AM / PM is centred.", opts: [o("colon", "Colon"), o("text", "Whole text")] },
             { type: "seg", key: "opt:clockNudge", label: "Nudge the clock", desc: "Extra pixels to the right (or left) on top of the above, for a screen or webcam that sits a little off.", opts: [o(-4, "4 left"), o(-2, "2 left"), o(0, "None"), o(2, "2 right"), o(4, "4 right"), o(6, "6 right")] }
         ] },
         { id: "workspaces", title: "Workspaces & windows", section: "Desktop", items: [
             { type: "action", id: "layout", label: "Tiling layout", btn: "Switch dwindle / scrolling", done: "Switched" },
-            { type: "toggle", key: "compactWs", label: "Keep workspaces compact", desc: "On workspace 3 with nothing on 1 and 2? Its windows move to workspace 1." },
-            { type: "toggle", key: "compactSpecial", label: "Compact special workspaces", desc: "On: scratch / music / communication / monitor / tasks windows are smaller. Off: full size." },
-            { type: "toggle", key: "hy:focusOnActivate", label: "Jump to a window that asks for attention" },
-            { type: "toggle", key: "routeApps", label: "Send Spotify / Discord to their workspace" }
-        ] },
-        { id: "wsswitch", title: "Switching workspaces", section: "Desktop", items: [
+            { type: "chips", label: "Workspaces & windows", desc: "Compact: on workspace 3 with nothing on 1 and 2, its windows move to workspace 1. Compact special: scratch / music / communication / monitor / tasks windows are smaller. Jump: go to a window that asks for attention. Send: Spotify / Discord open on their own workspace.", opts: [ch("compactWs", "Keep workspaces compact"), ch("compactSpecial", "Compact special workspaces"), ch("hy:focusOnActivate", "Jump to a window that asks for attention"), ch("routeApps", "Send Spotify / Discord to their workspace")] },
             { type: "seg", key: "opt:wsEnd", label: "Next workspace, from the last one", desc: "With workspaces 1 and 2, going next from 2 opens a new workspace 3 (never from an empty one).", opts: [o("new", "Open a new one"), o("wrap", "Go back to 1"), o("stay", "Stay")] },
             { type: "seg", key: "opt:wsStart", label: "Previous workspace, from the first one", desc: "Wrap: from 1 you land on the highest workspace.", opts: [o("wrap", "Jump to the last"), o("stay", "Stay")] },
             { type: "seg", key: "opt:wsMax", label: "Never open more than", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(9, "9"), o(10, "10")] },
@@ -403,8 +400,7 @@ Scope {
             { type: "toggle", key: "opt:wsInvert", label: "Invert workspace scrolling", desc: "Flips the direction when you scroll or 3-finger swipe through workspaces: the mouse wheel / two-finger scroll over the workspace numbers in the bar, and the 3 finger swipes (the 4 finger swipe has its own option above). Off: scroll down / swipe right = next workspace.", }
         ] },
         { id: "notifications", title: "Notifications", section: "Desktop", items: [
-            { type: "toggle", key: "dnd", label: "Do not disturb" },
-            { type: "toggle", key: "opt:connErrOnly", label: "Wi-Fi & Bluetooth: only tell me about errors", desc: "Off: a notification for every connect and disconnect. On: only when connecting fails (wrong password, device out of range...)." },
+            { type: "chips", label: "Quiet", desc: "Do not disturb: no popups, everything is still kept in the centre. Errors only: Wi-Fi and Bluetooth only tell you when connecting fails (wrong password, device out of range ...).", opts: [ch("dnd", "Do not disturb"), ch("opt:connErrOnly", "Wi-Fi & Bluetooth: errors only")] },
             { type: "seg", key: "opt:notifSpot", label: "Notification trigger spot", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Panels & on-screen display.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
             { type: "seg", key: "opt:notifIcon", label: "Notification picture", desc: "Profile picture: your picture, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
             { type: "seg", key: "notifMax", label: "Popups on screen at once", desc: "When it is full the oldest goes.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },
@@ -413,13 +409,10 @@ Scope {
         ] },
         { id: "focus", title: "Focus mode", section: "Desktop", items: [
             { type: "seg", key: "fc:LENGTH", label: "Session length", desc: "Start it from the utilities box (bottom-right corner, Focus) or SUPER+ALT+F. A timer runs, Do not disturb is on and the apps below are kept closed. When it ends everything goes back to how it was.", opts: [o(15, "15"), o(25, "25"), o(45, "45"), o(50, "50"), o(60, "60"), o(90, "90")] },
-            { type: "toggle", key: "fc:POMODORO", label: "Pomodoro", desc: "Work, a short break, work again ... and a long break after the last round. A reminder shows up at every change, even with Do not disturb on." },
+            { type: "chips", label: "While focusing", desc: "Pomodoro: work, a short break, work again ... with a long break after the last round (a reminder at every change, even with Do not disturb on). Do not disturb: popups muted, urgent ones get through. Awake: no dimming, lock or sleep. Close blocked apps: windows of the apps in the list below are closed the moment they open (a normal close request, never a kill).", opts: [ch("fc:POMODORO", "Pomodoro"), ch("fc:DND", "Do not disturb"), ch("fc:CAFFEINE", "Keep the screen awake"), ch("fc:BLOCK", "Close blocked apps")] },
             { type: "seg", key: "fc:BREAK", label: "Short break (minutes)", opts: [o(3, "3"), o(5, "5"), o(10, "10")], when: "fc:POMODORO=true" },
             { type: "seg", key: "fc:LONG_BREAK", label: "Long break (minutes)", opts: [o(10, "10"), o(15, "15"), o(20, "20"), o(30, "30")], when: "fc:POMODORO=true" },
             { type: "seg", key: "fc:CYCLES", label: "Rounds", opts: [o(2, "2"), o(3, "3"), o(4, "4"), o(6, "6")], when: "fc:POMODORO=true" },
-            { type: "toggle", key: "fc:DND", label: "Do not disturb while focusing", desc: "Popups are muted, new notifications are still kept in the notification centre. Urgent ones get through." },
-            { type: "toggle", key: "fc:CAFFEINE", label: "Keep the screen awake", desc: "No dimming, lock or sleep while a session runs." },
-            { type: "toggle", key: "fc:BLOCK", label: "Close blocked apps", desc: "Windows of the apps in the list below are closed the moment they open. It is a normal close request, never a kill, so an app can still ask about unsaved work." },
             { type: "toggle", key: "fc:CLOSE_RUNNING", label: "Also close the ones already open", desc: "When a session starts. Off: only apps opened during the session are closed.", when: "fc:BLOCK=true" },
             { type: "toggle", key: "fc:BREAK_FREE", label: "Allow blocked apps in breaks", desc: "Pomodoro breaks and Pause lift the block.", when: "fc:BLOCK=true&fc:POMODORO=true" },
             { type: "custom", name: "focusApps" }
@@ -427,7 +420,7 @@ Scope {
         { id: "panels", title: "Panels & on-screen display", section: "Desktop", items: [
             { type: "seg", key: "clickMode", label: "Edge boxes (notifications, console, utilities)", opts: [o(false, "Hover"), o(true, "Click")] },
             { type: "toggle", key: "osdOn", label: "Volume / brightness bar", desc: "Slides up from the bottom whenever volume, brightness or the keyboard light changes." },
-            { type: "seg", key: "opt:osdHold", label: "How long that bar stays", opts: [o(1000, "Short"), o(1700, "Normal"), o(3000, "Long")] }
+            { type: "seg", key: "opt:osdHold", label: "How long that bar stays", opts: [o(1000, "Short"), o(1700, "Normal"), o(3000, "Long")], when: "osdOn=true" }
         ] },
         { id: "mouse", title: "Mouse & pointer", section: "Input & power", items: [
             { type: "slider", key: "scrollMouse", label: "Mouse wheel scroll speed", desc: "In every app. Higher is faster.", min: 0.25, max: 3, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
@@ -438,9 +431,7 @@ Scope {
         ] },
         { id: "touchpad", title: "Touchpad", section: "Input & power", items: [
             { type: "tool", key: "touchpad", label: "Touchpad" },
-            { type: "toggle", key: "hy:naturalScroll", label: "Natural scrolling (touchpad)" },
-            { type: "toggle", key: "hy:tapToClick", label: "Tap to click" },
-            { type: "toggle", key: "hy:disableTyping", label: "Pause the touchpad while typing" },
+            { type: "chips", label: "Touchpad behaviour", desc: "", opts: [ch("hy:naturalScroll", "Natural scrolling"), ch("hy:tapToClick", "Tap to click"), ch("hy:disableTyping", "Pause while typing")] },
             { type: "slider", key: "scrollTouch", label: "Touchpad scroll speed", min: 0.1, max: 1.5, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
             { type: "toggle", key: "st:GESTURES", label: "Edge gestures", desc: "Slide along a touchpad edge: right = volume, top = brightness, left = previous / next track. Off stops the helper at once (and it stays off after login); the normal touchpad keeps working. SUPER+ALT+G only mutes them for a moment." }
         ] },
@@ -465,8 +456,7 @@ Scope {
             { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
             { type: "seg", key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
             { type: "seg", key: "opt:bgRefresh", label: "Background refresh", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. Normal: every 2 s / 4 s. Relaxed: 5 s / 10 s. Slow: 10 s / 20 s. Fewer wake-ups and far fewer small processes, nothing looks different. The performance page and the bar's CPU / RAM / TEMP row stay at the normal pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "Normal"), o("relaxed", "Relaxed"), o("slow", "Slow")] },
-            { type: "action", id: "mem-report", label: "Memory report", btn: "Show what uses my RAM", done: "Opening…", desc: "Opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh), so you can see where the RAM goes." },
-            { type: "action", id: "detect-ram", label: "Memory details", btn: "Detect RAM", done: "Asking…", desc: "Asks for your password once to read the memory type and speed." }
+            { type: "acts", label: "Memory", desc: "Show what uses my RAM: opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
         ] },
         { id: "startup", title: "Startup & background", section: "System", items: [
             { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
@@ -480,24 +470,18 @@ Scope {
             { type: "custom", name: "apps" },
             { type: "seg", key: "st:FILE_ICONS", label: "File manager icons", desc: "How big the icons are in Thunar (side bar, lists, icon view, toolbar). Thunar picks it up at once; windows that are already open may need a reopen.", opts: [o("small", "Small"), o("medium", "Medium"), o("large", "Large")] }
         ] },
-        { id: "backup", title: "Backup", section: "System", items: [
-            { type: "action", id: "backup-device", label: "Backup this device", btn: "Choose a disk and back up", done: "Opening…", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the whole system is copied onto it (scripts/backup-device.sh). Nothing on the disk is erased; every backup goes in its own dated folder. Caches, trash, package downloads and game files are skipped (they rebuild by themselves); add your own in ~/.config/Halcyon/backup-exclude.conf." },
-            { type: "action", id: "backup-home", label: "Backup my home folder only", btn: "Choose a disk and back up", done: "Opening…", desc: "Same, but only your files in your home folder. Needs no admin password." },
-            { type: "action", id: "restore-device", label: "Restore from a backup", btn: "Choose a disk and restore", done: "Opening…", desc: "Plug in the backup disk and pick a backup in the terminal that opens. A home-folder backup can only be restored to your home folder; a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder." },
-            { type: "action", id: "restore-home", label: "Restore my home folder only", btn: "Choose a disk and restore", done: "Opening…", desc: "Same, but it only ever touches your home folder (any backup works), and you can restore just one folder or file from it. Needs no admin password." },
+        { id: "backup", title: "Backup & safety", section: "System", items: [
+            { type: "acts", label: "Backup", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the files are copied onto it (scripts/backup-device.sh). Whole system: everything (asks for your admin password). Home folder: only your files, no password. Nothing on the disk is erased; every backup goes in its own dated folder. Caches, trash, package downloads and game files are skipped; add your own in ~/.config/Halcyon/backup-exclude.conf.", btns: [{ id: "backup-device", btn: "Whole system", done: "Opening…" }, { id: "backup-home", btn: "Home folder only", done: "Opening…" }] },
+            { type: "acts", label: "Restore", desc: "Plug in the backup disk and pick a backup in the terminal that opens. Whole system: a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Home folder only: only ever touches your home folder (any backup works), you can restore just one folder or file, no password. Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder.", btns: [{ id: "restore-device", btn: "From a backup", done: "Opening…" }, { id: "restore-home", btn: "Home folder only", done: "Opening…" }] },
+            { type: "seg", key: "rmwhen:BACKUP", label: "Remind me to back up", desc: "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off.", opts: [o("off", "Off"), o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")] },
+            { type: "slider", key: "rm:BACKUP_DAYS", label: "Custom: every how many days", min: 1, max: 365, step: 1, unit: " days", glyph: 0xF0E17, when: "rmwhen:BACKUP=custom" },
             { type: "action", id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in ~/logs/safety_check/." },
-            { type: "toggle", key: "rm:BACKUP_REMIND", label: "Remind me to back up", desc: "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off." },
-            { type: "seg", key: "rm:BACKUP_EVERY", label: "Remind me every", opts: [o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")], when: "rm:BACKUP_REMIND=true" },
-            { type: "slider", key: "rm:BACKUP_DAYS", label: "Custom: every how many days", min: 1, max: 365, step: 1, unit: " days", glyph: 0xF0E17, when: "rm:BACKUP_REMIND=true&rm:BACKUP_EVERY=custom" },
-            { type: "toggle", key: "rm:SAFETY_REMIND", needs: "safety", label: "Remind me to run the safety check", desc: "Same, for the safety check (by hand or automatic, either counts as done)." },
-            { type: "seg", key: "rm:SAFETY_EVERY", needs: "safety", label: "Remind me every", opts: [o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")], when: "rm:SAFETY_REMIND=true" },
-            { type: "slider", key: "rm:SAFETY_DAYS", needs: "safety", label: "Custom: every how many days", min: 1, max: 365, step: 1, unit: " days", glyph: 0xF0E17, when: "rm:SAFETY_REMIND=true&rm:SAFETY_EVERY=custom" },
+            { type: "seg", key: "rmwhen:SAFETY", needs: "safety", label: "Remind me to run the safety check", desc: "Same, for the safety check (by hand or automatic, either counts as done).", opts: [o("off", "Off"), o("1", "Day"), o("7", "Week"), o("30", "Month"), o("90", "3 months"), o("custom", "Custom")] },
+            { type: "slider", key: "rm:SAFETY_DAYS", needs: "safety", label: "Custom: every how many days", min: 1, max: 365, step: 1, unit: " days", glyph: 0xF0E17, when: "rmwhen:SAFETY=custom" },
             { type: "custom", name: "safetyAuto" }
         ] },
         { id: "rice", title: "Rice", section: "System", items: [
-            { type: "action", id: "config", label: "Config files", btn: "Edit config", close: true },
-            { type: "action", id: "cheatsheet", label: "Shortcuts", btn: "Open the shortcut tree", close: true },
-            { type: "action", id: "reload", label: "Hyprland", btn: "Reload", done: "Reloading…", desc: "Re-reads the config files and puts the island's own values back on top." }
+            { type: "acts", label: "Rice", desc: "Edit config: opens the config files. Shortcuts: the shortcut tree. Reload: re-reads the config files and puts the island's own values back on top.", btns: [{ id: "config", btn: "Edit config", done: "", close: true }, { id: "cheatsheet", btn: "Shortcuts", done: "", close: true }, { id: "reload", btn: "Reload Hyprland", done: "Reloading…" }] }
         ] }
     ]
 
@@ -509,6 +493,10 @@ Scope {
         if (key.indexOf("st:") === 0) return startup ? startup[key.substring(3)] : undefined
         if (key.indexOf("fc:") === 0) return focusConf ? focusConf[key.substring(3)] : undefined
         if (key.indexOf("rm:") === 0) return remind ? remind[key.substring(3)] : undefined
+        if (key.indexOf("rmwhen:") === 0) {          // BACKUP / SAFETY: "off", or the interval it is on with
+            var rw = key.substring(7)
+            return (remind && remind[rw + "_REMIND"]) ? String(remind[rw + "_EVERY"]) : "off"
+        }
         if (key.indexOf("pair:") === 0) {            // the value of the bar that is showing now (both get written together)
             var pr = pairs[key.substring(5)]
             return opt ? opt[(opt.barStyle === "notch" || opt.barStyle === "custom") ? pr[1] : pr[0]] : undefined
@@ -565,6 +553,7 @@ Scope {
     function itemText(g, it) {
         var t = ((g.section || "") + " " + g.title + " " + (it.label || "") + " " + (it.desc || "") + " " + (it.name || "") + " " + (it.btn || ""))
         if (it.opts) for (var i = 0; i < it.opts.length; i++) t += " " + it.opts[i].t
+        if (it.btns) for (var b = 0; b < it.btns.length; b++) t += " " + it.btns[b].btn
         return t.toLowerCase()
     }
     // cached results (plain objects that are only mutated, never re-assigned): the filter / column functions hand back the SAME
@@ -593,7 +582,7 @@ Scope {
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
             w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "barBuilder" ? 7 : 4)
-               : (t.type === "seg" || t.type === "slider") ? 2.2 : 1.2
+               : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
         return w
@@ -1488,8 +1477,8 @@ Scope {
                                                                             : (leaf.m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
                                                                             : (leaf.m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (leaf.m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
                                                                             : ((leaf.m.key === "st:POLKIT" || leaf.m.key === "st:GPU" || leaf.m.key === "st:PORTAL") && root.startupNote !== "") ? (leaf.m.desc || "") + "  \u2192 " + root.startupNote
-                                                                            : leaf.m.key === "rm:BACKUP_REMIND" ? (leaf.m.desc || "") + "  Last backup made here: " + root.remind.backupAgo + "."
-                                                                            : leaf.m.key === "rm:SAFETY_REMIND" ? (leaf.m.desc || "") + "  Last safety check: " + root.remind.safetyAgo + "."
+                                                                            : leaf.m.key === "rmwhen:BACKUP" ? (leaf.m.desc || "") + "  Last backup made here: " + root.remind.backupAgo + "."
+                                                                            : leaf.m.key === "rmwhen:SAFETY" ? (leaf.m.desc || "") + "  Last safety check: " + root.remind.safetyAgo + "."
                                                                             : (leaf.m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (leaf.m.desc || ""))
                                                                         color: root.pal.muted
                                                                         font.family: root.pal.uiFont
@@ -1517,19 +1506,38 @@ Scope {
                                                                 }
                                                             }
 
-                                                            // pick one
+                                                            // pick one (seg) / switch several on and off (chips: every chip flips its own key)
                                                             Flow {
                                                                 Layout.fillWidth: true
-                                                                visible: leaf.m.type === "seg"
+                                                                visible: leaf.m.type === "seg" || leaf.m.type === "chips"
                                                                 spacing: 10
                                                                 Repeater {
-                                                                    model: leaf.m.type === "seg" ? leaf.m.opts : []
+                                                                    model: (leaf.m.type === "seg" || leaf.m.type === "chips") ? leaf.m.opts : []
                                                                     delegate: SChip {
                                                                         required property var modelData
+                                                                        visible: leaf.m.type !== "chips" || !modelData.when || root.whenOk(modelData.when)
                                                                         pal: root.pal
                                                                         label: modelData.t
-                                                                        on: root.same(root.get(leaf.m.key), modelData.v)
-                                                                        onClicked: root.change(leaf.m.key, modelData.v)
+                                                                        on: leaf.m.type === "chips" ? !!root.get(modelData.k) : root.same(root.get(leaf.m.key), modelData.v)
+                                                                        onClicked: leaf.m.type === "chips" ? root.change(modelData.k, !root.get(modelData.k)) : root.change(leaf.m.key, modelData.v)
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            // several buttons in one row
+                                                            Flow {
+                                                                Layout.fillWidth: true
+                                                                visible: leaf.m.type === "acts"
+                                                                spacing: 10
+                                                                Repeater {
+                                                                    model: leaf.m.type === "acts" ? leaf.m.btns : []
+                                                                    delegate: ActionChip {
+                                                                        required property var modelData
+                                                                        pal: root.pal
+                                                                        label: modelData.btn || ""
+                                                                        doneLabel: modelData.done || ""
+                                                                        disabled: leaf.off
+                                                                        onClicked: { if (leaf.off) return; root.action(modelData.id); if (modelData.close) root.hide() }
                                                                     }
                                                                 }
                                                             }

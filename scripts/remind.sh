@@ -111,9 +111,9 @@ case "${1:-conf}" in
       [ $(( $(now) - ref )) -ge $(( d * 86400 - 3600 )) ] || continue
       ld=$(last_done "$w")
       if [ "$w" = backup ]; then
-        notify "Time to back up" "Your last backup made here: $(ago "$ld"). Settings > Backup > Backup this device." drive-harddisk
+        notify "Time to back up" "Your last backup made here: $(ago "$ld"). Settings > Backup & safety > Backup." drive-harddisk
       else
-        notify "Time for the safety check" "Your last safety check: $(ago "$ld"). Settings > Backup > Safety check." security-medium
+        notify "Time for the safety check" "Your last safety check: $(ago "$ld"). Settings > Backup & safety > Safety check." security-medium
       fi
       now > "$sdir/reminded-$w"
     done ;;
