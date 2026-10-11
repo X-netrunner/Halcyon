@@ -25,6 +25,9 @@ git add -A
 echo "=== Committing ==="
 git commit -S -m "$MSG" || { echo "Nothing to commit"; exit 0; }
 
+echo "=== Fetching latest remote ==="
+git fetch origin
+
 echo "=== Pushing (force-with-lease) ==="
 git push --force-with-lease origin main
 
