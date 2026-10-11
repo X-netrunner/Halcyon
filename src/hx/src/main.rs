@@ -7,6 +7,7 @@ mod specs;
 mod portrait;
 mod stars;
 mod status;
+mod sysfeeds;
 mod util;
 mod wsres;
 
@@ -17,7 +18,7 @@ fn num(a: &[String], i: usize, d: f64) -> f64 {
 fn usage() {
     eprintln!(
         "hx: Halcyon helper multitool\n\
-         island feeds : audio | bt | wifi | disk [secs] | specs | wsres [secs] | palette <image> | portrait <image> [grid] [max] | status | ctl | stars <image> [n]\n\
+         island feeds : audio | bt | wifi | disk [secs] | specs | wsres [secs] | stats [secs] | net [secs] | states | palette <image> | portrait <image> [grid] [max] | status | ctl | stars <image> [n]\n\
          sysmode      : ids (IDS daemon) | dossier [ip]"
     );
 }
@@ -40,6 +41,9 @@ fn main() {
             rest.get(2).and_then(|n| n.parse().ok()).unwrap_or(900),
         )),
         Some("status") => status::run(),
+        Some("stats") => sysfeeds::stats(num(rest, 0, 2.0)),
+        Some("net") => sysfeeds::net(num(rest, 0, 4.0)),
+        Some("states") => sysfeeds::states(),
         Some("ids") => ids::run(),
         Some("dossier") => dossier::run(rest.first().map(|s| s.as_str())),
         Some("palette") => palette::palette(rest.first().map(|s| s.as_str())),

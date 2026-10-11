@@ -1192,8 +1192,20 @@ ShellRoot {
         command: ["sh", "-c", "test -f /dev/shm/halcyon-gamemode && echo on || echo off"]
         stdout: StdioCollector { onStreamFinished: { if (Date.now() > root.gamingGuard) root.gaming = text.trim() === "on" } }
     }
+    // The always-on readers are `hx stats` / `hx net` (Rust, src/hx/src/sysfeeds.rs): no process is started per tick.
+    // An older hx without them exits with code 2 and `touch ~/.local/state/island/stats-legacy` (or net-legacy) makes them exit
+    // with 3: either way the island falls back to the bash scripts (scripts/stats.sh, scripts/net.sh), which stay as they were.
+    property bool statsLegacy: false
+    property bool statsSeen: false
     Process {
-        running: true
+        running: !root.statsLegacy
+        command: [root.hx, "stats", "2"]
+        stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.stats = JSON.parse(d); root.statsSeen = true } catch (e) {} } }
+        onExited: code => { if (code !== 0) root.statsLegacy = true }
+    }
+    Timer { interval: 10000; running: !root.statsLegacy && !root.statsSeen; onTriggered: root.statsLegacy = true }   // hx missing / silent
+    Process {
+        running: root.statsLegacy
         command: ["bash", root.cfg + "/island/scripts/stats.sh", "2"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.stats = JSON.parse(d) } catch (e) {} } }
     }
@@ -1242,8 +1254,17 @@ ShellRoot {
         command: ["bash", root.cfg + "/island/scripts/gpu.sh", "2"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.gpu = JSON.parse(d) } catch (e) {} } }
     }
+    property bool netLegacy: false
+    property bool netSeen: false
     Process {
-        running: true
+        running: !root.netLegacy
+        command: [root.hx, "net", "4"]
+        stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.net = JSON.parse(d); root.netSeen = true } catch (e) {} } }
+        onExited: code => { if (code !== 0) root.netLegacy = true }
+    }
+    Timer { interval: 10000; running: !root.netLegacy && !root.netSeen; onTriggered: root.netLegacy = true }
+    Process {
+        running: root.netLegacy
         command: ["bash", root.cfg + "/island/scripts/net.sh", "4"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.net = JSON.parse(d) } catch (e) {} } }
     }
@@ -1252,8 +1273,31 @@ ShellRoot {
         command: ["powerprofilesctl", "get"]
         stdout: SplitParser { onRead: d => { if (d.trim()) root.profile = d.trim() } }
     }
-    // one slow poll for the three state readers (gaming flag, caffeine unit, power profile): one wake-up instead of three
-    Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: { gamingProc.running = true; caffeineProc.running = true; profProc.running = true; if (!focusProc.running) focusProc.running = true } }
+    // one slow poll for the state readers (gaming flag, caffeine unit, power profile, focus session). `hx states` answers all four
+    // in ONE short process (they used to be sh + bash/systemctl + two Python interpreters every 15 s). The old four-process
+    // poll below is only used when the installed hx is too old to know `states`. The guards are the same ones the single
+    // readers use, so a switch you just flipped is not overwritten by a poll that started before it.
+    property bool statesLegacy: false
+    property bool statesSeen: false
+    Process {
+        id: statesProc
+        command: [root.hx, "states"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var j = JSON.parse(text)
+                    root.statesSeen = true
+                    if (Date.now() > root.gamingGuard) root.gaming = j.gaming === true
+                    if (Date.now() > root.caffeineGuard) root.caffeine = j.caffeine === true
+                    if (j.profile) root.profile = j.profile
+                    if (j.focus) { root.focusState = j.focus; root.focusNow = Date.now() / 1000 }
+                } catch (e) {}
+            }
+        }
+        onExited: code => { if (code !== 0) root.statesLegacy = true }
+    }
+    Timer { interval: 20000; running: !root.statesLegacy && !root.statesSeen; onTriggered: root.statesLegacy = true }   // hx missing / silent
+    Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: { if (!root.statesLegacy) { if (!statesProc.running) statesProc.running = true } else { gamingProc.running = true; caffeineProc.running = true; profProc.running = true; if (!focusProc.running) focusProc.running = true } } }
     Timer { id: profKick; interval: 3500; onTriggered: profProc.running = true }
 
     // volume / brightness, only polled while the bottom-right panel is open
