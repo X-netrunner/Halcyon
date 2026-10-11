@@ -51,7 +51,9 @@ ShellRoot {
         surface: "tint",           // tint | matte | black : the box background (Settings > Look > Box background); matte / black are solid and need the dark theme
         dropDown: "side",          // off | stack | side : drag the bar down for the utilities box (stack: drag again for the notifications; side: notifications beside it)
         osdHold: 1700,             // ms the volume / brightness bar stays
+        settingsStyle: "tree",     // tree | pages : the layout of the Settings window (both stay; Settings > Look > Settings layout)
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
+        critSecs: 30,              // seconds an urgent popup stays before it hides itself (0 = until clicked); it stays in the centre either way
         notifSpot: "edge",         // edge | corner : where the notification centre is opened from: a strip on the right edge, or the top-right corner
         notifIcon: "pfp",          // pfp | app : the picture of a notification is your profile picture (app icon as a badge), or the app's icon
         connErrOnly: false,        // Wi-Fi / Bluetooth: false = a notification for every connect / disconnect, true = only when connecting fails (scripts/wifi-connect.sh, bt-set.sh read the flag conn-errors-only)
@@ -590,6 +592,7 @@ ShellRoot {
         maxToasts: root.notifMax
         maxHistory: root.notifHistoryMax
         toastSecs: root.opt.toastSecs
+        critSecs: root.opt.critSecs !== undefined ? root.opt.critSecs : 30
         avatar: root.avatarPath
         usePfp: root.opt.notifIcon !== "app"
         spot: root.opt.notifSpot === "corner" ? "corner" : "edge"

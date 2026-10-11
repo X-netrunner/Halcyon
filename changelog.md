@@ -4,6 +4,16 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Settings regrouped, notifications that stay, a safer update.sh
+
+- **Settings**: 24 groups became 16 (Mouse + Touchpad + Keyboard, Power + Sleep, Bar style + Bar, Motion + Shadows + Blur, Night light into Colours, Panels into Notifications, Rice into Apps). Long descriptions show one line with a "?" for the rest. Each group has an **Advanced** row for the rarely used settings (a search, or the header switch, shows them all). The two Backup / Safety-check reminder blocks are built by one helper.
+- **Two Settings layouts, both kept.** The branching **Tree** (default) and new **Pages**: a trunk of 7 pages on the left (Appearance, Bar, Desktop, Input, Power & lock, System, Backup), one page of flat cards on the right, a short branch only where a row depends on the one above, Advanced inside each card. Switch with the chip in the Settings header or Settings > Look > Settings layout; same settings, same saving, the choice is remembered (`opt.settingsStyle`).
+- **Notifications now stay in the centre.** An app that withdrew its own notification (read in the chat, tab focused ...) used to remove it from the centre too, and transient ones were never stored. Both are kept until you remove them.
+- **Urgent popups no longer wait for a click for ever.** Browsers send "requires interaction" as critical. They hide after 30 s (Settings > Notifications > Urgent popups: 15 s / 30 s / 1 min / wait for a click); the notification stays in the centre. The cross on a popup is a real button now (removes it without opening the app).
+- **update.sh**: runs inside one function (replacing itself mid-run is safe), one run at a time, network steps time out, a log in `~/.local/state/halcyon/update.log`, `--changes`, `--rollback`, `--notify`, `-q`, exit code 10 from `--check` when an update exists. An edit of yours that clashes with the update is saved in a git stash instead of leaving conflict markers in the file. After the reload it reads the island's log and reports a QML error at once, and runs a syntax check over the scripts and halcyon-doctor.
+
+---
+
 ## Terminal music player routing, blurred lock screen, focus mode in Rust
 
 - **spotify-player (and other terminal music players) now go to the music workspace.** The island only recognised the Spotify *app* by its window class; a terminal player has the terminal's class (`foot`, `kitty` ...), so it was never moved. `scripts/apps.sh run music` now starts a terminal music player with the window class `halcyon-music` (foot / kitty / alacritty / ghostty / wezterm / xterm / gnome-terminal) and `Routes.js` sends that class to SUPER+M. (konsole has no class option, so it keeps its own.)
