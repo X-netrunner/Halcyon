@@ -7,6 +7,11 @@
 #   apps.sh term-exec cmd [args]   run a command inside the chosen terminal (works for foot, kitty, alacritty, ...)
 # kinds: terminal | browser | files | editor | music | chat
 #
+#   apps.sh add-web <Name> <url>   add a website as a chat app (WhatsApp Web ...), chosen at once. It opens in your chosen browser as its
+#                                  own window (Chromium family: --app, no tabs or address bar; others: a new window).
+#   apps.sh remove-web <id>        take one of those away again
+#   (the same by hand in apps.custom:   chat|whatsapp|WhatsApp|web:https://web.whatsapp.com||0 )
+#
 # An app that is not in the tables below?  Add a line to ~/.config/Halcyon/apps.custom (same format as the tables,
 # with the kind in front):   kind|id|Name|binary|desktop-file (optional)|tui (1 = needs a terminal)
 #   editor|lapce|Lapce|lapce||0
@@ -52,6 +57,10 @@ chats=(
   "vesktop|Vesktop|vesktop|vesktop.desktop|0" "discord|Discord|discord|discord.desktop|0" "telegram|Telegram|telegram-desktop|org.telegram.desktop.desktop|0"
   "signal|Signal|signal-desktop|signal-desktop.desktop|0" "element|Element|element-desktop|element-desktop.desktop|0" "slack|Slack|slack|slack.desktop|0"
   "teams|Teams|teams-for-linux|teams-for-linux.desktop|0" "weechat|WeeChat|weechat||1" "irssi|irssi|irssi||1"
+  # websites, opened in your browser as their own window (they are listed whenever a browser is installed)
+  "whatsapp-web|WhatsApp|web:https://web.whatsapp.com||0" "telegram-web|Telegram (web)|web:https://web.telegram.org/a/||0"
+  "messenger-web|Messenger|web:https://www.messenger.com||0" "google-messages|Google Messages|web:https://messages.google.com/web||0"
+  "discord-web|Discord (web)|web:https://discord.com/app||0" "teams-web|Teams (web)|web:https://teams.microsoft.com||0"
 )
 custom="$HOME/.config/Halcyon/apps.custom"
 
@@ -65,13 +74,33 @@ table() {
   # your own lines (apps.custom), listed after the built-in ones
   [ -f "$custom" ] && awk -F'|' -v k="$1" '$1==k && NF>=4 { printf "%s|%s|%s|%s|%s\n", $2, $3, $4, $5, $6 }' "$custom"
 }
-installed() { local l; while IFS='|' read -r id name bin desk tui; do command -v "$bin" >/dev/null 2>&1 && echo "$id|$name|$bin|$desk|$tui"; done < <(table "$1"); }
+# a web app (binary = web:URL) counts as installed when some browser is
+have_browser() { local id name bin d t; while IFS='|' read -r id name bin d t; do command -v "$bin" >/dev/null 2>&1 && return 0; done < <(table browser); return 1; }
+installed() {
+  local id name bin desk tui web=""
+  while IFS='|' read -r id name bin desk tui; do
+    case "$bin" in
+      web:*) [ -z "$web" ] && { have_browser && web=1 || web=0; }; [ "$web" = 1 ] && echo "$id|$name|$bin|$desk|$tui" ;;
+      *) command -v "$bin" >/dev/null 2>&1 && echo "$id|$name|$bin|$desk|$tui" ;;
+    esac
+  done < <(table "$1")
+}
 saved() { [ -f "$envf" ] && sed -n "s/^$1=//p" "$envf" | tail -n1; }
-# the chosen id if it is still installed, else the first installed one
+# the chosen id if it is still installed, else the first installed app (never a website: those only run when you pick them)
 current() {
   local want; want=$(saved "$1")
   if [ -n "$want" ] && installed "$1" | cut -d'|' -f1 | grep -qx "$want"; then echo "$want"; return; fi
-  installed "$1" | head -n1 | cut -d'|' -f1
+  installed "$1" | grep -v '|web:' | head -n1 | cut -d'|' -f1
+}
+# open a website as its own window in the chosen browser
+open_web() {
+  local url="$1" bid bbin; bid=$(current browser); bbin=$(field browser "$bid" 3)
+  [ -n "$bbin" ] || { notify-send -a Halcyon "No browser found" "Install one to open $url" 2>/dev/null; exit 1; }
+  case "$bid" in
+    chromium|chrome|brave|vivaldi) exec "$bbin" --app="$url" ;;
+    qutebrowser) exec "$bbin" "$url" ;;
+    *) exec "$bbin" --new-window "$url" ;;
+  esac
 }
 field() { installed "$1" | awk -F'|' -v id="$2" -v n="$3" '$1==id {print $n}'; }
 
@@ -84,7 +113,8 @@ case "$1" in
       while IFS='|' read -r id name _; do
         [ -n "$id" ] || continue
         [ $first = 1 ] || out+=","; first=0
-        out+="{\"id\":\"$id\",\"name\":\"$name\"}"
+        isc=false; [ -f "$custom" ] && awk -F'|' -v k="$k" -v i="$id" '$1==k && $2==i {f=1} END {exit !f}' "$custom" && isc=true
+        out+="{\"id\":\"$id\",\"name\":\"$name\",\"custom\":$isc}"
       done < <(installed "$k")
       out+="]"; sep=","
     done
@@ -115,8 +145,23 @@ case "$1" in
       exit 1
     fi
     bin=$(field "$k" "$id" 3); tui=$(field "$k" "$id" 5)
+    case "$bin" in web:*) open_web "${bin#web:}" ;; esac
     if [ "$tui" = 1 ]; then exec bash "$0" term-exec "$bin" "$@"; fi
     exec "$bin" "$@"
+    ;;
+  add-web)
+    name=$(printf '%s' "$2" | tr -d '|"\\' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//'); url=$(printf '%s' "$3" | tr -d '[:space:]')
+    [ -n "$name" ] && [ -n "$url" ] || { echo "usage: apps.sh add-web <Name> <url>" >&2; exit 2; }
+    case "$url" in *'|'*) echo "a | cannot be in a URL" >&2; exit 2 ;; http://*|https://*) ;; *) url="https://$url" ;; esac
+    id="web-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-' | sed 's/--*/-/g; s/^-//; s/-$//')"
+    mkdir -p "$(dirname "$custom")"; touch "$custom"
+    grep -v "^chat|$id|" "$custom" > "$custom.tmp"; echo "chat|$id|$name|web:$url||0" >> "$custom.tmp"; mv "$custom.tmp" "$custom"
+    bash "$0" set chat "$id"; echo "$id"
+    ;;
+  remove-web)
+    id="${2:?usage: apps.sh remove-web <id>}"
+    [ -f "$custom" ] && { grep -v "^chat|$id|" "$custom" > "$custom.tmp"; mv "$custom.tmp" "$custom"; }
+    [ -f "$envf" ] && { grep -v "^chat=$id\$" "$envf" > "$envf.tmp"; mv "$envf.tmp" "$envf"; }
     ;;
   term-exec)
     shift
@@ -131,5 +176,5 @@ case "$1" in
       *) exec "$bin" -e "$@" ;;
     esac
     ;;
-  *) echo "usage: apps.sh list | set <terminal|browser|files|editor|music|chat> <id> | run <kind> [args] | term-exec cmd [args]" >&2; exit 2 ;;
+  *) echo "usage: apps.sh list | set <terminal|browser|files|editor|music|chat> <id> | run <kind> [args] | add-web <Name> <url> | remove-web <id> | term-exec cmd [args]" >&2; exit 2 ;;
 esac
