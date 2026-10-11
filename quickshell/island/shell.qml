@@ -480,6 +480,7 @@ ShellRoot {
             else if (id === "termcolors") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/term-colors.sh", "--now"])
             else if (id === "layout") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_layout.sh"]); hyReadAgain.restart() }
             else if (id === "reset-look") root.resetLook()
+            else if (id === "startup-view") settingsWin.openStartup()
             else if (id === "mem-report") { var h = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", h + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\"; echo; read -n1 -r -p 'Press any key to close '", "x", h + "/halcyon-mem.sh"]) }
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
@@ -647,6 +648,7 @@ ShellRoot {
     // notification centre > launcher / performance / media page). Returns false when there is nothing to close.
     function closeOverlay() {
         if (powerMenu.open) { powerMenu.hide(); return true }
+        if (settingsWin.startupOpen) { settingsWin.startupOpen = false; return true }
         if (settingsWin.builderOpen) { settingsWin.builderOpen = false; return true }
         if (settingsWin.galleryOpen) { settingsWin.galleryOpen = false; return true }
         if (settingsWin.open) { settingsWin.hide(); return true }
@@ -1092,6 +1094,7 @@ ShellRoot {
         case "wallpaper": randomWallpaper(); break
         case "wallgallery": settingsWin.openGallery(); break
         case "barbuilder": settingsWin.openBuilder(); break
+        case "startupview": settingsWin.openStartup(); break
         case "reload": fullReloadProc.running = true; break
         case "settings": settingsWin.show(); break
         case "power": powerMenu.show(); break
@@ -1439,6 +1442,8 @@ ShellRoot {
         function edgemode(): void { root.toggleEdgeMode() }
         function settings(): void { settingsWin.toggle() }
         function gallery(): void { settingsWin.openGallery() }
+        function startup(): void { settingsWin.openStartup() }
+        function processes(): void { settingsWin.openStartup() }
         function wallpaperpicker(): void { settingsWin.openGallery() }
         function power(): void { powerMenu.show() }
         function gaming(): void { root.setGaming(!root.gaming) }
