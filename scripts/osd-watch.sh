@@ -18,22 +18,27 @@ done
 # wait without starting a `sleep` process: a timed read on a pipe nobody writes to
 exec {nap}<> <(:)
 lb=-1; lk=-1; quiet=0
+# poll every 0.25 s while something changed in the last ~10 s, every 0.5 s when it has been still for longer
+# (half the wake-ups all day; the first change after a long pause shows up to 0.5 s later)
+idle=0; w=0.25
 while :; do
+  chg=0
   if [ -e /dev/shm/halcyon-dim ]; then quiet=8
   elif [ "$quiet" -gt 0 ]; then quiet=$((quiet - 1)); fi
   if [ -n "$screen" ]; then
     read -r b < "$screen/brightness" 2>/dev/null || b=$lb
     if [ "$b" != "$lb" ]; then
       [ "$lb" != -1 ] && [ "$quiet" -eq 0 ] && [ "$bmax" -gt 0 ] && printf '{"k":"bright","p":%d}\n' $(( b * 100 / bmax ))
-      lb=$b
+      lb=$b; chg=1
     fi
   fi
   if [ -n "$kbd" ]; then
     read -r k < "$kbd/brightness" 2>/dev/null || k=$lk
     if [ "$k" != "$lk" ]; then
       [ "$lk" != -1 ] && [ "$quiet" -eq 0 ] && [ "$kmax" -gt 0 ] && printf '{"k":"kbd","p":%d}\n' $(( k * 100 / kmax ))
-      lk=$k
+      lk=$k; chg=1
     fi
   fi
-  read -r -t 0.25 -u "$nap" _ 2>/dev/null || sleep 0.25
+  if [ "$chg" = 1 ]; then idle=0; w=0.25; elif [ "$idle" -lt 40 ]; then idle=$((idle + 1)); else w=0.5; fi
+  read -r -t "$w" -u "$nap" _ 2>/dev/null || sleep "$w"
 done

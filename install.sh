@@ -960,7 +960,7 @@ fi
 try run_as_user_cmd "Making the scripts executable" bash -c '
     cd "$1" || exit 0
     for f in install.sh update.sh scripts/*.sh scripts/halcyon-tune launch/*.sh quickshell/island/scripts/*.sh \
-             quickshell/scripts/*.sh waybar/*.sh sysmode/sysmode sysmode/*.py sysmode/*.py.bak; do
+             sysmode/sysmode sysmode/*.py sysmode/*.py.bak; do
         [ -f "$f" ] && chmod +x "$f"
     done
     exit 0' _ "$TARGET_RICE"
@@ -969,7 +969,7 @@ try run_as_user_cmd "Making the scripts executable" bash -c '
 log_step "Step 8: Building the Rust helpers"
 
 BIN_DIR="$TARGET_RICE/bin"
-BUILD_ROOT="$TARGET_HOME/.cache/halcyon-build"           # outside the rice: the copy stays clean and rebuilds are quick
+BUILD_ROOT="$TARGET_HOME/.cache/halcyon-build"           # outside the rice: the copy stays clean and rebuilds are quick; all crates share ONE target dir (build/shared), so regex / chrono / libc ... compile once
 run_as_user_cmd "Creating $BIN_DIR" mkdir -p "$BIN_DIR" "$BUILD_ROOT" \
     || die "Cannot create $BIN_DIR$([[ "$LINK_CONFIG" == "true" ]] && echo " (with --link the Halcyon folder itself must be writable by $TARGET_USER)")"
 BUILD_FAILED=()
@@ -987,9 +987,9 @@ else
     for crate in "${CRATES[@]}"; do
         MANIFEST="$TARGET_RICE/src/$crate/Cargo.toml"; [[ -f "$MANIFEST" ]] || MANIFEST="$RICE_SOURCE/src/$crate/Cargo.toml"
         log_info "Building ${BOLD}${crate}${RESET} (the first time takes a few minutes)..."
-        if run_as_user_cmd "cargo build --release: $crate" env "CARGO_TARGET_DIR=$BUILD_ROOT/$crate" cargo build --release --manifest-path "$MANIFEST" \
-           && { [[ "$DRY_RUN" == "true" ]] || [[ -f "$BUILD_ROOT/$crate/release/$crate" ]]; } \
-           && run_as_user_cmd "Installing $crate" bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$BUILD_ROOT/$crate/release/$crate" "$BIN_DIR/$crate"; then
+        if run_as_user_cmd "cargo build --release: $crate" env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" cargo build --release --manifest-path "$MANIFEST" \
+           && { [[ "$DRY_RUN" == "true" ]] || [[ -f "$BUILD_ROOT/shared/release/$crate" ]]; } \
+           && run_as_user_cmd "Installing $crate" bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$BUILD_ROOT/shared/release/$crate" "$BIN_DIR/$crate"; then
             [[ "$DRY_RUN" == "true" ]] || log_success "Installed ${BIN_DIR}/${crate}"
             # Keep sysmode symlinks in sync
             case "$crate" in

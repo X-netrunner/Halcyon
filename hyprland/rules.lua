@@ -7,7 +7,6 @@ hl.window_rule({ match = { class = "pavucontrol" }, float = true })
 hl.window_rule({ match = { class = "blueman-manager" }, float = true })
 hl.window_rule({ match = { class = "nm-connection-editor" }, float = true })
 
-hl.layer_rule({ match = { namespace = "waybar" }, blur = true })
 hl.layer_rule({ match = { namespace = "notification" }, blur = true })
 
 -- Frosted glass behind every island surface. Only pixels more opaque than ignore_alpha are blurred, so the
