@@ -27,7 +27,7 @@ Item {
     property string sysmode: ""                // for the constellation behind the card (same as the tree and Settings)
     property var starData: null
     property bool profileStars: true
-    property bool stars: true
+    property bool movingStars: true      // the few stars flying over the card (Settings > Look > Moving stars); the constellations are not drawn here
     signal edited(var layout)
     signal closed()
 
@@ -420,7 +420,6 @@ Item {
         // a click on the card must not close the window; it takes the typing focus off a number box
         MouseArea { anchors.fill: parent; onPressed: m => { root.forceActiveFocus(); m.accepted = true } }
 
-        Backdrop { visible: root.open && root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 12; artStrength: 0.5; artFit: 0.85 }
 
         ColumnLayout {
             anchors.fill: parent
@@ -757,8 +756,8 @@ Item {
             }
         }
 
-        // a few stars flying over everything on the card (Settings > Look > Constellations)
-        BarStars { z: 20; anchors.fill: parent; anchors.margins: 14; pal: root.pal; count: 10; loopMs: 140000; sizeScale: 1.4; active: root.open; visible: root.open && root.stars }
+        // a few stars flying over everything on the card (Settings > Look > Moving stars)
+        BarStars { z: 20; anchors.fill: parent; anchors.margins: 14; pal: root.pal; count: 10; loopMs: 140000; sizeScale: 1.4; active: root.open; visible: root.open && root.movingStars }
     }
 
     // the widget in the hand

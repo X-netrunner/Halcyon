@@ -75,7 +75,7 @@ ShellRoot {
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
         stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
-        starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: true
+        starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: true     // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
     })
     // Hyprland values you changed in Settings: only these are pushed (the Lua config rules for everything else).
     // hyCur = what Hyprland has right now (read at start by scripts/hypr-values.sh, then your changes) = where the sliders start.
@@ -138,13 +138,13 @@ ShellRoot {
     // Settings > Performance > Resource use: three presets that set many options at once. The options stay changeable afterwards.
     // (Startup items and the GPU are NOT part of it: they only change at the next login, see Settings > Startup & background.)
     readonly property var resPresets: ({
-        low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, accentMode: "fixed", termDrift: false, clockSeconds: false, bgRefresh: "slow", viz: "light" },
+        low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, starsBar: false, accentMode: "fixed", termDrift: false, clockSeconds: false, bgRefresh: "slow", viz: "light" },
                   blur: false, shadows: false, hyprAnim: false, motion: 0.5, profileStars: false, notifHistoryMax: 10, notifMax: 3,
                   hy: { blurSize: 4, blurPasses: 1 } },
-        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true, bgRefresh: "relaxed", viz: "full" },
+        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true, starsBar: true, bgRefresh: "relaxed", viz: "full" },
                   blur: true,  shadows: false, hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 20, notifMax: 5,
                   hy: { blurSize: 6, blurPasses: 2 } },
-        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true, bgRefresh: "normal", viz: "full" },
+        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true, starsBar: true, bgRefresh: "normal", viz: "full" },
                   blur: true,  shadows: true,  hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 30, notifMax: 5,
                   hy: { blurSize: 7, blurPasses: 3 } }
     })
@@ -1586,6 +1586,21 @@ ShellRoot {
                     else if (dx < -50) root.go(1)
                     else if (dx > 50) root.go(-1)
                 }
+            }
+
+            // a few tiny stars drifting along the island, behind the widgets (Settings > Look > Moving stars).
+            // They fade out with the home page and stop while it is not shown.
+            BarStars {
+                pal: pal
+                active: root.page === "home"
+                opacity: (root.page === "home" && !root.notchStyle) ? 1 : 0
+                visible: opacity > 0.01 && win.shown && root.opt.starsBar !== false
+                Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                anchors.fill: parent
+                anchors.leftMargin: root.padSet.h * 0.45
+                anchors.rightMargin: root.padSet.h * 0.45
+                anchors.topMargin: 3
+                anchors.bottomMargin: 3
             }
 
             // pages follow the pointer while dragging

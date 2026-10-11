@@ -340,14 +340,14 @@ Scope {
             { type: "slider", key: "opt:nightTemp", def: 4000, label: "Night light warmth", desc: "Lower is warmer", min: 2500, max: 6500, step: 100, unit: " K" }
         ] },
         { id: "growth", title: "Constellations", section: "Appearance", items: [
-            { type: "toggle", key: "opt:stars", label: "Constellations in the boxes", desc: "The drifting dots and lines behind the Settings, notification centre, cheat sheet, power menu, lock screen and console. Off = none anywhere, whatever the switches below say." },
+            { type: "toggle", key: "opt:starsBar", label: "Moving stars", desc: "A handful of tiny stars flying slowly across the bar (island, notch and custom bar), the bar builder and the wallpaper picker. Independent of the constellation switches below. Very light: they stand still while the bar is hidden or a page is open. Off in the Low resource preset." },
+            { type: "toggle", key: "opt:stars", label: "Constellations in the boxes", desc: "The drifting dots and lines behind the Settings, notification centre, cheat sheet, power menu, lock screen and console. Off = none anywhere, whatever the switches below say (the moving stars above are separate)." },
             { type: "toggle", key: "opt:starsSettings", label: "Settings" },
             { type: "toggle", key: "opt:starsNotifs", label: "Notification centre" },
             { type: "toggle", key: "opt:starsCheatsheet", label: "Cheat sheet (keys)" },
             { type: "toggle", key: "opt:starsPower", label: "Power menu" },
             { type: "toggle", key: "opt:starsLock", label: "Lock screen" },
             { type: "toggle", key: "opt:starsTerm", label: "Console (quick terminal)" },
-            { type: "toggle", key: "opt:starsBar", label: "Bar (a few drifting stars)", desc: "A handful of tiny stars flying slowly along the top bar. Very light: they stop while the bar is hidden or a page is open." },
             { type: "toggle", key: "profileStars", label: "Profile picture constellation" },
             { type: "custom", name: "growth" }
         ] },
@@ -459,7 +459,7 @@ Scope {
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] }
         ] },
         { id: "performance", title: "Performance & memory", section: "System", items: [
-            { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars, 30 fps, small notification lists, slow background refresh, light music bars. Medium: light blur, no shadows, 60 fps, relaxed background refresh. High: everything on, as designed. It sets the options on this page and in Look, Motion and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
+            { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars (no moving stars in the bar), 30 fps, small notification lists, slow background refresh, light music bars. Medium: light blur, no shadows, 60 fps, relaxed background refresh. High: everything on, as designed. It sets the options on this page and in Look, Motion and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "toggle", key: "gaming", label: "Gaming mode", desc: "CPU / GPU at full speed, turbo on, Wi-Fi power saving off, effects off, Caffeine and Do not disturb on, background helpers stopped. SUPER+F10." },
             { type: "seg", key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
@@ -1600,7 +1600,7 @@ Scope {
                 sysmode: root.sysmode
                 starData: root.starData
                 profileStars: root.profileStars
-                stars: root.opt.stars !== false && root.opt.starsSettings !== false
+                movingStars: root.opt.starsBar !== false
                 open: root.galleryOpen && gwin.shown
                 onClosed: root.galleryOpen = false
                 pal: root.pal
@@ -1643,7 +1643,7 @@ Scope {
                 sysmode: root.sysmode
                 starData: root.starData
                 profileStars: root.profileStars
-                stars: root.opt.stars !== false && root.opt.starsSettings !== false
+                movingStars: root.opt.starsBar !== false
                 onClosed: root.builderOpen = false
                 onEdited: l => root.setting("opt:barLayout", l)
             }
