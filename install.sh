@@ -16,7 +16,7 @@
 #    3  graphics drivers + CPU microcode: NVIDIA (open / legacy, by GPU generation), Intel, AMD, hybrid laptops (detected)
 #    4  audio (+ firmware), Bluetooth, network, power services, input / video groups
 #    5  Hyprland, Quickshell and the desktop packages + YOUR apps: you pick the web browser, the file manager (Thunar, Yazi,
-#       Dolphin, ...), the code editor (VSCodium, Zed, ...) and whether to install sysmode and the safety check; plus foot, Spotify (+ spotify-player), Discord
+#       Dolphin, ...), the code editor (VSCodium, Zed, ...) and whether to install sysmode and the safety check; plus foot, Discord and the music player(s) you pick (Spotify, spotify-player)
 #    6  Rust toolchain (for the helpers below)
 #    7  copies the rice to ~/.config/Halcyon (an older copy is backed up; your hypr-user.lua, scheme/current.lua and
 #       gamemode.conf are kept)
@@ -42,10 +42,11 @@
 #   --lock-login           use the lock screen as login screen even if a login manager exists
 #   --no-lock-login        never set that up (you log in on the text console and start Halcyon by hand)
 #   --remove-lock-login    undo it: no more auto-login on tty1, tty1 is an ordinary text login again
-#   --no-apps              do not install foot / Spotify / spotify-player / Discord (and no file manager unless you ask for one)
+#   --no-apps              do not install foot / Discord / a music player (and no file manager unless you ask for one)
 #   --browser ID           firefox | zen | librewolf | floorp | chromium | brave | vivaldi | chrome | qutebrowser | keep
 #   --files ID[,ID]        thunar | yazi | dolphin | nautilus | nemo | pcmanfm | none   (the first one opens folders: SUPER+E)
 #   --editor ID[,ID]       codium | zeditor | neovim | none                              (the first one is SUPER+C)
+#   --music ID[,ID]        spotify | spotify-player | none                               (the first one is SUPER+M; several are fine)
 #   --sysmode              install sysmode without asking (--no-sysmode: skip it)
 #   --safety-check         install the safety check (system update, malware / rootkit scan, firewall, audit, backup) without asking
 #                          (--no-safety-check: skip it; its entry in Settings > Backup is then greyed out and disabled)
@@ -77,7 +78,7 @@ INSTALL_APPS=true
 PACKAGES=true; SKIP_DRIVERS=false; SKIP_AUR=false; UPGRADE=auto; SKIP_TUNE=false
 SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=false; SYSMODE_ASKED=true; }
 SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default (answer n, or --no-safety-check, to skip it)
-PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
+PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 LINK_CONFIG=false; REQUESTED_USER=""; TTY_AUTOSTART=false; LOCK_LOGIN=auto; REMOVE_LOGIN=false
 
 WARNINGS=()          # non-fatal problems, listed again at the end
@@ -149,6 +150,8 @@ while [[ $# -gt 0 ]]; do
         --files=*)          PICK_FILES="${1#--files=}" ;;
         --editor)           shift; PICK_EDITOR="${1:-}"; [[ -n "$PICK_EDITOR" ]] || die "--editor needs a name (see --help)" ;;
         --editor=*)         PICK_EDITOR="${1#--editor=}" ;;
+        --music)            shift; PICK_MUSIC="${1:-}"; [[ -n "$PICK_MUSIC" ]] || die "--music needs a name (see --help)" ;;
+        --music=*)          PICK_MUSIC="${1#--music=}" ;;
         --choose)           CHOOSE=true ;;
         --no-tune)          SKIP_TUNE=true ;;
         --link)             LINK_CONFIG=true ;;
@@ -751,18 +754,24 @@ files_pkgs()   { case "$1" in thunar) echo thunar thunar-archive-plugin thunar-v
                   yazi) echo yazi ffmpegthumbnailer zoxide ;; dolphin) echo dolphin ffmpegthumbs kio-extras kde-cli-tools gvfs gvfs-mtp ;;
                   nautilus) echo nautilus gvfs gvfs-mtp file-roller ;; nemo) echo nemo nemo-fileroller gvfs gvfs-mtp ;; pcmanfm) echo pcmanfm-gtk3 gvfs gvfs-mtp ;; esac; }
 editor_pkgs()  { case "$1" in codium) echo vscodium-bin ;; zeditor) echo zed ;; neovim) echo neovim ;; esac; }
+# Spotify: the official client through spotify-launcher (AUR 'spotify' only when that package does not exist), + spicetify to theme it.
+# spotify-player: Spotify in the terminal (needs Premium), themed by scripts/app-themes.sh.
+music_pkgs()   { case "$1" in
+                  spotify) if ! pkg_missing spotify || ! pkg_missing spotify-launcher; then echo spicetify-cli
+                           elif pacman -Si spotify-launcher >/dev/null 2>&1; then echo spotify-launcher spicetify-cli; else echo spotify spicetify-cli; fi ;;
+                  spotify-player) echo spotify-player ;; esac; }
 choice_bin()   { case "$1:$2" in
                   browser:zen) echo zen-browser ;; browser:chrome) echo google-chrome-stable ;; browser:vivaldi) echo vivaldi-stable ;;
-                  files:pcmanfm) echo pcmanfm ;; editor:neovim) echo nvim ;; *) echo "$2" ;; esac; }
-choice_valid() { local kind=$1 id=$2 fn; case "$kind" in browser) fn=browser_pkgs ;; files) fn=files_pkgs ;; editor) fn=editor_pkgs ;; esac
+                  files:pcmanfm) echo pcmanfm ;; editor:neovim) echo nvim ;; music:spotify-player) echo spotify_player ;; music:spotify) echo spotify-launcher ;; *) echo "$2" ;; esac; }
+choice_valid() { local kind=$1 id=$2 fn; case "$kind" in browser) fn=browser_pkgs ;; files) fn=files_pkgs ;; editor) fn=editor_pkgs ;; music) fn=music_pkgs ;; esac
                  [[ "$id" == keep || "$id" == none || -n "$($fn "$id")" ]]; }
 apps_id()      { [[ "$1:$2" == editor:neovim ]] && echo nvim || echo "$2"; }      # the id Settings > Default apps (apps.sh) uses
 
 choose_apps() {
-    local interactive=false have_b have_e s_b s_f s_e s_s s_c ask_b=false ask_f=false ask_e=false ask_s=false ask_c=false id kind
-    local flag_b="$PICK_BROWSER" flag_f="$PICK_FILES" flag_e="$PICK_EDITOR"      # given on the command line
+    local interactive=false have_b have_e s_b s_f s_e s_m s_s s_c ask_b=false ask_f=false ask_e=false ask_m=false ask_s=false ask_c=false id kind
+    local flag_b="$PICK_BROWSER" flag_f="$PICK_FILES" flag_e="$PICK_EDITOR" flag_m="$PICK_MUSIC"      # given on the command line
     [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
-    s_b=$(saved_choice BROWSER); s_f=$(saved_choice FILES); s_e=$(saved_choice EDITOR); s_s=$(saved_choice SYSMODE); s_c=$(saved_choice SAFETY_CHECK)
+    s_b=$(saved_choice BROWSER); s_f=$(saved_choice FILES); s_e=$(saved_choice EDITOR); s_m=$(saved_choice MUSIC); s_s=$(saved_choice SYSMODE); s_c=$(saved_choice SAFETY_CHECK)
     have_any firefox chromium google-chrome-stable brave vivaldi-stable zen-browser librewolf floorp qutebrowser && have_b=true || have_b=false
     have_any codium code code-oss cursor zeditor zed subl kate nvim && have_e=true || have_e=false
     # saved sysmode answer (only when nothing on the command line decided it)
@@ -773,9 +782,10 @@ choose_apps() {
         [[ -z "$PICK_BROWSER" && ( "$CHOOSE" == "true" || -z "$s_b" ) ]] && ask_b=true
         [[ -z "$PICK_FILES"   && ( "$CHOOSE" == "true" || -z "$s_f" ) && "$INSTALL_APPS" == "true" ]] && ask_f=true
         [[ -z "$PICK_EDITOR"  && ( "$CHOOSE" == "true" || -z "$s_e" ) ]] && ask_e=true
+        [[ -z "$PICK_MUSIC"   && ( "$CHOOSE" == "true" || -z "$s_m" ) && "$INSTALL_APPS" == "true" ]] && ask_m=true
         [[ "$SYSMODE_ASKED" != "true" ]] && ask_s=true
         [[ "$SAFETY_ASKED" != "true" ]] && ask_c=true
-        if [[ "$ask_b$ask_f$ask_e$ask_s$ask_c" == *true* ]]; then
+        if [[ "$ask_b$ask_f$ask_e$ask_m$ask_s$ask_c" == *true* ]]; then
             echo -e "\n${BOLD}Make it yours${RESET} ${DIM}(Enter takes the marked choice; ./install.sh --choose asks again later)${RESET}"
         fi
     fi
@@ -797,6 +807,11 @@ choose_apps() {
         menu_pick PICK_EDITOR "Code editor" "$([[ "$have_e" == true ]] && echo none || echo codium)" 1 "codium|VSCodium|VS Code without Microsoft's telemetry (AUR)" \
             "zeditor|Zed|fast native editor (Rust)" "neovim|Neovim|terminal editor" "none|None|I have one / skip"
     elif [[ -z "$PICK_EDITOR" ]]; then PICK_EDITOR="${s_e:-none}"; fi
+    # ---- music player(s): several are fine (the first one is what SUPER+M opens)
+    if [[ "$ask_m" == "true" ]]; then
+        menu_pick PICK_MUSIC "Music player" "spotify" 1 "spotify|Spotify|the official client (spotify-launcher), themed with spicetify" \
+            "spotify-player|spotify-player|Spotify in the terminal, themed by Halcyon (needs Premium)" "none|None|I have one / skip"
+    elif [[ -z "$PICK_MUSIC" ]]; then PICK_MUSIC="${s_m:-$([[ "$INSTALL_APPS" == true ]] && echo spotify || echo none)}"; fi
     # ---- sysmode
     if [[ "$ask_s" == "true" ]]; then
         echo -e "\n  ${CYAN}${BOLD}sysmode${RESET}  ${DIM}hardening profiles + a honeypot / IDS lab: secure | relaxed | stealth | lockdown${RESET}"
@@ -813,11 +828,11 @@ choose_apps() {
     fi
     # ---- check the names (a typo in --browser must not silently install nothing)
     local lst
-    for kind in browser files editor; do
-        case "$kind" in browser) lst="$PICK_BROWSER" ;; files) lst="$PICK_FILES" ;; editor) lst="$PICK_EDITOR" ;; esac
+    for kind in browser files editor music; do
+        case "$kind" in browser) lst="$PICK_BROWSER" ;; files) lst="$PICK_FILES" ;; editor) lst="$PICK_EDITOR" ;; music) lst="$PICK_MUSIC" ;; esac
         lst="${lst//,/ }"
         for id in $lst; do choice_valid "$kind" "$id" || die "Unknown $kind '$id' (see ./install.sh --help for the names)"; done
-        case "$kind" in browser) PICK_BROWSER="$lst" ;; files) PICK_FILES="$lst" ;; editor) PICK_EDITOR="$lst" ;; esac
+        case "$kind" in browser) PICK_BROWSER="$lst" ;; files) PICK_FILES="$lst" ;; editor) PICK_EDITOR="$lst" ;; music) PICK_MUSIC="$lst" ;; esac
     done
     PICK_BROWSER="${PICK_BROWSER%% *}"                                  # one browser
     [[ "$PICK_BROWSER" == keep && "$have_b" != "true" ]] && PICK_BROWSER=firefox   # "keep" with nothing installed: never leave the desktop without one
@@ -826,11 +841,13 @@ choose_apps() {
     APPLY_PICKS=()
     [[ ( -n "$flag_b" || "$ask_b" == true ) && "$PICK_BROWSER" != keep ]] && APPLY_PICKS+=("browser=$PICK_BROWSER")
     id="${PICK_FILES%% *}";  [[ ( -n "$flag_f" || "$ask_f" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("files=$id")
+    # SUPER+M opens the first music player you picked; spotify itself is left to the automatic choice (spotify or spotify-launcher, whichever got installed)
+    [[ ( -n "$flag_m" || "$ask_m" == true ) && "${PICK_MUSIC%% *}" == spotify-player ]] && APPLY_PICKS+=("music=spotify-player")
     id="${PICK_EDITOR%% *}"; [[ ( -n "$flag_e" || "$ask_e" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("editor=$(apps_id editor "$id")")
-    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)"
+    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)"
 }
 if [[ "$PACKAGES" == "true" && "$REMOVE_LOGIN" != "true" ]]; then choose_apps
-else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; fi
+else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; fi
 
 # ---------------------------------------------------------------------------------------------- step 5
 log_step "Step 5: Hyprland and the desktop"
@@ -853,26 +870,20 @@ if [[ "$PACKAGES" == "true" ]]; then
     for id in $PICK_BROWSER; do [[ "$id" == keep ]] || CH_PKGS+=($(browser_pkgs "$id")); done
     for id in $PICK_FILES;   do [[ "$id" == none ]] || CH_PKGS+=($(files_pkgs "$id")); done
     for id in $PICK_EDITOR;  do [[ "$id" == none ]] || CH_PKGS+=($(editor_pkgs "$id")); done
+    for id in $PICK_MUSIC;   do [[ "$id" == none ]] || CH_PKGS+=($(music_pkgs "$id")); done
     if [[ ${#CH_PKGS[@]} -gt 0 ]]; then
-        log_info "Your apps: browser ${PICK_BROWSER:-keep}, files ${PICK_FILES:-none}, editor ${PICK_EDITOR:-none}"
+        log_info "Your apps: browser ${PICK_BROWSER:-keep}, files ${PICK_FILES:-none}, editor ${PICK_EDITOR:-none}, music ${PICK_MUSIC:-none}"
         install_pkgs "${CH_PKGS[@]}"
     fi
     # ---- terminal, music, chat: installed unless --no-apps
     if [[ "$INSTALL_APPS" == "true" ]]; then
-        log_info "Apps: foot (terminal), Spotify (+ spotify-player, the terminal client), Discord (+ spicetify and Vesktop so they can wear the rice colours)"
+        log_info "Apps: foot (terminal), Discord (+ Vesktop so it can wear the rice colours); music is your choice (--music, ./install.sh --choose)"
         install_pkgs foot
-        # Spotify: spotify-launcher is in the official repositories and downloads the official Spotify client the first time
-        # you start it. Only when that package does not exist is the AUR package 'spotify' used.
-        if pkg_missing spotify && pkg_missing spotify-launcher; then
-            if pacman -Si spotify-launcher >/dev/null 2>&1; then install_pkgs spotify-launcher; else install_pkgs spotify; fi
-        fi
         install_pkgs discord
-        # spotify-player: Spotify in the terminal (official repositories, AUR otherwise); themed by scripts/app-themes.sh
-        install_pkgs spotify-player
-        # themes: spicetify patches Spotify (AUR); stock Discord cannot be themed, Vesktop (AUR) is a themeable Discord client
-        install_pkgs spicetify-cli vesktop
+        # themes: stock Discord cannot be themed, Vesktop (AUR) is a themeable Discord client
+        install_pkgs vesktop
     else
-        log_info "Apps skipped (--no-apps): foot, Spotify, spotify-player, Discord."
+        log_info "Apps skipped (--no-apps): foot, Discord."
     fi
     try run_as_user_cmd "Creating the standard user folders" xdg-user-dirs-update
 else
@@ -1355,7 +1366,7 @@ user_setup app-themes || warn_later "App themes (Starship, fish, btop, yazi, Spo
 if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
-    user_setup save-choices "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" || true
+    user_setup save-choices "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" || true
 fi
 [[ "$PACKAGES" == "true" && "$SKIP_DRIVERS" != "true" ]] && { user_setup gpu-env "$GPU_ENV_MODE" || true; }
 
@@ -1394,9 +1405,16 @@ if [[ "$PACKAGES" == "true" ]]; then
     for id in $PICK_EDITOR;  do [[ "$id" == none ]] || check_cmd "$id" "$(choice_bin editor "$id")"; done
 fi
 if [[ "$INSTALL_APPS" == "true" && "$PACKAGES" == "true" ]]; then
-    command -v spotify >/dev/null 2>&1 && check_cmd spotify spotify || check_cmd spotify-launcher spotify-launcher
     check_cmd discord discord
-    check_cmd spotify_player spotify_player
+fi
+if [[ "$PACKAGES" == "true" ]]; then
+    for id in $PICK_MUSIC; do
+        case "$id" in
+            none) ;;
+            spotify) command -v spotify >/dev/null 2>&1 && check_cmd spotify spotify || check_cmd spotify-launcher spotify-launcher ;;
+            *) check_cmd "$id" "$(choice_bin music "$id")" ;;
+        esac
+    done
 fi
 for c in foot fuzzel brightnessctl playerctl wpctl nmcli bluetoothctl powerprofilesctl cava grim slurp wl-copy cliphist \
          hypridle hyprlock hyprsunset pkexec lspci nm-applet blueman-applet kbuildsycoca6 wayfreeze bemoji wlogout iw; do

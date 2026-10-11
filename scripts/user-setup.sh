@@ -11,11 +11,11 @@
 #                                         foot / kitty / alacritty / ghostty / wezterm, included once
 #     user-setup.sh app-themes            Starship prompt (with the rice name) + fish colours, then the halcyon theme for btop / yazi /
 #                                         Spotify (spicetify) / Discord (Vesktop); all follow the wallpaper (scripts/app-themes.sh)
-#     user-setup.sh default-apps [browser=ID] [files=ID] [editor=ID]
+#     user-setup.sh default-apps [browser=ID] [files=ID] [editor=ID] [music=ID]
 #                                         foot / Thunar / Spotify / Discord become the default terminal / files / music / chat
 #                                         (only for a kind you have not chosen yourself in Settings > Default apps).
 #                                         browser= / files= / editor= are what you picked in the installer: those always win
-#     user-setup.sh save-choices K=V...   remember the installer's picks (~/.local/state/island/install-choices.env: BROWSER FILES EDITOR SYSMODE SAFETY_CHECK)
+#     user-setup.sh save-choices K=V...   remember the installer's picks (~/.local/state/island/install-choices.env: BROWSER FILES EDITOR MUSIC SYSMODE SAFETY_CHECK)
 #     user-setup.sh gpu-env MODE          ~/.config/Halcyon/gpu.lua for this GPU setup: nvidia | hybrid | none
 # Exit status: 0 = done / nothing to do, 1 = could not do it (a message says why).
 set -uo pipefail
@@ -324,7 +324,7 @@ default_apps() {
   # what you picked in the installer (browser= files= editor=): set first, and they replace an older choice
   for a in "$@"; do
     kind=${a%%=*}; id=${a#*=}
-    case "$kind" in browser|files|editor) ;; *) continue ;; esac
+    case "$kind" in browser|files|editor|music) ;; *) continue ;; esac
     [ -n "$id" ] && [ "$id" != keep ] && [ "$id" != none ] || continue
     if bash "$apps" set "$kind" "$id" 2>/dev/null; then ok "default $kind: $id"
     else warn "default $kind: $id is not installed (pick one in Settings > Default apps)"; fi
@@ -348,7 +348,7 @@ save_choices() {
   mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
   for a in "$@"; do
     k=${a%%=*}
-    case "$k" in BROWSER|FILES|EDITOR|SYSMODE|SAFETY_CHECK) ;; *) continue ;; esac
+    case "$k" in BROWSER|FILES|EDITOR|MUSIC|SYSMODE|SAFETY_CHECK) ;; *) continue ;; esac
     grep -v "^$k=" "$f" > "$f.new" 2>/dev/null; printf '%s="%s"\n' "$k" "${a#*=}" >> "$f.new"; mv "$f.new" "$f"
   done
   ok "your choices are saved in ~/.local/state/island/install-choices.env"

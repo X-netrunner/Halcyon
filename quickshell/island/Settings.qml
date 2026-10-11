@@ -263,6 +263,21 @@ Scope {
         stdout: StdioCollector { onStreamFinished: { try { root.apps = JSON.parse(text) } catch (e) {} } }
     }
 
+    // your own command per special workspace (scripts/special.sh): { special, music, communication, sysmon, todo }, "" = the default
+    property var specialCmds: ({})
+    readonly property string specialScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/special.sh"
+    function setSpecial(id, cmd) {
+        var m = JSON.parse(JSON.stringify(specialCmds))
+        m[id] = cmd
+        specialCmds = m
+        Quickshell.execDetached(["bash", specialScript, "set", id, cmd])
+    }
+    Process {
+        id: specialProc
+        command: ["bash", root.specialScript, "list"]
+        stdout: StdioCollector { onStreamFinished: { try { root.specialCmds = JSON.parse(text) } catch (e) {} } }
+    }
+
     signal setting(string key, var value)
     signal wallpaperSet(string path)  // a thumbnail was clicked
     signal action(string id)          // wallpaper | config | cheatsheet | reload
@@ -307,7 +322,7 @@ Scope {
     //   action  { id, label, btn, done, desc }               a button that does something
     //   acts    { label, desc, btns: [{id, btn, done, close}] }  several buttons in one row (Backup: whole system / home folder)
     //   chips   { label, desc, opts: [ch(key, text, when)] } several on / off switches in one row (each chip flips its key)
-    //   custom  { name }                                     wallpaper picker, default apps, constellations, colour swatches
+    //   custom  { name }                                     wallpaper picker, default apps, special workspace commands, constellations, colour swatches
     // key: "theme" = a property of this window, "opt:x" / "hy:x" = shell.qml's opt / Hyprland values
     function o(v, t) { return { v: v, t: t } }
     function ch(k, t, w) { return { k: k, t: t, when: w } }        // one chip of a "chips" row: a switch (key k) with an optional when
@@ -397,7 +412,8 @@ Scope {
             { type: "seg", key: "opt:wsStart", label: "Previous workspace, from the first one", desc: "Wrap: from 1 you land on the highest workspace.", opts: [o("wrap", "Jump to the last"), o("stay", "Stay")] },
             { type: "seg", key: "opt:wsMax", label: "Never open more than", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(9, "9"), o(10, "10")] },
             { type: "seg", key: "opt:wsSwipe4", label: "4-finger swipe", desc: "Which way you swipe with four fingers to go to the next workspace.", opts: [o("left", "Left = next"), o("right", "Right = next")] },
-            { type: "toggle", key: "opt:wsInvert", label: "Invert workspace scrolling", desc: "Flips the direction when you scroll or 3-finger swipe through workspaces: the mouse wheel / two-finger scroll over the workspace numbers in the bar, and the 3 finger swipes (the 4 finger swipe has its own option above). Off: scroll down / swipe right = next workspace.", }
+            { type: "toggle", key: "opt:wsInvert", label: "Invert workspace scrolling", desc: "Flips the direction when you scroll or 3-finger swipe through workspaces: the mouse wheel / two-finger scroll over the workspace numbers in the bar, and the 3 finger swipes (the 4 finger swipe has its own option above). Off: scroll down / swipe right = next workspace.", },
+            { type: "custom", name: "specialCmds" }
         ] },
         { id: "notifications", title: "Notifications", section: "Desktop", items: [
             { type: "chips", label: "Quiet", desc: "Do not disturb: no popups, everything is still kept in the centre. Errors only: Wi-Fi and Bluetooth only tell you when connecting fails (wrong password, device out of range ...).", opts: [ch("dnd", "Do not disturb"), ch("opt:connErrOnly", "Wi-Fi & Bluetooth: errors only")] },
@@ -581,7 +597,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "barBuilder" ? 7 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -615,6 +631,7 @@ Scope {
 
     onOpenChanged: if (open) {
         if (!appsProc.running) appsProc.running = true
+        if (!specialProc.running) specialProc.running = true
         if (!startupProc.running) startupProc.running = true
         if (!remindProc.running) remindProc.running = true
         startupNote = ""
@@ -827,6 +844,59 @@ Scope {
                 Layout.fillWidth: true
                 text: "Only installed apps are listed. A browser or file manager you pick also becomes the system default for links and folders. Websites (WhatsApp, Telegram, Messenger ...) open in your browser as their own window and are listed whenever a browser is installed; add any other site above. Something else missing? Add a line to ~/.config/Halcyon/apps.custom (see the top of scripts/apps.sh)."
                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    // Special workspace commands: your own command per special workspace, started whenever it opens with no window in it
+    Component {
+        id: cSpecialCmds
+        ColumnLayout {
+            spacing: 10
+            Text {
+                Layout.fillWidth: true
+                text: "Special workspace commands"
+                color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Your own command, started whenever that special workspace is opened with no window in it (e.g. foot -e btop, firefox --new-window https://...). Empty = the default; music and communication then use the apps chosen in Default apps. Enter or Save applies it at once."
+                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; lineHeight: 1.3; wrapMode: Text.WordWrap
+            }
+            Repeater {
+                model: [ { id: "special", name: "Scratch" }, { id: "music", name: "Music" }, { id: "communication", name: "Communication" },
+                         { id: "sysmon", name: "System monitor" }, { id: "todo", name: "Todo" } ]
+                delegate: RowLayout {
+                    id: spRow
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Text {
+                        Layout.preferredWidth: 130
+                        text: spRow.modelData.name
+                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true; Layout.preferredHeight: 36; radius: 18
+                        color: Qt.alpha(root.pal.bg, 0.5); border.width: 1; border.color: spIn.activeFocus ? root.pal.accent : root.pal.lineSoft
+                        TextInput {
+                            id: spIn
+                            anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                            verticalAlignment: TextInput.AlignVCenter
+                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                            clip: true; selectByMouse: true
+                            text: root.specialCmds[spRow.modelData.id] || ""
+                            onAccepted: spSave.clicked()
+                            Text { visible: !parent.text && !parent.activeFocus; anchors.verticalCenter: parent.verticalCenter; text: "default"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                        }
+                    }
+                    SChip {
+                        id: spSave
+                        pal: root.pal
+                        label: "Save"
+                        onClicked: root.setSpecial(spRow.modelData.id, spIn.text.trim())
+                    }
+                }
             }
         }
     }
@@ -1564,6 +1634,7 @@ Scope {
                                                                 active: leaf.m.type === "custom" && !grp.shut
                                                                 sourceComponent: leaf.m.name === "wallpaper" ? cWallpaper
                                                                                : leaf.m.name === "apps" ? cApps
+                                                                               : leaf.m.name === "specialCmds" ? cSpecialCmds
                                                                                : leaf.m.name === "focusApps" ? cFocusApps
                                                                                : leaf.m.name === "safetyAuto" ? cSafetyAuto
                                                                                : leaf.m.name === "barBuilder" ? cBarBuilder
