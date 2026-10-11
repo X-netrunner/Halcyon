@@ -79,10 +79,11 @@ var groups = [
         { label: "Volume up / down", kind: "text", keys: "right edge, slide" },
         { label: "Brightness up / down", kind: "text", keys: "top edge, slide" },
         { label: "Next / previous track", kind: "text", keys: "left edge, flick" },
-        { label: "Next / previous workspace (new one at the end)", kind: "text", keys: "4 fingers left = next; 4 fingers right = previous" },
-        { label: "Scratch workspace", kind: "text", keys: "3 fingers, up / down" },
-        { label: "Sleep", kind: "text", keys: "4 fingers, down" },
-        { label: "Workspace tree", kind: "text", keys: "3-finger pinch" }
+        { label: "Next / previous workspace (new one at the end)", kind: "text", keys: "4 fingers left = next; 4 fingers right = previous (default)" },
+        { label: "Scratch workspace", kind: "text", keys: "3 fingers, up / down (default)" },
+        { label: "Sleep", kind: "text", keys: "4 fingers, down (default)" },
+        { label: "Workspace tree", kind: "text", keys: "3-finger pinch (default)" },
+        { label: "Change any 3 / 4 finger swipe or pinch", kind: "text", keys: "Settings > Touchpad gestures" }
     ] },
     { id: "mouse", title: "Mouse & Gestures", items: [
         { label: "Move a window", kind: "text", keys: "Super + right drag" },
@@ -90,7 +91,8 @@ var groups = [
         { label: "Switch workspaces", kind: "text", keys: "Super + scroll wheel" },
         { label: "Toggle island control center", kind: "text", keys: "Click status ring / notch" },
         { label: "Media / performance page", kind: "text", keys: "Drag island bar left / right" },
-        { label: "Cycle workspaces on bar", kind: "text", keys: "Scroll on island bar" }
+        { label: "Cycle workspaces on bar", kind: "text", keys: "Scroll on island bar" },
+        { label: "Back / forward / middle and extra mouse buttons", kind: "text", keys: "Settings > Mouse buttons (when a mouse is connected)" }
     ] },
     { id: "sysmode", title: "Sysmode (terminal, sudo)", items: [
         { label: "Active profile and kernel metrics", kind: "cli", keys: "sysmode status" },

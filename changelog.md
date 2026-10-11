@@ -4,6 +4,30 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## micro follows the wallpaper, and is transparent
+
+- `scripts/app-themes.sh` writes `~/.config/micro/colorschemes/halcyon.micro` and selects it (`"colorscheme": "halcyon"` in micro's `settings.json`; your old file is kept once as `settings.json.before-halcyon`). The scheme gives the text, status bar, tabs and gutter no background, so micro shows the terminal's own translucent background (the grey blob was micro's built-in scheme painting over it). Syntax colours are the wallpaper's bright colours so they stay readable over it; only the current line, the selection and search hits have a background.
+- Regenerated on every wallpaper change like btop and yazi; an open micro keeps the old colours until you restart it. `halcyon-doctor.sh` checks it.
+
+---
+
+## Startup & processes window, in the builder's and gallery's look
+
+- Same header as the wallpaper gallery (icon, title, search box, segmented *Startup / Processes* switch, round refresh and close buttons) and the same few stars drifting over the card (follows Settings > Look > Moving stars).
+- The three number cards are one memory bar: startup items, the rest of your session, everything else, free. Filters and sorting are segmented switches too.
+- Rows light up on hover, memory has a small bar under the number, and the lists are updated in place every 5 s instead of rebuilt, so nothing flashes or jumps while you read. `/` searches, Esc clears the search first, then closes.
+
+---
+
+## Editable touchpad gestures and mouse buttons
+
+- **Settings > Touchpad gestures**: 3 or 4 fingers, swipe left / right / up / down and pinch in / out, each set from a grouped list of actions (workspaces, windows, island panels, lock / sleep / screenshot, media, volume / brightness, terminal / browser / files, *Open an app* from the same app menu as the shortcut editor, *Run a command*). The defaults are what Halcyon always did. A gesture left on *Nothing* is not registered, so apps still receive it; pinch in and out set to the same thing is registered as one gesture. *Restore defaults* is there too.
+- **Settings > Mouse buttons**: looks for connected mice (touchpads and virtual devices are not counted; checked every 4 s while the section is open) and, when there is one, offers back, forward and middle click, plus three extra buttons for gaming mice. Actions are the same as for gestures, plus *Move / Resize a window while held*. Left and right click are never rebound.
+- How it works: `scripts/input-conf.sh` (`conf`, `set`, `reset`, `run`, no jq needed) keeps `~/.local/state/island/gestures.conf`; `hyprland/inputconf.lua` reads it for `hyprland/gestures.lua` and the new `hyprland/mouse.lua`; each gesture or button runs `input-conf.sh run ID`. Settings asks the island for a batched Hyprland reload after a change (new action `hypr-reload`).
+- The old Workspaces > *4-finger swipe* option is gone: set 4-finger left / right to next / previous in the new section (an old "right = next" choice is carried over as the default).
+
+---
+
 ## Settings regrouped, notifications that stay, a safer update.sh
 
 - **Settings**: 24 groups became 16 (Mouse + Touchpad + Keyboard, Power + Sleep, Bar style + Bar, Motion + Shadows + Blur, Night light into Colours, Panels into Notifications, Rice into Apps). Long descriptions show one line with a "?" for the rest. Each group has an **Advanced** row for the rarely used settings (a search, or the header switch, shows them all). The two Backup / Safety-check reminder blocks are built by one helper.

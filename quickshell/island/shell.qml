@@ -59,7 +59,7 @@ ShellRoot {
         connErrOnly: false,        // Wi-Fi / Bluetooth: false = a notification for every connect / disconnect, true = only when connecting fails (scripts/wifi-connect.sh, bt-set.sh read the flag conn-errors-only)
         bgRefresh: "normal",       // normal | relaxed | slow : how often the always-on readers (CPU / battery / network state) look again while nothing needs them fresh (see syncRefresh below)
         viz: "full",               // full | light | off : the music bars in the bar: cava at 30 fps / 15 fps / not started at all
-        wsSwipe4: "left",          // left | right : which 4-finger swipe goes to the NEXT workspace (scripts/ws-nav.sh)
+        wsSwipe4: "left",          // left | right : only the starting point for the 4-finger swipes now (Settings > Touchpad gestures sets them; scripts/input-conf.sh reads it once)
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
         nightTemp: 4000,           // night light colour temperature (K)
         settingsGlass: 0.72,       // how opaque the Settings window is (lower = more see-through)
@@ -473,6 +473,7 @@ ShellRoot {
             else if (id === "config") root.editConfig()
             else if (id === "cheatsheet") root.runCommand("cheatsheet")
             else if (id === "reload") fullReloadProc.running = true
+            else if (id === "hypr-reload") bindsReload.restart()        // Settings > Touchpad gestures / Mouse buttons: Hyprland reads the new choices (batched like the shortcuts)
             else if (id === "nightlight") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_nightlight.sh"])
             else if (id === "touchpad") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_touchpad.sh"])
             else if (id === "gestures") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_gestures.sh"])
