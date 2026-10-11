@@ -278,6 +278,66 @@ Scope {
         stdout: StdioCollector { onStreamFinished: { try { root.specialCmds = JSON.parse(text) } catch (e) {} } }
     }
 
+    // ---- Touchpad gestures + mouse buttons (scripts/input-conf.sh). The choices are ~/.local/state/island/gestures.conf, which
+    // hyprland/gestures.lua and hyprland/mouse.lua read; a change goes to the file and Hyprland reloads (shell.qml batches it).
+    // Gesture ids: g3-left ... g4-pinchout (3 / 4 fingers); mouse button ids: m274 ... m279.
+    property var inputConf: ({ gestures: ({}), mouse: ({}), mice: [] })
+    property string inputRaw: ""
+    property int inputUsers: 0              // editors on screen right now (the mouse is only looked for while there is one)
+    property bool inputBusy: false          // a change is on its way: do not read the old state back over it
+    readonly property string inputScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/input-conf.sh"
+    function ac(id, t, g) { return { id: id, t: t, g: g } }
+    readonly property var commonActions: [
+        ac("ws-next", "Next workspace", "Workspaces"), ac("ws-prev", "Previous workspace", "Workspaces"),
+        ac("overview", "Workspace tree", "Workspaces"), ac("scratch", "Scratch workspace", "Workspaces"),
+        ac("music", "Music", "Workspaces"), ac("comm", "Communication", "Workspaces"),
+        ac("sysmon", "System monitor", "Workspaces"), ac("todo", "Tasks", "Workspaces"),
+        ac("fullscreen", "Fullscreen", "Windows"), ac("float", "Floating on / off", "Windows"), ac("pin", "Pin window", "Windows"),
+        ac("close", "Close window", "Windows"), ac("focus-left", "Focus the window on the left", "Windows"), ac("focus-right", "Focus the window on the right", "Windows"),
+        ac("launcher", "App launcher", "Island"), ac("settings", "Settings", "Island"), ac("cheatsheet", "Shortcuts", "Island"),
+        ac("notifcenter", "Notification centre", "Island"), ac("quickterm", "Quick console", "Island"),
+        ac("dnd", "Do not disturb", "Island"), ac("focus", "Focus mode", "Island"), ac("gaming", "Gaming mode", "Island"), ac("caffeine", "Keep the screen awake", "Island"),
+        ac("lock", "Lock the screen", "System"), ac("sleep", "Sleep", "System"), ac("screenshot", "Screenshot of an area", "System"),
+        ac("playpause", "Play / pause", "Sound and light"), ac("nexttrack", "Next track", "Sound and light"), ac("prevtrack", "Previous track", "Sound and light"),
+        ac("volup", "Volume up", "Sound and light"), ac("voldown", "Volume down", "Sound and light"), ac("mute", "Mute", "Sound and light"),
+        ac("brightup", "Brighter", "Sound and light"), ac("brightdown", "Dimmer", "Sound and light"),
+        ac("terminal", "Terminal", "Apps"), ac("browser", "Browser", "Apps"), ac("files", "File manager", "Apps"), ac("editor", "Code editor", "Apps"),
+        ac("app", "Open an app…", "Apps"), ac("cmd", "Run a command…", "Apps")
+    ]
+    readonly property var gestureActions: [ac("none", "Nothing: apps get the gesture", "Off")].concat(commonActions)
+    readonly property var mouseActions: [ac("none", "Default: the app handles the button", "Off")].concat(commonActions,
+        [ac("drag", "Move a window while held", "Mouse"), ac("resize", "Resize a window while held", "Mouse")])
+    function inputLoad() { if (!inputBusy && !inputProc.running) inputProc.running = true }
+    function setInput(id, act, cmd) {
+        var c = JSON.parse(JSON.stringify(inputConf))
+        var tbl = id.charAt(0) === "g" ? c.gestures : c.mouse
+        tbl[id] = { a: act, c: (act === "app" || act === "cmd") ? (cmd || "") : "" }
+        inputConf = c
+        inputBusy = true
+        Quickshell.execDetached(["bash", inputScript, "set", id, act, cmd || ""])
+        root.action("hypr-reload")          // only gestures / buttons that do something are registered, so Hyprland has to read the file again
+        inputDone.restart()
+    }
+    function resetInput(what) { inputBusy = true; inputResetProc.what = what; inputResetProc.running = true }
+    Timer { id: inputDone; interval: 3000; onTriggered: { root.inputBusy = false; root.inputLoad() } }
+    Timer { interval: 4000; running: root.open && root.inputUsers > 0; repeat: true; onTriggered: root.inputLoad() }
+    Process {
+        id: inputProc
+        command: ["bash", root.inputScript, "conf"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (root.inputBusy || text === root.inputRaw) return
+                try { root.inputConf = JSON.parse(text); root.inputRaw = text } catch (e) {}
+            }
+        }
+    }
+    Process {
+        id: inputResetProc
+        property string what: "all"
+        command: ["bash", root.inputScript, "reset", what]
+        onExited: { root.action("hypr-reload"); inputDone.restart(); root.inputRaw = "" }
+    }
+
     signal setting(string key, var value)
     signal wallpaperSet(string path)  // a thumbnail was clicked
     signal action(string id)          // wallpaper | config | cheatsheet | reload
@@ -426,7 +486,6 @@ Scope {
             { type: "seg", adv: true, key: "opt:wsEnd", label: "Next workspace, from the last one", desc: "With workspaces 1 and 2, going next from 2 opens a new workspace 3 (never from an empty one).", opts: [o("new", "Open a new one"), o("wrap", "Go back to 1"), o("stay", "Stay")] },
             { type: "seg", adv: true, key: "opt:wsStart", label: "Previous workspace, from the first one", desc: "Wrap: from 1 you land on the highest workspace.", opts: [o("wrap", "Jump to the last"), o("stay", "Stay")] },
             { type: "seg", adv: true, key: "opt:wsMax", label: "Never open more than", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(9, "9"), o(10, "10")] },
-            { type: "seg", adv: true, key: "opt:wsSwipe4", label: "4-finger swipe", desc: "Which way you swipe with four fingers to go to the next workspace.", opts: [o("left", "Left = next"), o("right", "Right = next")] },
             { type: "toggle", adv: true, key: "opt:wsInvert", label: "Invert workspace scrolling", desc: "Flips the direction when you scroll through workspaces with the mouse wheel / two-finger scroll over the workspace numbers in the bar (the 4 finger swipe has its own option above). Off: scroll down / swipe right = next workspace.", },
             { type: "custom", adv: true, name: "specialCmds" }
         ] },
@@ -465,6 +524,13 @@ Scope {
             { type: "toggle", adv: true, key: "st:GESTURES", label: "Edge gestures", desc: "Slide along a touchpad edge: right = volume, top = brightness, left = previous / next track. Off stops the helper at once (and it stays off after login); the normal touchpad keeps working. SUPER+ALT+G only mutes them for a moment." },
             { type: "slider", adv: true, key: "hy:repeatDelay", def: 600, label: "Key repeat delay", min: 150, max: 800, step: 10, unit: " ms" },
             { type: "slider", adv: true, key: "hy:repeatRate", def: 25, label: "Key repeat speed", min: 5, max: 70, step: 1, unit: "/s" }
+        ] },
+        // btn = words the search should find (these two groups are one custom editor each)
+        { id: "gestures", title: "Touchpad gestures", section: "Input & power", items: [
+            { type: "custom", name: "gestures", btn: "swipe pinch three four fingers 3 4 finger multitouch workspace" }
+        ] },
+        { id: "mousebtn", title: "Mouse buttons", section: "Input & power", items: [
+            { type: "custom", name: "mouseButtons", btn: "mouse back forward side button middle click extra thumb gaming" }
         ] },
         { id: "power", title: "Power & lock", section: "Input & power", items: [
             { type: "seg", key: "powerMgr", label: "Power manager", desc: "Which program controls CPU power. Only one runs at a time; the others are stopped. Halcyon Auto drives power-profiles-daemon by itself.", opts: [o("halcyon", "Halcyon Auto"), o("power-profiles-daemon", "power-profiles-daemon"), o("tlp", "TLP"), o("auto-cpufreq", "auto-cpufreq"), o("tuned", "Tuned")] },
@@ -576,7 +642,7 @@ Scope {
     property bool scrolling: false          // true while the list is moving: the starfield / pulses pause so scrolling gets the whole frame
     property string section: ""             // "" = every section; else Appearance | Desktop | Input & power | System
     readonly property var sections: ["Appearance", "Desktop", "Input & power", "System"]
-    property var collapsed: ({ apps: true, growth: true })
+    property var collapsed: ({ apps: true, growth: true, gestures: true, mousebtn: true })
 
     // ---- two layouts: "tree" (the branching view, the default) and "pages" (a menu on the left, one page at a time).
     // Both read the same groups / items and write through the same change(), so nothing is lost by switching.
@@ -585,7 +651,7 @@ Scope {
         { id: "Appearance", sub: "Look, colours, wallpaper and effects.", groups: ["look", "colours", "wallpaper", "glass", "growth"] },
         { id: "Bar", sub: "The bar and the clock.", groups: ["bar", "clock"] },
         { id: "Desktop", sub: "Workspaces, notifications and focus mode.", groups: ["workspaces", "notifications", "focus"] },
-        { id: "Input", sub: "Mouse, touchpad and keyboard.", groups: ["mouse"] },
+        { id: "Input", sub: "Mouse, touchpad, gestures, mouse buttons and keyboard.", groups: ["mouse", "gestures", "mousebtn"] },
         { id: "Power & lock", sub: "Power manager, dimming, lock screen and sleep.", groups: ["power"] },
         { id: "System", sub: "Performance, startup and default apps.", groups: ["performance", "startup", "apps"] },
         { id: "Backup", sub: "Backups, restore and the safety check.", groups: ["backup"] }
@@ -661,7 +727,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -961,6 +1027,147 @@ Scope {
                         label: "Save"
                         onClicked: root.setSpecial(spRow.modelData.id, spIn.text.trim())
                     }
+                }
+            }
+        }
+    }
+
+    // Touchpad gestures: pick 3 or 4 fingers, then what each swipe / pinch does (ActionPick.qml). Saved by scripts/input-conf.sh.
+    Component {
+        id: cGestures
+        ColumnLayout {
+            id: gs
+            width: parent ? parent.width : 0
+            spacing: 10
+            property int fingers: 3
+            property string openId: ""          // the row whose list is unfolded (one at a time)
+            readonly property var dirs: [
+                { k: "left",     t: "Swipe left",  i: "←" },
+                { k: "right",    t: "Swipe right", i: "→" },
+                { k: "up",       t: "Swipe up",    i: "↑" },
+                { k: "down",     t: "Swipe down",  i: "↓" },
+                { k: "pinchin",  t: "Pinch in",    i: "›‹" },
+                { k: "pinchout", t: "Pinch out",   i: "‹›" }
+            ]
+            Component.onCompleted: { root.inputUsers++; root.inputLoad() }
+            Component.onDestruction: root.inputUsers--
+            Text {
+                Layout.fillWidth: true
+                text: "Pick how many fingers, then what each swipe or pinch does. \"Nothing\" leaves a gesture to your apps (a browser can use a 3-finger swipe for back / forward, for example); anything else is taken by Hyprland. Applies at once: Hyprland reloads for a moment. The one-finger edge gestures (volume, brightness, tracks) are under Mouse, touchpad & keyboard > Edge gestures."
+                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; lineHeight: 1.3; wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                SChip { pal: root.pal; label: "3 fingers"; on: gs.fingers === 3; onClicked: { gs.fingers = 3; gs.openId = "" } }
+                SChip { pal: root.pal; label: "4 fingers"; on: gs.fingers === 4; onClicked: { gs.fingers = 4; gs.openId = "" } }
+                Item { Layout.fillWidth: true }
+                SChip { pal: root.pal; label: "Restore defaults"; onClicked: { gs.openId = ""; root.resetInput("gestures") } }
+            }
+            Repeater {
+                model: gs.dirs
+                delegate: ActionPick {
+                    id: gr
+                    required property var modelData
+                    readonly property string gid: "g" + gs.fingers + "-" + modelData.k
+                    readonly property var rec: root.inputConf.gestures[gid] || { a: "none", c: "" }
+                    Layout.fillWidth: true
+                    pal: root.pal
+                    title: modelData.t
+                    icon: modelData.i
+                    actions: root.gestureActions
+                    action: rec.a
+                    cmd: rec.c
+                    unfolded: gs.openId === gid
+                    onToggled: gs.openId = (gs.openId === gid ? "" : gid)
+                    onChosen: (a, c) => {
+                        root.setInput(gid, a, c)
+                        if ((a !== "app" && a !== "cmd") || c !== "") gs.openId = ""
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Out of the box: 4 fingers left / right = next / previous workspace (a new one after the last), 3 fingers up / down = scratch workspace, 4 fingers down = sleep, 3-finger pinch = workspace tree."
+                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    // Mouse buttons: shown for the mice that are connected right now (looked for every few seconds while this is on screen)
+    Component {
+        id: cMouseButtons
+        ColumnLayout {
+            id: mb
+            width: parent ? parent.width : 0
+            spacing: 10
+            property string openId: ""
+            property bool more: false
+            readonly property var mice: root.inputConf.mice || []
+            readonly property bool has: mice.length > 0
+            readonly property var buttons: [
+                { id: "m275", t: "Back button" },
+                { id: "m276", t: "Forward button" },
+                { id: "m274", t: "Middle click (wheel press)" },
+                { id: "m277", t: "Extra button 1" },
+                { id: "m278", t: "Extra button 2" },
+                { id: "m279", t: "Extra button 3" }
+            ]
+            Component.onCompleted: { root.inputUsers++; root.inputLoad() }
+            Component.onDestruction: root.inputUsers--
+            Text {
+                Layout.fillWidth: true
+                text: mb.has ? "Connected: " + mb.mice.join(", ") : "No mouse connected. Plug one in (or connect it by Bluetooth) and its buttons show up here by themselves."
+                color: mb.has ? root.pal.good : root.pal.muted
+                font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; wrapMode: Text.WordWrap
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: mb.has
+                spacing: 10
+                Text {
+                    Layout.fillWidth: true
+                    text: "What each extra button of the mouse does. \"Default\" leaves it to the app under the pointer (back / forward in a browser, a file manager ...); anything else is taken by Hyprland, so the app no longer sees that button. It does not change SUPER + drag. Left and right click are never touched (Left-handed buttons swaps them). It applies to every connected mouse."
+                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; lineHeight: 1.3; wrapMode: Text.WordWrap
+                }
+                Repeater {
+                    model: mb.buttons.filter(function (b) { return mb.more || ["m274", "m275", "m276"].indexOf(b.id) >= 0 })
+                    delegate: ActionPick {
+                        id: mr
+                        required property var modelData
+                        readonly property var rec: root.inputConf.mouse[modelData.id] || { a: "none", c: "" }
+                        Layout.fillWidth: true
+                        pal: root.pal
+                        titleWidth: 170
+                        title: modelData.t
+                        actions: root.mouseActions
+                        action: rec.a
+                        cmd: rec.c
+                        unfolded: mb.openId === modelData.id
+                        onToggled: mb.openId = (mb.openId === modelData.id ? "" : modelData.id)
+                        onChosen: (a, c) => {
+                            root.setInput(modelData.id, a, c)
+                            if ((a !== "app" && a !== "cmd") || c !== "") mb.openId = ""
+                        }
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: ((root.inputConf.mouse || {}).m274 || { a: "none" }).a !== "none"
+                    text: "Middle click is set to something: it no longer pastes the selection or opens a link in a new tab."
+                    color: root.pal.bad; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    SChip { pal: root.pal; label: mb.more ? "Hide the extra buttons" : "Mice with more buttons"; onClicked: mb.more = !mb.more }
+                    Item { Layout.fillWidth: true }
+                    SChip { pal: root.pal; label: "Restore defaults"; onClicked: { mb.openId = ""; root.resetInput("mouse") } }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Not sure which button is which? The usual numbers are 275 = back, 276 = forward, 274 = the wheel press, and 277 and up for a gaming mouse's extra buttons. `wev` (a small Wayland tool) shows the number of whatever you press."
+                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
                 }
             }
         }
@@ -1618,6 +1825,8 @@ Scope {
                                                             visible: pr.m.type === "custom"
                                                             active: pr.m.type === "custom"
                                                             sourceComponent: pr.m.name === "wallpaper" ? cWallpaper
+                                                                           : pr.m.name === "gestures" ? cGestures
+                                                                           : pr.m.name === "mouseButtons" ? cMouseButtons
                                                                            : pr.m.name === "apps" ? cApps
                                                                            : pr.m.name === "specialCmds" ? cSpecialCmds
                                                                            : pr.m.name === "focusApps" ? cFocusApps
@@ -2019,6 +2228,8 @@ Scope {
                                                                 visible: leaf.m.type === "custom"
                                                                 active: leaf.m.type === "custom" && !grp.shut
                                                                 sourceComponent: leaf.m.name === "wallpaper" ? cWallpaper
+                                                                               : leaf.m.name === "gestures" ? cGestures
+                                                                               : leaf.m.name === "mouseButtons" ? cMouseButtons
                                                                                : leaf.m.name === "apps" ? cApps
                                                                                : leaf.m.name === "specialCmds" ? cSpecialCmds
                                                                                : leaf.m.name === "focusApps" ? cFocusApps
@@ -2159,6 +2370,7 @@ Scope {
             StartupWindow {
                 anchors.fill: parent
                 pal: root.pal
+                movingStars: root.opt.starsBar !== false
                 open: root.startupOpen && swin.shown
                 onClosed: root.startupOpen = false
             }

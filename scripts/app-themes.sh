@@ -3,6 +3,7 @@
 #   Starship  the HALCYON PALETTE block at the bottom of ~/.config/starship.toml (the prompt, incl. the rice name)
 #   btop      ~/.config/btop/themes/halcyon.theme
 #   yazi      ~/.config/yazi/flavors/halcyon.yazi
+#   micro     ~/.config/micro/colorschemes/halcyon.micro  (no background colour: the terminal's own blur / opacity shows through)
 #   Spotify   ~/.config/spicetify/Themes/halcyon  (spicetify; needs `spicetify apply`, which --now / --setup do)
 #   spotify-player  ~/.config/spotify-player/theme.toml (the terminal Spotify client; re-read every time it starts)
 #   Discord   Vesktop / Vencord theme file halcyon.theme.css (stock Discord cannot be themed: Vesktop is installed for that)
@@ -168,6 +169,58 @@ btop_theme() {
     mixv "$bg" "$blue" 40;  g1=$MIX; mixv "$blue" "$cyan" 50; g2=$MIX; grad download "$g1" "$g2" "$cyan"
     mixv "$bg" "$magenta" 40; g1=$MIX; mixv "$magenta" "$acc2" 50; g2=$MIX; grad upload "$g1" "$g2" "$acc2"
   } > "$d/halcyon.theme.tmp" && mv "$d/halcyon.theme.tmp" "$d/halcyon.theme" && log "btop: theme written (accent $acc)"
+  return 0
+}
+
+# ================================================================== micro
+# micro paints its own background (the default scheme is an opaque grey, and its status bar and current line are grey bars), which
+# hides the wallpaper behind a translucent terminal. This scheme gives NO background to the text, the status bar, the tabs and the
+# gutter, so the terminal's own background (foot / kitty ... alpha + the compositor's blur) shows through. Colours are the
+# wallpaper's bright ones, so they stay readable on top of it. Only the current line, the selection and search hits get a background.
+# A colour given alone ("#rrggbb") is a foreground only; "fg,bg" sets both.
+micro_theme() {
+  have micro || return 0
+  local d="$HOME/.config/micro/colorschemes" cur sel dim bred bgreen byellow bblue bmagenta bcyan
+  mkdir -p "$d"
+  bred=${A_C9:-$red}; bgreen=${A_C10:-$green}; byellow=${A_C11:-$yellow}; bblue=${A_C12:-$blue}; bmagenta=${A_C13:-$magenta}; bcyan=${A_C14:-$cyan}
+  mixv "$surf" "$acc" 14; cur=$MIX          # the line the cursor is on: a faint accent tint
+  mixv "$hi" "$acc" 40; sel=$MIX            # the selection
+  mixv "$mut" "$fg" 30; dim=$MIX            # comments / line numbers: the muted colour, lifted a little so it stays readable
+  {
+    echo "# Halcyon: written by scripts/app-themes.sh from the wallpaper colours (do not edit: it is rewritten)"
+    echo "# No background on purpose: the terminal's own (translucent) one shows through. Restart micro to see a new wallpaper's colours."
+    echo "color-link default \"$fg\""
+    echo "color-link comment \"$dim\""
+    echo "color-link identifier \"$bblue\""
+    echo "color-link constant \"$bcyan\""
+    echo "color-link constant.string \"$bgreen\""
+    echo "color-link constant.specialChar \"$byellow\""
+    echo "color-link statement \"bold $bmagenta\""
+    echo "color-link symbol \"$fg\""
+    echo "color-link preproc \"$acc2\""
+    echo "color-link type \"$byellow\""
+    echo "color-link type.extended \"$byellow\""
+    echo "color-link special \"$acc\""
+    echo "color-link underlined \"underline $bcyan\""
+    echo "color-link error \"bold $bred\""
+    echo "color-link todo \"bold $byellow\""
+    echo "color-link hlsearch \"$bg,$acc\""
+    echo "color-link statusline \"bold $acc\""
+    echo "color-link tabbar \"$dim\""
+    echo "color-link tabbar.active \"bold $acc\""
+    echo "color-link indent-char \"$dim\""
+    echo "color-link line-number \"$dim\""
+    echo "color-link current-line-number \"bold $acc\""
+    echo "color-link diff-added \"$bgreen\""
+    echo "color-link diff-modified \"$byellow\""
+    echo "color-link diff-deleted \"$bred\""
+    echo "color-link gutter-error \"bold $bred\""
+    echo "color-link gutter-warning \"$byellow\""
+    echo "color-link divider \"$dim\""
+    echo "color-link cursor-line \"$fg,$cur\""
+    echo "color-link color-column \"$fg,$cur\""
+    echo "color-link selection \"$fg,$sel\""
+  } > "$d/halcyon.micro.tmp" && mv "$d/halcyon.micro.tmp" "$d/halcyon.micro" && log "micro: colorscheme written (accent $acc)"
   return 0
 }
 
@@ -512,6 +565,17 @@ ensure_choices() {
     else echo 'color_theme = "halcyon"' > "$f"; fi
     echo "   btop: theme halcyon"
   fi
+  # micro: "colorscheme": "halcyon" in settings.json (the old file is kept once as settings.json.before-halcyon)
+  if have micro; then
+    f="$HOME/.config/micro/settings.json"; mkdir -p "$(dirname "$f")"
+    if [ ! -s "$f" ] || [ "$(tr -d ' \n\t\r' < "$f")" = "{}" ]; then echo '{"colorscheme": "halcyon"}' > "$f"
+    elif ! grep -q '"colorscheme" *: *"halcyon"' "$f"; then
+      [ -e "$f.before-halcyon" ] || cp -p "$f" "$f.before-halcyon"
+      if grep -q '"colorscheme"' "$f"; then sed -i 's|"colorscheme" *: *"[^"]*"|"colorscheme": "halcyon"|' "$f"
+      else sed -i '0,/{/s|{|{\n    "colorscheme": "halcyon",|' "$f"; fi
+    fi
+    echo "   micro: colorscheme halcyon (transparent)"
+  fi
   # yazi: [flavor] dark / light = "halcyon"
   if have yazi; then
     f="$HOME/.config/yazi/theme.toml"; mkdir -p "$(dirname "$f")"
@@ -550,7 +614,7 @@ ensure_choices() {
 # every run: pick the halcyon theme where an app still has another one (existing choices are backed up once), then write the files
 starship_adopt
 starship_sysmode_migrate
-starship_theme; fish_theme; btop_theme; yazi_theme; spotify_player_theme; spotify_theme; discord_theme
+starship_theme; fish_theme; btop_theme; micro_theme; yazi_theme; spotify_player_theme; spotify_theme; discord_theme
 if declare -F editors_theme >/dev/null; then editors_theme; browser_theme; qt_theme; fi
 ensure_choices >/dev/null          # after the files exist (Vesktop needs its theme file first)
 have btop && pkill -USR2 -x btop 2>/dev/null     # a running btop re-reads its config and theme

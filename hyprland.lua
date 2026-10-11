@@ -67,6 +67,7 @@ end)
 require("hyprland.rules")
 require("hyprland.gestures")
 require("hyprland.keybinds")
+require("hyprland.mouse")
 
 maybe_create(hypr .. "/hypr-user.lua", "-- Your custom user config here\n")
 pcall(require, "hypr-user")

@@ -88,6 +88,7 @@ if have fish; then
 fi
 have btop && { grep -q 'color_theme *= *"halcyon"' "$HOME/.config/btop/btop.conf" 2>/dev/null && ok "btop: halcyon theme" || warn "btop: not using the halcyon theme (run user-setup.sh app-themes)"; }
 have yazi && { grep -q halcyon "$HOME/.config/yazi/theme.toml" 2>/dev/null && ok "yazi: halcyon flavor" || warn "yazi: not using the halcyon flavor (run user-setup.sh app-themes)"; }
+have micro && { grep -q '"colorscheme" *: *"halcyon"' "$HOME/.config/micro/settings.json" 2>/dev/null && ok "micro: halcyon colorscheme (transparent)" || warn "micro: not using the halcyon colorscheme (run user-setup.sh app-themes)"; }
 have thunar && { grep -q ">>> halcyon >>>" "$HOME/.config/gtk-3.0/gtk.css" 2>/dev/null && ok "Thunar / GTK: halcyon colours" || warn "Thunar: run $RICE/scripts/gtk-theme.sh"; }
 if have spicetify; then
   [ -f "$HOME/.config/spotify/prefs" ] && ok "Spotify (spicetify): theme written; after a Spotify update run $RICE/scripts/app-themes.sh --now" || warn "Spotify: start it once and log in, then run $RICE/scripts/app-themes.sh --now"
