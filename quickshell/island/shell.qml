@@ -510,6 +510,7 @@ ShellRoot {
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
+        hasSysmode: cmdTree.available
         keyMap: root.keyMap
         customs: root.customBinds
         onRebind: (id, keys) => root.setBind(id, keys)
@@ -636,6 +637,17 @@ ShellRoot {
         profileStars: root.profileStars
     }
 
+    // SUPER+ALT+/: every console command as a tree (only when sysmode is set up); a click puts the command in the console
+    CmdTree {
+        id: cmdTree
+        pal: pal
+        stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
+        onUse: t => { cmdTree.hide(); quickTerm.prefill(t) }
+    }
+
     // ---------- actions ----------
     property bool scrollOpened: false
     function go(dir) {
@@ -671,6 +683,7 @@ ShellRoot {
         if (settingsWin.open) { settingsWin.hide(); return true }
         if (cheat.open) { if (cheat.editId !== "") cheat.cancelEdit(); else cheat.hide(); return true }
         if (overviewOpen) { overviewOpen = false; return true }
+        if (cmdTree.open) { cmdTree.hide(); return true }
         if (quickTerm.open && (quickTerm.pinned || quickTerm.focused)) { quickTerm.close(); return true }
         if (notifs.centerOpen) { notifs.toggleCenter(); return true }
         if (page !== "home") { page = "home"; return true }
@@ -1124,6 +1137,7 @@ ShellRoot {
         case "barstyle": setOpt("barStyle", notchStyle ? "island" : "notch"); break
         case "notifications": notifs.toggleCenter(); break
         case "quickterm": quickTerm.toggle(); break
+        case "cmdlist": cmdTree.toggle(); break
         case "edgemode": toggleEdgeMode(); break
         case "dnd": setDnd(!dnd); break
         case "cheatsheet": cheat.toggle(); break
@@ -1457,6 +1471,7 @@ ShellRoot {
         function closeTop(): string { return root.closeOverlay() ? "closed" : "none" }
         function theme(): void { root.toggleTheme() }
         function quickterm(): void { quickTerm.toggle() }
+        function cmdlist(): void { cmdTree.toggle() }                // SUPER+ALT+/ (does nothing without sysmode)
         function edgemode(): void { root.toggleEdgeMode() }
         function settings(): void { settingsWin.toggle() }
         function barbuilder(): void { settingsWin.openBuilder() }

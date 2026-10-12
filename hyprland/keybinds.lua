@@ -133,6 +133,14 @@ bind("focus", "SUPER + ALT + F", hl.dsp.exec_cmd(ipc .. "focus"))   -- focus mod
 
 -- Island
 bind("quickterm", "SUPER + SHIFT + Return", hl.dsp.exec_cmd(ipc .. "quickterm"))   -- top-left quick terminal
+-- the list of console commands (tree view): only when sysmode is set up, because most of the commands are its
+do
+    local f = io.open("/usr/local/bin/sysmode", "r")
+    if f then
+        f:close()
+        bind("cmdlist", "SUPER + ALT + slash", hl.dsp.exec_cmd(ipc .. "cmdlist"))
+    end
+end
 bind("gaming", "SUPER + F10", hl.dsp.exec_cmd(ipc .. "gaming"))                 -- gaming mode on / off
 bind("settings", "SUPER + F11", hl.dsp.exec_cmd(ipc .. "settings"))               -- rice settings window
 bind("clearnotifs", vars.kbClearNotifs, hl.dsp.exec_cmd(ipc .. "clearnotifs"))
