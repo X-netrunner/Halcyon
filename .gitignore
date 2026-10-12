@@ -12,6 +12,8 @@ __pycache__/
 *.py[cod]
 
 # Local backups & runtime state
+greeting.conf
+greeting-custom.txt
 conf_backup/
 *.bak
 *.tmp

@@ -118,6 +118,14 @@ Scope {
             remindAgain.restart()
             return
         }
+        if (typeof key === "string" && key.indexOf("gr:") === 0) {
+            var gk = key.substring(3)
+            var gc = JSON.parse(JSON.stringify(greeting))
+            gc[gk] = v
+            greeting = gc                                  // show it at once
+            Quickshell.execDetached(["bash", greetScript, "set", gk, String(v)])
+            return
+        }
         if (typeof key === "string" && key.indexOf("st:") === 0) {
             var k = key.substring(3)
             var st = JSON.parse(JSON.stringify(startup))
@@ -136,6 +144,19 @@ Scope {
         command: ["bash", root.startupScript, "list"]
         stdout: StdioCollector { onStreamFinished: { try { root.startup = JSON.parse(text) } catch (e) {} } }
     }
+
+    // ---- Terminal greeting (scripts/greeting-conf.sh): which logo the fish greeting shows. Keys "gr:LOGO" in the tree below.
+    // The buttons (paste / edit / preview) are handled in shell.qml; this window only re-reads the choice afterwards, because
+    // pasting or editing switches the greeting to "custom".
+    property var greeting: ({ LOGO: "adaptive", custom: false })
+    readonly property string greetScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh"
+    Timer { id: greetAgain; interval: 900; onTriggered: if (!greetProc.running) greetProc.running = true }
+    Process {
+        id: greetProc
+        command: ["bash", root.greetScript, "list"]
+        stdout: StdioCollector { onStreamFinished: { try { root.greeting = JSON.parse(text) } catch (e) {} } }
+    }
+    Connections { target: root; function onAction(id) { if (id.indexOf("greeting-") === 0) greetAgain.restart() } }
 
     // ---- Backup / safety-check reminders (scripts/remind.sh): keys "rm:NAME" in the tree below. The automatic safety-check run
     // (root, behind your sudo password) is the custom leaf at the end of Settings > Backup; its state comes in as remind.auto.
@@ -440,6 +461,10 @@ Scope {
             { type: "tool", key: "nightlight", label: "Night light", desc: "Warmer screen colours (hyprsunset)." },
             { type: "slider", adv: true, key: "opt:nightTemp", def: 4000, label: "Night light warmth", desc: "Lower is warmer", min: 2500, max: 6500, step: 100, unit: " K" }
         ] },
+        { id: "greeting", title: "Terminal greeting", section: "Appearance", items: [
+            { type: "seg", key: "gr:LOGO", label: "Logo in new terminals", desc: "Adaptive: the logo of the system you are on (Arch family, BlackArch or Kali; any other system gets a Linux penguin). Pick one to always show that logo instead. Custom: your own ASCII art (below). Info only: no logo, just the system lines. Off: no greeting. Applies to terminals you open from now on.", opts: [o("adaptive", "Adaptive"), o("arch", "Arch"), o("blackarch", "BlackArch"), o("kali", "Kali"), o("linux", "Linux"), o("custom", "Custom"), o("none", "Info only"), o("off", "Off")] },
+            { type: "acts", label: "Your own ASCII art", desc: "Copy some ASCII art, then Paste from clipboard: it is saved and the greeting switches to Custom. Edit file opens it in your editor. Write @C1@ (accent colour) or @C2@ (grey) in the text to colour parts of it; colour codes that are already in the text keep working. Up to 40 rows. Preview shows the greeting in a terminal.", btns: [{ id: "greeting-paste", btn: "Paste from clipboard", done: "Saved" }, { id: "greeting-edit", btn: "Edit file", done: "", close: true }, { id: "greeting-preview", btn: "Preview", done: "" }] }
+        ] },
         { id: "wallpaper", title: "Wallpaper", section: "Appearance", items: [
             { type: "custom", name: "wallpaper" },
             { type: "seg", key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] }
@@ -600,6 +625,7 @@ Scope {
         if (key.indexOf("opt:") === 0) return opt ? opt[key.substring(4)] : undefined
         if (key.indexOf("hy:") === 0) return hyCur ? hyCur[key.substring(3)] : undefined
         if (key.indexOf("st:") === 0) return startup ? startup[key.substring(3)] : undefined
+        if (key.indexOf("gr:") === 0) return greeting ? greeting[key.substring(3)] : undefined
         if (key.indexOf("fc:") === 0) return focusConf ? focusConf[key.substring(3)] : undefined
         if (key.indexOf("rm:") === 0) return remind ? remind[key.substring(3)] : undefined
         if (key.indexOf("rmwhen:") === 0) {          // BACKUP / SAFETY: "off", or the interval it is on with
@@ -667,7 +693,7 @@ Scope {
     // Both read the same groups / items and write through the same change(), so nothing is lost by switching.
     readonly property bool pagesMode: opt && opt.settingsStyle === "pages"
     readonly property var pages: [
-        { id: "Appearance", sub: "Look, colours, wallpaper and effects.", groups: ["look", "colours", "wallpaper", "glass", "growth"] },
+        { id: "Appearance", sub: "Look, colours, wallpaper and effects.", groups: ["look", "colours", "greeting", "wallpaper", "glass", "growth"] },
         { id: "Bar", sub: "The bar and the clock.", groups: ["bar", "clock"] },
         { id: "Desktop", sub: "Workspaces, notifications and focus mode.", groups: ["workspaces", "notifications", "focus"] },
         { id: "Input", sub: "Mouse, touchpad, gestures, mouse buttons and keyboard.", groups: ["mouse", "gestures", "mousebtn"] },
@@ -783,6 +809,7 @@ Scope {
         if (!appsProc.running) appsProc.running = true
         if (!specialProc.running) specialProc.running = true
         if (!startupProc.running) startupProc.running = true
+        if (!greetProc.running) greetProc.running = true
         if (!remindProc.running) remindProc.running = true
         startupNote = ""
         query = ""

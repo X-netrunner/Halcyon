@@ -1,9 +1,61 @@
 function fish_greeting
-    # Distro-aware greeting: Kali dragon when running inside a Kali
-    # container (distrobox / pentest-box), Arch logo otherwise.
+    # Terminal greeting: a logo, some system info and a shortcut tip.
+    # Which logo is chosen in Settings > Terminal greeting (or with scripts/greeting-conf.sh); the choice lives in
+    # ~/.config/Halcyon/greeting.conf as a line  LOGO=<name>:
+    #   adaptive  the logo of the system you are on (read from /etc/os-release): Arch family -> Arch, BlackArch, Kali, anything else -> Linux
+    #   arch / blackarch / kali / linux   always that one
+    #   custom    your own ASCII art from ~/.config/Halcyon/greeting-custom.txt
+    #   none      no logo, just the info        off   no greeting at all
+    # Logos are plain text files in config/fish/greeting/logos/. In a logo (and in your custom file) @C1@ switches to the main
+    # colour and @C2@ to the second one; a line without markers is in the main colour. Colour codes already in the text work too.
+    set -l rice $HALCYON_DIR
+    test -n "$rice"; or set rice $HOME/.config/Halcyon
+
+    set -l choice adaptive
+    if test -r $rice/greeting.conf
+        set -l v (string match -rg '^LOGO=(\w+)' < $rice/greeting.conf)
+        set -q v[1]; and set choice $v[1]
+    end
+    contains -- $choice adaptive arch blackarch kali linux custom none off; or set choice adaptive
+    test "$choice" = off; and return
+
+    # what system is this (one read of os-release; PRETTY_NAME is shown as "distro", so CachyOS says CachyOS, not Arch)
+    set -l os_id ""
+    set -l os_like ""
+    set -l os_name ""
+    if test -r /etc/os-release
+        set -l t (string match -rg '^ID="?([^"]*)' < /etc/os-release)
+        set -q t[1]; and set os_id (string lower -- $t[1])
+        set t (string match -rg '^ID_LIKE="?([^"]*)' < /etc/os-release)
+        set -q t[1]; and set os_like (string lower -- $t[1])
+        set t (string match -rg '^PRETTY_NAME="?([^"]*)' < /etc/os-release)
+        set -q t[1]; and set os_name $t[1]
+    end
+    test -n "$os_name"; or set os_name Linux
     set -l in_kali 0
-    if grep -qiE '^ID="?kali' /etc/os-release 2>/dev/null
-        set in_kali 1
+    test "$os_id" = kali; and set in_kali 1
+
+    # the logo "adaptive" would pick
+    set -l auto linux
+    switch "$os_id"
+        case blackarch
+            set auto blackarch
+        case kali
+            set auto kali
+        case arch cachyos endeavouros manjaro garuda artix arcolinux
+            set auto arch
+        case '*'
+            if string match -qi '*blackarch*' -- "$os_name"
+                set auto blackarch
+            else if string match -qr '(^| )arch( |$)' -- "$os_like"
+                set auto arch
+            end
+    end
+    set -l pick $auto
+    test "$choice" != adaptive; and set pick $choice
+    # "custom" without a usable file quietly falls back to adaptive
+    if test "$pick" = custom; and not test -s $rice/greeting-custom.txt
+        set pick $auto
     end
 
     # Fetch system info (no `fish --version` / second `free` / `sysmode status`: those cost a process each on every new terminal)
@@ -55,144 +107,106 @@ function fish_greeting
     set -l blue (set_color -o blue)
     set -l grey (set_color 555)
     set -l reset (set_color normal)
-    set -l title_color $acc_color
     set -l label_color (set_color -o white)
     set -l value_color (set_color normal)
 
     # Breathing room from the left edge
     set -l margin "      "
 
-    set -l distro
-    set -l logo
+    # colours: @C1@ = c1, @C2@ = c2 (Kali and BlackArch keep their own colours, everything else follows the wallpaper)
     set -l c1 $acc_color
     set -l c2 $grey
-    set -l logo_width 38
-    set -l i_user 0
-    set -l i_dashes 0
-    set -l i_distro 0
-    set -l i_kernel 0
-    set -l i_uptime 0
-    set -l i_shell 0
-    set -l i_memory 0
-    set -l i_mode 0
-    set -l i_dots 0
-
-    if test "$in_kali" = 1
-        set distro "Kali Linux"
-        set title_color (set_color -o blue)
-        set c1 $blue
-        set c2 (set_color 888888)
-        set logo_width 52
-        set logo \
-"@C1@.............." \
-"            ..,;:ccc,." \
-"          ......''';lxO,." \
-".....''''..........,:ld;" \
-"           .';;;:::;,,.x," \
-"      ..'''.            0Xxoc:,.  ..." \
-"  ....                ,ONkc;,;cokOdc',." \
-" .                   OMo           ':@C2@dd@C1@o." \
-"                    dMc               :OO;" \
-"                    0M.                 .:o." \
-"                    ;Wd" \
-"                     ;XO," \
-"                       ,d0Odlc;,.." \
-"                           ..',;:cdOOd::,." \
-"                                    .:d;.':;." \
-"                                       'd,  .'" \
-"                                         ;l   .." \
-"                                          .o" \
-"                                            c" \
-"                                            .'" \
-"                                             ."
-        set i_user 3
-        set i_dashes 4
-        set i_distro 5
-        set i_kernel 6
-        set i_uptime 7
-        set i_shell 8
-        set i_memory 9
-        set i_dots 21
-    else
-        set distro "Arch Linux"
-        set title_color $acc_color
-        set c1 $acc_color
-        set logo_width 38
-        set logo \
-"                 00" \
-"                 11" \
-"                ====" \
-"                .//" \
-"                `o//:" \
-"               `+o//o:" \
-"              `+oo//oo:" \
-"              -+oo//oo+:" \
-"            `/:-:+//ooo+:" \
-"           `/+++++//+++++:" \
-"          `/++++++//++++++:" \
-"         `/+++oooo//ooooooo/`" \
-"        ./ooosssso//osssssso+`" \
-"       .oossssso-`//`/ossssss+`" \
-"      -osssssso.  //  :ssssssso." \
-"     :osssssss/   //   osssso+++." \
-"    /ossssssss/   //   +ssssooo/-" \
-"  `/ossssso+/:-   //   -:/+osssso+-" \
-" `+sso+:-`        //       `.-/+oso:" \
-"`++:.             //            `-/+/" \
-".`                /                `/"
-        set i_user 6
-        set i_dashes 7
-        set i_distro 8
-        set i_kernel 9
-        set i_uptime 10
-        set i_shell 11
-        set i_memory 12
-        set i_mode 13
-        set i_dots 15
+    set -l title_color $acc_color
+    switch $pick
+        case kali
+            set c1 $blue
+            set c2 (set_color 888888)
+            set title_color $blue
+        case blackarch
+            set c1 $red
+            set c2 (set_color 888888)
+            set title_color $red
     end
 
-    set -l logo_height (count $logo)
+    # the logo lines (none = no logo)
+    set -l logo
+    switch $pick
+        case none
+        case custom
+            set logo (command cat $rice/greeting-custom.txt)
+        case '*'
+            set -l f $rice/config/fish/greeting/logos/$pick.txt
+            test -r $f; and set logo (command cat $f)
+    end
+    if set -q logo[1]
+        # tidy: Windows line ends, tabs, blank lines at the end, at most 40 rows
+        set logo (string replace -a \r '' -- $logo)
+        set logo (string replace -a \t '    ' -- $logo)
+        while set -q logo[1]; and not string match -qr '\S' -- "$logo[-1]"
+            set -e logo[-1]
+        end
+        set -q logo[41]; and set logo $logo[1..40]
+    end
 
-    for i in (seq 1 $logo_height)
-        set -l raw $logo[$i]
-        set -l logo_line "$c1$raw"
-        set logo_line (string replace -a '@C1@' "$c1" -- "$logo_line")
-        set logo_line (string replace -a '@C2@' "$c2" -- "$logo_line")
+    # colour each line and measure it by its visible width (escape codes must not count toward the column)
+    set -l rendered
+    set -l widths
+    set -l maxw 0
+    for raw in $logo
+        set -l line (string replace -a '@C1@' "$c1" -- "$c1$raw")
+        set line (string replace -a '@C2@' "$c2" -- "$line")
+        set -l w (string length -- (string replace -ra "\x1b(\[[0-9;:]*[A-Za-z]|\(B)" "" -- "$line"))
+        set -a rendered $line
+        set -a widths $w
+        test $w -gt $maxw; and set maxw $w
+    end
 
-        set -l info_line ""
-        switch $i
-            case $i_user
-                set info_line "$title_color$user_host$reset"
-            case $i_dashes
-                set info_line "$grey"(string repeat -n (string length "$user_host") -)"$reset"
-            case $i_distro
-                set info_line "$label_color"distro"     $value_color$distro$reset"
-            case $i_kernel
-                set info_line "$label_color"kernel"     $value_color$kernel$reset"
-            case $i_uptime
-                set info_line "$label_color"uptime"     $value_color$uptime$reset"
-            case $i_shell
-                set info_line "$label_color"shell"      $value_color$shell$reset"
-            case $i_memory
-                set info_line "$label_color"memory"     $value_color$memory$reset"
-            case $i_mode
-                set info_line "$label_color"mode"       $mode$reset"
-            case $i_dots
-                set -l dot "●"
-                set info_line (string join "" (set_color red) $dot " " (set_color yellow) $dot " " (set_color green) $dot " " (set_color blue) $dot " " (set_color magenta) $dot " " (set_color cyan) $dot " " (set_color white) $dot $reset)
+    # the info block, as lines
+    set -l dot "●"
+    set -l info "$title_color$user_host$reset"
+    set -a info "$grey"(string repeat -n (string length "$user_host") -)"$reset"
+    set -a info "$label_color"distro"     $value_color$os_name$reset"
+    set -a info "$label_color"kernel"     $value_color$kernel$reset"
+    set -a info "$label_color"uptime"     $value_color$uptime$reset"
+    set -a info "$label_color"shell"      $value_color$shell$reset"
+    set -a info "$label_color"memory"     $value_color$memory$reset"
+    test "$in_kali" = 0; and set -a info "$label_color"mode"       $mode$reset"
+    set -a info ""
+    set -a info (string join "" (set_color red) $dot " " (set_color yellow) $dot " " (set_color green) $dot " " (set_color blue) $dot " " (set_color magenta) $dot " " (set_color cyan) $dot " " (set_color white) $dot $reset)
+
+    # the info sits in the vertical middle of the logo (at the top when the logo is shorter than the info)
+    set -l n_logo (count $rendered)
+    set -l n_info (count $info)
+    set -l off 0
+    test $n_logo -gt $n_info; and set off (math -s0 "floor(($n_logo - $n_info) / 2)")
+    set -l rows $n_logo
+    test (math "$off + $n_info") -gt $rows; and set rows (math "$off + $n_info")
+
+    for r in (seq 1 $rows)
+        set -l text ""
+        set -l ri (math "$r - $off")
+        if test $ri -ge 1; and test $ri -le $n_info
+            set text $info[$ri]
         end
 
-        # Pad by visible width (escape codes must not count toward the column)
-        set -l visible (string length -- (string replace -ra "\x1b\[[0-9;]*m" "" "$logo_line"))
-        set -l pad (math "$logo_width - $visible")
-        if test "$pad" -lt 0
-            set pad 0
+        if test $n_logo -eq 0
+            printf "%s%s\n" "$margin" "$text"
+            continue
         end
 
-        if test -n "$info_line"
-            printf "%s%s%s%s   %s\n" "$margin" "$logo_line" (string repeat -n $pad " ") "$reset" "$info_line"
+        set -l left ""
+        set -l pad $maxw
+        if test $r -le $n_logo
+            set left $rendered[$r]
+            set pad (math "$maxw - $widths[$r]")
+        end
+        set -l spaces ""
+        test $pad -gt 0; and set spaces (string repeat -n $pad " ")
+
+        if test -n "$text"
+            printf "%s%s%s%s   %s\n" "$margin" "$left" "$spaces" "$reset" "$text"
         else
-            printf "%s%s%s%s\n" "$margin" "$logo_line" (string repeat -n $pad " ") "$reset"
+            printf "%s%s%s%s\n" "$margin" "$left" "$spaces" "$reset"
         end
     end
 
