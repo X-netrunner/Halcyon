@@ -4,6 +4,13 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Fish commands, and the notification box slides when you move its parts
+
+- install.sh / update.sh now install fish commands (`scripts/user-setup.sh fish-commands`, only when fish is installed): `bar-builder`, `notification-builder`, `wallpaper-gallery`, `startup-view`, and `halcyon <command>` for everything else (`halcyon --help` lists them: launcher, settings, notifications, dnd, cheatsheet, power-menu, quick-terminal, overview, gaming-mode, caffeine, lock, theme, reload ...), with tab completion. They use the island's IPC; two new IPC functions: `barbuilder`, `notifbuilder`.
+- The notification box and its builder no longer use inline QML components (new files `NotifBlock.qml`, `NbCap.qml`): some Qt versions refuse them with "X is not a type".
+- The fish step also installs `hotspot-on` / `hotspot-off` and the one-time command hints (`hints.fish`, in conf.d; for interactive shells only). `fish_greeting` was already shipped and is unchanged.
+- Moving a part of the notification box with the arrows now animates: in the builder's list of parts and in the box itself (real and preview) the parts slide to their new places, and a part that is switched on or off fades while the others slide to fill or open the gap. It also slides when a notification arrives above another part.
+
 ## Notification box builder
 
 - Settings > Panels & notifications > **Notification box builder** > "Open the notification box builder": its own window with a live copy of the real box (sample notifications; the buttons and the ✕ work, nothing real is touched). Everything saves and shows on the real box at once.

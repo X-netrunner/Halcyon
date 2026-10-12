@@ -40,25 +40,33 @@ Item {
     readonly property real skyUsed: order.indexOf("sky") >= 0 ? skyHeight : 0
     readonly property real listMax: Math.max(150, Math.min(470, maxH - skyUsed - 190))
 
-    implicitHeight: col.implicitHeight
-
-    ColumnLayout {
-        id: col
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        spacing: box.cfg.gap
-
-        Repeater {
-            model: box.order
-            delegate: Loader {
-                id: ld
-                required property string modelData
-                Layout.fillWidth: true
-                sourceComponent: modelData === "sky" ? skyC : (modelData === "header" ? headerC : listC)
-            }
-        }
+    // The parts are not in a column layout: each one sits at a y worked out from the order, so when the order changes (the arrows in
+    // the builder) or a part appears or goes, the parts slide into their new places instead of jumping.
+    property bool ready: false              // no sliding while the box is first built
+    Component.onCompleted: Qt.callLater(function () { box.ready = true })
+    function shown(id) { return order.indexOf(id) >= 0 }
+    function blockH(id) {
+        var l = id === "sky" ? skyLd : (id === "header" ? headerLd : listLd)
+        return l.item ? l.item.implicitHeight : 0
     }
+    function yOf(id) {
+        var y = 0, b = cfg.blocks
+        for (var i = 0; i < b.length; i++) {
+            if (b[i].id === id) return y
+            if (shown(b[i].id)) y += blockH(b[i].id) + cfg.gap
+        }
+        return y
+    }
+    function total() {
+        var h = 0, n = 0, b = cfg.blocks
+        for (var i = 0; i < b.length; i++) if (shown(b[i].id)) { h += blockH(b[i].id); n++ }
+        return h + Math.max(0, n - 1) * cfg.gap
+    }
+    implicitHeight: total()
+
+    NotifBlock { id: skyLd; host: box; bid: "sky"; sourceComponent: skyC }
+    NotifBlock { id: headerLd; host: box; bid: "header"; sourceComponent: headerC }
+    NotifBlock { id: listLd; host: box; bid: "list"; sourceComponent: listC }
 
     // ---------------------------------------------------------------- the constellation band
     Component {

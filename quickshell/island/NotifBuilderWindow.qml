@@ -75,12 +75,6 @@ Item {
         MouseArea { anchors.fill: parent; onClicked: root.closed() }
     }
 
-    component Cap: Text {
-        color: root.pal.muted
-        font.family: root.pal.uiFont
-        font.pixelSize: 10
-        font.letterSpacing: 0.8
-    }
 
     Glass {
         id: card
@@ -132,7 +126,7 @@ Item {
                     border.width: 1
                     border.color: root.pal.lineTint
                     clip: true
-                    Cap { anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14; text: "LIVE PREVIEW" }
+                    NbCap { pal: root.pal; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14; text: "LIVE PREVIEW" }
 
                     NotifSurface {
                         id: pv
@@ -173,7 +167,7 @@ Item {
                         spacing: 12
 
                         // look
-                        Cap { text: "LOOK OF THE LIST" }
+                        NbCap { pal: root.pal; text: "LOOK OF THE LIST" }
                         Row {
                             spacing: 8
                             Chip { pal: root.pal; implicitHeight: 30; label: "Stack"; on: root.look === "stack"; onClicked: root.lookChosen("stack") }
@@ -184,33 +178,47 @@ Item {
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // parts
-                        Cap { text: "PARTS OF THE BOX, TOP TO BOTTOM" }
-                        Repeater {
-                            model: root.cur.blocks
-                            delegate: RowLayout {
-                                id: br
-                                required property var modelData
-                                required property int index
-                                Layout.fillWidth: true
-                                spacing: 8
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: NL.names[br.modelData.id] + (br.modelData.id === "sky" && br.modelData.on && root.skyEmpty ? "  (no constellation to draw, so no space)" : "")
-                                    color: br.modelData.on ? root.pal.text : root.pal.muted
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tBody
-                                    font.weight: Font.Medium
+                        NbCap { pal: root.pal; text: "PARTS OF THE BOX, TOP TO BOTTOM" }
+                        // one row per part; a row sits at its place in the order and slides there when the arrows move it
+                        Item {
+                            id: partsBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 3 * 30 + 2 * 8
+                            property bool ready: false
+                            Component.onCompleted: Qt.callLater(function () { partsBox.ready = true })
+                            Repeater {
+                                model: NL.ids
+                                delegate: RowLayout {
+                                    id: br
+                                    required property string modelData
+                                    function posOf() { for (var i = 0; i < root.cur.blocks.length; i++) if (root.cur.blocks[i].id === modelData) return i; return 0 }
+                                    readonly property int pos: posOf()
+                                    readonly property var blk: root.cur.blocks[pos]
+                                    x: 0
+                                    y: pos * 38
+                                    width: partsBox.width
+                                    height: 30
+                                    spacing: 8
+                                    Behavior on y { enabled: partsBox.ready; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: NL.names[br.modelData] + (br.modelData === "sky" && br.blk.on && root.skyEmpty ? "  (no constellation to draw, so no space)" : "")
+                                        color: br.blk.on ? root.pal.text : root.pal.muted
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                        font.weight: Font.Medium
+                                    }
+                                    Chip { pal: root.pal; implicitHeight: 28; label: br.blk.on ? "Shown" : "Hidden"; on: br.blk.on; onClicked: root.edited(NL.toggleBlock(root.cur, br.modelData)) }
+                                    Chip { pal: root.pal; implicitHeight: 28; label: "▲"; opacity: br.pos > 0 ? 1 : 0.35; onClicked: if (br.pos > 0) root.edited(NL.moveBlock(root.cur, br.modelData, -1)) }
+                                    Chip { pal: root.pal; implicitHeight: 28; label: "▼"; opacity: br.pos < root.cur.blocks.length - 1 ? 1 : 0.35; onClicked: if (br.pos < root.cur.blocks.length - 1) root.edited(NL.moveBlock(root.cur, br.modelData, 1)) }
                                 }
-                                Chip { pal: root.pal; implicitHeight: 28; label: br.modelData.on ? "Shown" : "Hidden"; on: br.modelData.on; onClicked: root.edited(NL.toggleBlock(root.cur, br.modelData.id)) }
-                                Chip { pal: root.pal; implicitHeight: 28; label: "▲"; opacity: br.index > 0 ? 1 : 0.35; onClicked: if (br.index > 0) root.edited(NL.moveBlock(root.cur, br.modelData.id, -1)) }
-                                Chip { pal: root.pal; implicitHeight: 28; label: "▼"; opacity: br.index < root.cur.blocks.length - 1 ? 1 : 0.35; onClicked: if (br.index < root.cur.blocks.length - 1) root.edited(NL.moveBlock(root.cur, br.modelData.id, 1)) }
                             }
                         }
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // constellations
-                        Cap { text: "CONSTELLATIONS AND STARS" }
+                        NbCap { pal: root.pal; text: "CONSTELLATIONS AND STARS" }
                         Text {
                             visible: !root.stars
                             Layout.fillWidth: true
@@ -233,7 +241,7 @@ Item {
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // spacing and shape
-                        Cap { text: "SPACING AND SHAPE" }
+                        NbCap { pal: root.pal; text: "SPACING AND SHAPE" }
                         NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Padding"; from: 8; to: 36; value: root.cur.pad; onPicked: v => root.edited(NL.edit(root.cur, "pad", v)) }
                         NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Between parts"; from: 4; to: 28; value: root.cur.gap; onPicked: v => root.edited(NL.edit(root.cur, "gap", v)) }
                         NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Between notifications"; from: 2; to: 24; value: root.cur.rowGap; onPicked: v => root.edited(NL.edit(root.cur, "rowGap", v)) }
@@ -243,7 +251,7 @@ Item {
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // place on the screen
-                        Cap { text: "WHERE IT SITS ON THE SCREEN" }
+                        NbCap { pal: root.pal; text: "WHERE IT SITS ON THE SCREEN" }
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 16
