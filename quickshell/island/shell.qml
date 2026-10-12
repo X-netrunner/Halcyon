@@ -1110,6 +1110,7 @@ ShellRoot {
         case "wallpaper": randomWallpaper(); break
         case "wallgallery": settingsWin.openGallery(); break
         case "barbuilder": settingsWin.openBuilder(); break
+        case "notifbuilder": settingsWin.openNotifBuilder(); break
         case "startupview": settingsWin.openStartup(); break
         case "reload": fullReloadProc.running = true; break
         case "settings": settingsWin.show(); break
