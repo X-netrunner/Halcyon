@@ -4,6 +4,15 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Notification box builder
+
+- Settings > Panels & notifications > **Notification box builder** > "Open the notification box builder": its own window with a live copy of the real box (sample notifications; the buttons and the ✕ work, nothing real is touched). Everything saves and shows on the real box at once.
+- **Parts**: the constellation band, the title and buttons, and the list can each be switched on or off and moved up or down.
+- **Constellations and stars**: the drawing in the band on or off, the band's height, the drifting dots, the constellation behind the whole box, the flying stars (0 to 20) and the stars in popups.
+- **Spacing and shape**: padding, space between the parts, space between notifications, corner roundness, width.
+- **Place**: Top, Middle or Bottom of the right edge, with a distance from the edge, and a small picture of the screen. It still opens from the right edge of the screen.
+- "Reset the box" goes back to the old look. New files: `NotifLayout.js`, `NotifBox.qml`, `NotifSurface.qml`, `NotifBuilder.qml`, `NotifBuilderWindow.qml`, `NbSlider.qml`. `Notifs.qml` now draws its panel with `NotifSurface`.
+
 ## Notification style: Stack, Timeline or Grouped by app, with the drifting stars
 
 - Settings > Panels & notifications > **Notification style**: **Stack** (a card per notification, the default), **Timeline** (a thin rail with a dot per notification, under Just now / Earlier today / Yesterday / Older, no cards) or **Grouped by app** (one card per app with a count, its notifications inside, and a remove-all button on hover). Works in the right-edge panel and in the bar's drop-down page. New files: `NotifList.qml`, `NotifLine.qml`, `NotifGroup.qml`.
