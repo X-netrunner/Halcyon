@@ -11,6 +11,10 @@ import Quickshell.Io
 //                   The switch turns an item on / off for the next login (and starts / stops it at once where that is safe).
 //   All processes:  every process of yours, biggest first (RAM or CPU), with the startup item it belongs to and an End button.
 //
+//   Health:         Halcyon as a whole (its own parts together) against the RAM and CPU limits from Settings > Performance & memory; when it is
+//                   over, the likely causes and what to do about each one (buttons where one click is safe).
+//   Every column title and caption has a small "?": hover it for what the word means (no explanation text at the bottom any more).
+//
 // The data comes from scripts/startup-view.py, polled every 5 s ONLY while the window is open; when it closes the numbers are
 // dropped and the window is unloaded, so it costs nothing while you are not looking at it.
 Item {
@@ -19,23 +23,99 @@ Item {
     property var pal
     property bool open: false
     property bool movingStars: true      // the few stars flying over the card (Settings > Look > Moving stars), like the bar builder and the gallery
+    property real limRam: 600            // Settings > Performance & memory > Halcyon RAM limit (MB, all Halcyon parts together)
+    property real limCpu: 10             // ... CPU limit (% of the whole processor)
+    property bool adaptive: false        // Settings > Performance & memory > Limits: Adaptive. The limits are then learned by startup-view.py (adapt-sample), see effRam / effCpu
     signal closed()
+    signal presetPicked(string mode)     // the Health tab's "Switch to Low / Medium resource use" button (Settings applies it)
 
     readonly property string script: Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-view.py"
-    readonly property var empty: ({ items: [], procs: [], suggest: [], ncpu: 1, n_procs: 0, session_mb: 0, startup_mb: 0, total_mb: 0, avail_mb: 0 })
+    readonly property var empty: ({ items: [], procs: [], suggest: [], ncpu: 1, n_procs: 0, session_mb: 0, startup_mb: 0, total_mb: 0, avail_mb: 0, health: ({ findings: [] }) })
     property var info: empty
     property bool loaded: false
-    property string tab: "startup"            // startup | procs
+    property string tab: "startup"            // startup | procs | health | tips
     property string filter: "all"             // startup tab: all | running | off
     property string sortBy: "mem"             // processes tab: mem | cpu
     property var busyIds: ({})
     property string note: ""
     property string query: ""
     property var cpuMemo: ({})                // smoothed CPU per item / process (see smoothCpu)
+    property int cpuStreak: 0                 // readings in a row with Halcyon over its CPU limit: one reading is often just a burst
+    property var tipItem: null                // the "?" that is hovered now (one shared bubble, see showTip)
+    property string tipText: ""
+    property real tipCx: 0
+    property real tipTop: 0
+    property real tipBottom: 0
     readonly property int ncpu: Math.max(1, info.ncpu || 1)
     readonly property var shownTips: info.suggest || []                 // the search box: filters whichever list is showing
 
     component Cap: Text { color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.2 }
+    component Q: HelpTip { id: q; pal: root.pal; onHoveredChanged: root.setTip(q, hovered) }
+    // a column title with its "?" ; alignRight = the text sits at the right edge (number columns)
+    component Head: Item {
+        id: hd
+        property string label: ""
+        property string tip: ""
+        property bool alignRight: true
+        implicitHeight: 15
+        Row {
+            spacing: 5
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: hd.alignRight ? parent.right : undefined
+            anchors.left: hd.alignRight ? undefined : parent.left
+            Cap { anchors.verticalCenter: parent.verticalCenter; text: hd.label }
+            Q { anchors.verticalCenter: parent.verticalCenter; tip: hd.tip }
+        }
+    }
+    // a caption with its "?" (the memory bar)
+    component Titled: Row {
+        id: tt
+        property string label: ""
+        property string tip: ""
+        spacing: 5
+        Cap { anchors.verticalCenter: parent.verticalCenter; text: tt.label }
+        Q { anchors.verticalCenter: parent.verticalCenter; tip: tt.tip }
+    }
+
+    // one usage bar with a tick where the limit is (the bar runs to 1.5 x the limit)
+    component Meter: Item {
+        id: mt
+        property string label: ""
+        property string valueText: ""
+        property string limitText: ""
+        property real value: 0
+        property real limit: 1
+        property color tone: root.pal.good
+        implicitHeight: 38
+        Cap { anchors.left: parent.left; anchors.top: parent.top; text: mt.label }
+        Text {
+            anchors.right: parent.right; anchors.top: parent.top
+            text: mt.valueText + "   of limit " + mt.limitText
+            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1
+        }
+        Rectangle {
+            id: track
+            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: 3
+            height: 8; radius: 4
+            color: Qt.alpha(root.pal.text, 0.08)
+            Rectangle {
+                height: parent.height; radius: 4
+                width: parent.width * Math.max(0.01, Math.min(1, mt.value / (mt.limit * 1.5)))
+                color: mt.tone
+                Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
+                Behavior on color { ColorAnimation { duration: root.pal.dMed } }
+            }
+            Rectangle { x: parent.width / 1.5 - 1; y: -3; width: 2; height: parent.height + 6; radius: 1; color: root.pal.text; opacity: 0.65 }
+        }
+    }
+
+    function setTip(item, on) {
+        if (!on) { if (tipItem === item) tipItem = null; return }
+        var a = card.mapFromItem(item, item.width / 2, 0), b = card.mapFromItem(item, 0, item.height)
+        tipText = item.tip; tipCx = a.x; tipTop = a.y; tipBottom = b.y
+        tipItem = item
+    }
+    onTabChanged: tipItem = null
 
     // ---------------------------------------------------------------- numbers
     function fmt(mb) {
@@ -88,6 +168,33 @@ Item {
         return out
     }
     readonly property real maxItemMem: { var m = 1, all = info.items || []; for (var i = 0; i < all.length; i++) m = Math.max(m, all[i].mem); return m }
+    // ---------------------------------------------------------------- Halcyon against its limits
+    // "Halcyon" = its own parts together (Hyprland, the island with everything it starts, the helpers: the items marked Halcyon in the list).
+    readonly property real halRam: { var m = 0, all = info.items || []; for (var i = 0; i < all.length; i++) if (all[i].kind === "halcyon") m += all[i].mem; return m }
+    readonly property real halCpu: { var c = 0, all = info.items || []; for (var i = 0; i < all.length; i++) if (all[i].kind === "halcyon") c += all[i].cpu; return c / ncpu }
+    // the limits that count: the learned ones once Adaptive has watched long enough, otherwise the manual ones from Settings
+    readonly property var ad: info.adaptive || ({})
+    readonly property bool learned: adaptive && ad.state === "ready"
+    readonly property real effRam: learned ? Number(ad.ram_limit) : limRam
+    readonly property real effCpu: learned ? Number(ad.cpu_limit) : limCpu
+    readonly property bool overRam: loaded && halRam > effRam
+    readonly property bool overCpu: loaded && cpuStreak >= 2
+    readonly property bool overAny: overRam || overCpu
+    readonly property string healthState: overAny ? "over" : (loaded && (halRam > effRam * 0.85 || halCpu > effCpu * 0.85) ? "near" : "ok")
+    readonly property color healthTone: healthState === "over" ? root.pal.bad : (healthState === "near" ? root.pal.warn : root.pal.good)
+    // what the Health tab lists: the RAM causes while RAM is over, the CPU causes once CPU has been over twice in a row
+    readonly property var shownFindings: {
+        var out = [], f = (info.health && info.health.findings) || []
+        for (var i = 0; i < f.length; i++) {
+            if (f[i].kind === "ram" && !overRam) continue
+            if (f[i].kind === "cpu" && !overCpu) continue
+            // the lists inside a card travel as JSON text: a ListModel turns a nested array into a nested model, which a Repeater cannot read as plain strings
+            var cj = JSON.stringify(f[i].causes || []), aj = JSON.stringify(f[i].actions || [])
+            out.push({ key: f[i].kind + ":" + f[i].id, kind: f[i].kind, id: f[i].id, name: f[i].name, value: f[i].value, share: f[i].share,
+                       detail: f[i].detail || "", causesJson: cj, actionsJson: aj, sig: cj + "|" + aj })
+        }
+        return out
+    }
     readonly property real maxProcMem: { var m = 1, all = info.procs || []; for (var i = 0; i < all.length; i++) m = Math.max(m, all[i].mem); return m }
 
     // ---------------------------------------------------------------- data (only while open)
@@ -96,6 +203,22 @@ Item {
     ListModel { id: itemModel; dynamicRoles: true }
     ListModel { id: procModel; dynamicRoles: true }
     ListModel { id: tipModel; dynamicRoles: true }
+    ListModel { id: findModel; dynamicRoles: true }
+    property var findKeys: []
+    // like syncModel, but the lists inside a card (causes, actions) are only replaced when they really changed, so the buttons do not flicker
+    function syncFindings(rows) {
+        for (var i = 0; i < rows.length; i++) {
+            var k = rows[i].key, j = findKeys.indexOf(k, i)
+            if (j < 0) { findModel.insert(i, rows[i]); findKeys.splice(i, 0, k) }
+            else {
+                if (j !== i) { findModel.move(j, i, 1); findKeys.splice(i, 0, findKeys.splice(j, 1)[0]) }
+                if (findModel.get(i).sig !== rows[i].sig) findModel.set(i, rows[i])
+                else { findModel.setProperty(i, "value", rows[i].value); findModel.setProperty(i, "share", rows[i].share); findModel.setProperty(i, "detail", rows[i].detail) }
+            }
+        }
+        while (findKeys.length > rows.length) { findModel.remove(findKeys.length - 1); findKeys.pop() }
+    }
+    onShownFindingsChanged: syncFindings(shownFindings)
     property var itemKeys: []
     property var procKeys: []
     property var tipKeys: []
@@ -116,12 +239,16 @@ Item {
 
     Process {
         id: poll
-        command: ["python3", root.script, "list"]
+        command: ["python3", root.script, "list", "--ram", String(Math.round(root.limRam)), "--cpu", String(root.limCpu)].concat(root.adaptive ? ["--auto"] : [])
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
                     var d = JSON.parse(text)
                     root.smoothCpu(d)
+                    var hc = 0
+                    for (var hi = 0; hi < (d.items || []).length; hi++) if (d.items[hi].kind === "halcyon") hc += d.items[hi].cpu
+                    var lc = (root.adaptive && d.adaptive && d.adaptive.state === "ready") ? Number(d.adaptive.cpu_limit) : root.limCpu
+                    root.cpuStreak = (hc / Math.max(1, d.ncpu || 1)) > lc ? root.cpuStreak + 1 : 0
                     root.info = d
                     root.loaded = true
                     root.busyIds = ({})
@@ -130,6 +257,8 @@ Item {
         }
     }
     Timer { id: ticker; interval: 5000; running: root.open; repeat: true; triggeredOnStart: true; onTriggered: if (!poll.running) poll.running = true }
+    onNoteChanged: if (note !== "") noteT.restart()
+    Timer { id: noteT; interval: 9000; onTriggered: root.note = "" }
     Timer { id: again; interval: 1300; onTriggered: if (!poll.running) poll.running = true }
     function refresh() { if (!poll.running) poll.running = true }
 
@@ -157,6 +286,11 @@ Item {
         Quickshell.execDetached(["python3", script, "keep", id])
         again.restart()
     }
+    function runAction(a) {
+        if (a.t === "preset") { presetPicked(a.v); note = "Resource use set to " + a.v + ". The numbers settle in a few seconds."; again.restart() }
+        else if (a.t === "toggle") turnOff(a.id)
+        else if (a.t === "end") endProc({ pid: a.pid, name: a.name || "the process" })
+    }
     function endProc(p) {
         Quickshell.execDetached(["python3", script, "end", String(p.pid)])
         note = "Asked " + p.name + " (" + p.pid + ") to quit."
@@ -170,7 +304,7 @@ Item {
     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
     onOpenChanged: {
         if (open) { note = ""; Qt.callLater(function () { root.forceActiveFocus() }) }
-        else { info = empty; loaded = false; busyIds = ({}); cpuMemo = ({}); query = ""; searchInput.text = "" }       // let go of the numbers: nothing is kept while it is closed
+        else { info = empty; loaded = false; busyIds = ({}); cpuMemo = ({}); cpuStreak = 0; tipItem = null; query = ""; searchInput.text = "" }       // let go of the numbers: nothing is kept while it is closed
     }
     Component.onCompleted: if (open) Qt.callLater(function () { root.forceActiveFocus() })
     Keys.onPressed: function (e) {
@@ -180,7 +314,7 @@ Item {
             e.accepted = true
         }
         else if (e.key === Qt.Key_Slash && !searchInput.activeFocus) { searchInput.forceActiveFocus(); e.accepted = true }
-        else if (e.key === Qt.Key_Tab) { root.tab = root.tab === "startup" ? "procs" : root.tab === "procs" ? "tips" : "startup"; e.accepted = true }
+        else if (e.key === Qt.Key_Tab) { root.tab = root.tab === "startup" ? "procs" : root.tab === "procs" ? "health" : root.tab === "health" ? "tips" : "startup"; e.accepted = true }
         else if (e.key === Qt.Key_F5) { root.refresh(); e.accepted = true }
     }
 
@@ -231,7 +365,7 @@ Item {
                 Item { Layout.fillWidth: true }
 
                 Rectangle {
-                    visible: root.tab !== "tips"
+                    visible: root.tab === "startup" || root.tab === "procs"
                     Layout.preferredWidth: 230
                     Layout.preferredHeight: 34
                     radius: 12
@@ -272,7 +406,7 @@ Item {
                 }
                 SegSwitch {
                     pal: root.pal
-                    options: [ { k: "startup", t: "Startup" }, { k: "procs", t: "Processes" }, { k: "tips", t: "Suggestions" + (root.shownTips.length > 0 ? "  " + root.shownTips.length : "") } ]
+                    options: [ { k: "startup", t: "Startup" }, { k: "procs", t: "Processes" }, { k: "health", t: "Health" + (root.overAny ? "  !" : "") }, { k: "tips", t: "Suggestions" + (root.shownTips.length > 0 ? "  " + root.shownTips.length : "") } ]
                     current: root.tab
                     onPicked: k => root.tab = k
                 }
@@ -302,10 +436,10 @@ Item {
                         spacing: 30
                         Repeater {
                             model: [
-                                { k: "STARTUP ITEMS", v: memCard.startup, c: root.pal.accent },
-                                { k: "REST OF YOUR SESSION", v: memCard.restSession, c: root.pal.accent2 },
-                                { k: "EVERYTHING ELSE", v: memCard.others, c: Qt.alpha(root.pal.muted, 0.6) },
-                                { k: "FREE", v: root.info.avail_mb, c: "transparent" }
+                                { k: "STARTUP ITEMS", v: memCard.startup, c: root.pal.accent, tip: "Memory used by everything in the Startup list: Halcyon's own parts, your hypr-user.lua lines, services and autostart apps. Measured as PSS (shared pages split fairly), so nothing is counted twice." },
+                                { k: "REST OF YOUR SESSION", v: memCard.restSession, c: root.pal.accent2, tip: "Everything else you started yourself: browser, editor, terminals, games. Anything that is not a startup item." },
+                                { k: "EVERYTHING ELSE", v: memCard.others, c: Qt.alpha(root.pal.muted, 0.6), tip: "Memory in use that is not one of your processes: the kernel, drivers, system services and graphics memory." },
+                                { k: "FREE", v: root.info.avail_mb, c: "transparent", tip: "What a program could get right now. It is free memory plus cache the system can drop at once (Linux calls it available)." }
                             ]
                             delegate: Row {
                                 id: stat
@@ -320,7 +454,7 @@ Item {
                                 }
                                 Column {
                                     spacing: 0
-                                    Cap { text: stat.modelData.k }
+                                    Titled { label: stat.modelData.k; tip: stat.modelData.tip }
                                     Text { text: root.loaded ? root.fmt(stat.modelData.v) : "—"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold }
                                 }
                             }
@@ -346,9 +480,12 @@ Item {
 
             // ---- filters / sorting
             RowLayout {
-                visible: root.tab !== "tips"
                 Layout.fillWidth: true
                 spacing: 10
+                Text { visible: root.tab === "health"; text: "Halcyon against its limits"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                Q { visible: root.tab === "health"; tip: "Halcyon = its own parts together (Hyprland, the island with its helpers, the daemons). The limits are in Settings > Performance & memory. RAM is checked on every reading; CPU is only flagged after two readings in a row over the limit, so one short burst does not raise an alarm. The causes below are likely ones, worked out from your settings and what each part is doing, not certainties." }
+                Text { visible: root.tab === "tips"; text: "Startup items that are not earning their place"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                Q { visible: root.tab === "tips"; tip: "Safe to turn off: this machine has nothing for it to do. Worth a look: it may be useful to you, only you can tell. Nothing is turned off until you press Turn off. Keep hides a suggestion for good. Startup items change at the next login." }
                 SegSwitch {
                     pal: root.pal
                     visible: root.tab === "startup"
@@ -366,6 +503,13 @@ Item {
                 }
                 Item { Layout.fillWidth: true }
                 Chip {
+                    visible: root.overAny && (root.tab === "startup" || root.tab === "procs")
+                    pal: root.pal; implicitHeight: 28; maxLabel: 1000
+                    label: "Halcyon is over its limit: see why"
+                    on: true
+                    onClicked: root.tab = "health"
+                }
+                Chip {
                     visible: root.tab === "startup" && root.shownTips.length > 0
                     pal: root.pal; implicitHeight: 28; maxLabel: 1000
                     label: root.shownTips.length + (root.shownTips.length === 1 ? " suggestion" : " suggestions")
@@ -373,24 +517,31 @@ Item {
                     onClicked: root.tab = "tips"
                 }
                 Text {
-                    visible: root.loaded
+                    visible: root.loaded && (root.tab === "startup" || root.tab === "procs")
                     text: root.tab === "startup" ? root.shownItems.length + " shown" : root.shownProcs.length + " shown"
                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                 }
+                Q { tip: "Keys:  /  searches   Tab  next view   F5  refreshes   Esc  closes. The numbers refresh every 5 s while this window is open; nothing is read while it is closed." }
             }
 
             // ---- column titles
             RowLayout {
-                visible: root.tab !== "tips"
+                visible: root.tab === "startup" || root.tab === "procs"
                 Layout.fillWidth: true
                 Layout.leftMargin: 16; Layout.rightMargin: 24
                 spacing: 12
                 Item { Layout.preferredWidth: root.tab === "startup" ? 14 : 44; height: 1 }
-                Cap { Layout.fillWidth: true; text: root.tab === "startup" ? "ITEM" : "PROCESS" }
-                Cap { visible: root.tab === "procs"; Layout.preferredWidth: 130; text: "STARTED BY" }
-                Cap { Layout.preferredWidth: 84; horizontalAlignment: Text.AlignRight; text: "MEMORY" }
-                Cap { Layout.preferredWidth: 76; horizontalAlignment: Text.AlignRight; text: "CPU" }
-                Cap { visible: root.tab === "startup"; Layout.preferredWidth: 46; horizontalAlignment: Text.AlignRight; text: "PROCS" }
+                Head {
+                    Layout.fillWidth: true; alignRight: false
+                    label: root.tab === "startup" ? "ITEM" : "PROCESS"
+                    tip: root.tab === "startup"
+                         ? "Something that starts with your desktop. Green dot: running. Orange dot: switched on but not running now. Grey dot: switched off. 'core' = Halcyon cannot work without it, so it has no switch. 'missing' = the program is not installed."
+                         : "Every program of yours, biggest first. The number on the left is its process id (PID). End asks it to quit politely; the desktop itself is protected."
+                }
+                Head { visible: root.tab === "procs"; Layout.preferredWidth: 130; alignRight: false; label: "STARTED BY"; tip: "The startup item this process belongs to. A dash means you started it yourself (not at login)." }
+                Head { Layout.preferredWidth: 84; label: "MEMORY"; tip: "PSS: the memory a program really uses. Pages that several programs share (libraries) are split fairly between them, so adding the numbers up gives the true total." }
+                Head { Layout.preferredWidth: 76; label: "CPU"; tip: "Big number: its share of the whole processor. Small number: the same as a part of ONE core (100% core = one core fully busy). Measured over a short moment and averaged, so a one-off burst fades out." }
+                Head { visible: root.tab === "startup"; Layout.preferredWidth: 62; label: "PROCS"; tip: "How many processes this item runs. One program is often several processes (a browser has one per tab)." }
                 Item { Layout.preferredWidth: 60; height: 1 }
             }
 
@@ -478,7 +629,7 @@ Item {
                                 Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: row.running ? root.pct(row.model.cpu / root.ncpu) : "—"; color: row.model.cpu > 50 ? root.pal.warn : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                 Text { width: parent.width; horizontalAlignment: Text.AlignRight; visible: row.running; text: root.ofCore(row.model.cpu); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
                             }
-                            Text { Layout.preferredWidth: 46; horizontalAlignment: Text.AlignRight; text: row.running ? row.model.count : "—"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            Text { Layout.preferredWidth: 62; horizontalAlignment: Text.AlignRight; text: row.running ? row.model.count : "—"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                             Item {
                                 Layout.preferredWidth: 60
                                 Layout.fillHeight: true
@@ -664,6 +815,195 @@ Item {
                         }
                     }
                 }
+
+                // ---- health: Halcyon as a whole against its limits, and why when it is over
+                Flickable {
+                    id: healthView
+                    anchors.fill: parent
+                    visible: root.tab === "health"
+                    clip: true
+                    contentWidth: width
+                    contentHeight: healthCol.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
+                    Column {
+                        id: healthCol
+                        width: healthView.width - 8
+                        spacing: 10
+
+                        Rectangle {
+                            width: parent.width
+                            height: 158
+                            radius: root.pal.rLg
+                            color: Qt.alpha(root.pal.bg, 0.55)
+                            border.width: 1
+                            border.color: root.loaded && root.healthState !== "ok" ? Qt.alpha(root.healthTone, 0.5) : root.pal.lineTint
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 12
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
+                                    Rectangle { Layout.alignment: Qt.AlignVCenter; width: 10; height: 10; radius: 5; color: root.loaded ? root.healthTone : root.pal.muted }
+                                    Text {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        text: !root.loaded ? "Reading…"
+                                              : root.healthState === "over" ? "Halcyon is over its " + (root.overRam && root.overCpu ? "RAM and CPU limits" : root.overRam ? "RAM limit" : "CPU limit")
+                                              : root.healthState === "near" ? "Halcyon is close to a limit" : "Halcyon is within its limits"
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text { text: root.loaded ? "all Halcyon parts together" : ""; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                }
+                                Meter {
+                                    Layout.fillWidth: true
+                                    label: "MEMORY (PSS)"
+                                    value: root.halRam; limit: root.effRam
+                                    valueText: root.loaded ? root.fmt(root.halRam) : "—"
+                                    limitText: root.fmt(root.effRam)
+                                    tone: root.overRam ? root.pal.bad : (root.halRam > root.effRam * 0.85 ? root.pal.warn : root.pal.good)
+                                }
+                                Meter {
+                                    Layout.fillWidth: true
+                                    label: "CPU (SHARE OF THE WHOLE PROCESSOR)"
+                                    value: root.halCpu; limit: root.effCpu
+                                    valueText: root.loaded ? root.pct(root.halCpu) : "—"
+                                    limitText: root.effCpu + "%"
+                                    tone: root.overCpu ? root.pal.bad : (root.halCpu > root.effCpu * 0.85 ? root.pal.warn : root.pal.good)
+                                }
+                            }
+                        }
+
+                        Cap { visible: root.shownFindings.length > 0; leftPadding: 4; text: "WHY, AND WHAT YOU CAN DO" }
+
+                        Repeater {
+                            model: findModel
+                            delegate: Rectangle {
+                                id: fcard
+                                required property var model
+                                readonly property color tone: model.kind === "machine" ? root.pal.warn : root.pal.bad
+                                readonly property var causes: JSON.parse(model.causesJson)
+                                readonly property var actions: JSON.parse(model.actionsJson)
+                                width: healthCol.width
+                                height: fcol.implicitHeight + 28
+                                radius: root.pal.rLg
+                                color: Qt.alpha(root.pal.surface, 0.75)
+                                border.width: 1
+                                border.color: root.pal.lineSoft
+                                Rectangle {
+                                    anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                                    anchors.margins: 12
+                                    width: 3; radius: 1.5
+                                    color: fcard.tone
+                                }
+                                Column {
+                                    id: fcol
+                                    x: 28; y: 14
+                                    width: fcard.width - 28 - 16
+                                    spacing: 8
+                                    RowLayout {
+                                        width: parent.width
+                                        spacing: 10
+                                        Text { Layout.alignment: Qt.AlignVCenter; text: fcard.model.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                        Rectangle {
+                                            Layout.alignment: Qt.AlignVCenter
+                                            implicitWidth: kindText.implicitWidth + 16; implicitHeight: 18; radius: 9
+                                            color: Qt.alpha(fcard.tone, 0.16)
+                                            Text {
+                                                id: kindText
+                                                anchors.centerIn: parent
+                                                text: fcard.model.kind === "ram" ? "RAM" : fcard.model.kind === "cpu" ? "CPU" : "WHOLE MACHINE"
+                                                color: fcard.tone
+                                                font.family: root.pal.uiFont; font.pixelSize: 9; font.weight: Font.DemiBold; font.letterSpacing: 1
+                                            }
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Column {
+                                            Layout.alignment: Qt.AlignVCenter
+                                            Text { anchors.right: parent.right; text: fcard.model.value; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                            Text { anchors.right: parent.right; visible: fcard.model.share > 0; text: fcard.model.share + "% of Halcyon"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
+                                        }
+                                    }
+                                    Text {
+                                        visible: fcard.model.detail !== ""
+                                        width: parent.width
+                                        text: fcard.model.detail
+                                        wrapMode: Text.WordWrap
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                    }
+                                    Cap { topPadding: 2; text: "LIKELY CAUSES" }
+                                    Repeater {
+                                        model: fcard.causes
+                                        delegate: Row {
+                                            required property var modelData
+                                            width: fcol.width
+                                            spacing: 8
+                                            Text { width: 8; text: "•"; color: fcard.tone; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                            Text { width: parent.width - 16; text: parent.modelData; wrapMode: Text.WordWrap; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                        }
+                                    }
+                                    Cap { visible: fcard.actions.length > 0; topPadding: 4; text: "WHAT YOU CAN DO" }
+                                    Repeater {
+                                        model: fcard.actions
+                                        delegate: Item {
+                                            id: act
+                                            required property var modelData
+                                            readonly property bool isBtn: modelData.t !== "text"
+                                            width: fcol.width
+                                            height: isBtn ? btn.implicitHeight : txt.implicitHeight
+                                            Chip {
+                                                id: btn
+                                                visible: act.isBtn
+                                                pal: root.pal; implicitHeight: 30; maxLabel: 1000
+                                                label: act.modelData.label
+                                                on: act.modelData.t === "preset"
+                                                onClicked: root.runAction(act.modelData)
+                                            }
+                                            Column {
+                                                id: txt
+                                                visible: !act.isBtn
+                                                width: parent.width
+                                                spacing: 1
+                                                Text { width: parent.width; text: act.modelData.label; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.DemiBold }
+                                                Text { width: parent.width; text: act.modelData.text || ""; wrapMode: Text.WordWrap; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            visible: root.loaded && root.overAny && root.shownFindings.length === 0
+                            width: parent.width; leftPadding: 4; wrapMode: Text.WordWrap
+                            text: "Over a limit, but no single part stands out right now: it was most likely a short burst. Press F5 in a few seconds to look again."
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                        }
+                        Text {
+                            visible: root.loaded && !root.overAny
+                            width: parent.width; leftPadding: 4; wrapMode: Text.WordWrap
+                            text: "Nothing to fix. If Halcyon goes over a limit, the likely causes and what you can do about each one appear here."
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                        }
+                        Text {
+                            visible: root.loaded
+                            width: parent.width; leftPadding: 4; wrapMode: Text.WordWrap
+                            text: !root.adaptive ? "Limits: " + root.fmt(root.limRam) + " of RAM and " + root.limCpu + "% of the processor. Change them in Settings > Performance & memory."
+                                : root.learned ? "Limits learned from your own use (the last " + Math.min(14, Math.floor(root.ad.days || 0)) + " days, " + root.ad.samples + " readings): " + root.fmt(root.effRam) + " of RAM and " + root.effCpu + "% of the processor. They keep adjusting. Settings > Performance & memory to go back to manual."
+                                : "Learning what is normal for you: day " + Math.min(root.ad.need_days || 3, Math.floor(root.ad.days || 0) + 1) + " of " + (root.ad.need_days || 3) + ", " + (root.ad.samples || 0) + " readings so far (one every 5 min while the desktop runs). Until then the manual limits apply: " + root.fmt(root.limRam) + " and " + root.limCpu + "%."
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                        }
+                    }
+                    Rectangle {
+                        visible: healthView.contentHeight > healthView.height
+                        anchors.right: parent.right
+                        width: 3; radius: 1.5
+                        color: Qt.alpha(root.pal.text, 0.25)
+                        height: Math.max(24, healthView.height * healthView.height / Math.max(1, healthView.contentHeight))
+                        y: healthView.contentHeight <= healthView.height ? 0 : (healthView.height - height) * healthView.contentY / (healthView.contentHeight - healthView.height)
+                    }
+                }
+
                 Column {
                     anchors.centerIn: parent
                     visible: root.loaded && root.tab === "tips" && root.shownTips.length === 0
@@ -686,15 +1026,41 @@ Item {
                 }
             }
 
-            // ---- footer
+            // ---- footer: only the answer to what you just did (the explanations are the "?" markers above)
             Text {
+                visible: root.note !== ""
                 Layout.fillWidth: true
-                text: root.note !== "" ? root.note : (root.tab === "tips" ? "Nothing is turned off until you press the button. Keep hides a suggestion for good. Startup items change at the next login."
-                                                              : "PSS memory. CPU: big number = share of the whole processor, small = of one core. PROCS = processes the item runs. / searches, Tab switches view, F5 refreshes.")
-                color: root.pal.muted
+                text: root.note
+                color: root.pal.accent
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tCap
                 elide: Text.ElideRight
+            }
+        }
+
+        // the one bubble every "?" shows; it lives on the card so no list or row can cut it off
+        Rectangle {
+            id: bubble
+            z: 40
+            visible: root.tipItem !== null
+            width: Math.min(320, card.width - 40)
+            height: bubbleText.implicitHeight + 22
+            radius: root.pal.rMd
+            color: Qt.alpha(root.pal.bg, 0.98)
+            border.width: 1
+            border.color: Qt.alpha(root.pal.accent, 0.5)
+            x: Math.max(12, Math.min(card.width - width - 12, root.tipCx - width / 2))
+            y: root.tipBottom + 10 + height > card.height - 8 ? root.tipTop - height - 10 : root.tipBottom + 10
+            Text {
+                id: bubbleText
+                x: 12; y: 11
+                width: parent.width - 24
+                text: root.tipText
+                wrapMode: Text.WordWrap
+                color: root.pal.text
+                font.family: root.pal.uiFont
+                font.pixelSize: root.pal.tCap + 1
+                lineHeight: 1.15
             }
         }
 

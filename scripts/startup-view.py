@@ -3,9 +3,16 @@
 The island's "Startup & processes" window (quickshell/island/StartupWindow.qml) polls this ONLY while it is open;
 nothing stays running in the background.
 
-  startup-view.py list                     one line of JSON: startup items (+ their processes) and every process of yours
+  startup-view.py list [--ram MB] [--cpu PCT] [--auto]
+                                           one line of JSON: startup items (+ their processes) and every process of yours, plus
+                                           "health": how much Halcyon as a whole uses against the two limits (MB of RAM, % of the
+                                           whole processor; Settings > Performance & memory) and, when it is over, the likely causes
   startup-view.py toggle MODE KEY 1|0      MODE = conf (Halcyon's own, via startup-conf.sh) | unit (systemd --user) | xdg (autostart .desktop)
   startup-view.py end PID                  asks one of your own processes to quit (SIGTERM); the desktop itself is protected
+  startup-view.py adapt-sample|adapt-status|adapt-reset
+                                           Adaptive limits (Settings > Performance & memory > Limits): sample = one reading of Halcyon's RAM / CPU
+                                           (the island runs it every 5 min while Adaptive is on), status = what has been learned (JSON), reset = start over.
+                                           "list --auto" then reports the learned limits under "adaptive".
   startup-view.py keep ID                  "Keep it": that startup item is not suggested for turning off any more
 
 "suggest" in the list is the window's Suggestions tab: startup items that are running and can be turned off because they do
@@ -283,19 +290,309 @@ def suggestions(items):
     return out
 
 
+
+# ------------------------------------------------------------------ health: Halcyon as a whole against its limits
+DEF_RAM_MB, DEF_CPU_PCT = 600, 10.0
+
+
+def island_opts():
+    """The island's saved options (settings.json), so the advice can say what is actually switched on."""
+    try:
+        with open(STATE + "/settings.json") as f:
+            d = json.load(f)
+        o = dict(d.get("opt") or {})
+        for k in ("blur", "shadows", "hyprAnim"):
+            if k in d:
+                o[k] = d[k]
+        return o
+    except Exception:
+        return {}
+
+
+def age_hours(pid):
+    try:
+        with open("/proc/%d/stat" % pid) as f:
+            s = f.read()
+        st = int(s[s.rfind(")") + 2:].split()[19])
+        with open("/proc/uptime") as f:
+            up = float(f.read().split()[0])
+        return max(0.0, (up - st / TICK) / 3600)
+    except Exception:
+        return 0.0
+
+
+def label_of(p):
+    """A readable name for one process: the two quickshell instances are told apart by the folder they run."""
+    c = p["cmd"]
+    if re.search(r"(^|/)(quickshell|qs)( |$)", c):
+        if "/wallpaper" in c:
+            return "wallpaper layer"
+        if "/island" in c:
+            return "island shell"
+    return p["name"]
+
+
+def pt(label, text):
+    return dict(t="text", label=label, text=text)
+
+
+def preset(v, label=None):
+    return dict(t="preset", v=v, label=label or ("Switch to %s resource use" % v.capitalize()))
+
+
+def mem_advice(it, inside, o, procs):
+    """(causes, actions) for one Halcyon part whose RAM is high."""
+    i = it["id"]
+    causes, actions = [], []
+    res = o.get("resMode", "high")
+    if i == "cat:island":
+        wall = sum(p["pss"] for p in inside if label_of(p) == "wallpaper layer") / 1024
+        if wall > it["mem"] * 0.3:
+            causes.append("The wallpaper layer alone holds %d MB: a high-resolution wallpaper is decoded and kept in memory, and a live wallpaper keeps frames as well." % round(wall))
+            actions.append(pt("Use a smaller wallpaper", "Pick a picture close to your screen's resolution (Wallpaper gallery), and keep the live wallpaper off (scripts/toggle_livewallpaper.sh) unless you want it."))
+        if res == "high":
+            causes.append("Resource use is on High: blur, shadows, the full tree view and the moving stars all keep their own images and buffers.")
+        if o.get("stars") is not False or o.get("starsBar") is not False:
+            causes.append("Stars and constellations are on; every layer of them has its own textures.")
+        old = max([age_hours(p["pid"]) for p in inside if label_of(p) == "island shell"] or [0])
+        if old >= 24:
+            causes.append("The island has been running for %d hours. A QML program's memory creeps up slowly and is only handed back when it restarts." % round(old))
+            actions.append(pt("Restart the island", "Log out and back in. (A plain `pkill quickshell` ends it for good: start-shell.sh treats that as closing on purpose.)"))
+        causes.append("Windows that are open now (Overview, Settings, the gallery) keep their images until they close.")
+        if res != "low":
+            actions.append(preset("low" if res == "medium" else "medium"))
+        actions.append(pt("See where it is", "Run  ~/.config/Halcyon/scripts/halcyon-mem-where.sh  in a terminal: it splits the island's memory into program data, window buffers and graphics drivers."))
+    elif i == "cat:hyprland":
+        causes.append("Hyprland keeps a buffer for every window and every blurred layer; many windows, high blur passes and shadows add up.")
+        if o.get("blur") is not False:
+            causes.append("Blur is on.")
+        if o.get("shadows") is not False:
+            causes.append("Shadows are on.")
+        if res != "low":
+            actions.append(preset("low" if res == "medium" else "medium"))
+        actions.append(pt("Close what you do not use", "Windows on other workspaces still cost memory. Close old ones (the Overview tree shows how much each workspace uses)."))
+    elif i == "cat:clipboard":
+        causes.append("The clipboard history keeps pictures you copied; a long history makes cliphist and its watchers large.")
+        actions.append(pt("Empty it", "Run  cliphist wipe  in a terminal. Or turn the history off below."))
+        actions.append(dict(t="toggle", id=i, label="Turn off clipboard history"))
+    elif i in ("cat:nm", "cat:blueman"):
+        causes.append("A tray applet starts a whole GTK toolkit for one small icon; 30-50 MB is normal for it.")
+        actions.append(dict(t="toggle", id=i, label="Turn off " + it["name"]))
+    elif i == "cat:power":
+        causes.append("The power manager is a small program; more than a few MB means it is holding results it should drop, or it is stuck.")
+        actions.append(pt("Use another one", "Settings > Power & lock > Power manager: pick power-profiles-daemon or another manager, then it is stopped."))
+    else:
+        causes.append("%s is larger than a helper like it normally is." % it["name"])
+    return causes, actions
+
+
+def cpu_advice(it, inside, o, procs):
+    """(causes, actions) for one Halcyon part whose CPU is high."""
+    i = it["id"]
+    causes, actions = [], []
+    res = o.get("resMode", "high")
+    kid = {}
+    for p in inside:
+        kid[p["name"]] = kid.get(p["name"], 0) + p["cpu"]
+    if i == "cat:island":
+        if o.get("fps", 0) in (0, None):
+            causes.append("The tree view and the constellations redraw at your screen's full frame rate (Max).")
+            actions.append(pt("Cap the frame rate", "Settings > Performance & memory > Tree view & constellation frame rate: 30 or 60."))
+        if o.get("starsBar") is not False:
+            causes.append("The moving stars in the bar are on; they animate all the time.")
+            actions.append(pt("Stop the moving stars", "Settings > Constellations > Moving stars: off."))
+        if kid.get("cava", 0) > 3:
+            causes.append("The music bars (cava) are running and drawing while music plays.")
+            actions.append(pt("Lighten the music bars", "Settings > Bar > Music bars quality: Light (about half the work) or switch the bars off."))
+        if kid.get("hx", 0) > 3:
+            causes.append("The Rust helper hx (workspace and stats readers) is busy.")
+            actions.append(pt("Slow the readers", "Settings > Performance & memory > Background refresh: Relaxed or Slow."))
+        if o.get("lines") == "cpu":
+            causes.append("Line drawing is set to CPU; the GPU setting draws the same lines for free.")
+            actions.append(pt("Draw lines on the GPU", "Settings > Performance & memory > Line drawing: GPU."))
+        if o.get("bgRefresh", "normal") == "normal":
+            causes.append("Background refresh is Normal: the CPU, battery, Wi-Fi and Bluetooth readers look again every 2-4 s.")
+        if res == "high":
+            causes.append("Resource use is on High: every effect is on, as designed.")
+        if not causes:
+            causes.append("No single option explains it; an overlay that is open (Overview, a gallery, a video wallpaper) is the usual reason.")
+        if res != "low":
+            actions.append(preset("low" if res == "medium" else "medium"))
+    elif i == "cat:hyprland":
+        causes.append("The compositor works hardest while windows animate, blur is on, or a game / video is composited.")
+        if o.get("blur") is not False:
+            causes.append("Blur is on, and it is redrawn behind every translucent window and bar.")
+        if o.get("hyprAnim") is not False:
+            causes.append("Window animations are on.")
+        if res != "low":
+            actions.append(preset("low" if res == "medium" else "medium"))
+        actions.append(pt("Gaming mode", "SUPER+F10 switches the effects off and gives the game the CPU and GPU."))
+    elif i == "cat:power":
+        causes.append("The power manager wakes up on a timer and starts short helper programs (nvidia-smi, powerprofilesctl) every time; the helpers' CPU is counted with it.")
+        causes.append("A tight loop or a very short poll interval makes it busy even when nothing changes.")
+        actions.append(pt("Use another one", "Settings > Power & lock > Power manager: choose another manager while you look into it."))
+        actions.append(pt("Check its interval", "Look at the poll interval in src/power-manager (the main loop sleep) and make it longer; 2-5 s is plenty."))
+    elif i == "cat:gestures":
+        causes.append("The touchpad edge-gesture service reads the touchpad all the time; a loop without waiting for events keeps a core busy.")
+        actions.append(dict(t="toggle", id=i, label="Turn off touchpad edge gestures"))
+    elif i == "cat:clipboard":
+        causes.append("The clipboard watchers wake up on every copy; an app that copies constantly (a terminal, a game) keeps them busy.")
+        actions.append(dict(t="toggle", id=i, label="Turn off clipboard history"))
+    else:
+        causes.append("%s is using more CPU than a helper like it should; it may be stuck." % it["name"])
+    return causes, actions
+
+
+def health_report(items, procs, ncpu, meminfo, ram_lim, cpu_lim):
+    o = island_opts()
+    halc = [it for it in items if it["kind"] == "halcyon" and it["count"] > 0]
+    ram = round(sum(it["mem"] for it in halc), 1)
+    cpu_core = round(sum(it["cpu"] for it in halc), 1)
+    pct = cpu_core / max(1, ncpu)
+    over_ram, over_cpu = ram > ram_lim, pct > cpu_lim
+    findings = []
+
+    def inside_of(it):
+        ins = [procs[p] for p in it["pids"] if p in procs]
+        ins.sort(key=lambda p: -p["pss"])
+        return ins
+
+    def breakdown(it, by):
+        ins = inside_of(it)
+        if len(ins) < 2:
+            return ""
+        if by == "mem":
+            return "Inside: " + ", ".join("%s %d MB" % (label_of(p), round(p["pss"] / 1024)) for p in ins[:4] if p["pss"] > 2048)
+        ins.sort(key=lambda p: -p["cpu"])
+        return "Inside: " + ", ".join("%s %.1f%%" % (label_of(p), p["cpu"] / ncpu) for p in ins[:4] if p["cpu"] > 1)
+
+    if ram > ram_lim * 0.45:           # QML shows these only while Halcyon is over the RAM limit
+        for it in sorted(halc, key=lambda x: -x["mem"])[:4]:
+            if it["mem"] < max(20, ram_lim * 0.08):
+                continue
+            causes, actions = mem_advice(it, inside_of(it), o, procs)
+            findings.append(dict(kind="ram", id=it["id"], name=it["name"], value="%s MB" % round(it["mem"]),
+                                 share=round(100 * it["mem"] / max(1, ram)), detail=breakdown(it, "mem"), causes=causes, actions=actions))
+    if pct > cpu_lim * 0.6:            # ... and these only after it has been over the CPU limit for two readings in a row
+        for it in sorted(halc, key=lambda x: -x["cpu"])[:3]:
+            if it["cpu"] / ncpu < max(0.8, cpu_lim * 0.12):
+                continue
+            causes, actions = cpu_advice(it, inside_of(it), o, procs)
+            findings.append(dict(kind="cpu", id=it["id"], name=it["name"], value="%.1f%%" % (it["cpu"] / ncpu),
+                                 share=round(100 * it["cpu"] / max(0.1, cpu_core)), detail=breakdown(it, "cpu"), causes=causes, actions=actions))
+
+    # the machine as a whole: not Halcyon's fault, but it is what makes everything feel slow
+    total, avail = meminfo.get("MemTotal", 0) / 1024, meminfo.get("MemAvailable", 0) / 1024
+    swap_used = (meminfo.get("SwapTotal", 0) - meminfo.get("SwapFree", 0)) / 1024
+    if total and avail < total * 0.12:
+        mine = {p for it in halc for p in it["pids"]}
+        others = sorted((p for pid, p in procs.items() if pid not in mine), key=lambda p: -p["pss"])[:3]
+        names = ", ".join("%s %d MB" % (p["name"], round(p["pss"] / 1024)) for p in others)
+        acts = [dict(t="end", pid=p["pid"], name=p["name"], label="End %s (%d MB)" % (p["name"], round(p["pss"] / 1024))) for p in others
+                if not PROTECTED.search(p["cmd"]) and p["pss"] > 150 * 1024]
+        causes = ["Only %d MB of %d MB is free. Halcyon uses %d MB of what is taken; the rest is other programs: %s." % (round(avail), round(total), round(ram), names)]
+        if swap_used > 512:
+            causes.append("%d MB is already pushed out to swap, so everything that was moved there is slow to come back." % round(swap_used))
+        findings.append(dict(kind="machine", id="machine", name="The whole machine is short of memory", value="%d MB free" % round(avail),
+                             share=0, detail="", causes=causes, actions=acts))
+
+    status = "over" if (over_ram or over_cpu) else ("near" if (ram > ram_lim * 0.85 or pct > cpu_lim * 0.85) else "ok")
+    return dict(status=status, ram_mb=ram, ram_limit=ram_lim, cpu_pct=round(pct, 1), cpu_limit=cpu_lim, findings=findings)
+
+
+# ------------------------------------------------------------------ adaptive limits
+# Settings > Performance & memory > Limits: Adaptive. Every 5 min (only while Adaptive is on) the island runs `adapt-sample`, which appends one
+# reading of Halcyon's own RAM and CPU to STATE/adaptive.tsv. After ADAPT_DAYS days and ADAPT_MIN readings the limits are worked out from the
+# last ADAPT_KEEP_DAYS days: the busy 5 % of the time (95th percentile) plus headroom, kept inside the same range the manual sliders have.
+# Nothing is changed or stopped by these limits: like the manual ones they only decide when the Health tab speaks up.
+ADAPT_LOG = STATE + "/adaptive.tsv"
+ADAPT_DAYS, ADAPT_MIN, ADAPT_KEEP_DAYS = 3, 150, 14
+ADAPT_RAM_RANGE, ADAPT_CPU_RANGE = (300, 1500), (3, 30)       # the manual sliders' ranges
+ADAPT_RAM_HEADROOM, ADAPT_CPU_HEADROOM = 1.25, 1.5
+
+
+def adapt_read():
+    now, out = time.time(), []
+    try:
+        with open(ADAPT_LOG) as f:
+            for ln in f:
+                try:
+                    t, r, c = ln.split("\t")
+                    t, r, c = float(t), float(r), float(c)
+                except ValueError:
+                    continue
+                if now - t <= ADAPT_KEEP_DAYS * 86400:
+                    out.append((t, r, c))
+    except OSError:
+        pass
+    return out
+
+
+def pct95(vals):
+    v = sorted(vals)
+    return v[min(len(v) - 1, int(len(v) * 0.95))] if v else 0.0
+
+
+def adapt_status():
+    rows = adapt_read()
+    st = dict(state="learning", need_days=ADAPT_DAYS, days=0.0, samples=len(rows), ram_limit=None, cpu_limit=None, base_ram=None, base_cpu=None)
+    if not rows:
+        return st
+    st["days"] = round((rows[-1][0] - rows[0][0]) / 86400, 2)
+    if st["days"] >= ADAPT_DAYS and len(rows) >= ADAPT_MIN:
+        br, bc = pct95([r[1] for r in rows]), pct95([r[2] for r in rows])
+        ram = int(-(-br * ADAPT_RAM_HEADROOM // 50) * 50)                                    # up to the next 50 MB
+        cpu = int(-(-(bc * ADAPT_CPU_HEADROOM + 1) // 1))                                    # up to the next whole percent
+        st.update(state="ready", base_ram=round(br), base_cpu=round(bc, 1),
+                  ram_limit=max(ADAPT_RAM_RANGE[0], min(ADAPT_RAM_RANGE[1], ram)),
+                  cpu_limit=max(ADAPT_CPU_RANGE[0], min(ADAPT_CPU_RANGE[1], cpu)))
+    return st
+
+
+def cmd_adapt_sample():
+    d = collect(DEF_RAM_MB, DEF_CPU_PCT)
+    h = d["health"]
+    os.makedirs(STATE, exist_ok=True)
+    rows = adapt_read()
+    if len(rows) > 4500:                                          # 14 days at one reading per 5 min is about 4000: keep the file from growing
+        with open(ADAPT_LOG + ".tmp", "w") as f:
+            f.writelines("%.0f\t%s\t%s\n" % r for r in rows[-4000:])
+        os.replace(ADAPT_LOG + ".tmp", ADAPT_LOG)
+    with open(ADAPT_LOG, "a") as f:
+        f.write("%.0f\t%s\t%s\n" % (time.time(), h["ram_mb"], h["cpu_pct"]))
+
+
+def cmd_adapt_reset():
+    try:
+        os.remove(ADAPT_LOG)
+    except OSError:
+        pass
+
+
 # ------------------------------------------------------------------ list
-def cmd_list():
+def cmd_list(ram_lim=DEF_RAM_MB, cpu_lim=DEF_CPU_PCT, auto=False):
+    ad = adapt_status() if auto else None
+    if ad and ad["state"] == "ready":
+        ram_lim, cpu_lim = ad["ram_limit"], ad["cpu_limit"]
+    d = collect(ram_lim, cpu_lim)
+    if ad:
+        d["adaptive"] = ad
+    print(json.dumps(d))
+
+
+def collect(ram_lim, cpu_lim):
     procs = scan()
     kids = {}
     for p in procs.values():
         kids.setdefault(p["ppid"], []).append(p["pid"])
+    me = tree([os.getpid()], kids)         # this reader (and the helpers it starts) runs under the island: it must not count as the island's load
     conf = conf_state()
     has = conf.get("has", {}) if isinstance(conf, dict) else {}
     claimed, items = set(), []
 
     def make(id_, kind, name, desc, seeds, follow=True, **extra):
         pids = tree(seeds, kids) if follow else set(seeds)
-        pids = {p for p in pids if p in procs} - claimed
+        pids = {p for p in pids if p in procs} - claimed - me
         claimed.update(pids)
         it = dict(id=id_, kind=kind, name=name, desc=desc, pids=sorted(pids), count=len(pids),
                   mem=round(sum(procs[p]["pss"] for p in pids) / 1024, 1),
@@ -362,11 +659,12 @@ def cmd_list():
     except Exception:
         pass
     items.sort(key=lambda it: (-it["mem"], it["name"].lower()))
-    print(json.dumps(dict(
+    return (dict(
+        health=health_report(items, procs, os.cpu_count() or 1, meminfo, ram_lim, cpu_lim),
         items=items, procs=plist, n_procs=len(procs), suggest=suggestions(items), ncpu=os.cpu_count() or 1,
         session_mb=round(sum(p["pss"] for p in procs.values()) / 1024, 1),
         startup_mb=round(sum(it["mem"] for it in items), 1),
-        total_mb=round(meminfo.get("MemTotal", 0) / 1024), avail_mb=round(meminfo.get("MemAvailable", 0) / 1024))))
+        total_mb=round(meminfo.get("MemTotal", 0) / 1024), avail_mb=round(meminfo.get("MemAvailable", 0) / 1024)))
 
 
 # ------------------------------------------------------------------ actions
@@ -395,7 +693,18 @@ def set_xdg(fn, on):
 def main():
     a = sys.argv[1:] or ["list"]
     if a[0] == "list":
-        cmd_list()
+        def num(flag, default):
+            try:
+                return float(a[a.index(flag) + 1]) if flag in a else default
+            except (ValueError, IndexError):
+                return default
+        cmd_list(max(100, num("--ram", DEF_RAM_MB)), max(1, num("--cpu", DEF_CPU_PCT)), "--auto" in a)
+    elif a[0] == "adapt-sample":
+        cmd_adapt_sample()
+    elif a[0] == "adapt-status":
+        print(json.dumps(adapt_status(), indent=2))
+    elif a[0] == "adapt-reset":
+        cmd_adapt_reset()
     elif a[0] == "toggle" and len(a) >= 4:
         mode, key, on = a[1], a[2], a[3] in ("1", "true", "on")
         if mode == "conf" and key in CONF_VALUES:

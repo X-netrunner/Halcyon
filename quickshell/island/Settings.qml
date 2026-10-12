@@ -307,7 +307,14 @@ Scope {
     readonly property var gestureActions: [ac("none", "Nothing: apps get the gesture", "Off")].concat(commonActions)
     readonly property var mouseActions: [ac("none", "Default: the app handles the button", "Off")].concat(commonActions,
         [ac("drag", "Move a window while held", "Mouse"), ac("resize", "Resize a window while held", "Mouse")])
-    function inputLoad() { if (!inputBusy && !inputProc.running) inputProc.running = true }
+    property double inputLast: 0
+    // not more than once every 2 s once there is something to show (the editors are created again whenever a search brings them up)
+    function inputLoad() {
+        if (inputBusy || inputProc.running) return
+        if (inputRaw !== "" && Date.now() - inputLast < 2000) return
+        inputLast = Date.now()
+        inputProc.running = true
+    }
     function setInput(id, act, cmd) {
         var c = JSON.parse(JSON.stringify(inputConf))
         var tbl = id.charAt(0) === "g" ? c.gestures : c.mouse
@@ -544,6 +551,10 @@ Scope {
         ] },
         { id: "performance", title: "Performance & memory", section: "System", items: [
             { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars (no moving stars in the bar), 30 fps, small notification lists, slow background refresh, light music bars. Medium: light blur, no shadows, 60 fps, relaxed background refresh. High: everything on, as designed. It sets the options on this page and in Effects and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
+            { type: "seg", key: "opt:limMode", label: "Limits", desc: "Manual: you set the two limits below. Adaptive: Halcyon measures its own RAM and CPU use every 5 minutes while the desktop runs (not while Gaming mode is on), and after 3 days sets the limits itself, a little above what is normal for you (the busy 5 % of the time plus headroom). It keeps adjusting over the last 14 days. Until it has learned, the manual limits apply. It only measures and advises, like the manual limits.", opts: [o("manual", "Manual"), o("auto", "Adaptive")] },
+            { type: "acts", label: "Adaptive limits", desc: "Start learning again from zero, for example after a big change to the setup.", btns: [{ id: "adapt-reset", btn: "Forget what it learned", done: "Learning again" }], when: "opt:limMode=auto" },
+            { type: "slider", key: "opt:limRam", def: 600, when: "opt:limMode=manual", label: "Halcyon RAM limit", desc: "How much memory all of Halcyon together (Hyprland, the island with its helpers, the daemons) should stay under. Above it, Startup & processes > Health shows the likely causes and what to do. It only measures and advises: nothing is changed or stopped by itself.", min: 300, max: 1500, step: 50, unit: " MB" },
+            { type: "slider", key: "opt:limCpu", def: 10, when: "opt:limMode=manual", label: "Halcyon CPU limit", desc: "The share of the whole processor all of Halcyon together should stay under. Flagged in Startup & processes > Health after two readings in a row over it (5 s apart), so a short burst does not count.", min: 3, max: 30, step: 1, unit: " %" },
             { type: "toggle", key: "gaming", label: "Gaming mode", desc: "CPU / GPU at full speed, turbo on, Wi-Fi power saving off, effects off, Caffeine and Do not disturb on, background helpers stopped. SUPER+F10." },
             { type: "seg", adv: true, key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", adv: true, key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
@@ -552,7 +563,7 @@ Scope {
             { type: "acts", adv: true, label: "Memory", desc: "Show what uses my RAM: opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
         ] },
         { id: "startup", title: "Startup & background", section: "System", items: [
-            { type: "action", id: "startup-view", label: "Startup & processes", btn: "Open the window", done: "", desc: "Everything that starts with the desktop (Halcyon's parts, your hypr-user.lua lines, systemd user services, autostart files) with the processes it runs, their RAM and CPU, a switch for each, and every other process of yours with an End button. Also `>startup` in the launcher." },
+            { type: "action", id: "startup-view", label: "Startup & processes", btn: "Open the window", done: "", desc: "Everything that starts with the desktop (Halcyon's parts, your hypr-user.lua lines, systemd user services, autostart files) with the processes it runs, their RAM and CPU, a switch for each, and every other process of yours with an End button. The Health tab compares all of Halcyon with the RAM and CPU limits (Performance & memory) and lists the likely causes when it is over. Also `>startup` in the launcher." },
             { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
             { type: "toggle", key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
             { type: "toggle", key: "st:CLIPBOARD", label: "Clipboard history", desc: "The two small watchers that remember what you copy (text and pictures) for the clipboard picker. Off stops them at once and saves a few MB; the picker then only shows what was saved before." },
@@ -2371,8 +2382,12 @@ Scope {
                 anchors.fill: parent
                 pal: root.pal
                 movingStars: root.opt.starsBar !== false
+                limRam: root.opt.limRam !== undefined ? Number(root.opt.limRam) : 600
+                limCpu: root.opt.limCpu !== undefined ? Number(root.opt.limCpu) : 10
+                adaptive: root.opt.limMode === "auto"
                 open: root.startupOpen && swin.shown
                 onClosed: root.startupOpen = false
+                onPresetPicked: m => root.change("opt:resMode", m)
             }
         }
     }

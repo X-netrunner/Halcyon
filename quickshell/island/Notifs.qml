@@ -11,9 +11,9 @@ import Quickshell.Services.Notifications
 //  POPUPS (toasts)   at most maxToasts on screen, oldest at the top. A popup timing out only hides the popup.
 //  HISTORY           every notification stays in the centre until you remove it. At most maxHistory are kept:
 //                    when a new one arrives past that, the OLDEST is dropped and the new one takes its place.
-//  coalescing        from apps in coalesceApps, same app + same title replaces the earlier one (status toggles
-//                    sent by your scripts through notify-send don't pile up). From every other app only an exact
-//                    repeat (same title AND text) replaces, so chat messages are all kept.
+//  coalescing        from apps in coalesceApps (Halcyon's own status messages: -a Halcyon), same app + same title replaces
+//                    the earlier one, so the toggles of the rice's scripts don't pile up. From every other app, notify-send
+//                    included, only an exact repeat (same title AND text) replaces, so every message you send is kept.
 //  transient         kept too: some apps mark everything transient, and "not in the box" was the result.
 //  closed by the app an app may withdraw its own notification (read in the chat, tab focused ...). The popup goes, but the
 //                    centre keeps a copy until YOU remove it (see snapshot() below).
@@ -43,7 +43,7 @@ Scope {
     property string sysmode: ""             // lockdown / stealth get their background art
     property var starData: null             // other modes: the profile picture as a constellation
     property bool profileStars: true
-    property var coalesceApps: ["notify-send"]
+    property var coalesceApps: ["Halcyon"]
     readonly property int cardW: pal ? pal.boxW : 392
     readonly property int topY: 16          // popups and the centre line up with the top of the island
 
@@ -323,20 +323,9 @@ Scope {
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             border.color: root.sysmode === "lockdown" || root.sysmode === "stealth" ? Qt.alpha(root.pal.accent, 0.30) : root.pal.line
 
-            // tree-style backdrop: drifting dots + flagship-mode art
-            Backdrop {
-                visible: panel.visible && root.stars
-                anchors.fill: parent
-                anchors.margins: 14
-                pal: root.pal
-                mode: root.sysmode
-                avatarStars: root.starData
-                profileStars: root.profileStars
-                dots: 10
-                artStrength: 1
-                artFit: 0.78
-            }
-
+            // the constellations live in their own band at the top of the panel (the "sky" in the column below), so the
+            // title and the notifications are written underneath them, never on top of the lines and stars
+            readonly property real skyH: root.stars ? Math.max(90, Math.min(150, (win.height - root.pal.boxTop) * 0.2)) : 0
 
             HoverHandler { onHoveredChanged: root.setHover(hovered) }
             MouseArea { anchors.fill: parent }      // swallow clicks
@@ -345,6 +334,24 @@ Scope {
                 id: col
                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.pal.boxPad }
                 spacing: 12
+
+                // sky: tree-style backdrop (drifting dots + the flagship-mode art / your profile constellation), above the text
+                Item {
+                    visible: root.stars
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: panel.skyH
+                    Backdrop {
+                        visible: panel.visible && root.stars
+                        anchors.fill: parent
+                        pal: root.pal
+                        mode: root.sysmode
+                        avatarStars: root.starData
+                        profileStars: root.profileStars
+                        dots: 10
+                        artStrength: 1
+                        artFit: 0.9
+                    }
+                }
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -360,7 +367,8 @@ Scope {
                             font.weight: Font.DemiBold
                         }
                         Text {
-                            text: root.history.length + " of " + root.maxHistory + " kept"
+                            text: root.history.length === 0 ? "You are all caught up"
+                                : root.history.length + (root.history.length === 1 ? " notification" : " notifications") + (root.dnd ? "  ·  muted" : "")
                             color: root.pal.muted
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tCap
@@ -389,10 +397,10 @@ Scope {
                 ListView {
                     id: list
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.min(contentHeight, 470)
+                    Layout.preferredHeight: Math.min(contentHeight, Math.max(150, Math.min(470, win.height - root.pal.boxTop - 2 * root.pal.boxPad - panel.skyH - 190)))
                     visible: root.history.length > 0
                     clip: true
-                    spacing: 8
+                    spacing: 10
                     boundsBehavior: Flickable.StopAtBounds
                     model: ScriptModel { values: root.history }
                     delegate: NotifRow {
@@ -406,9 +414,14 @@ Scope {
                         now: root.now
                         onDismissRequested: root.dismiss(modelData)
                     }
-                    add: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: root.pal.dMed } }
+                    add: Transition {
+                        ParallelAnimation {
+                            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: root.pal.dMed }
+                            NumberAnimation { property: "x"; from: 30; to: 0; duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve }
+                        }
+                    }
                     remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: root.pal.dFast } }
-                    displaced: Transition { NumberAnimation { property: "y"; duration: root.pal.dMed; easing.type: Easing.OutCubic } }
+                    displaced: Transition { NumberAnimation { property: "y"; duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 }
 
                 // empty: a tree-style node (same look as the SUPER+TAB nodes) with a short branch and a label

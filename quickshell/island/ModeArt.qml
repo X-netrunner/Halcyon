@@ -25,7 +25,7 @@ Item {
 
     readonly property var art: mode === "lockdown" ? Stars.shield : (mode === "stealth" ? Stars.dragon : (mode === "avatar" ? custom : null))
     visible: art !== null && art !== undefined && strength > 0
-    opacity: strength
+    opacity: strength * appear
 
     readonly property color tone: pal.solid ? Qt.lighter(pal.accent, 1.2) : pal.accent      // a touch brighter on a solid black box
 
@@ -43,10 +43,9 @@ Item {
     property bool built: false
     onVisibleChanged: { if (visible) { unbuild.stop(); built = true } else unbuild.restart() }
     Timer { id: unbuild; interval: 5000; onTriggered: if (!root.visible) root.built = false }
-    Component.onCompleted: if (visible) built = true
     readonly property real dw: art ? art.w : 100
     readonly property real dh: art ? art.h : 100
-    readonly property bool live: alive && visible && opacity > 0.01 && (pal ? pal.motion > 0.3 : true)
+    readonly property bool live: alive && visible && strength > 0.01 && (pal ? pal.motion > 0.3 : true)
 
     // ---- growth (0..1, Settings > Constellations): stars / edges with a birth value t appear as it passes t
     readonly property real g: (pal && pal.growthOn) ? pal.growth : 0
@@ -92,13 +91,33 @@ Item {
     readonly property real u: 1 / Math.max(0.05, baseScale)
 
     // shared clocks: ph = slow twinkle / breathing (7 s), cyc = travelling lights (6 s). Integer multiples keep them seamless.
+    // They are accumulated frame by frame and keep their value while the art is hidden or paused, so they never jump back to 0
+    // when it comes into view again (a NumberAnimation restarts from its `from` every time it is switched on: the sky snapped).
     // (at a limited frame rate the clocks step instead of gliding, so nothing below is re-evaluated in between)
     property real phRaw: 0
-    NumberAnimation on phRaw { from: 0; to: 6.2832; duration: 7000; loops: Animation.Infinite; running: root.animated }
     property real cycRaw: 0
-    NumberAnimation on cycRaw { from: 0; to: 1; duration: 6000; loops: Animation.Infinite; running: root.animated }
-    readonly property real ph: fps > 0 ? Math.floor(phRaw / (0.8976 / fps)) * (0.8976 / fps) : phRaw
+    FrameAnimation {
+        running: root.animated
+        onTriggered: {
+            var dt = Math.min(frameTime, 0.1)              // a stalled frame must not throw the sky forward
+            root.phRaw = (root.phRaw + dt * 0.8975979) % 6.283185307179586
+            root.cycRaw = (root.cycRaw + dt / 6) % 1
+        }
+    }
+    readonly property real ph: fps > 0 ? Math.floor(phRaw / (0.8975979 / fps)) * (0.8975979 / fps) : phRaw
     readonly property real cyc: fps > 0 ? Math.floor(cycRaw * 6 * fps) / (6 * fps) : cycRaw
+
+    // how much of the motion is on (0..1): it eases in over ~1.6 s when the art comes into view and out again when it goes, so
+    // the breathing, sway and twinkle start from calm instead of jumping to wherever the clock is
+    readonly property real lifeTarget: (live && quality >= 1) ? 1 : 0
+    property real life: 0
+    onLifeTargetChanged: { lifeAnim.to = lifeTarget; lifeAnim.duration = lifeTarget > 0 ? 1600 : 700; lifeAnim.restart() }
+    Component.onCompleted: { if (visible) built = true; if (lifeTarget > 0) { lifeAnim.to = 1; lifeAnim.duration = 1600; lifeAnim.start() } }
+    NumberAnimation { id: lifeAnim; target: root; property: "life"; easing.type: Easing.InOutSine }
+
+    // the whole drawing fades in when it is built (stars and lines used to pop into place in one frame)
+    property real appear: built ? 1 : 0
+    Behavior on appear { NumberAnimation { duration: root.built ? 1100 : 0; easing.type: Easing.InOutSine } }
 
     // pointer parallax: -0.5 .. 0.5 across the art, eased
     HoverHandler { id: hh; enabled: root.live && root.quality >= 1 }
@@ -117,8 +136,8 @@ Item {
         Item {
             id: sky
             anchors.fill: parent
-            scale: 1 + 0.010 * Math.sin(root.ph) + 0.035 * root.energy
-            rotation: root.live ? 0.7 * Math.sin(root.ph + 1.0) : 0
+            scale: 1 + root.life * 0.010 * Math.sin(root.ph) + 0.035 * root.energy
+            rotation: root.life * 0.7 * Math.sin(root.ph + 1.0)
 
             // far layer: dust, moves against the pointer a little
             Item {
@@ -136,7 +155,7 @@ Item {
                         x: modelData[0] - 0.8 * root.u; y: modelData[1] - 0.8 * root.u
                         width: (1.6 + 0.5 * root.energy) * root.u; height: width; radius: width / 2
                         color: root.tone
-                        opacity: 0.18 + 0.14 * Math.sin(root.ph * (1 + index % 2) + index * 1.7) + 0.25 * root.energy
+                        opacity: 0.18 + root.life * 0.14 * Math.sin(root.ph * (1 + index % 2) + index * 1.7) + 0.25 * root.energy
                     }
                 }
             }
@@ -244,7 +263,7 @@ Item {
                         required property int index
                         readonly property real r: modelData[2] || 1.5
                         // dense art: most stars hold a steady glow (a binding that never reads `ph` is never re-evaluated)
-                        readonly property real flick: (root.twinkleAll || (root.quality >= 1 && index % 4 === 0)) ? 0.5 + 0.5 * Math.sin(root.ph * (1 + index % 3) + index * 0.9) : 0.7
+                        readonly property real flick: (root.twinkleAll || (root.quality >= 1 && index % 4 === 0)) ? 0.7 + (0.5 + 0.5 * Math.sin(root.ph * (1 + index % 3) + index * 0.9) - 0.7) * root.life : 0.7
                         x: root.sx(modelData); y: root.sy(modelData)
                         visible: root.fadeIn(modelData) > 0
                         opacity: Math.min(1, 0.55 + 0.45 * flick * flick + 0.3 * root.energy) * root.fadeIn(modelData)

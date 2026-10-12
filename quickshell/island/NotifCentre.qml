@@ -39,7 +39,8 @@ Item {
                     font.weight: Font.DemiBold
                 }
                 Text {
-                    text: root.items.length + " of " + (root.notifs ? root.notifs.maxHistory : 0) + " kept"
+                    text: root.items.length === 0 ? "You are all caught up"
+                        : root.items.length + (root.items.length === 1 ? " notification" : " notifications") + ((root.notifs && root.notifs.dnd) ? "  ·  muted" : "")
                     color: root.pal.muted
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tCap
@@ -71,7 +72,7 @@ Item {
             Layout.preferredHeight: Math.min(contentHeight, root.listMax)
             visible: root.items.length > 0
             clip: true
-            spacing: 8
+            spacing: 10
             boundsBehavior: Flickable.StopAtBounds
             model: ScriptModel { values: root.items }
             delegate: NotifRow {
@@ -85,9 +86,14 @@ Item {
                 now: root.now
                 onDismissRequested: root.notifs.dismiss(modelData)
             }
-            add: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: root.pal.dMed } }
-            remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: root.pal.dFast } }
-            displaced: Transition { NumberAnimation { property: "y"; duration: root.pal.dMed; easing.type: Easing.OutCubic } }
+            add: Transition {
+                        ParallelAnimation {
+                            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: root.pal.dMed }
+                            NumberAnimation { property: "x"; from: 30; to: 0; duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve }
+                        }
+                    }
+                    remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: root.pal.dFast } }
+                    displaced: Transition { NumberAnimation { property: "y"; duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         }
 
         Item {

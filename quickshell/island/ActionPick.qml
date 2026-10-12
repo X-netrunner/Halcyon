@@ -90,10 +90,19 @@ ColumnLayout {
         }
     }
 
-    // the unfolded list
-    Rectangle {
+    // the unfolded list: built only while it is open (a page has up to six of these rows, each with ~45 chips and an app menu;
+    // creating all of them up front is what made the Settings search lag when it brought this section up)
+    Loader {
         Layout.fillWidth: true
-        visible: root.unfolded
+        Layout.preferredHeight: item ? item.implicitHeight : 0
+        active: root.unfolded
+        visible: active
+        sourceComponent: panel
+    }
+    Component {
+      id: panel
+      Rectangle {
+        width: parent ? parent.width : 0
         implicitHeight: pick.implicitHeight + 24
         radius: 14
         color: Qt.alpha(root.pal.bg, 0.35)
@@ -149,11 +158,18 @@ ColumnLayout {
                     elide: Text.ElideRight
                     color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                 }
-                AppPicker {
+                Loader {
                     Layout.fillWidth: true
-                    pal: root.pal
-                    placeholder: "Search your apps, click one…"
-                    onPicked: app => root.chosen("app", app.cmd)
+                    Layout.preferredHeight: item ? item.implicitHeight : 0
+                    active: root.action === "app"
+                    sourceComponent: Component {
+                        AppPicker {
+                            width: parent ? parent.width : 0
+                            pal: root.pal
+                            placeholder: "Search your apps, click one…"
+                            onPicked: app => root.chosen("app", app.cmd)
+                        }
+                    }
                 }
             }
 
@@ -185,5 +201,6 @@ ColumnLayout {
                 Chip { pal: root.pal; maxLabel: 1000; label: "Save"; on: true; onClicked: root.chosen("cmd", cmdIn.text.trim()) }
             }
         }
+      }
     }
 }
