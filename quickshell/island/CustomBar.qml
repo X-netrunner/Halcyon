@@ -23,6 +23,7 @@ PanelWindow {
     property bool playing: false
     property string activeSpecial: ""
     property bool caffeine: false
+    property bool numLock: false         // Num Lock is on (the Num Lock widget)
     property string focusText: ""        // Focus mode running: the time left ("" = no session)
     property bool focusPaused: false
     property int bgCount: 0
@@ -42,6 +43,7 @@ PanelWindow {
     signal pageDrop(int dir)                  // drag the bar down (+1) / up (-1): the utilities box and notifications (Settings > Bar style)
     signal clockToggled(string what)          // right click on the time = 12 / 24 hour, middle click = seconds (shell.qml flips the setting)
     signal bgClicked()
+    signal numLockClicked()                   // click on the Num Lock widget (shell.qml flips the key)
     signal pageStep(int dir)                  // wheel / drag on the bar: -1 = media, +1 = performance (shell.qml go())
     signal hoverEdited(bool on)               // the pointer is on the bar / left it (shell.qml opens perf / media after a moment)
 
@@ -549,6 +551,43 @@ PanelWindow {
             }
         }
 
+        // a small key: lit with the accent while Num Lock is on, outline only while it is off. Always shown (it is a switch).
+        Component { id: cNumLock
+            Item {
+                height: notch.bh
+                implicitWidth: nlKey.width
+                Rectangle {
+                    id: nlKey
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: nlText.implicitWidth + 12
+                    height: Math.round(win.textPx * 1.35)
+                    radius: height / 2
+                    color: win.numLock ? win.ac : (nlMa.containsMouse ? Qt.alpha(win.pal.text, 0.10) : "transparent")
+                    border.width: win.numLock ? 0 : 1
+                    border.color: Qt.alpha(win.pal.text, nlMa.containsMouse ? 0.45 : 0.28)
+                    Behavior on color { ColorAnimation { duration: win.pal.dFast } }
+                    Text {
+                        id: nlText
+                        anchors.centerIn: parent
+                        text: "123"
+                        color: win.numLock ? win.pal.bg : Qt.alpha(win.pal.text, nlMa.containsMouse ? 0.8 : 0.5)
+                        font.family: win.pal.uiFont
+                        font.pixelSize: Math.max(9, win.textPx - 4)
+                        font.weight: Font.DemiBold
+                        Behavior on color { ColorAnimation { duration: win.pal.dFast } }
+                    }
+                    MouseArea {
+                        id: nlMa
+                        anchors.fill: parent
+                        anchors.margins: -3
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: win.numLockClicked()
+                    }
+                }
+            }
+        }
+
         Component { id: cFocus
             Item {
                 height: notch.bh
@@ -595,6 +634,7 @@ PanelWindow {
             case "bluetooth": return cBluetooth
             case "battery": return cBattery
             case "caffeine": return cCaffeine
+            case "numlock": return cNumLock
             case "focus": return cFocus
             case "bgapps": return cBgApps
             }

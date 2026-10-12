@@ -348,6 +348,21 @@ Item {
             Text { id: cafT; anchors.centerIn: parent; text: String.fromCodePoint(0xF0176); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: root.icoH }
         }
     }
+    Component { id: mNumLock
+        Item {
+            height: root.barH
+            implicitWidth: nlKey.width
+            Rectangle {
+                id: nlKey
+                anchors.verticalCenter: parent.verticalCenter
+                width: nlText.implicitWidth + 12
+                height: Math.round(root.textPx * 1.35)
+                radius: height / 2
+                color: root.pal.accent
+                Text { id: nlText; anchors.centerIn: parent; text: "123"; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: Math.max(9, root.textPx - 4); font.weight: Font.DemiBold }
+            }
+        }
+    }
     Component { id: mFocus
         Item {
             height: root.barH
@@ -387,6 +402,7 @@ Item {
         case "bluetooth": return mBluetooth
         case "battery": return mBattery
         case "caffeine": return mCaffeine
+        case "numlock": return mNumLock
         case "focus": return mFocus
         case "bgapps": return mBgApps
         }
