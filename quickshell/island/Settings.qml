@@ -377,6 +377,7 @@ Scope {
     onBuilderOpenChanged: { if (builderOpen) { builderUnload.stop(); builderLoaded = true } else builderUnload.restart() }
     function openBuilder() { builderOpen = true }
     // the notification box builder window (Settings > Panels & notifications > Notification box builder)
+    function openNotifBuilder() { nbOpen = true }
     property bool nbOpen: false
     property bool nbLoaded: false
     Timer { id: nbUnload; interval: 320; onTriggered: { root.nbLoaded = false; settingsGc.restart() } }

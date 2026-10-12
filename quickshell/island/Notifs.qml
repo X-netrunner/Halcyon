@@ -330,8 +330,8 @@ Scope {
             profileStars: root.profileStars
             x: win.width - width - root.pal.boxEdge + (1 - root.reveal) * (width + 40)
             y: cfg.vpos === "middle" ? Math.round((win.height - height) / 2)
-             : cfg.vpos === "bottom" ? win.height - height - root.pal.boxTop - cfg.offY
-             : root.pal.boxTop + cfg.offY
+             : cfg.vpos === "bottom" ? win.height - height - Math.max(8, root.pal.boxTop + cfg.offY)
+             : Math.max(8, root.pal.boxTop + cfg.offY)
             opacity: Math.min(1, root.reveal * 1.6)
             visible: opacity > 0.01
             Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }

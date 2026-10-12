@@ -26,9 +26,13 @@ Item {
     readonly property var cfg: NL.normalize(layout)
     readonly property var history: src ? src.history : []
     readonly property bool dnd: src ? src.dnd : false
+    // the band only takes room when there is something to draw in it: the constellation (the mode's art or your profile picture)
+    // or drifting dots. With the drawing off and no dots it would be an empty gap, so it is left out.
+    readonly property bool hasArt: cfg.art && (sysmode === "lockdown" || sysmode === "stealth" || (profileStars && starData !== null && starData !== undefined))
+    readonly property bool skyEmpty: !hasArt && cfg.dots <= 0
     readonly property var order: {
         var out = [], b = cfg.blocks
-        for (var i = 0; i < b.length; i++) if (b[i].on && (b[i].id !== "sky" || stars)) out.push(b[i].id)
+        for (var i = 0; i < b.length; i++) if (b[i].on && (b[i].id !== "sky" || (stars && !skyEmpty))) out.push(b[i].id)
         return out
     }
     readonly property real skyHeight: cfg.skyH > 0 ? cfg.skyH : Math.max(90, Math.min(150, maxH * 0.2))

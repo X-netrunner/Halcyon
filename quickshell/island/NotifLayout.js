@@ -19,13 +19,14 @@
 //   radius    roundness of the box's corners, px
 //   width     width of the box, px
 //   vpos      top | middle | bottom : where the box sits on its edge of the screen
-//   offY      extra distance from the top or bottom edge, px (not used for middle)
+//   offY      distance from the top or bottom edge, relative to the default (px, negative = closer to the edge; the box never goes
+//             nearer than 8 px to it). Not used for middle.
 
 var ids = ["sky", "header", "list"]
 var names = { sky: "Constellation band", header: "Title and buttons", list: "Notifications" }
 var limits = {
     skyH: [0, 260], dots: [0, 24], fly: [0, 20],
-    pad: [8, 36], gap: [4, 28], rowGap: [2, 24], radius: [8, 40], width: [320, 560], offY: [0, 300]
+    pad: [8, 36], gap: [4, 28], rowGap: [2, 24], radius: [8, 40], width: [320, 560], offY: [-120, 300]
 }
 
 function defaults() {

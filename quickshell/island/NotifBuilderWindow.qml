@@ -24,6 +24,8 @@ Item {
     signal closed()
 
     readonly property var cur: NL.normalize(layout)
+    // the same test the box uses: a band with nothing to draw is left out
+    readonly property bool skyEmpty: !(cur.art && (sysmode === "lockdown" || sysmode === "stealth" || (profileStars && starData !== null && starData !== undefined))) && cur.dots <= 0
 
     // ---------------------------------------------------------------- sample notifications
     property real now: Date.now()
@@ -193,7 +195,7 @@ Item {
                                 spacing: 8
                                 Text {
                                     Layout.fillWidth: true
-                                    text: NL.names[br.modelData.id]
+                                    text: NL.names[br.modelData.id] + (br.modelData.id === "sky" && br.modelData.on && root.skyEmpty ? "  (nothing to draw, so no space)" : "")
                                     color: br.modelData.on ? root.pal.text : root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody
@@ -264,8 +266,8 @@ Item {
                                     radius: Math.max(2, root.cur.radius * scr.sc)
                                     x: scr.width - width - 4
                                     y: root.cur.vpos === "middle" ? (scr.height - height) / 2
-                                       : root.cur.vpos === "bottom" ? scr.height - height - 5 - root.cur.offY * scr.sc
-                                       : 5 + root.cur.offY * scr.sc
+                                       : root.cur.vpos === "bottom" ? scr.height - height - Math.max(8, root.pal.boxTop + root.cur.offY) * scr.sc
+                                       : Math.max(8, root.pal.boxTop + root.cur.offY) * scr.sc
                                     color: Qt.alpha(root.pal.accent, 0.35)
                                     border.width: 1
                                     border.color: root.pal.accent
@@ -291,7 +293,13 @@ Item {
                                 }
                             }
                         }
-                        NbSlider { visible: root.cur.vpos !== "middle"; Layout.fillWidth: true; pal: root.pal; label: "Distance from edge"; from: 0; to: 300; value: root.cur.offY; zeroText: "Default"; onPicked: v => root.edited(NL.edit(root.cur, "offY", v)) }
+                        NbSlider { visible: root.cur.vpos !== "middle"; Layout.fillWidth: true; pal: root.pal; label: "Distance from edge"; from: -120; to: 300; value: root.cur.offY; zeroText: "Default"; onPicked: v => root.edited(NL.edit(root.cur, "offY", v)) }
+                        Row {
+                            visible: root.cur.vpos !== "middle"
+                            spacing: 8
+                            Chip { pal: root.pal; implicitHeight: 30; label: "Line up with the popups"; onClicked: root.edited(NL.edit(root.cur, "offY", 16 - root.pal.boxTop)) }
+                            Chip { pal: root.pal; implicitHeight: 30; label: "Default distance"; on: root.cur.offY === 0; onClicked: root.edited(NL.edit(root.cur, "offY", 0)) }
+                        }
                         Item { Layout.preferredHeight: 4 }
                     }
                 }

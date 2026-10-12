@@ -11,6 +11,8 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 - **Constellations and stars**: the drawing in the band on or off, the band's height, the drifting dots, the constellation behind the whole box, the flying stars (0 to 20) and the stars in popups.
 - **Spacing and shape**: padding, space between the parts, space between notifications, corner roundness, width.
 - **Place**: Top, Middle or Bottom of the right edge, with a distance from the edge, and a small picture of the screen. It still opens from the right edge of the screen.
+- Also from the app menu: type `>` and then "notification box builder" (or "notif", "stars", "padding").
+- A constellation band with nothing to draw (the drawing off and no dots, or no constellation available) takes no room instead of leaving a gap. "Distance from edge" can now go negative, and "Line up with the popups" puts the box at the same height as the popups; the box never goes nearer than 8 px to the screen edge.
 - "Reset the box" goes back to the old look. New files: `NotifLayout.js`, `NotifBox.qml`, `NotifSurface.qml`, `NotifBuilder.qml`, `NotifBuilderWindow.qml`, `NbSlider.qml`. `Notifs.qml` now draws its panel with `NotifSurface`.
 
 ## Notification style: Stack, Timeline or Grouped by app, with the drifting stars
