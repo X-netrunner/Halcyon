@@ -4,6 +4,7 @@ import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.Notifications
+import "NotifLayout.js" as NL
 
 // Notification daemon + right-edge hover panel (like the bottom-right utilities box), popups and notification centre.
 // This owns org.freedesktop.Notifications, so only one notification daemon may be running (no dunst/mako).
@@ -33,6 +34,8 @@ Scope {
     property int toastSecs: 0               // Settings > Notifications > "How long a popup stays": 0 = what the app asks for (else this many seconds)
     property int critSecs: 30               // Settings > Notifications > "Urgent popups": seconds before an urgent popup hides itself (0 = waits for a click)
     property bool dnd: false
+    property var layout: null               // opt.notifLayout: the notification box builder's layout (NotifLayout.js)
+    readonly property var cfg: NL.normalize(layout)
     property string look: "stack"           // Settings > Panels & notifications > Notification style: stack | timeline | grouped
     property string avatar: ""              // your profile picture (shell.qml avatarPath): the picture of every notification
     property bool usePfp: true              // Settings > Panels & notifications > Notification picture: profile picture / app icon
@@ -228,7 +231,7 @@ Scope {
         id: win
         anchors { top: true; right: true; bottom: true }
         // extra room around the cards so their shadows are not cut off by the window edge
-        implicitWidth: root.cardW + 30 + root.pal.boxEdge
+        implicitWidth: Math.max(root.cardW, root.cfg.width) + 30 + root.pal.boxEdge
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-notifs"
@@ -300,7 +303,7 @@ Scope {
                     usePfp: root.usePfp
                     override: root.toastSecs
                     critSecs: root.critSecs
-                    stars: root.stars
+                    stars: root.stars && root.cfg.toastStars
                     width: root.cardW
                     onDismissed: root.dismiss(modelData)
                     onTimedOut: root.toastTimedOut(modelData)
@@ -310,201 +313,37 @@ Scope {
         }
 
         // ---------- notification centre ----------
-        Glass {
+        // the box itself (glass, constellation, flying stars and the blocks) is NotifSurface.qml, sized and arranged by the layout
+        // from the notification box builder (Settings > Panels & notifications > Notification box builder)
+        NotifSurface {
             id: panel
             pal: root.pal
+            layout: root.layout
+            src: root
+            look: root.look
+            active: root.centerOpen
+            now: root.now
+            maxH: win.height - 2 * root.pal.boxTop - 2 * cfg.pad
+            stars: root.stars
+            sysmode: root.sysmode
+            starData: root.starData
+            profileStars: root.profileStars
             x: win.width - width - root.pal.boxEdge + (1 - root.reveal) * (width + 40)
-            y: root.pal.boxTop
-            width: root.cardW
-            height: col.implicitHeight + 2 * root.pal.boxPad
-            radius: root.pal.rXl
-            opacityBody: root.pal.glassSolid - 0.06
+            y: cfg.vpos === "middle" ? Math.round((win.height - height) / 2)
+             : cfg.vpos === "bottom" ? win.height - height - root.pal.boxTop - cfg.offY
+             : root.pal.boxTop + cfg.offY
             opacity: Math.min(1, root.reveal * 1.6)
             visible: opacity > 0.01
             Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             border.color: root.sysmode === "lockdown" || root.sysmode === "stealth" ? Qt.alpha(root.pal.accent, 0.30) : root.pal.line
 
-            // the constellations live in their own band at the top of the panel (the "sky" in the column below), so the
-            // title and the notifications are written underneath them, never on top of the lines and stars
-            readonly property real skyH: root.stars ? Math.max(90, Math.min(150, (win.height - root.pal.boxTop) * 0.2)) : 0
-
             HoverHandler { onHoveredChanged: root.setHover(hovered) }
-            MouseArea { anchors.fill: parent }      // swallow clicks
+            MouseArea { z: -1; anchors.fill: parent }      // swallow clicks (under the content, so the buttons keep theirs)
 
-            // the small stars that drift across the bar and the other boxes, here behind the whole panel
-            BarStars {
-                anchors.fill: parent
-                anchors.margins: 6
-                pal: root.pal
-                count: 9
-                loopMs: 140000
-                sizeScale: 1.3
-                active: panel.visible && root.stars
-                visible: panel.visible && root.stars
-            }
-
-            ColumnLayout {
-                id: col
-                anchors { left: parent.left; right: parent.right; top: parent.top; margins: root.pal.boxPad }
-                spacing: 12
-
-                // sky: tree-style backdrop (drifting dots + the flagship-mode art / your profile constellation), above the text
-                Item {
-                    visible: root.stars
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: panel.skyH
-                    Backdrop {
-                        visible: panel.visible && root.stars
-                        anchors.fill: parent
-                        pal: root.pal
-                        mode: root.sysmode
-                        avatarStars: root.starData
-                        profileStars: root.profileStars
-                        dots: 10
-                        artStrength: 1
-                        artFit: 0.9
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    ColumnLayout {
-                        spacing: 0
-                        Text {
-                            text: "Notifications"
-                            color: root.pal.text
-                            font.family: root.pal.uiFont
-                            font.pixelSize: root.pal.tTitle
-                            font.weight: Font.DemiBold
-                        }
-                        Text {
-                            text: root.history.length === 0 ? "You are all caught up"
-                                : root.history.length + (root.history.length === 1 ? " notification" : " notifications") + (root.dnd ? "  ·  muted" : "")
-                            color: root.pal.muted
-                            font.family: root.pal.uiFont
-                            font.pixelSize: root.pal.tCap
-                        }
-                    }
-                    Item { Layout.fillWidth: true }
-                    Chip {
-                        Layout.preferredHeight: 30
-                        pal: root.pal
-                        glyph: String.fromCodePoint(0xF009B)
-                        label: "DND"
-                        on: root.dnd
-                        onClicked: root.dndRequested(!root.dnd)
-                    }
-                    Chip {
-                        Layout.preferredHeight: 30
-                        visible: root.history.length > 0
-                        pal: root.pal
-                        label: "Clear"
-                        onClicked: root.clearAll()
-                    }
-                }
-
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.pal.lineSoft }
-
-                NotifList {
-                    id: list
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Math.min(contentHeight, Math.max(150, Math.min(470, win.height - root.pal.boxTop - 2 * root.pal.boxPad - panel.skyH - 190)))
-                    visible: root.history.length > 0
-                    pal: root.pal
-                    notifs: root
-                    look: root.look
-                    now: root.now
-                    onDismissRequested: n => root.dismiss(n)
-                }
-
-                // empty: a tree-style node (same look as the SUPER+TAB nodes) with a short branch and a label
-                Item {
-                    visible: root.history.length === 0
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 190
-                    Layout.topMargin: 6
-
-                    // branch from the top of the panel down to the node, with a pulse running along it
-                    Rectangle {
-                        id: branch
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: 0
-                        width: 2
-                        height: 52
-                        radius: 1
-                        color: Qt.alpha(root.pal.accent, 0.28)
-                        Rectangle {
-                            id: pulse
-                            width: 4; height: 4; radius: 2
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            color: root.pal.accent
-                            SequentialAnimation on y {
-                                running: root.centerOpen && root.history.length === 0
-                                loops: Animation.Infinite
-                                NumberAnimation { from: 0; to: 48; duration: 1800; easing.type: Easing.InOutSine }
-                                PauseAnimation { duration: 500 }
-                            }
-                        }
-                    }
-                    Rectangle {
-                        id: node
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: 52
-                        width: 76; height: 76; radius: 28
-                        color: Qt.alpha(root.pal.surface, 0.97)
-                        border.width: 1.5
-                        border.color: Qt.alpha(root.dnd ? root.pal.muted : root.pal.accent, 0.7)
-                        // soft breathing ring, like the laptop node in the tree
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: parent.width + 14; height: width; radius: 34
-                            color: "transparent"
-                            border.width: 1
-                            border.color: Qt.alpha(root.pal.accent, 0.5)
-                            SequentialAnimation on opacity {
-                                running: root.centerOpen && root.history.length === 0
-                                loops: Animation.Infinite
-                                NumberAnimation { to: 0.5; duration: 2200; easing.type: Easing.InOutSine }
-                                NumberAnimation { to: 0.08; duration: 2200; easing.type: Easing.InOutSine }
-                            }
-                        }
-                        // drawn glyph: a check when all caught up, a crescent moon in do-not-disturb
-                        Shape {
-                            anchors.centerIn: parent
-                            width: 40; height: 40
-                            preferredRendererType: Shape.CurveRenderer
-                            ShapePath {
-                                strokeColor: root.pal.accent
-                                strokeWidth: 2.6
-                                fillColor: "transparent"
-                                capStyle: ShapePath.RoundCap
-                                joinStyle: ShapePath.RoundJoin
-                                PathSvg { path: root.dnd ? "M26,6 C14,7 7,16 9,26 C11,35 22,39 31,33 C21,32 17,22 21,14 C22,11 24,8 26,6 Z" : "M9,21 L17,29 L32,12" }
-                            }
-                        }
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: 140
-                        text: root.dnd ? "Do not disturb" : "All caught up"
-                        color: root.pal.text
-                        font.family: root.pal.uiFont
-                        font.pixelSize: root.pal.tTitle
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: 163
-                        text: root.dnd ? "popups are muted, new ones are still kept" : "nothing new"
-                        color: root.pal.muted
-                        font.family: root.pal.uiFont
-                        font.pixelSize: root.pal.tCap
-                    }
-                }
-            }
+            onDndRequested: on => root.dndRequested(on)
+            onClearRequested: root.clearAll()
+            onDismissRequested: n => root.dismiss(n)
         }
     }
 }

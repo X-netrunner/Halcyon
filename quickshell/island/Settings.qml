@@ -376,13 +376,18 @@ Scope {
     Timer { id: settingsGc; interval: 2500; onTriggered: gc() }
     onBuilderOpenChanged: { if (builderOpen) { builderUnload.stop(); builderLoaded = true } else builderUnload.restart() }
     function openBuilder() { builderOpen = true }
+    // the notification box builder window (Settings > Panels & notifications > Notification box builder)
+    property bool nbOpen: false
+    property bool nbLoaded: false
+    Timer { id: nbUnload; interval: 320; onTriggered: { root.nbLoaded = false; settingsGc.restart() } }
+    onNbOpenChanged: { if (nbOpen) { nbUnload.stop(); nbLoaded = true } else nbUnload.restart() }
     // the Startup & processes window (StartupWindow.qml): what starts with the desktop and what is running, with RAM and CPU
     property bool startupOpen: false
     property bool startupLoaded: false
     Timer { id: startupUnload; interval: 320; onTriggered: { root.startupLoaded = false; settingsGc.restart() } }
     onStartupOpenChanged: { if (startupOpen) { startupUnload.stop(); startupLoaded = true } else startupUnload.restart() }
     function openStartup() { startupOpen = true }
-    function hide() { galleryOpen = false; builderOpen = false; startupOpen = false; open = false }
+    function hide() { galleryOpen = false; builderOpen = false; nbOpen = false; startupOpen = false; open = false }
     function toggle() { open = !open }
 
     component SChip: Chip { maxLabel: 1000 }
@@ -500,6 +505,7 @@ Scope {
             { type: "chips", label: "Quiet", desc: "Do not disturb: no popups, everything is still kept in the centre. Errors only: Wi-Fi and Bluetooth only tell you when connecting fails (wrong password, device out of range ...).", opts: [ch("dnd", "Do not disturb"), ch("opt:connErrOnly", "Wi-Fi & Bluetooth: errors only")] },
             { type: "seg", adv: true, key: "opt:notifSpot", label: "Notification trigger spot", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Edge boxes below.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
             { type: "seg", key: "opt:notifStyle", label: "Notification style", desc: "How the notification centre lists what you got. Stack: one card each. Timeline: a thin rail with a dot per notification, under Just now / Earlier today / Yesterday. Grouped by app: one card per app with its notifications inside.", opts: [o("stack", "Stack"), o("timeline", "Timeline"), o("grouped", "Grouped by app")] },
+            { type: "custom", name: "notifBuilder" },
             { type: "seg", adv: true, key: "opt:notifIcon", label: "Notification picture", desc: "Profile picture: your picture, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
             { type: "seg", adv: true, key: "notifMax", label: "Popups on screen at once", desc: "When it is full the oldest goes.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },
             { type: "seg", adv: true, key: "opt:toastSecs", label: "How long a popup stays", desc: "Urgent ones follow their own setting below.", opts: [o(0, "App decides"), o(3, "3 s"), o(5, "5 s"), o(8, "8 s"), o(12, "12 s")] },
@@ -739,7 +745,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -1428,6 +1434,16 @@ Scope {
     }
 
     Component {
+        id: cNotifBuilder
+        NotifBuilder {
+            pal: root.pal
+            layout: root.get("opt:notifLayout")
+            onOpenRequested: root.nbOpen = true
+            onResetRequested: root.setting("opt:notifLayout", null)
+        }
+    }
+
+    Component {
         id: cBarBuilder
         BarBuilder {
             pal: root.pal
@@ -1843,6 +1859,7 @@ Scope {
                                                                            : pr.m.name === "specialCmds" ? cSpecialCmds
                                                                            : pr.m.name === "focusApps" ? cFocusApps
                                                                            : pr.m.name === "safetyAuto" ? cSafetyAuto
+                                                                           : pr.m.name === "notifBuilder" ? cNotifBuilder
                                                                            : pr.m.name === "barBuilder" ? cBarBuilder
                                                                            : pr.m.name === "growth" ? cGrowth : cSwatches
                                                         }
@@ -2246,6 +2263,7 @@ Scope {
                                                                                : leaf.m.name === "specialCmds" ? cSpecialCmds
                                                                                : leaf.m.name === "focusApps" ? cFocusApps
                                                                                : leaf.m.name === "safetyAuto" ? cSafetyAuto
+                                                                               : leaf.m.name === "notifBuilder" ? cNotifBuilder
                                                                                : leaf.m.name === "barBuilder" ? cBarBuilder
                                                                                : leaf.m.name === "growth" ? cGrowth : cSwatches
                                                             }
@@ -2357,6 +2375,41 @@ Scope {
                 movingStars: root.opt.starsBar !== false
                 onClosed: root.builderOpen = false
                 onEdited: l => root.setting("opt:barLayout", l)
+            }
+        }
+    }
+
+    // ======================================================================== the Notification box builder window
+    LazyLoader {
+        active: root.nbLoaded
+        PanelWindow {
+            id: nbwin
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            WlrLayershell.namespace: "island-notifbuilder"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: root.nbOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+            // opens one frame after the window exists, so the fade-in plays
+            property bool shown: false
+            Timer { running: true; interval: 30; onTriggered: nbwin.shown = true }
+
+            NotifBuilderWindow {
+                anchors.fill: parent
+                open: root.nbOpen && nbwin.shown
+                pal: root.pal
+                layout: root.get("opt:notifLayout")
+                look: root.get("opt:notifStyle") || "stack"
+                sysmode: root.sysmode
+                starData: root.starData
+                profileStars: root.profileStars
+                stars: root.opt.stars !== false && root.opt.starsNotifs !== false
+                movingStars: root.opt.starsBar !== false
+                onClosed: root.nbOpen = false
+                onEdited: l => root.setting("opt:notifLayout", l)
+                onLookChosen: v => root.setting("opt:notifStyle", v)
             }
         }
     }

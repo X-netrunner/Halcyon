@@ -12,6 +12,7 @@ ListView {
     property var pal
     property var notifs                     // the Notifs scope: history, arrived, avatar, usePfp
     property string look: "stack"
+    property int rowGap: 10                 // space between notifications (Stack and Grouped looks)
     property real now: Date.now()
     signal dismissRequested(var n)
 
@@ -50,7 +51,7 @@ ListView {
     }
 
     clip: true
-    spacing: look === "timeline" ? 0 : 10
+    spacing: look === "timeline" ? 0 : rowGap
     boundsBehavior: Flickable.StopAtBounds
     model: ScriptModel { values: list.entries; objectProp: "key" }
 
