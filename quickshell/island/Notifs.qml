@@ -33,6 +33,7 @@ Scope {
     property int toastSecs: 0               // Settings > Notifications > "How long a popup stays": 0 = what the app asks for (else this many seconds)
     property int critSecs: 30               // Settings > Notifications > "Urgent popups": seconds before an urgent popup hides itself (0 = waits for a click)
     property bool dnd: false
+    property string look: "stack"           // Settings > Panels & notifications > Notification style: stack | timeline | grouped
     property string avatar: ""              // your profile picture (shell.qml avatarPath): the picture of every notification
     property bool usePfp: true              // Settings > Panels & notifications > Notification picture: profile picture / app icon
     property string spot: "edge"            // Settings > Panels & notifications > Notification trigger spot: edge = strip on the right edge, corner = the top-right corner
@@ -299,6 +300,7 @@ Scope {
                     usePfp: root.usePfp
                     override: root.toastSecs
                     critSecs: root.critSecs
+                    stars: root.stars
                     width: root.cardW
                     onDismissed: root.dismiss(modelData)
                     onTimedOut: root.toastTimedOut(modelData)
@@ -329,6 +331,18 @@ Scope {
 
             HoverHandler { onHoveredChanged: root.setHover(hovered) }
             MouseArea { anchors.fill: parent }      // swallow clicks
+
+            // the small stars that drift across the bar and the other boxes, here behind the whole panel
+            BarStars {
+                anchors.fill: parent
+                anchors.margins: 6
+                pal: root.pal
+                count: 9
+                loopMs: 140000
+                sizeScale: 1.3
+                active: panel.visible && root.stars
+                visible: panel.visible && root.stars
+            }
 
             ColumnLayout {
                 id: col
@@ -394,34 +408,16 @@ Scope {
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.pal.lineSoft }
 
-                ListView {
+                NotifList {
                     id: list
                     Layout.fillWidth: true
                     Layout.preferredHeight: Math.min(contentHeight, Math.max(150, Math.min(470, win.height - root.pal.boxTop - 2 * root.pal.boxPad - panel.skyH - 190)))
                     visible: root.history.length > 0
-                    clip: true
-                    spacing: 10
-                    boundsBehavior: Flickable.StopAtBounds
-                    model: ScriptModel { values: root.history }
-                    delegate: NotifRow {
-                        required property var modelData
-                        notif: modelData
-                        pal: root.pal
-                        avatar: root.avatar
-                        usePfp: root.usePfp
-                        width: list.width
-                        arrived: root.arrived[modelData.id] || 0
-                        now: root.now
-                        onDismissRequested: root.dismiss(modelData)
-                    }
-                    add: Transition {
-                        ParallelAnimation {
-                            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: root.pal.dMed }
-                            NumberAnimation { property: "x"; from: 30; to: 0; duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve }
-                        }
-                    }
-                    remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: root.pal.dFast } }
-                    displaced: Transition { NumberAnimation { property: "y"; duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                    pal: root.pal
+                    notifs: root
+                    look: root.look
+                    now: root.now
+                    onDismissRequested: n => root.dismiss(n)
                 }
 
                 // empty: a tree-style node (same look as the SUPER+TAB nodes) with a short branch and a label

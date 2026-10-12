@@ -4,6 +4,11 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Notification style: Stack, Timeline or Grouped by app, with the drifting stars
+
+- Settings > Panels & notifications > **Notification style**: **Stack** (a card per notification, the default), **Timeline** (a thin rail with a dot per notification, under Just now / Earlier today / Yesterday / Older, no cards) or **Grouped by app** (one card per app with a count, its notifications inside, and a remove-all button on hover). Works in the right-edge panel and in the bar's drop-down page. New files: `NotifList.qml`, `NotifLine.qml`, `NotifGroup.qml`.
+- The small stars that drift across the bar now also drift behind the notification panel and behind each popup. They follow Settings > Constellations (the notifications switch) and stop in Gaming mode like the other boxes.
+
 ## Notification box redesign, every message kept, smoother constellations
 
 - Notification rows: an accent edge and a soft wash on the left (urgent ones in red), the app name in the accent colour with the time beside it, a round remove button on hover, a slightly bigger picture and title. A new notification lights its edge for a moment and slides in from the right; rows slide into place when others go. The header says "3 notifications" (or "You are all caught up") instead of "3 of 30 kept".

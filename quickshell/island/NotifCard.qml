@@ -15,6 +15,7 @@ Item {
     property string avatar: ""   // profile picture shown as the notification picture ("" = none)
     property bool usePfp: true   // Settings > Panels & notifications > Notification picture
     property int override: 0     // seconds from Settings (0 = the app's own timeout, 3..15 s)
+    property bool stars: true    // the drifting stars behind the popup (Settings > Constellations)
     property int critSecs: 30    // critical ones: seconds before the popup hides itself (0 = they wait for a click); the notification stays in the centre
     signal dismissed()      // the user clicked it: remove it everywhere
     signal timedOut()       // the countdown ran out: hide the popup only
@@ -122,6 +123,17 @@ Item {
             }
         }
 
+        BarStars {
+            anchors.fill: parent
+            anchors.margins: 4
+            pal: card.pal
+            count: 3
+            loopMs: 110000
+            sizeScale: 1.2
+            active: card.stars
+            visible: card.stars
+        }
+
         // click target sits underneath the content so the action chips keep their own clicks
         MouseArea {
             anchors.fill: parent
@@ -157,11 +169,11 @@ Item {
                     Layout.fillWidth: true
                     Text {
                         Layout.fillWidth: true
-                        text: (card.notif && card.notif.appName) ? card.notif.appName.toUpperCase() : ""
-                        color: card.pal.muted
+                        text: (card.notif && card.notif.appName) ? card.notif.appName : ""
+                        color: card.tone
                         font.family: card.pal.uiFont
-                        font.pixelSize: 10
-                        font.letterSpacing: 0.8
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
                         elide: Text.ElideRight
                     }
                     // a real button: removes it without running the app's default action (a click anywhere else opens the app)
