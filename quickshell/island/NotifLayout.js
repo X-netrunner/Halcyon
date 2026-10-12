@@ -7,9 +7,9 @@
 //               sky     the constellation band (drifting dots, your profile constellation or the mode art)
 //               header  the title, the count, the DND and Clear buttons
 //               list    the notifications (the look comes from Settings > Notification style)
-//   skyH      height of the constellation band in px (0 = automatic)
-//   art       the constellation drawing in the band (off = only the drifting dots)
-//   dots      drifting dots in the band
+//   skyH      height of the constellation band in px (0 = automatic). The band only takes room while there is a constellation to draw
+//   art       (kept for old settings, not used any more: switch the band off with its Shown / Hidden button)
+//   dots      drifting dots behind the whole box (they take no room)
 //   behind    the constellation also fills the whole box, faintly, behind everything
 //   fly       small stars flying across the whole box (the ones on the bar), 0 = none
 //   toastStars  the same flying stars in the popups
@@ -50,7 +50,9 @@ function normalize(l) {
     var out = JSON.parse(JSON.stringify(d))
     // blocks: keep the order and the on/off of the ones that are valid, then add any that are missing at their default place
     var seen = {}, list = []
-    var src = Array.isArray(l.blocks) ? l.blocks : []
+    // not Array.isArray: once the layout has been through a QML property (the saved settings) the list is an array-like, not a
+    // real array, and that test fails: every edit of the parts was thrown away and the default order came back
+    var src = (l.blocks && typeof l.blocks.length === "number") ? l.blocks : []
     for (var i = 0; i < src.length; i++) {
         var b = src[i]
         if (b && ids.indexOf(b.id) >= 0 && !seen[b.id]) { seen[b.id] = true; list.push({ id: b.id, on: b.on !== false }) }

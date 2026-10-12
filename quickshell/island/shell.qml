@@ -666,6 +666,7 @@ ShellRoot {
         if (powerMenu.open) { powerMenu.hide(); return true }
         if (settingsWin.startupOpen) { settingsWin.startupOpen = false; return true }
         if (settingsWin.builderOpen) { settingsWin.builderOpen = false; return true }
+        if (settingsWin.nbOpen) { settingsWin.nbOpen = false; return true }
         if (settingsWin.galleryOpen) { settingsWin.galleryOpen = false; return true }
         if (settingsWin.open) { settingsWin.hide(); return true }
         if (cheat.open) { if (cheat.editId !== "") cheat.cancelEdit(); else cheat.hide(); return true }
