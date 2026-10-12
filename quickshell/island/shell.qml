@@ -55,6 +55,7 @@ ShellRoot {
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
         critSecs: 30,              // seconds an urgent popup stays before it hides itself (0 = until clicked); it stays in the centre either way
         notifSpot: "edge",         // edge | corner : where the notification centre is opened from: a strip on the right edge, or the top-right corner
+        notifStyle: "stack",       // stack | timeline | grouped : the look of the notification centre (Settings > Panels & notifications)
         notifIcon: "pfp",          // pfp | app : the picture of a notification is your profile picture (app icon as a badge), or the app's icon
         connErrOnly: false,        // Wi-Fi / Bluetooth: false = a notification for every connect / disconnect, true = only when connecting fails (scripts/wifi-connect.sh, bt-set.sh read the flag conn-errors-only)
         bgRefresh: "normal",       // normal | relaxed | slow : how often the always-on readers (CPU / battery / network state) look again while nothing needs them fresh (see syncRefresh below)
@@ -609,6 +610,7 @@ ShellRoot {
         critSecs: root.opt.critSecs !== undefined ? root.opt.critSecs : 30
         avatar: root.avatarPath
         usePfp: root.opt.notifIcon !== "app"
+        look: root.opt.notifStyle === "timeline" || root.opt.notifStyle === "grouped" ? root.opt.notifStyle : "stack"
         spot: root.opt.notifSpot === "corner" ? "corner" : "edge"
         dnd: root.dnd
         edgeOn: !root.dropOn

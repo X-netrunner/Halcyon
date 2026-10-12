@@ -66,34 +66,16 @@ Item {
 
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.pal.lineSoft }
 
-        ListView {
+        NotifList {
             id: list
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(contentHeight, root.listMax)
             visible: root.items.length > 0
-            clip: true
-            spacing: 10
-            boundsBehavior: Flickable.StopAtBounds
-            model: ScriptModel { values: root.items }
-            delegate: NotifRow {
-                required property var modelData
-                notif: modelData
-                pal: root.pal
-                avatar: root.notifs.avatar
-                usePfp: root.notifs.usePfp
-                width: list.width
-                arrived: root.notifs.arrived[modelData.id] || 0
-                now: root.now
-                onDismissRequested: root.notifs.dismiss(modelData)
-            }
-            add: Transition {
-                        ParallelAnimation {
-                            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: root.pal.dMed }
-                            NumberAnimation { property: "x"; from: 30; to: 0; duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve }
-                        }
-                    }
-                    remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: root.pal.dFast } }
-                    displaced: Transition { NumberAnimation { property: "y"; duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            pal: root.pal
+            notifs: root.notifs
+            look: root.notifs ? root.notifs.look : "stack"
+            now: root.now
+            onDismissRequested: n => root.notifs.dismiss(n)
         }
 
         Item {
