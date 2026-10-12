@@ -28,6 +28,7 @@ var catalog = [
     { id: "bluetooth",  name: "Bluetooth",          short: "BT",         hint: "Follows Settings > Bar style > Bluetooth" },
     { id: "battery",    name: "Battery",            short: "Battery",    hint: "A pill; the percentage is a switch in Bar style" },
     { id: "caffeine",   name: "Caffeine",           short: "Caffeine",   hint: "Shows only while the screen is kept awake" },
+    { id: "numlock",    name: "Num Lock",           short: "Num Lock",   hint: "A switch: click to turn Num Lock on or off, lit while it is on" },
     { id: "focus",      name: "Focus timer",        short: "Focus",      hint: "Shows only while a Focus session runs" },
     { id: "bgapps",     name: "Background apps",    short: "Bg apps",    hint: "How many apps are alive in the background (click = list)" }
 ]

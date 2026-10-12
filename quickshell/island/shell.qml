@@ -317,6 +317,8 @@ ShellRoot {
     property bool gaming: false
     property bool caffeine: false       // keep the screen awake (scripts/caffeine.sh); the unit is the truth, polled every 5 s
     property double caffeineGuard: 0
+    property bool numLock: false        // Num Lock (scripts/numlock.sh); only watched while the Num Lock widget is on the custom bar
+    property double numLockGuard: 0
 
     // app routing: Spotify / Discord ... go to their special workspace when they open (Routes.js)
     property bool routeApps: true
@@ -965,6 +967,45 @@ ShellRoot {
         running: true
         command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/caffeine.sh", "status"]
         stdout: StdioCollector { onStreamFinished: { if (Date.now() > root.caffeineGuard) root.caffeine = text.trim() === "on" } }
+    }
+
+    // ---- Num Lock: the bar builder's "Num lock" widget. It is watched only while that widget is on the bar. The key's LED is read
+    // straight from sysfs (no process); a keyboard without a Num Lock LED is asked through scripts/numlock.sh status instead.
+    readonly property bool numLockShown: {
+        var l = root.opt.barLayout
+        if (root.opt.barStyle !== "custom" || !l) return false
+        return [].concat(l.left || [], l.center || [], l.right || []).indexOf("numlock") >= 0
+    }
+    property string numLockLed: ""          // /sys/class/leds/...::numlock/brightness ("" = none, or not looked for yet)
+    property bool numLockProbed: false
+    function toggleNumLock() {
+        numLock = !numLock
+        numLockGuard = Date.now() + 1500
+        Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/numlock.sh", "toggle"])
+        numLockCheck.restart()
+    }
+    function pollNumLock() {
+        if (numLockLed !== "") numLedFile.reload()
+        else if (numLockProbed && !numLockProc.running) numLockProc.running = true
+    }
+    Timer { id: numLockCheck; interval: 900; onTriggered: root.pollNumLock() }
+    Timer { interval: 1000; running: root.numLockShown; repeat: true; triggeredOnStart: true; onTriggered: root.pollNumLock() }
+    Process {
+        id: numLedProbe
+        running: root.numLockShown && !root.numLockProbed
+        command: ["bash", "-c", "for f in /sys/class/leds/*::numlock/brightness; do [ -r \"$f\" ] && { echo \"$f\"; break; }; done"]
+        stdout: SplitParser { onRead: d => { if (d.trim() !== "") root.numLockLed = d.trim() } }
+        onExited: root.numLockProbed = true
+    }
+    FileView {
+        id: numLedFile
+        path: root.numLockLed
+        onLoaded: { if (Date.now() > root.numLockGuard) root.numLock = text().trim() !== "0" }
+    }
+    Process {
+        id: numLockProc
+        command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/numlock.sh", "status"]
+        stdout: StdioCollector { onStreamFinished: { if (Date.now() > root.numLockGuard) root.numLock = text.trim() === "on" } }
     }
 
     // ---- Focus mode (scripts/focus.sh): an advanced do-not-disturb for studying / work. A timer (optionally Pomodoro), Do not
@@ -2077,6 +2118,7 @@ ShellRoot {
             playing: root.playing
             activeSpecial: root.activeSpecial
             caffeine: root.caffeine
+            numLock: root.numLock
             focusText: root.focusState.on ? root.focusText : ""
             focusPaused: root.focusState.on && root.focusState.paused === true
             bgCount: bgPanel.count
@@ -2099,6 +2141,7 @@ ShellRoot {
             }
             onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
             onBgClicked: appsWin.pinFor(9000)
+            onNumLockClicked: root.toggleNumLock()
             onPageDrop: dir => root.drop(dir)
             onPageStep: dir => root.go(dir)
             onHoverEdited: on => root.notchHovered = on
