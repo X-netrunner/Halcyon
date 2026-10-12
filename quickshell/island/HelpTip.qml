@@ -1,0 +1,32 @@
+import QtQuick
+
+// A small round "?" that explains a word when you hover it. It draws no bubble itself: the window that uses it shows ONE
+// bubble (StartupWindow.qml: showTip) so the text is never cut off by a list or a row, and nothing extra is kept per marker.
+Item {
+    id: h
+    property var pal
+    property string tip: ""
+    readonly property bool hovered: hh.hovered
+
+    implicitWidth: 15
+    implicitHeight: 15
+
+    Rectangle {
+        anchors.fill: parent
+        radius: width / 2
+        color: h.hovered ? Qt.alpha(h.pal.accent, 0.22) : "transparent"
+        border.width: 1
+        border.color: h.hovered ? h.pal.accent : Qt.alpha(h.pal.muted, 0.7)
+        Behavior on color { ColorAnimation { duration: h.pal.dFast } }
+        Behavior on border.color { ColorAnimation { duration: h.pal.dFast } }
+        Text {
+            anchors.centerIn: parent
+            text: "?"
+            color: h.hovered ? h.pal.accent : h.pal.muted
+            font.family: h.pal.uiFont
+            font.pixelSize: 9
+            font.weight: Font.Bold
+        }
+    }
+    HoverHandler { id: hh; cursorShape: Qt.WhatsThisCursor }
+}

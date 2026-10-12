@@ -66,6 +66,7 @@ ShellRoot {
         lockBg: "solid",           // solid | wallpaper : the lock screen's background is the plain theme colour, or the current wallpaper blurred (Lock.qml)
         lockBlur: 40,              // blur radius of that wallpaper (4 .. 64)
         lockTint: 0.55,            // how opaque the theme-colour sheet over the blurred wallpaper is (0 = wallpaper as it is .. 0.95); yours to set
+        limMode: "manual",         // manual | auto : Settings > Performance > Limits. auto = the RAM / CPU limits are learned from your own use (startup-view.py adapt-sample, every 5 min)
         resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
         perf: "high",              // low | medium | high : how much the tree view and constellations animate (and how many stars the picture gets)
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
@@ -119,6 +120,15 @@ ShellRoot {
         case "accentBorder": hyprKick.restart(); break
         }
         saveSettings()
+    }
+
+    // ---- adaptive limits (Settings > Performance & memory > Limits: Adaptive) ----------------------------------------------
+    // One short reading of how much RAM / CPU Halcyon uses every 5 minutes; startup-view.py keeps them (14 days) and works the
+    // limits out from them. Only while the island runs and Adaptive is chosen; not in Gaming mode (the helpers are stopped then).
+    Timer {
+        interval: 300000; repeat: true
+        running: root.settingsLoaded && root.opt.limMode === "auto" && !root.gaming
+        onTriggered: Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-view.py", "adapt-sample"])
     }
 
     // ---- background refresh (Settings > Performance & memory > Background refresh) ----------------------------------------
@@ -486,6 +496,7 @@ ShellRoot {
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \\\"$1/remind.sh\\\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
+            else if (id === "adapt-reset") Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-view.py", "adapt-reset"])
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
         }
     }

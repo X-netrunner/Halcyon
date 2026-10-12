@@ -16,6 +16,11 @@ Item {
     property real now: 0          // ticks while the centre is open, so "5m" stays fresh
     signal dismissRequested()
 
+    // a notification that has just arrived lights up its edge for a moment, then settles
+    property real flash: 0
+    NumberAnimation { id: flashAnim; target: row; property: "flash"; from: 1; to: 0; duration: 1800; easing.type: Easing.OutCubic }
+    Component.onCompleted: if (arrived > 0 && Date.now() - arrived < 4000) flashAnim.start()
+
     readonly property bool critical: notif ? notif.urgency === NotificationUrgency.Critical : false
     readonly property color tone: critical ? pal.bad : pal.accent
     readonly property var extraActions: {
@@ -80,12 +85,31 @@ Item {
         transform: Translate { x: row.swipeX }
         opacity: 1 - 0.85 * row.swipeP * (row.leaving ? 1.2 : 0.6)
         width: row.width
-        height: content.implicitHeight + 24
-        radius: row.pal.rMd
-        color: hov.hovered ? Qt.alpha(row.pal.surfaceHi, 0.9) : Qt.alpha(row.pal.surface, 0.7)
+        height: content.implicitHeight + 28
+        radius: row.pal.rMd + 2
+        color: hov.hovered ? Qt.alpha(row.pal.surfaceHi, 0.92) : Qt.alpha(row.pal.surface, 0.66)
         border.width: 1
-        border.color: row.critical ? Qt.alpha(row.pal.bad, 0.5) : row.pal.lineSoft
+        border.color: row.critical ? Qt.alpha(row.pal.bad, 0.5)
+                    : Qt.rgba(row.pal.accent.r, row.pal.accent.g, row.pal.accent.b, 0.06 + 0.45 * row.flash)
         Behavior on color { ColorAnimation { duration: row.pal.dFast } }
+
+        // a soft accent wash fading in from the left edge: stronger on hover and while it is new
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Qt.alpha(row.tone, (hov.hovered ? 0.10 : 0.05) + 0.12 * row.flash) }
+                GradientStop { position: 0.6; color: "transparent" }
+            }
+        }
+        // the accent edge: always there, brighter for urgent ones and for a new arrival
+        Rectangle {
+            x: 7; y: 14
+            width: 3; height: parent.height - 28; radius: 1.5
+            color: row.tone
+            opacity: row.critical ? 0.95 : 0.30 + 0.60 * row.flash
+        }
 
         HoverHandler { id: hov }
 
@@ -110,7 +134,7 @@ Item {
 
         RowLayout {
             id: content
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 20; rightMargin: 12; topMargin: 14 }
             spacing: 12
 
             NotifIcon {
@@ -119,7 +143,7 @@ Item {
                 notif: row.notif
                 avatar: row.avatar
                 usePfp: row.usePfp
-                size: 36
+                size: 40
                 tone: row.tone
             }
 
@@ -127,40 +151,47 @@ Item {
                 Layout.fillWidth: true
                 spacing: 2
 
+                // app name and how long ago, then a round remove button that appears on hover
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: 6
+                    Text {
+                        text: row.notif && row.notif.appName ? row.notif.appName : ""
+                        color: row.pal.accent
+                        font.family: row.pal.uiFont
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
+                        elide: Text.ElideRight
+                        Layout.maximumWidth: 150
+                    }
+                    Rectangle { visible: row.rel() !== ""; width: 3; height: 3; radius: 1.5; color: Qt.alpha(row.pal.muted, 0.7) }
                     Text {
                         Layout.fillWidth: true
-                        text: row.notif ? row.notif.appName.toUpperCase() : ""
-                        color: row.pal.muted
-                        font.family: row.pal.uiFont
-                        font.pixelSize: 10
-                        font.letterSpacing: 0.8
-                        elide: Text.ElideRight
-                    }
-                    Text {
                         text: row.rel()
-                        color: Qt.alpha(row.pal.muted, 0.85)
+                        color: Qt.alpha(row.pal.muted, 0.9)
                         font.family: row.pal.uiFont
                         font.pixelSize: row.pal.tCap
                     }
                     // sits above the row's click area, so it only removes
-                    Item {
-                        implicitWidth: 18
-                        implicitHeight: 18
+                    Rectangle {
+                        implicitWidth: 20
+                        implicitHeight: 20
+                        radius: 10
+                        color: xMa.containsMouse ? Qt.alpha(row.pal.text, 0.12) : "transparent"
                         opacity: hov.hovered ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: row.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: row.pal.dFast } }
                         Text {
                             anchors.centerIn: parent
                             text: "✕"
                             color: xMa.containsMouse ? row.pal.text : row.pal.muted
-                            font.pixelSize: 11
+                            font.pixelSize: 10
                         }
                         MouseArea {
                             id: xMa
                             anchors.fill: parent
                             hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             onClicked: row.dismissRequested()
                         }
                     }
@@ -171,7 +202,7 @@ Item {
                     text: row.notif ? row.notif.summary : ""
                     color: row.pal.text
                     font.family: row.pal.uiFont
-                    font.pixelSize: row.pal.tBody + 1
+                    font.pixelSize: row.pal.tBody + 2
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
                     maximumLineCount: 1

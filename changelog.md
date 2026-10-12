@@ -4,6 +4,47 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Notification box redesign, every message kept, smoother constellations
+
+- Notification rows: an accent edge and a soft wash on the left (urgent ones in red), the app name in the accent colour with the time beside it, a round remove button on hover, a slightly bigger picture and title. A new notification lights its edge for a moment and slides in from the right; rows slide into place when others go. The header says "3 notifications" (or "You are all caught up") instead of "3 of 30 kept".
+- Fix: only one `notify-send` message was shown. Messages from `notify-send` with the same title replaced each other. Now only Halcyon's own status messages (`-a Halcyon`) replace an earlier one with the same title; everything else, `notify-send` included, is kept unless it is an exact repeat (same title and text).
+- Constellations: the breathing / sway / twinkle clocks no longer restart from 0 every time the art comes into view (that made the whole sky jump at the start); they keep their place. The motion eases in over about 1.6 s, the drawing fades in instead of popping into place, and the drifting dots carry on from where they were.
+
+## Adaptive RAM / CPU limits
+
+- Settings > Performance & memory > **Limits**: Manual (the two sliders, as before, still the default) or **Adaptive**. In Adaptive the island takes one reading of Halcyon's own RAM and CPU every 5 minutes (`startup-view.py adapt-sample`, kept in `~/.local/state/island/adaptive.tsv`, 14 days at most). Nothing is sampled while Adaptive is off or Gaming mode is on.
+- After 3 days and 150 readings the limits are set from your own use: the busy 5 % of the time (95th percentile) plus headroom (RAM x1.25 rounded up to 50 MB, CPU x1.5 + 1 point), inside the same range as the sliders (300-1500 MB, 3-30 %). They keep adjusting over the last 14 days. Until then the manual limits apply.
+- The Health tab shows the limits in use and how far the learning is. "Forget what it learned" in Settings (or `startup-view.py adapt-reset`) starts over; `startup-view.py adapt-status` prints the state as JSON.
+- Like the manual limits, they only measure and advise: nothing is changed or stopped by itself.
+
+## Adaptive RAM / CPU limits
+
+- Settings > Performance & memory > **Limits**: Manual (the two sliders, as before, still the default) or **Adaptive**. In Adaptive the island takes one reading of Halcyon's own RAM and CPU every 5 minutes (`startup-view.py adapt-sample`, kept in `~/.local/state/island/adaptive.tsv`, 14 days at most). Nothing is sampled while Adaptive is off or Gaming mode is on.
+- After 3 days and 150 readings the limits are set from your own use: the busy 5 % of the time (95th percentile) plus headroom (RAM x1.25 rounded up to 50 MB, CPU x1.5 + 1 point), inside the same range as the sliders (300-1500 MB, 3-30 %). They keep adjusting over the last 14 days. Until then the manual limits apply.
+- The Health tab shows the limits in use and how far the learning is. "Forget what it learned" in Settings (or `startup-view.py adapt-reset`) starts over; `startup-view.py adapt-status` prints the state as JSON.
+- Like the manual limits, they only measure and advise: nothing is changed or stopped by itself.
+
+## Startup window: hover explanations, Health tab with limits
+
+- The explanation line at the bottom of the Startup & processes window is gone. Every column title (ITEM, STARTED BY, MEMORY, CPU, PROCS), every caption of the memory bar, the filter row and the Suggestions tab now has a small round **?**: hover it and one bubble explains that word. The bubble lives on the card, so no list or row can cut it off (new `HelpTip.qml`). The bottom line only shows the answer to what you just did (for example "applies the next time you log in") and clears itself after a few seconds.
+- New **Health** tab. It adds up all of Halcyon (Hyprland, the island with its helpers, the daemons) and compares it with two limits: RAM (default 600 MB) and CPU (default 10 % of the whole processor). Both are sliders in Settings > Performance & memory ("Halcyon RAM limit", "Halcyon CPU limit"). Over a limit, the tab lists the parts that cause it, the likely causes worked out from your own settings (resource preset, frame rate, moving stars, music bars, line drawing, background refresh, wallpaper size, how long the island has been running ...) and what to do, with buttons where one click is safe (switch to Low / Medium resource use, turn off a tray applet, End a program that is eating the machine). CPU is only flagged after two readings in a row (about 10 s), so a short burst raises no alarm. When the whole machine is short of memory it also says which other programs hold it.
+- A "Halcyon is over its limit: see why" button and a "!" on the Health tab appear while a limit is exceeded. It only measures and advises; nothing is changed by itself, and nothing runs while the window is closed.
+- Fix: the reader (`startup-view.py`) runs under the island, so its own process and the helpers it starts were counted as the island's load while the window was open. They are left out now.
+
+---
+
+## Notification centre: constellations above the text
+
+- The constellations (dots, your profile constellation, the lockdown / stealth art) used to be drawn behind the whole panel, so notification text ran over their lines. They now have a band of their own at the top of the panel (about 150 px, smaller on short screens), and the title, DND / Clear and the notifications sit underneath, so the box is taller. The list is capped so the panel still fits on small screens. Settings > Constellations switches the band off (the panel is then as short as before).
+
+---
+
+## Settings: no more lag when searching
+
+- The gesture and mouse-button editors built every hidden action list (about 45 chips and an app menu per row, up to six rows) as soon as they appeared, and each app menu listed all installed apps. A search that brought them up made typing stutter. The lists and the app menu are now created only while a row is open, and the editors read their data at most every 2 s.
+
+---
+
 ## Startup window: Suggestions, honest CPU numbers
 
 - **Suggestions tab** (and a "N suggestions" chip on the Startup tab): startup items that are running and can be turned off, each with the reason, the memory it would free, *Turn off* and *Keep* (Keep hides it for good, `~/.local/state/island/startup-keep`). It flags things that do nothing on this machine (touchpad gestures service without a touchpad, blueman without a Bluetooth adapter), things Halcyon already covers (nm-applet, the screen-sharing portal, which starts by itself when needed), file indexers / Evolution helpers, and chat / sync apps or heavy autostart entries (Steam, Discord ...) that can be opened by hand. Audio, portals, polkit, the keyring and the desktop itself are never suggested. Nothing is switched off without the button.

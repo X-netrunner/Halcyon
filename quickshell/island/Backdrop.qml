@@ -19,8 +19,10 @@ Item {
     clip: true
 
     readonly property bool live: visible && opacity > 0.01 && (pal ? pal.motion > 0.3 : true)
+    // seconds of drifting so far: accumulated per frame and kept while hidden, so the dots carry on from where they were
+    // (restarting a NumberAnimation put every dot back at its starting place each time the box opened)
     property real tt: 0
-    NumberAnimation on tt { from: 0; to: 1000000; duration: 1000000000; loops: Animation.Infinite; running: root.live && !root.paused }
+    FrameAnimation { running: root.live && !root.paused; onTriggered: root.tt += Math.min(frameTime, 0.1) }
 
     ModeArt {
         anchors.fill: parent
@@ -42,6 +44,7 @@ Item {
             required property int index
             readonly property real fx: ((index * 0.6180339) % 1)
             readonly property real fy: ((index * 0.4142135 + 0.17) % 1)
+            NumberAnimation on opacity { from: 0; to: 1; duration: 1100 + index * 70; easing.type: Easing.InOutSine }
             width: 2 + index % 3 + (root.pal.solid ? 1 : 0)
             height: width
             radius: width / 2
