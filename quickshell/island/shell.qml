@@ -494,6 +494,9 @@ ShellRoot {
             else if (id === "layout") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_layout.sh"]); hyReadAgain.restart() }
             else if (id === "reset-look") root.resetLook()
             else if (id === "startup-view") settingsWin.openStartup()
+            else if (id === "greeting-paste") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "paste"])
+            else if (id === "greeting-edit") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "edit"])
+            else if (id === "greeting-preview") { var gh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", gh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" preview; echo; read -n1 -r -p 'Press any key to close '", "x", gh + "/greeting-conf.sh"]) }
             else if (id === "mem-report") { var h = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", h + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\"; echo; read -n1 -r -p 'Press any key to close '", "x", h + "/halcyon-mem.sh"]) }
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }

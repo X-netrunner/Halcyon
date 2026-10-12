@@ -4,6 +4,14 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Choose the fish greeting's logo (adaptive, BlackArch, your own ASCII art)
+
+- The greeting used to be hard-wired: the Kali dragon inside a Kali container, the Arch logo everywhere else. **Settings > Terminal greeting** now has **Logo in new terminals**: Adaptive (default), Arch, BlackArch, Kali, Linux, Custom, Info only, Off. `scripts/greeting-conf.sh` does the same from a terminal (`list`, `set LOGO <name>`, `paste`, `import FILE`, `edit`, `preview`); the choice is in `~/.config/Halcyon/greeting.conf`.
+- **Adaptive** reads `/etc/os-release`: Arch, CachyOS, EndeavourOS, Manjaro, Garuda, Artix and ArcoLinux (and anything else that says it is Arch-like) show the Arch logo, BlackArch and Kali show their own, every other system shows a small Linux penguin. The `distro` line now shows the system's real name (`PRETTY_NAME`), so CachyOS no longer says "Arch Linux".
+- **Custom**: your own ASCII art. In Settings, *Paste from clipboard* saves what you copied (needs `wl-clipboard`, which the clipboard history already uses) and switches to Custom; *Edit file* opens `~/.config/Halcyon/greeting-custom.txt` (starting from the penguin if it is new); *Preview* shows the greeting in a terminal. `@C1@` / `@C2@` in the text switch to the accent / grey colour, ready-made colour codes are kept, every other escape code is dropped when pasting, and at most 40 rows are shown. A missing or empty custom file quietly falls back to Adaptive.
+- The logos moved out of the function into plain files (`config/fish/greeting/logos/arch.txt`, `kali.txt`, `blackarch.txt`, `linux.txt`), and the info block now centres itself next to whatever logo is shown (before, each logo had its row numbers typed in). The Arch layout is unchanged; the Kali info now sits in the middle of the dragon instead of at its head. The Kali and BlackArch logos keep their own colours; the others follow the wallpaper. The BlackArch logo is a stylised drawing, not the official artwork.
+- `greeting.conf` and `greeting-custom.txt` are yours: git ignores them and `install.sh` never overwrites them.
+
 ## Commands tree: SUPER + ALT + /
 
 - New `CmdTree.qml`: every console command as a tree, same look as the SUPER+/ shortcuts tree. Branches: Sysmode (secure, stealth, relaxed, lockdown, status, verify, logs, dossier, doctor; the ones that ask for your password are marked `sudo`), Hotspot, Halcyon windows, and the console's own words. Type to search, click a command to put it in the console (it is not run, you press Enter there), Esc or Super+Q closes it.
