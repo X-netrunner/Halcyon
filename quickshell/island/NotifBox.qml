@@ -26,10 +26,11 @@ Item {
     readonly property var cfg: NL.normalize(layout)
     readonly property var history: src ? src.history : []
     readonly property bool dnd: src ? src.dnd : false
-    // the band only takes room when there is something to draw in it: the constellation (the mode's art or your profile picture)
-    // or drifting dots. With the drawing off and no dots it would be an empty gap, so it is left out.
-    readonly property bool hasArt: cfg.art && (sysmode === "lockdown" || sysmode === "stealth" || (profileStars && starData !== null && starData !== undefined))
-    readonly property bool skyEmpty: !hasArt && cfg.dots <= 0
+    // the band only takes room while there is a constellation to draw in it (the mode's art or your profile picture); with
+    // nothing to draw it would be an empty gap, so it is left out. The drifting dots are not in the band: they sit behind the
+    // whole box (NotifSurface.qml) and take no room.
+    readonly property bool hasArt: sysmode === "lockdown" || sysmode === "stealth" || (profileStars && starData !== null && starData !== undefined)
+    readonly property bool skyEmpty: !hasArt
     readonly property var order: {
         var out = [], b = cfg.blocks
         for (var i = 0; i < b.length; i++) if (b[i].on && (b[i].id !== "sky" || (stars && !skyEmpty))) out.push(b[i].id)
@@ -69,11 +70,11 @@ Item {
                 anchors.fill: parent
                 visible: box.stars
                 pal: box.pal
-                mode: box.cfg.art ? box.sysmode : ""
+                mode: box.sysmode
                 avatarStars: box.starData
-                profileStars: box.cfg.art && box.profileStars
-                dots: box.cfg.dots
-                artStrength: box.cfg.art ? 1 : 0
+                profileStars: box.profileStars
+                dots: 0
+                artStrength: 1
                 artFit: 0.9
             }
         }

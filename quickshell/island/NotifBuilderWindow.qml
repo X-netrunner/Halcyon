@@ -24,8 +24,8 @@ Item {
     signal closed()
 
     readonly property var cur: NL.normalize(layout)
-    // the same test the box uses: a band with nothing to draw is left out
-    readonly property bool skyEmpty: !(cur.art && (sysmode === "lockdown" || sysmode === "stealth" || (profileStars && starData !== null && starData !== undefined))) && cur.dots <= 0
+    // the same test the box uses: a band with no constellation to draw is left out
+    readonly property bool skyEmpty: !(sysmode === "lockdown" || sysmode === "stealth" || (profileStars && starData !== null && starData !== undefined))
 
     // ---------------------------------------------------------------- sample notifications
     property real now: Date.now()
@@ -195,7 +195,7 @@ Item {
                                 spacing: 8
                                 Text {
                                     Layout.fillWidth: true
-                                    text: NL.names[br.modelData.id] + (br.modelData.id === "sky" && br.modelData.on && root.skyEmpty ? "  (nothing to draw, so no space)" : "")
+                                    text: NL.names[br.modelData.id] + (br.modelData.id === "sky" && br.modelData.on && root.skyEmpty ? "  (no constellation to draw, so no space)" : "")
                                     color: br.modelData.on ? root.pal.text : root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody
@@ -223,12 +223,11 @@ Item {
                         Flow {
                             Layout.fillWidth: true
                             spacing: 8
-                            Chip { pal: root.pal; implicitHeight: 30; label: "Drawing in the band"; on: root.cur.art; onClicked: root.edited(NL.edit(root.cur, "art", !root.cur.art)) }
                             Chip { pal: root.pal; implicitHeight: 30; label: "Behind the whole box"; on: root.cur.behind; onClicked: root.edited(NL.edit(root.cur, "behind", !root.cur.behind)) }
                             Chip { pal: root.pal; implicitHeight: 30; label: "Stars in popups"; on: root.cur.toastStars; onClicked: root.edited(NL.edit(root.cur, "toastStars", !root.cur.toastStars)) }
                         }
                         NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Band height"; from: 0; to: 260; value: root.cur.skyH; zeroText: "Auto"; onPicked: v => root.edited(NL.edit(root.cur, "skyH", v)) }
-                        NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Drifting dots"; from: 0; to: 24; value: root.cur.dots; unit: ""; zeroText: "None"; onPicked: v => root.edited(NL.edit(root.cur, "dots", v)) }
+                        NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Drifting dots (behind)"; from: 0; to: 24; value: root.cur.dots; unit: ""; zeroText: "None"; onPicked: v => root.edited(NL.edit(root.cur, "dots", v)) }
                         NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Flying stars"; from: 0; to: 20; value: root.cur.fly; unit: ""; zeroText: "None"; onPicked: v => root.edited(NL.edit(root.cur, "fly", v)) }
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }

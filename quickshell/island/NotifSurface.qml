@@ -25,6 +25,17 @@ Glass {
     radius: cfg.radius
     opacityBody: pal.glassSolid - 0.06
 
+    // the drifting dots, behind the whole box (they take no room)
+    Backdrop {
+        anchors.fill: parent
+        anchors.margins: 2
+        visible: surf.cfg.dots > 0 && surf.stars && surf.visible
+        pal: surf.pal
+        mode: ""
+        profileStars: false
+        dots: surf.cfg.dots
+        artStrength: 0
+    }
     // the constellation behind the whole box, faint
     Backdrop {
         anchors.fill: parent
