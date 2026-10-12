@@ -9,6 +9,8 @@
 #     user-setup.sh wallpaper             make a first wallpaper if the folder is empty, then colours from a wallpaper
 #     user-setup.sh terminals             colour files + the Halcyon look (fish, font, padding, 0.85 alpha, cursor, scrollback, search keys) for
 #                                         foot / kitty / alacritty / ghostty / wezterm, included once
+#     user-setup.sh fish-commands         the fish commands: halcyon <command>, bar-builder, notification-builder, wallpaper-gallery, startup-view,
+#                                         hotspot-on / hotspot-off, and the one-time command hints (conf.d/hints.fish)
 #     user-setup.sh app-themes            Starship prompt (with the rice name) + fish colours, then the halcyon theme for btop / yazi /
 #                                         Spotify (spicetify) / Discord (Vesktop); all follow the wallpaper (scripts/app-themes.sh)
 #     user-setup.sh default-apps [browser=ID] [files=ID] [editor=ID] [music=ID]
@@ -317,6 +319,30 @@ app_themes() {
   return 0
 }
 
+# ---------------------------------------------------------------------------------------------- fish commands
+# `halcyon <command>` plus bar-builder, notification-builder, wallpaper-gallery, startup-view, hotspot-on / hotspot-off and the hints: they open the same windows as the
+# app menu's ">" commands, through the island's IPC (config/fish/functions, config/fish/completions). Fish only.
+fish_commands() {
+  command -v fish >/dev/null 2>&1 || { ok "fish is not installed: the halcyon / bar-builder / notification-builder commands were skipped"; return 0; }
+  local f n=0
+  mkdir -p "$HOME/.config/fish/functions" "$HOME/.config/fish/completions"
+  for f in halcyon bar-builder notification-builder wallpaper-gallery startup-view hotspot-on hotspot-off; do
+    [ -f "$RICE/config/fish/functions/$f.fish" ] || continue
+    cmp -s "$RICE/config/fish/functions/$f.fish" "$HOME/.config/fish/functions/$f.fish" 2>/dev/null || cp "$RICE/config/fish/functions/$f.fish" "$HOME/.config/fish/functions/$f.fish"
+    n=$((n + 1))
+  done
+  if [ -f "$RICE/config/fish/completions/halcyon.fish" ]; then
+    cmp -s "$RICE/config/fish/completions/halcyon.fish" "$HOME/.config/fish/completions/halcyon.fish" 2>/dev/null || cp "$RICE/config/fish/completions/halcyon.fish" "$HOME/.config/fish/completions/halcyon.fish"
+  fi
+  # the one-time hints (grep, find, cat, ls, cd ...): a conf.d file, because it defines several functions at once
+  if [ -f "$RICE/config/fish/hints.fish" ]; then
+    mkdir -p "$HOME/.config/fish/conf.d"
+    cmp -s "$RICE/config/fish/hints.fish" "$HOME/.config/fish/conf.d/hints.fish" 2>/dev/null || cp "$RICE/config/fish/hints.fish" "$HOME/.config/fish/conf.d/hints.fish"
+  fi
+  ok "fish: $n commands installed (halcyon, bar-builder, notification-builder, wallpaper-gallery, startup-view, hotspot-on, hotspot-off) and the one-time hints (conf.d/hints.fish)"
+  return 0
+}
+
 # ---------------------------------------------------------------------------------------------- default apps
 default_apps() {
   local apps="$RICE/scripts/apps.sh" env="$HOME/.local/state/island/apps.env" kind id cur pick a
@@ -398,5 +424,6 @@ case "${1:-}" in
   wallpaper)     wallpaper ;;
   terminals)     terminals ;;
   app-themes)    app_themes ;;
+  fish-commands) fish_commands ;;
   *) sed -n 2,11p "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

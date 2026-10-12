@@ -1459,6 +1459,8 @@ ShellRoot {
         function quickterm(): void { quickTerm.toggle() }
         function edgemode(): void { root.toggleEdgeMode() }
         function settings(): void { settingsWin.toggle() }
+        function barbuilder(): void { settingsWin.openBuilder() }
+        function notifbuilder(): void { settingsWin.openNotifBuilder() }
         function gallery(): void { settingsWin.openGallery() }
         function startup(): void { settingsWin.openStartup() }
         function processes(): void { settingsWin.openStartup() }
