@@ -7,13 +7,18 @@ import Quickshell.Wayland
 
 // Top-left pop-out console for one-shot commands (sysmode switches, ls, ip a, ...).
 //
-//  open     hover mode: touch the top-left corner.  click mode: click the corner.
-//           Either way SUPER+SHIFT+Enter opens it focused (and again closes it), or click the box to type.
+//  open     hover mode: touch the top-left corner.  click mode: click the corner.  Either way the console takes the keyboard
+//           by itself (a moment after it pops out), so you can type at once even with a terminal open beside it, and it
+//           keeps the keyboard while the pointer is over it.  SUPER+SHIFT+Enter opens it focused (and again closes it).
 //  close    hover mode: move the pointer away.  click mode: click the corner again.  Esc always works.
 //           Auto-hide on = it closes whenever the pointer leaves, in both modes (never while you have text typed).
 //  idle     empty input and nothing run yet: shows the sysmode / honeypot status (`hx status`) as plain console lines;
 //           they fade away the moment you type
 //  run      Enter. Output streams in. Ctrl+C stops, Ctrl+L clears, Up/Down = history
+//  complete Tab completes the word under the cursor: commands (and the console's own words) at the start of a command, folders after
+//           cd, sysmode actions after sysmode / sm, files and folders everywhere else. One match completes it, several complete the
+//           common start and list them; Tab again goes through them (Shift+Tab back), Esc closes the list. A greyed suggestion
+//           from your history follows what you type: Right arrow (or End) takes it.
 //  sudo     `sudo ...` and root sysmode actions (`sysmode stealth`, `sm lockdown`, or just `lockdown`) ask for your
 //           password right in the console (masked) and feed it to sudo -S; nothing is stored or logged
 //  TUIs     vim, htop, ssh, less ... need a real terminal, so they open in foot instead
@@ -33,6 +38,15 @@ Scope {
     readonly property int maxOut: 400
     readonly property string sysmodeBin: "/usr/local/bin/sysmode"
     readonly property string hx: Quickshell.env("HOME") + "/.config/Halcyon/bin/hx"
+    readonly property string rice: Quickshell.env("HOME") + "/.config/Halcyon"
+    // fish-only commands (config/fish/functions) do not exist in this bash console, so the console knows them itself
+    readonly property var halcyonNames: ["launcher", "settings", "notification-builder", "bar-builder", "wallpaper-gallery", "startup-view", "notifications",
+                                         "clear-notifications", "dnd", "cheatsheet", "power-menu", "quick-terminal", "overview", "gaming-mode", "caffeine",
+                                         "lock", "theme", "reload"]
+    readonly property var halcyonCalls: ["launcher", "settings", "notifbuilder", "barbuilder", "gallery", "startup", "notifcenter",
+                                         "clearnotifs", "dnd", "cheatsheet", "power", "quickterm", "overview", "gaming", "caffeine",
+                                         "lock", "theme", "reload"]
+    readonly property var directCmds: ["bar-builder", "notification-builder", "wallpaper-gallery", "startup-view"]
     readonly property string pwMarker: "SUDO_PW"
     readonly property var modes: ["secure", "stealth", "relaxed", "cyber", "lockdown"]   // "cyber" = old name of relaxed (the CLI still takes it)
     readonly property var rootless: ["status", "logs", "dossier", "verify", "check", "doctor", "help", "-h", "--help"]
@@ -44,7 +58,8 @@ Scope {
     property bool open: false
     property bool pinned: false                      // opened from the keyboard: stays until closed (unless auto-hide)
     property bool focused: false                     // box has the keyboard
-    property bool grabKeys: false                    // first moments after a keybind: Exclusive, then normal on-demand focus
+    property bool grabKeys: false                    // first moments after taking the keyboard: Exclusive, then normal on-demand focus
+    property bool zoneHover: false                   // the pointer is over the corner / box: keep the keyboard exclusively so a window under it cannot take it back
     readonly property real reveal: open ? 1 : 0
     readonly property bool shown: open
 
@@ -60,10 +75,10 @@ Scope {
     // ---------- open / close ----------
     readonly property bool mayAutoClose: !askPass && input.text === "" && (autoHide || (!clickMode && !pinned))
     function setHover(on) {
-        if (on) { closeT.stop(); if (!clickMode) open = true }
-        else if (mayAutoClose) { closeT.interval = 550; closeT.restart() }
+        if (on) { closeT.stop(); if (!clickMode) { open = true; if (!focused) autoFocusT.restart() } }
+        else { autoFocusT.stop(); if (mayAutoClose) { closeT.interval = 550; closeT.restart() } }
     }
-    function cornerTap() { if (open) close(); else { closeT.stop(); open = true } }
+    function cornerTap() { if (open) close(); else { closeT.stop(); open = true; takeFocus() } }
     function toggle() {
         if (open && focused) { close(); return }
         closeT.stop()
@@ -85,6 +100,8 @@ Scope {
         pinned = false
     }
     Timer { id: closeT; interval: 550; onTriggered: if (root.mayAutoClose) root.close() }
+    // popped out by touching the corner: take the keyboard after a short beat (so just brushing past the corner steals nothing)
+    Timer { id: autoFocusT; interval: 150; onTriggered: if (root.open && root.zoneHover && !root.focused) root.takeFocus() }
     // Exclusive only long enough to be granted the keyboard; after that it is on-demand, so clicking another
     // window or opening a terminal hands the keyboard straight to it and nothing stays stuck
     Timer { id: grabT; interval: 350; onTriggered: root.grabKeys = false }
@@ -121,6 +138,8 @@ Scope {
     function words(s) { return s.trim().split(/\s+/) }
     function sudoed(rest) { return "sudo -S -p $'" + pwMarker + "\\n' " + rest }
 
+    function ipcLine(call) { return "quickshell ipc -p '" + rice + "/quickshell/island' call island " + call }
+
     function prepare(line) {
         var w = words(line)
         var first = w[0]
@@ -131,6 +150,13 @@ Scope {
             var rest = line.trim().substring(7)
             var cmd = sysmodeBin + (rest.length ? rest : " status")
             return { cmd: rootless.indexOf(action) >= 0 ? cmd : sudoed(cmd), tui: false }
+        }
+        if (first === "hotspot-on" || first === "hotspot-off")
+            return { cmd: "bash '" + rice + "/scripts/hotspot.sh' " + first.substring(8), tui: false }
+        if (directCmds.indexOf(first) >= 0) return { cmd: ipcLine(halcyonCalls[halcyonNames.indexOf(first)]), tui: false }
+        if (first === "halcyon") {
+            var hi = halcyonNames.indexOf(w[1] || "")
+            return { cmd: hi >= 0 ? ipcLine(halcyonCalls[hi]) : "echo 'halcyon <command>: " + halcyonNames.join(" | ") + "'", tui: false }
         }
         if (first === "sudo") return { cmd: sudoed(line.trim().substring(4).trim()), tui: false }
         return { cmd: line, tui: tuis.indexOf(first) >= 0 }
@@ -147,8 +173,9 @@ Scope {
         if (line === "exit" || line === "quit") { close(); return }
         if (line === "help") {
             push("sysmode: secure | stealth | relaxed | lockdown | status | logs | dossier [ip]   (sm = sysmode)\n" +
+                 "hotspot-on / hotspot-off: Wi-Fi hotspot.  halcyon <command>, bar-builder, wallpaper-gallery ...: open the island's windows.\n" +
                  "sudo works here: it asks for your password in this line.\n" +
-                 "cd, clear, exit, Ctrl+C stop, Ctrl+L clear, Up/Down history. Anything else runs in bash.\n" +
+                 "cd, clear, exit, Ctrl+C stop, Ctrl+L clear, Up/Down history, Tab completes (Right arrow takes the grey suggestion). Anything else runs in bash.\n" +
                  "vim / htop / ssh ... open in a real terminal.", "info")
             return
         }
@@ -172,6 +199,120 @@ Scope {
         return parts.length > 2 ? "…/" + parts[parts.length - 1] : c
     }
 
+    // ---------- tab completion + history suggestion ----------
+    property var cands: []                     // the matches of the last Tab press
+    property int candIdx: -1                   // the one inserted while going through them with Tab (-1 = none yet)
+    property bool candOpen: false
+    property string candBefore: ""             // the text before and after the word being completed
+    property string candAfter: ""
+    readonly property var consoleWords: ["help", "clear", "cls", "exit", "quit", "cd", "sm", "sysmode", "hotspot-on", "hotspot-off", "halcyon"].concat(modes).concat(directCmds)
+    readonly property var sysActions: ["secure", "stealth", "relaxed", "cyber", "lockdown", "status", "logs", "dossier", "verify", "check", "doctor", "help"]
+    readonly property var wrappers: ["sudo", "time", "env", "nohup", "exec", "command", "builtin"]
+
+    // the greyed rest of an earlier command that starts like what is typed (Right arrow / End takes it)
+    readonly property string ghost: {
+        var t = input.text
+        if (askPass || candOpen || t.length === 0 || input.cursorPosition !== t.length) return ""
+        for (var i = history.length - 1; i >= 0; i--)
+            if (history[i].length > t.length && history[i].indexOf(t) === 0) return history[i].slice(t.length)
+        return ""
+    }
+    // at most 8 matches are listed, scrolled so the picked one stays in view
+    readonly property var candWindow: {
+        var n = cands.length, size = 8, st = 0, out = []
+        if (n > size) st = Math.max(0, Math.min(n - size, (candIdx < 0 ? 0 : candIdx) - 3))
+        for (var i = st; i < Math.min(n, st + size); i++) out.push({ t: cands[i], cur: i === candIdx, dim: false })
+        if (n > st + size) out.push({ t: "… " + (n - st - size) + " more", cur: false, dim: true })
+        return out
+    }
+
+    function escWord(c) { return c.replace(/([ !"#$&'()*;<>?\[\\\]`{|}])/g, "\\$1") }
+    function closeComp() { cands = []; candIdx = -1; candOpen = false }
+    function commonPrefix(a) {
+        if (a.length === 0) return ""
+        var p = a[0]
+        for (var i = 1; i < a.length; i++) while (a[i].indexOf(p) !== 0) p = p.slice(0, -1)
+        return p
+    }
+    function putWord(w, space) {
+        var tail = candAfter
+        if (space && tail.charAt(0) !== " ") w += " "
+        input.text = candBefore + w + tail
+        input.cursorPosition = (candBefore + w).length
+    }
+    function cycleComp(dir) {
+        var n = cands.length
+        candIdx = candIdx < 0 ? (dir > 0 ? 0 : n - 1) : (candIdx + dir + n) % n
+        putWord(escWord(cands[candIdx]), false)
+    }
+    // Tab: work out which word is under the cursor and what kind of thing goes there
+    function complete(back) {
+        if (askPass) return
+        if (candOpen && cands.length > 1) { cycleComp(back ? -1 : 1); return }
+        var text = input.text
+        var before = text.slice(0, input.cursorPosition)
+        var word = before.match(/[^\s;|&]*$/)[0]
+        var start = before.length - word.length
+        var seg = before.slice(0, start).split(/[;|&]/).pop().trim()
+        var toks = seg.length ? seg.split(/\s+/) : []
+        while (toks.length > 0 && wrappers.indexOf(toks[0]) >= 0) toks.shift()
+        var cmdPos = toks.length === 0
+        var ctx = toks[0] || ""
+        var plain = word.replace(/\\(.)/g, "$1")
+        var mode = "file"
+        if (cmdPos) mode = plain.indexOf("/") >= 0 ? "file" : "cmd"
+        else if (ctx === "cd" || ctx === "pushd") mode = "dir"
+        else if ((ctx === "sysmode" || ctx === "sm" || ctx === "halcyon") && toks.length === 1) mode = "sub"
+        if (mode === "cmd" && plain === "") return                  // every command there is: not a useful list
+        var job = { text: text, before: before.slice(0, start), after: text.slice(input.cursorPosition), plain: plain, mode: mode }
+        if (mode === "sub") {
+            var pool = ctx === "halcyon" ? halcyonNames : sysActions
+            finishComp(job, pool.filter(function (a) { return a.indexOf(plain) === 0 }))
+            return
+        }
+        compProc.job = job
+        compProc.running = false
+        compProc.command = ["bash", "-c", compScript, "_", cwd, mode, plain]
+        compProc.running = true
+    }
+    function finishComp(job, list) {
+        if (input.text !== job.text) return                           // typed on meanwhile: this answer is old
+        var home = Quickshell.env("HOME"), seen = {}, out = []
+        var all = list.concat(job.mode === "cmd" ? consoleWords.filter(function (w) { return w.indexOf(job.plain) === 0 }) : [])
+        for (var i = 0; i < all.length; i++) {
+            var c = all[i]
+            if (c === "" || seen[c]) continue
+            seen[c] = true
+            if (job.plain.charAt(0) === "~" && c.indexOf(home) === 0) c = "~" + c.slice(home.length)
+            out.push(c)
+        }
+        out.sort()
+        if (out.length === 0) { closeComp(); return }
+        candBefore = job.before
+        candAfter = job.after
+        if (out.length === 1) {
+            putWord(escWord(out[0]), out[0].charAt(out[0].length - 1) !== "/")
+            closeComp()
+            return
+        }
+        var common = commonPrefix(out)
+        cands = out
+        candIdx = -1
+        candOpen = true
+        if (common.length > job.plain.length) putWord(escWord(common), false)
+    }
+    // $1 folder, $2 cmd | dir | file, $3 the start of the word ("~" is already $HOME); folders get a trailing /
+    readonly property string compScript: "cd -- \"$1\" 2>/dev/null || exit 0; w=\"$3\"; case \"$w\" in '~'|'~/'*) w=\"$HOME${w#\\~}\";; esac; " +
+        "case \"$2\" in cmd) compgen -c -- \"$w\" ;; dir) compgen -d -- \"$w\" | while IFS= read -r f; do printf '%s/\\n' \"$f\"; done ;; " +
+        "*) compgen -f -- \"$w\" | while IFS= read -r f; do if [ -d \"$f\" ]; then printf '%s/\\n' \"$f\"; else printf '%s\\n' \"$f\"; fi; done ;; esac | sort -u | head -300"
+    Process {
+        id: compProc
+        property var job: ({})
+        stdout: StdioCollector {
+            onStreamFinished: { var t = text.trim(); root.finishComp(compProc.job, t === "" ? [] : t.split("\n")) }
+        }
+    }
+
     Process {
         id: runner
         workingDirectory: root.cwd
@@ -179,7 +320,7 @@ Scope {
         onRunningChanged: { root.busy = running; if (!running) root.askPass = false }
         stdout: SplitParser {
             onRead: d => {
-                var l = d.replace(/\r/g, "")
+                var l = d.replace(/\r/g, "").replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "")
                 if (l === root.pwMarker) { root.askPass = true; root.takeFocus(); return }
                 root.push(l, "out")
             }
@@ -253,8 +394,10 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-term"
         WlrLayershell.layer: WlrLayer.Top
+        // Exclusive while the pointer is over the console (Hyprland's follow_mouse would otherwise hand the keyboard to the
+        // terminal beside it); the moment the pointer leaves it is on-demand again, so clicking another window just works
         WlrLayershell.keyboardFocus: !root.focused ? WlrKeyboardFocus.None
-                                   : (root.grabKeys ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
+                                   : ((root.grabKeys || root.zoneHover) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
 
         mask: Region { item: zone }
 
@@ -266,7 +409,7 @@ Scope {
             anchors.left: parent.left
             width: root.shown ? root.boxW + 40 : (root.clickMode ? 28 : 14)
             height: root.shown ? box.y + box.height + 24 : (root.clickMode ? 28 : 14)
-            HoverHandler { onHoveredChanged: root.setHover(hovered) }
+            HoverHandler { onHoveredChanged: { root.zoneHover = hovered; root.setHover(hovered) } }
 
             // click mode: a faint tab marks the corner
             Rectangle {
@@ -421,6 +564,48 @@ Scope {
                 }
             }
 
+            // ---------- the matches Tab found ----------
+            Rectangle {
+                id: compBox
+                visible: root.candOpen && root.cands.length > 1
+                z: 20
+                anchors { left: parent.left; bottom: sep2.top; leftMargin: 20; bottomMargin: 6 }
+                width: Math.min(parent.width - 40, compCol.implicitWidth + 16)
+                height: compCol.implicitHeight + 12
+                radius: root.pal.rSm
+                color: Qt.alpha(root.pal.surface, 0.97)
+                border.width: 1
+                border.color: root.pal.line
+                Column {
+                    id: compCol
+                    x: 8; y: 6
+                    Repeater {
+                        model: root.candWindow
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: compBox.width - 16
+                            implicitWidth: ct.implicitWidth + 12
+                            height: 19
+                            radius: 5
+                            color: modelData.cur ? Qt.alpha(root.pal.accent, 0.25) : "transparent"
+                            Text {
+                                id: ct
+                                x: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - 12
+                                elide: Text.ElideRight
+                                text: modelData.t
+                                textFormat: Text.PlainText
+                                color: modelData.cur ? root.pal.text : (modelData.dim ? Qt.alpha(root.pal.muted, 0.8) : root.pal.muted)
+                                font.family: root.mono
+                                font.pixelSize: 12
+                                font.weight: modelData.cur ? Font.DemiBold : Font.Normal
+                            }
+                        }
+                    }
+                }
+            }
+
             // ---------- input line ----------
             Rectangle { id: sep2; anchors { left: parent.left; right: parent.right; bottom: inputRow.top; leftMargin: 20; rightMargin: 20; bottomMargin: 8 } height: 1; color: root.pal.lineSoft }
             Item {
@@ -450,12 +635,18 @@ Scope {
                     clip: true
                     echoMode: root.askPass ? TextInput.Password : TextInput.Normal
                     passwordCharacter: "•"
-                    onTextEdited: root.histIdx = -1
+                    onTextEdited: { root.histIdx = -1; root.closeComp() }
                     // the field swallows the click, so ask for the keyboard here too (passive: the cursor still moves)
                     TapHandler { onTapped: root.takeFocus() }
 
                     Keys.onPressed: e => {
-                        if (e.key === Qt.Key_Escape) {
+                        if (e.key === Qt.Key_Tab && !root.askPass) { root.complete(false); e.accepted = true }
+                        else if (e.key === Qt.Key_Backtab && !root.askPass) { root.complete(true); e.accepted = true }
+                        else if ((e.key === Qt.Key_Right || e.key === Qt.Key_End) && root.ghost !== "") {
+                            text = text + root.ghost; cursorPosition = text.length; e.accepted = true
+                        }
+                        else if (e.key === Qt.Key_Escape && root.candOpen) { root.closeComp(); e.accepted = true }
+                        else if (e.key === Qt.Key_Escape) {
                             if (root.askPass) { root.cancelRun(); text = "" } else root.close()
                             e.accepted = true
                         }
@@ -479,12 +670,24 @@ Scope {
                         root.submit(l)
                     }
                 }
+                // the grey rest of an earlier command (Right arrow / End takes it)
+                Text {
+                    anchors.left: input.left
+                    anchors.leftMargin: input.contentWidth
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.ghost !== "" && input.contentWidth < input.width - 24
+                    text: root.ghost
+                    textFormat: Text.PlainText
+                    color: Qt.alpha(root.pal.muted, 0.6)
+                    font.family: root.mono
+                    font.pixelSize: 13
+                }
                 Text {
                     anchors.left: prompt.right
                     anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     visible: input.text === "" && !root.focused
-                    text: "rest the pointer here, or SUPER+SHIFT+Enter, to type"
+                    text: "click here, or press SUPER+SHIFT+Enter, to type"
                     color: Qt.alpha(root.pal.muted, 0.7)
                     font.family: root.mono
                     font.pixelSize: 11

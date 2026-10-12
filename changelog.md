@@ -4,6 +4,20 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Console takes the keyboard when it pops out; hotspot commands work in the console
+
+- The top-left console now takes the keyboard by itself about 150 ms after it pops out (touching the corner, or clicking it in click mode), so typing goes straight into it even with a terminal open beside it. Brushing past the corner steals nothing. While the pointer is over the console it holds the keyboard exclusively (Hyprland's `follow_mouse` could otherwise hand it back to the terminal beside it); when the pointer leaves it is on-demand again, so clicking another window just works. A new window still makes it let go.
+- `hotspot-on` / `hotspot-off` did nothing in the console and were missing from Tab completion: they were fish functions, and the console runs bash. The work moved to `scripts/hotspot.sh on | off | status` (fish functions now just call it), and the console knows both commands itself. The same goes for `halcyon <command>`, `bar-builder`, `notification-builder`, `wallpaper-gallery` and `startup-view`, which also complete with Tab (`halcyon` completes its sub-commands).
+- `hotspot-off` no longer assumes the adapter is called `wlan0`: it finds the Wi-Fi adapter, stops only its own connection (`Halcyon-Hotspot`, so the decoy hotspot of `sysmode stealth --hotspot` is left alone), and puts the adapter back on normal Wi-Fi. The hotspot no longer starts by itself at boot. The hint now says `sudo sysmode relaxed`.
+- Colour codes in command output are removed in the console (they used to show as stray characters).
+
+## Autocomplete in the top-left console
+
+- **Tab** completes the word under the cursor: commands (and the console's own words: `help`, `clear`, `cd`, `sm`, `sysmode`, the mode names) at the start of a command, also after `;`, `|`, `&` and after `sudo`; folders after `cd`; the sysmode actions after `sysmode` / `sm`; files and folders everywhere else (`~` works, folders get a `/`, spaces are escaped). One match completes it; several complete their common start and list up to 8 above the input line.
+- Tab again goes through the matches (**Shift+Tab** back), **Esc** closes the list, typing anything else closes it too.
+- A grey suggestion from your earlier commands follows what you type: **Right arrow** or **End** takes it.
+- Completion runs in the background (`bash` `compgen`), only when you press Tab; nothing runs while you type.
+
 ## Fish commands, and the notification box slides when you move its parts
 
 - install.sh / update.sh now install fish commands (`scripts/user-setup.sh fish-commands`, only when fish is installed): `bar-builder`, `notification-builder`, `wallpaper-gallery`, `startup-view`, and `halcyon <command>` for everything else (`halcyon --help` lists them: launcher, settings, notifications, dnd, cheatsheet, power-menu, quick-terminal, overview, gaming-mode, caffeine, lock, theme, reload ...), with tab completion. They use the island's IPC; two new IPC functions: `barbuilder`, `notifbuilder`.
