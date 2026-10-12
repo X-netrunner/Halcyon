@@ -18,6 +18,7 @@ Scope {
     property var starData: null
     property bool profileStars: true
     property bool open: false
+    property bool hasSysmode: false       // sysmode is installed: the shortcuts that need it are listed (Binds.js: needs "sysmode")
 
     // owned by shell.qml
     property var keyMap: ({})          // id -> keys you chose ("none" = switched off)
@@ -106,6 +107,7 @@ Scope {
             var items = []
             for (var i = 0; i < grp.items.length; i++) {
                 var it = grp.items[i]
+                if (it.needs === "sysmode" && !hasSysmode) continue
                 var keys = Binds.effectiveKeys(it, keyMap)
                 var hay = (it.label + " " + keys + " " + Binds.parts(keys).join(" ") + " " + grp.title).toLowerCase()
                 if (q !== "" && hay.indexOf(q) < 0) continue
@@ -129,7 +131,7 @@ Scope {
     }
     readonly property var _gc: ({ sig: "", out: [] })    // last result, mutated in place (never re-assigned)
     readonly property var groupsNow: {
-        var a = query; var b = keyMap; var c = customs
+        var a = query; var b = keyMap; var c = customs; var d = hasSysmode
         var r = visibleGroups()
         if (r.sig === _gc.sig) return _gc.out
         _gc.sig = r.sig; _gc.out = r
@@ -359,7 +361,7 @@ Scope {
                                 spacing: 10
                                 Text { text: String.fromCodePoint(0xF030C); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 17; anchors.verticalCenter: parent.verticalCenter }
                                 Text { text: "Halcyon"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
-                                Text { text: Binds.countAll(root.customs) + " things you can do"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: Binds.countAll(root.customs, root.hasSysmode) + " things you can do"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; anchors.verticalCenter: parent.verticalCenter }
                             }
                         }
 

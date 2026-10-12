@@ -92,6 +92,21 @@ Scope {
         grabT.restart()
         Qt.callLater(function () { input.forceActiveFocus() })
     }
+    // a command picked in the commands tree (CmdTree.qml): open the console with the text typed in, not run
+    property string pendingText: ""
+    function prefill(t) { pendingText = t; prefillT.restart() }
+    Timer {
+        id: prefillT
+        interval: 120                     // the tree's window lets go of the keyboard first
+        onTriggered: {
+            closeT.stop()
+            root.open = true
+            root.pinned = true
+            root.takeFocus()
+            input.text = root.pendingText
+            input.cursorPosition = input.text.length
+        }
+    }
     function close() {
         closeT.stop()
         if (askPass) cancelRun()
@@ -175,6 +190,7 @@ Scope {
             push("sysmode: secure | stealth | relaxed | lockdown | status | logs | dossier [ip]   (sm = sysmode)\n" +
                  "hotspot-on / hotspot-off: Wi-Fi hotspot.  halcyon <command>, bar-builder, wallpaper-gallery ...: open the island's windows.\n" +
                  "sudo works here: it asks for your password in this line.\n" +
+                 "SUPER+ALT+/ lists every command.\n" +
                  "cd, clear, exit, Ctrl+C stop, Ctrl+L clear, Up/Down history, Tab completes (Right arrow takes the grey suggestion). Anything else runs in bash.\n" +
                  "vim / htop / ssh ... open in a real terminal.", "info")
             return

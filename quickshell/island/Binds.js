@@ -50,6 +50,7 @@ var groups = [
         { id: "dnd", label: "Do not disturb", keys: "SUPER + SHIFT + D" },
         { id: "clearnotifs", label: "Clear all notifications", keys: "CTRL + ALT + C" },
         { id: "quickterm", label: "Quick console", keys: "SUPER + SHIFT + Return" },
+        { id: "cmdlist", label: "Console commands list (needs sysmode)", keys: "SUPER + ALT + slash", needs: "sysmode" },
         { id: "apps", label: "Background apps box", keys: "SUPER + SHIFT + A" },
         { id: "gaming", label: "Gaming mode", keys: "SUPER + F10" },
         { label: "Drag the bar left / right", kind: "text", keys: "perf / media page" },
@@ -212,9 +213,11 @@ function conflict(keys, exceptId, keyMap, customs) {
     return ""
 }
 
-function countAll(customs) {
+function countAll(customs, hasSysmode) {
     var n = (customs || []).length
-    for (var g = 0; g < groups.length; g++) n += groups[g].items.length
+    for (var g = 0; g < groups.length; g++)
+        for (var i = 0; i < groups[g].items.length; i++)
+            if (groups[g].items[i].needs !== "sysmode" || hasSysmode) n++
     return n
 }
 

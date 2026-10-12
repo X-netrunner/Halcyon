@@ -4,6 +4,12 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Commands tree: SUPER + ALT + /
+
+- New `CmdTree.qml`: every console command as a tree, same look as the SUPER+/ shortcuts tree. Branches: Sysmode (secure, stealth, relaxed, lockdown, status, verify, logs, dossier, doctor; the ones that ask for your password are marked `sudo`), Hotspot, Halcyon windows, and the console's own words. Type to search, click a command to put it in the console (it is not run, you press Enter there), Esc or Super+Q closes it.
+- Only set up with sysmode: `hyprland/keybinds.lua` binds `SUPER + ALT + slash` only when `/usr/local/bin/sysmode` exists, the island's `cmdlist` call does nothing without it, and the shortcut is hidden in the SUPER+/ tree (and not counted) until sysmode is installed. Like the other shortcuts it can be changed in the SUPER+/ tree.
+- The console's `help` mentions it.
+
 ## Console takes the keyboard when it pops out; hotspot commands work in the console
 
 - The top-left console now takes the keyboard by itself about 150 ms after it pops out (touching the corner, or clicking it in click mode), so typing goes straight into it even with a terminal open beside it. Brushing past the corner steals nothing. While the pointer is over the console it holds the keyboard exclusively (Hyprland's `follow_mouse` could otherwise hand it back to the terminal beside it); when the pointer leaves it is on-demand again, so clicking another window just works. A new window still makes it let go.
