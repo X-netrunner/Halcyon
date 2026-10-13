@@ -204,7 +204,7 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
 
     let title_clean = title.replace('\0', "");
     let msg_clean = message.replace('\0', "");
-    cmd.args(["-u", urgency, "-i", icon, &title_clean, &msg_clean]);
+    cmd.args(["-u", urgency, "-i", icon, "--", &title_clean, &msg_clean]);      // "--": text sent by an attacker that starts with "-" is not an option
     thread::spawn(move || {
         if let Ok(mut child) = cmd.spawn() {
             let _ = child.wait();

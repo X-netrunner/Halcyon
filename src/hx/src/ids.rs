@@ -79,7 +79,7 @@ pub fn notify(title: &str, message: &str, urgency: &str, icon: &str) {
     if !have_bus {
         args.push(format!("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{}/bus", uid));
     }
-    for a in ["notify-send", "-u", urgency, "-i", icon, &title.replace('\0', ""), &message.replace('\0', "")] {
+    for a in ["notify-send", "-u", urgency, "-i", icon, "--", &title.replace('\0', ""), &message.replace('\0', "")] {
         args.push(a.to_string());
     }
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();

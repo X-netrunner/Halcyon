@@ -31,4 +31,3 @@ end
 local run = (os.getenv("HOME") or "") .. "/.config/Halcyon/scripts/special.sh --run "
 hl.workspace_rule({ workspace = "special:special", on_created_empty = run .. "special" })
 hl.workspace_rule({ workspace = "special:sysmon", on_created_empty = run .. "sysmon " .. vars.sysmonCmd })
-hl.workspace_rule({ workspace = "special:todo", on_created_empty = run .. "todo " .. vars.todoCmd })

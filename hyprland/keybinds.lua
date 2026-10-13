@@ -64,13 +64,13 @@ bind("ws_scroll_up", "SUPER + mouse_up", hl.dsp.exec_cmd(home .. "/.config/Halcy
 --   SUPER+M            music               (starts Spotify the first time / when it has no window: scripts/special.sh)
 --   CTRL+SHIFT+ESC     system monitor      (opens vars.sysmonCmd the first time)
 --   SUPER+D            communication       (starts Vesktop / Discord the first time: scripts/special.sh)
---   SUPER+R            todo                (opens vars.todoCmd the first time)
+--   SUPER+R            the Halcyon calendar (quickshell/island/Calendar.qml; Settings > Calendar). Not a workspace any more.
 bind("scratch", vars.kbSpecialWs, hl.dsp.workspace.toggle_special("special"))
 bind("toscratch", "SUPER + ALT + S", hl.dsp.window.move({ workspace = "special:special" }))
 bind("music", vars.kbMusicWs, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/special.sh music"))
 bind("sysmon", vars.kbSystemMonitorWs, hl.dsp.workspace.toggle_special("sysmon"))
 bind("comm", vars.kbCommunicationWs, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/special.sh communication"))
-bind("todo", vars.kbTodoWs, hl.dsp.workspace.toggle_special("todo"))
+bind("todo", vars.kbTodoWs, hl.dsp.exec_cmd(ipc .. "calendar"))      -- id stays "todo": saved shortcut changes and gestures keep working
 
 -- Media/Volume/Brightness
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%+"))

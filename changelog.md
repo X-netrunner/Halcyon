@@ -4,6 +4,108 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Audit 2026-10-13: security, bugs and reliability fixes
+
+Line-by-line read of the installer, updater, launchers, the root-run parts of `sysmode`, the backup / restore scripts and the calendar helper, targeted searches across the rest (QML, Rust, scripts), plus
+syntax checks on everything (all `*.sh`, `sysmode`, `halcyon-tune`, `*.py`, `*.json`, `*.js`, the Rust sources) and a
+`install.sh --dry-run` run. Nothing here changes how Halcyon looks or what its features do.
+
+### Summary
+
+| # | Severity | Area | Problem | Fixed in |
+|---|----------|------|---------|----------|
+| 1 | **High** | Security | `sysmode` (root) could run helper programs from your **home folder**: any program running as you could swap one and become root the next time you ran `sudo sysmode ...` | `sysmode/sysmode` |
+| 2 | **High** | Security | Backup / restore disk picker ran `eval` on `lsblk` output: a USB stick whose **label** contains `$(...)` or backticks ran that command as you | `scripts/backup-device.sh`, `scripts/restore-device.sh` |
+| 3 | **High** | Install | Installer **aborted in the middle of step 11** on any machine without a DMI table (Raspberry Pi, some VMs / containers) | `install.sh` |
+| 4 | Medium | Security | `sysmode` ran `xhost +local:` (opens the X server to every local account and process) | `sysmode/sysmode` |
+| 5 | Medium | Security | Calendar's secret address was written **world-readable** first and `chmod`-ed afterwards; plain `http://` and unlimited downloads were accepted | `quickshell/island/scripts/gcal.py` |
+| 6 | Medium | Bug | `update.sh --rollback` could pop the **wrong git stash** (your clashing edit from an earlier update) over the rolled-back tree | `update.sh` |
+| 7 | Medium | Bug | After `pkill quickshell; start-shell.sh island` the new supervisor often found the old one's lock still held, said "already running" and quit: **no island at all** | `scripts/start-shell.sh`, `update.sh` |
+| 8 | Medium | Bug | Island forced the Mesa EGL driver on **every** machine: on a desktop with only an NVIDIA card Quickshell lost its GPU driver | `scripts/start-shell.sh` |
+| 9 | Medium | Repo | Author's machine state was committed: `gpu-mode` (`dgpu`), `gpu.lua` (hybrid laptop) and `scheme/current.lua`; a fresh install on an NVIDIA PC started in "dGPU" mode | removed + `.gitignore` |
+| 10 | Low | Bug | Settings > Backup > "Safety check" never marked itself done (shell quoting: the reminder script path had literal `"` characters) | `quickshell/island/shell.qml` |
+| 11 | Low | Bug | Touchpad toggle fell back to the author's own touchpad name, reported "Disabled" when nothing happened | `scripts/toggle_touchpad.sh` |
+| 12 | Low | Security | Text from a log line / attacker request that starts with `-` was passed to `notify-send` as an **option** | `src/log-analyst`, `src/recon-deceiver`, `src/hx/src/ids.rs` |
+| 13 | Low | Safety | `--yes` could say yes to the one question that must default to no (`confirm_no`) | `install.sh` |
+| 14 | Low | Safety | `pkill -f recon-deceiver` / `log-analyst` also killed anything with those words in its command line (an editor, `tail -f`) | `sysmode/sysmode` |
+| 15 | Low | Optimisation | The four sysmode-only Rust helpers were built (minutes of compile time) even with `--no-sysmode`, and then reported as "missing" | `install.sh` |
+| 16 | Low | Bug | `user-setup.sh` autostart removal left the tty1 line in `.bash_profile` / `.zprofile` and returned an error | `scripts/user-setup.sh` |
+| 17 | Low | Bug | `gpu-mode.sh status` exited 1 when Hyprland was not running | `scripts/gpu-mode.sh` |
+
+### Details
+
+#### 1. `sysmode` only runs root-owned helpers
+- **Before:** `sysmode` fell back to `~/.config/Halcyon/bin/*` and `~/CustomHyprScripts/...` for `attacker-dossier`, `recon-deceiver` and `log-analyst`, and `python3` scripts from `SCRIPTS_DIR`. Those files are writable by your user, but `sysmode` runs as root.
+- **Now:** new `trusted_file` / `trusted_bin` helpers accept a file only when root owns it, it is not writable by group / others, and every folder above it is the same. The user-home fallbacks are gone. The normal install is not affected: `install.sh` already copies the helpers to `/usr/local/lib/halcyon/sysmode` and `/usr/local/bin`.
+- Checked: `/usr/bin/ls` accepted; a user-owned binary refused; a root-owned helper accepted; the same file at mode 777 refused.
+
+#### 2. No `eval` on `lsblk` output
+- **Before:** `eval "$line"` on `lsblk -P` lines in both disk pickers.
+- **Now:** `parse_pairs` reads `KEY="value"` as plain text (only the nine known keys are accepted, `|` in labels is replaced). A label of ``$(touch /tmp/PWNED)`id` `` stays text (tested; nothing ran). The `rm=$RM` variable (shadowed a command name) became `isrm`.
+
+#### 3. Installer no longer dies without `/sys/class/dmi`
+- `tr ... < /sys/class/dmi/id/sys_vendor` failed on machines with no DMI table; with `set -e` that ended the whole install in `setup_asus_extras`. It now reads with `cat ... 2>/dev/null | tr ... || true`. `./install.sh --dry-run --no-packages --yes --user NAME` now runs to the end (it stopped at step 11 before).
+
+#### 4. `xhost`
+- `xhost +local:` became `xhost +SI:localuser:<your user>`: only you, not every local account.
+
+#### 5. Calendar (`gcal.py`)
+- `config.json` (the secret iCal address) is **created** with mode `0600`, its folder with `0700`.
+- Only `https://` / `webcal://` addresses are accepted, in `add-url` and again in `fetch` (so `file://`, `ftp://` and plain `http://` are refused).
+- A feed is read up to 25 MB, not without limit.
+
+#### 6. Rollback
+- `git stash push` exits 0 when there is nothing to stash; the old code then ran `stash pop` on whatever stash was newest. It now compares `refs/stash` before and after and pops only a stash it just made.
+
+#### 7. Restarting the island
+- `start-shell.sh` waits up to 6 s for the supervisor lock (`flock -w 6`) instead of giving up at once. `update.sh` also matches the short `qs` binary name when it restarts the island.
+
+#### 8. Island GPU environment
+- `__EGL_VENDOR_LIBRARY_FILENAMES` (Mesa) is set only when a non-NVIDIA GPU is really present; `VK_DRIVER_FILES` (radeon) only when an AMD GPU is present. Hybrid laptops keep exactly the old behaviour.
+
+#### 9. Per-machine files out of the repo
+- Removed `gpu-mode`, `gpu.lua`, `scheme/current.lua` (identical to `default.lua`) and added them (plus `special.conf`, `apps.custom`, `autostart.conf`, `gamemode.conf`) to `.gitignore`. `hyprland.lua` recreates `scheme/current.lua` from `default.lua`; `install.sh` and `update.sh` already keep your copies.
+- **Existing git checkouts:** run once `git rm --cached gpu-mode gpu.lua scheme/current.lua` before pulling this, so git does not delete your own copies.
+
+#### 10-15. Smaller fixes
+- **10:** in `shell.qml` the "safety check done" command had `\\\"` where `\"` was meant.
+- **11:** `toggle_touchpad.sh` now finds the touchpad by name only, says "No touchpad found" otherwise, and only reports / remembers the new state if `hyprctl` accepted it. It also no longer depends on `$XDG_RUNTIME_DIR` being set.
+- **12:** a `--` now ends the options before the title and message of `notify-send` in the three Rust helpers.
+- **13:** `confirm_no` returns "no" with `--yes`.
+- **14:** daemons are matched with `pkill -x NAME` (and the exact `python3 .../NAME.py` form for the Python fallbacks); the duplicate `source /etc/sysmode.conf` was removed.
+- **15:** `recon-deceiver`, `log-analyst`, `attacker-dossier` and `setStaticMac` are built, installed and checked only when sysmode is chosen.
+
+#### 16-17. Found in the dry-run pass
+- **16:** `login_remove` now strips the whole snippet (and the older single-line form) from `~/.bash_profile` and `~/.zprofile`, and always returns 0.
+- **17:** `gpu-mode.sh status` ends with `true`, so reading the status outside a Hyprland session is no longer an error.
+
+### Checked and fine (not changed)
+- The AWS keys, passwords and private-key text in `src/recon-deceiver` are **decoys** for the honeypot, not real secrets. A pattern search for tokens, keys and personal paths found no real ones.
+- No `curl | sh`, no `rm -rf` on an unguarded variable, no predictable files in `/tmp` (the installer log dir uses `mktemp -d`), no QML timer set below 500 ms.
+- Notification history and toast lists are trimmed and dismissed properly (`Notifs.qml`): no leak found.
+
+### Known, left alone on purpose
+- `sysmode` appends the daemons' output to files in `~/logs` as root. If you do not trust other programs running as your user, point `LOGS_DIR` at a root-owned folder.
+- `setStaticMac` builds `sh -c` strings from `nmcli` output (connection UUID, interface name); only root can set those names. Worth moving to `Command::arg` the next time the crate is touched.
+- `gcal.py add-url URL` takes the secret address as an argument, so it shows in `ps` for a moment.
+
+### How this was checked
+- `bash -n` on every shell script (installer, updater, launchers, `sysmode`, `halcyon-tune`, all `scripts/`), `py_compile` on every Python file, JSON parsed, JS files parsed with Node, QML braces counted, the Rust files that were changed parsed with `rustfmt`.
+- Run: hostile-label test of `parse_pairs`, `trusted_bin` against four cases, the stash before/after logic in a scratch repo, `gcal.py` file modes and scheme refusal, and `install.sh --dry-run`.
+- Dry-run pass: every `install.sh` flag combination; NVIDIA / Intel / AMD / hybrid paths with fake `pacman` / `lspci`; every `user-setup.sh` subcommand; `start-shell.sh` crash loop and restart; `update.sh` check / update / rollback against a local git origin; `sysmode help|status|doctor`; all 18 Lua files parsed and `hyprland.lua` run against a mock `hl` API; every `hl.*` call, config key and window-rule field compared with current Hyprland master.
+- QML heuristic scan: the repeated `id: slot` / `id: ld` in `CustomBar.qml` sit in separate delegates (valid) and the unfamiliar type names are components defined in the same file. No problem found.
+- **Not run:** a Rust build (crates.io is not reachable here), Quickshell / QML loading, a real Arch install. Please run `./install.sh` (or `update.sh`) and `scripts/halcyon-doctor.sh` on your machine and send the output if anything differs.
+
+---
+## Calendar on Super + R, from the clock, tasks that nag
+
+- **Super + R opens the Halcyon calendar** (the same window as `>calendar`). The Todoist special workspace and its `todoCmd` variable are gone; the shortcut keeps its `todo` id, so changed keys and gestures still work. A window still sitting in the old workspace keeps its bar icon until you close it.
+- **Click the bar clock** and the calendar drops out of the bar as a page of it, so it is the pill in the island style and the notch in the notch style (the same container as the media and performance pages). Click the time again, or move the pointer away, to close it.
+- **Settings > Desktop > Calendar**: master switch, clock click, reminder notifications, what counts as a task (events you mark / every event), auto Focus mode, keep reminding until done (every 2 to 30 min, give up after 1 h to 3 days).
+- **Tasks**: each event row has a Task button and, for tasks, a round check. A task is nagged (an urgent notification with a Done button, each one replacing the last) and can start Focus mode for its length. Done is stored on this computer only (`~/.local/state/island/calendar/`), nothing is sent to Google. Google Tasks are not part of the iCal feed.
+- **Fix: the shell did not load** ("Calendar unavailable ... Step is not a type"). `Step` is now its own file (`CalStep.qml`) and the function named `goto`, a reserved word that Qt 6.8 to 6.10 reject, is `gotoDay`.
+
+
 ## Calendar (`>calendar`) and notifications on top of everything
 
 - **`>calendar`** (or `halcyon calendar`): your Google Calendar as a month plus the selected day's agenda and a "Next up" card. Arrows move the day, PageUp / PageDown the month, T = today, R = refresh, Esc closes.

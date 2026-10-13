@@ -101,6 +101,8 @@ PanelWindow {
         var Rw = R + (R > 0 ? rightGap : 0) + specW
         return Math.max(L, Rw) < Math.max(Lw, R)        // strictly narrower on the right, otherwise stay on the left
     }
+    signal clockClicked()                 // a left click on the time while Settings > Calendar > Clock click is on
+    readonly property bool calClock: opt.calOn !== false && opt.calClock !== false
     readonly property bool dropOn: opt.dropDown === "stack" || opt.dropDown === "side"     // Settings > Bar style > Drag the bar down
     readonly property bool showBg: opt.bgWhere !== "corner"
 
@@ -451,7 +453,7 @@ PanelWindow {
                 font.family: win.pal.uiFont
                 font.pixelSize: win.textPx
                 font.weight: Font.DemiBold
-                TapHandler { acceptedButtons: Qt.LeftButton; onTapped: { if (win.dropOn) win.pageDrop(1); else win.statusClicked() } }
+                TapHandler { acceptedButtons: Qt.LeftButton; onTapped: { if (win.calClock) win.clockClicked(); else if (win.dropOn) win.pageDrop(1); else win.statusClicked() } }
                 TapHandler { acceptedButtons: Qt.RightButton; onTapped: win.clockToggled("24h") }
                 TapHandler { acceptedButtons: Qt.MiddleButton; onTapped: win.clockToggled("seconds") }
             }
@@ -711,7 +713,7 @@ PanelWindow {
         { name: "music", glyph: 0xF075A },            // SUPER+M  music
         { name: "sysmon", glyph: 0xF04C5 },           // CTRL+SHIFT+ESC  performance
         { name: "communication", glyph: 0xF0361 },    // SUPER+D  discord
-        { name: "todo", glyph: 0xF05E0 }              // SUPER+R  todoist
+        { name: "todo", glyph: 0xF05E0 }              // old Todoist workspace: only shows while a window is still in it
     ]
     // workspaces 1..N are always drawn (N = Settings > Bar style > workspaces always shown, or the highest one in use)
     readonly property int wsCount: {

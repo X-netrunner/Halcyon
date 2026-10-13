@@ -19,15 +19,54 @@ Scope {
     property bool profileStars: true
     property bool open: false
 
-    function show() { open = true }
+    // Switches from Settings > Calendar (shell.qml passes them in)
+    property bool enabled: true              // master switch: off = no window, no sync, no reminders, no auto Focus
+    property bool notifyOn: true             // reminder notifications
+    property bool focusOn: false             // start a Focus session when a task begins
+    property bool nagOn: false               // keep reminding until a task is marked done
+    property int nagEvery: 5                 // minutes between the nags
+    property int nagGiveUp: 180              // stop nagging this many minutes after the task ended
+    property bool tasksAll: false            // every event counts as a task (otherwise only the ones you flag)
+
+    function show() { if (enabled) open = true }
     function hide() { open = false }
-    function toggle() { open = !open }
+    // the bar page opened: bring the data up to date the way opening the full window does
+    function refresh() {
+        if (!enabled) return
+        now = Date.now(); today = midnight(new Date()); gotoDay(new Date())
+        loadConf(); loadEvents()
+        if (cfg.configured && (Date.now() / 1000 - cfg.synced) > 300) sync()
+    }
+    function toggle() { if (open) open = false; else show() }
+    onEnabledChanged: if (!enabled) open = false
 
     readonly property string script: Quickshell.shellDir + "/scripts/gcal.py"
 
     // ---------------------------------------------------------------- data
     property var cfg: ({ configured: false, count: 0, names: [], remind: [10, 0], synced: 0, error: "" })
     property var events: []
+    property var doneMap: ({})               // event id -> true: marked done (kept here only, never sent to Google)
+    property var taskMap: ({})               // event id -> true: flagged as a task
+    function isDone(e) { return !!doneMap[e.id] }
+    function isTask(e) { return tasksAll || !!taskMap[e.id] }
+    function setDone(e, on) {
+        var m = Object.assign({}, doneMap); if (on) m[e.id] = true; else delete m[e.id]; doneMap = m
+        markProc.command = ["python3", script, on ? "done" : "undone", e.id]; markProc.running = true
+    }
+    function setTask(e, on) {
+        var m = Object.assign({}, taskMap); if (on) m[e.id] = true; else delete m[e.id]; taskMap = m
+        markProc.command = ["python3", script, "task", e.id, on ? "on" : "off"]; markProc.running = true
+    }
+    // the first task that is running now or comes next (for the bar page's header line)
+    readonly property var nextTask: {
+        var n = Math.floor(now / 1000), best = null
+        for (var i = 0; i < events.length; i++) {
+            var e = events[i]
+            if (e.allDay || doneMap[e.id] || !(tasksAll || taskMap[e.id]) || e.end <= n) continue
+            if (!best || e.start < best.start) best = e
+        }
+        return best
+    }
     property var dayMap: ({})
     property bool syncing: false
     property bool setupOpen: false           // the connect / manage page instead of the calendar
@@ -65,7 +104,7 @@ Scope {
     onEventsChanged: rebuild()
     readonly property var selEvents: dayMap[keyOf(sel)] || []
 
-    function goto(d) {
+    function gotoDay(d) {
         sel = midnight(d)
         viewY = sel.getFullYear(); viewM = sel.getMonth()
     }
@@ -140,7 +179,18 @@ Scope {
     Process {
         id: evProc
         command: ["python3", root.script, "events"]
-        stdout: StdioCollector { onStreamFinished: { try { root.events = JSON.parse(text).events || [] } catch (e) {} } }
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var d = JSON.parse(text)
+                    root.events = d.events || []
+                    var dm = {}, tm = {}
+                    ;(d.done || []).forEach(function (k) { dm[k] = true })
+                    ;(d.tasks || []).forEach(function (k) { tm[k] = true })
+                    root.doneMap = dm; root.taskMap = tm
+                } catch (e) {}
+            }
+        }
     }
     Process {
         id: syncProc
@@ -168,7 +218,17 @@ Scope {
     Process { id: clearProc; command: ["python3", root.script, "clear"]; onExited: { root.events = []; root.setupMsg = ""; root.loadConf() } }
     Process { id: remindProc; onExited: root.loadConf() }
     // reminders: the script sends a notification for each one that is due and remembers which it sent
-    Process { id: notifyProc; command: ["python3", root.script, "notify"] }
+    Process { id: markProc }
+    Process { id: notifyProc }
+    function runWorker() {
+        var cmd = ["python3", script, "notify"]
+        if (!notifyOn) cmd.push("--no-remind")
+        if (nagOn && notifyOn) cmd.push("--nag", String(nagEvery), "--giveup", String(nagGiveUp))
+        if (focusOn) cmd.push("--focus")
+        if (tasksAll) cmd.push("--all-tasks")
+        notifyProc.command = cmd
+        notifyProc.running = true
+    }
 
     // ---------------------------------------------------------------- "open Google for me"
     // The button opens Google Calendar's settings in your browser and the window steps aside. While you copy the "Secret address in
@@ -215,22 +275,23 @@ Scope {
         }
     }
 
-    Component.onCompleted: { loadConf(); loadEvents() }
+    Component.onCompleted: { if (enabled) { loadConf(); loadEvents() } }
     onCfgChanged: { if (cfg.configured && events.length === 0 && !syncing && cfg.synced === 0) sync() }
     onOpenChanged: {
         if (open) {
-            today = midnight(new Date()); goto(new Date()); now = Date.now()
+            today = midnight(new Date()); gotoDay(new Date()); now = Date.now()
             setupOpen = !cfg.configured; setupMsg = ""
             loadConf(); loadEvents()
             if (cfg.configured && (Date.now() / 1000 - cfg.synced) > 300) sync()
         }
     }
     // background: every 15 minutes a sync, every minute the reminders. Only when a calendar is connected.
-    Timer { interval: 900000; repeat: true; running: root.cfg.configured; onTriggered: root.sync() }
+    Timer { interval: 900000; repeat: true; running: root.enabled && root.cfg.configured; onTriggered: root.sync() }
     Timer {
         interval: 60000; repeat: true; triggeredOnStart: true
-        running: root.cfg.configured && root.cfg.remind && root.cfg.remind.length > 0
-        onTriggered: { notifyProc.running = true; root.now = Date.now() }
+        running: root.enabled && root.cfg.configured
+            && ((root.notifyOn && root.cfg.remind && root.cfg.remind.length > 0) || root.nagOn || root.focusOn)
+        onTriggered: { if (!notifyProc.running) root.runWorker(); root.now = Date.now() }
     }
     Timer { interval: 30000; repeat: true; running: root.open; onTriggered: { root.now = Date.now(); root.today = root.midnight(new Date()) } }
 
@@ -270,65 +331,6 @@ Scope {
         MouseArea { id: ma2; anchors.fill: parent; hoverEnabled: true; onClicked: pl.clicked() }
     }
 
-    // One step of the connect page, drawn like a notification in the Timeline look: a number on the left, a dot on a thin rail,
-    // the text on the right. Whatever is put inside (buttons) sits under the text.
-    component Step: Item {
-        id: st
-        property int num: 1
-        property string title: ""
-        property string body: ""
-        property bool done: false
-        property bool current: false
-        property bool last: false
-        default property alias extra: slot.data
-        readonly property color tone: (done || current) ? root.pal.accent : Qt.alpha(root.pal.muted, 0.8)
-        height: sc.implicitHeight + 20
-
-        property real glow: 0
-        SequentialAnimation on glow {
-            running: st.current && root.open
-            loops: Animation.Infinite
-            NumberAnimation { to: 1; duration: 1100; easing.type: Easing.InOutSine }
-            NumberAnimation { to: 0; duration: 1100; easing.type: Easing.InOutSine }
-        }
-        Text {
-            x: 0; y: 3; width: 38
-            horizontalAlignment: Text.AlignRight
-            text: st.done ? "✓" : String(st.num)
-            color: st.current ? root.pal.accent : Qt.alpha(root.pal.muted, 0.9)
-            font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
-        }
-        Rectangle { visible: !st.last; x: 52; y: 20; width: 1; height: Math.max(0, st.height - 20); color: Qt.alpha(root.pal.text, 0.10) }
-        Rectangle {
-            x: 52.5 - width / 2; y: 8 + 5.5 - height / 2
-            width: 19; height: 19; radius: 9.5
-            color: Qt.alpha(st.tone, 0.14 + 0.30 * st.glow)
-        }
-        Rectangle { x: 52.5 - 5.5; y: 8; width: 11; height: 11; radius: 5.5; color: st.tone }
-        Column {
-            id: sc
-            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 72; rightMargin: 8 }
-            spacing: 3
-            Text {
-                width: parent.width
-                text: st.title
-                color: root.pal.text
-                font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 2; font.weight: Font.DemiBold
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                width: parent.width
-                visible: st.body !== ""
-                text: st.body
-                color: Qt.alpha(root.pal.text, 0.72)
-                font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
-                lineHeight: 1.1
-                wrapMode: Text.WordWrap
-            }
-            Row { id: slot; visible: children.length > 0; topPadding: 6; spacing: 8 }
-        }
-    }
-
     LazyLoader {
         active: root.open
         PanelWindow {
@@ -350,13 +352,13 @@ Scope {
                 Keys.onPressed: e => {
                     if (e.key === Qt.Key_Escape) { if (root.setupOpen && root.cfg.configured) root.setupOpen = false; else root.hide(); e.accepted = true; return }
                     if (!root.ready) return
-                    if (e.key === Qt.Key_Left) root.goto(root.addDays(root.sel, -1))
-                    else if (e.key === Qt.Key_Right) root.goto(root.addDays(root.sel, 1))
-                    else if (e.key === Qt.Key_Up) root.goto(root.addDays(root.sel, -7))
-                    else if (e.key === Qt.Key_Down) root.goto(root.addDays(root.sel, 7))
+                    if (e.key === Qt.Key_Left) root.gotoDay(root.addDays(root.sel, -1))
+                    else if (e.key === Qt.Key_Right) root.gotoDay(root.addDays(root.sel, 1))
+                    else if (e.key === Qt.Key_Up) root.gotoDay(root.addDays(root.sel, -7))
+                    else if (e.key === Qt.Key_Down) root.gotoDay(root.addDays(root.sel, 7))
                     else if (e.key === Qt.Key_PageUp) root.moveMonth(-1)
                     else if (e.key === Qt.Key_PageDown) root.moveMonth(1)
-                    else if (e.key === Qt.Key_T) root.goto(new Date())
+                    else if (e.key === Qt.Key_T) root.gotoDay(new Date())
                     else if (e.key === Qt.Key_R) root.sync()
                     else return
                     e.accepted = true
@@ -392,7 +394,7 @@ Scope {
                         }
                         IconBtn { visible: root.ready; glyph: "‹"; onClicked: root.moveMonth(-1) }
                         IconBtn { visible: root.ready; glyph: "›"; onClicked: root.moveMonth(1) }
-                        Pill { visible: root.ready; label: "Today"; height: 30; width: 72; onClicked: root.goto(new Date()) }
+                        Pill { visible: root.ready; label: "Today"; height: 30; width: 72; onClicked: root.gotoDay(new Date()) }
                         Item { Layout.fillWidth: true }
                         Text {
                             visible: root.cfg.configured
@@ -593,9 +595,13 @@ Scope {
                                                 x: 0; y: 10; width: 3; height: parent.height - 20; radius: 2
                                                 color: modelData.allDay ? root.pal.accent2 : root.pal.accent
                                             }
+                                            CalMarks {
+                                                pal: root.pal; cal: root; ev: modelData
+                                                anchors { right: parent.right; rightMargin: 12; top: parent.top; topMargin: 10 }
+                                            }
                                             Row {
                                                 id: rc
-                                                x: 18; y: 12; width: parent.width - 32; spacing: 14
+                                                x: 18; y: 12; width: parent.width - 32 - 90; spacing: 14
                                                 Text {
                                                     width: 70
                                                     text: modelData.allDay ? "all day" : root.clock(modelData.start)
@@ -607,6 +613,7 @@ Scope {
                                                     Text {
                                                         width: parent.width
                                                         text: modelData.title
+                                                        font.strikeout: root.isDone(modelData)
                                                         color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold
                                                         wrapMode: Text.WordWrap
                                                     }
@@ -669,23 +676,27 @@ Scope {
                                                                               : "No Google login is handed over and nothing is ever changed in your calendar."
                                 }
 
-                                Step {
+                                CalStep {
+                                    pal: root.pal; live: root.open
                                     width: sCol.width; num: 1; done: root.watching; current: !root.watching
                                     title: "Open your calendar settings"
                                     body: "Opens in your browser. The window steps aside."
                                     Pill { primary: true; label: "Open Google Calendar"; onClicked: root.openGoogle() }
                                 }
-                                Step {
+                                CalStep {
+                                    pal: root.pal; live: root.open
                                     width: sCol.width; num: 2; current: root.watching
                                     title: "Pick your own calendar"
                                     body: "Under \"Settings for my calendars\" click the one with your name or email, not a shared or public one."
                                 }
-                                Step {
+                                CalStep {
+                                    pal: root.pal; live: root.open
                                     width: sCol.width; num: 3
                                     title: "Scroll to Integrate calendar"
                                     body: "Do not use \"Public URL\": it only says Busy."
                                 }
-                                Step {
+                                CalStep {
+                                    pal: root.pal; live: root.open
                                     width: sCol.width; num: 4; last: true; current: root.watching
                                     title: "Copy the secret address"
                                     body: "Press the copy button next to \"Secret address in iCal format\". The island sees it and connects by itself."

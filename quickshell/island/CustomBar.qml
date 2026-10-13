@@ -70,6 +70,8 @@ PanelWindow {
     readonly property int itemGap: sp.gap
     readonly property int rightGap: lay.gap !== null ? lay.gap : sp.autoRightGap
     readonly property bool showBatPct: opt.notchBatPct === true
+    signal clockClicked()                 // a left click on the time while Settings > Calendar > Clock click is on
+    readonly property bool calClock: opt.calOn !== false && opt.calClock !== false
     readonly property bool dropOn: opt.dropDown === "stack" || opt.dropDown === "side"
 
     // ---- size (Bar size and padding): the same numbers as the Notch
@@ -402,7 +404,7 @@ PanelWindow {
                 font.family: win.pal.uiFont
                 font.pixelSize: win.textPx
                 font.weight: Font.DemiBold
-                TapHandler { acceptedButtons: Qt.LeftButton; onTapped: win.statusTap() }
+                TapHandler { acceptedButtons: Qt.LeftButton; onTapped: { if (win.calClock) win.clockClicked(); else win.statusTap() } }
                 TapHandler { acceptedButtons: Qt.RightButton; onTapped: win.clockToggled("24h") }
                 TapHandler { acceptedButtons: Qt.MiddleButton; onTapped: win.clockToggled("seconds") }
             }

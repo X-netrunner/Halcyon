@@ -38,7 +38,7 @@ var groups = [
         { id: "music", label: "Music (your default player)", keys: "SUPER + M" },
         { id: "sysmon", label: "System monitor", keys: "CTRL + SHIFT + Escape" },
         { id: "comm", label: "Communication (your chat app)", keys: "SUPER + D" },
-        { id: "todo", label: "Tasks", keys: "SUPER + R" }
+        { id: "todo", label: "Calendar", keys: "SUPER + R" }
     ] },
     { id: "island", title: "Island", items: [
         { id: "launcher", label: "Launcher", keys: "Super" },

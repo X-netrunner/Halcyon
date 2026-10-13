@@ -267,7 +267,7 @@ confirm() {   # default YES (Enter = yes). No terminal to ask on = no, so a pipe
     [[ ! "$ans" =~ ^[Nn]$ ]]
 }
 confirm_no() {   # default NO: only for the one thing that must never happen by pressing Enter (the lock-screen login)
-    [[ "$AUTO_CONFIRM" == "true" ]] && return 0
+    [[ "$AUTO_CONFIRM" == "true" ]] && return 1          # --yes means "no questions", never "yes to the risky one" (it used to return 0 here)
     [[ -t 0 ]] || return 1
     local ans; read -rp "$1 [y/N]: " ans || return 1
     [[ "$ans" =~ ^[Yy]$ ]]
@@ -973,7 +973,9 @@ BUILD_ROOT="$TARGET_HOME/.cache/halcyon-build"           # outside the rice: the
 run_as_user_cmd "Creating $BIN_DIR" mkdir -p "$BIN_DIR" "$BUILD_ROOT" \
     || die "Cannot create $BIN_DIR$([[ "$LINK_CONFIG" == "true" ]] && echo " (with --link the Halcyon folder itself must be writable by $TARGET_USER)")"
 BUILD_FAILED=()
-CRATES=(hx power-manager touchpad-gestures recon-deceiver log-analyst attacker-dossier setStaticMac)
+CRATES=(hx power-manager touchpad-gestures)
+SYSMODE_CRATES=(recon-deceiver log-analyst attacker-dossier setStaticMac)       # only sysmode uses these four: no sysmode, no build
+[[ "$SYSMODE" == "true" ]] && CRATES+=("${SYSMODE_CRATES[@]}")
 [[ "$SAFETY" == "true" ]] && CRATES+=(safety-check)
 
 if [[ "$DRY_RUN" != "true" ]]; then
@@ -1295,7 +1297,9 @@ if [[ "$SKIP_DRIVERS" != "true" ]]; then setup_kbd_backlight; else log_info "Key
 # keys (hyprland/keybinds.lua, only when asus::kbd_backlight exists) always work, with or without asusd.
 setup_asus_extras() {
     local id
-    id="$(tr 'A-Z' 'a-z' < /sys/class/dmi/id/sys_vendor 2>/dev/null)"
+    # cat, not `tr < file`: a machine with no DMI table (Raspberry Pi, some VMs and containers) has no sys_vendor file, the failed
+    # redirect printed an error and (set -e) ENDED THE WHOLE INSTALL here, in the middle of step 11
+    id="$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null | tr 'A-Z' 'a-z' || true)"
     [[ "$id" == *asus* ]] || return 0
     is_laptop || return 0
     if [[ "$DRY_RUN" == "true" ]]; then log_task "[DRY-RUN] ASUS laptop: install asusctl and start asusd (Fn keyboard-light key)"; return 0; fi
@@ -1396,10 +1400,9 @@ check_cmd start-shell.sh "$TARGET_RICE/scripts/start-shell.sh" critical
 check_cmd hx "$BIN_DIR/hx" critical
 check_cmd power-manager "$BIN_DIR/power-manager" critical
 check_cmd touchpad-gestures "$BIN_DIR/touchpad-gestures" critical
-check_cmd recon-deceiver "$BIN_DIR/recon-deceiver" critical
-check_cmd log-analyst "$BIN_DIR/log-analyst" critical
-check_cmd attacker-dossier "$BIN_DIR/attacker-dossier" critical
-check_cmd setStaticMac "$BIN_DIR/setStaticMac" critical
+if [[ "$SYSMODE" == "true" ]]; then
+    for h in "${SYSMODE_CRATES[@]}"; do check_cmd "$h" "$BIN_DIR/$h" critical; done
+fi
 if [[ "$PACKAGES" == "true" ]]; then
     for id in $PICK_BROWSER; do [[ "$id" == keep ]] || check_cmd "$id" "$(choice_bin browser "$id")"; done
     for id in $PICK_FILES;   do [[ "$id" == none ]] || check_cmd "$id" "$(choice_bin files "$id")"; done

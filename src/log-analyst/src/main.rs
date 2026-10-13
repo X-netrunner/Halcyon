@@ -156,7 +156,7 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
         c
     };
 
-    cmd.args(["-u", urgency, "-i", icon, title, message]);
+    cmd.args(["-u", urgency, "-i", icon, "--", title, message]);      // "--": text from a log line that starts with "-" is not an option
     thread::spawn(move || {
         if let Ok(mut child) = cmd.spawn() {
             let _ = child.wait();
