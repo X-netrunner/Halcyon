@@ -44,7 +44,7 @@ var groups = [
         { id: "launcher", label: "Launcher", keys: "Super" },
         { id: "overview", label: "Live workspace tree", keys: "SUPER + TAB" },
         { id: "cheatsheet", label: "This cheatsheet", keys: "SUPER + slash" },
-        { id: "settings", label: "Rice settings", keys: "SUPER + F11" },
+        { id: "settings", label: "Rice settings", keys: "SUPER + I" },
         { id: "theme", label: "Light / dark theme", keys: "SUPER + SHIFT + T" },
         { id: "notifcenter", label: "Notification centre", keys: "SUPER + SHIFT + N" },
         { id: "dnd", label: "Do not disturb", keys: "SUPER + SHIFT + D" },
