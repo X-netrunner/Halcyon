@@ -1,9 +1,9 @@
 function halcyon --description 'Open and control the Halcyon desktop from a terminal'
     # halcyon <command>: runs the same thing as the app menu's ">" commands and the keybinds, through the island's IPC.
     # Installed to ~/.config/fish/functions/halcyon.fish by install.sh / update.sh (scripts/user-setup.sh fish-commands).
-    set -l names launcher settings notification-builder bar-builder wallpaper-gallery startup-view notifications clear-notifications dnd cheatsheet power-menu quick-terminal overview gaming-mode caffeine lock theme reload
-    set -l calls launcher settings notifbuilder barbuilder gallery startup notifcenter clearnotifs dnd cheatsheet power quickterm overview gaming caffeine lock theme reload
-    set -l what "app menu and commands" "Settings" "notification box builder" "bar builder" "wallpaper gallery" "startup and processes" "notification centre" "remove all notifications" "do not disturb (toggle)" "shortcuts tree" "power menu" "pop-out terminal" "workspace tree" "gaming mode (toggle)" "keep the screen awake (toggle)" "lock the screen" "light / dark theme (toggle)" "reload the island and Hyprland"
+    set -l names launcher settings notification-builder bar-builder wallpaper-gallery startup-view tour calendar notifications clear-notifications dnd cheatsheet power-menu quick-terminal overview gaming-mode caffeine lock theme reload
+    set -l calls launcher settings notifbuilder barbuilder gallery startup tour calendar notifcenter clearnotifs dnd cheatsheet power quickterm overview gaming caffeine lock theme reload
+    set -l what "app menu and commands" "Settings" "notification box builder" "bar builder" "wallpaper gallery" "startup and processes" "guided tour (replay)" "Google Calendar" "notification centre" "remove all notifications" "do not disturb (toggle)" "shortcuts tree" "power menu" "pop-out terminal" "workspace tree" "gaming mode (toggle)" "keep the screen awake (toggle)" "lock the screen" "light / dark theme (toggle)" "reload the island and Hyprland"
 
     if test (count $argv) -eq 0; or contains -- $argv[1] -h --help help
         echo "Usage: halcyon <command>"

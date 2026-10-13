@@ -8,6 +8,7 @@ import Quickshell.Services.Mpris
 import "StarData.js" as Stars
 import "Routes.js" as Routes
 import "Binds.js" as Binds
+import "Tour.js" as TourData
 
 ShellRoot {
     id: root
@@ -653,6 +654,149 @@ ShellRoot {
         onUse: t => { cmdTree.hide(); quickTerm.prefill(t) }
     }
 
+    // >calendar: Google Calendar (read-only, through its private iCal address) + reminder notifications (Calendar.qml, scripts/gcal.py)
+    Calendar {
+        id: calendar
+        pal: pal
+        stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
+    }
+
+    // Notifications are on top of every window, big ones included. Those open on the same layer and later = above, so whenever one
+    // opens while a toast is showing (or a toast arrives while one is open) the notification window is put back on top.
+    readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open || calendar.open || powerMenu.open || tour.open
+    property int notifSeen: 0
+    onAnyOverlayChanged: if (anyOverlay) notifRaiseT.restart()
+    Connections {
+        target: notifs
+        function onToastsChanged() {
+            var n = notifs.toasts.length
+            if (n > root.notifSeen && root.anyOverlay) notifRaiseT.restart()
+            root.notifSeen = n
+        }
+    }
+    Timer { id: notifRaiseT; interval: 260; onTriggered: if (notifs.toasts.length > 0 || notifs.centerOpen) notifs.raise() }
+
+    // =====================================================================
+    //  GUIDED TOUR (Tour.qml). The steps are in features.json, the only file to edit when a feature ships.
+    //  First start = the whole list. After an update = only entries that are new / have a higher "rev" compared with the copy
+    //  the user saw last (~/.local/state/island/features.seen.json). Existing users without a copy only get the non-core ones.
+    // =====================================================================
+    property string tourMode: ""            // fresh | legacy | seen
+    property var tourCur: null              // features.json now
+    property var tourSeenFile: null         // the copy the user saw
+    property string tourDemoName: ""
+    property bool tourTermOpened: false
+    Process {
+        running: true
+        command: ["sh", "-c",
+            "f=\"$1/features.json\"; d=\"$2\"; mkdir -p \"$d\"; [ -f \"$f\" ] || exit 0; "
+            + "if [ -f \"$d/features.seen.json\" ]; then m=seen; s=$(cat \"$d/features.seen.json\"); "
+            + "elif [ -f \"$d/tour.pending\" ]; then m=fresh; s=null; "
+            + "elif [ -s \"$d/settings.json\" ]; then m=legacy; s=null; "
+            + "else m=fresh; s=null; : > \"$d/tour.pending\"; fi; "      // pending: settings.json appears within seconds, this still counts as a first start after a reload
+            + "printf '{\"mode\":\"%s\",\"seen\":%s,\"cur\":' \"$m\" \"$s\"; cat \"$f\"; printf '}'",
+            "sh", Quickshell.shellDir, stateDir]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var t = JSON.parse(text)
+                    root.tourMode = t.mode; root.tourCur = t.cur; root.tourSeenFile = t.seen
+                    tourBoot.restart()
+                } catch (e) {}
+            }
+        }
+    }
+    // wait until the island, the wallpaper and the bar have settled, and never show it over the lock screen or in Gaming mode
+    Timer {
+        id: tourBoot
+        interval: 5000
+        onTriggered: {
+            if (!root.settingsLoaded || lockScreen.locked || root.gaming || tour.open) { restart(); return }
+            root.tourAuto()
+        }
+    }
+    function tourPlan(mode) { return TourData.plan(mode, tourCur, tourSeenFile, { sysmode: cmdTree.available }) }
+    function tourAuto() {
+        if (!tourCur) return
+        var plan = tourPlan(tourMode)
+        if (plan.steps.length === 0) { tourSaveSeen(); return }       // nothing new: just keep the copy current
+        tourBegin(plan)
+    }
+    // `>tour` / `halcyon tour`: the whole thing again
+    function tourReplay() { if (tourCur) tourBegin(tourPlan("fresh")) }
+    function tourBegin(plan) {
+        overviewOpen = false
+        if (page === "launcher") page = "home"
+        tour.start(plan.mode, plan.steps)
+    }
+    // "seen" = a copy of features.json as it is now; the next update is diffed against it
+    function tourSaveSeen() {
+        Quickshell.execDetached(["sh", "-c", "mkdir -p \"$2\" && cp \"$1/features.json\" \"$2/features.seen.json\" && rm -f \"$2/tour.pending\"", "sh", Quickshell.shellDir, stateDir])
+    }
+    // The island opens what the step talks about and closes it again when the step changes. Re-applied every second, because
+    // hover timers elsewhere would otherwise fold a page or box back by themselves.
+    readonly property var tourBigDemos: ["cheat", "cmds", "tree", "settings", "calendar"]
+    function tourApply(name) {
+        if (name === "perf" || name === "media" || name === "launcher") { if (page !== name) page = name }
+        else if (page === "perf" || page === "media" || page === "launcher") page = "home"
+        if (!dropOn) {
+            if (name === "corner") corner.pinFor(600000)
+            else if (corner.hovering) corner.hovering = false
+        }
+        if (notifs.edgeOn) { if (notifs.centerOpen !== (name === "notifs")) notifs.centerOpen = (name === "notifs") }
+        if (name === "term") {
+            if (!quickTerm.open) { quickTerm.open = true; quickTerm.pinned = true; tourTermOpened = true }
+        } else if (tourTermOpened) { quickTerm.close(); tourTermOpened = false }
+        if (name === "cheat") { if (!cheat.open) cheat.show() } else if (cheat.open) cheat.hide()
+        if (name === "cmds") { if (!cmdTree.open) cmdTree.show() } else if (cmdTree.open) cmdTree.hide()
+        if (name === "tree") overviewOpen = true; else if (overviewOpen) overviewOpen = false
+        if (name === "settings") { if (!settingsWin.open) settingsWin.show() } else if (settingsWin.open) settingsWin.hide()
+        if (name === "calendar") { if (!calendar.open) calendar.show() } else if (calendar.open) calendar.hide()
+        if (autoHide) { win.peek = true; hideTimer.stop() }
+    }
+    Timer { interval: 1000; repeat: true; running: tour.open; onTriggered: root.tourApply(root.tourDemoName) }
+    // windows that open on top of the tour's own window: put it back on top after they have appeared
+    Timer { id: tourRaiseT; interval: 220; onTriggered: if (tour.open) tour.raise() }
+    // where the hole goes, in screen pixels (sw x sh = this screen); null = no hole. Read live (about 30 times a second) so the
+    // light follows the bar while it grows, shrinks or slides.
+    function tourBarRect() {
+        if (island.opacity > 0.05 && island.visible) {
+            var p = island.mapToItem(null, 0, 0)
+            return { x: p.x, y: p.y, w: island.width, h: island.height, r: island.radius }
+        }
+        // notch style at rest: the notch is the bar, the island itself is not drawn
+        return { x: (win.width - notchBodyW) / 2, y: 0, w: notchBodyW, h: notchBarH, r: pal.rMd }
+    }
+    function tourRect(name, sw, sh) {
+        switch (name) {
+        case "bar": case "perf": case "media": return tourBarRect()          // pages are the island itself, grown
+        case "corner":
+            if (dropOn) return null
+            return { x: sw - pal.boxEdge - panel.width, y: sh - pal.boxEdge - panel.height, w: panel.width, h: panel.height }
+        case "notifs": return notifs.tourRect(sw)
+        case "term": return quickTerm.tourRect()
+        }
+        return null
+    }
+    Tour {
+        id: tour
+        pal: pal
+        rectFn: (name, sw, sh) => root.tourRect(name, sw, sh)
+        onStepShown: step => {
+            root.tourDemoName = step.demo || ""
+            root.tourApply(root.tourDemoName)
+            if (root.tourBigDemos.indexOf(root.tourDemoName) >= 0) tourRaiseT.restart()
+        }
+        onFinished: completed => {
+            root.tourDemoName = ""
+            root.tourApply("")
+            root.tourSaveSeen()
+        }
+    }
+
     // ---------- actions ----------
     property bool scrollOpened: false
     function go(dir) {
@@ -680,7 +824,9 @@ ShellRoot {
     // the top-most thing the island has on screen (power menu > settings > shortcuts > tree view > quick console >
     // notification centre > launcher / performance / media page). Returns false when there is nothing to close.
     function closeOverlay() {
+        if (tour.open) { tour.end(false); return true }
         if (powerMenu.open) { powerMenu.hide(); return true }
+        if (calendar.open) { calendar.hide(); return true }
         if (settingsWin.startupOpen) { settingsWin.startupOpen = false; return true }
         if (settingsWin.builderOpen) { settingsWin.builderOpen = false; return true }
         if (settingsWin.nbOpen) { settingsWin.nbOpen = false; return true }
@@ -1170,6 +1316,8 @@ ShellRoot {
         case "barbuilder": settingsWin.openBuilder(); break
         case "notifbuilder": settingsWin.openNotifBuilder(); break
         case "startupview": settingsWin.openStartup(); break
+        case "tour": tourReplay(); break
+        case "calendar": calendar.toggle(); break
         case "reload": fullReloadProc.running = true; break
         case "settings": settingsWin.show(); break
         case "power": powerMenu.show(); break
@@ -1522,6 +1670,8 @@ ShellRoot {
         function notifbuilder(): void { settingsWin.openNotifBuilder() }
         function gallery(): void { settingsWin.openGallery() }
         function startup(): void { settingsWin.openStartup() }
+        function tour(): void { root.tourReplay() }
+        function calendar(): void { root.runCommand("calendar") }
         function processes(): void { settingsWin.openStartup() }
         function wallpaperpicker(): void { settingsWin.openGallery() }
         function power(): void { powerMenu.show() }
@@ -1690,7 +1840,7 @@ ShellRoot {
                     var l = root.opt.scrollLinger !== undefined ? root.opt.scrollLinger : 3000
                     return root.scrollOpened ? Math.max(c, l) : c
                 }
-                running: (root.page === "media" || root.page === "perf" || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered
+                running: (root.page === "media" || root.page === "perf" || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open
                 onTriggered: { root.page = "home"; root.hoverOpened = false; root.scrollOpened = false }
             }
 
