@@ -95,6 +95,13 @@ Scope {
         grabT.restart()
         Qt.callLater(function () { input.forceActiveFocus() })
     }
+    function run(cmd) {
+        closeT.stop()
+        open = true
+        pinned = true
+        takeFocus()
+        submit(cmd)
+    }
     // a command picked in the commands tree (CmdTree.qml): open the console with the text typed in, not run
     property string pendingText: ""
     function prefill(t) { pendingText = t; prefillT.restart() }
@@ -412,11 +419,11 @@ Scope {
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-term"
-        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.layer: WlrLayer.Overlay
         // Exclusive while the pointer is over the console (Hyprland's follow_mouse would otherwise hand the keyboard to the
         // terminal beside it); the moment the pointer leaves it is on-demand again, so clicking another window just works
         WlrLayershell.keyboardFocus: !root.focused ? WlrKeyboardFocus.None
-                                   : ((root.grabKeys || root.zoneHover) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
+                                   : ((root.grabKeys || root.zoneHover || root.pinned || root.open) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
 
         mask: Region { item: zone }
 
@@ -453,10 +460,10 @@ Scope {
             width: root.boxW
             height: Math.min(520, 40 + body.implicitHeight + 76)
             radius: root.pal.rLg
-            opacityBody: root.pal.glassSolid - 0.04
+            opacityBody: 0.94
             opacity: Math.min(1, root.reveal * 1.6)
             visible: opacity > 0.01
-            border.color: root.focused ? root.pal.lineFocus : Qt.alpha(root.pal.accent, 0.30)
+            border.color: root.focused ? root.pal.lineFocus : Qt.alpha(root.pal.accent, 0.40)
             Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             Behavior on y { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
@@ -467,12 +474,19 @@ Scope {
                 onClicked: root.takeFocus()
             }
 
+            // High-contrast background backing to ensure text is crisp and readable
+            Rectangle {
+                anchors.fill: parent
+                radius: root.pal.rLg
+                color: Qt.rgba(0, 0, 0, 0.45)
+            }
+
             // hover mode: resting the pointer on the box itself (not just the corner) is enough to type, no click needed.
             // Leaving with an empty prompt closes it and hands the keyboard straight back.
             HoverHandler { onHoveredChanged: { if (hovered && root.open && !root.focused && !root.clickMode) dwellT.restart(); else dwellT.stop() } }
             Timer { id: dwellT; interval: 250; onTriggered: if (root.open && !root.focused) root.takeFocus() }
 
-            // same quiet look as the tree: drifting dots, and the shield / dragon for lockdown / stealth
+            // subtle constellation backing (toned down so text remains readable)
             Backdrop {
                 visible: root.shown && root.stars
                 anchors.fill: parent
@@ -481,8 +495,8 @@ Scope {
                 mode: root.sysmode
                 avatarStars: root.starData
                 profileStars: root.profileStars
-                dots: 8
-                artStrength: 1
+                dots: 6
+                artStrength: 0.25
                 artFit: 0.95
                 artShift: 90
             }
@@ -542,17 +556,20 @@ Scope {
                             width: statusCol.width
                             text: modelData
                             textFormat: Text.RichText
-                            color: root.pal.text
+                            color: "#f3f4f6"
                             elide: Text.ElideRight
                             font.family: root.mono
                             font.pixelSize: 12
-                            lineHeight: 1.1
+                            font.weight: Font.Medium
+                            lineHeight: 1.15
+                            style: Text.Outline
+                            styleColor: Qt.rgba(0, 0, 0, 0.70)
                         }
                     }
                     Text {
                         topPadding: 6
                         text: "type a command · secure · stealth · relaxed · lockdown"
-                        color: Qt.alpha(root.pal.muted, 0.8)
+                        color: Qt.alpha(root.pal.muted, 0.9)
                         font.family: root.mono
                         font.pixelSize: 10
                     }
@@ -575,10 +592,12 @@ Scope {
                         text: t === "" ? " " : t
                         textFormat: Text.PlainText
                         wrapMode: Text.WrapAnywhere
-                        color: k === "cmd" ? root.pal.accent : k === "err" ? root.pal.bad : k === "info" ? root.pal.muted : root.pal.text
+                        color: k === "cmd" ? root.pal.accent : k === "err" ? root.pal.bad : k === "info" ? Qt.lighter(root.pal.muted, 1.35) : "#f9fafb"
                         font.family: root.mono
                         font.pixelSize: 12
                         font.weight: k === "cmd" ? Font.DemiBold : Font.Normal
+                        style: Text.Outline
+                        styleColor: Qt.rgba(0, 0, 0, 0.70)
                     }
                 }
             }
@@ -640,6 +659,9 @@ Scope {
                     color: root.askPass ? root.pal.warn : root.pal.accent
                     font.family: root.mono
                     font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    style: Text.Outline
+                    styleColor: Qt.rgba(0, 0, 0, 0.70)
                 }
                 TextInput {
                     id: input
@@ -647,10 +669,11 @@ Scope {
                     anchors.leftMargin: 8
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    color: root.pal.text
-                    selectionColor: Qt.alpha(root.pal.accent, 0.4)
+                    color: "#ffffff"
+                    selectionColor: Qt.alpha(root.pal.accent, 0.45)
                     font.family: root.mono
                     font.pixelSize: 13
+                    font.weight: Font.Medium
                     clip: true
                     echoMode: root.askPass ? TextInput.Password : TextInput.Normal
                     passwordCharacter: "•"

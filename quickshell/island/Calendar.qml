@@ -18,6 +18,7 @@ Scope {
     property var starData: null
     property bool profileStars: true
     property bool open: false
+    property bool consoleOpen: false
 
     // Switches from Settings > Calendar (shell.qml passes them in)
     property bool enabled: true              // master switch: off = no window, no sync, no reminders, no auto Focus
@@ -340,8 +341,8 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             WlrLayershell.namespace: "island-calendar"
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
             Item {
                 id: fade
@@ -391,6 +392,9 @@ Scope {
                         Text {
                             text: root.ready ? Qt.formatDate(new Date(root.viewY, root.viewM, 1), "MMMM yyyy") : "Calendar"
                             color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                            Layout.preferredWidth: 175
+                            Layout.minimumWidth: 175
+                            Layout.maximumWidth: 175
                         }
                         IconBtn { visible: root.ready; glyph: "‹"; onClicked: root.moveMonth(-1) }
                         IconBtn { visible: root.ready; glyph: "›"; onClicked: root.moveMonth(1) }
@@ -686,26 +690,26 @@ Scope {
                                 CalStep {
                                     pal: root.pal; live: root.open
                                     width: sCol.width; num: 2; current: root.watching
-                                    title: "Pick your own calendar"
-                                    body: "Under \"Settings for my calendars\" click the one with your name or email, not a shared or public one."
+                                    title: "Pick your calendar"
+                                    body: "Under \"Settings for my calendars\" click the calendar you want to sync (Primary, Work, School, etc.). You can connect multiple calendars."
                                 }
                                 CalStep {
                                     pal: root.pal; live: root.open
                                     width: sCol.width; num: 3
                                     title: "Scroll to Integrate calendar"
-                                    body: "Do not use \"Public URL\": it only says Busy."
+                                    body: "For personal events, copy the \"Secret address in iCal format\". For holidays, birthdays, or subscriptions, copy the \"Public address in iCal format\"."
                                 }
                                 CalStep {
                                     pal: root.pal; live: root.open
                                     width: sCol.width; num: 4; last: true; current: root.watching
-                                    title: "Copy the secret address"
-                                    body: "Press the copy button next to \"Secret address in iCal format\". The island sees it and connects by itself."
+                                    title: "Copy the address"
+                                    body: "Press the copy button next to the address. The island sees it and connects by itself."
                                     Pill { label: "Paste from clipboard"; onClicked: root.pasteClipboard() }
                                 }
 
                                 Text {
                                     topPadding: 12; width: parent.width
-                                    text: "or paste the address here"
+                                    text: root.cfg.configured ? "Add another calendar (Holidays, Birthdays, Work, or any iCal feed)" : "or paste the address here"
                                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                 }
                                 Row {

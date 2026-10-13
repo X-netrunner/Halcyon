@@ -378,7 +378,7 @@ save_choices() {
   mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
   for a in "$@"; do
     k=${a%%=*}
-    case "$k" in BROWSER|FILES|EDITOR|MUSIC|SYSMODE|SAFETY_CHECK) ;; *) continue ;; esac
+    case "$k" in BROWSER|FILES|EDITOR|MUSIC|SYSMODE|SAFETY_CHECK|LLM|LLM_MODEL) ;; *) continue ;; esac
     grep -v "^$k=" "$f" > "$f.new" 2>/dev/null; printf '%s="%s"\n' "$k" "${a#*=}" >> "$f.new"; mv "$f.new" "$f"
   done
   ok "your choices are saved in ~/.local/state/island/install-choices.env"

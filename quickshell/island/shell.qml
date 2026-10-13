@@ -446,13 +446,14 @@ ShellRoot {
     }
     readonly property var palObj: pal
 
-    // rice settings window (gear in the utilities panel, >settings, SUPER+F11) and the power menu (power button)
+    // rice settings window (gear in the utilities panel, >settings, SUPER+I) and the power menu (power button)
     Settings {
         id: settingsWin
         pal: pal
         sysmode: root.sysmode
         autoHide: root.autoHide
         clickMode: root.clickMode
+        consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
         dnd: root.dnd
         gaming: root.gaming
         profileStars: root.profileStars
@@ -508,8 +509,8 @@ ShellRoot {
             else if (id === "startup-view") settingsWin.openStartup()
             else if (id === "greeting-paste") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "paste"])
             else if (id === "greeting-edit") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "edit"])
-            else if (id === "greeting-preview") { var gh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", gh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" preview; echo; read -n1 -r -p 'Press any key to close '", "x", gh + "/greeting-conf.sh"]) }
-            else if (id === "mem-report") { var h = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", h + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\"; echo; read -n1 -r -p 'Press any key to close '", "x", h + "/halcyon-mem.sh"]) }
+            else if (id === "greeting-preview") quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh preview")
+            else if (id === "mem-report") quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-mem.sh")
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
@@ -528,7 +529,9 @@ ShellRoot {
                 gc()
                 trimGc.restart()
             }
-            else if (id === "login-status") { var lh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", lh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" status; echo; read -n1 -r -p 'Press any key to close '", "x", lh + "/login-status.sh"]) }
+            else if (id === "opt-adaptive-advisor") quickTerm.run("python3 " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/adaptive-advisor.py")
+            else if (id === "opt-llm-advisor") quickTerm.run("python3 " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/adaptive-advisor.py --llm")
+            else if (id === "login-status") quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/login-status.sh status")
             else if (id === "login-enable-lock") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/login-status.sh", "enable-lock"])
             else if (id === "login-remove-lock") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/login-status.sh", "remove-lock"])
         }
@@ -541,6 +544,7 @@ ShellRoot {
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
+        consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
         hasSysmode: cmdTree.available
         keyMap: root.keyMap
         customs: root.customBinds
@@ -676,6 +680,7 @@ ShellRoot {
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
+        consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
         onUse: t => { cmdTree.hide(); quickTerm.prefill(t) }
     }
 
@@ -694,6 +699,7 @@ ShellRoot {
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
+        consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
     }
 
     // Notifications are on top of every window, big ones included. Those open on the same layer and later = above, so whenever one
@@ -1751,6 +1757,8 @@ ShellRoot {
             root.setSetting("opt:lazyLoad", true)
             gc()
         }
+        function advisor(): void { quickTerm.run("python3 " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/adaptive-advisor.py") }
+        function advisorLlm(): void { quickTerm.run("python3 " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/adaptive-advisor.py --llm") }
         function reload(): void { fullReloadProc.running = true }
     }
 

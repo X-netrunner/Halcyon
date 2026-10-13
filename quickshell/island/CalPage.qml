@@ -26,19 +26,35 @@ Item {
         }
         Row {
             anchors { right: parent.right; verticalCenter: title.verticalCenter }
-            spacing: 4
-            Repeater {
-                model: [{ t: "‹", d: -1 }, { t: "Today", d: 0 }, { t: "›", d: 1 }]
-                delegate: Rectangle {
-                    required property var modelData
-                    width: modelData.d === 0 ? 50 : 26; height: 24; radius: 12
-                    color: nm.containsMouse ? Qt.alpha(pg.pal.surfaceHi, 0.95) : Qt.alpha(pg.pal.surface, 0.8)
-                    border.width: 1; border.color: pg.pal.line
-                    Text { anchors.centerIn: parent; text: modelData.t; color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tCap + (modelData.d === 0 ? 0 : 3) }
-                    MouseArea {
-                        id: nm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                        onClicked: modelData.d === 0 ? pg.cal.gotoDay(new Date()) : pg.cal.moveMonth(modelData.d)
-                    }
+            spacing: 5
+            Rectangle {
+                width: 26; height: 24; radius: 12
+                color: prevM.containsMouse ? Qt.alpha(pg.pal.surfaceHi, 0.95) : Qt.alpha(pg.pal.surface, 0.8)
+                border.width: 1; border.color: pg.pal.line
+                Text { anchors.centerIn: parent; text: "‹"; color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tCap + 4 }
+                MouseArea {
+                    id: prevM; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: pg.cal.moveMonth(-1)
+                }
+            }
+            Rectangle {
+                width: 26; height: 24; radius: 12
+                color: nextM.containsMouse ? Qt.alpha(pg.pal.surfaceHi, 0.95) : Qt.alpha(pg.pal.surface, 0.8)
+                border.width: 1; border.color: pg.pal.line
+                Text { anchors.centerIn: parent; text: "›"; color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tCap + 4 }
+                MouseArea {
+                    id: nextM; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: pg.cal.moveMonth(1)
+                }
+            }
+            Rectangle {
+                width: 48; height: 24; radius: 12
+                color: todayM.containsMouse ? Qt.alpha(pg.pal.accent, 0.25) : Qt.alpha(pg.pal.surface, 0.8)
+                border.width: 1; border.color: todayM.containsMouse ? pg.pal.accent : pg.pal.line
+                Text { anchors.centerIn: parent; text: "Today"; color: todayM.containsMouse ? pg.pal.accent : pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tCap; font.weight: Font.Medium }
+                MouseArea {
+                    id: todayM; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: pg.cal.gotoDay(new Date())
                 }
             }
         }
