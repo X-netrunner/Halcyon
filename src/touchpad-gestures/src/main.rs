@@ -5,14 +5,31 @@ use std::time::Duration;
 use std::path::Path;
 use evdev::{Device, AbsoluteAxisType, EventType};
 
-/// Run a helper without blocking the event loop (a slow playerctl must never freeze the gestures),
-/// and say so on stderr (journalctl --user -u touchpad-gestures) when it is missing or fails.
+use std::sync::mpsc::{self, Sender};
+use std::sync::OnceLock;
+
+static CMD_CHANNEL: OnceLock<Sender<(&'static str, Vec<String>)>> = OnceLock::new();
+
+fn cmd_sender() -> &'static Sender<(&'static str, Vec<String>)> {
+    CMD_CHANNEL.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<(&'static str, Vec<String>)>();
+        std::thread::spawn(move || {
+            while let Ok((cmd, args)) = rx.recv() {
+                match Command::new(cmd).args(&args).output() {
+                    Ok(o) if o.status.success() => {}
+                    Ok(o) => eprintln!("{} {:?} failed: {}", cmd, args, String::from_utf8_lossy(&o.stderr).trim()),
+                    Err(e) => eprintln!("cannot run {}: {} (is it installed and in PATH?)", cmd, e),
+                }
+            }
+        });
+        tx
+    })
+}
+
+/// Run a helper via the dedicated worker thread without blocking the event loop
+/// (a slow playerctl must never freeze the gestures), and say so on stderr when it fails.
 fn fire(cmd: &'static str, args: Vec<String>) {
-    std::thread::spawn(move || match Command::new(cmd).args(&args).output() {
-        Ok(o) if o.status.success() => {}
-        Ok(o) => eprintln!("{} {:?} failed: {}", cmd, args, String::from_utf8_lossy(&o.stderr).trim()),
-        Err(e) => eprintln!("cannot run {}: {} (is it installed and in PATH?)", cmd, e),
-    });
+    let _ = cmd_sender().send((cmd, args));
 }
 fn fire_s(cmd: &'static str, args: &[&str]) {
     fire(cmd, args.iter().map(|a| a.to_string()).collect());
