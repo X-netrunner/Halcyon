@@ -83,6 +83,7 @@ ShellRoot {
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
         scrollLinger: 3000,        // ms a performance / media page opened by scrolling / swiping the bar stays after the pointer leaves (never shorter than pageClose)
         pageClose: 600,            // ms the performance / media page waits after the pointer leaves the bar before it folds back (150 / 600 / 4000)
+        cornerTimeout: 6000,       // ms the bottom-right corner pin / quick utilities overlay remains open
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
         barStyle: "island",        // island | notch | custom : the floating pill, or a bar hanging from the top edge (NotchBar.qml)
         notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
@@ -165,13 +166,13 @@ ShellRoot {
     // Settings > Performance > Resource use: three presets that set many options at once. The options stay changeable afterwards.
     // (Startup items and the GPU are NOT part of it: they only change at the next login, see Settings > Startup & background.)
     readonly property var resPresets: ({
-        low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, starsBar: false, accentMode: "fixed", termDrift: false, clockSeconds: false, bgRefresh: "slow", viz: "light" },
+        low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, starsBar: false, accentMode: "fixed", termDrift: false, clockSeconds: false, bgRefresh: "slow", viz: "light", lazyLoad: true },
                   blur: false, shadows: false, hyprAnim: false, motion: 0.5, profileStars: false, notifHistoryMax: 10, notifMax: 3,
                   hy: { blurSize: 4, blurPasses: 1 } },
-        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true, starsBar: true, bgRefresh: "relaxed", viz: "full" },
+        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true, starsBar: false, bgRefresh: "relaxed", viz: "full", lazyLoad: true },
                   blur: true,  shadows: false, hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 20, notifMax: 5,
-                  hy: { blurSize: 6, blurPasses: 2 } },
-        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true, starsBar: true, bgRefresh: "normal", viz: "full" },
+                  hy: { blurSize: 5, blurPasses: 2 } },
+        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true, starsBar: true, bgRefresh: "normal", viz: "full", lazyLoad: false },
                   blur: true,  shadows: true,  hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 30, notifMax: 5,
                   hy: { blurSize: 7, blurPasses: 3 } }
     })
@@ -514,6 +515,22 @@ ShellRoot {
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
             else if (id === "adapt-reset") Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-view.py", "adapt-reset"])
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
+            else if (id === "opt-sweet-spot") {
+                root.applyResMode("medium")
+                root.setHy("blurPasses", 2)
+                root.setHy("blurSize", 5)
+                root.setSetting("opt:starsBar", false)
+                root.setSetting("opt:fps", 60)
+                root.setSetting("opt:lazyLoad", true)
+                trimGc.restart()
+            }
+            else if (id === "opt-trim-mem") {
+                gc()
+                trimGc.restart()
+            }
+            else if (id === "login-status") { var lh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", lh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" status; echo; read -n1 -r -p 'Press any key to close '", "x", lh + "/login-status.sh"]) }
+            else if (id === "login-enable-lock") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/login-status.sh", "enable-lock"])
+            else if (id === "login-remove-lock") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/login-status.sh", "remove-lock"])
         }
     }
     // the shortcut tree: every bind, gesture and command; click one to change it, add your own at the bottom
@@ -683,7 +700,14 @@ ShellRoot {
     // opens while a toast is showing (or a toast arrives while one is open) the notification window is put back on top.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open || calendar.open || powerMenu.open || tour.open
     property int notifSeen: 0
-    onAnyOverlayChanged: if (anyOverlay) notifRaiseT.restart()
+    onAnyOverlayChanged: {
+        if (anyOverlay) {
+            notifRaiseT.restart()
+        } else if (root.opt && root.opt.lazyLoad !== false) {
+            trimGc.restart()
+        }
+    }
+    Timer { id: trimGc; interval: 1000; onTriggered: gc() }
     Connections {
         target: notifs
         function onToastsChanged() {
@@ -1717,6 +1741,16 @@ ShellRoot {
         function apps(): void { appsWin.pinFor(9000) }
         function routing(): void { root.runCommand("routing") }
         function lock(): void { lockScreen.lock() }
+        function trim(): void { gc() }
+        function sweetspot(): void {
+            root.applyResMode("medium")
+            root.setHy("blurPasses", 2)
+            root.setHy("blurSize", 5)
+            root.setSetting("opt:starsBar", false)
+            root.setSetting("opt:fps", 60)
+            root.setSetting("opt:lazyLoad", true)
+            gc()
+        }
         function reload(): void { fullReloadProc.running = true }
     }
 
@@ -1881,7 +1915,7 @@ ShellRoot {
                     var l = root.opt.scrollLinger !== undefined ? root.opt.scrollLinger : 3000
                     return root.scrollOpened ? Math.max(c, l) : c
                 }
-                running: (root.page === "media" || root.page === "perf" || (root.page === "cal" && island.calArmed) || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open
+                running: (root.opt.pageClose === 0 ? false : ((root.page === "media" || root.page === "perf" || (root.page === "cal" && island.calArmed) || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open))
                 onTriggered: { root.page = "home"; root.hoverOpened = false; root.scrollOpened = false }
             }
 
@@ -2437,7 +2471,7 @@ ShellRoot {
             else if (!panel.wantsKeys && (!root.clickMode || root.autoHide)) { closeT.interval = 450; closeT.restart() }
         }
         // open it from the launcher / keybind; closes by itself if you don't touch it
-        function pinFor(ms) { hovering = true; closeT.interval = ms; closeT.restart() }
+        function pinFor(ms) { hovering = true; closeT.interval = (ms < 60000 && root.opt && root.opt.cornerTimeout) ? root.opt.cornerTimeout : ms; closeT.restart() }
         Timer { id: closeT; interval: 450; onTriggered: { corner.hovering = false; corner.blockUntil = Date.now() + 600 } }
 
         // one hover zone for corner + panel (see QuickTerm.qml): no flicker when the panel slides in under the pointer

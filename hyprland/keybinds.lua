@@ -142,7 +142,8 @@ do
     end
 end
 bind("gaming", "SUPER + F10", hl.dsp.exec_cmd(ipc .. "gaming"))                 -- gaming mode on / off
-bind("settings", "SUPER + F11", hl.dsp.exec_cmd(ipc .. "settings"))               -- rice settings window
+bind("settings", "SUPER + I", hl.dsp.exec_cmd(ipc .. "settings"))                 -- rice settings window (SUPER + I)
+bind("settings_alt", "SUPER + F11", hl.dsp.exec_cmd(ipc .. "settings"))           -- rice settings window (legacy fallback)
 bind("clearnotifs", vars.kbClearNotifs, hl.dsp.exec_cmd(ipc .. "clearnotifs"))
 bind("apps", "SUPER + SHIFT + A", hl.dsp.exec_cmd(ipc .. "apps"))              -- background apps box (bottom-left)
 bind("notifcenter", "SUPER + SHIFT + N", hl.dsp.exec_cmd(ipc .. "notifcenter"))   -- notification centre

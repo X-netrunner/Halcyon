@@ -592,7 +592,7 @@ Scope {
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] },
             { type: "tool", adv: true, key: "wifips", label: "Wi-Fi power saving", desc: "On saves battery. Off gives the lowest latency (Gaming mode switches it off by itself)." }
         ] },
-        { id: "performance", title: "Performance & memory", section: "System", items: [
+        { id: "performance", title: "Performance & memory", section: "Performance", items: [
             { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars (no moving stars in the bar), 30 fps, small notification lists, slow background refresh, light music bars. Medium: light blur, no shadows, 60 fps, relaxed background refresh. High: everything on, as designed. It sets the options on this page and in Effects and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", key: "opt:limMode", label: "Limits", desc: "Manual: you set the two limits below. Adaptive: Halcyon measures its own RAM and CPU use every 5 minutes while the desktop runs (not while Gaming mode is on), and after 3 days sets the limits itself, a little above what is normal for you (the busy 5 % of the time plus headroom). It keeps adjusting over the last 14 days. Until it has learned, the manual limits apply. It only measures and advises, like the manual limits.", opts: [o("manual", "Manual"), o("auto", "Adaptive")] },
             { type: "acts", label: "Adaptive limits", desc: "Start learning again from zero, for example after a big change to the setup.", btns: [{ id: "adapt-reset", btn: "Forget what it learned", done: "Learning again" }], when: "opt:limMode=auto" },
@@ -604,6 +604,26 @@ Scope {
             { type: "seg", adv: true, key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
             { type: "seg", adv: true, key: "opt:bgRefresh", label: "Background refresh", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. Normal: every 2 s / 4 s. Relaxed: 5 s / 10 s. Slow: 10 s / 20 s. Fewer wake-ups and far fewer small processes, nothing looks different. The performance page and the bar's CPU / RAM / TEMP row stay at the normal pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "Normal"), o("relaxed", "Relaxed"), o("slow", "Slow")] },
             { type: "acts", adv: true, label: "Memory", desc: "Show what uses my RAM: opens a terminal with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
+        ] },
+        { id: "suggestions", title: "Optimization & Suggestions", section: "Performance", items: [
+            { type: "acts", label: "Recommended Sweet Spot (Aesthetic + Speed)", desc: "Optimizes performance without compromising visual fidelity: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied!" }] },
+            { type: "toggle", key: "opt:lazyLoad", def: true, label: "Aggressive Memory Freeing & Lazy Loading", desc: "Unloads heavy background dialogs (Settings, Cheatsheet, Calendar) when closed and triggers garbage collection to keep Quickshell's resident RAM low. Enabled automatically in Low and Medium resource modes." },
+            { type: "seg", key: "opt:resMode", label: "Resource Profile", desc: "Select a global resource tier. Low: minimal footprint, still stars, 30 fps, light blur. Medium: balanced 60 fps, glass blur, relaxed polling. High: maximum fidelity with all visual effects and animations enabled.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
+            { type: "acts", label: "Live Memory Trimming", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] },
+            { type: "seg", key: "hy:blurPasses", label: "Hyprland Blur Passes", desc: "How many times Hyprland samples and renders the blur. 2 passes looks virtually indistinguishable from 3 passes on 1080p/1200p but frees ~30 MB of compositor framebuffers.", opts: [o(1, "1 (Fastest)"), o(2, "2 (Sweet Spot)"), o(3, "3 (Heavy)")] },
+            { type: "seg", key: "opt:fps", label: "Shell Animation Framerate", desc: "Max matches your monitor (144 Hz) which increases GPU/CPU draw calls. Setting to 60 FPS looks silky smooth while cutting idle render cycles in half.", opts: [o(0, "Max"), o(60, "60 FPS (Recommended)"), o(30, "30 FPS")] },
+            { type: "toggle", key: "opt:starsBar", label: "Moving stars in the notch bar", desc: "Turn off to save ~2-3% continuous CPU usage while preserving the static constellation stars in the background." }
+        ] },
+        { id: "sysoptions", title: "System preferences & timeouts", section: "System", items: [
+            { type: "action", id: "cheatsheet", label: "Settings shortcut", btn: "View shortcuts", desc: "Super + I opens Settings directly (Super + F11 also works as a legacy fallback). Tap Super opens the application launcher." },
+            { type: "seg", key: "opt:pageClose", label: "Performance & music tab auto-close", desc: "How long the overlay waits before auto-closing when you switch away from the performance or music monitor tab. 0 = hold open until manually toggled.", opts: [o(150, "150 ms"), o(600, "600 ms"), o(1500, "1.5 s"), o(4000, "4 s"), o(10000, "10 s"), o(0, "Hold open")] },
+            { type: "seg", key: "opt:scrollLinger", label: "Swipe & scroll linger timeout", desc: "How long touchpad swipe indicators or scroll popups stay visible on screen after gesture finishes.", opts: [o(1000, "1 s"), o(3000, "3 s"), o(6000, "6 s"), o(12000, "12 s")] },
+            { type: "seg", key: "opt:cornerTimeout", label: "Corner utilities menu timeout", desc: "How long the bottom-right corner pin / quick utilities overlay remains open after interaction.", opts: [o(3000, "3 s"), o(6000, "6 s"), o(10000, "10 s")] },
+            { type: "acts", label: "Login manager & tty1 autologin", desc: "Check or configure automatic login directly into Hyprland without a display manager prompt (scripts/login-status.sh).", btns: [
+                { id: "login-status", btn: "Check Status", done: "" },
+                { id: "login-enable-lock", btn: "Setup tty1 Autologin", done: "Opening…" },
+                { id: "login-remove-lock", btn: "Remove tty1 Autologin", done: "Opening…" }
+            ] }
         ] },
         { id: "startup", title: "Startup & background", section: "System", items: [
             { type: "action", id: "startup-view", label: "Startup & processes", btn: "Open the window", done: "", desc: "Everything that starts with the desktop (Halcyon's parts, your hypr-user.lua lines, systemd user services, autostart files) with the processes it runs, their RAM and CPU, a switch for each, and every other process of yours with an End button. The Health tab compares all of Halcyon with the RAM and CPU limits (Performance & memory) and lists the likely causes when it is over. Also `>startup` in the launcher." },
@@ -695,8 +715,8 @@ Scope {
     // ---- search + collapsing
     property string query: ""
     property bool scrolling: false          // true while the list is moving: the starfield / pulses pause so scrolling gets the whole frame
-    property string section: ""             // "" = every section; else Appearance | Desktop | Input & power | System
-    readonly property var sections: ["Appearance", "Desktop", "Input & power", "System"]
+    property string section: ""             // "" = every section; else Appearance | Desktop | Input & power | Performance | System
+    readonly property var sections: ["Appearance", "Desktop", "Input & power", "Performance", "System"]
     property var collapsed: ({ apps: true, growth: true, gestures: true, mousebtn: true })
 
     // ---- two layouts: "tree" (the branching view, the default) and "pages" (a menu on the left, one page at a time).
@@ -708,7 +728,8 @@ Scope {
         { id: "Desktop", sub: "Workspaces, notifications, focus mode and the calendar.", groups: ["workspaces", "notifications", "focus", "calendar"] },
         { id: "Input", sub: "Mouse, touchpad, gestures, mouse buttons and keyboard.", groups: ["mouse", "gestures", "mousebtn"] },
         { id: "Power & lock", sub: "Power manager, dimming, lock screen and sleep.", groups: ["power"] },
-        { id: "System", sub: "Performance, startup and default apps.", groups: ["performance", "startup", "apps"] },
+        { id: "Performance", sub: "Speed, sweet spot, memory limits and suggestions.", groups: ["suggestions", "performance"] },
+        { id: "System", sub: "Preferences, timeouts, login manager, startup and apps.", groups: ["sysoptions", "startup", "apps"] },
         { id: "Backup", sub: "Backups, restore and the safety check.", groups: ["backup"] }
     ]
     property string page: "Appearance"
