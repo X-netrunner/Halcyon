@@ -21,15 +21,31 @@ if [[ -z "${SYS_HOME:-}" ]]; then
 fi
 # helper tools (recon-deceiver, log-analyst, attacker-dossier) ship next to this file in the rice
 
+# sysmode runs as root, so it only starts a helper that root owns and nobody else can change (the file AND every folder above it).
+# It used to fall back to copies in the user's home (~/.config/Halcyon/bin, ~/CustomHyprScripts/...): any program running as that
+# user could swap such a file and get root the next time `sudo sysmode ...` ran. install.sh puts root-owned copies in
+# /usr/local/lib/halcyon/sysmode and /usr/local/bin, which is where this looks.
+trusted_file() {
+    local f="$1" m
+    [[ -f "$f" ]] || return 1
+    f="$(readlink -f -- "$f" 2>/dev/null)" || return 1
+    while [[ -n "$f" && "$f" != / ]]; do
+        [[ "$(stat -c %u -- "$f" 2>/dev/null)" == 0 ]] || return 1
+        m="$(stat -c %a -- "$f" 2>/dev/null)" || return 1
+        (( (8#$m & 8#022) == 0 )) || return 1
+        f="$(dirname -- "$f")"
+    done
+    return 0
+}
+trusted_bin() { [[ -x "$1" ]] && trusted_file "$1"; }
+
 # Native Rust binaries (attacker-dossier, hx) replace the Python scripts; .py.bak stays as fallback
 run_dossier() {
-    if [[ -f "$SCRIPTS_DIR/attacker-dossier" && -x "$SCRIPTS_DIR/attacker-dossier" ]]; then "$SCRIPTS_DIR/attacker-dossier" "$@"
+    if trusted_bin "$SCRIPTS_DIR/attacker-dossier"; then "$SCRIPTS_DIR/attacker-dossier" "$@"
     elif command -v attacker-dossier >/dev/null 2>&1; then attacker-dossier "$@"
-    elif [[ -f "$SYS_HOME/.config/Halcyon/bin/attacker-dossier" && -x "$SYS_HOME/.config/Halcyon/bin/attacker-dossier" ]]; then "$SYS_HOME/.config/Halcyon/bin/attacker-dossier" "$@"
-    elif [[ -f "$SYS_HOME/CustomHyprScripts/attacker-dossier/target/release/attacker-dossier" && -x "$SYS_HOME/CustomHyprScripts/attacker-dossier/target/release/attacker-dossier" ]]; then "$SYS_HOME/CustomHyprScripts/attacker-dossier/target/release/attacker-dossier" "$@"
     elif command -v hx >/dev/null 2>&1; then hx dossier "$@"
-    elif [[ -f "$SCRIPTS_DIR/attacker-dossier.py" ]]; then python3 "$SCRIPTS_DIR/attacker-dossier.py" "$@"
-    elif [[ -f "$SCRIPTS_DIR/attacker-dossier.py.bak" ]]; then python3 "$SCRIPTS_DIR/attacker-dossier.py.bak" "$@"
+    elif trusted_file "$SCRIPTS_DIR/attacker-dossier.py"; then python3 "$SCRIPTS_DIR/attacker-dossier.py" "$@"
+    elif trusted_file "$SCRIPTS_DIR/attacker-dossier.py.bak"; then python3 "$SCRIPTS_DIR/attacker-dossier.py.bak" "$@"
     else echo "  Dossier helper missing (install attacker-dossier or hx: ./install.sh)."; fi
 }
 SCRIPTS_DIR="${SCRIPTS_DIR:-$SYS_HOME/.config/Halcyon/sysmode}"
@@ -45,11 +61,7 @@ SYSMODE_AUDIT_RULES="/etc/audit/rules.d/sysmode-audit.rules"
 
 DECOY_HOTSPOT=0
 
-# Load configuration if exists
-if [[ -f /etc/sysmode.conf ]]; then
-    # shellcheck source=/dev/null
-    source /etc/sysmode.conf
-fi
+# (/etc/sysmode.conf was already read at the top of this file)
 
 USER_UID="$(id -u "$SYS_USER" 2>/dev/null || echo 1000)"
 USER_GID="$(id -g "$SYS_USER" 2>/dev/null || echo 1000)"
@@ -115,6 +127,11 @@ on_ac_power() {
 # Start a daemon detached from this shell (it must outlive the console / terminal that ran sysmode), keep its output in
 # $LOGS_DIR/<name>.out instead of /dev/null, and say plainly if it died on start.
 #   start_bg <name> <pidfile> <command...>
+# Match the daemons by their own name, not by "any command line that contains the word": `pkill -f log-analyst` also killed an
+# editor with log-analyst.rs open, a `tail -f` of its log and so on.
+kill_daemon()    { pkill -x "$1" 2>/dev/null || true; pkill -f "^python3? .*/$1\\.py" 2>/dev/null || true; }
+daemon_running() { pgrep -x "$1" >/dev/null 2>&1 || pgrep -f "^python3? .*/$1\\.py" >/dev/null 2>&1; }
+
 start_bg() {
     local name="$1" pidfile="$2"; shift 2
     local logf="$LOGS_DIR/$name.out" pid
@@ -143,12 +160,12 @@ stop_daemons() {
     echo "[*] Stopping recon deception daemon..."
     systemctl stop recon-deceiver.service 2>/dev/null || true
     stop_pidfile /var/run/recon-deceiver.pid
-    pkill -f recon-deceiver 2>/dev/null || true
+    kill_daemon recon-deceiver
     echo "[*] Stopping lightweight IDS log analyst..."
     systemctl stop log-analyst.service 2>/dev/null || true
     stop_pidfile /var/run/log-analyst.pid
-    pkill -f log-analyst 2>/dev/null || true
-    pkill -f "hx ids" 2>/dev/null || true
+    kill_daemon log-analyst
+    pkill -f "^hx ids" 2>/dev/null || true
 }
 
 # --- Cowrie SSH honeypot (Docker) -----------------------------------------
@@ -802,8 +819,8 @@ show_status() {
 
     echo "RAM Workspace (tmpfs)           : $( mountpoint -q "$STEALTH_WORKSPACE" && echo 'Active ('"$STEALTH_WORKSPACE"')' || echo 'Inactive' )"
     echo "Encrypted DNS (dnscrypt-proxy)  : $( systemctl is-active --quiet dnscrypt-proxy 2>/dev/null && echo 'Active' || echo 'Inactive' )"
-    echo "Honeypot Daemon (recon-deceiver): $( { systemctl is-active --quiet recon-deceiver 2>/dev/null || pgrep -f recon-deceiver >/dev/null; } && echo 'Active' || echo 'Inactive' )"
-    echo "IDS Log Analyst (log-analyst)   : $( { systemctl is-active --quiet log-analyst 2>/dev/null || pgrep -f "log-analyst|hx ids" >/dev/null; } && echo 'Active' || echo 'Inactive' )"
+    echo "Honeypot Daemon (recon-deceiver): $( { systemctl is-active --quiet recon-deceiver 2>/dev/null || daemon_running recon-deceiver; } && echo 'Active' || echo 'Inactive' )"
+    echo "IDS Log Analyst (log-analyst)   : $( { systemctl is-active --quiet log-analyst 2>/dev/null || { daemon_running log-analyst || pgrep -f "^hx ids" >/dev/null; }; } && echo 'Active' || echo 'Inactive' )"
     echo "Cowrie SSH Honeypot (Docker)    : $( { docker inspect -f '{{.State.Running}}' cowrie 2>/dev/null | grep -qx true; } && echo 'Active (Port 22)' || echo 'Inactive' )"
 }
 
@@ -901,7 +918,7 @@ run_doctor() {
     check_dep "ufw" "ufw" "Firewall rule management"
     check_dep "auditctl" "audit" "Kernel security audit daemon"
     check_dep "dnscrypt-proxy" "dnscrypt-proxy" "Encrypted DNS resolver"
-    if [[ -x "$SCRIPTS_DIR/recon-deceiver" ]] || [[ -x "$SYS_HOME/.config/Halcyon/bin/recon-deceiver" ]] || command -v recon-deceiver >/dev/null 2>&1; then
+    if trusted_bin "$SCRIPTS_DIR/recon-deceiver" || command -v recon-deceiver >/dev/null 2>&1; then
         printf "  %-20s : \e[1;32m[INSTALLED]\e[0m (Native Rust honeypot daemon)\n" "recon-deceiver"
     elif [[ -f "$SCRIPTS_DIR/recon-deceiver.py" ]] || [[ -f "$SCRIPTS_DIR/recon-deceiver.py.bak" ]]; then
         printf "  %-20s : \e[1;33m[FALLBACK]\e[0m (Python honeypot script)\n" "recon-deceiver"
@@ -909,7 +926,7 @@ run_doctor() {
         printf "  %-20s : \e[1;31m[MISSING]\e[0m (Honeypot daemon -> build via: ./install.sh)\n" "recon-deceiver"
         (( missing++ )) || true
     fi
-    if [[ -x "$SCRIPTS_DIR/log-analyst" ]] || [[ -x "$SYS_HOME/.config/Halcyon/bin/log-analyst" ]] || command -v log-analyst >/dev/null 2>&1 || command -v hx >/dev/null 2>&1; then
+    if trusted_bin "$SCRIPTS_DIR/log-analyst" || command -v log-analyst >/dev/null 2>&1 || command -v hx >/dev/null 2>&1; then
         printf "  %-20s : \e[1;32m[INSTALLED]\e[0m (Native Rust IDS log analyst)\n" "log-analyst"
     elif [[ -f "$SCRIPTS_DIR/log-analyst.py" ]] || [[ -f "$SCRIPTS_DIR/log-analyst.py.bak" ]]; then
         printf "  %-20s : \e[1;33m[FALLBACK]\e[0m (Python IDS script)\n" "log-analyst"
@@ -1565,7 +1582,8 @@ set_stealth() {
 
     # Grant local X11 access so GUI apps don't break when hostname changes
     if command -v xhost &>/dev/null; then
-        DISPLAY=:0 XAUTHORITY="$SYS_HOME/.Xauthority" xhost +local: >/dev/null 2>&1 || true
+        # only YOUR user (SI:localuser:), not "+local:" which let every local account and process on this machine connect to the X server
+        DISPLAY=:0 XAUTHORITY="$SYS_HOME/.Xauthority" xhost "+SI:localuser:$SYS_USER" >/dev/null 2>&1 || true
     fi
 
     # Backup machine-id and setup a transient Machine ID
@@ -1825,31 +1843,25 @@ start_stealth_daemons() {
     # Start recon deceiver daemon (honeypot) via systemd or native binary
     echo "[*] Starting recon deception daemon (Lure Mode: Threshold 3)..."
     stop_pidfile /var/run/recon-deceiver.pid
-    pkill -f recon-deceiver 2>/dev/null || true
+    kill_daemon recon-deceiver
     # Free port 22 for the Cowrie SSH honeypot, then start Cowrie before the
     # banner decoy so the decoy can skip binding 22 while Cowrie owns it.
     systemctl stop recon-deceiver.service 2>/dev/null || true
     # start_cowrie returns 1 when docker is missing / not running; under `set -e` that used to END this whole function
     # right here, so the honeypot, the IDS and the MAC logger below were never started (and the mode file already said stealth)
     start_cowrie || true
-    if systemctl restart recon-deceiver.service >/dev/null 2>&1 && sleep 1 && pgrep -f recon-deceiver >/dev/null; then
+    if systemctl restart recon-deceiver.service >/dev/null 2>&1 && sleep 1 && daemon_running recon-deceiver; then
         echo "[+] recon-deceiver.service running"
-    elif [[ -f "$SCRIPTS_DIR/recon-deceiver" && -x "$SCRIPTS_DIR/recon-deceiver" ]]; then
+    elif trusted_bin "$SCRIPTS_DIR/recon-deceiver"; then
         echo "[*] Launching native Rust recon-deceiver daemon..."
         start_bg recon-deceiver /var/run/recon-deceiver.pid "$SCRIPTS_DIR/recon-deceiver" 3
-    elif [[ -f "$SYS_HOME/.config/Halcyon/bin/recon-deceiver" && -x "$SYS_HOME/.config/Halcyon/bin/recon-deceiver" ]]; then
-        echo "[*] Launching native Rust recon-deceiver daemon..."
-        start_bg recon-deceiver /var/run/recon-deceiver.pid "$SYS_HOME/.config/Halcyon/bin/recon-deceiver" 3
-    elif [[ -f "$SYS_HOME/CustomHyprScripts/recon-deceiver/target/release/recon-deceiver" && -x "$SYS_HOME/CustomHyprScripts/recon-deceiver/target/release/recon-deceiver" ]]; then
-        echo "[*] Launching native Rust recon-deceiver daemon..."
-        start_bg recon-deceiver /var/run/recon-deceiver.pid "$SYS_HOME/CustomHyprScripts/recon-deceiver/target/release/recon-deceiver" 3
     elif command -v recon-deceiver >/dev/null 2>&1; then
         echo "[*] Launching native Rust recon-deceiver daemon..."
         start_bg recon-deceiver /var/run/recon-deceiver.pid recon-deceiver 3
-    elif [[ -f "$SCRIPTS_DIR/recon-deceiver.py" ]]; then
+    elif trusted_file "$SCRIPTS_DIR/recon-deceiver.py"; then
         echo "[!] starting the honeypot script directly..."
         start_bg recon-deceiver /var/run/recon-deceiver.pid python3 "$SCRIPTS_DIR/recon-deceiver.py" 3
-    elif [[ -f "$SCRIPTS_DIR/recon-deceiver.py.bak" ]]; then
+    elif trusted_file "$SCRIPTS_DIR/recon-deceiver.py.bak"; then
         echo "[!] starting the backup honeypot script directly..."
         start_bg recon-deceiver /var/run/recon-deceiver.pid python3 "$SCRIPTS_DIR/recon-deceiver.py.bak" 3
     else
@@ -1859,29 +1871,23 @@ start_stealth_daemons() {
     # Start log analyst daemon (IDS) via systemd or native binary
     echo "[*] Starting lightweight IDS log analyst..."
     stop_pidfile /var/run/log-analyst.pid
-    pkill -f log-analyst 2>/dev/null || true
-    pkill -f "hx ids" 2>/dev/null || true
-    if systemctl restart log-analyst.service >/dev/null 2>&1 && sleep 1 && pgrep -f "log-analyst|hx ids" >/dev/null; then
+    kill_daemon log-analyst
+    pkill -f "^hx ids" 2>/dev/null || true
+    if systemctl restart log-analyst.service >/dev/null 2>&1 && sleep 1 && { daemon_running log-analyst || pgrep -f "^hx ids" >/dev/null; }; then
         echo "[+] log-analyst.service running"
     else
         echo "[!] log-analyst.service unavailable or not running; starting the IDS directly..."
-        if [[ -f "$SCRIPTS_DIR/log-analyst" && -x "$SCRIPTS_DIR/log-analyst" ]]; then
+        if trusted_bin "$SCRIPTS_DIR/log-analyst"; then
             echo "[*] Launching native Rust log-analyst IDS..."
             start_bg log-analyst /var/run/log-analyst.pid "$SCRIPTS_DIR/log-analyst"
-        elif [[ -f "$SYS_HOME/.config/Halcyon/bin/log-analyst" && -x "$SYS_HOME/.config/Halcyon/bin/log-analyst" ]]; then
-            echo "[*] Launching native Rust log-analyst IDS..."
-            start_bg log-analyst /var/run/log-analyst.pid "$SYS_HOME/.config/Halcyon/bin/log-analyst"
-        elif [[ -f "$SYS_HOME/CustomHyprScripts/log-analyst/target/release/log-analyst" && -x "$SYS_HOME/CustomHyprScripts/log-analyst/target/release/log-analyst" ]]; then
-            echo "[*] Launching native Rust log-analyst IDS..."
-            start_bg log-analyst /var/run/log-analyst.pid "$SYS_HOME/CustomHyprScripts/log-analyst/target/release/log-analyst"
         elif command -v log-analyst >/dev/null 2>&1; then
             echo "[*] Launching native Rust log-analyst IDS..."
             start_bg log-analyst /var/run/log-analyst.pid log-analyst
         elif command -v hx >/dev/null; then
             start_bg log-analyst /var/run/log-analyst.pid hx ids
-        elif [[ -f "$SCRIPTS_DIR/log-analyst.py" ]]; then
+        elif trusted_file "$SCRIPTS_DIR/log-analyst.py"; then
             start_bg log-analyst /var/run/log-analyst.pid python3 "$SCRIPTS_DIR/log-analyst.py"
-        elif [[ -f "$SCRIPTS_DIR/log-analyst.py.bak" ]]; then
+        elif trusted_file "$SCRIPTS_DIR/log-analyst.py.bak"; then
             start_bg log-analyst /var/run/log-analyst.pid python3 "$SCRIPTS_DIR/log-analyst.py.bak"
         else
             echo "[!] neither log-analyst nor hx found"

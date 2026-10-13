@@ -7,7 +7,10 @@
   gcal.py remind 10,0           minutes before the start that a notification is sent (0 = at the start); "off" = none
   gcal.py sync                  download every calendar and write the events of the next months to the cache
   gcal.py events                print the cache (JSON)
-  gcal.py notify                send the reminders that are due now (the island runs this once a minute)
+  gcal.py notify [flags]        the once-a-minute worker (the island runs it): reminders, nagging, auto Focus mode. Flags:
+                                  --no-remind  --nag EVERY_MIN  --giveup MIN  --focus  --all-tasks
+  gcal.py done ID | undone ID   mark an event as finished (stops the nagging); stored here only, never sent to Google
+  gcal.py task ID on|off        mark an event as a task (nagged / auto Focus when those are on)
   gcal.py inspect               what each calendar's feed really contains (counts, titles that say "Busy", to-do items); no secrets printed
 
 Read-only: nothing is ever written to your calendar. Only the standard library is used.
@@ -33,8 +36,15 @@ STATE = os.path.join(os.path.expanduser("~"), ".local", "state", "island", "cale
 CONF = os.path.join(STATE, "config.json")
 CACHE = os.path.join(STATE, "events.json")
 FIRED = os.path.join(STATE, "fired.json")
+DONE = os.path.join(STATE, "done.json")            # event id -> when it was marked done
+TASKS = os.path.join(STATE, "tasks.json")          # event id -> true: events you marked as tasks
+NAGGED = os.path.join(STATE, "nagged.json")        # event id -> when the last nag went out
+AUTOFOCUS = os.path.join(STATE, "autofocus.json")  # {"fired": {id: ts}, "active": id, "end": ts}
+SELF = os.path.abspath(__file__)
+FOCUS_SH = os.path.join(os.path.expanduser("~"), ".config", "Halcyon", "scripts", "focus.sh")
 BACK_DAYS = 35            # how far back / forward the cache reaches
 FORWARD_DAYS = 150
+MAX_FEED = 25 * 1048576   # biggest calendar feed that is read
 GRACE = 300               # a reminder that was due up to 5 minutes ago still goes out (suspend, a late tick)
 LOCAL = dt.datetime.now().astimezone().tzinfo
 
@@ -49,12 +59,15 @@ def load(path, default):
 
 
 def save(path, data, private=False):
-    os.makedirs(STATE, exist_ok=True)
+    os.makedirs(STATE, mode=0o700, exist_ok=True)
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    # the file is CREATED with the right mode. It used to be written with the default one (readable by everyone) and chmod-ed
+    # afterwards, so the secret calendar address sat world-readable for a moment, and for good if the chmod never ran.
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600 if private else 0o644)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
     if private:
-        os.chmod(tmp, 0o600)
+        os.chmod(tmp, 0o600)                         # a leftover .tmp from an older run may have had another mode
     os.replace(tmp, path)
 
 
@@ -331,9 +344,14 @@ def build(raw, calname, win_from, win_to):
 # ------------------------------------------------------------------ commands
 def fetch(url):
     url = re.sub(r"^webcal://", "https://", url.strip(), flags=re.I)
+    if not re.match(r"^https://", url, re.I):         # the address is a password: never send it unencrypted (or to file:// / ftp://)
+        raise ValueError("only https:// calendar addresses are accepted")
     req = urllib.request.Request(url, headers={"User-Agent": "Halcyon-calendar/1"})
     with urllib.request.urlopen(req, timeout=25) as r:
-        return r.read().decode("utf-8", "replace")
+        data = r.read(MAX_FEED + 1)                   # a feed is a few hundred KB; do not read an endless stream into memory
+    if len(data) > MAX_FEED:
+        raise ValueError("the calendar feed is larger than %d MB" % (MAX_FEED // 1048576))
+    return data.decode("utf-8", "replace")
 
 
 def cmd_sync():
@@ -381,8 +399,8 @@ def address_kind(url):
 
 
 def cmd_add(url, name="", replace=False):
-    if not re.match(r"^(https?|webcal)://", url.strip(), re.I):
-        print(json.dumps({"ok": False, "error": "that is not a web address"}))
+    if not re.match(r"^(https|webcal)://", url.strip(), re.I):
+        print(json.dumps({"ok": False, "error": "that is not a secure web address (it has to start with https:// or webcal://)"}))
         return 1
     if address_kind(url) == "public":
         print(json.dumps({"ok": False, "error": "That is the public address: Google hides every event title there (it only says Busy). Copy the Secret address in iCal format instead, the one with private- in it."}))
@@ -398,7 +416,7 @@ def cmd_add(url, name="", replace=False):
 
 
 def cmd_clear():
-    for p in (CONF, CACHE, FIRED):
+    for p in (CONF, CACHE, FIRED, DONE, TASKS, NAGGED, AUTOFOCUS):
         try:
             os.remove(p)
         except OSError:
@@ -420,47 +438,142 @@ def fmt_time(ts):
     return dt.datetime.fromtimestamp(ts, LOCAL).strftime("%H:%M")
 
 
-def cmd_notify():
-    c = conf()
-    offsets = c["remind"]
-    cache = load(CACHE, {})
-    if not offsets or not cache.get("events"):
-        return 0
-    now = int(dt.datetime.now().timestamp())
-    fired = {k: v for k, v in load(FIRED, {}).items() if v > now - 3 * 86400}
-    changed = False
-    for ev in cache["events"]:
-        if ev["allDay"]:
-            # an all-day event: one notification at 08:00 on the day
-            times = [(ev["start"] + 8 * 3600, -1)]
+def send(title, body, ev_id=None, urgent=False):
+    """A notification from \"Calendar\". With an ev_id it gets a Done button: a tiny `sh` waits for the click (notify-send -A
+    waits), then marks the event done. Without a click it just ends when the notification is closed."""
+    base = ["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "-u", "critical" if urgent else "normal"]
+    try:
+        if ev_id:
+            script = ('a=$("$@" 2>/dev/null); [ "$a" = done ] && python3 "$SELF" done "$ID"')
+            env = dict(os.environ, SELF=SELF, ID=ev_id)
+            subprocess.Popen(["sh", "-c", script, "sh"] + base + ["-A", "done=Done", "-w", title, body], env=env,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         else:
-            times = [(ev["start"] - m * 60, m) for m in offsets]
-        for due, m in times:
-            if not (due <= now < due + GRACE):
-                continue
-            if not ev["allDay"] and now >= ev["end"] and ev["end"] > ev["start"]:
-                continue
-            key = "%s:%d" % (ev["id"], m)
-            if key in fired:
-                continue
-            fired[key] = now
-            changed = True
-            if ev["allDay"]:
-                body = "Today"
-            elif m <= 0:
-                body = "Starting now · %s" % fmt_time(ev["start"])
-            else:
-                body = "In %d min · %s" % (m, fmt_time(ev["start"])) if m < 60 else "In %s · %s" % ("%d h" % (m // 60) if m % 60 == 0 else "%d min" % m, fmt_time(ev["start"]))
-            if ev.get("loc"):
-                body += "\n" + ev["loc"]
-            try:
-                subprocess.Popen(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "-u", "normal", ev["title"], body],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+            subprocess.Popen(base + [title, body], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+def focus_status():
+    try:
+        r = subprocess.run(["bash", FOCUS_SH, "status"], capture_output=True, text=True, timeout=6)
+        return json.loads(r.stdout or "{}")
+    except Exception:
+        return {}
+
+
+def cmd_notify(flags):
+    c = conf()
+    cache = load(CACHE, {})
+    events = cache.get("events") or []
+    if not events:
+        return 0
+    remind_on = "--no-remind" not in flags
+    nag_every = int(flags[flags.index("--nag") + 1]) * 60 if "--nag" in flags else 0
+    giveup = int(flags[flags.index("--giveup") + 1]) * 60 if "--giveup" in flags else 10800
+    auto_focus = "--focus" in flags
+    all_tasks = "--all-tasks" in flags
+    offsets = c["remind"] if remind_on else []
+    now = int(dt.datetime.now().timestamp())
+    done = load(DONE, {})
+    tasks = load(TASKS, {})
+    fired = {k: v for k, v in load(FIRED, {}).items() if v > now - 3 * 86400}
+    nagged = {k: v for k, v in load(NAGGED, {}).items() if v > now - 4 * 86400}
+    changed = False
+    nag_changed = False
+
+    def is_task(ev):
+        return all_tasks or bool(tasks.get(ev["id"]))
+
+    for ev in events:
+        task = is_task(ev)
+        finished = ev["id"] in done
+        # ---- reminders
+        if offsets and not finished:
+            times = [(ev["start"] + 8 * 3600, -1)] if ev["allDay"] else [(ev["start"] - m * 60, m) for m in offsets]
+            for due, m in times:
+                if not (due <= now < due + GRACE):
+                    continue
+                if not ev["allDay"] and now >= ev["end"] and ev["end"] > ev["start"]:
+                    continue
+                key = "%s:%d" % (ev["id"], m)
+                if key in fired:
+                    continue
+                fired[key] = now
+                changed = True
+                if ev["allDay"]:
+                    body = "Today"
+                elif m <= 0:
+                    body = "Starting now · %s" % fmt_time(ev["start"])
+                else:
+                    body = "In %d min · %s" % (m, fmt_time(ev["start"])) if m < 60 else "In %s · %s" % ("%d h" % (m // 60) if m % 60 == 0 else "%d min" % m, fmt_time(ev["start"]))
+                if ev.get("loc"):
+                    body += "\n" + ev["loc"]
+                send(ev["title"], body, ev["id"] if task else None)
+        # ---- nagging: from the start until it is marked done (or the give-up time after its end)
+        if nag_every and task and not finished and not ev["allDay"]:
+            end = max(ev["end"], ev["start"])
+            if ev["start"] + nag_every <= now < end + giveup:
+                last = nagged.get(ev["id"], ev["start"])
+                if now - last >= nag_every:
+                    nagged[ev["id"]] = now
+                    nag_changed = True
+                    # the text never changes, so each nag replaces the one before it in the notification centre
+                    send("Not done yet: " + ev["title"], "Started at %s. Press Done when you have finished it." % fmt_time(ev["start"]), ev["id"], urgent=True)
     if changed:
         save(FIRED, fired)
+    if nag_changed:
+        save(NAGGED, nagged)
+
+    # ---- auto Focus mode: a Focus session for the length of a task that is running now
+    af = load(AUTOFOCUS, {"fired": {}})
+    af["fired"] = {k: v for k, v in af.get("fired", {}).items() if v > now - 3 * 86400}
+    dirty = False
+    if af.get("active"):
+        gone = af["active"] in done or now >= af.get("end", 0)
+        if gone:
+            if af["active"] in done and now < af.get("end", 0):
+                subprocess.run(["bash", FOCUS_SH, "stop"], capture_output=True, timeout=8)     # finished early: end the session too
+            af.pop("active", None); af.pop("end", None); dirty = True
+    if auto_focus and not af.get("active"):
+        for ev in events:
+            if ev["allDay"] or ev["id"] in done or not is_task(ev) or ev["id"] in af["fired"]:
+                continue
+            if not (ev["start"] <= now < ev["end"]) or ev["end"] - ev["start"] < 600:
+                continue
+            if focus_status().get("on"):
+                break                                    # you already run a session: leave it alone
+            mins = max(1, min(480, -(-(ev["end"] - now) // 60)))
+            subprocess.run(["bash", FOCUS_SH, "start", str(mins), "single"], capture_output=True, timeout=10)
+            af["fired"][ev["id"]] = now
+            af["active"], af["end"] = ev["id"], ev["end"]
+            dirty = True
+            if remind_on:
+                send("Focus mode on", "%s · until %s" % (ev["title"], fmt_time(ev["end"])))
+            break
+    if dirty:
+        save(AUTOFOCUS, af)
     return 0
+
+
+def cmd_done(ev_id, on=True):
+    d = load(DONE, {})
+    if on:
+        d[ev_id] = int(dt.datetime.now().timestamp())
+    else:
+        d.pop(ev_id, None)
+    save(DONE, d)
+    print(json.dumps({"ok": True}))
+
+
+def cmd_task(ev_id, on):
+    t = load(TASKS, {})
+    if on:
+        t[ev_id] = True
+    else:
+        t.pop(ev_id, None)
+    save(TASKS, t)
+    print(json.dumps({"ok": True}))
 
 
 def cmd_inspect():
@@ -519,9 +632,16 @@ def main(argv):
     elif a == "sync":
         return cmd_sync()
     elif a == "events":
-        print(json.dumps(load(CACHE, {"synced": 0, "error": "", "events": []})))
+        out = load(CACHE, {"synced": 0, "error": "", "events": []})
+        out["done"] = sorted(load(DONE, {}).keys())
+        out["tasks"] = sorted(load(TASKS, {}).keys())
+        print(json.dumps(out))
     elif a == "notify":
-        return cmd_notify()
+        return cmd_notify(argv[2:])
+    elif a in ("done", "undone") and len(argv) >= 3:
+        cmd_done(argv[2], a == "done")
+    elif a == "task" and len(argv) >= 4:
+        cmd_task(argv[2], argv[3] == "on")
     elif a == "inspect":
         return cmd_inspect()
     else:

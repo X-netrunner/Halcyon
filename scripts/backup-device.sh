@@ -13,6 +13,17 @@
 G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'
 have() { command -v "$1" >/dev/null 2>&1; }
 die()  { printf '%s✘%s %s\n' "$R" "$N" "$*" >&2; exit 1; }
+# lsblk -P prints KEY="value" pairs. They used to be run through `eval`, so a disk whose label contains $(...) or `...` (any USB
+# stick somebody hands you) ran that command as you. This reads the pairs as plain text and never runs anything.
+parse_pairs() {
+  local s=$1 k v
+  NAME= TYPE= RM= TRAN= PKNAME= FSTYPE= SIZE= LABEL= MOUNTPOINT=
+  while [[ $s =~ ^[[:space:]]*([A-Z_]+)=\"([^\"]*)\"(.*)$ ]]; do
+    k=${BASH_REMATCH[1]}; v=${BASH_REMATCH[2]}; s=${BASH_REMATCH[3]}
+    case "$k" in NAME|TYPE|RM|TRAN|PKNAME|FSTYPE|SIZE|LABEL|MOUNTPOINT) printf -v "$k" '%s' "$v" ;; esac
+  done
+  LABEL=${LABEL//|/_}; MOUNTPOINT=${MOUNTPOINT//|/_}      # "|" separates the fields below
+}
 HOME_ONLY=0; DRY=0; SMART=1
 for a in "$@"; do case "$a" in --home) HOME_ONLY=1 ;; --everything) SMART=0 ;; --dry-run) DRY=1 ;; -h|--help) sed -n 2,12p "$0"; exit 0 ;; esac; done
 have rsync  || die "rsync is not installed (sudo pacman -S rsync)"
@@ -27,15 +38,15 @@ rootsrc=$(findmnt -no SOURCE / 2>/dev/null); rootdisk=$(lsblk -no PKNAME "${root
 
 # external disks only: removable or on USB, and not the system disk
 mapfile -t parts < <(lsblk -pP -o NAME,TYPE,RM,TRAN,PKNAME,FSTYPE,SIZE,LABEL,MOUNTPOINT 2>/dev/null | while read -r line; do
-  eval "$line"
+  parse_pairs "$line"
   [ "$TYPE" = part ] || [ "$TYPE" = disk ] || continue
   [ -n "$FSTYPE" ] || continue
   case "$FSTYPE" in swap|crypto_LUKS|LVM2_member|linux_raid_member) continue ;; esac
   disk=${PKNAME:-$NAME}; base=${disk#/dev/}
   [ "$base" = "$rootdisk" ] && continue
   tran=$TRAN; [ -n "$tran" ] || tran=$(lsblk -dno TRAN "$disk" 2>/dev/null)
-  rm=$RM;     [ "$rm" = 1 ] || rm=$(lsblk -dno RM "$disk" 2>/dev/null)
-  { [ "$tran" = usb ] || [ "$rm" = 1 ]; } || continue
+  isrm=$RM;   [ "$isrm" = 1 ] || isrm=$(lsblk -dno RM "$disk" 2>/dev/null)
+  { [ "$tran" = usb ] || [ "$isrm" = 1 ]; } || continue
   printf '%s|%s|%s|%s|%s\n' "$NAME" "$FSTYPE" "$SIZE" "${LABEL:--}" "${MOUNTPOINT:--}"
 done)
 

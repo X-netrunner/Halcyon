@@ -7,7 +7,7 @@
 # special.sh list                                  JSON: your own command per special workspace (Settings > Workspaces & windows)
 # special.sh set <name> [command...]               set it (no command = back to the default)
 #
-# Names: special (SUPER+S scratch) | music (SUPER+M) | communication (SUPER+D) | sysmon (CTRL+SHIFT+ESC) | todo (SUPER+R)
+# Names: special (SUPER+S scratch) | music (SUPER+M) | communication (SUPER+D) | sysmon (CTRL+SHIFT+ESC)
 # YOUR OWN COMMAND for any of them wins over everything else. Set it in Settings > Workspaces & windows > "Special workspace
 # commands", or by hand: one line in ~/.local/state/island/special-<name>.cmd . It runs whenever that workspace is opened with no window in it.
 # Otherwise: music / communication start the "Music player" / "Chat" app from Settings > Default apps (scripts/apps.sh); to force
@@ -16,7 +16,7 @@
 #   COMM_CMD='vesktop'
 # SPECIAL_CMD in the environment overrides all of it (the background-apps box uses it to open one specific app).
 state="$HOME/.local/state/island"
-names="special music communication sysmon todo"
+names="special music communication sysmon"
 valid() { case " $names " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 custom() { head -n1 "$state/special-$1.cmd" 2>/dev/null; }
 jstr() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/ /g')"; }

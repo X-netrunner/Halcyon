@@ -58,7 +58,7 @@ finish() {
       ok "island and Hyprland reloaded"
     else
       command -v hyprctl >/dev/null && hyprctl reload >/dev/null 2>&1
-      pkill -f "quickshell -p .*quickshell/island" 2>/dev/null
+      pkill -f "(quickshell|qs) -p .*quickshell/island" 2>/dev/null
       sleep 0.5
       if setsid -f "$RICE/scripts/start-shell.sh" island >/dev/null 2>&1; then ok "island restarted, Hyprland reloaded"
       else warn "could not restart the island: log in again, or run $RICE/scripts/start-shell.sh island"; fi
@@ -286,8 +286,13 @@ rollback() {
   info "$(short "$cur") -> $(short "$prev")   (your uncommitted edits are stashed and put back)"
   git -C "$RICE" log --format='   %h  %s' -n 5 "$prev..$cur"
   confirm "go back to $(short "$prev") now?" || { info "nothing changed."; exit 0; }
-  local stashed=0
-  if git -C "$RICE" stash push --quiet --include-untracked -m "halcyon update.sh rollback" >/dev/null 2>&1; then stashed=1; fi
+  # `git stash push` also exits 0 when there was NOTHING to stash. The old code then ran `stash pop` anyway and put back the newest
+  # OLDER stash: for example the "your edit clashes with the update" stash an earlier update.sh run told you to keep.
+  local stashed=0 before after
+  before=$(git -C "$RICE" rev-parse -q --verify refs/stash 2>/dev/null || true)
+  git -C "$RICE" stash push --quiet --include-untracked -m "halcyon update.sh rollback" >/dev/null 2>&1
+  after=$(git -C "$RICE" rev-parse -q --verify refs/stash 2>/dev/null || true)
+  [ -n "$after" ] && [ "$after" != "$before" ] && stashed=1
   git -C "$RICE" reset --hard --quiet "$prev" || die "git reset failed"
   [ "$stashed" = 1 ] && { git -C "$RICE" stash pop --quiet 2>/dev/null || warn "your stashed edits did not fit back cleanly: git -C $RICE stash list"; }
   say "Setting up"

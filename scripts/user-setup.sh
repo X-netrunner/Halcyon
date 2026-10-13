@@ -85,8 +85,12 @@ login_remove() {
   local f
   rm -f "$(login_fish_file)"
   for f in "$HOME/.bash_profile" "${ZDOTDIR:-$HOME}/.zprofile"; do
-    [ -f "$f" ] && sed -i "/$SNIP_MARK/,/^fi\$/d" "$f"
+    [ -f "$f" ] || continue
+    sed -i "/$SNIP_MARK/,/^fi\$/d" "$f"
+    # the line --tty-autostart adds (start without the lock screen) was never taken out again by --remove-lock-login
+    sed -i '/# Halcyon: start the desktop on tty1/,+1d' "$f"
   done
+  return 0        # nothing to remove is not a failure (it used to return 1 when ~/.zprofile did not exist)
 }
 tty_autostart() {
   local p="$HOME/.bash_profile"

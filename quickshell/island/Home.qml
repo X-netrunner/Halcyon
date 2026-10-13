@@ -11,6 +11,8 @@ RowLayout {
     property var cava: []
     property bool clock24: false
     property bool clockSeconds: false    // Settings > Bar: seconds in the clock
+    property bool calClock: false        // Settings > Calendar > Clock click: a left click on the time drops the calendar out of the bar
+    signal clockClicked()
     property bool clockDate: true        // Settings > Bar: the weekday and date next to the clock
     property string clockAlign: "colon"  // Settings > Clock: colon = the ":" sits on the screen's centre line | text = the whole text is centred
     property int clockNudge: 0           // Settings > Clock: extra pixels to push the clock right (negative = left)
@@ -68,7 +70,7 @@ RowLayout {
         { name: "music", glyph: 0xF075A },     // SUPER+M  music
         { name: "sysmon", glyph: 0xF04C5 },    // CTRL+SHIFT+ESC  performance
         { name: "communication", glyph: 0xF0361 },  // SUPER+D  discord
-        { name: "todo", glyph: 0xF05E0 }       // SUPER+R  todoist
+        { name: "todo", glyph: 0xF05E0 }       // old Todoist workspace: only shows while a window is still in it
     ]
     readonly property var wsList: {
         var l = Hyprland.workspaces.values, out = []
@@ -304,6 +306,7 @@ RowLayout {
             font.family: row.pal.uiFont
             font.pixelSize: row.pal.tTitle
             font.weight: Font.DemiBold
+            TapHandler { acceptedButtons: Qt.LeftButton; enabled: row.calClock; onTapped: row.clockClicked() }
             TapHandler { acceptedButtons: Qt.RightButton; onTapped: row.clockToggled("24h") }
             TapHandler { acceptedButtons: Qt.MiddleButton; onTapped: row.clockToggled("seconds") }
         }

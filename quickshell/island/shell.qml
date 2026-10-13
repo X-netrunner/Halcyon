@@ -46,6 +46,14 @@ ShellRoot {
         wpEvery: 0,                // minutes between automatic wallpaper changes (0 = off)
         clockSeconds: false,       // show seconds in the bar clock
         clockDate: true,           // show the weekday and date next to the clock
+        calOn: true,               // Calendar master switch (Super + R, >calendar, the clock click, reminders, auto Focus)
+        calClock: true,            // a click on the bar clock drops the calendar out of the bar (instead of the old click action)
+        calNotify: true,           // reminder notifications
+        calFocus: false,           // start a Focus session when a task begins
+        calNag: false,             // keep reminding until a task is marked done
+        calNagEvery: 5,            // minutes between the nags
+        calNagGiveUp: 180,         // stop nagging this many minutes after the task ended
+        calTasks: "marked",        // marked | all : which events count as tasks
         clockAlign: "colon",       // colon | text : which part of the clock sits on the screen's centre line (Settings > Clock)
         clockNudge: 0,             // extra px to push the clock right (negative = left), on top of clockAlign
         accentBorder: true,        // the focused window's border takes the wallpaper accent (off = neutral white hairline)
@@ -503,7 +511,7 @@ ShellRoot {
             else if (id === "mem-report") { var h = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", h + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\"; echo; read -n1 -r -p 'Press any key to close '", "x", h + "/halcyon-mem.sh"]) }
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
-            else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \\\"$1/remind.sh\\\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
+            else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
             else if (id === "adapt-reset") Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-view.py", "adapt-reset"])
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
         }
@@ -658,6 +666,13 @@ ShellRoot {
     Calendar {
         id: calendar
         pal: pal
+        enabled: root.opt.calOn !== false
+        notifyOn: root.opt.calNotify !== false
+        focusOn: root.opt.calFocus === true
+        nagOn: root.opt.calNag === true
+        nagEvery: root.opt.calNagEvery !== undefined ? root.opt.calNagEvery : 5
+        nagGiveUp: root.opt.calNagGiveUp !== undefined ? root.opt.calNagGiveUp : 180
+        tasksAll: root.opt.calTasks === "all"
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
         sysmode: root.sysmode
         starData: root.starData
@@ -800,7 +815,7 @@ ShellRoot {
     // ---------- actions ----------
     property bool scrollOpened: false
     function go(dir) {
-        if (page === "launcher" || page === "util" || page === "notif") return
+        if (page === "launcher" || page === "util" || page === "notif" || page === "cal") return
         hoverOpened = false
         scrollOpened = true           // opened by scroll / swipe: stays a bit longer once the pointer leaves (scrollLinger)
         island.hoverSpent = true      // you chose a page yourself: do not re-open one by hover until the pointer has left
@@ -823,6 +838,26 @@ ShellRoot {
     FileView { id: tapWatch; path: ""; watchChanges: true; onFileChanged: root.superTapFired() }
     // the top-most thing the island has on screen (power menu > settings > shortcuts > tree view > quick console >
     // notification centre > launcher / performance / media page). Returns false when there is nothing to close.
+    // Super + R / >calendar: the full calendar. Master switch off: say so instead of doing nothing.
+    function calendarKey() {
+        if (root.opt.calOn === false) {
+            Quickshell.execDetached(["notify-send", "-a", "Halcyon", "-i", "x-office-calendar", "Calendar is switched off", "Turn it on in Settings > Calendar."])
+            return
+        }
+        if (page === "cal") page = "home"
+        calendar.toggle()
+    }
+    // a click on the bar clock (Settings > Calendar > Clock click): the calendar drops out of the bar, in the bar's own style
+    function clockClicked() {
+        if (root.opt.calOn === false || root.opt.calClock === false) return false
+        if (page === "cal") { page = "home"; return true }
+        if (calendar.open) calendar.hide()
+        hoverOpened = false; scrollOpened = false
+        island.hoverSpent = true
+        calendar.refresh()
+        page = "cal"
+        return true
+    }
     function closeOverlay() {
         if (tour.open) { tour.end(false); return true }
         if (powerMenu.open) { powerMenu.hide(); return true }
@@ -1317,7 +1352,7 @@ ShellRoot {
         case "notifbuilder": settingsWin.openNotifBuilder(); break
         case "startupview": settingsWin.openStartup(); break
         case "tour": tourReplay(); break
-        case "calendar": calendar.toggle(); break
+        case "calendar": calendarKey(); break
         case "reload": fullReloadProc.running = true; break
         case "settings": settingsWin.show(); break
         case "power": powerMenu.show(); break
@@ -1800,12 +1835,14 @@ ShellRoot {
             width: root.page === "home" ? (root.notchStyle ? root.notchBodyW : home.implicitWidth + root.padSet.x)
                  : root.page === "media" ? 500
                  : root.page === "perf" ? 720
+                 : root.page === "cal" ? 660
                  : root.page === "util" ? root.dropW
                  : root.page === "notif" ? root.dropNotifW
                  : launcher.wantedWidth
             height: root.page === "home" ? (root.notchStyle ? root.notchBarH : root.padSet.h)
                   : (root.page === "media" ? 156
                   : root.page === "perf" ? 316
+                  : root.page === "cal" ? 356
                   : root.page === "util" ? root.dropH
                   : root.page === "notif" ? root.dropNotifH
                   : launcher.wantedHeight) + (root.notchStyle ? root.notchPad : 0)
@@ -1840,7 +1877,7 @@ ShellRoot {
                     var l = root.opt.scrollLinger !== undefined ? root.opt.scrollLinger : 3000
                     return root.scrollOpened ? Math.max(c, l) : c
                 }
-                running: (root.page === "media" || root.page === "perf" || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open
+                running: (root.page === "media" || root.page === "perf" || root.page === "cal" || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open
                 onTriggered: { root.page = "home"; root.hoverOpened = false; root.scrollOpened = false }
             }
 
@@ -1918,6 +1955,8 @@ ShellRoot {
                     clockDate: root.opt.clockDate
                     clockAlign: root.opt.clockAlign === "text" ? "text" : "colon"
                     clockNudge: Math.round(Number(root.opt.clockNudge || 0))
+                    calClock: root.opt.calOn !== false && root.opt.calClock !== false
+                    onClockClicked: root.clockClicked()
                     onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
                     showWs: root.opt.islWs !== false
                     showSpecials: root.opt.islSpecials !== false
@@ -1985,6 +2024,18 @@ ShellRoot {
                     onToggleBt: root.toggleBt()
                     onSetProfile: p => root.setProfile(p)
                     onSetAuto: root.setAuto()
+                }
+
+                // ---- the calendar page: the bar clock drops it out of the bar (Settings > Calendar > Clock click)
+                CalPage {
+                    anchors.fill: parent
+                    pal: pal
+                    cal: calendar
+                    notchStyle: root.notchStyle
+                    opacity: root.page === "cal" ? 1 : 0
+                    visible: opacity > 0.01
+                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                    onOpenFull: { root.page = "home"; calendar.show() }
                 }
 
                 // ---- drop-down pages (Settings > Bar > Drag the bar down): the utilities box and the notifications
@@ -2249,6 +2300,7 @@ ShellRoot {
                 if (root.dropOn) root.dropShow("util")
                 else root.page = (root.page === "perf" ? "home" : "perf")
             }
+            onClockClicked: root.clockClicked()
             onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
             onBgClicked: appsWin.pinFor(9000)
             onPageDrop: dir => root.drop(dir)
@@ -2289,6 +2341,7 @@ ShellRoot {
                 if (root.dropOn) root.dropShow("util")
                 else root.page = (root.page === "perf" ? "home" : "perf")
             }
+            onClockClicked: root.clockClicked()
             onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
             onBgClicked: appsWin.pinFor(9000)
             onNumLockClicked: root.toggleNumLock()

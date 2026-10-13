@@ -118,7 +118,7 @@ do_action() {   # ACTION [COMMAND]
     ws-prev)    exec "$H/scripts/ws-nav.sh" prev ;;
     scratch)    hd 'hl.dsp.workspace.toggle_special("special")' ;;
     sysmon)     hd 'hl.dsp.workspace.toggle_special("sysmon")' ;;
-    todo)       hd 'hl.dsp.workspace.toggle_special("todo")' ;;
+    todo)       ipc calendar ;;                       # was the Todoist workspace; now the Halcyon calendar
     music)      exec "$H/scripts/special.sh" music ;;
     comm)       exec "$H/scripts/special.sh" communication ;;
     overview|launcher|settings|cheatsheet|notifcenter|quickterm|lock|dnd|clearnotifs|gaming|caffeine|focus) ipc "$1" ;;

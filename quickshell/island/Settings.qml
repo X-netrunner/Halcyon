@@ -284,7 +284,7 @@ Scope {
         stdout: StdioCollector { onStreamFinished: { try { root.apps = JSON.parse(text) } catch (e) {} } }
     }
 
-    // your own command per special workspace (scripts/special.sh): { special, music, communication, sysmon, todo }, "" = the default
+    // your own command per special workspace (scripts/special.sh): { special, music, communication, sysmon }, "" = the default
     property var specialCmds: ({})
     readonly property string specialScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/special.sh"
     function setSpecial(id, cmd) {
@@ -312,7 +312,7 @@ Scope {
         ac("ws-next", "Next workspace", "Workspaces"), ac("ws-prev", "Previous workspace", "Workspaces"),
         ac("overview", "Workspace tree", "Workspaces"), ac("scratch", "Scratch workspace", "Workspaces"),
         ac("music", "Music", "Workspaces"), ac("comm", "Communication", "Workspaces"),
-        ac("sysmon", "System monitor", "Workspaces"), ac("todo", "Tasks", "Workspaces"),
+        ac("sysmon", "System monitor", "Workspaces"), ac("todo", "Calendar", "Island"),
         ac("fullscreen", "Fullscreen", "Windows"), ac("float", "Floating on / off", "Windows"), ac("pin", "Pin window", "Windows"),
         ac("close", "Close window", "Windows"), ac("focus-left", "Focus the window on the left", "Windows"), ac("focus-right", "Focus the window on the right", "Windows"),
         ac("launcher", "App launcher", "Island"), ac("settings", "Settings", "Island"), ac("cheatsheet", "Shortcuts", "Island"),
@@ -551,6 +551,16 @@ Scope {
             { type: "toggle", adv: true, key: "fc:BREAK_FREE", label: "Allow blocked apps in breaks", desc: "Pomodoro breaks and Pause lift the block.", when: "fc:BLOCK=true&fc:POMODORO=true" },
             { type: "custom", name: "focusApps" }
         ] },
+        { id: "calendar", title: "Calendar", section: "Desktop", items: [
+            { type: "toggle", key: "opt:calOn", label: "Calendar", desc: "Master switch. Off: Super + R, the clock click, the reminders, nagging and auto Focus mode are all off and nothing is synced. Connect your Google Calendar once from the calendar itself (Super + R)." },
+            { type: "toggle", key: "opt:calClock", label: "Clock click", desc: "A left click on the time in the bar drops the calendar out of the bar (the pill in the island style, the notch in the notch style). Off: the click does what it did before. Click the time again to close it.", when: "opt:calOn=true" },
+            { type: "toggle", key: "opt:calNotify", label: "Reminder notifications", desc: "A notification before an event starts and when it starts. When they come is set in the calendar itself (Super + R, the gear). Nagging below needs this on.", when: "opt:calOn=true" },
+            { type: "seg", key: "opt:calTasks", label: "What counts as a task", desc: "A task can be nagged and can start Focus mode. Events I mark: press Task on an event's row, then tick it off with the round check when you have done it. Every event: all timed events are tasks.", opts: [o("marked", "Events I mark"), o("all", "Every event")], when: "opt:calOn=true" },
+            { type: "toggle", key: "opt:calFocus", label: "Auto Focus mode", desc: "When a task starts, Focus mode starts by itself and lasts until the task ends (Focus mode settings above: Do not disturb, blocked apps ...). Ticking the task off early ends it. It never touches a session you started yourself, and events shorter than 10 minutes are skipped.", when: "opt:calOn=true" },
+            { type: "toggle", key: "opt:calNag", label: "Keep reminding until it is done", desc: "From the moment a task starts you get an urgent notification again and again, each replacing the last, until you press Done on it or tick the task off in the calendar. It is only a notification: nothing is blocked.", when: "opt:calOn=true&opt:calNotify=true" },
+            { type: "seg", key: "opt:calNagEvery", label: "Nag every", opts: [o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" },
+            { type: "seg", key: "opt:calNagGiveUp", label: "Give up", desc: "How long after the task has ended it still nags.", opts: [o(60, "After 1 h"), o(180, "After 3 h"), o(720, "After 12 h"), o(4320, "After 3 days")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" }
+        ] },
         { id: "mouse", title: "Mouse, touchpad & keyboard", section: "Input & power", items: [
             { type: "slider", key: "scrollMouse", label: "Mouse wheel scroll speed", desc: "In every app. Higher is faster.", min: 0.25, max: 3, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
             { type: "slider", key: "hy:sensitivity", def: 0, label: "Pointer speed", min: -1, max: 1, step: 0.1, dec: 1, signed: true },
@@ -695,7 +705,7 @@ Scope {
     readonly property var pages: [
         { id: "Appearance", sub: "Look, colours, wallpaper and effects.", groups: ["look", "colours", "greeting", "wallpaper", "glass", "growth"] },
         { id: "Bar", sub: "The bar and the clock.", groups: ["bar", "clock"] },
-        { id: "Desktop", sub: "Workspaces, notifications and focus mode.", groups: ["workspaces", "notifications", "focus"] },
+        { id: "Desktop", sub: "Workspaces, notifications, focus mode and the calendar.", groups: ["workspaces", "notifications", "focus", "calendar"] },
         { id: "Input", sub: "Mouse, touchpad, gestures, mouse buttons and keyboard.", groups: ["mouse", "gestures", "mousebtn"] },
         { id: "Power & lock", sub: "Power manager, dimming, lock screen and sleep.", groups: ["power"] },
         { id: "System", sub: "Performance, startup and default apps.", groups: ["performance", "startup", "apps"] },
@@ -1042,7 +1052,7 @@ Scope {
             }
             Repeater {
                 model: [ { id: "special", name: "Scratch" }, { id: "music", name: "Music" }, { id: "communication", name: "Communication" },
-                         { id: "sysmon", name: "System monitor" }, { id: "todo", name: "Todo" } ]
+                         { id: "sysmon", name: "System monitor" } ]
                 delegate: RowLayout {
                     id: spRow
                     required property var modelData
