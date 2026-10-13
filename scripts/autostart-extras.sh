@@ -42,3 +42,6 @@ fi
 if [ "$NM_APPLET" = 1 ] && command -v nm-applet >/dev/null 2>&1; then sleep 2; setsid -f nm-applet >/dev/null 2>&1 </dev/null; fi
 if [ "$BLUEMAN" = 1 ] && command -v blueman-applet >/dev/null 2>&1; then sleep 1; setsid -f blueman-applet >/dev/null 2>&1 </dev/null; fi
 exit 0
+
+# Wi-Fi power saving: put back what you chose in Settings > Tools (after the network has had time to come up)
+( sleep 20; bash "$HOME/.config/Halcyon/scripts/toggle_wifi_powersave.sh" apply ) >/dev/null 2>&1 &

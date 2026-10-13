@@ -1860,7 +1860,11 @@ ShellRoot {
             // swallow clicks so they don't reach the backdrop
             MouseArea { anchors.fill: parent }
 
-            HoverHandler { id: hov; onHoveredChanged: win.peekHover(hovered) }
+            HoverHandler { id: hov; onHoveredChanged: { win.peekHover(hovered); if (hovered && root.page === "cal") island.calArmed = true } }
+            // The calendar page opened by a click on the clock stays until the pointer has been on it and has left again (or the clock is
+            // clicked again). Opened from the notch bar, which is another window, the pointer is not on the page yet: it must not fold away.
+            property bool calArmed: false
+            Connections { target: root; function onPageChanged() { island.calArmed = (root.page === "cal" && hov.hovered) } }
 
             // Settings > Bar > "When you hover the bar": perf / media open by themselves after the pointer rests on the bar
             property bool hoverSpent: false
@@ -1877,7 +1881,7 @@ ShellRoot {
                     var l = root.opt.scrollLinger !== undefined ? root.opt.scrollLinger : 3000
                     return root.scrollOpened ? Math.max(c, l) : c
                 }
-                running: (root.page === "media" || root.page === "perf" || root.page === "cal" || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open
+                running: (root.page === "media" || root.page === "perf" || (root.page === "cal" && island.calArmed) || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open
                 onTriggered: { root.page = "home"; root.hoverOpened = false; root.scrollOpened = false }
             }
 
