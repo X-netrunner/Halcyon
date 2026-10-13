@@ -63,6 +63,9 @@ Scope {
     readonly property real reveal: open ? 1 : 0
     readonly property bool shown: open
 
+    // where the console box sits on the screen (the guided tour spotlights it)
+    function tourRect() { return { x: 22, y: pal.boxTop, w: boxW, h: Math.min(520, 40 + body.implicitHeight + 76) } }
+
     property string cwd: Quickshell.env("HOME")
     property var st: ({})
     property var history: []

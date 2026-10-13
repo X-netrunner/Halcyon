@@ -58,6 +58,12 @@ Scope {
     property int unread: 0
     property real now: Date.now()
 
+    // where the centre sits on the screen (the guided tour spotlights it); null when the edge box is switched off
+    function tourRect(sw) {
+        if (!edgeOn) return null
+        return { x: sw - panel.width - pal.boxEdge, y: panel.y, w: panel.width, h: panel.height }
+    }
+
     signal dndRequested(bool on)            // shell.qml owns the saved setting
 
     // ---------- list helpers ----------
@@ -227,15 +233,23 @@ Scope {
         onTriggered: root.now = Date.now()
     }
 
+    // Notifications show on top of everything, the tree view, Settings, the shortcuts... included: while a toast or the centre is
+    // showing, this window is on the Overlay layer (the same one those big windows use). Windows that open later land above it,
+    // so shell.qml calls raise() when that happens: the window is unmapped for a moment and mapped again, which puts it on top.
+    property bool cycling: false
+    function raise() { cycling = true; raiseT.restart() }
+    Timer { id: raiseT; interval: 60; onTriggered: root.cycling = false }
+
     PanelWindow {
         id: win
+        visible: !root.cycling
         anchors { top: true; right: true; bottom: true }
         // extra room around the cards so their shadows are not cut off by the window edge
         implicitWidth: Math.max(root.cardW, root.cfg.width) + 30 + root.pal.boxEdge
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-notifs"
-        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.layer: (root.toasts.length > 0 || root.centerOpen) ? WlrLayer.Overlay : WlrLayer.Top
 
         // only the edge trigger and the cards / centre take clicks; the rest of the strip is click-through
         // one fixed mask (the closed panel sits outside the window): swapping masks on open / close re-sent the pointer

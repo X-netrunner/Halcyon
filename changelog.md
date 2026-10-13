@@ -4,6 +4,20 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## Calendar (`>calendar`) and notifications on top of everything
+
+- **`>calendar`** (or `halcyon calendar`): your Google Calendar as a month plus the selected day's agenda and a "Next up" card. Arrows move the day, PageUp / PageDown the month, T = today, R = refresh, Esc closes.
+- **Connecting**: no Google login. The **Open Google Calendar** button opens the settings in your browser and steps aside; copy the calendar's *Secret address in iCal format* (your calendar > Integrate calendar) and the island sees it on the clipboard, connects, and comes back. (It looks at the clipboard every 1.5 s for at most 6 minutes after you press the button, and only acts on a calendar.google.com iCal link.) The connect page is a numbered timeline (same look as the Timeline notifications) with the buttons inside the steps; **Paste from clipboard** and a text box are fallbacks. If every event says "Busy" (the public free/busy address), a banner offers **Fix it**, and the public address is refused up front. `gcal.py inspect` shows what a feed really contains. It is read-only, stored in `~/.local/state/island/calendar/config.json` (readable only by you), and any other calendar that offers an iCal link works too. Repeating events, time zones, all-day, moved and cancelled events are handled. Google *Tasks* (the to-do list) is not part of that address, only calendar events.
+- **Reminders** arrive as ordinary notifications (app "Calendar"): 10 minutes before and at the start by default, changeable in the calendar's settings page; all-day events notify at 08:00. Synced every 15 minutes; `scripts/gcal.py` does the work.
+- **Notifications now show above every window**, the tree view, Settings, the shortcuts tree and the rest included: while a toast or the centre is showing, the notification window moves to the Overlay layer, and is put back on top when another big window opens at the same time.
+
+## Guided tour and "what's new" (first start and after updates)
+
+- **First start**: the screen dims except for a light-ringed hole around the part being explained, with a card in the island's glass style (what it does, what can happen, key caps). Steps: island, search bar and `>` commands, performance and media pages, quick settings, notification centre, console, shortcuts tree, sysmode commands tree, tree view, settings. The island opens each thing for its step, and the highlighted part can be used. **Esc skips**, Right / Enter / Space = next, Left = back.
+- The light follows the real size of the bar (it grows into pages, shrinks, slides), and the notch / auto-hide styles.
+- **The only file to edit when a feature ships is `quickshell/island/features.json`.** After an update the island compares it with the copy the user saw last (`~/.local/state/island/features.seen.json`) and shows only entries that are new, or whose `rev` went up, as "What's new". Skipping counts as seen.
+- Replay everything with `>tour` or `halcyon tour`. New files: `Tour.qml`, `Tour.js`, `features.json`.
+
 ## Choose the fish greeting's logo (adaptive, BlackArch, your own ASCII art)
 
 - The greeting used to be hard-wired: the Kali dragon inside a Kali container, the Arch logo everywhere else. **Settings > Terminal greeting** now has **Logo in new terminals**: Adaptive (default), Arch, BlackArch, Kali, Linux, Custom, Info only, Off. `scripts/greeting-conf.sh` does the same from a terminal (`list`, `set LOGO <name>`, `paste`, `import FILE`, `edit`, `preview`); the choice is in `~/.config/Halcyon/greeting.conf`.
