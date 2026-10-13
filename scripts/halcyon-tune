@@ -75,9 +75,19 @@ game_off() {
   done
 }
 
+# `iw ... set power_save` only changes the card for now: a reconnect, a reboot or a driver reload goes back to the default. So the
+# choice is also written for NetworkManager, which applies wifi.powersave (2 = off, 3 = on) every time it brings a connection up.
+# The file name sorts last, so it also wins over a distro file such as default-wifi-powersave-on.conf. No NetworkManager, no file.
+NMCONF=/etc/NetworkManager/conf.d/zz-halcyon-wifi-powersave.conf
 wifi_ps() {
-  local i
+  local i v
   for i in $(wifi_ifaces); do wifi_set "$i" "$1"; done
+  if [ -d /etc/NetworkManager/conf.d ]; then
+    [ "$1" = on ] && v=3 || v=2
+    printf '# Written by Halcyon (Settings > Tools > Wi-Fi power saving). Delete this file to go back to the default.\n[connection]\nwifi.powersave = %s\n' "$v" > "$NMCONF"
+    command -v nmcli >/dev/null 2>&1 && timeout 5 nmcli general reload conf >/dev/null 2>&1
+  fi
+  return 0
 }
 
 # Only one power manager may own the CPU: check the chosen one exists FIRST (so a typo or a missing package never leaves
