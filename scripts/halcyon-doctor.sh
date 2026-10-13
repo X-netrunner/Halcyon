@@ -13,12 +13,20 @@ bad()  { printf '  %s✘%s %s\n' "$R" "$N" "$*"; }
 hdr()  { printf '\n%s%s%s\n' "$B" "$*" "$N"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+if command -v apt-get >/dev/null 2>&1 && ! command -v pacman >/dev/null 2>&1; then
+  PKG_INSTALL="sudo apt install"
+  PKG_UPGRADE="sudo apt update && sudo apt install"
+else
+  PKG_INSTALL="sudo pacman -S"
+  PKG_UPGRADE="sudo pacman -Syu"
+fi
+
 hdr "Hyprland"
 if have Hyprland; then
   v=$(Hyprland --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1)
-  if [ -n "$v" ] && [ "$(printf '%s\n0.55\n' "$v" | sort -V | head -n1)" != "0.55" ]; then bad "Hyprland $v is too old: the Halcyon config is Lua and needs 0.55 or newer (sudo pacman -Syu hyprland)"
+  if [ -n "$v" ] && [ "$(printf '%s\n0.55\n' "$v" | sort -V | head -n1)" != "0.55" ]; then bad "Hyprland $v is too old: the Halcyon config is Lua and needs 0.55 or newer ($PKG_UPGRADE hyprland)"
   else ok "Hyprland ${v:-installed}"; fi
-else bad "Hyprland is not installed (sudo pacman -S hyprland)"; fi
+else bad "Hyprland is not installed ($PKG_INSTALL hyprland)"; fi
 [ -f "$RICE/hyprland.lua" ] && ok "Halcyon files: $RICE" || bad "$RICE/hyprland.lua is missing: run ./install.sh from the Halcyon folder"
 cfg="${HYPRLAND_CONFIG:-}"
 if [ -n "$cfg" ]; then
@@ -41,10 +49,10 @@ if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
 fi
 
 hdr "Quickshell (the island)"
-if have quickshell; then ok "$(quickshell --version 2>&1 | head -n1)"; else bad "quickshell is not installed (sudo pacman -S quickshell)"; fi
+if have quickshell; then ok "$(quickshell --version 2>&1 | head -n1)"; else bad "quickshell is not installed ($PKG_INSTALL quickshell)"; fi
 for q in QtQuick/Layouts QtQuick/Shapes QtQuick/Effects QtQuick/Controls Qt/labs/folderlistmodel; do
-  d=""; for base in /usr/lib/qt6/qml /usr/lib/qt/qml /usr/lib64/qt6/qml; do [ -d "$base/$q" ] && d=1; done
-  [ -n "$d" ] && ok "Qt module $q" || bad "Qt module $q is missing (sudo pacman -S qt6-declarative qt6-5compat qt6-svg qt6-wayland)"
+  d=""; for base in /usr/lib/qt6/qml /usr/lib/qt/qml /usr/lib64/qt6/qml /usr/lib/x86_64-linux-gnu/qt6/qml /usr/lib/*-linux-gnu/qt6/qml; do [ -d "$base/$q" ] && d=1; done
+  [ -n "$d" ] && ok "Qt module $q" || bad "Qt module $q is missing ($PKG_INSTALL qt6-declarative qt6-5compat qt6-svg qt6-wayland)"
 done
 for sh in island; do   # the wallpaper layer is part of the island shell now (quickshell/island/Wallpaper.qml)
   if pgrep -f "quickshell.* -p .*quickshell/$sh" >/dev/null 2>&1 || pgrep -f "qs .*-p .*quickshell/$sh" >/dev/null 2>&1; then ok "the $sh shell is running"
@@ -56,7 +64,7 @@ for sh in island; do   # the wallpaper layer is part of the island shell now (qu
   fi
 done
 echo "  ${D}to see the errors live:  pkill quickshell; quickshell -p $RICE/quickshell/island${N}"
-have notify-send || warn "notify-send missing (sudo pacman -S libnotify)"
+have notify-send || warn "notify-send missing ($PKG_INSTALL libnotify)"
 
 hdr "Graphics"
 gpus=$(lspci -nn 2>/dev/null | grep -Ei 'vga|3d|display')
@@ -81,7 +89,7 @@ A_ACC=$(sed -n 's/^A_ACC=//p' "$HOME/.cache/island/ansi.env" 2>/dev/null | head 
 [ -n "${STARSHIP_CONFIG:-}" ] && warn "STARSHIP_CONFIG is set ($STARSHIP_CONFIG): Starship reads THAT file, not ~/.config/starship.toml"
 if have starship; then grep -q "HALCYON STARSHIP PALETTE" "$HOME/.config/starship.toml" 2>/dev/null && ok "Starship: Halcyon prompt + palette" || warn "Starship is installed but ~/.config/starship.toml is not the Halcyon one: $RICE/scripts/user-setup.sh app-themes"
   [ -n "${A_ACC:-}" ] && { grep -qi "^accent *= *\"$A_ACC\"" "$HOME/.config/starship.toml" 2>/dev/null && ok "Starship: colours match the wallpaper" || warn "Starship: palette is not the wallpaper's: $RICE/scripts/app-themes.sh --now  (then: tail ~/.cache/island/app-themes.log)"; }
-else warn "starship not installed (sudo pacman -S starship)"; fi
+else warn "starship not installed ($PKG_INSTALL starship)"; fi
 if have fish; then
   grep -q __halcyon_colors "$HOME/.config/fish/conf.d/halcyon.fish" 2>/dev/null && ok "fish: Halcyon colours (re-applied at every prompt)" || warn "fish: colours missing or old: $RICE/scripts/app-themes.sh --now"
   [ -n "${A_ACC:-}" ] && grep -qi "fish_color_command ${A_ACC#\#}" "$HOME/.cache/island/halcyon-colors.fish" 2>/dev/null && ok "fish: colours match the wallpaper" || warn "fish: colours are not the wallpaper's: $RICE/scripts/app-themes.sh --now  (then: tail ~/.cache/island/app-themes.log)"
@@ -100,7 +108,7 @@ else warn "Discord: stock Discord cannot be themed. Install Vesktop (AUR: veskto
 hdr "Gaming mode"
 [ -x /usr/local/bin/halcyon-tune ] && ok "halcyon-tune installed" || warn "halcyon-tune missing: Gaming mode only changes visuals (run ./install.sh)"
 sudo -n /usr/local/bin/halcyon-tune >/dev/null 2>&1; [ $? -eq 2 ] && ok "halcyon-tune runs without a password" || warn "halcyon-tune asks for a password (the sudoers rule is missing: run ./install.sh)"
-have gamemoded && ok "GameMode installed" || warn "gamemode missing (sudo pacman -S gamemode)"
+have gamemoded && ok "GameMode installed" || warn "gamemode missing ($PKG_INSTALL gamemode)"
 have powerprofilesctl && ok "power profile: $(powerprofilesctl get 2>/dev/null)" || warn "power-profiles-daemon missing"
 echo
 

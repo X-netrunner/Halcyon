@@ -307,13 +307,20 @@ if [[ -f /etc/os-release ]]; then
     DISTRO_ID="$(. /etc/os-release; echo "${ID:-unknown}")"
     DISTRO_LIKE="$(. /etc/os-release; echo "${ID_LIKE:-}")"
 fi
-log_info "System: ${BOLD}${DISTRO_NAME}${RESET} (${DISTRO_ID}), ${ARCH_CPU}"
+PKG_MGR=""
+if command -v pacman >/dev/null 2>&1; then
+    PKG_MGR="pacman"
+elif command -v apt-get >/dev/null 2>&1; then
+    PKG_MGR="apt"
+fi
+log_info "System: ${BOLD}${DISTRO_NAME}${RESET} (${DISTRO_ID}), ${ARCH_CPU}${PKG_MGR:+ [package manager: ${PKG_MGR}]}"
 
 if [[ "$PACKAGES" == "true" ]]; then
-    command -v pacman >/dev/null 2>&1 || die "pacman not found: this installer is for Arch and Arch-based systems. Install the packages from README.md by hand, then run again with --no-packages."
+    [[ -n "$PKG_MGR" ]] || die "No supported package manager found (pacman or apt). Install the packages from README.md by hand, then run again with --no-packages."
     case " $DISTRO_ID $DISTRO_LIKE " in
         *" arch "*|*" cachyos "*|*" endeavouros "*|*" manjaro "*|*" garuda "*|*" artix "*|*" arcolinux "*) ;;
-        *) log_warn "${DISTRO_NAME} is not a known Arch derivative, but pacman is available."
+        *" ubuntu "*|*" pop "*|*" debian "*|*" linuxmint "*|*" elementary "*|*" zorin "*|*" kali "*) ;;
+        *) log_warn "${DISTRO_NAME} is not a directly tested distribution, but ${PKG_MGR} is available."
            confirm "Go on anyway?" || exit 1 ;;
     esac
 fi
@@ -381,12 +388,18 @@ fi
 
 # ---- pre-flight
 if [[ "$PACKAGES" == "true" ]]; then
-    if [[ -e /var/lib/pacman/db.lck ]] && ! pgrep -x pacman >/dev/null 2>&1; then
-        die "Stale pacman lock at /var/lib/pacman/db.lck. Remove it (sudo rm /var/lib/pacman/db.lck) and run again."
-    fi
-    if [[ "$DRY_RUN" != "true" ]] && command -v curl >/dev/null 2>&1 \
-       && ! curl -fsS --max-time 15 -o /dev/null https://archlinux.org 2>>"$LOG_FILE"; then
-        warn_later "archlinux.org is not reachable: installing missing packages will probably fail."
+    if [[ "$PKG_MGR" == "pacman" ]]; then
+        if [[ -e /var/lib/pacman/db.lck ]] && ! pgrep -x pacman >/dev/null 2>&1; then
+            die "Stale pacman lock at /var/lib/pacman/db.lck. Remove it (sudo rm /var/lib/pacman/db.lck) and run again."
+        fi
+        if [[ "$DRY_RUN" != "true" ]] && command -v curl >/dev/null 2>&1 \
+           && ! curl -fsS --max-time 15 -o /dev/null https://archlinux.org 2>>"$LOG_FILE"; then
+            warn_later "archlinux.org is not reachable: installing missing packages will probably fail."
+        fi
+    elif [[ "$PKG_MGR" == "apt" ]]; then
+        if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+            die "apt / dpkg is currently locked by another process. Wait for it to finish and run again."
+        fi
     fi
 fi
 # a leftover temporary sudo rule from a run that was killed halfway
@@ -395,7 +408,7 @@ fi
 if [[ "$DRY_RUN" != "true" ]]; then
     echo
     echo -e "${BOLD}This will:${RESET}"
-    [[ "$PACKAGES" == "true" ]] && echo "  - install missing packages with pacman (and a few optional ones from the AUR)"
+    [[ "$PACKAGES" == "true" ]] && echo "  - install missing packages with ${PKG_MGR:-package manager}$([[ "$PKG_MGR" == "pacman" ]] && echo " (and a few optional ones from the AUR)")"
     echo "  - copy Halcyon to ${TARGET_RICE} (an older copy is saved in ~/.config/Halcyon-backups)"
     echo "  - build the Rust helpers, set up the Hyprland entry, the login-screen session and the user services"
     [[ "$SKIP_TUNE" != "true" ]] && echo "  - install halcyon-tune and ONE sudo rule so Gaming mode / power manager / Wi-Fi power saving work without a password prompt"
@@ -407,9 +420,152 @@ fi
 # ---------------------------------------------------------------------------------------------- step 2
 log_step "Step 2: Package manager"
 
-pkg_missing() { [[ -n "$(pacman -T "$1" 2>/dev/null)" ]]; }       # honours "provides", unlike pacman -Q
+pkg_missing() {
+    if [[ "$PKG_MGR" == "apt" ]]; then
+        dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "ok installed" && return 1 || return 0
+    else
+        [[ -n "$(pacman -T "$1" 2>/dev/null)" ]]
+    fi
+}
+
+# Translate Arch package names into Debian / Ubuntu / Pop!_OS package names
+map_pkg_for_apt() {
+    local p="$1"
+    case "$p" in
+        base-devel)             echo "build-essential" ;;
+        pkgconf)                echo "pkg-config" ;;
+        pciutils)               echo "pciutils" ;;
+        git)                    echo "git" ;;
+        curl)                   echo "curl" ;;
+        linux-firmware)         echo "linux-firmware" ;;
+        amd-ucode)              echo "amd64-microcode" ;;
+        intel-ucode)            echo "intel-microcode" ;;
+        mesa)                   echo "libgl1-mesa-dri mesa-vulkan-drivers libglx-mesa0" ;;
+        vulkan-radeon|vulkan-intel|vulkan-virtio|vulkan-swrast) echo "mesa-vulkan-drivers" ;;
+        intel-media-driver)     echo "intel-media-va-driver" ;;
+        intel-gpu-tools)        echo "intel-gpu-tools" ;;
+        libva-mesa-driver)      echo "mesa-va-drivers" ;;
+        libva-intel-driver)     echo "i965-va-driver" ;;
+        mesa-vdpau)             echo "mesa-vdpau-drivers" ;;
+        vulkan-tools)           echo "vulkan-tools" ;;
+        mesa-utils)             echo "mesa-utils" ;;
+        libva-utils)            echo "vainfo" ;;
+        vulkan-icd-loader)      echo "libvulkan1" ;;
+        pipewire)               echo "pipewire" ;;
+        pipewire-pulse)         echo "pipewire-pulse" ;;
+        pipewire-alsa)          echo "pipewire-alsa" ;;
+        wireplumber)            echo "wireplumber" ;;
+        libpulse)               echo "libpulse0" ;;
+        pavucontrol)            echo "pavucontrol" ;;
+        sof-firmware)           echo "firmware-sof-signed" ;;
+        alsa-firmware)          echo "alsa-firmware-loaders" ;;
+        alsa-ucm-conf)          echo "alsa-ucm-conf" ;;
+        bluez)                  echo "bluez" ;;
+        bluez-utils)            echo "bluez-tools" ;;
+        blueman)                echo "blueman" ;;
+        networkmanager)         echo "network-manager" ;;
+        network-manager-applet) echo "network-manager-gnome" ;;
+        power-profiles-daemon)  echo "power-profiles-daemon" ;;
+        brightnessctl)          echo "brightnessctl" ;;
+        playerctl)              echo "playerctl" ;;
+        upower)                 echo "upower" ;;
+        iw)                     echo "iw" ;;
+        polkit)                 echo "polkitd" ;;
+        dbus)                   echo "dbus" ;;
+        libnotify)              echo "libnotify-bin" ;;
+        xdg-utils)              echo "xdg-utils" ;;
+        xdg-user-dirs)          echo "xdg-user-dirs" ;;
+        dmidecode)              echo "dmidecode" ;;
+        xdg-desktop-portal-hyprland) echo "xdg-desktop-portal-hyprland" ;;
+        xdg-desktop-portal-gtk)      echo "xdg-desktop-portal-gtk" ;;
+        polkit-kde-agent)       echo "polkit-kde-agent-1" ;;
+        hypridle)               echo "hypridle" ;;
+        hyprlock)               echo "hyprlock" ;;
+        hyprsunset)             echo "hyprsunset" ;;
+        hyprutils)              echo "libhyprutils-dev" ;;
+        qt6-base)               echo "qt6-base-dev" ;;
+        qt6-declarative)        echo "qml6-module-qtquick qml6-module-qtqml" ;;
+        qt6-svg)                echo "libqt6svg6 qml6-module-qtquick-shapes" ;;
+        qt6-wayland)            echo "qt6-wayland" ;;
+        qt6-5compat)            echo "qml6-module-qt5compat" ;;
+        qt6-multimedia)         echo "qml6-module-qtmultimedia" ;;
+        qt5-wayland)            echo "qtwayland5" ;;
+        qt6ct)                  echo "qt6ct" ;;
+        kvantum)                echo "qt6-style-kvantum" ;;
+        kservice)               echo "libkf6service-dev" ;;
+        imagemagick)            echo "imagemagick" ;;
+        cava)                   echo "cava" ;;
+        btop)                   echo "btop" ;;
+        fish)                   echo "fish" ;;
+        starship)               echo "starship" ;;
+        poppler)                echo "poppler-utils" ;;
+        fd)                     echo "fd-find" ;;
+        ripgrep)                echo "ripgrep" ;;
+        fzf)                    echo "fzf" ;;
+        grim)                   echo "grim" ;;
+        slurp)                  echo "slurp" ;;
+        wl-clipboard)           echo "wl-clipboard" ;;
+        cliphist)               echo "cliphist" ;;
+        fuzzel)                 echo "fuzzel" ;;
+        util-linux)             echo "util-linux" ;;
+        lsof)                   echo "lsof" ;;
+        jq)                     echo "jq" ;;
+        zenity)                 echo "zenity" ;;
+        gamemode)               echo "gamemode" ;;
+        python)                 echo "python3 python3-pip" ;;
+        inter-font)             echo "fonts-inter" ;;
+        ttf-jetbrains-mono-nerd) echo "fonts-jetbrains-mono" ;;
+        noto-fonts)             echo "fonts-noto-core" ;;
+        noto-fonts-emoji)       echo "fonts-noto-color-emoji" ;;
+        adwaita-icon-theme)     echo "adwaita-icon-theme" ;;
+        gamescope)              echo "gamescope" ;;
+        mangohud)               echo "mangohud" ;;
+        foot)                   echo "foot" ;;
+        rust)                   echo "rustc cargo" ;;
+        nmap)                   echo "nmap" ;;
+        tcpdump)                echo "tcpdump" ;;
+        ufw)                    echo "ufw" ;;
+        audit)                  echo "auditd" ;;
+        docker)                 echo "docker.io" ;;
+        dnscrypt-proxy)         echo "dnscrypt-proxy" ;;
+        lynis)                  echo "lynis" ;;
+        acct)                   echo "acct" ;;
+        clamav)                 echo "clamav" ;;
+        rkhunter)               echo "rkhunter" ;;
+        aide)                   echo "aide" ;;
+        rsync)                  echo "rsync" ;;
+        nvidia-prime)           echo "nvidia-prime" ;;
+        nvidia-settings)        echo "nvidia-settings" ;;
+        nvtop)                  echo "nvtop" ;;
+        egl-wayland)            echo "libnvidia-egl-wayland1" ;;
+        libva-nvidia-driver)    echo "nvidia-vaapi-driver" ;;
+        thunar-archive-plugin)  echo "thunar-archive-plugin" ;;
+        thunar-volman)          echo "thunar-volman" ;;
+        gvfs|gvfs-mtp)          echo "gvfs gvfs-backends" ;;
+        tumbler)                echo "tumbler" ;;
+        ffmpegthumbnailer)      echo "ffmpegthumbnailer" ;;
+        file-roller)            echo "file-roller" ;;
+        papirus-icon-theme)     echo "papirus-icon-theme" ;;
+        zoxide)                 echo "zoxide" ;;
+        kio-extras)             echo "kio-extras" ;;
+        kde-cli-tools)          echo "kde-cli-tools" ;;
+        nemo-fileroller)        echo "nemo-fileroller" ;;
+        pcmanfm-gtk3)           echo "pcmanfm" ;;
+        zen-browser-bin)        echo "zen-browser" ;;
+        librewolf-bin)          echo "librewolf" ;;
+        floorp-bin)             echo "floorp" ;;
+        brave-bin)              echo "brave-browser" ;;
+        google-chrome)          echo "google-chrome-stable" ;;
+        vscodium-bin)           echo "codium" ;;
+        spotify|spotify-launcher) echo "spotify-client" ;;
+        sweet-cursors-git)      echo "sweet-cursor-theme" ;;
+        lib32-*)                echo "" ;;
+        *)                      echo "$p" ;;
+    esac
+}
 
 ensure_aur_helper() {   # called only when an AUR package is really needed; installs yay-bin if no helper exists
+    [[ "$PKG_MGR" != "pacman" ]] && return 1
     [[ -n "$AUR_HELPER" ]] && return 0
     command -v yay  >/dev/null 2>&1 && { AUR_HELPER=yay;  return 0; }
     command -v paru >/dev/null 2>&1 && { AUR_HELPER=paru; return 0; }
@@ -434,12 +590,73 @@ ensure_aur_helper() {   # called only when an AUR package is really needed; inst
     return 1
 }
 
-# install_pkgs [--critical] [--repo-only] NAME...   official repos first, AUR for the rest; one bad name never stops the others
-#   --critical    the installer stops when one of them cannot be installed
-#   --repo-only   never offer the AUR for these (driver / firmware packages: a name that is not in the repos is skipped quietly)
-# pacman always runs with --noconfirm: you already said "Go ahead" above, and a question printed inside a logged command
-# is how an installer looks frozen.
-install_pkgs() {
+install_pkgs_apt() {
+    local critical=false repo_only=false
+    while [[ "${1:-}" == --* ]]; do
+        case "$1" in --critical) critical=true ;; --repo-only) repo_only=true ;; *) break ;; esac
+        shift
+    done
+    local to_install=() p mapped m
+    for p in "$@"; do
+        [[ -z "$p" ]] && continue
+        mapped=($(map_pkg_for_apt "$p"))
+        [[ ${#mapped[@]} -eq 0 ]] && continue
+        for m in "${mapped[@]}"; do
+            [[ -z "$m" ]] && continue
+            if pkg_missing "$m"; then
+                if apt-cache show "$m" >/dev/null 2>&1; then
+                    to_install+=("$m")
+                else
+                    if [[ "$repo_only" == "true" ]]; then
+                        log_info "Not in apt repositories, skipped: $m"
+                    elif [[ "$p" == "quickshell" || "$p" == "hyprland" ]]; then
+                        if command -v "$p" >/dev/null 2>&1; then
+                            log_info "$p is already available in PATH."
+                        else
+                            log_warn "$p is not in official apt repositories: checking alternative sources..."
+                            if [[ "$p" == "hyprland" ]] && command -v add-apt-repository >/dev/null 2>&1; then
+                                if ask "Add Hyprland PPA (ppa:cpp-spence/hyprland) for Ubuntu/Pop!_OS?"; then
+                                    as_root add-apt-repository -y ppa:cpp-spence/hyprland && as_root apt-get update -qq && to_install+=("hyprland") || true
+                                fi
+                            fi
+                        fi
+                    fi
+                fi
+            fi
+        done
+    done
+
+    if [[ ${#to_install[@]} -gt 0 ]]; then
+        mapfile -t to_install < <(printf '%s\n' "${to_install[@]}" | sort -u)
+        if ! run_cmd "Installing (apt): ${to_install[*]}" as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${to_install[@]}"; then
+            log_warn "The apt batch failed: trying one package at a time..."
+            for m in "${to_install[@]}"; do
+                run_cmd "Installing (apt) $m" as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$m" || FAILED_PKGS+=("$m")
+            done
+        fi
+    fi
+
+    # Post-install symlinks for Debian/Ubuntu binary name differences
+    if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
+        as_root ln -sf "$(command -v fdfind)" /usr/local/bin/fd 2>/dev/null || true
+    fi
+    if command -v batcat >/dev/null 2>&1 && ! command -v bat >/dev/null 2>&1; then
+        as_root ln -sf "$(command -v batcat)" /usr/local/bin/bat 2>/dev/null || true
+    fi
+
+    if [[ "$critical" == "true" && "$DRY_RUN" != "true" ]]; then
+        for p in "$@"; do
+            command -v "$p" >/dev/null 2>&1 && continue
+            mapped=($(map_pkg_for_apt "$p"))
+            for m in "${mapped[@]}"; do
+                pkg_missing "$m" && ! command -v "$p" >/dev/null 2>&1 && die "Required package '$m' ('$p') could not be installed. See ${LOG_FILE}"
+            done
+        done
+    fi
+    return 0
+}
+
+install_pkgs_pacman() {
     local critical=false repo_only=false
     while [[ "${1:-}" == --* ]]; do
         case "$1" in --critical) critical=true ;; --repo-only) repo_only=true ;; *) break ;; esac
@@ -488,9 +705,26 @@ install_pkgs() {
     return 0
 }
 
+install_pkgs() {
+    if [[ "$PKG_MGR" == "apt" ]]; then
+        install_pkgs_apt "$@"
+    else
+        install_pkgs_pacman "$@"
+    fi
+}
+
 MULTILIB_ENABLED=false
 if [[ "$PACKAGES" == "true" ]]; then
-    grep -qE '^\s*\[multilib\]' /etc/pacman.conf && MULTILIB_ENABLED=true
+    if [[ "$PKG_MGR" == "apt" ]]; then
+        dpkg --print-foreign-architectures 2>/dev/null | grep -q 'i386' && MULTILIB_ENABLED=true
+        if [[ "$MULTILIB_ENABLED" != "true" ]]; then
+            if ask "Enable i386 multiarch (32-bit architecture for Steam/Wine)?"; then
+                as_root dpkg --add-architecture i386 && as_root apt-get update -qq && MULTILIB_ENABLED=true || true
+            fi
+        fi
+    else
+        grep -qE '^\s*\[multilib\]' /etc/pacman.conf 2>/dev/null && MULTILIB_ENABLED=true
+    fi
     log_info "multilib (32-bit libraries): $([[ "$MULTILIB_ENABLED" == "true" ]] && echo enabled || echo "not enabled: 32-bit packages are skipped")"
 
     # Arch does not support installing packages on top of an old system ("partial upgrade": a new Hyprland / Mesa next to old
@@ -500,22 +734,33 @@ if [[ "$PACKAGES" == "true" ]]; then
     # upgrade can replace the kernel under a running desktop; --upgrade forces one.
     if [[ "$UPGRADE" == "auto" ]]; then
         DB_AGE_DAYS=999
-        if DBF="$(ls -t /var/lib/pacman/sync/*.db 2>/dev/null | head -n1)" && [[ -n "$DBF" ]]; then
-            DB_AGE_DAYS=$(( ( $(date +%s) - $(stat -c %Y "$DBF") ) / 86400 ))
+        if [[ "$PKG_MGR" == "apt" ]]; then
+            if DBF="$(ls -t /var/lib/apt/lists/*Packages 2>/dev/null | head -n1)" && [[ -n "$DBF" ]]; then
+                DB_AGE_DAYS=$(( ( $(date +%s) - $(stat -c %Y "$DBF") ) / 86400 ))
+            fi
+        else
+            if DBF="$(ls -t /var/lib/pacman/sync/*.db 2>/dev/null | head -n1)" && [[ -n "$DBF" ]]; then
+                DB_AGE_DAYS=$(( ( $(date +%s) - $(stat -c %Y "$DBF") ) / 86400 ))
+            fi
         fi
         if ! command -v Hyprland >/dev/null 2>&1 || [[ "$DB_AGE_DAYS" -gt 7 ]]; then
             if [[ "$AUTO_CONFIRM" == "true" ]]; then
                 command -v Hyprland >/dev/null 2>&1 && UPGRADE=no || UPGRADE=yes
-            elif [[ -t 0 ]] && ask "Full system upgrade first (pacman -Syu)? Recommended: Hyprland is not installed yet or the package databases are ${DB_AGE_DAYS} days old, and installing on top of an old system can break it."; then
+            elif [[ -t 0 ]] && ask "Full system upgrade first ($([[ "$PKG_MGR" == "apt" ]] && echo "apt update && apt upgrade" || echo "pacman -Syu"))? Recommended: Hyprland is not installed yet or package caches are ${DB_AGE_DAYS} days old."; then
                 UPGRADE=yes
             else UPGRADE=no; fi
         else UPGRADE=no; fi
     fi
     if [[ "$UPGRADE" == "yes" ]]; then
-        run_cmd "Full system upgrade (pacman -Syu)" as_root pacman -Syu --noconfirm \
-            || die "The system upgrade failed. Fix pacman (mirrors / keyring) and run again."
+        if [[ "$PKG_MGR" == "apt" ]]; then
+            run_cmd "Full system upgrade (apt update && upgrade)" as_root env DEBIAN_FRONTEND=noninteractive bash -c "apt-get update && apt-get upgrade -y" \
+                || die "The system upgrade failed. Fix apt repositories and run again."
+        else
+            run_cmd "Full system upgrade (pacman -Syu)" as_root pacman -Syu --noconfirm \
+                || die "The system upgrade failed. Fix pacman (mirrors / keyring) and run again."
+        fi
     else
-        log_info "No system upgrade (add --upgrade for one). If installs fail with 404 errors or missing libraries, run: sudo pacman -Syu"
+        log_info "No system upgrade (add --upgrade for one). If installs fail with 404 errors or missing libraries, run: $([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt update && sudo apt upgrade" || echo "sudo pacman -Syu")"
     fi
     install_pkgs --critical base-devel git curl pkgconf pciutils
 else
@@ -526,6 +771,16 @@ fi
 log_step "Step 3: Graphics drivers and CPU microcode"
 
 kernel_headers() {
+    if [[ "$PKG_MGR" == "apt" ]]; then
+        local kver
+        kver="$(uname -r)"
+        if apt-cache show "linux-headers-$kver" >/dev/null 2>&1; then
+            echo "linux-headers-$kver"
+        else
+            echo "linux-headers-generic"
+        fi
+        return 0
+    fi
     local base f out=()
     for f in /usr/lib/modules/*/pkgbase; do
         [[ -f "$f" ]] || continue
@@ -535,7 +790,11 @@ kernel_headers() {
     [[ ${#out[@]} -eq 0 ]] && out=(linux-headers)
     printf '%s\n' "${out[@]}" | sort -u
 }
-installed_kernels() {   # the pkgbase of every installed kernel: linux, linux-lts, linux-zen, linux-cachyos ...
+installed_kernels() {   # the pkgbase of every installed kernel
+    if [[ "$PKG_MGR" == "apt" ]]; then
+        uname -r
+        return 0
+    fi
     local f; for f in /usr/lib/modules/*/pkgbase; do [[ -f "$f" ]] && cat "$f"; done | sort -u
 }
 
@@ -590,46 +849,66 @@ else
         NVIDIA_GEN="$(nvidia_generation "$NV_LINES")"
         log_info "NVIDIA graphics (generation: ${BOLD}${NVIDIA_GEN}${RESET})$([[ "$HYBRID_GPU" == "true" ]] && echo ", hybrid laptop: the other GPU draws the desktop, NVIDIA is for games (prime-run)")"
         NV_PRESENT=false
-        for q in nvidia nvidia-open nvidia-dkms nvidia-open-dkms nvidia-lts nvidia-580xx-dkms nvidia-470xx-dkms; do pacman -Qq "$q" >/dev/null 2>&1 && NV_PRESENT=true; done
-        pacman -Qq linux-cachyos-nvidia-open >/dev/null 2>&1 && NV_PRESENT=true
+        if [[ "$PKG_MGR" == "apt" ]]; then
+            dpkg -l 2>/dev/null | grep -qE '^ii\s+(nvidia-driver|nvidia-kernel|linux-modules-nvidia)' && NV_PRESENT=true
+        else
+            for q in nvidia nvidia-open nvidia-dkms nvidia-open-dkms nvidia-lts nvidia-580xx-dkms nvidia-470xx-dkms; do pacman -Qq "$q" >/dev/null 2>&1 && NV_PRESENT=true; done
+            pacman -Qq linux-cachyos-nvidia-open >/dev/null 2>&1 && NV_PRESENT=true
+        fi
 
-        case "$NVIDIA_GEN" in
-        open)
-            NVIDIA_PKGS=(nvidia-utils egl-wayland libva-nvidia-driver nvidia-settings nvtop)
-            [[ "$MULTILIB_ENABLED" == "true" ]] && NVIDIA_PKGS+=(lib32-nvidia-utils)
-            mapfile -t KERNELS < <(installed_kernels)
+        if [[ "$PKG_MGR" == "apt" ]]; then
             if [[ "$NV_PRESENT" == "true" ]]; then
                 log_info "An NVIDIA kernel driver is already installed: leaving it alone."
-            elif [[ "$DISTRO_ID" == "cachyos" ]] && pacman -Qq linux-cachyos >/dev/null 2>&1 && pacman -Si linux-cachyos-nvidia-open >/dev/null 2>&1; then
-                NVIDIA_PKGS+=(linux-cachyos-nvidia-open)
-            elif [[ ${#KERNELS[@]} -eq 1 && "${KERNELS[0]}" == "linux" ]] && pacman -Si nvidia-open >/dev/null 2>&1; then
-                NVIDIA_PKGS+=(nvidia-open)          # built for the stock kernel: nothing to compile, nothing that can fail to build
-                log_info "Stock kernel: using the prebuilt open NVIDIA modules (nvidia-open)."
             else
-                mapfile -t HDRS < <(kernel_headers)
-                NVIDIA_PKGS+=("${HDRS[@]}")
-                if pacman -Si nvidia-open-dkms >/dev/null 2>&1; then NVIDIA_PKGS+=(nvidia-open-dkms); else NVIDIA_PKGS+=(nvidia-dkms); fi
-                log_info "Kernel(s): ${KERNELS[*]:-unknown}: using the DKMS NVIDIA driver (it is compiled for each kernel; headers are installed)."
+                log_info "Installing NVIDIA driver via apt..."
+                if command -v ubuntu-drivers >/dev/null 2>&1; then
+                    as_root ubuntu-drivers install || true
+                elif apt-cache show nvidia-driver-550 >/dev/null 2>&1; then
+                    install_pkgs nvidia-driver-550 libnvidia-egl-wayland1 nvidia-settings nvtop
+                elif apt-cache show nvidia-driver >/dev/null 2>&1; then
+                    install_pkgs nvidia-driver libnvidia-egl-wayland1 nvidia-settings nvtop
+                fi
             fi
-            install_pkgs --repo-only "${NVIDIA_PKGS[@]}"
-            ;;
-        maxwell-pascal)
-            log_warn "This NVIDIA GPU (Maxwell / Pascal / Volta) is not supported by the current NVIDIA driver any more."
-            if [[ "$NV_PRESENT" == "true" ]]; then log_info "An NVIDIA kernel driver is already installed: leaving it alone."
-            else
-                log_info "Using the legacy 580xx branch from the AUR (it has to be installed BEFORE the other NVIDIA packages, so nothing pulls in the new driver)."
-                mapfile -t HDRS < <(kernel_headers)
-                install_pkgs "${HDRS[@]}"
-                LEG=(nvidia-580xx-dkms nvidia-580xx-utils nvidia-580xx-settings); [[ "$MULTILIB_ENABLED" == "true" ]] && LEG+=(lib32-nvidia-580xx-utils)
-                install_pkgs "${LEG[@]}"
-                pkg_missing nvidia-580xx-utils || install_pkgs --repo-only egl-wayland libva-nvidia-driver nvtop
-            fi
-            ;;
-        kepler|fermi)
-            warn_later "This NVIDIA GPU (${NVIDIA_GEN}) has no proprietary driver that can run a Wayland desktop. It stays on the open nouveau driver (Mesa): Halcyon works, games are slow."
-            install_pkgs --repo-only mesa
-            ;;
-        esac
+            install_pkgs --repo-only egl-wayland nvidia-settings nvtop
+        else
+            case "$NVIDIA_GEN" in
+            open)
+                NVIDIA_PKGS=(nvidia-utils egl-wayland libva-nvidia-driver nvidia-settings nvtop)
+                [[ "$MULTILIB_ENABLED" == "true" ]] && NVIDIA_PKGS+=(lib32-nvidia-utils)
+                mapfile -t KERNELS < <(installed_kernels)
+                if [[ "$NV_PRESENT" == "true" ]]; then
+                    log_info "An NVIDIA kernel driver is already installed: leaving it alone."
+                elif [[ "$DISTRO_ID" == "cachyos" ]] && pacman -Qq linux-cachyos >/dev/null 2>&1 && pacman -Si linux-cachyos-nvidia-open >/dev/null 2>&1; then
+                    NVIDIA_PKGS+=(linux-cachyos-nvidia-open)
+                elif [[ ${#KERNELS[@]} -eq 1 && "${KERNELS[0]}" == "linux" ]] && pacman -Si nvidia-open >/dev/null 2>&1; then
+                    NVIDIA_PKGS+=(nvidia-open)          # built for the stock kernel: nothing to compile, nothing that can fail to build
+                    log_info "Stock kernel: using the prebuilt open NVIDIA modules (nvidia-open)."
+                else
+                    mapfile -t HDRS < <(kernel_headers)
+                    NVIDIA_PKGS+=("${HDRS[@]}")
+                    if pacman -Si nvidia-open-dkms >/dev/null 2>&1; then NVIDIA_PKGS+=(nvidia-open-dkms); else NVIDIA_PKGS+=(nvidia-dkms); fi
+                    log_info "Kernel(s): ${KERNELS[*]:-unknown}: using the DKMS NVIDIA driver (it is compiled for each kernel; headers are installed)."
+                fi
+                install_pkgs --repo-only "${NVIDIA_PKGS[@]}"
+                ;;
+            maxwell-pascal)
+                log_warn "This NVIDIA GPU (Maxwell / Pascal / Volta) is not supported by the current NVIDIA driver any more."
+                if [[ "$NV_PRESENT" == "true" ]]; then log_info "An NVIDIA kernel driver is already installed: leaving it alone."
+                else
+                    log_info "Using the legacy 580xx branch from the AUR (it has to be installed BEFORE the other NVIDIA packages, so nothing pulls in the new driver)."
+                    mapfile -t HDRS < <(kernel_headers)
+                    install_pkgs "${HDRS[@]}"
+                    LEG=(nvidia-580xx-dkms nvidia-580xx-utils nvidia-580xx-settings); [[ "$MULTILIB_ENABLED" == "true" ]] && LEG+=(lib32-nvidia-580xx-utils)
+                    install_pkgs "${LEG[@]}"
+                    pkg_missing nvidia-580xx-utils || install_pkgs --repo-only egl-wayland libva-nvidia-driver nvtop
+                fi
+                ;;
+            kepler|fermi)
+                warn_later "This NVIDIA GPU (${NVIDIA_GEN}) has no proprietary driver that can run a Wayland desktop. It stays on the open nouveau driver (Mesa): Halcyon works, games are slow."
+                install_pkgs --repo-only mesa
+                ;;
+            esac
+        fi
 
         if [[ "$NVIDIA_GEN" == "open" || "$NVIDIA_GEN" == "maxwell-pascal" ]]; then
             printf 'options nvidia_drm modeset=1 fbdev=1\n' | write_root_file /etc/modprobe.d/halcyon-nvidia.conf 644 \
@@ -894,7 +1173,7 @@ if command -v Hyprland >/dev/null 2>&1; then
     HL_VER="$(Hyprland --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || true)"
     log_info "Hyprland ${HL_VER:-installed}"
     if [[ -n "$HL_VER" && "$(printf '%s\n0.55\n' "$HL_VER" | sort -V | head -n1)" != "0.55" ]]; then
-        warn_later "Hyprland ${HL_VER} is older than 0.55: Halcyon's config is written in Lua, which needs 0.55 or newer (sudo pacman -Syu hyprland)."
+        warn_later "Hyprland ${HL_VER} is older than 0.55: Halcyon's config is written in Lua, which needs 0.55 or newer ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt update && sudo apt install hyprland" || echo "sudo pacman -Syu hyprland"))."
     fi
 else warn_later "Hyprland is not installed."; fi
 
@@ -915,7 +1194,7 @@ else
         install_pkgs rust                           # the plain package: nothing is removed, nothing conflicts with rustup
     fi
     rust_ok && log_success "Rust: $(run_as_user rustc --version)" \
-            || warn_later "No working Rust toolchain: the helpers (hx, power-manager, touchpad-gestures, recon-deceiver, log-analyst, attacker-dossier, setStaticMac) cannot be built (sudo pacman -S rust)."
+            || warn_later "No working Rust toolchain: the helpers (hx, power-manager, touchpad-gestures, recon-deceiver, log-analyst, attacker-dossier, setStaticMac) cannot be built ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install rustc cargo" || echo "sudo pacman -S rust"))."
 fi
 
 # ---------------------------------------------------------------------------------------------- step 7
@@ -983,7 +1262,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
     pkill -u "$TARGET_UID" -x touchpad-gestures 2>/dev/null || true
 fi
 if [[ "$DRY_RUN" != "true" ]] && ! rust_ok; then
-    warn_later "No Rust toolchain: skipped building the helpers. Install it (sudo pacman -S rust), then run install.sh again."
+    warn_later "No Rust toolchain: skipped building the helpers. Install it ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install rustc cargo" || echo "sudo pacman -S rust")), then run install.sh again."
     BUILD_FAILED=("${CRATES[@]}")
 else
     for crate in "${CRATES[@]}"; do
@@ -1131,7 +1410,7 @@ if command -v dmidecode >/dev/null 2>&1; then
         enable_service halcyon-ram.service --now
         [[ "$DRY_RUN" == "true" || -s /var/lib/halcyon/dmi-memory.txt ]] || warn_later "dmidecode returned no memory details (virtual machine?): the RAM card shows the size only."
     fi
-else warn_later "dmidecode is missing: the RAM card shows the size only (sudo pacman -S dmidecode, then run this again)."; fi
+else warn_later "dmidecode is missing: the RAM card shows the size only ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install dmidecode" || echo "sudo pacman -S dmidecode"), then run this again)."; fi
 
 # ---------------------------------------------------------------------------------------------- step 11
 log_step "Step 11: Root helpers (halcyon-tune, sysmode, safety check, backlight)"
@@ -1234,7 +1513,7 @@ kbd_led_present() { compgen -G "/sys/class/leds/*kbd?backlight*" >/dev/null || c
 setup_kbd_backlight() {
     if [[ "$DRY_RUN" == "true" ]]; then log_task "[DRY-RUN] keyboard backlight: detect the laptop and load / install its driver"; return 0; fi
     if kbd_led_present; then log_success "Keyboard backlight driver found: $(basename "$(ls -d /sys/class/leds/*kbd?backlight* /sys/class/leds/*keyboard*backlight* 2>/dev/null | head -n1)")"; return 0; fi
-    if ! is_laptop; then log_info "Keyboard light: this is not a laptop, so there is no keyboard-light driver to load (an RGB keyboard: sudo pacman -S openrgb)."; return 0; fi
+    if ! is_laptop; then log_info "Keyboard light: this is not a laptop, so there is no keyboard-light driver to load (an RGB keyboard: $([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install openrgb" || echo "sudo pacman -S openrgb"))."; return 0; fi
     local vendor prod ver id mods=() pkgs=() note="" m loaded=()
     vendor="$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)"; prod="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"; ver="$(cat /sys/class/dmi/id/product_version 2>/dev/null)"
     id="$(tr 'A-Z' 'a-z' <<<"$vendor $prod $ver")"
@@ -1259,7 +1538,7 @@ setup_kbd_backlight() {
         *framework*)                   mods=(cros_kbd_led_backlight framework_laptop) ;;
         *acer*)                        mods=(acer_wmi); note="Acer Predator / Nitro 4-zone RGB: AUR package linuwu-sense-dkms" ;;
         *huawei*|*honor*)              mods=(huawei_wmi) ;;
-        *razer*)                       note="Razer keyboards are not a standard keyboard light: install openrazer (pacman -S openrazer-daemon) and polychromatic" ;;
+        *razer*)                       note="Razer keyboards are not a standard keyboard light: install openrazer ($([[ "$PKG_MGR" == "apt" ]] && echo "apt install openrazer-meta" || echo "pacman -S openrazer-daemon")) and polychromatic" ;;
         *)                             mods=(asus_nb_wmi thinkpad_acpi ideapad_laptop dell_laptop hp_wmi samsung_laptop) ;;
     esac
     for m in "${mods[@]}"; do
@@ -1424,9 +1703,32 @@ for c in foot fuzzel brightnessctl playerctl wpctl nmcli bluetoothctl powerprofi
          hypridle hyprlock hyprsunset pkexec lspci nm-applet blueman-applet kbuildsycoca6 wayfreeze bemoji wlogout iw; do
     check_cmd "$c" "$c"
 done
-check_cmd polkit-kde-agent /usr/lib/polkit-kde-authentication-agent-1
-if [[ -x /usr/lib/xdg-desktop-portal-hyprland || -x /usr/lib/hyprland/xdg-desktop-portal-hyprland ]]; then echo -e "  ${GREEN}✔${RESET} xdg-desktop-portal-hyprland"
-else echo -e "  ${YELLOW}⚠${RESET} xdg-desktop-portal-hyprland (missing)"; fi
+check_polkit() {
+    for p in /usr/lib/polkit-kde-authentication-agent-1 \
+             /usr/libexec/polkit-kde-authentication-agent-1 \
+             /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 \
+             /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
+             /usr/libexec/polkit-gnome/polkit-gnome-authentication-agent-1 \
+             /usr/lib/x86_64-linux-gnu/polkit-gnome-authentication-agent-1 \
+             /usr/lib/hyprpolkitagent/hyprpolkitagent; do
+        [[ -x "$p" ]] && { echo -e "  ${GREEN}✔${RESET} polkit agent ($(basename "$p"))"; return 0; }
+    done
+    echo -e "  ${YELLOW}⚠${RESET} polkit agent (missing)"
+    return 0
+}
+check_polkit
+
+check_portal() {
+    for p in /usr/lib/xdg-desktop-portal-hyprland \
+             /usr/lib/hyprland/xdg-desktop-portal-hyprland \
+             /usr/libexec/xdg-desktop-portal-hyprland \
+             /usr/lib/x86_64-linux-gnu/xdg-desktop-portal-hyprland; do
+        [[ -x "$p" ]] && { echo -e "  ${GREEN}✔${RESET} xdg-desktop-portal-hyprland"; return 0; }
+    done
+    echo -e "  ${YELLOW}⚠${RESET} xdg-desktop-portal-hyprland (missing)"
+    return 0
+}
+check_portal
 case "$HYPR_CONFIG_OK" in
     yes) echo -e "  ${GREEN}✔${RESET} Hyprland accepts the Halcyon config" ;;
     no)  echo -e "  ${RED}✘${RESET} Hyprland reports errors in the Halcyon config (listed above)" ;;

@@ -36,8 +36,8 @@ case "${1:-list}" in
     have nm-applet && nm=true
     have blueman-applet && bl=true
     exists /usr/lib/hyprpolkitagent/hyprpolkitagent && hp=true
-    exists /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1 && gn=true
-    exists /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 && kd=true
+    exists /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1 /usr/lib/x86_64-linux-gnu/polkit-gnome-authentication-agent-1 && gn=true
+    exists /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 && kd=true
     [ -r /proc/driver/nvidia/version ] && nv=true
     [ -x /usr/local/bin/safety-check ] && sf=true      # the optional safety check (install.sh asks): Settings greys its entry out without it
     case "$PORTAL" in demand) ;; *) PORTAL=login ;; esac

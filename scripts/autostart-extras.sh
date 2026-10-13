@@ -21,11 +21,11 @@ agent=""
 case "$POLKIT" in
   none) ;;
   hyprpolkitagent) agent=$(first_exec /usr/lib/hyprpolkitagent/hyprpolkitagent) ;;
-  gnome) agent=$(first_exec /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1) ;;
-  kde)   agent=$(first_exec /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1) ;;
+  gnome) agent=$(first_exec /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1 /usr/lib/x86_64-linux-gnu/polkit-gnome-authentication-agent-1) ;;
+  kde)   agent=$(first_exec /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1) ;;
   *)     agent=$(first_exec /usr/lib/hyprpolkitagent/hyprpolkitagent \
-                            /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1 \
-                            /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1) ;;
+                            /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1 /usr/lib/x86_64-linux-gnu/polkit-gnome-authentication-agent-1 \
+                            /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1) ;;
 esac
 [ -n "$agent" ] && { setsid -f "$agent" >/dev/null 2>&1 </dev/null; }
 # (these three used to be fixed lines in hyprland/execs.lua)
@@ -35,7 +35,7 @@ if [ "$CLIPBOARD" = 1 ] && command -v wl-paste >/dev/null 2>&1 && command -v cli
 fi
 [ "$GESTURES" = 1 ] && systemctl --user start touchpad-gestures.service >/dev/null 2>&1
 if [ "$PORTAL" != demand ]; then
-  for p in /usr/lib/hyprland/xdg-desktop-portal-hyprland /usr/lib/xdg-desktop-portal-hyprland; do
+  for p in /usr/lib/hyprland/xdg-desktop-portal-hyprland /usr/lib/xdg-desktop-portal-hyprland /usr/libexec/xdg-desktop-portal-hyprland /usr/lib/x86_64-linux-gnu/xdg-desktop-portal-hyprland; do
     [ -x "$p" ] && { setsid -f "$p" >/dev/null 2>&1 </dev/null; break; }
   done
 fi

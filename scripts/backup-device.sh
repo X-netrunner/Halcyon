@@ -78,7 +78,7 @@ esac
 host=$(hostname 2>/dev/null || echo pc); stamp=$(date +%Y-%m-%d_%H-%M-%S)
 root="$mnt/Halcyon-backup/$host"; dest="$root/$stamp"
 src=/; excl=(--exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/mnt --exclude=/media
-  --exclude=/lost+found --exclude=/var/tmp --exclude=/var/cache --exclude=/var/lib/pacman/sync "--exclude=$mnt" --exclude=/swapfile --exclude=/.snapshots)
+  --exclude=/lost+found --exclude=/var/tmp --exclude=/var/cache --exclude=/var/lib/pacman/sync --exclude=/var/lib/apt/lists "--exclude=$mnt" --exclude=/swapfile --exclude=/.snapshots)
 if [ "$HOME_ONLY" = 1 ]; then src="$HOME/"; excl=(--exclude=.cache --exclude=.local/share/Trash --exclude=.local/share/gvfs-metadata --exclude="*.sock" "--exclude=$mnt"); fi
 
 # ---- smart skip list: things that rebuild themselves (caches, trash, package downloads, game files, node_modules ...).
