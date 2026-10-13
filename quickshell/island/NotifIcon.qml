@@ -25,11 +25,37 @@ Item {
     // an icon theme name, a file path, or the image the app attached
     readonly property string src: {
         if (!notif) return ""
-        if (notif.image !== "") return notif.image
-        var a = notif.appIcon
-        if (!a) return ""
-        if (a.indexOf("/") === 0 || a.indexOf("file:") === 0 || a.indexOf("image:") === 0) return a
-        return Quickshell.iconPath(a, true)
+        if (notif.image && notif.image !== "") return notif.image
+        var cands = []
+        if (notif.appIcon) cands.push(notif.appIcon)
+        if (notif.desktopEntry) cands.push(notif.desktopEntry)
+        if (notif.appName) cands.push(notif.appName)
+
+        for (var i = 0; i < cands.length; i++) {
+            var raw = String(cands[i]).trim()
+            if (!raw) continue
+            if (raw.indexOf("/") === 0 || raw.indexOf("file:") === 0 || raw.indexOf("image:") === 0) return raw
+            var cleaned = raw.replace(/\.desktop$/i, "")
+            // 1. Try DesktopEntries lookup if available
+            try {
+                if (typeof DesktopEntries !== "undefined" && DesktopEntries.heuristicLookup) {
+                    var de = DesktopEntries.heuristicLookup(cleaned)
+                    if (de && de.icon) {
+                        var dIcon = de.icon
+                        if (dIcon.indexOf("/") === 0) return "file://" + dIcon
+                        var p = Quickshell.iconPath(dIcon, true)
+                        if (p) return p
+                    }
+                }
+            } catch (e) {}
+            // 2. Try exact name in Quickshell.iconPath
+            var p1 = Quickshell.iconPath(cleaned, true)
+            if (p1) return p1
+            // 3. Try lowercase
+            var p2 = Quickshell.iconPath(cleaned.toLowerCase(), true)
+            if (p2) return p2
+        }
+        return Quickshell.iconPath("application-x-executable", true) || ""
     }
     // the profile picture is shown once it has really loaded; until then (or when it never does) the app icon is
     readonly property bool pfpOn: usePfp && avatar !== "" && pfp.status === Image.Ready

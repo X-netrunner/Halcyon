@@ -18,6 +18,7 @@ Scope {
     property var starData: null
     property bool profileStars: true
     property bool open: false
+    property bool consoleOpen: false
     property bool available: false        // sysmode is installed
     property string query: ""
 
@@ -112,8 +113,8 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             WlrLayershell.namespace: "island-cmds"
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
             Item {
                 id: fade

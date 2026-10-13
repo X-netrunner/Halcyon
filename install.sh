@@ -50,6 +50,8 @@
 #   --sysmode              install sysmode without asking (--no-sysmode: skip it)
 #   --safety-check         install the safety check (system update, malware / rootkit scan, firewall, audit, backup) without asking
 #                          (--no-safety-check: skip it; its entry in Settings > Backup is then greyed out and disabled)
+#   --llm[=MODEL]          install Ollama & local AI performance advisor (auto-detects hardware tier or specifies model)
+#   --no-llm               skip Ollama & local AI performance advisor
 #   --choose               ask the questions above again (they are asked once, then remembered for update.sh)
 #                          Without these options and in a terminal you get a short menu; with --yes the saved / default choice is used.
 #   -v, --verbose          show the output of every command (this is the default)
@@ -78,6 +80,7 @@ INSTALL_APPS=true
 PACKAGES=true; SKIP_DRIVERS=false; SKIP_AUR=false; UPGRADE=auto; SKIP_TUNE=false
 SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=false; SYSMODE_ASKED=true; }
 SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default (answer n, or --no-safety-check, to skip it)
+INSTALL_LLM=false; PICK_LLM_MODEL=""; LLM_ASKED=false # local AI performance advisor with Ollama
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 LINK_CONFIG=false; REQUESTED_USER=""; TTY_AUTOSTART=false; LOCK_LOGIN=auto; REMOVE_LOGIN=false
 
@@ -144,6 +147,9 @@ while [[ $# -gt 0 ]]; do
         --no-sysmode)       SYSMODE=false; SYSMODE_ASKED=true ;;
         --safety-check)     SAFETY=true; SAFETY_ASKED=true ;;
         --no-safety-check)  SAFETY=false; SAFETY_ASKED=true ;;
+        --llm)              INSTALL_LLM=true; LLM_ASKED=true ;;
+        --llm=*)            INSTALL_LLM=true; PICK_LLM_MODEL="${1#--llm=}"; LLM_ASKED=true ;;
+        --no-llm)           INSTALL_LLM=false; LLM_ASKED=true ;;
         --browser)          shift; PICK_BROWSER="${1:-}"; [[ -n "$PICK_BROWSER" ]] || die "--browser needs a name (see --help)" ;;
         --browser=*)        PICK_BROWSER="${1#--browser=}" ;;
         --files|--file-manager) shift; PICK_FILES="${1:-}"; [[ -n "$PICK_FILES" ]] || die "--files needs a name (see --help)" ;;
@@ -1046,17 +1052,60 @@ choice_valid() { local kind=$1 id=$2 fn; case "$kind" in browser) fn=browser_pkg
                  [[ "$id" == keep || "$id" == none || -n "$($fn "$id")" ]]; }
 apps_id()      { [[ "$1:$2" == editor:neovim ]] && echo nvim || echo "$2"; }      # the id Settings > Default apps (apps.sh) uses
 
+detect_hardware_tier() {
+    local ram_gb=0 cpus=0 gpu_desc="Integrated Graphics" vram_mb=0 tier_name="Tier 2: Mid-Range / Standard" rec_model="qwen2.5:1.5b" tier_reason=""
+    ram_gb=$(awk '/MemTotal/ {printf "%.0f", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 8)
+    cpus=$(nproc 2>/dev/null || echo 4)
+
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        local nv_info
+        nv_info=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null | head -n1)
+        if [[ -n "$nv_info" ]]; then
+            gpu_desc=$(echo "$nv_info" | awk -F',' '{print $1}' | sed 's/^[ \t]*//')
+            vram_mb=$(echo "$nv_info" | awk -F',' '{print $2}' | tr -dc '0-9')
+        fi
+    elif lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -qi 'amd'; then
+        gpu_desc="AMD Radeon Graphics"
+    elif lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -qi 'intel'; then
+        gpu_desc="Intel Graphics"
+    fi
+
+    # Categorize hardware tiers:
+    # Tier 1: Minimal / Low-end (< 8 GB RAM, or <= 2 CPU cores)
+    # Tier 2: Mid-Range / Standard (8 - 15 GB RAM, or integrated graphics / < 4 GB VRAM)
+    # Tier 3: High-Performance / Dedicated GPU (>= 16 GB RAM OR dedicated GPU with >= 4 GB VRAM, 8+ CPU threads)
+    if [[ "$ram_gb" -lt 8 ]] || [[ "$cpus" -le 2 ]]; then
+        tier_name="Tier 1: Minimal / Low-end"
+        rec_model="qwen2.5:0.5b"
+        tier_reason="Low RAM/CPU detected. qwen2.5:0.5b (~390 MB) provides instant response with virtually zero RAM footprint."
+    elif [[ "$vram_mb" -ge 4000 ]] || ([[ "$ram_gb" -ge 16 ]] && [[ "$cpus" -ge 8 ]]); then
+        tier_name="Tier 3: High-Performance / Dedicated GPU"
+        rec_model="llama3.2:1b"
+        tier_reason="Strong hardware detected (${cpus} threads, ~${ram_gb} GB RAM, ${gpu_desc}). llama3.2:1b (~1.3 GB) runs in milliseconds with stellar reasoning."
+    else
+        tier_name="Tier 2: Mid-Range / Standard"
+        rec_model="qwen2.5:1.5b"
+        tier_reason="Standard hardware detected. qwen2.5:1.5b (~1.0 GB) delivers ideal balance of speed, low memory usage, and structured advice."
+    fi
+
+    echo "$ram_gb|$cpus|$gpu_desc|$vram_mb|$tier_name|$rec_model|$tier_reason"
+}
+
 choose_apps() {
-    local interactive=false have_b have_e s_b s_f s_e s_m s_s s_c ask_b=false ask_f=false ask_e=false ask_m=false ask_s=false ask_c=false id kind
+    local interactive=false have_b have_e s_b s_f s_e s_m s_s s_c s_l s_lm ask_b=false ask_f=false ask_e=false ask_m=false ask_s=false ask_c=false ask_l=false id kind
     local flag_b="$PICK_BROWSER" flag_f="$PICK_FILES" flag_e="$PICK_EDITOR" flag_m="$PICK_MUSIC"      # given on the command line
     [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
     s_b=$(saved_choice BROWSER); s_f=$(saved_choice FILES); s_e=$(saved_choice EDITOR); s_m=$(saved_choice MUSIC); s_s=$(saved_choice SYSMODE); s_c=$(saved_choice SAFETY_CHECK)
+    s_l=$(saved_choice LLM); s_lm=$(saved_choice LLM_MODEL)
     have_any firefox chromium google-chrome-stable brave vivaldi-stable zen-browser librewolf floorp qutebrowser && have_b=true || have_b=false
     have_any codium code code-oss cursor zeditor zed subl kate nvim && have_e=true || have_e=false
     # saved sysmode answer (only when nothing on the command line decided it)
     [[ "$SYSMODE_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_s" ]] && { [[ "$s_s" == yes ]] && SYSMODE=true || SYSMODE=false; SYSMODE_ASKED=true; }
     # saved safety-check answer (same rule: the command line wins, --choose asks again)
     [[ "$SAFETY_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_c" ]] && { [[ "$s_c" == yes ]] && SAFETY=true || SAFETY=false; SAFETY_ASKED=true; }
+    # saved LLM answer
+    [[ "$LLM_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_l" ]] && { [[ "$s_l" == yes ]] && INSTALL_LLM=true || INSTALL_LLM=false; PICK_LLM_MODEL="${s_lm:-llama3.2:1b}"; LLM_ASKED=true; }
+
     if [[ "$interactive" == "true" ]]; then
         [[ -z "$PICK_BROWSER" && ( "$CHOOSE" == "true" || -z "$s_b" ) ]] && ask_b=true
         [[ -z "$PICK_FILES"   && ( "$CHOOSE" == "true" || -z "$s_f" ) && "$INSTALL_APPS" == "true" ]] && ask_f=true
@@ -1064,7 +1113,8 @@ choose_apps() {
         [[ -z "$PICK_MUSIC"   && ( "$CHOOSE" == "true" || -z "$s_m" ) && "$INSTALL_APPS" == "true" ]] && ask_m=true
         [[ "$SYSMODE_ASKED" != "true" ]] && ask_s=true
         [[ "$SAFETY_ASKED" != "true" ]] && ask_c=true
-        if [[ "$ask_b$ask_f$ask_e$ask_m$ask_s$ask_c" == *true* ]]; then
+        [[ "$LLM_ASKED" != "true" ]] && ask_l=true
+        if [[ "$ask_b$ask_f$ask_e$ask_m$ask_s$ask_c$ask_l" == *true* ]]; then
             echo -e "\n${BOLD}Make it yours${RESET} ${DIM}(Enter takes the marked choice; ./install.sh --choose asks again later)${RESET}"
         fi
     fi
@@ -1105,6 +1155,41 @@ choose_apps() {
         if confirm "  Add the safety check?"; then SAFETY=true; else SAFETY=false; fi
         SAFETY_ASKED=true
     fi
+    # ---- local AI advisor (Ollama)
+    if [[ "$ask_l" == "true" ]]; then
+        local hw_data IFS='|'
+        hw_data=($(detect_hardware_tier))
+        unset IFS
+        local h_ram="${hw_data[0]}" h_cpus="${hw_data[1]}" h_gpu="${hw_data[2]}" h_vram="${hw_data[3]}"
+        local h_tier="${hw_data[4]}" h_rec="${hw_data[5]}" h_reason="${hw_data[6]}"
+
+        echo -e "\n  ${CYAN}${BOLD}Local AI Advisor (Ollama)${RESET}  ${DIM}offline intelligent performance & system tuning advisor${RESET}"
+        echo -e "   ${DIM}Hardware:       ${h_cpus} CPUs, ~${h_ram} GB RAM, ${h_gpu}$([[ -n "$h_vram" && "$h_vram" -gt 0 ]] && echo " (${h_vram} MB VRAM)")${RESET}"
+        echo -e "   ${DIM}Hardware Tier:  ${BOLD}${h_tier}${RESET}"
+        echo -e "   ${DIM}Recommendation: ${BOLD}${h_rec}${RESET} (${h_reason})"
+
+        if confirm "  Install local AI advisor with Ollama?"; then
+            INSTALL_LLM=true
+            menu_pick PICK_LLM_MODEL "AI Advisor Model" "$h_rec" 0 \
+                "llama3.2:1b|Llama 3.2 1B|~1.3 GB, lightning fast, high quality reasoning (Tier 3 Pick)" \
+                "qwen2.5:1.5b|Qwen 2.5 1.5B|~1.0 GB, ultra-compact, great structured output (Tier 2 Pick)" \
+                "qwen2.5:0.5b|Qwen 2.5 0.5B|~390 MB, absolute minimal memory footprint (Tier 1 Pick)" \
+                "llama3.2:3b|Llama 3.2 3B|~2.0 GB, balanced deeper analysis (needs >=3GB free VRAM/RAM)" \
+                "keep|Keep existing / custom|use existing local model without pulling another"
+            if [[ "$PICK_LLM_MODEL" == "keep" ]]; then
+                PICK_LLM_MODEL="${s_lm:-$h_rec}"
+            fi
+        else
+            INSTALL_LLM=false
+            PICK_LLM_MODEL="none"
+        fi
+        LLM_ASKED=true
+    elif [[ "$INSTALL_LLM" == "true" && -z "$PICK_LLM_MODEL" ]]; then
+        local hw_data IFS='|'
+        hw_data=($(detect_hardware_tier))
+        unset IFS
+        PICK_LLM_MODEL="${hw_data[5]:-llama3.2:1b}"
+    fi
     # ---- check the names (a typo in --browser must not silently install nothing)
     local lst
     for kind in browser files editor music; do
@@ -1123,10 +1208,10 @@ choose_apps() {
     # SUPER+M opens the first music player you picked; spotify itself is left to the automatic choice (spotify or spotify-launcher, whichever got installed)
     [[ ( -n "$flag_m" || "$ask_m" == true ) && "${PICK_MUSIC%% *}" == spotify-player ]] && APPLY_PICKS+=("music=spotify-player")
     id="${PICK_EDITOR%% *}"; [[ ( -n "$flag_e" || "$ask_e" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("editor=$(apps_id editor "$id")")
-    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)"
+    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)  ai-advisor=$([[ "$INSTALL_LLM" == true ]] && echo "$PICK_LLM_MODEL" || echo no)"
 }
 if [[ "$PACKAGES" == "true" && "$REMOVE_LOGIN" != "true" ]]; then choose_apps
-else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; fi
+else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; INSTALL_LLM="${INSTALL_LLM:-false}"; PICK_LLM_MODEL="${PICK_LLM_MODEL:-none}"; fi
 
 # ---------------------------------------------------------------------------------------------- step 5
 log_step "Step 5: Hyprland and the desktop"
@@ -1163,6 +1248,25 @@ if [[ "$PACKAGES" == "true" ]]; then
         install_pkgs vesktop
     else
         log_info "Apps skipped (--no-apps): foot, Discord."
+    fi
+    # ---- Local AI Advisor (Ollama)
+    if [[ "$INSTALL_LLM" == "true" && -n "$PICK_LLM_MODEL" && "$PICK_LLM_MODEL" != "none" ]]; then
+        log_info "Local AI Advisor: setting up Ollama + model ${PICK_LLM_MODEL}"
+        if ! command -v ollama >/dev/null 2>&1; then
+            if [[ "$DISTRO_FAMILY" == "arch" ]]; then
+                install_pkgs ollama
+            else
+                try run_cmd "Installing Ollama via official installer" sh -c "curl -fsSL https://ollama.com/install.sh | sh"
+            fi
+        fi
+        if have_systemd && command -v systemctl >/dev/null 2>&1; then
+            try as_root systemctl enable --now ollama
+        fi
+        if command -v ollama >/dev/null 2>&1 && [[ "$DRY_RUN" != "true" ]]; then
+            sleep 2
+            try run_as_user_cmd "Pulling Ollama model (${PICK_LLM_MODEL})" ollama pull "$PICK_LLM_MODEL"
+        fi
+        run_as_user bash -c "mkdir -p '$TARGET_RICE' && echo 'MODEL=\"$PICK_LLM_MODEL\"' > '$TARGET_RICE/ai-advisor.conf'" || true
     fi
     try run_as_user_cmd "Creating the standard user folders" xdg-user-dirs-update
 else
@@ -1650,7 +1754,7 @@ user_setup fish-commands || warn_later "The fish commands (halcyon, bar-builder,
 if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
-    user_setup save-choices "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" || true
+    user_setup save-choices "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" || true
 fi
 [[ "$PACKAGES" == "true" && "$SKIP_DRIVERS" != "true" ]] && { user_setup gpu-env "$GPU_ENV_MODE" || true; }
 

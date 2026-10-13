@@ -134,9 +134,9 @@ def parse_events(text, calname):
     raw = []
     cur = None
     for line in lines:
-        if line == "BEGIN:VEVENT":
-            cur = {"EX": [], "props": {}}
-        elif line == "END:VEVENT":
+        if line in ("BEGIN:VEVENT", "BEGIN:VTODO"):
+            cur = {"EX": [], "props": {}, "is_todo": (line == "BEGIN:VTODO")}
+        elif line in ("END:VEVENT", "END:VTODO"):
             if cur is not None:
                 raw.append(cur)
             cur = None
@@ -295,6 +295,8 @@ def build(raw, calname, win_from, win_to):
     for ev in plain:
         p = ev["props"]
         try:
+            if "DTSTART" not in p and "DUE" in p:
+                p["DTSTART"] = p["DUE"]
             if "DTSTART" not in p:
                 continue
             start, allday = parse_when(p["DTSTART"][1], p["DTSTART"][0])
@@ -346,12 +348,25 @@ def fetch(url):
     url = re.sub(r"^webcal://", "https://", url.strip(), flags=re.I)
     if not re.match(r"^https://", url, re.I):         # the address is a password: never send it unencrypted (or to file:// / ftp://)
         raise ValueError("only https:// calendar addresses are accepted")
-    req = urllib.request.Request(url, headers={"User-Agent": "Halcyon-calendar/1"})
-    with urllib.request.urlopen(req, timeout=25) as r:
-        data = r.read(MAX_FEED + 1)                   # a feed is a few hundred KB; do not read an endless stream into memory
-    if len(data) > MAX_FEED:
-        raise ValueError("the calendar feed is larger than %d MB" % (MAX_FEED // 1048576))
-    return data.decode("utf-8", "replace")
+    ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Halcyon-calendar/1"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": ua})
+        with urllib.request.urlopen(req, timeout=25) as r:
+            data = r.read(MAX_FEED + 1)                   # a feed is a few hundred KB; do not read an endless stream into memory
+        if len(data) > MAX_FEED:
+            raise ValueError("the calendar feed is larger than %d MB" % (MAX_FEED // 1048576))
+        return data.decode("utf-8", "replace")
+    except Exception as urllib_err:
+        try:
+            res = subprocess.run(["curl", "-sSL", "--max-time", "25", "-A", ua, url],
+                                 capture_output=True, timeout=30)
+            if res.returncode == 0 and res.stdout:
+                if len(res.stdout) > MAX_FEED:
+                    raise ValueError("the calendar feed is larger than %d MB" % (MAX_FEED // 1048576))
+                return res.stdout.decode("utf-8", "replace")
+        except Exception:
+            pass
+        raise urllib_err
 
 
 def cmd_sync():
@@ -392,26 +407,66 @@ def cmd_conf():
 
 def address_kind(url):
     if re.search(r"calendar\.google\.com/calendar/ical/.+/public/", url):
-        return "public"                     # Google hides every title here: "Busy"
+        return "public"
     if re.search(r"calendar\.google\.com/calendar/ical/.+/private-", url):
         return "private"
     return "other"
 
 
 def cmd_add(url, name="", replace=False):
-    if not re.match(r"^(https|webcal)://", url.strip(), re.I):
+    url = url.strip()
+    if not re.match(r"^(https|webcal)://", url, re.I):
         print(json.dumps({"ok": False, "error": "that is not a secure web address (it has to start with https:// or webcal://)"}))
         return 1
-    if address_kind(url) == "public":
-        print(json.dumps({"ok": False, "error": "That is the public address: Google hides every event title there (it only says Busy). Copy the Secret address in iCal format instead, the one with private- in it."}))
+
+    # Fetch feed first to validate and extract metadata (name, holiday/birthday detection)
+    try:
+        text = fetch(url)
+        if "BEGIN:VCALENDAR" not in text:
+            print(json.dumps({"ok": False, "error": "That address did not return a valid calendar feed."}))
+            return 1
+    except Exception as e:
+        print(json.dumps({"ok": False, "error": "Could not download calendar: %s" % str(e)[:120]}))
         return 1
+
+    # Automatically extract calendar name from feed header if not explicitly given
+    if not name:
+        m = re.search(r"^X-WR-CALNAME:(.+)$", text, re.M)
+        if m:
+            detected = unescape(m.group(1).strip())
+            if detected:
+                name = detected
+
+    # Only reject public links if Google is actively hiding all event titles as "Busy"
+    # Public holiday and birthday feeds contain actual event titles, so they pass.
+    raw_evs = parse_events(text, name or "Calendar")
+    busy_count = 0
+    total_evs = 0
+    for ev in raw_evs:
+        p = ev.get("props", {})
+        if "SUMMARY" in p:
+            total_evs += 1
+            if p["SUMMARY"][1].strip().lower() == "busy":
+                busy_count += 1
+    if total_evs >= 3 and busy_count == total_evs:
+        print(json.dumps({"ok": False, "error": "Google hides every title on this public address (all events say 'Busy'). For personal calendars, copy the 'Secret address in iCal format' instead."}))
+        return 1
+
     c = conf()
     if replace:
         c["calendars"] = []                 # fixing a wrong address: the new one takes the place of the old
-    url = url.strip()
-    if not any(x["url"] == url for x in c["calendars"]):
-        c["calendars"].append({"url": url, "name": name or "Calendar %d" % (len(c["calendars"]) + 1)})
-    save(CONF, c, private=True)                      # the secret address is a password: only you can read this file
+
+    final_name = name or ("Calendar %d" % (len(c["calendars"]) + 1))
+    found = False
+    for x in c["calendars"]:
+        if x.get("url") == url:
+            x["name"] = final_name
+            found = True
+            break
+    if not found:
+        c["calendars"].append({"url": url, "name": final_name})
+
+    save(CONF, c, private=True)
     return cmd_sync()
 
 
