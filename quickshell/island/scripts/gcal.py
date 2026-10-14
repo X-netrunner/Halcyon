@@ -40,6 +40,8 @@ DONE = os.path.join(STATE, "done.json")            # event id -> when it was mar
 TASKS = os.path.join(STATE, "tasks.json")          # event id -> true: events you marked as tasks
 NAGGED = os.path.join(STATE, "nagged.json")        # event id -> when the last nag went out
 AUTOFOCUS = os.path.join(STATE, "autofocus.json")  # {"fired": {id: ts}, "active": id, "end": ts}
+BIRTHDAYS_JSON = os.path.join(STATE, "birthdays.json")
+BIRTHDAYS_FILE = os.path.join(os.path.expanduser("~"), ".config", "Halcyon", "birthdays.txt")
 SELF = os.path.abspath(__file__)
 FOCUS_SH = os.path.join(os.path.expanduser("~"), ".config", "Halcyon", "scripts", "focus.sh")
 BACK_DAYS = 35            # how far back / forward the cache reaches
@@ -369,15 +371,181 @@ def fetch(url):
         raise urllib_err
 
 
+TIMEZONE_REGIONS = {
+    "Asia/Kolkata": ("India", "indian"),
+    "Asia/Calcutta": ("India", "indian"),
+    "America/New_York": ("United States", "usa"),
+    "America/Chicago": ("United States", "usa"),
+    "America/Denver": ("United States", "usa"),
+    "America/Los_Angeles": ("United States", "usa"),
+    "America/Phoenix": ("United States", "usa"),
+    "Europe/London": ("United Kingdom", "uk"),
+    "America/Toronto": ("Canada", "canadian"),
+    "America/Vancouver": ("Canada", "canadian"),
+    "America/Montreal": ("Canada", "canadian"),
+    "Australia/Sydney": ("Australia", "australian"),
+    "Australia/Melbourne": ("Australia", "australian"),
+    "Australia/Brisbane": ("Australia", "australian"),
+    "Australia/Perth": ("Australia", "australian"),
+    "Europe/Berlin": ("Germany", "german"),
+    "Europe/Paris": ("France", "french"),
+    "Asia/Tokyo": ("Japan", "japanese"),
+    "Asia/Singapore": ("Singapore", "singapore"),
+    "Europe/Rome": ("Italy", "italian"),
+    "Europe/Madrid": ("Spain", "spain"),
+    "America/Sao_Paulo": ("Brazil", "brazilian"),
+    "America/Mexico_City": ("Mexico", "mexican"),
+    "Europe/Amsterdam": ("Netherlands", "dutch"),
+    "Asia/Seoul": ("South Korea", "south_korea"),
+    "Asia/Dubai": ("United Arab Emirates", "united_arab_emirates"),
+    "Europe/Zurich": ("Switzerland", "switzerland"),
+    "Europe/Stockholm": ("Sweden", "swedish"),
+    "Europe/Oslo": ("Norway", "norwegian"),
+    "Europe/Helsinki": ("Finland", "finnish"),
+    "Europe/Warsaw": ("Poland", "polish"),
+    "Europe/Vienna": ("Austria", "austrian"),
+    "Europe/Brussels": ("Belgium", "belgian"),
+    "Europe/Dublin": ("Ireland", "irish"),
+    "Pacific/Auckland": ("New Zealand", "new_zealand"),
+}
+
+
+def detect_system_region():
+    tz = ""
+    try:
+        if os.path.islink("/etc/localtime"):
+            target = os.readlink("/etc/localtime")
+            parts = target.split("zoneinfo/")
+            if len(parts) > 1:
+                tz = parts[1]
+    except Exception:
+        pass
+    if not tz:
+        try:
+            res = subprocess.run(["timedatectl", "show", "-p", "Timezone", "--value"], capture_output=True, text=True, timeout=5)
+            if res.returncode == 0 and res.stdout.strip():
+                tz = res.stdout.strip()
+        except Exception:
+            pass
+    if not tz and os.path.isfile("/etc/timezone"):
+        try:
+            with open("/etc/timezone") as f:
+                tz = f.read().strip()
+        except Exception:
+            pass
+
+    country, code = TIMEZONE_REGIONS.get(tz, ("India", "indian"))
+    if tz and tz not in TIMEZONE_REGIONS:
+        if tz.startswith("America/"):
+            country, code = "United States", "usa"
+        elif tz.startswith("Australia/"):
+            country, code = "Australia", "australian"
+        elif tz.startswith("Europe/"):
+            country, code = "United Kingdom", "uk"
+        elif tz.startswith("Asia/"):
+            country, code = "India", "indian"
+
+    url = f"https://calendar.google.com/calendar/ical/en.{code}%23holiday%40group.v.calendar.google.com/public/basic.ics"
+    return {"timezone": tz, "country": country, "code": code, "url": url}
+
+
+def load_birthday_events(win_from, win_to):
+    events = []
+    b_list = []
+    bj = load(BIRTHDAYS_JSON, [])
+    if isinstance(bj, list):
+        b_list.extend(bj)
+
+    if os.path.isfile(BIRTHDAYS_FILE):
+        try:
+            with open(BIRTHDAYS_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    m = re.match(r"^(\d{1,2})[-/](\d{1,2})\s+([^(]+)(?:\((\d{4})\))?", line)
+                    if m:
+                        b_list.append({"name": m.group(3).strip(), "month": int(m.group(1)), "day": int(m.group(2)), "year": int(m.group(4)) if m.group(4) else None})
+                    else:
+                        m2 = re.match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(.+)", line)
+                        if m2:
+                            b_list.append({"name": m2.group(4).strip(), "year": int(m2.group(1)), "month": int(m2.group(2)), "day": int(m2.group(3))})
+        except Exception:
+            pass
+
+    wf_date = dt.datetime.fromtimestamp(win_from, LOCAL).date()
+    wt_date = dt.datetime.fromtimestamp(win_to, LOCAL).date()
+
+    for b in b_list:
+        name = b.get("name", "").strip()
+        mo = b.get("month", 1)
+        day = b.get("day", 1)
+        birth_year = b.get("year")
+        if not name:
+            continue
+        for y in range(wf_date.year - 1, wt_date.year + 2):
+            try:
+                if mo == 2 and day == 29 and not _cal.isleap(y):
+                    d = dt.date(y, 2, 28)
+                else:
+                    d = dt.date(y, mo, day)
+            except Exception:
+                continue
+
+            s = int(dt.datetime(d.year, d.month, d.day, tzinfo=LOCAL).timestamp())
+            e = s + 86400
+            if e <= win_from or s >= win_to:
+                continue
+
+            age_str = ""
+            if birth_year and birth_year <= y:
+                age = y - birth_year
+                suffix = "th" if 11 <= (age % 100) <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(age % 10, "th")
+                age_str = f" ({age}{suffix})"
+
+            title = f"🎂 {name}'s Birthday{age_str}"
+            uid = f"birthday-{name}-{mo}-{day}"
+            events.append({
+                "id": hashlib.sha1(f"{uid}|{s}".encode()).hexdigest()[:16],
+                "title": title,
+                "start": s,
+                "end": e,
+                "allDay": True,
+                "loc": "",
+                "desc": f"Birthday celebration for {name}" + (f" (Born {birth_year})" if birth_year else ""),
+                "cal": "Birthdays",
+            })
+    return events
+
+
+def parse_vcf(text):
+    birthdays = []
+    cards = re.findall(r"BEGIN:VCARD.*?END:VCARD", text, re.DOTALL | re.IGNORECASE)
+    for card in cards:
+        fn, bday = "", ""
+        for line in card.replace("\r\n", "\n").split("\n"):
+            line = line.strip()
+            if line.upper().startswith("FN:") or line.upper().startswith("FN;"):
+                fn = line.split(":", 1)[1].strip()
+            elif line.upper().startswith("BDAY:") or line.upper().startswith("BDAY;"):
+                bday = line.split(":", 1)[1].strip()
+        if fn and bday:
+            m = re.search(r"(\d{4})[-]?(\d{2})[-]?(\d{2})", bday)
+            if m:
+                birthdays.append({"name": fn, "year": int(m.group(1)), "month": int(m.group(2)), "day": int(m.group(3))})
+            else:
+                m2 = re.search(r"--(\d{2})[-]?(\d{2})", bday)
+                if m2:
+                    birthdays.append({"name": fn, "year": None, "month": int(m2.group(1)), "day": int(m2.group(2))})
+    return birthdays
+
+
 def cmd_sync():
     c = conf()
-    if not c["calendars"]:
-        print(json.dumps({"ok": False, "error": "no calendar set up"}))
-        return 1
     now = int(dt.datetime.now().timestamp())
     wf, wt = now - BACK_DAYS * 86400, now + FORWARD_DAYS * 86400
     events, errors = [], []
-    for cal in c["calendars"]:
+    for cal in c.get("calendars", []):
         try:
             text = fetch(cal["url"])
             if "BEGIN:VCALENDAR" not in text:
@@ -385,6 +553,15 @@ def cmd_sync():
             events += build(parse_events(text, cal.get("name", "")), cal.get("name", ""), wf, wt)
         except Exception as e:                       # keep going: one broken calendar must not hide the others
             errors.append("%s: %s" % (cal.get("name") or "calendar", str(e)[:120]))
+    try:
+        events += load_birthday_events(wf, wt)
+    except Exception as be:
+        errors.append("birthdays: %s" % str(be)[:100])
+
+    if not c.get("calendars") and not events:
+        print(json.dumps({"ok": False, "error": "no calendar or birthdays set up"}))
+        return 1
+
     events.sort(key=lambda e: (e["start"], e["title"]))
     old = load(CACHE, {})
     if errors and not events and old.get("events"):  # offline: keep showing the last good copy
@@ -400,7 +577,9 @@ def cmd_sync():
 def cmd_conf():
     c = conf()
     cache = load(CACHE, {})
-    print(json.dumps({"configured": bool(c["calendars"]), "count": len(c["calendars"]),
+    has_birthdays = os.path.isfile(BIRTHDAYS_FILE) or bool(load(BIRTHDAYS_JSON, []))
+    configured = bool(c["calendars"]) or has_birthdays
+    print(json.dumps({"configured": configured, "count": len(c["calendars"]),
                       "names": [x.get("name", "") for x in c["calendars"]],
                       "remind": c["remind"], "synced": cache.get("synced", 0), "error": cache.get("error", "")}))
 
@@ -670,6 +849,121 @@ def cmd_inspect():
     return 0
 
 
+def cmd_detect_region():
+    r = detect_system_region()
+    print(json.dumps({"ok": True, "region": r}))
+    return 0
+
+
+def cmd_add_holidays(code=None):
+    reg = detect_system_region()
+    target_code = (code or reg["code"]).lower().strip()
+    target_country = reg["country"]
+    for tz_k, (c_name, c_code) in TIMEZONE_REGIONS.items():
+        if c_code.lower() == target_code:
+            target_country = c_name
+            break
+    url = f"https://calendar.google.com/calendar/ical/en.{target_code}%23holiday%40group.v.calendar.google.com/public/basic.ics"
+    cal_name = f"Holidays ({target_country})"
+
+    c = conf()
+    exists = False
+    for item in c.setdefault("calendars", []):
+        if target_code in item.get("url", "") or "holiday" in item.get("name", "").lower():
+            item["url"] = url
+            item["name"] = cal_name
+            exists = True
+            break
+    if not exists:
+        c["calendars"].append({"url": url, "name": cal_name})
+    save(CONF, c, private=True)
+    res = cmd_sync()
+    print(json.dumps({"ok": res == 0, "country": target_country, "code": target_code, "name": cal_name, "url": url}))
+    return res
+
+
+def cmd_add_birthday(name, date_str, year=None):
+    name = name.strip()
+    m = re.match(r"^(\d{4})?[-/]?(\d{1,2})[-/](\d{1,2})$", date_str)
+    if not m:
+        print(json.dumps({"ok": False, "error": "Invalid date format. Use MM-DD (e.g. 05-12) or YYYY-MM-DD"}))
+        return 1
+    yr = int(m.group(1)) if m.group(1) else (int(year) if year else None)
+    mo = int(m.group(2))
+    day = int(m.group(3))
+
+    bj = load(BIRTHDAYS_JSON, [])
+    updated = False
+    for b in bj:
+        if b.get("name", "").lower() == name.lower():
+            b["month"] = mo
+            b["day"] = day
+            b["year"] = yr
+            updated = True
+            break
+    if not updated:
+        bj.append({"name": name, "month": mo, "day": day, "year": yr})
+    save(BIRTHDAYS_JSON, bj)
+    cmd_sync()
+    print(json.dumps({"ok": True, "name": name, "month": mo, "day": day, "year": yr}))
+    return 0
+
+
+def cmd_import_birthdays(file_path):
+    path = os.path.expanduser(file_path)
+    if not os.path.isfile(path):
+        print(json.dumps({"ok": False, "error": f"File not found: {file_path}"}))
+        return 1
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except Exception as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+        return 1
+
+    new_birthdays = []
+    if "BEGIN:VCARD" in content.upper():
+        new_birthdays = parse_vcf(content)
+    elif "BEGIN:VCALENDAR" in content.upper():
+        raw = parse_events(content, "Birthdays")
+        for ev in raw:
+            p = ev.get("props", {})
+            summary = unescape(p.get("SUMMARY", ("", ""))[1]).strip()
+            dtstart = p.get("DTSTART", ("", ""))[1]
+            if summary and dtstart:
+                clean_name = re.sub(r"'s Birthday.*", "", summary, flags=re.I).replace("🎂", "").strip()
+                m = re.match(r"(\d{4})(\d{2})(\d{2})", dtstart)
+                if m:
+                    new_birthdays.append({"name": clean_name, "year": int(m.group(1)), "month": int(m.group(2)), "day": int(m.group(3))})
+    else:
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = re.match(r"^(\d{1,2})[-/](\d{1,2})\s+([^(]+)(?:\((\d{4})\))?", line)
+            if m:
+                new_birthdays.append({"name": m.group(3).strip(), "month": int(m.group(1)), "day": int(m.group(2)), "year": int(m.group(4)) if m.group(4) else None})
+
+    if not new_birthdays:
+        print(json.dumps({"ok": False, "error": "No valid birthdays found in file."}))
+        return 1
+
+    existing = load(BIRTHDAYS_JSON, [])
+    names = {b.get("name", "").lower(): i for i, b in enumerate(existing)}
+    for b in new_birthdays:
+        k = b["name"].lower()
+        if k in names:
+            existing[names[k]] = b
+        else:
+            existing.append(b)
+            names[k] = len(existing) - 1
+
+    save(BIRTHDAYS_JSON, existing)
+    cmd_sync()
+    print(json.dumps({"ok": True, "count": len(new_birthdays), "total": len(existing)}))
+    return 0
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -699,6 +993,14 @@ def main(argv):
         cmd_task(argv[2], argv[3] == "on")
     elif a == "inspect":
         return cmd_inspect()
+    elif a == "detect-region":
+        return cmd_detect_region()
+    elif a == "add-holidays":
+        return cmd_add_holidays(argv[2] if len(argv) >= 3 else None)
+    elif a == "add-birthday" and len(argv) >= 4:
+        return cmd_add_birthday(argv[2], argv[3], argv[4] if len(argv) >= 5 else None)
+    elif a == "import-birthdays" and len(argv) >= 3:
+        return cmd_import_birthdays(argv[2])
     else:
         print(__doc__)
         return 2

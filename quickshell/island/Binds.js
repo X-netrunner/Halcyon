@@ -58,6 +58,7 @@ var groups = [
         { label: "Hover the bottom-left corner", kind: "text", keys: "background apps" }
     ] },
     { id: "toggles", title: "Toggles", items: [
+        { id: "display", label: "Display & Projector Manager (Mirror / Extend)", keys: "SUPER + P" },
         { id: "power", label: "Auto power manager", keys: "SUPER + ALT + P" },
         { id: "caffeine", label: "Caffeine (screen stays awake)", keys: "SUPER + ALT + C" },
         { id: "focus", label: "Focus mode (timer, do not disturb, blocked apps)", keys: "SUPER + ALT + F" },

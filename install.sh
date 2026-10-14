@@ -1252,17 +1252,40 @@ if [[ "$PACKAGES" == "true" ]]; then
     # ---- Local AI Advisor (Ollama)
     if [[ "$INSTALL_LLM" == "true" && -n "$PICK_LLM_MODEL" && "$PICK_LLM_MODEL" != "none" ]]; then
         log_info "Local AI Advisor: setting up Ollama + model ${PICK_LLM_MODEL}"
-        if ! command -v ollama >/dev/null 2>&1; then
+        local ollama_bin
+        ollama_bin="$(run_as_user which ollama 2>/dev/null || which ollama 2>/dev/null || echo "")"
+        if [[ -z "$ollama_bin" ]]; then
             if [[ "$DISTRO_FAMILY" == "arch" ]]; then
                 install_pkgs ollama
             else
                 try run_cmd "Installing Ollama via official installer" sh -c "curl -fsSL https://ollama.com/install.sh | sh"
             fi
+            ollama_bin="$(run_as_user which ollama 2>/dev/null || which ollama 2>/dev/null || echo "")"
         fi
-        if have_systemd && command -v systemctl >/dev/null 2>&1; then
-            try as_root systemctl enable --now ollama
+        if have_systemd; then
+            if systemctl cat ollama.service >/dev/null 2>&1; then
+                try as_root systemctl enable --now ollama
+            else
+                run_as_user mkdir -p "$TARGET_HOME/.config/systemd/user"
+                cat <<EOF | run_as_user tee "$TARGET_HOME/.config/systemd/user/ollama.service" >/dev/null
+[Unit]
+Description=Ollama Service (User)
+After=network.target
+
+[Service]
+ExecStart=${ollama_bin:-ollama} serve
+Restart=always
+RestartSec=3
+Environment="OLLAMA_HOST=127.0.0.1:11434"
+
+[Install]
+WantedBy=default.target
+EOF
+                user_systemctl daemon-reload 2>/dev/null || true
+                user_systemctl enable --now ollama.service 2>/dev/null || true
+            fi
         fi
-        if command -v ollama >/dev/null 2>&1 && [[ "$DRY_RUN" != "true" ]]; then
+        if [[ "$DRY_RUN" != "true" ]]; then
             sleep 2
             try run_as_user_cmd "Pulling Ollama model (${PICK_LLM_MODEL})" ollama pull "$PICK_LLM_MODEL"
         fi

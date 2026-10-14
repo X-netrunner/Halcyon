@@ -636,6 +636,11 @@ ShellRoot {
         onSession: a => root.session(a)
     }
 
+    DisplayPicker {
+        id: displayPicker
+        pal: pal
+    }
+
     // notification daemon + top-right bell, popups and centre (replaces dunst)
     Notifs {
         id: notifs
@@ -889,6 +894,7 @@ ShellRoot {
         return true
     }
     function closeOverlay() {
+        if (displayPicker.open) { displayPicker.hide(); return true }
         if (tour.open) { tour.end(false); return true }
         if (powerMenu.open) { powerMenu.hide(); return true }
         if (calendar.open) { calendar.hide(); return true }
@@ -1398,6 +1404,13 @@ ShellRoot {
         case "edgemode": toggleEdgeMode(); break
         case "dnd": setDnd(!dnd); break
         case "cheatsheet": cheat.toggle(); break
+        case "display":
+        case "projector":
+            displayPicker.toggle()
+            break
+        case "printer":
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.config/Halcyon/scripts/printer.sh"])
+            break
         case "theme": toggleTheme(); break
         case "wifi": toggleWifi(); break
         case "bluetooth": toggleBt(); break
@@ -1723,6 +1736,7 @@ ShellRoot {
         function dnd(): void { root.setDnd(!root.dnd) }
         function dndset(on: bool): void { root.setDnd(on) }          // set (gamemode.sh): dnd() above only toggles
         function cheatsheet(): void { root.runCommand("cheatsheet") }
+        function display(): void { displayPicker.toggle() }
         // SUPER+Q (scripts/close.sh): closes the top-most island overlay and answers "closed"; "none" = nothing was open,
         // so the script closes the focused window instead
         function closeTop(): string { return root.closeOverlay() ? "closed" : "none" }

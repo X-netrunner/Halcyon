@@ -44,6 +44,8 @@
     { "id": "notifbuilder", "title": "Notification box builder",
       "body": "Arrange the notification box: its parts, constellations, spacing, width and where it sits on the edge. Type >notification box builder in the search bar." },
     { "id": "greeting", "title": "Choose your terminal logo",
-      "body": "Settings > Terminal greeting: Adaptive, Arch, BlackArch, Kali, your own ASCII art, or no logo at all." }
+      "body": "Settings > Terminal greeting: Adaptive, Arch, BlackArch, Kali, your own ASCII art, or no logo at all." },
+    { "id": "display", "keys": ["SUPER", "P"], "title": "Display & Projector Manager",
+      "body": "Press SUPER + P or type >display or >projector: clone screen to a projector/TV, extend right/left for multi-monitors, or switch to external-only for presentations. Themed with Halcyon glass and moving stars." }
   ]
 }
