@@ -411,6 +411,15 @@ Scope {
         return rows
     }
 
+    readonly property bool wsHasFullscreen: {
+        var w = Hyprland.workspaces.values
+        for (var i = 0; i < w.length; i++) {
+            if (w[i].focused && (w[i].hasfullscreen || w[i].hasFullscreen)) return true
+        }
+        return false
+    }
+    onWsHasFullscreenChanged: if (wsHasFullscreen && !pinned && open) close()
+
     PanelWindow {
         id: win
         anchors { top: true; left: true }
@@ -419,11 +428,11 @@ Scope {
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-term"
-        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.layer: WlrLayer.Top
         // Exclusive while the pointer is over the console (Hyprland's follow_mouse would otherwise hand the keyboard to the
         // terminal beside it); the moment the pointer leaves it is on-demand again, so clicking another window just works
         WlrLayershell.keyboardFocus: !root.focused ? WlrKeyboardFocus.None
-                                   : ((root.grabKeys || root.zoneHover || root.pinned || root.open) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
+                                   : ((root.grabKeys || root.zoneHover || root.askPass) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
 
         mask: Region { item: zone }
 
@@ -431,11 +440,12 @@ Scope {
         // box (or the box sliding in under a resting pointer) never counts as "left": no more flicker in and out
         Item {
             id: zone
+            enabled: !root.wsHasFullscreen
             anchors.top: parent.top
             anchors.left: parent.left
-            width: root.shown ? root.boxW + 40 : (root.clickMode ? 28 : 14)
-            height: root.shown ? box.y + box.height + 24 : (root.clickMode ? 28 : 14)
-            HoverHandler { onHoveredChanged: { root.zoneHover = hovered; root.setHover(hovered) } }
+            width: root.shown ? root.boxW + 40 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14))
+            height: root.shown ? box.y + box.height + 24 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14))
+            HoverHandler { enabled: !root.wsHasFullscreen; onHoveredChanged: { root.zoneHover = hovered; root.setHover(hovered) } }
 
             // click mode: a faint tab marks the corner
             Rectangle {

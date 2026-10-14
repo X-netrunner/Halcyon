@@ -131,14 +131,14 @@ main() {
       --notify) NOTIFY=1 ;;
       -q|--quiet) QUIET=1 ;;
       -y|--yes) YES=1 ;;
-      --no-packages|--no-sysmode|--safety-check|--no-safety-check) PASS+=("$a") ;;
+      --no-packages|--no-sysmode|--safety-check|--no-safety-check|--llm|--llm=*|--no-llm) PASS+=("$a") ;;
       -h|--help) usage; exit 0 ;;
       *) echo "unknown option: $a (try --help)"; exit 2 ;;
     esac
   done
 
   [ "$(id -u)" -ne 0 ] || die "Run this as your normal user, not root."
-  command -v git >/dev/null || die "git is required (sudo pacman -S git)."
+  command -v git >/dev/null || die "git is required (sudo pacman -S git / sudo apt install git)."
   command -v timeout >/dev/null || die "timeout (coreutils) is required."
   mkdir -p "$STATE"
 
@@ -258,7 +258,7 @@ update_copy() {
   ok "downloaded"
 
   # your own files survive the copy
-  local KEEP=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf)
+  local KEEP=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf backup-exclude.conf birthdays.txt)
   local keep f; keep="$(mktemp -d)"
   for f in "${KEEP[@]}"; do
     [ -f "$RICE/$f" ] && { mkdir -p "$keep/$(dirname "$f")"; cp -a "$RICE/$f" "$keep/$f"; }

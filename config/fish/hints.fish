@@ -56,7 +56,7 @@ function ls --description 'List directory contents'
         set -g __hint_ls_shown 1
         echo -e "\e[33m[*]	Hint: Try using 'eza' for icons, better colors, and directory grouping!\e[0m" >&2
     end
-    if command -v eza &> /dev/null
+    if command -q eza
         eza --icons --group-directories-first $argv
     else
         command ls $argv
@@ -66,7 +66,7 @@ end
 function yazi --description 'Terminal file manager'
     if not set -q __hint_yazi_shown
         set -g __hint_yazi_shown 1
-        echo -e "\e[36m[*]	Shortcut Reminder: Press Super + E anywhere to launch Yazi instantly!\e[0m" >&2
+        echo -e "\e[36m[*]	Shortcut Reminder: Press Super + E anywhere to open your file manager instantly!\e[0m" >&2
     end
     command yazi $argv
 end

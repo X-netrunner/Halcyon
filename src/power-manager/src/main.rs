@@ -54,8 +54,7 @@ const MIN_CPU_TICKS: u64 = 100;
 const GPU_QUERY_EVERY: u32 = 3;
 
 const PAUSE_APPS: &[&str] = &[
-    "zen-bin", "vesktop", "discord", "spotify", "qbittorrent",
-    "steam", "lutris", "telegram-desktop", "code", "obs",
+    "zen-bin", "spotify", "qbittorrent", "telegram-desktop", "code",
 ];
 const HEAVY_CLASSES: &[&str] = &["steam_app", "gamescope", "Lutris", "heroic", "Minecraft", "Blender"];
 
@@ -277,6 +276,12 @@ fn any_solitary(json: &str) -> bool {
 
 /// `j/monitors` -> (name, "WxH@maxHz", "WxH@60") for the internal panel (or the first monitor).
 fn parse_monitor_config(json: &str) -> Option<(String, String, String)> {
+    let (name, high, low, _, _) = parse_monitor_detail(json)?;
+    Some((name, high, low))
+}
+
+/// `j/monitors` -> (name, "WxH@maxHz", "WxH@60", "XxY", scale) preserving multi-monitor position and HiDPI scale.
+fn parse_monitor_detail(json: &str) -> Option<(String, String, String, String, f64)> {
     let objs = top_objects(json);
     let m = objs
         .iter()
@@ -287,6 +292,9 @@ fn parse_monitor_config(json: &str) -> Option<(String, String, String)> {
     let name = first_str(m, "name").unwrap_or(DEFAULT_MONITOR);
     let w = num_field(m, "width").unwrap_or(1920.0) as u64;
     let h = num_field(m, "height").unwrap_or(1080.0) as u64;
+    let x = num_field(m, "x").unwrap_or(0.0) as i64;
+    let y = num_field(m, "y").unwrap_or(0.0) as i64;
+    let scale = num_field(m, "scale").unwrap_or(1.0);
 
     // Highest refresh rate offered at the current resolution ("1920x1080@144.00Hz" -> 144).
     let prefix = format!("{w}x{h}@");
@@ -310,7 +318,7 @@ fn parse_monitor_config(json: &str) -> Option<(String, String, String)> {
         .or_else(|| num_field(m, "refreshRate").map(|r| r.round() as u64))
         .unwrap_or(144);
 
-    Some((name.to_string(), format!("{w}x{h}@{max_hz}"), format!("{w}x{h}@60")))
+    Some((name.to_string(), format!("{w}x{h}@{max_hz}"), format!("{w}x{h}@60"), format!("{x}x{y}"), scale))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -352,7 +360,7 @@ fn hypr_send(path: &str, cmd: &str) -> io::Result<String> {
 struct Hypr {
     runtime: String,
     path: Option<String>,
-    monitor_cfg: Option<(String, String, String)>,
+    monitor_cfg: Option<(String, String, String, String, f64)>,
 }
 
 impl Hypr {
@@ -384,15 +392,15 @@ impl Hypr {
         // which blanks/blacks out the screen for 1-2 seconds every time the system transitions
         // between idle and active modes. Enabled only when explicitly requested via HALCYON_DYNAMIC_REFRESH=1.
         if std::env::var("HALCYON_DYNAMIC_REFRESH").map(|v| v == "1").unwrap_or(false) {
-            if let Some(cfg) = self.query("j/monitors").and_then(|j| parse_monitor_config(&j)) {
+            if let Some(cfg) = self.query("j/monitors").and_then(|j| parse_monitor_detail(&j)) {
                 self.monitor_cfg = Some(cfg);
             }
-            let (name, res_high, res_low) = self.monitor_cfg.as_ref().cloned().unwrap_or_else(|| {
-                (DEFAULT_MONITOR.to_string(), DEFAULT_RES_HIGH.to_string(), DEFAULT_RES_LOW.to_string())
+            let (name, res_high, res_low, pos, scale) = self.monitor_cfg.as_ref().cloned().unwrap_or_else(|| {
+                (DEFAULT_MONITOR.to_string(), DEFAULT_RES_HIGH.to_string(), DEFAULT_RES_LOW.to_string(), "0x0".to_string(), 1.0)
             });
             let res = if high { res_high } else { res_low };
             let cmd = format!(
-                "eval hl.monitor({{ output = '{name}', mode = '{res}', position = '0x0', scale = 1 }})"
+                "eval hl.monitor({{ output = '{name}', mode = '{res}', position = '{pos}', scale = {scale} }})"
             );
             if self.query(&cmd).is_none() {
                 eprintln!("Failed to set monitor mode via socket");
@@ -562,11 +570,39 @@ impl Cpu {
     }
 }
 
-/// True while the dGPU is runtime-suspended. Asking nvidia-smi then would wake it (and keep it
-/// awake, since we poll every 15 s), so a sleeping GPU counts as 0 % load.
+/// Dynamically locate the NVIDIA display controller (0x10de, class 0x03*) and its companion audio function.
+fn discover_nvidia_pci() -> (Option<PathBuf>, Vec<PathBuf>) {
+    let mut status_path = None;
+    let mut control_paths = Vec::new();
+    let mut b = [0u8; 32];
+    if let Ok(rd) = fs::read_dir("/sys/bus/pci/devices") {
+        for e in rd.flatten() {
+            let p = e.path();
+            if read_trim(p.join("vendor"), &mut b) == Some("0x10de") {
+                let ctrl = p.join("power/control");
+                if ctrl.exists() {
+                    control_paths.push(ctrl);
+                }
+                if status_path.is_none() && read_trim(p.join("class"), &mut b).map_or(false, |c| c.starts_with("0x03")) {
+                    let st = p.join("power/runtime_status");
+                    if st.exists() {
+                        status_path = Some(st);
+                    }
+                }
+            }
+        }
+    }
+    (status_path, control_paths)
+}
+
+/// True when there is no NVIDIA GPU or when the NVIDIA dGPU is runtime-suspended.
 fn dgpu_asleep() -> bool {
-    let mut b = [0u8; 16];
-    read_trim(DGPU_STATUS, &mut b).map_or(false, |s| s.starts_with("suspend"))
+    let mut b = [0u8; 32];
+    let (status_path, _) = discover_nvidia_pci();
+    match status_path {
+        Some(st) => read_trim(&st, &mut b).map_or(false, |s| s.starts_with("suspend")),
+        None => !Path::new(DGPU_STATUS).exists() || read_trim(DGPU_STATUS, &mut b).map_or(true, |s| s.starts_with("suspend")),
+    }
 }
 
 fn query_nvidia() -> f64 {
@@ -843,8 +879,17 @@ impl Daemon {
 
     fn gpu_runtime_pm(&self, allow_sleep: bool) {
         let val = if allow_sleep && !self.dgpu_forced() { "auto" } else { "on" };
-        for p in DGPU_CONTROL {
-            write_sysfs(p, val);
+        let (_, control_paths) = discover_nvidia_pci();
+        if !control_paths.is_empty() {
+            for ctrl in control_paths {
+                if let Some(s) = ctrl.to_str() {
+                    write_sysfs(s, val);
+                }
+            }
+        } else {
+            for p in DGPU_CONTROL {
+                write_sysfs(p, val);
+            }
         }
     }
 
@@ -853,7 +898,7 @@ impl Daemon {
             let _ = self.hypr.query("eval hl.config({ animations = { enabled = false }, decoration = { blur = { enabled = false }, shadow = { enabled = false } }, misc = { vrr = 1 }, render = { direct_scanout = true } })");
             signal_apps(libc::SIGSTOP);
         } else {
-            let _ = self.hypr.query("eval hl.config({ animations = { enabled = true }, decoration = { blur = { enabled = true }, shadow = { enabled = false } } })");
+            let _ = self.hypr.query("eval hl.config({ animations = { enabled = true }, decoration = { blur = { enabled = true }, shadow = { enabled = true } } })");
             signal_apps(libc::SIGCONT);
         }
     }

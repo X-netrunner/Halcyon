@@ -37,14 +37,19 @@ pub fn run(cmd: &str, args: &[&str], secs: u64) -> String {
     String::from_utf8_lossy(&reader.join().unwrap_or_default()).into_owned()
 }
 
-/// Fire and forget (used for rescan and notifications).
+/// Fire and forget (used for rescan and notifications), reaping the child so long-lived daemons never accumulate zombies.
 pub fn spawn_quiet(cmd: &str, args: &[&str]) {
-    let _ = Command::new(cmd)
+    if let Ok(mut child) = Command::new(cmd)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn();
+        .spawn()
+    {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
 }
 
 pub fn read(path: &str) -> String {

@@ -329,13 +329,13 @@ Item {
 
     Process {
         running: true
-        command: ["sh", "-c", "tail -n 100 ~/.local/state/island/launcher-history.log 2>/dev/null"]
+        command: ["sh", "-c", "f=~/.local/state/island/launcher-history.log; [ -f \"$f\" ] || exit 0; if [ \"$(wc -l < \"$f\")\" -gt 200 ]; then tail -n 100 \"$f\" > \"$f.tmp\" && mv -f \"$f.tmp\" \"$f\"; fi; tail -n 100 \"$f\" 2>/dev/null"]
         stdout: SplitParser { onRead: d => root.pushHistory(d) }
     }
 
     Process {
         running: true
-        command: ["sh", "-c", "tail -n 3000 ~/.local/state/island/usage.log 2>/dev/null"]
+        command: ["sh", "-c", "f=~/.local/state/island/usage.log; [ -f \"$f\" ] || exit 0; if [ \"$(wc -l < \"$f\")\" -gt 4000 ]; then tail -n 3000 \"$f\" > \"$f.tmp\" && mv -f \"$f.tmp\" \"$f\"; fi; tail -n 3000 \"$f\" 2>/dev/null"]
         stdout: SplitParser {
             onRead: d => {
                 var id = d.trim()
@@ -524,19 +524,16 @@ Item {
                 width: grid.cellWidth
                 height: grid.cellHeight
 
-                // entrance: slide up + fade, staggered right after opening, quick otherwise
+                // entrance: smooth, unified glide up + fade without jarring stagger
                 property real appear: 0
                 opacity: appear
-                transform: Translate { y: (1 - cell.appear) * (root.stagger ? 10 : 3) }
+                transform: Translate { y: (1 - cell.appear) * 5 }
                 Component.onCompleted: enterAnim.start()
-                SequentialAnimation {
+                NumberAnimation {
                     id: enterAnim
-                    PauseAnimation { duration: root.stagger ? 70 + Math.min(cell.index, 17) * 14 : 0 }
-                    NumberAnimation {
-                        target: cell; property: "appear"; to: 1
-                        duration: root.stagger ? 240 : 120
-                        easing.type: Easing.OutCubic
-                    }
+                    target: cell; property: "appear"; to: 1
+                    duration: 150
+                    easing.type: Easing.OutCubic
                 }
 
                 Column {
@@ -553,8 +550,8 @@ Item {
                         source: root.iconFor(cell.modelData)
                         asynchronous: true
                         smooth: true
-                        scale: cell.cur ? 1.12 : 1
-                        Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
+                        scale: cell.cur ? 1.08 : (ma.containsMouse ? 1.04 : 1)
+                        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     }
                     Text {
                         width: cell.width - 16
@@ -622,13 +619,9 @@ Item {
 
                 property real appear: 0
                 opacity: appear
-                transform: Translate { x: (1 - crow.appear) * 10 }
+                transform: Translate { x: (1 - crow.appear) * 5 }
                 Component.onCompleted: cEnter.start()
-                SequentialAnimation {
-                    id: cEnter
-                    PauseAnimation { duration: Math.min(crow.index, 8) * 20 }
-                    NumberAnimation { target: crow; property: "appear"; to: 1; duration: 180; easing.type: Easing.OutCubic }
-                }
+                NumberAnimation { id: cEnter; target: crow; property: "appear"; to: 1; duration: 130; easing.type: Easing.OutCubic }
 
                 Text {
                     id: cg

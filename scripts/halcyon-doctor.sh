@@ -52,7 +52,9 @@ hdr "Quickshell (the island)"
 if have quickshell; then ok "$(quickshell --version 2>&1 | head -n1)"; else bad "quickshell is not installed ($PKG_INSTALL quickshell)"; fi
 for q in QtQuick/Layouts QtQuick/Shapes QtQuick/Effects QtQuick/Controls Qt/labs/folderlistmodel; do
   d=""; for base in /usr/lib/qt6/qml /usr/lib/qt/qml /usr/lib64/qt6/qml /usr/lib/x86_64-linux-gnu/qt6/qml /usr/lib/*-linux-gnu/qt6/qml; do [ -d "$base/$q" ] && d=1; done
-  [ -n "$d" ] && ok "Qt module $q" || bad "Qt module $q is missing ($PKG_INSTALL qt6-declarative qt6-5compat qt6-svg qt6-wayland)"
+  if [ -n "$d" ]; then ok "Qt module $q"
+  elif [[ "$PKG_INSTALL" == *"apt"* ]]; then bad "Qt module $q is missing ($PKG_INSTALL qml6-module-qtquick-layouts qml6-module-qtquick-shapes qml6-module-qtquick-effects qml6-module-qtquick-controls qml6-module-qt-labs-folderlistmodel qml6-module-qt5compat-graphicaleffects libqt6svg6 qt6-wayland)"
+  else bad "Qt module $q is missing ($PKG_INSTALL qt6-declarative qt6-5compat qt6-svg qt6-wayland)"; fi
 done
 for sh in island; do   # the wallpaper layer is part of the island shell now (quickshell/island/Wallpaper.qml)
   if pgrep -f "quickshell.* -p .*quickshell/$sh" >/dev/null 2>&1 || pgrep -f "qs .*-p .*quickshell/$sh" >/dev/null 2>&1; then ok "the $sh shell is running"
@@ -72,7 +74,15 @@ gpus=$(lspci -nn 2>/dev/null | grep -Ei 'vga|3d|display')
 if grep -qi nvidia <<<"$gpus"; then
   if [ -r /proc/driver/nvidia/version ]; then ok "NVIDIA kernel driver loaded: $(head -n1 /proc/driver/nvidia/version | cut -c1-80)"
   else bad "an NVIDIA GPU is present but its driver is not loaded (reboot after install.sh, or: lsmod | grep nvidia; journalctl -b -k | grep -i nvidia)"; fi
-  have nvidia-smi && ok "nvidia-smi works: $(nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>/dev/null | head -n1)" || warn "nvidia-smi missing (nvidia-utils)"
+  nv_susp=0
+  for d in /sys/bus/pci/devices/*; do
+    if [ "$(cat "$d/vendor" 2>/dev/null)" = "0x10de" ] && [[ "$(cat "$d/class" 2>/dev/null)" == 0x03* ]]; then
+      [ "$(cat "$d/power/runtime_status" 2>/dev/null)" = "suspended" ] && nv_susp=1
+    fi
+  done
+  if [ "$nv_susp" = 1 ]; then ok "NVIDIA dGPU sleeping in D3cold (skipped nvidia-smi to avoid waking GPU)"
+  elif have nvidia-smi; then ok "nvidia-smi works: $(nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>/dev/null | head -n1)"
+  else warn "nvidia-smi missing (nvidia-utils)"; fi
 fi
 grep -qi intel <<<"$gpus" && { have vainfo && ok "Intel video acceleration: $(vainfo 2>/dev/null | grep -m1 'Driver version' | cut -c1-70)" || warn "vainfo missing (libva-utils), Intel media driver: intel-media-driver"; }
 have vulkaninfo && { vulkaninfo --summary 2>/dev/null | grep -m3 'deviceName' | sed 's/^ */  Vulkan: /'; } || warn "vulkaninfo missing (vulkan-tools)"

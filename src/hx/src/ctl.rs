@@ -1,7 +1,7 @@
 //! `hx ctl`: volume / mute / microphone / brightness as one JSON line, printed the moment something changes.
 //! Replaces the 2-second `ctl.sh` poll, so the sliders in the utilities panel follow touchpad gestures,
 //! media keys and other apps with no visible delay.
-//!   brightness  /sys/class/backlight is read every 60 ms (one tiny file read), `brightnessctl` is the fallback
+//!   brightness  /sys/class/backlight is read every 80-250 ms (one tiny file read), `brightnessctl` is the fallback
 //!   volume      `pactl subscribe` wakes us on every sink / server event, then `wpctl get-volume` reads it;
 //!               without pactl it falls back to a 250 ms poll
 use crate::util;
@@ -68,32 +68,41 @@ pub fn run() {
     };
 
     let bl = backlight();
-    let mut last = String::new();
+    let mut first = true;
     let mut vol = (0, false);
     let mut mic = (0, false);
     let mut last_bctl = Instant::now() - Duration::from_secs(10);
     let mut cached_b = 0;
     let mut b = bright(&bl, &mut last_bctl, &mut cached_b);
     let mut last_poll = Instant::now() - Duration::from_secs(1);
+    let mut last_change = Instant::now();
     let stdout = std::io::stdout();
     loop {
         let nb = bright(&bl, &mut last_bctl, &mut cached_b);
         let poll = !have_pactl && last_poll.elapsed() > Duration::from_millis(250);
-        let slow = last_poll.elapsed() > Duration::from_secs(3); // safety net if an event was missed
+        let slow = last_poll.elapsed() > Duration::from_secs(60); // safety net if an event was missed
+        let mut changed = first || nb != b;
         if dirty.swap(false, Ordering::Relaxed) || poll || slow {
-            vol = volume("@DEFAULT_AUDIO_SINK@");
-            mic = volume("@DEFAULT_AUDIO_SOURCE@");
+            let nvol = volume("@DEFAULT_AUDIO_SINK@");
+            let nmic = volume("@DEFAULT_AUDIO_SOURCE@");
+            if nvol != vol || nmic != mic {
+                vol = nvol;
+                mic = nmic;
+                changed = true;
+            }
             last_poll = Instant::now();
         }
-        b = if nb != b || last.is_empty() { nb } else { b };
-        let line = format!("{{\"vol\":{},\"muted\":{},\"mic\":{},\"micMuted\":{},\"bright\":{}}}", vol.0, vol.1, mic.0, mic.1, b);
-        if line != last {
+        b = nb;
+        if changed {
+            first = false;
+            last_change = Instant::now();
+            let line = format!("{{\"vol\":{},\"muted\":{},\"mic\":{},\"micMuted\":{},\"bright\":{}}}", vol.0, vol.1, mic.0, mic.1, b);
             let mut o = stdout.lock();
             if writeln!(o, "{}", line).is_err() || o.flush().is_err() {
                 return; // the island went away
             }
-            last = line;
         }
-        std::thread::sleep(Duration::from_millis(60));
+        let sleep_ms = if last_change.elapsed() < Duration::from_secs(5) { 80 } else { 250 };
+        std::thread::sleep(Duration::from_millis(sleep_ms));
     }
 }

@@ -117,7 +117,7 @@ cleanup() {
     local rc=$?
     trap - EXIT
     [[ -n "$SUDO_KEEPALIVE_PID" ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
-    [[ -n "$SUDOERS_TMP" ]] && rm -f "$SUDOERS_TMP" 2>/dev/null || true
+    [[ -n "$SUDOERS_TMP" ]] && as_root rm -f "$SUDOERS_TMP" 2>/dev/null || true
     [[ -n "$BUILD_DIR" && -d "$BUILD_DIR" ]] && rm -rf "$BUILD_DIR" 2>/dev/null || true
     if [[ $rc -ne 0 && $rc -ne 130 && $rc -ne 143 ]]; then
         echo ""
@@ -314,10 +314,13 @@ if [[ -f /etc/os-release ]]; then
     DISTRO_LIKE="$(. /etc/os-release; echo "${ID_LIKE:-}")"
 fi
 PKG_MGR=""
+DISTRO_FAMILY=""
 if command -v pacman >/dev/null 2>&1; then
     PKG_MGR="pacman"
+    DISTRO_FAMILY="arch"
 elif command -v apt-get >/dev/null 2>&1; then
     PKG_MGR="apt"
+    DISTRO_FAMILY="debian"
 fi
 log_info "System: ${BOLD}${DISTRO_NAME}${RESET} (${DISTRO_ID}), ${ARCH_CPU}${PKG_MGR:+ [package manager: ${PKG_MGR}]}"
 
@@ -333,7 +336,7 @@ fi
 
 if [[ "$REMOVE_LOGIN" != "true" ]]; then
     [[ -f "$RICE_SOURCE/hyprland.lua" ]] || die "The Halcyon files were not found next to this script (${RICE_SOURCE}). Run install.sh from inside the Halcyon folder."
-    for d in power-manager touchpad-gestures hx recon-deceiver log-analyst attacker-dossier setStaticMac; do
+    for d in power-manager touchpad-gestures hx recon-deceiver log-analyst attacker-dossier setStaticMac safety-check; do
         [[ -f "$RICE_SOURCE/src/$d/Cargo.toml" ]] || die "Missing Rust crate: ${RICE_SOURCE}/src/$d"
     done
     log_info "Halcyon files: ${RICE_SOURCE}"
@@ -364,7 +367,7 @@ log_info "For: ${BOLD}${TARGET_USER}${RESET} (home ${TARGET_HOME}); Halcyon goes
 
 # ---- sudo, kept alive for the whole run so a long build cannot make it ask again halfway
 if [[ $EUID -ne 0 ]]; then
-    command -v sudo >/dev/null 2>&1 || die "sudo is required (pacman -S sudo), or run this as root with --user NAME."
+    command -v sudo >/dev/null 2>&1 || die "sudo is required ($([[ "$PKG_MGR" == "apt" ]] && echo "apt install sudo" || echo "pacman -S sudo")), or run this as root with --user NAME."
     if [[ "$DRY_RUN" != "true" ]]; then
         log_info "Checking sudo..."
         sudo -v || die "sudo did not accept the password: administrator rights are needed."
@@ -476,7 +479,7 @@ map_pkg_for_apt() {
         playerctl)              echo "playerctl" ;;
         upower)                 echo "upower" ;;
         iw)                     echo "iw" ;;
-        polkit)                 echo "polkitd" ;;
+        polkit)                 echo "polkitd pkexec" ;;
         dbus)                   echo "dbus" ;;
         libnotify)              echo "libnotify-bin" ;;
         xdg-utils)              echo "xdg-utils" ;;
@@ -489,16 +492,17 @@ map_pkg_for_apt() {
         hyprlock)               echo "hyprlock" ;;
         hyprsunset)             echo "hyprsunset" ;;
         hyprutils)              echo "libhyprutils-dev" ;;
-        qt6-base)               echo "qt6-base-dev" ;;
-        qt6-declarative)        echo "qml6-module-qtquick qml6-module-qtqml" ;;
+        qt6-base)               echo "qt6-base-dev libqt6gui6 libqt6widgets6" ;;
+        qt6-declarative)        echo "qml6-module-qtquick qml6-module-qtqml qml6-module-qtquick-layouts qml6-module-qtquick-controls qml6-module-qtquick-window qml6-module-qtquick-templates qml6-module-qt-labs-folderlistmodel qml6-module-qtquick-effects qml6-module-qtqml-workerscript" ;;
         qt6-svg)                echo "libqt6svg6 qml6-module-qtquick-shapes" ;;
+        qt6-shadertools)        echo "qt6-shader-baker" ;;
         qt6-wayland)            echo "qt6-wayland" ;;
-        qt6-5compat)            echo "qml6-module-qt5compat" ;;
+        qt6-5compat)            echo "qml6-module-qt5compat-graphicaleffects" ;;
         qt6-multimedia)         echo "qml6-module-qtmultimedia" ;;
         qt5-wayland)            echo "qtwayland5" ;;
         qt6ct)                  echo "qt6ct" ;;
         kvantum)                echo "qt6-style-kvantum" ;;
-        kservice)               echo "libkf6service-dev" ;;
+        kservice)               echo "libkf6service-bin libkf6service-data" ;;
         imagemagick)            echo "imagemagick" ;;
         cava)                   echo "cava" ;;
         btop)                   echo "btop" ;;
@@ -1043,7 +1047,7 @@ editor_pkgs()  { case "$1" in codium) echo vscodium-bin ;; zeditor) echo zed ;; 
 # spotify-player: Spotify in the terminal (needs Premium), themed by scripts/app-themes.sh.
 music_pkgs()   { case "$1" in
                   spotify) if ! pkg_missing spotify || ! pkg_missing spotify-launcher; then echo spicetify-cli
-                           elif pacman -Si spotify-launcher >/dev/null 2>&1; then echo spotify-launcher spicetify-cli; else echo spotify spicetify-cli; fi ;;
+                           elif [[ "$PKG_MGR" == "pacman" ]] && pacman -Si spotify-launcher >/dev/null 2>&1; then echo spotify-launcher spicetify-cli; else echo spotify spicetify-cli; fi ;;
                   spotify-player) echo spotify-player ;; esac; }
 choice_bin()   { case "$1:$2" in
                   browser:zen) echo zen-browser ;; browser:chrome) echo google-chrome-stable ;; browser:vivaldi) echo vivaldi-stable ;;
@@ -1057,13 +1061,23 @@ detect_hardware_tier() {
     ram_gb=$(awk '/MemTotal/ {printf "%.0f", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 8)
     cpus=$(nproc 2>/dev/null || echo 4)
 
-    if command -v nvidia-smi >/dev/null 2>&1; then
+    local nv_awake=true
+    for _d in /sys/bus/pci/devices/*; do
+        if [[ "$(cat "$_d/vendor" 2>/dev/null)" == "0x10de" ]] && [[ "$(cat "$_d/class" 2>/dev/null)" == 0x03* ]]; then
+            [[ "$(cat "$_d/power/runtime_status" 2>/dev/null)" == "suspended" ]] && nv_awake=false
+            break
+        fi
+    done
+    if [[ "$nv_awake" == "true" ]] && command -v nvidia-smi >/dev/null 2>&1; then
         local nv_info
         nv_info=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null | head -n1)
         if [[ -n "$nv_info" ]]; then
             gpu_desc=$(echo "$nv_info" | awk -F',' '{print $1}' | sed 's/^[ \t]*//')
             vram_mb=$(echo "$nv_info" | awk -F',' '{print $2}' | tr -dc '0-9')
         fi
+    elif lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -qi 'nvidia'; then
+        gpu_desc="NVIDIA Dedicated Graphics (dGPU asleep)"
+        vram_mb=4096
     elif lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -qi 'amd'; then
         gpu_desc="AMD Radeon Graphics"
     elif lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -qi 'intel'; then
@@ -1220,7 +1234,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     install_pkgs --critical hyprland quickshell mesa vulkan-icd-loader
     CORE=(xdg-desktop-portal-hyprland xdg-desktop-portal-gtk polkit-kde-agent
           hypridle hyprlock hyprsunset hyprutils
-          qt6-base qt6-declarative qt6-svg qt6-wayland qt6-5compat qt6-multimedia qt5-wayland qt6ct kvantum kservice
+          qt6-base qt6-declarative qt6-svg qt6-shadertools qt6-wayland qt6-5compat qt6-multimedia qt5-wayland qt6ct kvantum kservice
           imagemagick cava btop fish starship poppler fd ripgrep fzf grim slurp wl-clipboard cliphist fuzzel
           dmidecode util-linux lsof jq zenity gamemode python libnotify
           inter-font ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji adwaita-icon-theme)
@@ -1228,6 +1242,18 @@ if [[ "$PACKAGES" == "true" ]]; then
     install_pkgs "${CORE[@]}"
     # AUR: the cursor theme Halcyon is configured for, the log-out menu, emoji picker, frozen screenshots
     install_pkgs sweet-cursors-git wlogout bemoji wayfreeze
+    # On Debian/Ubuntu, ensure JetBrainsMono Nerd Font is installed in ~/.local/share/fonts if not present
+    if [[ "$PKG_MGR" == "apt" && "$DRY_RUN" != "true" ]] && ! run_as_user bash -c 'fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd"'; then
+        log_info "Installing JetBrainsMono Nerd Font to $TARGET_HOME/.local/share/fonts..."
+        try run_as_user_cmd "Downloading JetBrainsMono Nerd Font" bash -c '
+            fdir="$HOME/.local/share/fonts/JetBrainsMonoNerd"
+            mkdir -p "$fdir"
+            tmp="$(mktemp -d)"
+            if curl -fsSL -o "$tmp/jb.tar.xz" "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz"; then
+                tar -xJf "$tmp/jb.tar.xz" -C "$fdir" && fc-cache -f "$fdir"
+            fi
+            rm -rf "$tmp"'
+    fi
 
     # ---- the apps YOU chose (choose_apps above): web browser, file manager(s), code editor(s)
     CH_PKGS=()
@@ -1252,7 +1278,6 @@ if [[ "$PACKAGES" == "true" ]]; then
     # ---- Local AI Advisor (Ollama)
     if [[ "$INSTALL_LLM" == "true" && -n "$PICK_LLM_MODEL" && "$PICK_LLM_MODEL" != "none" ]]; then
         log_info "Local AI Advisor: setting up Ollama + model ${PICK_LLM_MODEL}"
-        local ollama_bin
         ollama_bin="$(run_as_user which ollama 2>/dev/null || which ollama 2>/dev/null || echo "")"
         if [[ -z "$ollama_bin" ]]; then
             if [[ "$DISTRO_FAMILY" == "arch" ]]; then
@@ -1332,7 +1357,7 @@ run_as_user_cmd "Creating the config, state and cache folders" mkdir -p \
     "$TARGET_HOME/.cache/island" "$TARGET_HOME/Pictures/Wallpapers" "$TARGET_HOME/Pictures/Screenshots" "$TARGET_HOME/logs" \
     || die "Could not create folders in $TARGET_HOME"
 
-KEEP_FILES=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt)     # yours: never overwritten by the copy
+KEEP_FILES=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf backup-exclude.conf birthdays.txt)     # yours: never overwritten by the copy
 if [[ "$(readlink -f "$TARGET_RICE" 2>/dev/null)" == "$(readlink -f "$RICE_SOURCE")" ]]; then
     log_success "Halcyon is already in ${TARGET_RICE}"
 else
@@ -1833,11 +1858,12 @@ done
 check_polkit() {
     for p in /usr/lib/polkit-kde-authentication-agent-1 \
              /usr/libexec/polkit-kde-authentication-agent-1 \
-             /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 \
+             /usr/lib/*-linux-gnu/libexec/polkit-kde-authentication-agent-1 \
              /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
              /usr/libexec/polkit-gnome/polkit-gnome-authentication-agent-1 \
-             /usr/lib/x86_64-linux-gnu/polkit-gnome-authentication-agent-1 \
-             /usr/lib/hyprpolkitagent/hyprpolkitagent; do
+             /usr/lib/*-linux-gnu/polkit-gnome-authentication-agent-1 \
+             /usr/lib/hyprpolkitagent/hyprpolkitagent \
+             /usr/libexec/hyprpolkitagent; do
         [[ -x "$p" ]] && { echo -e "  ${GREEN}✔${RESET} polkit agent ($(basename "$p"))"; return 0; }
     done
     echo -e "  ${YELLOW}⚠${RESET} polkit agent (missing)"
@@ -1849,7 +1875,7 @@ check_portal() {
     for p in /usr/lib/xdg-desktop-portal-hyprland \
              /usr/lib/hyprland/xdg-desktop-portal-hyprland \
              /usr/libexec/xdg-desktop-portal-hyprland \
-             /usr/lib/x86_64-linux-gnu/xdg-desktop-portal-hyprland; do
+             /usr/lib/*-linux-gnu/xdg-desktop-portal-hyprland; do
         [[ -x "$p" ]] && { echo -e "  ${GREEN}✔${RESET} xdg-desktop-portal-hyprland"; return 0; }
     done
     echo -e "  ${YELLOW}⚠${RESET} xdg-desktop-portal-hyprland (missing)"

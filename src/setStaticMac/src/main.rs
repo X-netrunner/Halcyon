@@ -246,11 +246,15 @@ fn show_status() {
     let filepath = match find_iwd_config_file(ssid) {
         Some(p) => p,
         None => {
-            println!(
-                "{YELLOW}Connected to SSID '{ssid}' (profile: {name}) but no iwd configuration found in /var/lib/iwd/.{RESET}",
-                ssid = ssid,
-                name = wifi_info.name
-            );
+            let (nm_mac, _, _) = run_cmd(&format!("nmcli -g 802-11-wireless.cloned-mac-address connection show '{}'", wifi_info.uuid));
+            let current_mac = get_current_mac(device).unwrap_or_else(|| "Unknown".to_string());
+            let perm_mac = get_permanent_mac(device).unwrap_or_else(|| "Unknown".to_string());
+            println!("{BOLD}Active Wi-Fi SSID:    {RESET} {GREEN}{}{RESET}", ssid);
+            println!("{BOLD}Profile Name:          {RESET} {} (NetworkManager)", wifi_info.name);
+            println!("{BOLD}Interface Device:      {RESET} {}", device);
+            println!("{BOLD}Current MAC Address:   {RESET} {YELLOW}{}{RESET}", current_mac);
+            println!("{BOLD}Permanent MAC Address: {RESET} {CYAN}{}{RESET}", perm_mac);
+            println!("{BOLD}Configured Policy:     {RESET} {}", if nm_mac.is_empty() { "Default/Randomized" } else { &nm_mac });
             return;
         }
     };
@@ -463,17 +467,15 @@ fn main() {
         std::process::exit(1);
     };
 
-    let filepath = match find_iwd_config_file(&target_ssid) {
-        Some(p) => p,
-        None => {
-            println!(
-                "{RED}Error: Profile for SSID '{}' not found in /var/lib/iwd/.{RESET}",
-                target_ssid
-            );
-            println!("Please verify the SSID name or connect to it once to create a profile.");
-            std::process::exit(1);
-        }
-    };
+    let filepath = find_iwd_config_file(&target_ssid);
+    if filepath.is_none() && target_uuid.is_none() {
+        println!(
+            "{RED}Error: Profile for SSID '{}' not found in /var/lib/iwd/ or NetworkManager.{RESET}",
+            target_ssid
+        );
+        println!("Please verify the SSID name or connect to it once to create a profile.");
+        std::process::exit(1);
+    }
 
     let mut device = "wlan0".to_string();
     if let Some(info) = get_active_wifi_info() {
@@ -485,7 +487,12 @@ fn main() {
             "Modifying profile for {GREEN}'{}'{RESET} to remove MAC override...",
             target_ssid
         );
-        modify_iwd_config(&filepath, None);
+        if let Some(ref fp) = filepath {
+            modify_iwd_config(fp, None);
+        }
+        if let Some(ref uuid) = target_uuid {
+            let _ = Command::new("nmcli").args(["connection", "modify", uuid, "802-11-wireless.cloned-mac-address", "random"]).status();
+        }
         println!("{GREEN}✓ Successfully removed MAC override policy.{RESET}");
     } else {
         let mac_regex = Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").unwrap();
@@ -509,7 +516,12 @@ fn main() {
             "Modifying profile for {GREEN}'{}'{RESET} to use static MAC {YELLOW}{}{RESET}...",
             target_ssid, target_mac
         );
-        modify_iwd_config(&filepath, Some(&target_mac));
+        if let Some(ref fp) = filepath {
+            modify_iwd_config(fp, Some(&target_mac));
+        }
+        if let Some(ref uuid) = target_uuid {
+            let _ = Command::new("nmcli").args(["connection", "modify", uuid, "802-11-wireless.cloned-mac-address", &target_mac]).status();
+        }
         println!("{GREEN}✓ Successfully set static MAC override policy.{RESET}");
     }
 

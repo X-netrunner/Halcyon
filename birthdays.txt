@@ -8,8 +8,11 @@
 #   YYYY-MM-DD Name          -> e.g. 1995-07-12 Alex
 #
 # Changes sync automatically into Halcyon Calendar (>calendar).
-# You can also import Google Contacts (.vcf) directly:
-#   python3 ~/.config/Halcyon/quickshell/island/scripts/gcal.py import-birthdays contacts.vcf
+#
+# No typing needed: export your contacts (contacts.google.com > Export > vCard),
+# then press "Import Contacts" in the calendar. Halcyon finds contacts.vcf in
+# ~/Downloads and fills in the block marked ">>> imported from contacts" below.
+# Lines you type yourself stay untouched; importing again replaces only that block.
 # ==============================================================================
 
 # Examples:

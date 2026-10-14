@@ -16,11 +16,17 @@ if [ -e "$state/no-autostart" ]; then
   exit 0
 fi
 guard="/tmp/halcyon-login-$(id -u)"        # lives until the next reboot
-now=$(date +%s); recent=0
+now=$(date +%s); recent=0; kept=""
 if [ -f "$guard" ]; then
-  while read -r t; do [ -n "$t" ] && [ $((now - t)) -lt 90 ] && recent=$((recent + 1)); done < "$guard"
+  while read -r t; do
+    case "$t" in ''|*[!0-9]*) continue ;; esac
+    if [ $((now - t)) -lt 90 ]; then
+      recent=$((recent + 1))
+      kept="${kept}${t}"$'\n'
+    fi
+  done < "$guard"
 fi
-echo "$now" >> "$guard"
+printf '%s%s\n' "$kept" "$now" > "$guard"
 if [ "$recent" -ge 3 ]; then
   rm -f "$state/lock-on-start"
   echo

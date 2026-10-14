@@ -121,6 +121,13 @@ impl Wake {
         }
     }
 }
+impl Drop for Wake {
+    fn drop(&mut self) {
+        if self.fd >= 0 {
+            unsafe { libc::close(self.fd) };
+        }
+    }
+}
 
 /// Settings > Performance & memory > Background refresh: normal | relaxed | slow = 1x / 2.5x / 5x.
 /// `fast_aware`: the stats feed keeps its normal pace while the performance page (or the bar's CPU / RAM row) can be on
@@ -211,7 +218,15 @@ fn hottest(paths: &[String]) -> i64 {
 fn ac_online() -> bool {
     for n in names("/sys/class/power_supply") {
         let p = format!("/sys/class/power_supply/{}", n);
-        if first_line(&format!("{}/type", p)) == "Mains" && first_line(&format!("{}/online", p)) == "1" {
+        let t = first_line(&format!("{}/type", p));
+        let is_ac = n.starts_with("AC")
+            || n.starts_with("ADP")
+            || n.starts_with("ucsi")
+            || t.eq_ignore_ascii_case("Mains")
+            || t.eq_ignore_ascii_case("USB")
+            || t.eq_ignore_ascii_case("USB_PD")
+            || t.eq_ignore_ascii_case("USB_C");
+        if is_ac && first_line(&format!("{}/online", p)) == "1" {
             return true;
         }
     }
@@ -505,6 +520,15 @@ fn wifi_radio() -> Option<bool> {
     if found { Some(on) } else { None }
 }
 
+impl Drop for Net {
+    fn drop(&mut self) {
+        unsafe {
+            if self.ip_sock >= 0 { libc::close(self.ip_sock); }
+            if self.hci_sock >= 0 { libc::close(self.hci_sock); }
+        }
+    }
+}
+
 impl Net {
     fn new() -> Net {
         let ip_sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
@@ -584,7 +608,7 @@ impl Net {
                         // no wireless-extensions on this driver: ask nmcli, then reuse the answer for a minute
                         let fresh = self.ssid_cache.as_ref().map(|c| &c.0 == ifc && c.3.elapsed() < Duration::from_secs(60)).unwrap_or(false);
                         if !fresh {
-                            let o = run("nmcli", &["-t", "-f", "active,signal,ssid", "dev", "wifi"], 3);
+                            let o = run("nmcli", &["-t", "-f", "active,signal,ssid", "dev", "wifi", "list", "--rescan", "no"], 3);
                             let hit = o.lines().find_map(|l| l.strip_prefix("yes:").map(|r| r.to_string()));
                             if let Some(r) = hit {
                                 let (s, n) = r.split_once(':').unwrap_or((r.as_str(), ""));

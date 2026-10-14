@@ -59,7 +59,9 @@ fn notify(msg: &str, urgency: &str, real_user: &str) {
             .args(&[
                 "-u",
                 real_user,
+                "env",
                 &format!("DBUS_SESSION_BUS_ADDRESS={}", dbus_addr),
+                &format!("XDG_RUNTIME_DIR=/run/user/{}", uid_str),
                 "notify-send",
                 "🛡️ Safety Check",
                 msg,
@@ -96,12 +98,23 @@ fn main() {
     section("1/7 — System Update");
     notify("1/7 — System Update", "normal", &real_user);
     if auto {
-        log_warn("Automatic run: the system is not updated unattended (run the safety check by hand, or pacman -Syu, for that)");
-    } else if run_command("pacman", &["-Syu", "--noconfirm"]) {
-        log_success("System updated successfully");
+        log_warn("Automatic run: the system is not updated unattended (run the safety check by hand for that)");
+    } else if command_exists("pacman") {
+        if run_command("pacman", &["-Syu", "--noconfirm"]) {
+            log_success("System updated successfully (pacman)");
+        } else {
+            log_error("System update failed");
+            errors += 1;
+        }
+    } else if command_exists("apt-get") {
+        if run_command("apt-get", &["update"]) && run_command("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "upgrade", "-y"]) {
+            log_success("System updated successfully (apt)");
+        } else {
+            log_error("System update failed");
+            errors += 1;
+        }
     } else {
-        log_error("System update failed");
-        errors += 1;
+        log_warn("No supported package manager (pacman / apt-get) found for automatic update");
     }
 
     // 2. ClamAV
@@ -390,7 +403,12 @@ fn main() {
     section("7/7 — Backup to External Drive");
     notify("7/7 — Backup to External Drive", "normal", &real_user);
     
-    let target_uuid = "28df6eaf-a08b-41f4-bc89-2478bb619f8d";
+    let uuid_conf = format!("{}/.config/Halcyon/backup-uuid.conf", real_home);
+    let target_uuid = std::env::var("HALCYON_BACKUP_UUID")
+        .ok()
+        .or_else(|| fs::read_to_string(&uuid_conf).ok().map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "none".to_string());
     let uuid_path = format!("/dev/disk/by-uuid/{}", target_uuid);
     let backup_dest = "/mnt/backup";
     

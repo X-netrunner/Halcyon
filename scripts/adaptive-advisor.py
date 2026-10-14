@@ -1,3 +1,4 @@
+import pwd
 #!/usr/bin/env python3
 """adaptive-advisor.py : Intelligent System & Resource Performance Advisor for Halcyon
 Analyzes hardware status, CPU/GPU temperatures, VRAM, memory pressure, background daemons,
@@ -57,7 +58,25 @@ def get_temperatures():
         return {"avg": 45.0, "max": 45.0}
     return {"avg": round(sum(temps) / len(temps), 1), "max": round(max(temps), 1)}
 
+def is_nvidia_dgpu_suspended():
+    for dev in glob.glob("/sys/bus/pci/devices/*"):
+        try:
+            with open(os.path.join(dev, "vendor")) as vf:
+                if vf.read().strip() != "0x10de":
+                    continue
+            with open(os.path.join(dev, "class")) as cf:
+                if not cf.read().strip().startswith("0x03"):
+                    continue
+            with open(os.path.join(dev, "power/runtime_status")) as rf:
+                if rf.read().strip() == "suspended":
+                    return True
+        except Exception:
+            continue
+    return False
+
 def get_gpu_info():
+    if is_nvidia_dgpu_suspended():
+        return {"present": True, "name": "NVIDIA dGPU (D3cold suspended)", "temp_c": 0, "vram_used_mb": 0, "vram_total_mb": 0, "util_pct": 0}
     try:
         res = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,temperature.gpu,memory.used,memory.total,utilization.gpu",
@@ -99,7 +118,7 @@ def get_memory_info():
 def get_process_stats():
     procs = []
     try:
-        ps = subprocess.run(["ps", "-u", os.environ.get("USER", "netrunner"), "-o", "pid,rss,%cpu,comm,args"],
+        ps = subprocess.run(["ps", "-u", os.environ.get("USER") or pwd.getpwuid(os.getuid()).pw_name, "-o", "pid,rss,%cpu,comm,args"],
                             capture_output=True, text=True, timeout=3)
         for line in ps.stdout.splitlines()[1:]:
             parts = line.split(None, 4)
@@ -390,7 +409,7 @@ def run_llm_query(analysis, custom_prompt=""):
 def main():
     args = sys.argv[1:]
     
-    if "--fix" in args or "-f" in args:
+    if "--fix" in args or "-f" in args or (args and args[0] == "fix"):
         apply_fixes()
         return
 

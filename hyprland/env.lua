@@ -18,7 +18,19 @@ hl.env("MOZ_ENABLE_WAYLAND", "1")
 hl.env("_JAVA_AWT_WM_NONREPARENTING", "1")
 hl.env("NIXOS_OZONE_WL", "1")
 hl.env("WLR_RENDERER_ALLOW_SOFTWARE", "1")
-hl.env("XDG_MENU_PREFIX", "arch-")
+do
+    local f = io.open("/etc/xdg/menus/arch-applications.menu", "r")
+    if f then
+        f:close()
+        hl.env("XDG_MENU_PREFIX", "arch-")
+    else
+        local kf = io.open("/etc/xdg/menus/kf6-applications.menu", "r")
+        if kf then
+            kf:close()
+            hl.env("XDG_MENU_PREFIX", "kf6-")
+        end
+    end
+end
 hl.env("QT_STYLE_OVERRIDE", "kvantum")
 
 -- GPU specific variables written by install.sh (NVIDIA video acceleration ...). Optional: no file = nothing happens.

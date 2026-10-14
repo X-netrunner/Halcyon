@@ -58,14 +58,42 @@ function fish_greeting
         set pick $auto
     end
 
-    # Fetch system info (no `fish --version` / second `free` / `sysmode status`: those cost a process each on every new terminal)
+    # Fetch system info using /proc/uptime and /proc/meminfo (zero awk/sed/free child processes on every new terminal)
     set -l user_host $USER"@"(prompt_hostname)
     set -l kernel (uname -r)
-    set -l uptime (uptime -p | sed 's/^up //')
+    set -l uptime "?"
+    if test -r /proc/uptime
+        read -l up_raw < /proc/uptime
+        set -l up_sec (string split '.' -- (string split ' ' -- $up_raw)[1])[1]
+        set -l d (math -s0 "$up_sec / 86400")
+        set -l h (math -s0 "($up_sec % 86400) / 3600")
+        set -l m (math -s0 "($up_sec % 3600) / 60")
+        set -l parts
+        test $d -gt 0; and set -a parts "$d day"(test $d -gt 1; and echo s)
+        test $h -gt 0; and set -a parts "$h hour"(test $h -gt 1; and echo s)
+        test $m -gt 0 -o (count $parts) -eq 0; and set -a parts "$m minute"(test $m -ne 1; and echo s)
+        set uptime (string join ", " -- $parts)
+    end
     set -l shell "fish $version"
-    set -l mem (free -h | awk '/^Mem:/ {print $3, $2}' | sed 's/i/B/g' | string split ' ')
-    set -q mem[2]; or set mem "?" "?"
-    set -l memory "$mem[1] / $mem[2]"
+    set -l memory "? / ?"
+    if test -r /proc/meminfo
+        set -l mt 0
+        set -l ma 0
+        while read -l k v rest
+            switch $k
+                case 'MemTotal:'
+                    set mt $v
+                case 'MemAvailable:'
+                    set ma $v
+                    break
+            end
+        end < /proc/meminfo
+        if test $mt -gt 0
+            set -l used_gb (math -s1 "($mt - $ma) / 1048576")
+            set -l tot_gb (math -s1 "$mt / 1048576")
+            set memory "{$used_gb}GB / {$tot_gb}GB"
+        end
+    end
 
     # sysmode: read the mode file directly (cyber = old name of relaxed, hacking = old name of stealth)
     set -l mode "N/A"
@@ -95,10 +123,10 @@ function fish_greeting
     set -l acc_color (set_color -o red)
     if test -n "$fish_color_command" -a "$fish_color_command" != "normal"
         set acc_color (set_color -o $fish_color_command)
-    else if test -f "$HOME/.cache/island/ansi.env"
-        set -l acc_hex (grep -m1 '^A_ACC=' "$HOME/.cache/island/ansi.env" 2>/dev/null | cut -d= -f2 | tr -d '#')
-        if test -n "$acc_hex"
-            set acc_color (set_color -o $acc_hex)
+    else if test -r "$HOME/.cache/island/ansi.env"
+        set -l acc_hex (string match -rg '^A_ACC=#?([0-9a-fA-F]{6})' < "$HOME/.cache/island/ansi.env")
+        if set -q acc_hex[1]
+            set acc_color (set_color -o $acc_hex[1])
         end
     end
 
@@ -212,11 +240,12 @@ function fish_greeting
 
     # Rotating shortcut tip
     set -l tips \
-        "Super + E           → Launch Yazi file explorer" \
+        "Super + E           → Open your configured file manager" \
         "Ctrl + Shift + Esc  → Toggle dedicated Btop system monitor" \
         "Super + Alt + T     → Toggle Scrolling (Niri) / Dwindle layout" \
-        "Super + / or F1     → Open full Keybinds Cheatsheet HUD" \
-        "Super + M           → Toggle Spotify music workspace" \
+        "Super + /           → Open full Keybinds Cheatsheet HUD" \
+        "Super + I           → Open Halcyon Settings" \
+        "Super + M           → Toggle Music workspace" \
         "Super + Alt + N     → Toggle Nightlight (Gamma)" \
         "Super + Alt + W     → Toggle Live Wallpaper" \
         "Super + V           → Open Clipboard History"

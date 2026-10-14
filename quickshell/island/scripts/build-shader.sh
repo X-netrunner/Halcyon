@@ -7,6 +7,6 @@ dir="$HOME/.cache/halcyon"
 out="$dir/branch.frag.qsb"
 mkdir -p "$dir"
 if [ -s "$out" ] && [ ! "$src" -nt "$out" ]; then echo "$out"; exit 0; fi
-q="$(command -v qsb || ls /usr/lib/qt6/bin/qsb 2>/dev/null | head -n1)"
+q="$(command -v qsb || command -v qsb-qt6 || ls /usr/lib/qt6/bin/qsb /usr/lib/*-linux-gnu/qt6/bin/qsb /usr/lib64/qt6/bin/qsb 2>/dev/null | head -n1)"
 [ -n "$q" ] || exit 1
 "$q" --qt6 -o "$out" "$src" >/dev/null 2>&1 && [ -s "$out" ] && echo "$out"

@@ -1,5 +1,3 @@
-local scheme = require("scheme.current")
-
 return {
     ------------------
     ---- HYPRLAND ----
@@ -12,7 +10,6 @@ return {
     browser                    = "~/.config/Halcyon/scripts/apps.sh run browser",
     editor                     = "~/.config/Halcyon/scripts/apps.sh run editor",   -- Settings > Default apps > Code editor
     fileExplorer               = "~/.config/Halcyon/scripts/apps.sh run files",
-    audioSettings              = "pavucontrol",
     -- (SUPER+M music and SUPER+D communication start their apps from scripts/special.sh, see MUSIC_CMD / COMM_CMD there)
     -- size of windows on special workspaces: compact (Settings / SUPER+TAB tree switch ON) or full (OFF); the island applies it live
     specialScaleCompact        = 0.84,
@@ -26,7 +23,6 @@ return {
     keyRepeatDelay             = 250,   -- ms before a held key starts repeating (Hyprland default 600)
     keyRepeatRate              = 35,    -- repeats per second once it does (Hyprland default 25)
     gestureFingers             = 3,
-    workspaceSwipeFingers      = 4,
     gestureFingersMore         = 4,
 
     -- ===== LOOK (one place to tune the feel; hyprland/general.lua + decoration.lua read these) =====
@@ -35,7 +31,6 @@ return {
     windowGapsIn               = 8,
     windowGapsOut              = 16,
     workspaceGaps              = 0,
-    singleWindowGapsOut        = 16,
 
     -- Shape: round enough to feel soft, and the island/panels use concentric radii (see Pal.qml)
     windowRounding             = 18,
@@ -68,15 +63,9 @@ return {
     shadowColour               = "rgba(00000058)",
     shadowColourInactive       = "rgba(00000024)",
 
-    -- Fonts
-    uiFont                     = "Inter",
-
     -- Misc
-    volumeStep                 = 10,
-    volumeMax                  = 100,
     cursorTheme                = "sweet-cursors",
     cursorSize                 = 24,
-    sleepGestureCmd            = "systemctl suspend-then-hibernate",
 
     ------------------
     ---- KEYBINDS ----
@@ -84,31 +73,19 @@ return {
 
     -- Workspaces
     kbMoveWinToWs              = "SUPER + ALT",
-    kbMoveWinToWsGroup         = "CTRL + SUPER + ALT",
     kbGoToWs                   = "SUPER",
-    kbGoToWsGroup              = "CTRL + SUPER",
-    kbNextWs                   = "CTRL + SUPER + Right",
-    kbPrevWs                   = "CTRL + SUPER + Left",
+    kbNextWs                   = "SUPER + CTRL + Right",
+    kbPrevWs                   = "SUPER + CTRL + Left",
     kbScrollNextWs             = "SUPER + mouse_down",
     kbScrollPrevWs             = "SUPER + mouse_up",
-
-    -- Window Group
-    kbWindowGroupCycleNext     = "ALT + TAB",
-    kbWindowGroupCyclePrev     = "SHIFT + ALT + TAB",
-    kbUngroup                  = "SUPER + U",
-    kbToggleGroup              = "SUPER + Comma",
 
     -- Window Action
     -- Mouse: hold SUPER and drag. RIGHT button moves the window, LEFT button resizes it (the reverse of Hyprland's stock
     -- layout). Buttons: mouse:272 = left, mouse:273 = right, mouse:274 = middle. Swap the two lines to get the stock layout back.
     kbMouseMove                = "SUPER + mouse:273",
     kbMouseResize              = "SUPER + mouse:272",
-    kbMoveWindow               = "SUPER + Z",
-    kbResizeWindow             = "SUPER + X",
-    kbWindowPip                = "SUPER + ALT + backslash",
-    kbPinWindow                = "SUPER + P",
+    kbPinWindow                = "SUPER + SHIFT + P",
     kbWindowFullscreen         = "SUPER + F",
-    kbWindowBorderedFullscreen = "SUPER + ALT + F",
     kbToggleWindowFloating     = "SUPER + ALT + space",
     kbCloseWindow              = "SUPER + Q",
 
@@ -127,9 +104,6 @@ return {
 
     -- Misc
     kbSession                  = "CTRL + ALT + Delete",
-    kbShowSidebar              = "SUPER + N",
     kbClearNotifs              = "CTRL + ALT + C",
-    kbShowPanels               = "SUPER + K",
     kbLock                     = "SUPER + L",
-    kbRestoreLock              = "SUPER + ALT + L",
 }

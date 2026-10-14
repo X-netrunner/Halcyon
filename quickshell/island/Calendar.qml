@@ -72,6 +72,8 @@ Scope {
     property bool syncing: false
     property bool setupOpen: false           // the connect / manage page instead of the calendar
     property string setupMsg: ""
+    property bool holidayModalOpen: false
+    property string holidayModalMsg: ""
     property real now: Date.now()
     readonly property bool ready: cfg.configured && !setupOpen
 
@@ -224,8 +226,62 @@ Scope {
         stdout: StdioCollector {
             onStreamFinished: {
                 root.setupMsg = "Regional holidays added & synced!"
+                root.holidayModalMsg = "Regional holidays added & synced!"
                 root.loadConf()
                 root.loadEvents()
+            }
+        }
+    }
+    Process {
+        id: addCountryProc
+        property string countryName: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.holidayModalMsg = "Added " + (addCountryProc.countryName || "Country") + " Holidays!"
+                root.loadConf()
+                root.loadEvents()
+            }
+        }
+    }
+    Process {
+        id: importBdayProc
+        command: ["python3", root.script, "import-birthdays"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var msg = ""
+                try {
+                    var r = JSON.parse(text.split("\n").filter(function(l){ return l.trim() !== "" }).pop())
+                    if (r.ok) msg = "Imported " + r.count + " birthdays from " + r.file + (r.skipped > 0 ? " (" + r.skipped + " already in your list)" : "")
+                    else msg = r.error || "Could not import birthdays"
+                } catch(e) { msg = "Could not import birthdays" }
+                root.setupMsg = msg
+                root.holidayModalMsg = msg
+                root.loadConf()
+                root.loadEvents()
+            }
+        }
+    }
+    function importBirthdays() {
+        root.setupMsg = "Looking for contacts.vcf in Downloads..."
+        root.holidayModalMsg = root.setupMsg
+        importBdayProc.running = true
+    }
+    Process {
+        id: singleHolidayProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var ok = false, err = "", name = ""
+                try {
+                    var r = JSON.parse(text.split("\n").filter(function(l){ return l.trim() !== "" }).pop())
+                    ok = r.ok; err = r.error || ""; name = r.name || ""
+                } catch(e) { err = "Failed to parse response" }
+                if (ok) {
+                    root.holidayModalMsg = "Holiday '" + name + "' added!"
+                    root.loadConf()
+                    root.loadEvents()
+                } else {
+                    root.holidayModalMsg = err || "Failed to add holiday"
+                }
             }
         }
     }
@@ -332,8 +388,9 @@ Scope {
         property string label: ""
         property bool primary: false
         signal clicked()
-        height: 34; radius: 17
-        width: Math.max(96, t.implicitWidth + 32)
+        radius: 17
+        implicitWidth: Math.max(96, t.implicitWidth + 32)   // implicit, not width: layouts re-measure when the label changes
+        implicitHeight: 34
         scale: ma2.pressed ? 0.97 : 1
         color: primary ? Qt.alpha(root.pal.accent, ma2.containsMouse ? 0.95 : 0.85) : (ma2.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.95) : Qt.alpha(root.pal.surface, 0.85))
         border.width: primary ? 0 : 1; border.color: root.pal.line
@@ -362,7 +419,7 @@ Scope {
                 Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
                 focus: root.open
                 Keys.onPressed: e => {
-                    if (e.key === Qt.Key_Escape) { if (root.setupOpen && root.cfg.configured) root.setupOpen = false; else root.hide(); e.accepted = true; return }
+                    if (e.key === Qt.Key_Escape) { if (root.holidayModalOpen) root.holidayModalOpen = false; else if (root.setupOpen && root.cfg.configured) root.setupOpen = false; else root.hide(); e.accepted = true; return }
                     if (!root.ready) return
                     if (e.key === Qt.Key_Left) root.gotoDay(root.addDays(root.sel, -1))
                     else if (e.key === Qt.Key_Right) root.gotoDay(root.addDays(root.sel, 1))
@@ -407,25 +464,35 @@ Scope {
                             Layout.minimumWidth: 175
                             Layout.maximumWidth: 175
                         }
-                        IconBtn { visible: root.ready; glyph: "‹"; onClicked: root.moveMonth(-1) }
-                        IconBtn { visible: root.ready; glyph: "›"; onClicked: root.moveMonth(1) }
-                        Pill { visible: root.ready; label: "Today"; height: 30; width: 72; onClicked: root.gotoDay(new Date()) }
+                        IconBtn { visible: root.ready && !root.holidayModalOpen; glyph: "‹"; onClicked: root.moveMonth(-1) }
+                        IconBtn { visible: root.ready && !root.holidayModalOpen; glyph: "›"; onClicked: root.moveMonth(1) }
+                        Pill { visible: root.ready && !root.holidayModalOpen; label: "Today"; height: 30; width: 72; onClicked: root.gotoDay(new Date()) }
+                        Pill {
+                            label: root.holidayModalOpen ? "Back to Calendar" : "Holidays"
+                            primary: root.holidayModalOpen
+                            height: 30
+                            onClicked: {
+                                root.holidayModalMsg = ""
+                                root.holidayModalOpen = !root.holidayModalOpen
+                                if (root.setupOpen) root.setupOpen = false
+                            }
+                        }
                         Item { Layout.fillWidth: true }
                         Text {
-                            visible: root.cfg.configured
+                            visible: root.cfg.configured && !root.holidayModalOpen
                             text: root.syncing ? "syncing..." : (root.cfg.error ? "offline · " + root.ago(root.cfg.synced) : root.ago(root.cfg.synced))
                             color: root.cfg.error && !root.syncing ? root.pal.accent2 : root.pal.muted
                             font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                         }
-                        IconBtn { visible: root.cfg.configured; glyph: String.fromCodePoint(0xF04E6); spin: root.syncing; onClicked: root.sync() }
-                        IconBtn { visible: root.cfg.configured; glyph: String.fromCodePoint(0xF0493); onClicked: { root.setupMsg = ""; root.setupOpen = !root.setupOpen } }
+                        IconBtn { visible: root.cfg.configured && !root.holidayModalOpen; glyph: String.fromCodePoint(0xF04E6); spin: root.syncing; onClicked: root.sync() }
+                        IconBtn { visible: root.cfg.configured && !root.holidayModalOpen; glyph: String.fromCodePoint(0xF0493); onClicked: { root.setupMsg = ""; root.holidayModalOpen = false; root.setupOpen = !root.setupOpen } }
                         IconBtn { glyph: "✕"; onClicked: root.hide() }
                     }
 
                     // ---------------- the calendar
                     Item {
                         id: body
-                        visible: root.ready
+                        visible: root.ready && !root.holidayModalOpen
                         anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
 
                         // left: month grid + next up
@@ -664,7 +731,7 @@ Scope {
                     // ---------------- connect / manage
                     Item {
                         id: setup
-                        visible: !root.ready
+                        visible: !root.ready && !root.holidayModalOpen
                         anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
                         Flickable {
                             anchors.fill: parent
@@ -749,8 +816,8 @@ Scope {
                                     }
                                     Pill { width: 92; height: 38; radius: 19; label: "Connect"; onClicked: if (urlIn.text.trim() !== "") { root.connect(urlIn.text); urlIn.text = "" } }
                                 }
-                                Row {
-                                    topPadding: 8; spacing: 10
+                                Flow {
+                                    width: parent.width; topPadding: 8; spacing: 10
                                     Pill { visible: root.cfg.configured; label: "Back"; onClicked: root.setupOpen = false }
                                     Pill {
                                         primary: true
@@ -759,6 +826,10 @@ Scope {
                                             root.setupMsg = "Detecting region & adding holidays..."
                                             holidayProc.running = true
                                         }
+                                    }
+                                    Pill {
+                                        label: "Import Contacts"
+                                        onClicked: root.importBirthdays()
                                     }
                                     Pill {
                                         label: "Edit Birthdays"
@@ -809,6 +880,265 @@ Scope {
                                     }
                                     Item { width: 1; height: 6 }
                                     Pill { label: "Disconnect and forget"; onClicked: root.disconnect() }
+                                }
+                            }
+                        }
+                    }
+
+                    // ---------------- holidays & feasts panel
+                    Item {
+                        id: holidayView
+                        visible: root.holidayModalOpen
+                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
+                        Flickable {
+                            anchors.fill: parent
+                            contentWidth: width; contentHeight: hCol.implicitHeight + 20
+                            clip: true; boundsBehavior: Flickable.StopAtBounds
+                            Column {
+                                id: hCol
+                                width: Math.min(parent.width, 680)
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                spacing: 14
+
+                                RowLayout {
+                                    width: parent.width
+                                    Column {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text {
+                                            text: "Holidays & Feasts"
+                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            text: "1-Click national holidays feeds, local custom dates, and recurring celebrations."
+                                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                        }
+                                    }
+                                    Pill {
+                                        label: "Close"
+                                        onClicked: root.holidayModalOpen = false
+                                    }
+                                }
+
+                                Rectangle { width: parent.width; height: 1; color: root.pal.line }
+
+                                // Status message banner
+                                Rectangle {
+                                    width: parent.width; height: 36; radius: 10
+                                    visible: root.holidayModalMsg !== ""
+                                    color: Qt.alpha(root.pal.accent, 0.15)
+                                    border.width: 1; border.color: root.pal.accent
+                                    Row {
+                                        anchors.centerIn: parent; spacing: 8
+                                        Text {
+                                            text: root.holidayModalMsg
+                                            color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium
+                                        }
+                                    }
+                                }
+
+                                // Section 1: One-click National Feeds
+                                Column {
+                                    width: parent.width; spacing: 8
+                                    Text {
+                                        text: "1-Click Country Feeds"
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        text: "Click any country to automatically add its public holidays to your calendar:"
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                    }
+                                    Flow {
+                                        width: parent.width; spacing: 8
+                                        Repeater {
+                                            model: [
+                                                { label: "India", code: "indian", name: "India" },
+                                                { label: "USA", code: "usa", name: "United States" },
+                                                { label: "UK", code: "uk", name: "United Kingdom" },
+                                                { label: "Canada", code: "canadian", name: "Canada" },
+                                                { label: "Australia", code: "australian", name: "Australia" },
+                                                { label: "Germany", code: "german", name: "Germany" },
+                                                { label: "France", code: "french", name: "France" },
+                                                { label: "Japan", code: "japanese", name: "Japan" },
+                                                { label: "Brazil", code: "brazilian", name: "Brazil" },
+                                                { label: "Italy", code: "italian", name: "Italy" },
+                                                { label: "Spain", code: "spanish", name: "Spain" },
+                                                { label: "Netherlands", code: "dutch", name: "Netherlands" },
+                                                { label: "UAE", code: "united_arab_emirates", name: "UAE" },
+                                                { label: "Singapore", code: "singapore", name: "Singapore" }
+                                            ]
+                                            delegate: Rectangle {
+                                                id: cBtn
+                                                required property var modelData
+                                                height: 32; radius: 16
+                                                width: cTxt.implicitWidth + 24
+                                                color: cMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.95) : Qt.alpha(root.pal.surface, 0.7)
+                                                border.width: 1; border.color: cMa.containsMouse ? root.pal.accent : root.pal.line
+                                                Text {
+                                                    id: cTxt
+                                                    anchors.centerIn: parent
+                                                    text: cBtn.modelData.label
+                                                    color: root.pal.text
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tBody
+                                                }
+                                                MouseArea {
+                                                    id: cMa
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        root.holidayModalMsg = "Adding " + cBtn.modelData.name + " holidays..."
+                                                        addCountryProc.countryName = cBtn.modelData.name
+                                                        addCountryProc.command = ["python3", root.script, "add-holidays", cBtn.modelData.code]
+                                                        addCountryProc.running = true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // Auto-detect button
+                                        Rectangle {
+                                            height: 32; radius: 16
+                                            width: adTxt.implicitWidth + 24
+                                            color: adMa.containsMouse ? Qt.alpha(root.pal.accent, 0.3) : Qt.alpha(root.pal.accent, 0.15)
+                                            border.width: 1; border.color: root.pal.accent
+                                            Text {
+                                                id: adTxt
+                                                anchors.centerIn: parent
+                                                text: "Auto-Detect My Region"
+                                                color: root.pal.accent
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tBody
+                                                font.weight: Font.DemiBold
+                                            }
+                                            MouseArea {
+                                                id: adMa
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    root.holidayModalMsg = "Detecting region & adding holidays..."
+                                                    addCountryProc.countryName = "Regional"
+                                                    addCountryProc.command = ["python3", root.script, "add-holidays"]
+                                                    addCountryProc.running = true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle { width: parent.width; height: 1; color: root.pal.line }
+
+                                // Section 2: Quick Custom Holiday Input
+                                Column {
+                                    width: parent.width; spacing: 8
+                                    Text {
+                                        text: "Add Custom Holiday or Celebration"
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        text: "Quickly record an annual or one-off holiday (e.g. 10-24 or 2026-12-25):"
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                    }
+                                    RowLayout {
+                                        width: parent.width; spacing: 8
+                                        Rectangle {
+                                            Layout.preferredWidth: 140; height: 38; radius: 19
+                                            color: Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: 1; border.color: hDateIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                            Text {
+                                                anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
+                                                visible: hDateIn.text === ""
+                                                text: "MM-DD (e.g. 12-25)"
+                                                color: root.pal.muted; font.family: root.pal.mono; font.pixelSize: root.pal.tCap
+                                            }
+                                            TextInput {
+                                                id: hDateIn
+                                                anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                                                verticalAlignment: TextInput.AlignVCenter
+                                                color: root.pal.text
+                                                font.family: root.pal.mono; font.pixelSize: root.pal.tCap
+                                                clip: true
+                                            }
+                                        }
+                                        Rectangle {
+                                            Layout.fillWidth: true; height: 38; radius: 19
+                                            color: Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: 1; border.color: hNameIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                            Text {
+                                                anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
+                                                visible: hNameIn.text === ""
+                                                text: "Holiday Name (e.g. Diwali, Anniversary, Summer Break)"
+                                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                            }
+                                            TextInput {
+                                                id: hNameIn
+                                                anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                                                verticalAlignment: TextInput.AlignVCenter
+                                                color: root.pal.text
+                                                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                                clip: true
+                                                onAccepted: {
+                                                    if (hDateIn.text.trim() !== "" && hNameIn.text.trim() !== "") {
+                                                        root.holidayModalMsg = "Saving holiday..."
+                                                        singleHolidayProc.command = ["python3", root.script, "add-holiday", hDateIn.text.trim(), hNameIn.text.trim()]
+                                                        singleHolidayProc.running = true
+                                                        hDateIn.text = ""; hNameIn.text = ""
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Pill {
+                                            Layout.preferredWidth: 80; height: 38; radius: 19
+                                            primary: true
+                                            label: "Add"
+                                            onClicked: {
+                                                if (hDateIn.text.trim() !== "" && hNameIn.text.trim() !== "") {
+                                                    root.holidayModalMsg = "Saving holiday..."
+                                                    singleHolidayProc.command = ["python3", root.script, "add-holiday", hDateIn.text.trim(), hNameIn.text.trim()]
+                                                    singleHolidayProc.running = true
+                                                    hDateIn.text = ""; hNameIn.text = ""
+                                                } else {
+                                                    root.holidayModalMsg = "Please enter both date and holiday name."
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle { width: parent.width; height: 1; color: root.pal.line }
+
+                                // Section 3: File Management
+                                RowLayout {
+                                    width: parent.width; spacing: 10
+                                    Column {
+                                        Layout.fillWidth: true; Layout.minimumWidth: 160; spacing: 2
+                                        Text {
+                                            text: "Direct Text File Editing"
+                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 14; font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            width: parent.width; wrapMode: Text.WordWrap
+                                            text: "Plain text files in ~/.config/Halcyon/. For birthdays, export contacts.vcf from contacts.google.com and press Import."
+                                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                        }
+                                    }
+                                    Pill {
+                                        label: "Edit holidays.txt"
+                                        onClicked: {
+                                            Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.config/Halcyon/holidays.txt"])
+                                        }
+                                    }
+                                    Pill {
+                                        label: "Import contacts.vcf"
+                                        onClicked: root.importBirthdays()
+                                    }
+                                    Pill {
+                                        label: "Edit birthdays.txt"
+                                        onClicked: {
+                                            Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.config/Halcyon/birthdays.txt"])
+                                        }
+                                    }
                                 }
                             }
                         }

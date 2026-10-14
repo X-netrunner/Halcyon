@@ -11,6 +11,7 @@
                                   --no-remind  --nag EVERY_MIN  --giveup MIN  --focus  --all-tasks
   gcal.py done ID | undone ID   mark an event as finished (stops the nagging); stored here only, never sent to Google
   gcal.py task ID on|off        mark an event as a task (nagged / auto Focus when those are on)
+  gcal.py import-birthdays [FILE]   contacts .vcf (Google: contacts.google.com > Export > vCard) -> the managed block in ~/.config/Halcyon/birthdays.txt; no FILE = newest .vcf in Downloads
   gcal.py inspect               what each calendar's feed really contains (counts, titles that say "Busy", to-do items); no secrets printed
 
 Read-only: nothing is ever written to your calendar. Only the standard library is used.
@@ -42,6 +43,8 @@ NAGGED = os.path.join(STATE, "nagged.json")        # event id -> when the last n
 AUTOFOCUS = os.path.join(STATE, "autofocus.json")  # {"fired": {id: ts}, "active": id, "end": ts}
 BIRTHDAYS_JSON = os.path.join(STATE, "birthdays.json")
 BIRTHDAYS_FILE = os.path.join(os.path.expanduser("~"), ".config", "Halcyon", "birthdays.txt")
+HOLIDAYS_JSON = os.path.join(STATE, "holidays.json")
+HOLIDAYS_FILE = os.path.join(os.path.expanduser("~"), ".config", "Halcyon", "holidays.txt")
 SELF = os.path.abspath(__file__)
 FOCUS_SH = os.path.join(os.path.expanduser("~"), ".config", "Halcyon", "scripts", "focus.sh")
 BACK_DAYS = 35            # how far back / forward the cache reaches
@@ -476,6 +479,12 @@ def load_birthday_events(win_from, win_to):
     wf_date = dt.datetime.fromtimestamp(win_from, LOCAL).date()
     wt_date = dt.datetime.fromtimestamp(win_to, LOCAL).date()
 
+    # the same person from birthdays.json and birthdays.txt (or two imports) shows once; later entries win
+    seen = {}
+    for b in b_list:
+        seen[(str(b.get("name", "")).strip().lower(), b.get("month"), b.get("day"))] = b
+    b_list = list(seen.values())
+
     for b in b_list:
         name = b.get("name", "").strip()
         mo = b.get("month", 1)
@@ -503,7 +512,7 @@ def load_birthday_events(win_from, win_to):
                 suffix = "th" if 11 <= (age % 100) <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(age % 10, "th")
                 age_str = f" ({age}{suffix})"
 
-            title = f"🎂 {name}'s Birthday{age_str}"
+            title = f"{name}'s Birthday{age_str}"
             uid = f"birthday-{name}-{mo}-{day}"
             events.append({
                 "id": hashlib.sha1(f"{uid}|{s}".encode()).hexdigest()[:16],
@@ -518,25 +527,121 @@ def load_birthday_events(win_from, win_to):
     return events
 
 
+def load_holiday_events(win_from, win_to):
+    events = []
+    h_list = []
+    hj = load(HOLIDAYS_JSON, [])
+    if isinstance(hj, list):
+        h_list.extend(hj)
+
+    if os.path.isfile(HOLIDAYS_FILE):
+        try:
+            with open(HOLIDAYS_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    m = re.match(r"^(\d{1,2})[-/](\d{1,2})\s+(.+)", line)
+                    if m:
+                        h_list.append({"name": m.group(3).strip(), "month": int(m.group(1)), "day": int(m.group(2))})
+                    else:
+                        m2 = re.match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(.+)", line)
+                        if m2:
+                            h_list.append({"name": m2.group(4).strip(), "year": int(m2.group(1)), "month": int(m2.group(2)), "day": int(m2.group(3))})
+        except Exception:
+            pass
+
+    wf_date = dt.datetime.fromtimestamp(win_from, LOCAL).date()
+    wt_date = dt.datetime.fromtimestamp(win_to, LOCAL).date()
+
+    for h in h_list:
+        name = h.get("name", "").strip()
+        mo = h.get("month", 1)
+        day = h.get("day", 1)
+        spec_year = h.get("year")
+        if not name:
+            continue
+        years = [spec_year] if spec_year else range(wf_date.year - 1, wt_date.year + 2)
+        for y in years:
+            try:
+                if mo == 2 and day == 29 and not _cal.isleap(y):
+                    d = dt.date(y, 2, 28)
+                else:
+                    d = dt.date(y, mo, day)
+            except Exception:
+                continue
+
+            s = int(dt.datetime(d.year, d.month, d.day, tzinfo=LOCAL).timestamp())
+            e = s + 86400
+            if e <= win_from or s >= win_to:
+                continue
+
+            title = f"{name}"
+            uid = f"holiday-{name}-{mo}-{day}"
+            events.append({
+                "id": hashlib.sha1(f"{uid}|{s}".encode()).hexdigest()[:16],
+                "title": title,
+                "start": s,
+                "end": e,
+                "allDay": True,
+                "loc": "",
+                "desc": f"Holiday: {name}",
+                "cal": "Holidays",
+            })
+    return events
+
+
+def _vcf_unquote(value, params):
+    """Decode a vCard 2.1 QUOTED-PRINTABLE value (old Android / Outlook exports)."""
+    if "QUOTED-PRINTABLE" in params.upper():
+        import quopri
+        try:
+            return quopri.decodestring(value.encode("latin-1", "replace")).decode("utf-8", "replace")
+        except Exception:
+            return value
+    return value
+
+
 def parse_vcf(text):
+    """Contacts with a birthday -> [{name, year|None, month, day}]. Handles folded lines, Google/Apple/Outlook BDAY styles."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"=\n(?=[ \t]*[^:\n]*=)", "", text)           # 2.1 soft line breaks inside quoted-printable values
+    text = re.sub(r"\n[ \t]", "", text)                           # RFC 6350 folded lines
     birthdays = []
-    cards = re.findall(r"BEGIN:VCARD.*?END:VCARD", text, re.DOTALL | re.IGNORECASE)
-    for card in cards:
-        fn, bday = "", ""
-        for line in card.replace("\r\n", "\n").split("\n"):
-            line = line.strip()
-            if line.upper().startswith("FN:") or line.upper().startswith("FN;"):
-                fn = line.split(":", 1)[1].strip()
-            elif line.upper().startswith("BDAY:") or line.upper().startswith("BDAY;"):
-                bday = line.split(":", 1)[1].strip()
-        if fn and bday:
-            m = re.search(r"(\d{4})[-]?(\d{2})[-]?(\d{2})", bday)
-            if m:
-                birthdays.append({"name": fn, "year": int(m.group(1)), "month": int(m.group(2)), "day": int(m.group(3))})
-            else:
-                m2 = re.search(r"--(\d{2})[-]?(\d{2})", bday)
-                if m2:
-                    birthdays.append({"name": fn, "year": None, "month": int(m2.group(1)), "day": int(m2.group(2))})
+    for card in re.findall(r"BEGIN:VCARD.*?END:VCARD", text, re.DOTALL | re.IGNORECASE):
+        fn, n_name, bday = "", "", ""
+        for line in card.split("\n"):
+            if ":" not in line:
+                continue
+            head, value = line.split(":", 1)
+            head = head.split(".", 1)[-1] if "." in head.split(";", 1)[0] else head   # item1.BDAY -> BDAY
+            key, _, params = head.partition(";")
+            key = key.strip().upper()
+            value = _vcf_unquote(value.strip(), params)
+            if key == "FN":
+                fn = value
+            elif key == "N" and not n_name:
+                parts = [x.strip() for x in value.split(";")]
+                n_name = " ".join(x for x in (parts[3] if len(parts) > 3 else "", parts[1] if len(parts) > 1 else "",
+                                              parts[2] if len(parts) > 2 else "", parts[0], parts[4] if len(parts) > 4 else "") if x)
+            elif key == "BDAY":
+                bday = value
+        name = (fn or n_name).replace("\\,", ",").strip()
+        if not name or not bday:
+            continue
+        m = re.search(r"(\d{4})-?(\d{2})-?(\d{2})", bday)
+        year = None
+        if m:
+            year, mo, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if year < 1900:                                       # 1604 / 0000 / 1900 are what apps store for "no year"
+                year = None
+        else:
+            m = re.search(r"--(\d{2})-?(\d{2})", bday)
+            if not m:
+                continue
+            mo, day = int(m.group(1)), int(m.group(2))
+        if 1 <= mo <= 12 and 1 <= day <= 31:
+            birthdays.append({"name": name, "year": year, "month": mo, "day": day})
     return birthdays
 
 
@@ -557,9 +662,13 @@ def cmd_sync():
         events += load_birthday_events(wf, wt)
     except Exception as be:
         errors.append("birthdays: %s" % str(be)[:100])
+    try:
+        events += load_holiday_events(wf, wt)
+    except Exception as he:
+        errors.append("holidays: %s" % str(he)[:100])
 
     if not c.get("calendars") and not events:
-        print(json.dumps({"ok": False, "error": "no calendar or birthdays set up"}))
+        print(json.dumps({"ok": False, "error": "no calendar, holidays or birthdays set up"}))
         return 1
 
     events.sort(key=lambda e: (e["start"], e["title"]))
@@ -578,9 +687,12 @@ def cmd_conf():
     c = conf()
     cache = load(CACHE, {})
     has_birthdays = os.path.isfile(BIRTHDAYS_FILE) or bool(load(BIRTHDAYS_JSON, []))
-    configured = bool(c["calendars"]) or has_birthdays
+    has_holidays = os.path.isfile(HOLIDAYS_FILE) or bool(load(HOLIDAYS_JSON, []))
+    configured = bool(c["calendars"]) or has_birthdays or has_holidays
     print(json.dumps({"configured": configured, "count": len(c["calendars"]),
                       "names": [x.get("name", "") for x in c["calendars"]],
+                      "has_holidays": has_holidays,
+                      "has_birthdays": has_birthdays,
                       "remind": c["remind"], "synced": cache.get("synced", 0), "error": cache.get("error", "")}))
 
 
@@ -909,10 +1021,43 @@ def cmd_add_birthday(name, date_str, year=None):
     return 0
 
 
-def cmd_import_birthdays(file_path):
-    path = os.path.expanduser(file_path)
-    if not os.path.isfile(path):
-        print(json.dumps({"ok": False, "error": f"File not found: {file_path}"}))
+IMPORT_BEGIN = "# >>> imported from contacts (managed by Halcyon: importing again replaces everything up to the end marker) >>>"
+IMPORT_END = "# <<< end of imported contacts <<<"
+
+
+def find_contacts_vcf():
+    """Newest .vcf with contacts in Downloads (then Documents, Desktop, home). Google exports it as contacts.vcf."""
+    import glob
+    home = os.path.expanduser("~")
+    found = []
+    for d in ("Downloads", "Documents", "Desktop", ""):
+        for p in glob.glob(os.path.join(home, d, "*.vcf")):
+            try:
+                with open(p, "r", encoding="utf-8", errors="replace") as f:
+                    if "BEGIN:VCARD" in f.read(4096).upper():
+                        found.append((("contact" in os.path.basename(p).lower()), os.path.getmtime(p), p))
+            except Exception:
+                pass
+    found.sort(reverse=True)
+    return found[0][2] if found else None
+
+
+def _split_import_block(lines):
+    """-> (lines before the managed block, lines after it); no block -> (all lines, [])."""
+    try:
+        a = next(i for i, l in enumerate(lines) if l.startswith("# >>> imported from contacts"))
+    except StopIteration:
+        return lines, []
+    b = next((i for i, l in enumerate(lines) if i > a and l.startswith("# <<< end of imported contacts")), len(lines) - 1)
+    return lines[:a], lines[b + 1:]
+
+
+def cmd_import_birthdays(file_path=None):
+    path = os.path.expanduser(file_path) if file_path else find_contacts_vcf()
+    if not path or not os.path.isfile(path):
+        msg = (f"File not found: {file_path}" if file_path else
+               "No contacts .vcf found in Downloads. At contacts.google.com choose Export > vCard (for Google Contacts), save it, then try again.")
+        print(json.dumps({"ok": False, "error": msg}))
         return 1
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -931,7 +1076,7 @@ def cmd_import_birthdays(file_path):
             summary = unescape(p.get("SUMMARY", ("", ""))[1]).strip()
             dtstart = p.get("DTSTART", ("", ""))[1]
             if summary and dtstart:
-                clean_name = re.sub(r"'s Birthday.*", "", summary, flags=re.I).replace("🎂", "").strip()
+                clean_name = re.sub(r"'s Birthday.*", "", summary, flags=re.I).strip()
                 m = re.match(r"(\d{4})(\d{2})(\d{2})", dtstart)
                 if m:
                     new_birthdays.append({"name": clean_name, "year": int(m.group(1)), "month": int(m.group(2)), "day": int(m.group(3))})
@@ -945,22 +1090,82 @@ def cmd_import_birthdays(file_path):
                 new_birthdays.append({"name": m.group(3).strip(), "month": int(m.group(1)), "day": int(m.group(2)), "year": int(m.group(4)) if m.group(4) else None})
 
     if not new_birthdays:
-        print(json.dumps({"ok": False, "error": "No valid birthdays found in file."}))
+        print(json.dumps({"ok": False, "error": "No birthdays found in " + os.path.basename(path) + ". Contacts need a birthday set to show up."}))
         return 1
 
-    existing = load(BIRTHDAYS_JSON, [])
-    names = {b.get("name", "").lower(): i for i, b in enumerate(existing)}
-    for b in new_birthdays:
-        k = b["name"].lower()
-        if k in names:
-            existing[names[k]] = b
-        else:
-            existing.append(b)
-            names[k] = len(existing) - 1
+    # lines you typed yourself stay exactly as they are; the imported ones live between two marker lines
+    existing = []
+    if os.path.isfile(BIRTHDAYS_FILE):
+        with open(BIRTHDAYS_FILE, "r", encoding="utf-8") as f:
+            existing = f.read().splitlines()
+    before, after = _split_import_block(existing)
+    typed = set()
+    for l in before + after:
+        m = re.match(r"^(?:\d{4}[-/])?\d{1,2}[-/]\d{1,2}\s+([^(]+)", l.strip())
+        if m:
+            typed.add(m.group(1).strip().lower())
 
-    save(BIRTHDAYS_JSON, existing)
+    out, seen, skipped = [], set(), 0
+    for b in sorted(new_birthdays, key=lambda x: (x["month"], x["day"], x["name"].lower())):
+        name = re.sub(r"\s*\(.*?\)", "", b["name"]).strip() or b["name"]
+        key = (name.lower(), b["month"], b["day"])
+        if name.lower() in typed or key in seen:
+            skipped += 1
+            continue
+        seen.add(key)
+        out.append(f"{b['month']:02d}-{b['day']:02d} {name}" + (f" ({b['year']})" if b.get("year") else ""))
+
+    block = [IMPORT_BEGIN, f"# source: {os.path.basename(path)}  ({dt.date.today().isoformat()})"] + out + [IMPORT_END]
+    head = list(before)
+    while head and not head[-1].strip():
+        head.pop()
+    lines = head + ([""] if head else []) + block + ([""] + after if any(x.strip() for x in after) else [])
+    os.makedirs(os.path.dirname(BIRTHDAYS_FILE), exist_ok=True)
+    tmp = BIRTHDAYS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    os.replace(tmp, BIRTHDAYS_FILE)
+
     cmd_sync()
-    print(json.dumps({"ok": True, "count": len(new_birthdays), "total": len(existing)}))
+    print(json.dumps({"ok": True, "count": len(out), "skipped": skipped, "file": os.path.basename(path)}))
+    return 0
+
+
+def cmd_add_holiday(date_str, name):
+    name = name.strip()
+    m = re.match(r"^(\d{4})?[-/]?(\d{1,2})[-/](\d{1,2})$", date_str.strip())
+    if not m:
+        print(json.dumps({"ok": False, "error": "Invalid date format. Use MM-DD (e.g. 12-25) or YYYY-MM-DD"}))
+        return 1
+    y, mo, d = m.group(1), int(m.group(2)), int(m.group(3))
+    formatted = f"{y}-{mo:02d}-{d:02d}" if y else f"{mo:02d}-{d:02d}"
+    line = f"{formatted} {name}\n"
+    os.makedirs(os.path.dirname(HOLIDAYS_FILE), exist_ok=True)
+    with open(HOLIDAYS_FILE, "a", encoding="utf-8") as f:
+        f.write(line)
+    res = cmd_sync()
+    print(json.dumps({"ok": res == 0, "name": name, "date": formatted}))
+    return res
+
+
+def cmd_list_countries():
+    countries = [
+        {"country": "India", "code": "indian"},
+        {"country": "United States", "code": "usa"},
+        {"country": "United Kingdom", "code": "uk"},
+        {"country": "Canada", "code": "canadian"},
+        {"country": "Australia", "code": "australian"},
+        {"country": "Germany", "code": "german"},
+        {"country": "France", "code": "french"},
+        {"country": "Japan", "code": "japanese"},
+        {"country": "Brazil", "code": "brazilian"},
+        {"country": "Italy", "code": "italian"},
+        {"country": "Spain", "code": "spanish"},
+        {"country": "Netherlands", "code": "dutch"},
+        {"country": "Singapore", "code": "singapore"},
+        {"country": "United Arab Emirates", "code": "united_arab_emirates"},
+    ]
+    print(json.dumps({"ok": True, "countries": countries}))
     return 0
 
 
@@ -997,10 +1202,14 @@ def main(argv):
         return cmd_detect_region()
     elif a == "add-holidays":
         return cmd_add_holidays(argv[2] if len(argv) >= 3 else None)
+    elif a == "add-holiday" and len(argv) >= 4:
+        return cmd_add_holiday(argv[2], argv[3])
+    elif a == "list-countries":
+        return cmd_list_countries()
     elif a == "add-birthday" and len(argv) >= 4:
         return cmd_add_birthday(argv[2], argv[3], argv[4] if len(argv) >= 5 else None)
-    elif a == "import-birthdays" and len(argv) >= 3:
-        return cmd_import_birthdays(argv[2])
+    elif a == "import-birthdays":
+        return cmd_import_birthdays(argv[2] if len(argv) >= 3 else None)
     else:
         print(__doc__)
         return 2
