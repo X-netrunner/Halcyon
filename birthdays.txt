@@ -1,0 +1,16 @@
+# ==============================================================================
+# Halcyon Birthdays List (~/.config/Halcyon/birthdays.txt)
+# Add your family, friends, and colleagues' birthdays below.
+#
+# Supported formats:
+#   MM-DD Name (BirthYear)   -> e.g. 10-25 Sarah (1998)
+#   MM-DD Name               -> e.g. 04-14 Mom
+#   YYYY-MM-DD Name          -> e.g. 1995-07-12 Alex
+#
+# Changes sync automatically into Halcyon Calendar (>calendar).
+# You can also import Google Contacts (.vcf) directly:
+#   python3 ~/.config/Halcyon/quickshell/island/scripts/gcal.py import-birthdays contacts.vcf
+# ==============================================================================
+
+# Examples:
+# 12-28 Linus Torvalds (1969)

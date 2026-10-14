@@ -380,18 +380,23 @@ impl Hypr {
     }
 
     fn set_refresh(&mut self, high: bool) {
-        if let Some(cfg) = self.query("j/monitors").and_then(|j| parse_monitor_config(&j)) {
-            self.monitor_cfg = Some(cfg);
-        }
-        let (name, res_high, res_low) = self.monitor_cfg.as_ref().cloned().unwrap_or_else(|| {
-            (DEFAULT_MONITOR.to_string(), DEFAULT_RES_HIGH.to_string(), DEFAULT_RES_LOW.to_string())
-        });
-        let res = if high { res_high } else { res_low };
-        let cmd = format!(
-            "eval hl.monitor({{ output = '{name}', mode = '{res}', position = '0x0', scale = 1 }})"
-        );
-        if self.query(&cmd).is_none() {
-            eprintln!("Failed to set monitor mode via socket");
+        // Disabled by default: changing monitor refresh rate triggers a full kernel DRM modeset,
+        // which blanks/blacks out the screen for 1-2 seconds every time the system transitions
+        // between idle and active modes. Enabled only when explicitly requested via HALCYON_DYNAMIC_REFRESH=1.
+        if std::env::var("HALCYON_DYNAMIC_REFRESH").map(|v| v == "1").unwrap_or(false) {
+            if let Some(cfg) = self.query("j/monitors").and_then(|j| parse_monitor_config(&j)) {
+                self.monitor_cfg = Some(cfg);
+            }
+            let (name, res_high, res_low) = self.monitor_cfg.as_ref().cloned().unwrap_or_else(|| {
+                (DEFAULT_MONITOR.to_string(), DEFAULT_RES_HIGH.to_string(), DEFAULT_RES_LOW.to_string())
+            });
+            let res = if high { res_high } else { res_low };
+            let cmd = format!(
+                "eval hl.monitor({{ output = '{name}', mode = '{res}', position = '0x0', scale = 1 }})"
+            );
+            if self.query(&cmd).is_none() {
+                eprintln!("Failed to set monitor mode via socket");
+            }
         }
     }
 }

@@ -218,6 +218,17 @@ Scope {
     }
     Process { id: clearProc; command: ["python3", root.script, "clear"]; onExited: { root.events = []; root.setupMsg = ""; root.loadConf() } }
     Process { id: remindProc; onExited: root.loadConf() }
+    Process {
+        id: holidayProc
+        command: ["python3", root.script, "add-holidays"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.setupMsg = "Regional holidays added & synced!"
+                root.loadConf()
+                root.loadEvents()
+            }
+        }
+    }
     // reminders: the script sends a notification for each one that is due and remembers which it sent
     Process { id: markProc }
     Process { id: notifyProc }
@@ -741,6 +752,20 @@ Scope {
                                 Row {
                                     topPadding: 8; spacing: 10
                                     Pill { visible: root.cfg.configured; label: "Back"; onClicked: root.setupOpen = false }
+                                    Pill {
+                                        primary: true
+                                        label: "Auto-Add My Country's Holidays"
+                                        onClicked: {
+                                            root.setupMsg = "Detecting region & adding holidays..."
+                                            holidayProc.running = true
+                                        }
+                                    }
+                                    Pill {
+                                        label: "Edit Birthdays"
+                                        onClicked: {
+                                            Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.config/Halcyon/birthdays.txt"])
+                                        }
+                                    }
                                 }
                                 Text {
                                     width: parent.width; visible: root.setupMsg !== ""

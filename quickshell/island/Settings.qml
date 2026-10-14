@@ -484,8 +484,9 @@ Scope {
             { type: "seg", key: "motion", label: "Island animations", opts: [o(0, "Off"), o(0.5, "Fast"), o(1, "Normal")] },
             { type: "toggle", key: "hyprAnim", label: "Window animations" }
         ] },
-        { id: "growth", title: "Constellations", section: "Appearance", items: [
-            { type: "toggle", key: "opt:starsBar", label: "Moving stars", desc: "A handful of tiny stars flying slowly across the bar (island, notch and custom bar), the bar builder and the wallpaper picker. Independent of the constellation switches below. Very light: they stand still while the bar is hidden or a page is open. Off in the Low resource preset." },
+        { id: "growth", title: "Constellations & Stars", section: "Appearance", items: [
+            { type: "seg", key: "opt:dialogStarStyle", label: "Dialog stars effect (Battery saver)", desc: "Choose whether Settings, Display Switcher, Cheatsheet and dialogs use lightweight Moving Stars (drifting particles with tails, saving significant CPU/GPU and battery), Constellations (connected geometric nodes), Both, or Off.", opts: [o("moving", "Moving Stars (Lightweight)"), o("constellations", "Constellations"), o("both", "Both"), o("none", "Off")] },
+            { type: "toggle", key: "opt:starsBar", label: "Moving stars in bars", desc: "A handful of tiny stars flying slowly across the bar (island, notch and custom bar), the bar builder and the wallpaper picker. Independent of the constellation switches below. Very light: they stand still while the bar is hidden or a page is open." },
             { type: "toggle", key: "opt:stars", label: "Constellations in the boxes", desc: "The drifting dots and lines behind the Settings, notification centre, cheat sheet, power menu, lock screen and console. Off = none anywhere, whatever the switches below say (the moving stars above are separate)." },
             { type: "chips", adv: true, label: "Show the constellations in", desc: "Pick the boxes that get them. (Needs the master switch above.)", opts: [ch("opt:starsSettings", "Settings"), ch("opt:starsNotifs", "Notification centre"), ch("opt:starsCheatsheet", "Cheat sheet"), ch("opt:starsPower", "Power menu"), ch("opt:starsLock", "Lock screen"), ch("opt:starsTerm", "Console")], when: "opt:stars=true" },
             { type: "toggle", adv: true, key: "profileStars", label: "Profile picture constellation" },
@@ -1588,7 +1589,31 @@ Scope {
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
 
-                Backdrop { visible: root.open && root.opt.stars !== false && root.opt.starsSettings !== false; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85; paused: root.scrolling }
+                Backdrop {
+                    visible: root.open && (root.opt.dialogStarStyle !== "moving") && root.opt.dialogStarStyle !== "none" && root.opt.stars !== false && root.opt.starsSettings !== false
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    pal: root.pal
+                    mode: root.sysmode
+                    avatarStars: root.starData
+                    profileStars: root.profileStars
+                    dots: 14
+                    artStrength: 0.6
+                    artFit: 0.85
+                    paused: root.scrolling
+                }
+
+                BarStars {
+                    z: 1
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    pal: root.pal
+                    count: 12
+                    loopMs: 140000
+                    sizeScale: 1.4
+                    active: root.open
+                    visible: root.open && (root.opt.dialogStarStyle === "moving" || root.opt.dialogStarStyle === "both" || (root.opt.dialogStarStyle === undefined && root.opt.starsBar !== false))
+                }
 
                 // ---------------- header: title, search, collapse, close
                 RowLayout {
