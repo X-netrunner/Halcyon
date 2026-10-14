@@ -116,7 +116,7 @@ if [ "${2:-}" = "--print" ]; then printf '%s\n' "$json"; exit 0; fi
 # in place (no rename), so `tail -F` in the island sees it
 printf '%s\n' "$json" > "$out"
 
-# Notify the island directly via IPC so it updates immediately
-if command -v quickshell >/dev/null 2>&1; then
+# FileView in Pal.qml watches ~/.cache/island/palette.json via inotify; only invoke quickshell ipc if --ipc is requested
+if [ "${2:-}" = "--ipc" ] && command -v quickshell >/dev/null 2>&1; then
   quickshell ipc -p "$HOME/.config/Halcyon/quickshell/island" call island reloadPalette >/dev/null 2>&1 || true
 fi

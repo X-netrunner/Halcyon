@@ -60,8 +60,11 @@ require("hyprland.decoration")
 require("hyprland.group")
 require("hyprland.execs")
 
+local vars = require("variables")
 hl.on("hyprland.start", function()
-    hl.exec_cmd("hyprctl setcursor Adwaita 24")
+    local theme = vars.cursorTheme or "Adwaita"
+    local size = tostring(vars.cursorSize or 24)
+    hl.exec_cmd("hyprctl setcursor " .. theme .. " " .. size .. " || hyprctl setcursor Adwaita " .. size)
 end)
 
 require("hyprland.rules")

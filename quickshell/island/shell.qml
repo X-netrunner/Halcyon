@@ -94,7 +94,11 @@ ShellRoot {
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
         stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
-        starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: true     // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
+        starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: true,    // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
+        dialogStarStyle: "both",   // moving | constellations | both | none : dialog star style
+        lazyLoad: true,            // unload closed heavy dialog trees when hidden
+        limRam: 600,               // manual RAM limit (MB) for background helper warnings
+        limCpu: 10                 // manual CPU limit (%) for background helper warnings
     })
     // Hyprland values you changed in Settings: only these are pushed (the Lua config rules for everything else).
     // hyCur = what Hyprland has right now (read at start by scripts/hypr-values.sh, then your changes) = where the sliders start.
@@ -140,7 +144,7 @@ ShellRoot {
     Timer {
         interval: 300000; repeat: true
         running: root.settingsLoaded && root.opt.limMode === "auto" && !root.gaming
-        onTriggered: Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-view.py", "adapt-sample"])
+        onTriggered: Quickshell.execDetached([Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "adapt-sample"])
     }
 
     // ---- background refresh (Settings > Performance & memory > Background refresh) ----------------------------------------
@@ -514,7 +518,7 @@ ShellRoot {
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
-            else if (id === "adapt-reset") Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-view.py", "adapt-reset"])
+            else if (id === "adapt-reset") Quickshell.execDetached([Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "adapt-reset"])
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
             else if (id === "opt-sweet-spot") {
                 root.applyResMode("medium")
@@ -709,7 +713,10 @@ ShellRoot {
 
     // Notifications are on top of every window, big ones included. Those open on the same layer and later = above, so whenever one
     // opens while a toast is showing (or a toast arrives while one is open) the notification window is put back on top.
-    readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open || calendar.open || powerMenu.open || tour.open
+    readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
+        || calendar.open || powerMenu.open || tour.open || corner.open || appsWin.open
+        || notifs.centerOpen || settingsWin.galleryOpen || settingsWin.builderOpen
+        || settingsWin.nbOpen || settingsWin.startupOpen
     property int notifSeen: 0
     onAnyOverlayChanged: {
         if (anyOverlay) {
@@ -719,6 +726,7 @@ ShellRoot {
         }
     }
     Timer { id: trimGc; interval: 1000; onTriggered: gc() }
+    Timer { interval: 90000; repeat: true; running: !root.anyOverlay; onTriggered: gc() }
     Connections {
         target: notifs
         function onToastsChanged() {
@@ -1742,6 +1750,7 @@ ShellRoot {
         function closeTop(): string { return root.closeOverlay() ? "closed" : "none" }
         function theme(): void { root.toggleTheme() }
         function quickterm(): void { quickTerm.toggle() }
+        function reloadPalette(): void { pal.reloadFromFile() }
         function cmdlist(): void { cmdTree.toggle() }                // SUPER+ALT+/ (does nothing without sysmode)
         function edgemode(): void { root.toggleEdgeMode() }
         function settings(): void { settingsWin.toggle() }
@@ -2300,11 +2309,11 @@ ShellRoot {
                 active: root.page === "launcher"
                 opacity: root.page === "launcher" ? 1 : 0
                 visible: opacity > 0.01
-                // opening: wait a moment so the pill has started to grow, then fade in; closing: fade out at once
+                // instant, fluid fade without lagging pauses
                 Behavior on opacity {
-                    SequentialAnimation {
-                        PauseAnimation { duration: root.page === "launcher" ? Math.round(pal.dMed * 0.3) : 0 }
-                        NumberAnimation { duration: root.page === "launcher" ? pal.dMed : pal.dFast; easing.type: Easing.OutCubic }
+                    NumberAnimation {
+                        duration: root.page === "launcher" ? 160 : 120
+                        easing.type: Easing.OutCubic
                     }
                 }
                 onCloseRequested: root.page = "home"

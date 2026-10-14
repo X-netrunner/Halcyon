@@ -34,7 +34,7 @@ exec 9>"${XDG_RUNTIME_DIR:-/tmp}/halcyon-shell-$name.lock"
 flock -w 6 9 || { say "already running: nothing to do"; exit 0; }
 
 qs="$(command -v quickshell || command -v qs || true)"
-[ -n "$qs" ] || { alert "quickshell is not installed (sudo pacman -S quickshell, or run ./install.sh)"; exit 1; }
+[ -n "$qs" ] || { alert "quickshell is not installed (Arch: sudo pacman -S quickshell | Debian/Ubuntu: run ./install.sh)"; exit 1; }
 [ -f "$dir/shell.qml" ] || { alert "$dir/shell.qml is missing: run ./install.sh again"; exit 1; }
 
 # the Wayland socket (Hyprland creates it before it runs the autostart, but be patient anyway: up to 15 s)
@@ -66,9 +66,10 @@ done
 if [ "$gpu_mode" != dgpu ] && [ "$other_gpu" = 1 ] && [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
   export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
 fi
-if [ "$gpu_mode" != dgpu ] && [ "$amd_gpu" = 1 ] && [ -f /usr/share/vulkan/icd.d/radeon_icd.json ]; then
-  export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.json
-  export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json
+radeon_icd="$(ls /usr/share/vulkan/icd.d/radeon_icd*.json 2>/dev/null | head -n1)"
+if [ "$gpu_mode" != dgpu ] && [ "$amd_gpu" = 1 ] && [ -n "$radeon_icd" ]; then
+  export VK_DRIVER_FILES="$radeon_icd"
+  export VK_ICD_FILENAMES="$radeon_icd"
 fi
 
 # Quickshell links jemalloc. Without tuning, jemalloc retains hundreds of megabytes across multi-core arenas.

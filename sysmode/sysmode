@@ -59,7 +59,7 @@ SYSMODE_MODE="/etc/sysmode.mode"
 SYSMODE_BLACKLIST="/etc/modprobe.d/sysmode-blacklist.conf"
 SYSMODE_AUDIT_RULES="/etc/audit/rules.d/sysmode-audit.rules"
 
-DECOY_HOTSPOT=0
+DECOY_HOTSPOT="${DECOY_HOTSPOT:-0}"
 
 # (/etc/sysmode.conf was already read at the top of this file)
 
@@ -484,8 +484,12 @@ EOF
         cp /etc/issue /etc/issue.net 2>/dev/null || true
     else
         echo "[*] Restoring default login banners..."
-        printf "Arch Linux (\\r) (\\l)\n" > /etc/issue
-        printf "Arch Linux (\\r) (\\l)\n" > /etc/issue.net 2>/dev/null || true
+        local os_name="Arch Linux"
+        if [[ -r /etc/os-release ]]; then
+            os_name=$(. /etc/os-release && printf '%s' "${PRETTY_NAME:-${NAME:-Arch Linux}}")
+        fi
+        printf "%s (\\r) (\\l)\n" "$os_name" > /etc/issue
+        printf "%s (\\r) (\\l)\n" "$os_name" > /etc/issue.net 2>/dev/null || true
     fi
 }
 
@@ -881,8 +885,10 @@ verify_mode() {
             check_val "Yama Ptrace Scope" "1" "$ptrace"
             check_val "ICMP Ignore All" "1" "$icmp"
             local ssh_active="No"
-            systemctl is-active --quiet sshd 2>/dev/null && ssh_active="Yes"
-            check_val "SSH Daemon Disabled (sshd)" "No" "$ssh_active"
+            if systemctl is-active --quiet sshd 2>/dev/null || systemctl is-active --quiet ssh 2>/dev/null; then
+                ssh_active="Yes"
+            fi
+            check_val "SSH Daemon Disabled (sshd/ssh)" "No" "$ssh_active"
             ;;
         *)
             echo "  [!] Custom/Mixed mode detected. Run 'sysmode status' for details."
@@ -907,7 +913,9 @@ run_doctor() {
         if command -v "$name" >/dev/null 2>&1 || [[ -x "$name" ]]; then
             printf "  %-20s : \e[1;32m[INSTALLED]\e[0m (%s)\n" "$name" "$desc"
         else
-            printf "  %-20s : \e[1;31m[MISSING]\e[0m (%s -> install via: pacman -S %s)\n" "$name" "$desc" "$pkg"
+            local pm_hint="pacman -S $pkg"
+            command -v apt-get >/dev/null 2>&1 && ! command -v pacman >/dev/null 2>&1 && pm_hint="apt install $pkg"
+            printf "  %-20s : \e[1;31m[MISSING]\e[0m (%s -> install via: %s)\n" "$name" "$desc" "$pm_hint"
             (( missing++ )) || true
         fi
     }
@@ -946,7 +954,7 @@ run_doctor() {
         echo -e "\e[1;32m[+] All sysmode dependencies are fully satisfied!\e[0m"
     else
         echo -e "\e[1;33m[!] Found $missing missing optional dependency/dependencies.\e[0m"
-        echo "    Run the pacman commands above to enable full functionality for all profiles."
+        echo "    Run the package manager commands above to enable full functionality for all profiles."
     fi
 }
 
@@ -1300,7 +1308,7 @@ set_secure() {
     write_lynis secure
 
     # Restore sshd access that lockdown may have disabled
-    systemctl unmask sshd 2>/dev/null || true
+    systemctl unmask sshd ssh 2>/dev/null || true
     rm -f /etc/ssh/sshd_config.d/sysmode-lockdown.conf
 
     echo "[+] Mode changed to: SECURE (Standard Dynamic Hardening)"
@@ -1383,8 +1391,8 @@ EOF
 
     # Disable sshd service entirely in lockdown
     echo "[*] Disabling sshd service..."
-    systemctl stop sshd 2>/dev/null || true
-    systemctl mask sshd 2>/dev/null || true
+    systemctl stop sshd ssh 2>/dev/null || true
+    systemctl mask sshd ssh 2>/dev/null || true
     mkdir -p /etc/ssh/sshd_config.d
     cat > /etc/ssh/sshd_config.d/sysmode-lockdown.conf <<EOF
 # Completely disable all SSH remote logins in LOCKDOWN mode
@@ -1416,14 +1424,18 @@ EOF
     # Enable process accounting
     echo "[*] Enabling process accounting..."
     if ! command -v accton &>/dev/null; then
-        pacman -S --noconfirm --needed acct >/dev/null 2>&1 || true
+        if command -v pacman &>/dev/null; then
+            pacman -S --noconfirm --needed acct >/dev/null 2>&1 || true
+        elif command -v apt-get &>/dev/null; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y acct >/dev/null 2>&1 || true
+        fi
     fi
     if command -v accton &>/dev/null; then
         mkdir -p /var/log/account
         touch /var/log/account/pacct
         chmod 640 /var/log/account/pacct
         accton /var/log/account/pacct >/dev/null 2>&1 || true
-        systemctl enable --now psacct 2>/dev/null || true
+        systemctl enable --now psacct 2>/dev/null || systemctl enable --now acct 2>/dev/null || true
     fi
 
     # Set shell session timeout
@@ -1480,7 +1492,7 @@ set_relaxed() {
 
     # Restore SSH service access
     echo "[*] Restoring sshd service access..."
-    systemctl unmask sshd 2>/dev/null || true
+    systemctl unmask sshd ssh 2>/dev/null || true
     rm -f /etc/ssh/sshd_config.d/sysmode-lockdown.conf
 
     remove_sudo_logging
@@ -1530,7 +1542,7 @@ set_stealth() {
     sysctl -w net.ipv4.icmp_echo_ignore_all=1
 
     local rand_id decoy_base new_hostname persona_type
-    rand_id=$(head /dev/urandom | tr -dc 'a-f0-9' | head -c 4)
+    rand_id=$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')
 
     if [[ -n "$requested_persona" ]]; then
         case "$requested_persona" in
@@ -1602,8 +1614,8 @@ set_stealth() {
     local oui_eth="${dell_ouis[RANDOM % ${#dell_ouis[@]}]}"
     local oui_wifi="${dell_ouis[RANDOM % ${#dell_ouis[@]}]}"
     local suffix_eth suffix_wifi mac_eth mac_wifi
-    suffix_eth=$(openssl rand -hex 3 | sed 's/\(..\)/:\1/g')
-    suffix_wifi=$(openssl rand -hex 3 | sed 's/\(..\)/:\1/g')
+    suffix_eth=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n' | sed 's/\(..\)/:\1/g')
+    suffix_wifi=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n' | sed 's/\(..\)/:\1/g')
     mac_eth="${oui_eth}${suffix_eth}"
     mac_wifi="${oui_wifi}${suffix_wifi}"
 
@@ -1769,7 +1781,7 @@ EOF
     systemctl restart systemd-journald || true
 
     # Ensure sshd is unmasked if it was masked in lockdown
-    systemctl unmask sshd 2>/dev/null || true
+    systemctl unmask sshd ssh 2>/dev/null || true
     rm -f /etc/ssh/sshd_config.d/sysmode-lockdown.conf
 
     # Volatile login accounting files (wtmp/btmp/lastlog) — bind-mount RAM
@@ -1973,7 +1985,7 @@ case "$action" in
                     ;;
                 --persona)
                     persona_arg="${2:-}"
-                    shift
+                    [[ $# -ge 2 ]] && shift
                     ;;
                 --persona=*)
                     persona_arg="${1#*=}"

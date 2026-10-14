@@ -38,9 +38,15 @@ Glass {
     function toggleMenu(name) {
         wifiMenu.askFor = ""
         menu = menu === name ? "" : name
-        if (menu === "wifi") { wifiProc.running = true; wifiAgain.restart() }
-        else if (menu === "bt") btProc.running = true
-        else if (menu === "audio" || menu === "mic") audioProc.running = true
+        if (menu === "wifi") {
+            wifiProc.running = true
+            wifiAgain.restart()
+        } else if (menu === "bt") {
+            btProc.running = true
+            root.sh("bt-set.sh", ["scan"])
+        } else if (menu === "audio" || menu === "mic") {
+            audioProc.running = true
+        }
     }
     onActiveChanged: {
         if (active) audioProc.running = true      // fills the Audio chip
@@ -53,10 +59,24 @@ Glass {
         stdout: StdioCollector { onStreamFinished: { try { root.wifi = JSON.parse(text) } catch (e) {} } }
     }
     Timer { id: wifiAgain; interval: 3500; onTriggered: if (root.menu === "wifi") wifiProc.running = true }
+    Timer {
+        id: wifiPoll
+        interval: 6000
+        repeat: true
+        running: root.active && root.menu === "wifi"
+        onTriggered: wifiProc.running = true
+    }
     Process {
         id: btProc
         command: [Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "bt"]
         stdout: StdioCollector { onStreamFinished: { try { root.bt = JSON.parse(text) } catch (e) {} } }
+    }
+    Timer {
+        id: btPoll
+        interval: 2500
+        repeat: true
+        running: root.active && root.menu === "bt"
+        onTriggered: btProc.running = true
     }
     Process {
         id: audioProc
@@ -95,11 +115,33 @@ Glass {
         var out = []
         var d = bt.devs || []
         var glyphs = { "audio": 0xF02CB, "input-keyboard": 0xF0313, "input-mouse": 0xF037D, "phone": 0xF011C, "input-gaming": 0xF0297 }
+        var hasPaired = false, hasDiscovered = false
+        for (var k = 0; k < d.length; k++) {
+            if (d[k].paired) hasPaired = true
+            else hasDiscovered = true
+        }
+
+        var pairedHeaderAdded = false, nearbyHeaderAdded = false
         for (var i = 0; i < d.length; i++) {
-            var ic = String(d[i].icon || "")
+            var item = d[i]
+            if (hasDiscovered && item.paired && !pairedHeaderAdded) {
+                out.push({ section: "Paired" })
+                pairedHeaderAdded = true
+            } else if (hasPaired && !item.paired && !nearbyHeaderAdded) {
+                out.push({ section: "Available Nearby" })
+                nearbyHeaderAdded = true
+            }
+            var ic = String(item.icon || "")
             var g = 0xF00AF
-            for (var k in glyphs) if (ic.indexOf(k) === 0) g = glyphs[k]
-            out.push({ title: d[i].name, sub: d[i].connected ? "Connected" : "Paired", glyph: String.fromCodePoint(g), active: d[i].connected })
+            for (var key in glyphs) if (ic.indexOf(key) === 0) g = glyphs[key]
+            var subText = item.connected ? "Connected" : (item.paired ? "Paired" : "Ready to pair")
+            out.push({
+                title: item.name,
+                sub: subText,
+                glyph: String.fromCodePoint(g),
+                active: item.connected,
+                devIndex: i
+            })
         }
         return out
     }
@@ -220,10 +262,12 @@ Glass {
             title: "Wi-Fi"
             hasPower: true
             powered: root.wifi.on === true
+            scanning: root.wifi.scanning === true
             items: root.wifiItems
             emptyText: "No networks in range"
             footer: "Network settings"
             onPowerToggled: { root.toggleWifi(); root.later("wifi", 1500) }
+            onRescanClicked: { wifiProc.running = true }
             onFooterClicked: Quickshell.execDetached(["nm-connection-editor"])
             onPicked: i => {
                 var n = root.wifi.nets[i]
@@ -246,13 +290,19 @@ Glass {
             title: "Bluetooth"
             hasPower: true
             powered: root.bt.on === true
+            scanning: root.bt.scanning === true
             items: root.btItems
-            emptyText: "No paired devices"
-            footer: "Pair a new device"
+            emptyText: root.bt.scanning ? "Searching for devices..." : (root.bt.on ? "No devices found" : "Bluetooth is off")
+            footer: "Bluetooth settings"
             onPowerToggled: { root.toggleBt(); root.later("bt", 1500) }
+            onRescanClicked: { root.sh("bt-set.sh", ["scan"]); btProc.running = true; root.later("bt", 1500) }
             onFooterClicked: Quickshell.execDetached(["blueman-manager"])
             onPicked: i => {
-                var d = root.bt.devs[i]
+                var it = root.btItems[i]
+                if (!it || it.section) return
+                var devIdx = (it.devIndex !== undefined) ? it.devIndex : i
+                var d = root.bt.devs[devIdx]
+                if (!d) return
                 root.sh("bt-set.sh", [d.connected ? "disconnect" : "connect", d.mac, d.name])
                 root.later("bt", 2500)
             }

@@ -37,7 +37,7 @@ Item {
                  transient: false, ago: agoS, dismiss: function () {}, expire: function () {} }
     }
     readonly property var sampleAll: [
-        mk(1, "notify-send", "Hello", "This is a test notification on Arch", 1, 5, []),
+        mk(1, "notify-send", "Hello", "This is a test notification on Halcyon", 1, 5, []),
         mk(2, "Discord", "Aarav", "did you push the fix for the lock screen?", 1, 120, [{ identifier: "reply", text: "Reply", invoke: function () {} }]),
         mk(3, "Discord", "Dev server", "Nex, the build is green", 1, 540, []),
         mk(4, "Halcyon", "Gaming mode", "On. Helpers are stopped until you turn it off.", 1, 840, []),

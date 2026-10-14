@@ -614,16 +614,10 @@ Scope {
                 { id: "opt-llm-advisor", btn: "AI / LLM Advisor (Experimental)", done: "Analyzing…" }
             ] },
             { type: "toggle", key: "opt:lazyLoad", def: true, label: "Aggressive Memory Freeing & Lazy Loading", desc: "Unloads heavy background dialogs (Settings, Cheatsheet, Calendar) when closed and triggers garbage collection to keep Quickshell's resident RAM low. Enabled automatically in Low and Medium resource modes." },
-            { type: "seg", key: "opt:resMode", label: "Resource Profile", desc: "Select a global resource tier. Low: minimal footprint, still stars, 30 fps, light blur. Medium: balanced 60 fps, glass blur, relaxed polling. High: maximum fidelity with all visual effects and animations enabled.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
-            { type: "acts", label: "Live Memory Trimming", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] },
-            { type: "seg", key: "hy:blurPasses", label: "Hyprland Blur Passes", desc: "How many times Hyprland samples and renders the blur. 2 passes looks virtually indistinguishable from 3 passes on 1080p/1200p but frees ~30 MB of compositor framebuffers.", opts: [o(1, "1 (Fastest)"), o(2, "2 (Sweet Spot)"), o(3, "3 (Heavy)")] },
-            { type: "seg", key: "opt:fps", label: "Shell Animation Framerate", desc: "Max matches your monitor (144 Hz) which increases GPU/CPU draw calls. Setting to 60 FPS looks silky smooth while cutting idle render cycles in half.", opts: [o(0, "Max"), o(60, "60 FPS (Recommended)"), o(30, "30 FPS")] },
-            { type: "toggle", key: "opt:starsBar", label: "Moving stars in the notch bar", desc: "Turn off to save ~2-3% continuous CPU usage while preserving the static constellation stars in the background." }
+            { type: "acts", label: "Live Memory Trimming", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] }
         ] },
         { id: "sysoptions", title: "System preferences & timeouts", section: "System", items: [
             { type: "action", id: "cheatsheet", label: "Settings shortcut", btn: "View shortcuts", desc: "Super + I opens Settings directly (Super + F11 also works as a legacy fallback). Tap Super opens the application launcher." },
-            { type: "seg", key: "opt:pageClose", label: "Performance & music tab auto-close", desc: "How long the overlay waits before auto-closing when you switch away from the performance or music monitor tab. 0 = hold open until manually toggled.", opts: [o(150, "150 ms"), o(600, "600 ms"), o(1500, "1.5 s"), o(4000, "4 s"), o(10000, "10 s"), o(0, "Hold open")] },
-            { type: "seg", key: "opt:scrollLinger", label: "Swipe & scroll linger timeout", desc: "How long touchpad swipe indicators or scroll popups stay visible on screen after gesture finishes.", opts: [o(1000, "1 s"), o(3000, "3 s"), o(6000, "6 s"), o(12000, "12 s")] },
             { type: "seg", key: "opt:cornerTimeout", label: "Corner utilities menu timeout", desc: "How long the bottom-right corner pin / quick utilities overlay remains open after interaction.", opts: [o(3000, "3 s"), o(6000, "6 s"), o(10000, "10 s")] },
             { type: "acts", label: "Login manager & tty1 autologin", desc: "Check or configure automatic login directly into Hyprland without a display manager prompt (scripts/login-status.sh).", btns: [
                 { id: "login-status", btn: "Check Status", done: "" },
@@ -679,9 +673,9 @@ Scope {
     function descOf(m) {
         var off = isOff(m)
         return off ? "Not installed, so this is switched off. Add it with ./install.sh --safety-check (or ./install.sh --choose and answer yes), then open Settings again."
-            : (m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset)"
-            : (m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet)"
-            : (m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
+            : (m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset / apt install hyprsunset)"
+            : (m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet / apt install network-manager-gnome)"
+            : (m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman / apt install blueman)"
             : (m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
             : ((m.key === "st:POLKIT" || m.key === "st:GPU" || m.key === "st:PORTAL") && root.startupNote !== "") ? (m.desc || "") + "  \u2192 " + root.startupNote
             : m.key === "rmwhen:BACKUP" ? (m.desc || "") + "  Last backup made here: " + root.remind.backupAgo + "."
@@ -2190,15 +2184,7 @@ Scope {
                                                         readonly property bool off: m.needs !== undefined && !(root.startup.has && root.startup.has[m.needs] === true)   // an optional part that was not installed: greyed out
                                                         readonly property bool inline: m.type === "toggle" || m.type === "tool" || m.type === "action"
                                                         // the description as one line; the full text opens with the small "?" (or a click on the line)
-                                                        readonly property string descText: leaf.off ? "Not installed, so this is switched off. Add it with ./install.sh --safety-check (or ./install.sh --choose and answer yes), then open Settings again."
-                                                            : (leaf.m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset)"
-                                                            : (leaf.m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet)"
-                                                            : (leaf.m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman)"
-                                                            : (leaf.m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (leaf.m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
-                                                            : ((leaf.m.key === "st:POLKIT" || leaf.m.key === "st:GPU" || leaf.m.key === "st:PORTAL") && root.startupNote !== "") ? (leaf.m.desc || "") + "  \u2192 " + root.startupNote
-                                                            : leaf.m.key === "rmwhen:BACKUP" ? (leaf.m.desc || "") + "  Last backup made here: " + root.remind.backupAgo + "."
-                                                            : leaf.m.key === "rmwhen:SAFETY" ? (leaf.m.desc || "") + "  Last safety check: " + root.remind.safetyAgo + "."
-                                                            : (leaf.m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (leaf.m.desc || ""))
+                                                        readonly property string descText: root.descOf(leaf.m)
                                                         readonly property bool longDesc: descText.length > 80
                                                         property bool descOpen: false
                                                         width: leaves.width

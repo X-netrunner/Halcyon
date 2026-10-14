@@ -7,15 +7,19 @@ status is-interactive; or return
 
 set -g __halcyon_colors_file $HOME/.cache/island/halcyon-colors.fish
 function __halcyon_colors --on-event fish_prompt
-    test -f $__halcyon_colors_file; or return
-    set -l m (stat -c %Y $__halcyon_colors_file 2>/dev/null)
-    test "$m" = "$__halcyon_colors_mtime"; and return
-    set -g __halcyon_colors_mtime $m
+    test -r $__halcyon_colors_file; or return
+    read -l sig < $__halcyon_colors_file
+    test "$sig" = "$__halcyon_colors_sig"; and return
+    set -g __halcyon_colors_sig "$sig"
     source $__halcyon_colors_file
 end
 __halcyon_colors
 
 # the prompt: Starship (only when ~/.config/fish/config.fish does not start it already)
-if type -q starship; and not grep -qs 'starship init fish' $HOME/.config/fish/config.fish
-    starship init fish | source
+if type -q starship
+    set -l has_starship 0
+    if test -r $HOME/.config/fish/config.fish
+        string match -q '*starship init fish*' < $HOME/.config/fish/config.fish; and set has_starship 1
+    end
+    test $has_starship -eq 0; and starship init fish | source
 end

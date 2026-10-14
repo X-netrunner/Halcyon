@@ -81,7 +81,7 @@ Item {
     NumberAnimation on tt {
         from: 0; to: 1000; duration: 1000000
         loops: Animation.Infinite
-        running: ov.open || ov.opacity > 0.01
+        running: (ov.open || ov.opacity > 0.01) && (!ov.pal || ov.pal.motion > 0)
     }
     // Settings > Performance. fps 0 = every frame of the screen (smoothest); a number = the animation steps that many times a
     // second (the branch curves are the expensive part, they are only redrawn when a step happens).

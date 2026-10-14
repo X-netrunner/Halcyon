@@ -19,7 +19,7 @@ var groups = [
     { id: "windows", title: "Windows", items: [
         { id: "close", label: "Close window", keys: "SUPER + Q" },
         { id: "fullscreen", label: "Fullscreen", keys: "SUPER + F" },
-        { id: "pin", label: "Pin window", keys: "SUPER + P" },
+        { id: "pin", label: "Pin window", keys: "SUPER + SHIFT + P" },
         { id: "float", label: "Toggle floating", keys: "SUPER + ALT + space" },
         { label: "Move a window with the mouse", kind: "text", keys: "Super + right button, drag" },
         { label: "Resize a window with the mouse", kind: "text", keys: "Super + left button, drag" },

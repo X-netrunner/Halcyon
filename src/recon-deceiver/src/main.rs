@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 const TIME_LIMIT_BEFORE_BAN: u64 = 120;
 const COWRIE_ACTIVE_FILE: &str = "/run/cowrie.active";
+const MAX_UPLOAD_SIZE: usize = 10 * 1024 * 1024; // 10 MB upload cap
 
 static PROBE_HEADER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     RegexBuilder::new(
@@ -227,6 +228,9 @@ impl AppState {
     fn send_notification(&self, ip: &str, port_info: &str) {
         let mut map = self.last_notification.lock().unwrap();
         let now = Instant::now();
+        if map.len() >= 1024 {
+            map.retain(|_, v| now.duration_since(*v) < Duration::from_secs(3600));
+        }
         if let Some(last) = map.get(ip) {
             if now.duration_since(*last) < Duration::from_secs(10) {
                 return;
@@ -315,6 +319,9 @@ impl AppState {
         {
             let mut scans = self.last_scan.lock().unwrap();
             let now = Instant::now();
+            if scans.len() >= 1024 {
+                scans.retain(|_, v| now.duration_since(*v) < Duration::from_secs(3600));
+            }
             if let Some(last) = scans.get(ip) {
                 if now.duration_since(*last) < Duration::from_secs(300) {
                     return;
@@ -388,6 +395,10 @@ impl AppState {
 
     fn touch_tracker(&self, ip: &str) {
         let mut fs_map = self.first_seen.lock().unwrap();
+        if fs_map.len() >= 1024 {
+            let now = Instant::now();
+            fs_map.retain(|_, v| now.duration_since(*v) < Duration::from_secs(3600));
+        }
         fs_map.entry(ip.to_string()).or_insert_with(Instant::now);
     }
 }
@@ -1150,10 +1161,11 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let mut pasv_listener: Option<TcpListener> = None;
     let mut port_endpoint: Option<SocketAddr> = None;
 
-    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let Ok(cloned) = stream.try_clone() else { return; };
+    let mut reader = BufReader::new(cloned);
     let mut line = String::new();
 
-    while let Ok(n) = reader.read_line(&mut line) {
+    while let Ok(n) = (&mut reader).take(4096).read_line(&mut line) {
         if n == 0 {
             break;
         }
@@ -1310,9 +1322,11 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                     None
                 };
 
-                if let Some(mut ds) = data_sock {
+                if let Some(ds) = data_sock {
+                    let _ = ds.set_read_timeout(Some(Duration::from_secs(15)));
                     let mut payload = Vec::new();
-                    let _ = ds.read_to_end(&mut payload);
+                    let _ = ds.take((MAX_UPLOAD_SIZE + 1) as u64).read_to_end(&mut payload);
+                    if payload.len() > MAX_UPLOAD_SIZE { payload.truncate(MAX_UPLOAD_SIZE); }
                     if !payload.is_empty() {
                         let upload_dir = format!("{}/attacker-uploads", state.logs_dir);
                         let _ = fs::create_dir_all(&upload_dir);
@@ -1328,6 +1342,7 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
 
                         if fname.ends_with(".php") || fname.ends_with(".phtml") || fname.ends_with(".php5") {
                             let mut shells = state.uploaded_webshells.lock().unwrap();
+                            if shells.len() >= 256 { shells.clear(); }
                             shells.insert(fname.clone(), format!("(ftp-uploaded {})", save_path));
                             state.log_event(&format!("[INFO] FTP-uploaded PHP registered as live webshell: {}", fname));
                         }
@@ -1357,6 +1372,7 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                 if let Some(ref cpfr) = current_cpfr {
                     let filename = args.rsplit('/').next().unwrap_or("shell.php").to_string();
                     let mut shells = state.uploaded_webshells.lock().unwrap();
+                            if shells.len() >= 256 { shells.clear(); }
                     shells.insert(filename.clone(), cpfr.clone());
                     state.log_event(&format!(
                         "[ALERT] EXPLOIT SUCCESSFUL: FTP mod_copy CPTO from {} to path: {} (registered webshell: {})",
@@ -1377,6 +1393,7 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                         if let Some(ref cpfr) = current_cpfr {
                             let filename = site_args.trim().rsplit('/').next().unwrap_or("shell.php").to_string();
                             let mut shells = state.uploaded_webshells.lock().unwrap();
+                            if shells.len() >= 256 { shells.clear(); }
                             shells.insert(filename.clone(), cpfr.clone());
                             state.log_event(&format!(
                                 "[ALERT] EXPLOIT SUCCESSFUL: FTP mod_copy CPTO from {} to path: {} (registered webshell: {})",
@@ -1646,10 +1663,11 @@ fn handle_smtp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let _ = stream.write_all(greeting.as_bytes());
     let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
 
-    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let Ok(cloned) = stream.try_clone() else { return; };
+    let mut reader = BufReader::new(cloned);
     let mut line = String::new();
 
-    while let Ok(n) = reader.read_line(&mut line) {
+    while let Ok(n) = (&mut reader).take(4096).read_line(&mut line) {
         if n == 0 {
             break;
         }
@@ -1678,10 +1696,13 @@ fn handle_smtp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
             "DATA" => {
                 let _ = stream.write_all(b"354 End data with <CR><LF>.<CR><LF>\r\n");
                 let mut data_buf = String::new();
-                while let Ok(dn) = reader.read_line(&mut data_buf) {
-                    if dn == 0 || data_buf.ends_with("\r\n.\r\n") || data_buf.trim() == "." {
+                let mut total_bytes = 0usize;
+                while let Ok(dn) = (&mut reader).take(4096).read_line(&mut data_buf) {
+                    total_bytes += dn;
+                    if dn == 0 || data_buf.trim() == "." || total_bytes > 64 * 1024 {
                         break;
                     }
+                    data_buf.clear();
                 }
                 let _ = stream.write_all(b"250 2.0.0 Ok: queued as 198273645\r\n");
             }

@@ -52,12 +52,12 @@ end
 
 -- Next / previous workspace: SUPER+CTRL+Right opens a new workspace after the last one, SUPER+CTRL+Left on the first one
 -- jumps to the last (same as the 3 / 4 finger swipes; see scripts/ws-nav.sh and Settings > Workspaces)
-bind("wsnext", "SUPER + CTRL + Right", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh next"))
-bind("wsprev", "SUPER + CTRL + Left", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh prev"))
+bind("wsnext", vars.kbNextWs, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh next"))
+bind("wsprev", vars.kbPrevWs, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh prev"))
 
 -- Mouse scroll: hold SUPER and scroll wheel to cycle workspaces (wheel-down = next, wheel-up = prev)
-bind("ws_scroll_down", "SUPER + mouse_down", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh wheel-down"))
-bind("ws_scroll_up", "SUPER + mouse_up", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh wheel-up"))
+bind("ws_scroll_down", vars.kbScrollNextWs, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh wheel-down"))
+bind("ws_scroll_up", vars.kbScrollPrevWs, hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/ws-nav.sh wheel-up"))
 
 -- Special workspaces (overlay on top of the current workspace)
 --   SUPER+S            scratch workspace   (SUPER+ALT+S sends the focused window there)
@@ -103,8 +103,8 @@ hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"))
 hl.bind("XF86AudioStop", hl.dsp.exec_cmd("playerctl stop"))
 
 -- Screenshots
-bind("shot", "Print", hl.dsp.exec_cmd("grim ~/Pictures/Screenshots/$(date +%s).png"))
-bind("shotplain", "SUPER + SHIFT + Print", hl.dsp.exec_cmd("grim -g \"$(slurp)\" ~/Pictures/Screenshots/$(date +%s).png"))
+bind("shot", "Print", hl.dsp.exec_cmd("mkdir -p ~/Pictures/Screenshots && grim ~/Pictures/Screenshots/$(date +%s).png"))
+bind("shotplain", "SUPER + SHIFT + Print", hl.dsp.exec_cmd("mkdir -p ~/Pictures/Screenshots && g=$(slurp) && [ -n \"$g\" ] && grim -g \"$g\" ~/Pictures/Screenshots/$(date +%s).png"))
 
 bind("shotarea", "SUPER + SHIFT + S", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/screenshot-area.sh"))
 
@@ -162,7 +162,6 @@ end
 
 -- SUPER+TAB: live workspace tree (workspaces -> windows, special workspaces included)
 bind("overview", "SUPER + TAB", hl.dsp.exec_cmd(ipc .. "overview"))
-hl.bind("SUPER + GRAVE", hl.dsp.exec_cmd(home .. "/.config/hyprland.overview.sh"))
 
 -- Shortcuts you added in the cheatsheet ("Your shortcuts"): key combination -> shell command
 for _, c in ipairs(user.custom) do

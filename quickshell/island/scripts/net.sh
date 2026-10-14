@@ -34,7 +34,7 @@ while true; do
     *"${nl}wifi:connected"*)
       while IFS= read -r l; do
         case "$l" in yes:*) l=${l#yes:}; sig=${l%%:*}; ssid=$(esc "${l#*:}"); break ;; esac
-      done < <(nmcli -t -f active,signal,ssid dev wifi 2>/dev/null)
+      done < <(nmcli -t -f active,signal,ssid dev wifi list --rescan no 2>/dev/null)
       case "$sig" in ''|*[!0-9]*) sig=0 ;; esac
       ;;
   esac

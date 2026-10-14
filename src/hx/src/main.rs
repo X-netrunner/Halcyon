@@ -1,3 +1,4 @@
+mod adapt;
 mod ctl;
 mod dossier;
 mod feeds;
@@ -50,6 +51,9 @@ fn main() {
         Some("ids") => ids::run(),
         Some("dossier") => dossier::run(rest.first().map(|s| s.as_str())),
         Some("palette") => palette::palette(rest.first().map(|s| s.as_str())),
+        Some("adapt-sample") => adapt::sample(),
+        Some("adapt-status") => adapt::status(),
+        Some("adapt-reset") => adapt::reset(),
         _ => {
             usage();
             std::process::exit(2);

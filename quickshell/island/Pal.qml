@@ -223,6 +223,7 @@ Scope {
     // (a small shader, branchShader = the compiled .qsb, "" until it is ready); false = the old Shape paths (CPU)
     property bool gpuLines: true
     property string branchShader: ""
+    property string lastRawPalette: ""
 
     // ---------- motion ----------
     // one signature curve (easeOutQuint): fast start, long soft landing, never bounces
@@ -242,8 +243,11 @@ Scope {
     Behavior on muted { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
 
     function apply(data) {
+        var s = String(data || "").trim()
+        if (!s || s === pal.lastRawPalette) return
         try {
-            var p = JSON.parse(data)
+            var p = JSON.parse(s)
+            pal.lastRawPalette = s
             if (p.bg) pal.rawBg = p.bg
             if (p.surface) pal.rawSurface = p.surface
             if (p.surfaceHi) pal.rawSurfaceHi = p.surfaceHi
@@ -267,19 +271,14 @@ Scope {
     }
 
     function reloadFromFile() {
-        palProc.running = false
-        palProc.running = true
+        palFile.reload()
     }
 
-    Process {
-        id: palProc
-        command: ["sh", "-c", "cat \"$HOME/.cache/island/palette.json\" 2>/dev/null"]
-        stdout: SplitParser { onRead: data => pal.apply(data) }
-    }
-
-    Process {
-        running: true
-        command: ["tail", "-F", "-n", "1", Quickshell.env("HOME") + "/.cache/island/palette.json"]
-        stdout: SplitParser { onRead: data => pal.apply(data) }
+    FileView {
+        id: palFile
+        path: Quickshell.env("HOME") + "/.cache/island/palette.json"
+        watchChanges: true
+        onLoaded: pal.apply(palFile.text())
+        onFileChanged: palFile.reload()
     }
 }

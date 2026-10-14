@@ -1,0 +1,14 @@
+# ==============================================================================
+# Halcyon Holidays List (~/.config/Halcyon/holidays.txt)
+# Add your local, regional, school, or corporate holidays below.
+#
+# Supported formats:
+#   MM-DD Holiday Name           -> e.g. 01-01 New Year's Day (repeats every year)
+#   YYYY-MM-DD Holiday Name      -> e.g. 2026-10-31 Special Event
+#
+# Changes sync automatically into Halcyon Calendar (>calendar).
+# ==============================================================================
+
+01-01 New Year's Day
+12-25 Christmas Day
+10-31 Halloween

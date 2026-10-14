@@ -1,4 +1,3 @@
-local vars = require("variables")
 local home = os.getenv("HOME")
 local rice = home .. "/.config/Halcyon"
 -- fewer malloc arenas + earlier trim: the shells give freed memory back instead of holding it (a lot less resident RAM)
@@ -25,7 +24,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(rice .. "/scripts/autostart-extras.sh &")
     -- (the Hyprland portal, the clipboard history watchers and the touchpad gestures are started by autostart-extras.sh too, so
     -- Settings > Startup & background can switch each of them off)
-    hl.exec_cmd("XDG_MENU_PREFIX=arch- kbuildsycoca6 --noincremental &")
+    hl.exec_cmd("if [ -f /etc/xdg/menus/arch-applications.menu ]; then XDG_MENU_PREFIX=arch- kbuildsycoca6 --noincremental; elif [ -f /etc/xdg/menus/kf6-applications.menu ]; then XDG_MENU_PREFIX=kf6- kbuildsycoca6 --noincremental; else kbuildsycoca6 --noincremental; fi &")
     -- started from the tty1 login (launch/halcyon-login.sh)? then make sure the lock screen really came up
     hl.exec_cmd(rice .. "/scripts/login-watchdog.sh &")
     -- idle lock + sleep, set in Settings > Sleep & lock (scripts/idle.sh runs hypridle with its own config)

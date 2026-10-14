@@ -1,7 +1,7 @@
 //! audio / bt / wifi / disk: the JSON feeds the island panels read (ports of audio.py bt.py wifi.py disk.py).
 use crate::util::{run, spawn_quiet};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::time::Duration;
 
@@ -66,14 +66,33 @@ fn btctl(args: &[&str]) -> String {
 }
 
 pub fn bt() {
-    let on = btctl(&["show"]).contains("Powered: yes");
+    let show = btctl(&["show"]);
+    let on = show.contains("Powered: yes");
+    let mut scanning = show.contains("Discovering: yes");
     let mut devs: Vec<Value> = Vec::new();
     if on {
+        if !scanning {
+            spawn_quiet("sh", &["-c", "nohup bluetoothctl --timeout 15 scan on >/dev/null 2>&1 &"]);
+            scanning = true;
+        }
+
+        let mut paired_macs = HashSet::new();
         let mut listing = btctl(&["devices", "Paired"]);
         if listing.trim().is_empty() {
             listing = btctl(&["paired-devices"]);
         }
         for line in listing.lines() {
+            if let Some(r) = line.trim().strip_prefix("Device") {
+                let r = r.trim_start();
+                if r.len() >= 17 {
+                    paired_macs.insert(r[..17].to_string());
+                }
+            }
+        }
+
+        let all_listing = btctl(&["devices"]);
+        let mut seen_macs = HashSet::new();
+        for line in all_listing.lines() {
             let line = line.trim();
             let rest = match line.strip_prefix("Device") {
                 Some(r) => r.trim_start(),
@@ -87,19 +106,49 @@ pub fn bt() {
             if !ok {
                 continue;
             }
-            let info = btctl(&["info", mac]);
-            let icon = info
-                .lines()
-                .find_map(|l| l.trim().strip_prefix("Icon:").map(|v| v.trim().to_string()))
-                .unwrap_or_default();
+            let mac_str = mac.to_string();
+            if seen_macs.contains(&mac_str) {
+                continue;
+            }
+            seen_macs.insert(mac_str.clone());
+
+            let clean_name = name.trim();
+            let is_mac_name = clean_name.replace('-', ":").eq_ignore_ascii_case(&mac_str);
+            let display_name = if clean_name.is_empty() || is_mac_name {
+                format!("Device {}", &mac_str[12..])
+            } else {
+                clean_name.to_string()
+            };
+
+            let is_paired = paired_macs.contains(&mac_str);
+            let mut is_connected = false;
+            let mut icon = String::new();
+
+            if is_paired {
+                let info = btctl(&["info", mac]);
+                is_connected = info.contains("Connected: yes");
+                icon = info
+                    .lines()
+                    .find_map(|l| l.trim().strip_prefix("Icon:").map(|v| v.trim().to_string()))
+                    .unwrap_or_default();
+            }
+
             devs.push(json!({
-                "mac": mac, "name": name.trim(),
-                "connected": info.contains("Connected: yes"), "icon": icon,
+                "mac": mac_str,
+                "name": display_name,
+                "connected": is_connected,
+                "paired": is_paired,
+                "icon": icon,
             }));
         }
     }
-    devs.sort_by_key(|d| (!d["connected"].as_bool().unwrap_or(false), d["name"].as_str().unwrap_or("").to_lowercase()));
-    emit(json!({ "on": on, "devs": devs }));
+    devs.sort_by_key(|d| {
+        let connected = d["connected"].as_bool().unwrap_or(false);
+        let paired = d["paired"].as_bool().unwrap_or(false);
+        let rank = if connected { 0 } else if paired { 1 } else { 2 };
+        (rank, d["name"].as_str().unwrap_or("").to_lowercase())
+    });
+    emit(json!({ "on": on, "scanning": scanning, "devs": devs }));
 }
 
 // ---------------------------------------------------------------- wifi
@@ -156,7 +205,7 @@ pub fn wifi() {
         .take(30)
         .map(|(ssid, n)| json!({ "ssid": ssid, "signal": n.2, "secure": n.3, "active": n.0, "saved": n.1 }))
         .collect();
-    emit(json!({ "on": on, "nets": nets }));
+    emit(json!({ "on": on, "scanning": on, "nets": nets }));
 }
 
 // ---------------------------------------------------------------- disk

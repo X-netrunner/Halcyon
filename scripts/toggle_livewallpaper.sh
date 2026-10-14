@@ -31,6 +31,6 @@ if [ -f "$STATE_FILE" ]; then
     notify-send "Live Wallpaper" "Enabled live wallpaper" -i video-display -h string:x-canonical-private-synchronous:livewallpaper
 else
     touch "$STATE_FILE"
-    pkill -9 gslapper
+    pkill -x gslapper 2>/dev/null || pkill -9 -x gslapper 2>/dev/null || true
     notify-send "Live Wallpaper" "Disabled live wallpaper" -i video-display -h string:x-canonical-private-synchronous:livewallpaper
 fi

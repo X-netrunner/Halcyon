@@ -85,7 +85,7 @@ Scope {
         if (history.length <= maxHistory) return
         var over = history.slice(maxHistory)
         history = history.slice(0, maxHistory)
-        for (var k = 0; k < over.length; k++) over[k].dismiss()
+        for (var k = 0; k < over.length; k++) { delete arrived[over[k].id]; over[k].dismiss() }
     }
     // a popup that is no longer shown and was never stored (transient) has nothing left to live for
     function retire(n) {
@@ -133,6 +133,7 @@ Scope {
             if (all.indexOf(toasts[i]) < 0) all.push(toasts[i])
         history = []
         toasts = []
+        arrived = ({})
         for (var j = 0; j < all.length; j++) all[j].dismiss()
     }
     // hover mode: touching the edge opens it, leaving closes it after a short grace period.
@@ -189,8 +190,8 @@ Scope {
             kept.unshift(n)
             var over = kept.splice(maxHistory)      // the oldest ones past the limit
             history = kept
-            for (var s = 0; s < stale.length; s++) stale[s].dismiss()
-            for (var k = 0; k < over.length; k++) over[k].dismiss()
+            for (var s = 0; s < stale.length; s++) { delete arrived[stale[s].id]; stale[s].dismiss() }
+            for (var k = 0; k < over.length; k++) { delete arrived[over[k].id]; over[k].dismiss() }
             if (!centerOpen) unread++
         }
 

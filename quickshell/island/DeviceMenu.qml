@@ -10,6 +10,7 @@ Rectangle {
     property var items: []
     property bool hasPower: false
     property bool powered: true
+    property bool scanning: false
     property string emptyText: "Nothing found"
     property string footer: ""              // last row, e.g. "Open network settings"
     property int maxHeight: 200
@@ -17,6 +18,7 @@ Rectangle {
     property string askFor: ""
     signal picked(int index)
     signal powerToggled()
+    signal rescanClicked()
     signal footerClicked()
     signal passwordSubmitted(string pw)
     signal askCancelled()
@@ -45,13 +47,44 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: 8
             Text {
-                Layout.fillWidth: true
                 text: root.title
                 color: root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: pal.tBody
                 font.weight: Font.DemiBold
+            }
+            Item { Layout.fillWidth: true }
+            Row {
+                visible: root.scanning
+                spacing: 5
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: String.fromCodePoint(0xF0450)
+                    color: root.pal.accent
+                    font.family: root.pal.font
+                    font.pixelSize: 13
+                    rotation: 0
+                    NumberAnimation on rotation {
+                        running: root.scanning
+                        from: 0; to: 360; duration: 1200; loops: Animation.Infinite
+                    }
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Scanning"
+                    color: root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: 11
+                }
+            }
+            RoundBtn {
+                visible: root.hasPower && root.powered
+                pal: root.pal
+                size: 26
+                glyph: String.fromCodePoint(0xF0450)
+                onClicked: root.rescanClicked()
             }
             Chip {
                 visible: root.hasPower

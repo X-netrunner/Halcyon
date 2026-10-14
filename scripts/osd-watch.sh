@@ -11,7 +11,7 @@ for d in /sys/class/backlight/*; do
   m=$(<"$d/max_brightness"); [ "$m" -gt "$bmax" ] && { bmax=$m; screen=$d; }
 done
 kbd=""; kmax=0
-for d in /sys/class/leds/*kbd_backlight* /sys/class/leds/*kbd-backlight*; do
+for d in /sys/class/leds/*kbd_backlight* /sys/class/leds/*kbd-backlight* /sys/class/leds/*keyboard*backlight*; do
   [ -r "$d/max_brightness" ] && { kbd=$d; kmax=$(<"$d/max_brightness"); break; }
 done
 [ -n "$screen" ] || [ -n "$kbd" ] || exit 0
@@ -39,6 +39,9 @@ while :; do
       lk=$k; chg=1
     fi
   fi
-  if [ "$chg" = 1 ]; then idle=0; w=0.25; elif [ "$idle" -lt 40 ]; then idle=$((idle + 1)); else w=0.5; fi
-  read -r -t "$w" -u "$nap" _ 2>/dev/null || sleep "$w"
+  if [ "$chg" = 1 ]; then idle=0; w=0.25
+  elif [ "$idle" -lt 40 ]; then idle=$((idle + 1)); w=0.25
+  elif [ "$idle" -lt 140 ]; then idle=$((idle + 1)); w=0.5
+  else w=1.0; fi
+  read -r -t "$w" -u "$nap" _ 2>/dev/null || :
 done
