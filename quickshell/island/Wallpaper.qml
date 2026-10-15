@@ -13,6 +13,15 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Background
     WlrLayershell.namespace: "wallpaper"
 
+    // ---- Desktop builder (Settings > Appearance > Desktop builder): shell.qml hands over the palette and the options
+    property var pal: null
+    property var opt: ({})
+    readonly property bool wpOn: !opt || opt.deskWall !== false                       // false = no picture: a plain background (colours still follow the last wallpaper)
+    readonly property real blurAmt: Math.max(0, Math.min(1, (opt && opt.deskBlur !== undefined ? Number(opt.deskBlur) : 0) / 100))
+    readonly property int blurPad: Math.round(blurAmt * 56)                           // the picture is drawn a bit larger so the blur does not darken the screen edges
+    readonly property string bgKind: (opt && opt.deskBg) || "theme"                   // theme | black | gradient : what you see when the wallpaper is off
+    property string lastPath: ""                                                      // the wallpaper that was asked for last, so switching the picture back on is instant
+
     readonly property string island: Quickshell.env("HOME") + "/.config/Halcyon/quickshell/island"
     readonly property real diag: Math.sqrt(width * width + height * height)
 
@@ -29,15 +38,32 @@ PanelWindow {
     readonly property int decodeW: Math.max(1, Math.round(width))
     readonly property int decodeH: Math.max(1, Math.round(height))
 
+    // ---- what shows when the wallpaper picture is switched off (or has not loaded yet)
+    Rectangle {
+        id: bgFill
+        anchors.fill: parent
+        visible: !wallpaper.wpOn || !wallpaper.shown
+        color: wallpaper.bgKind === "black" ? "#000000" : (wallpaper.pal ? wallpaper.pal.bg : "#000000")
+        gradient: wallpaper.bgKind === "gradient" && wallpaper.pal ? bgGrad : null
+        Gradient {
+            id: bgGrad
+            GradientStop { position: 0.0; color: wallpaper.pal ? wallpaper.pal.bg : "#000000" }
+            GradientStop { position: 1.0; color: wallpaper.pal ? Qt.tint(wallpaper.pal.bg, Qt.alpha(wallpaper.pal.accent, 0.30)) : "#000000" }
+        }
+    }
+
     // ---- the wallpaper currently on screen
     Image {
         id: cur
         anchors.fill: parent
+        anchors.margins: -wallpaper.blurPad
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: false
         sourceSize: Qt.size(wallpaper.decodeW, wallpaper.decodeH)   // decode at screen size, not at the file's (maybe 4K / 8K) size
-        opacity: wallpaper.shown ? 1 : 0
+        layer.enabled: wallpaper.blurAmt > 0.001
+        layer.effect: MultiEffect { blurEnabled: true; blurMax: 64; blur: wallpaper.blurAmt; autoPaddingEnabled: false }
+        opacity: (wallpaper.shown && wallpaper.wpOn) ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.OutCubic } }
         onStatusChanged: {
             if (status !== Image.Ready) return
@@ -50,6 +76,7 @@ PanelWindow {
     Image {
         id: inc
         anchors.fill: parent
+        anchors.margins: -wallpaper.blurPad
         visible: false
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
@@ -73,8 +100,13 @@ PanelWindow {
     MultiEffect {
         id: reveal
         anchors.fill: parent
+        anchors.margins: -wallpaper.blurPad
         visible: wallpaper.revealing || wallpaper.swapping
         source: inc
+        blurEnabled: wallpaper.blurAmt > 0.001
+        blurMax: 64
+        blur: wallpaper.blurAmt
+        autoPaddingEnabled: false
         maskEnabled: true
         maskSource: maskItem
         transformOrigin: Item.Center
@@ -92,6 +124,13 @@ PanelWindow {
         opacity: 0.4 * (1 - Math.min(1, wallpaper.maskSize / wallpaper.diag))
     }
 
+    // moving stars (Desktop builder): above the picture, so they work on a wallpaper and on the plain background alike
+    DesktopStars {
+        anchors.fill: parent
+        pal: wallpaper.pal
+        opt: wallpaper.opt
+    }
+
     SequentialAnimation {
         id: revealAnim
         ParallelAnimation {
@@ -103,9 +142,33 @@ PanelWindow {
         ScriptAction { script: wallpaper.finishReveal() }
     }
 
+    // switching the picture off frees both decoded copies; switching it on again loads the last wallpaper with the normal fade-in
+    onWpOnChanged: {
+        if (!wpOn) {
+            revealAnim.stop()
+            resetReveal()
+            waiting = false
+            inc.source = ""
+            cur.source = ""
+            shown = false
+            gc()
+        } else if (lastPath !== "") {
+            var p = lastPath
+            currentPath = ""
+            incomingPath = ""
+            show(p)
+        }
+    }
+
     // ---- flow: show(path) -> load -> beginReveal -> finishReveal -> settle
     function show(path) {
-        if (!path || path === currentPath || path === incomingPath) return
+        if (!path) return
+        lastPath = path
+        if (!wpOn) {                                           // wallpaper switched off: no picture is decoded (saves the RAM); the colours still follow it
+            if (path !== currentPath) { currentPath = path; runPalette(path) }
+            return
+        }
+        if (path === currentPath || path === incomingPath) return
         var url = "file://" + path
 
         if (!shown && cur.source.toString() === "") {         // first wallpaper: plain fade in

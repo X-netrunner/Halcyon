@@ -152,7 +152,9 @@ bind("dnd", "SUPER + SHIFT + D", hl.dsp.exec_cmd(ipc .. "dnd"))
 bind("theme", "SUPER + SHIFT + T", hl.dsp.exec_cmd(ipc .. "theme"))                 -- light / dark theme           -- do not disturb
 
 -- Tapping SUPER on its own opens the launcher (no Space needed).
--- Runs on key RELEASE. A modifier key is reported with and without itself in the modifier mask depending on the
+-- Runs on key RELEASE on purpose: until the key comes up, Hyprland cannot tell a lone tap from the start of SUPER+T / SUPER+Q ...,
+-- so a press bind would flash the launcher on every shortcut. The launcher's speed is set in Settings > Mouse, touchpad & keyboard
+-- > Launcher speed (Normal / Quick / Instant): that is the part that can be shortened. A modifier key is reported with and without itself in the modifier mask depending on the
 -- Hyprland version, so both spellings are bound; the island ignores the second trigger (350ms debounce), so
 -- registering both is safe. super_tap.sh writes a file the island watches (a few ms) and falls back to IPC.
 local superTapCmd = home .. "/.config/Halcyon/scripts/super_tap.sh"

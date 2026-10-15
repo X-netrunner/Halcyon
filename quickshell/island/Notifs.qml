@@ -255,11 +255,12 @@ Scope {
     PanelWindow {
         id: win
         visible: !root.cycling
-        anchors { top: true; right: true; bottom: root.needFullSurface }
-        // When idle (no toasts and notification centre closed), shrink Wayland surface to the thin edge trigger
-        // so Hyprland doesn't allocate a full-height 450x1080 multi-pass Kawase blur FBO!
-        implicitWidth: root.needFullSurface ? (Math.max(root.cardW, root.cfg.width) + 30 + root.pal.boxEdge) : 28
-        implicitHeight: root.needFullSurface ? 900 : (root.corner ? 32 : 280)
+        anchors { top: true; right: true; bottom: true }
+        // FIXED size on purpose. Shrinking this surface when idle made every open / close / toast re-send the pointer enter / leave
+        // on the edge strip, so the centre popped in and out by itself. The mask below keeps the idle surface click-through, and
+        // the blur rule ignores the transparent part (ignore_alpha), so an idle surface costs next to nothing.
+        implicitWidth: Math.max(root.cardW, root.cfg.width) + 30 + root.pal.boxEdge
+        implicitHeight: 900
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-notifs"
@@ -279,31 +280,44 @@ Scope {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.topMargin: root.corner ? 0 : root.pal.boxTop
-            width: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 16) : (root.clickMode ? 16 : 12)
-            height: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 16) : 260
+            width: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 22) : (root.clickMode ? 16 : 12)
+            height: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 22) : 260
             clickMode: root.clickMode
             onHoverChanged: on => root.setHover(on)
             onTapped: root.toggleCenter()
 
-            // unread / do-not-disturb hint: a soft bar on the very edge, only while it has something to say
+            // unread / do-not-disturb hint.
+            //   edge mode:   a soft bar on the very edge
+            //   corner mode: a small round dot tucked into the corner, which becomes a count badge while something is unread
+            // shown only while it has something to say
             Rectangle {
                 id: hint
+                readonly property bool badge: root.corner && root.unread > 0 && !root.dnd
                 anchors.right: parent.right
-                anchors.rightMargin: 3
+                anchors.rightMargin: root.corner ? 6 : 3
                 anchors.top: root.corner ? parent.top : undefined
-                anchors.topMargin: 3
+                anchors.topMargin: root.corner ? 6 : 3
                 anchors.verticalCenter: root.corner ? undefined : parent.verticalCenter
-                width: root.corner ? (root.centerOpen ? 0 : 10) : 4
-                height: root.corner ? 4 : (root.centerOpen ? 0 : 54)
-                radius: 2
+                width: root.corner ? (root.centerOpen ? 0 : (badge ? Math.max(18, badgeText.implicitWidth + 10) : 8)) : 4
+                height: root.corner ? (root.centerOpen ? 0 : (badge ? 18 : 8)) : (root.centerOpen ? 0 : 54)
+                radius: root.corner ? height / 2 : 2
                 color: root.dnd ? root.pal.muted : root.pal.accent
                 opacity: (!root.centerOpen && (root.unread > 0 || root.dnd || root.clickMode)) ? (root.dnd ? 0.55 : (root.unread > 0 ? 0.95 : 0.22)) : 0
                 Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
+                Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                // breathes while something is unread
+                Text {
+                    id: badgeText
+                    visible: hint.badge && hint.height >= 16
+                    anchors.centerIn: parent
+                    text: root.unread > 9 ? "9+" : root.unread
+                    color: root.pal.bg
+                    font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold
+                }
+                // breathes while something is unread (edge bar only: the badge stays still so it reads cleanly)
                 SequentialAnimation on scale {
-                    running: root.breathe && root.unread > 0 && !root.dnd && !root.centerOpen
+                    running: root.breathe && root.unread > 0 && !root.dnd && !root.centerOpen && !root.corner
                     loops: Animation.Infinite
                     onRunningChanged: if (!running) hint.scale = 1
                     NumberAnimation { to: 1.5; duration: 900; easing.type: Easing.InOutSine }
@@ -356,7 +370,11 @@ Scope {
             sysmode: root.sysmode
             starData: root.starData
             profileStars: root.profileStars
-            x: win.width - width - root.pal.boxEdge + (1 - root.reveal) * (width + 40)
+            // corner mode pops out of the top-right corner like the utilities and background-apps boxes (fade + grow); edge mode slides in
+            x: win.width - width - root.pal.boxEdge + (root.corner ? 0 : (1 - root.reveal) * (width + 40))
+            scale: root.corner ? 0.94 + 0.06 * root.reveal : 1
+            transformOrigin: cfg.vpos === "bottom" ? Item.BottomRight : Item.TopRight
+            Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             y: cfg.vpos === "middle" ? Math.round((win.height - height) / 2)
              : cfg.vpos === "bottom" ? win.height - height - Math.max(8, root.pal.boxTop + cfg.offY)
              : Math.max(8, root.pal.boxTop + cfg.offY)
