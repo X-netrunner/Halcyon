@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
-use std::path::Path;
-use evdev::{Device, AbsoluteAxisType, EventType};
-
 use std::sync::mpsc::{self, Sender};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+use evdev::{AbsoluteAxisType, Device, EventType};
 
 static CMD_CHANNEL: OnceLock<Sender<(&'static str, Vec<String>)>> = OnceLock::new();
 
@@ -27,7 +26,6 @@ fn cmd_sender() -> &'static Sender<(&'static str, Vec<String>)> {
 }
 
 /// Run a helper via the dedicated worker thread without blocking the event loop
-/// (a slow playerctl must never freeze the gestures), and say so on stderr when it fails.
 fn fire(cmd: &'static str, args: Vec<String>) {
     let _ = cmd_sender().send((cmd, args));
 }
@@ -35,9 +33,7 @@ fn fire_s(cmd: &'static str, args: &[&str]) {
     fire(cmd, args.iter().map(|a| a.to_string()).collect());
 }
 
-/// Brightness goes through scripts/brightness.sh: this daemon is a systemd user service, outside the login session,
-/// where a bare `brightnessctl` often cannot write the backlight. The script tries brightnessctl, a direct sysfs write
-/// and logind, and prints why it failed (journalctl --user -u touchpad-gestures -e).
+/// Brightness goes through scripts/brightness.sh
 fn brightness(dir: &str) {
     let home = std::env::var("HOME").unwrap_or_default();
     fire(
@@ -46,8 +42,7 @@ fn brightness(dir: &str) {
     );
 }
 
-/// A touchpad is a device that reports multitouch X/Y and is named like one. Reports why it found
-/// nothing (the usual cause is not being in the `input` group) instead of silently exiting.
+/// A touchpad is a device that reports multitouch X/Y and is named like one.
 fn find_touchpad() -> Option<Device> {
     let entries = match fs::read_dir("/dev/input") {
         Ok(e) => e,
@@ -84,14 +79,71 @@ fn find_touchpad() -> Option<Device> {
     None
 }
 
-/// toggle_touchpad.sh disables the device in Hyprland, but we read evdev directly and would
-/// still see the fingers, so honour its status file too.
 fn touchpad_disabled() -> bool {
     std::env::var("XDG_RUNTIME_DIR")
         .ok()
         .and_then(|d| fs::read_to_string(format!("{}/touchpad.status", d)).ok())
         .map(|s| s.trim() == "disabled")
         .unwrap_or(false)
+}
+
+/// Reads ~/.local/state/island/gestures.conf (written by scripts/input-conf.sh)
+/// and returns the map of g3-* and g4-* gesture IDs to their configured action names.
+fn load_gestures_conf(last_load: &mut Instant, map: &mut HashMap<String, String>) {
+    if last_load.elapsed() < Duration::from_secs(3) && !map.is_empty() {
+        return;
+    }
+    *last_load = Instant::now();
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let state_dir = PathBuf::from(&home).join(".local/state/island");
+    let swipe4_right = fs::read_to_string(state_dir.join("ws-swipe4"))
+        .map(|s| s.trim() == "right")
+        .unwrap_or(false);
+
+    let mut out = HashMap::new();
+    out.insert("g3-up".into(), "scratch".into());
+    out.insert("g3-down".into(), "scratch".into());
+    out.insert("g3-pinchin".into(), "overview".into());
+    out.insert("g3-pinchout".into(), "overview".into());
+    out.insert("g4-left".into(), if swipe4_right { "ws-prev".into() } else { "ws-next".into() });
+    out.insert("g4-right".into(), if swipe4_right { "ws-next".into() } else { "ws-prev".into() });
+    out.insert("g4-down".into(), "sleep".into());
+
+    if let Ok(raw) = fs::read_to_string(state_dir.join("gestures.conf")) {
+        for line in raw.lines() {
+            if let Some((k, v)) = line.trim().split_once('=') {
+                if !k.ends_with(".cmd") {
+                    out.insert(k.trim().to_string(), v.trim().to_string());
+                }
+            }
+        }
+    }
+    *map = out;
+}
+
+fn gesture_state_path() -> PathBuf {
+    let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
+    PathBuf::from(dir).join("halcyon-gesture.json")
+}
+
+/// Streams live 3-finger / 4-finger normalized displacement & pinch scale to $XDG_RUNTIME_DIR/halcyon-gesture.json
+/// so Quickshell overlays (Overview tree, Launcher, Calendar, Notifications) follow the user's fingers 1:1 in real time.
+fn write_gesture_state(phase: &str, fingers: usize, dx: f32, dy: f32, scale: f32, dir: &str, action: &str) {
+    let p = gesture_state_path();
+    let tmp = p.with_extension("json.tmp");
+    let payload = format!(
+        r#"{{"phase":"{}","fingers":{},"dx":{:.4},"dy":{:.4},"scale":{:.4},"dir":"{}","action":"{}"}}"#,
+        phase,
+        fingers,
+        dx.clamp(-1.5, 1.5),
+        dy.clamp(-1.5, 1.5),
+        scale.clamp(0.25, 2.5),
+        dir,
+        action
+    );
+    if fs::write(&tmp, payload).is_ok() {
+        let _ = fs::rename(&tmp, &p);
+    }
 }
 
 struct SlotState {
@@ -123,7 +175,6 @@ fn main() {
         }
     };
 
-    // Retrieve boundary info
     let max_x = abs_state[AbsoluteAxisType::ABS_MT_POSITION_X.0 as usize].maximum;
     let max_y = abs_state[AbsoluteAxisType::ABS_MT_POSITION_Y.0 as usize].maximum;
 
@@ -136,12 +187,10 @@ fn main() {
 
     let left_edge = (0.04 * max_x as f64) as i32;
     let right_edge = (0.96 * max_x as f64) as i32;
-    // the top strip is a bit taller than the side strips: a finger rarely starts in the first 3 mm of a touchpad
     let top_edge = (0.10 * max_y as f64) as i32;
 
     let v_threshold = (0.025 * max_y as f64) as i32;
     let h_threshold = (0.08 * max_x as f64) as i32;
-    // brightness steps are small (5 %), so it needs a shorter slide per step than the other gestures
     let b_threshold = (0.04 * max_x as f64) as i32;
 
     println!("Left Edge (< {}), Right Edge (> {}), Top Edge (< {})", left_edge, right_edge, top_edge);
@@ -163,6 +212,21 @@ fn main() {
     let mut last_trigger_y: Option<i32> = None;
     let mut multi_finger_detected = false;
 
+    // Multi-finger (3 / 4 finger) continuous 1:1 tracking state
+    let mut mf_fingers: usize = 0;
+    let mut mf_start_cx: f32 = 0.0;
+    let mut mf_start_cy: f32 = 0.0;
+    let mut mf_start_spread: f32 = 0.1;
+    let mut mf_dx: f32 = 0.0;
+    let mut mf_dy: f32 = 0.0;
+    let mut mf_scale: f32 = 1.0;
+    let mut mf_dir = String::new();
+    let mut mf_action = String::new();
+    let mut mf_last_emit = Instant::now();
+    let mut gestures_conf: HashMap<String, String> = HashMap::new();
+    let mut last_conf_load = Instant::now() - Duration::from_secs(10);
+    load_gestures_conf(&mut last_conf_load, &mut gestures_conf);
+
     loop {
         match device.fetch_events() {
             Ok(events) => {
@@ -177,8 +241,6 @@ fn main() {
                             if value != -1 {
                                 active_slots.insert(current_slot, SlotState { x: None, y: None });
                                 if active_slots.len() == 1 {
-                                    // A new single touch gesture has started.
-                                    // Clean reset all gesture parameters!
                                     is_left_edge = false;
                                     is_right_edge = false;
                                     is_top_edge = false;
@@ -196,6 +258,12 @@ fn main() {
                             } else {
                                 active_slots.remove(&current_slot);
                                 if active_slots.is_empty() {
+                                    if mf_fingers >= 3 {
+                                        write_gesture_state("end", mf_fingers, mf_dx, mf_dy, mf_scale, &mf_dir, &mf_action);
+                                        mf_fingers = 0;
+                                        mf_dir.clear();
+                                        mf_action.clear();
+                                    }
                                     is_left_edge = false;
                                     is_right_edge = false;
                                     is_top_edge = false;
@@ -214,8 +282,7 @@ fn main() {
                                 if len == 1 && !multi_finger_detected && !pad_disabled {
                                     let x = value;
                                     let slot_y = slot.y;
-                                    
-                                    // Initialize starting coordinates once both components are available
+
                                     if start_x.is_none() && slot_y.is_some() {
                                         let sy = slot_y.unwrap();
                                         start_x = Some(x);
@@ -252,7 +319,6 @@ fn main() {
                                     let y = value;
                                     let slot_x = slot.x;
 
-                                    // Initialize starting coordinates once both components are available
                                     if start_y.is_none() && slot_x.is_some() {
                                         let sx = slot_x.unwrap();
                                         start_x = Some(sx);
@@ -267,24 +333,22 @@ fn main() {
                                     if let Some(ly) = last_trigger_y {
                                         let delta_y = y - ly;
                                         if is_right_edge {
-                                            // Right-edge vertical swipe -> Volume!
                                             if delta_y.abs() >= v_threshold {
-                                                if delta_y < 0 { // Up (y decreases)
+                                                if delta_y < 0 {
                                                     println!("Gesture: Volume Up");
                                                     fire_s("wpctl", &["set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", "2%+"]);
-                                                } else { // Down
+                                                } else {
                                                     println!("Gesture: Volume Down");
                                                     fire_s("wpctl", &["set-volume", "@DEFAULT_AUDIO_SINK@", "2%-"]);
                                                 }
                                                 last_trigger_y = Some(y);
                                             }
                                         } else if is_left_edge {
-                                            // Left-edge vertical swipe -> Playerctl! (only once per swipe)
                                             if !music_disabled && !triggered_action && delta_y.abs() >= v_threshold * 2 {
-                                                if delta_y < 0 { // Up -> Next track
+                                                if delta_y < 0 {
                                                     println!("Gesture: Media Next");
                                                     fire_s("playerctl", &["next"]);
-                                                } else { // Down -> Prev track
+                                                } else {
                                                     println!("Gesture: Media Prev");
                                                     fire_s("playerctl", &["previous"]);
                                                 }
@@ -295,12 +359,85 @@ fn main() {
                                 }
                             }
                         }
+                    } else if event.event_type() == EventType::SYNCHRONIZATION && event.code() == 0 && !pad_disabled {
+                        // Real-time 3-finger & 4-finger tracking on SYN_REPORT
+                        let pts: Vec<(f32, f32)> = active_slots
+                            .values()
+                            .filter_map(|s| match (s.x, s.y) {
+                                (Some(vx), Some(vy)) => Some((vx as f32 / max_x as f32, vy as f32 / max_y as f32)),
+                                _ => None,
+                            })
+                            .collect();
+
+                        let n = pts.len();
+                        if n == 3 || n == 4 {
+                            load_gestures_conf(&mut last_conf_load, &mut gestures_conf);
+                            let cx = pts.iter().map(|p| p.0).sum::<f32>() / n as f32;
+                            let cy = pts.iter().map(|p| p.1).sum::<f32>() / n as f32;
+                            let spread = (pts
+                                .iter()
+                                .map(|p| ((p.0 - cx).powi(2) + (p.1 - cy).powi(2)).sqrt())
+                                .sum::<f32>()
+                                / n as f32)
+                                .max(0.04);
+
+                            if mf_fingers != n {
+                                mf_fingers = n;
+                                mf_start_cx = cx;
+                                mf_start_cy = cy;
+                                mf_start_spread = spread;
+                                mf_dx = 0.0;
+                                mf_dy = 0.0;
+                                mf_scale = 1.0;
+                                mf_dir.clear();
+                                mf_action.clear();
+                                write_gesture_state("begin", n, 0.0, 0.0, 1.0, "", "");
+                                mf_last_emit = Instant::now();
+                                continue;
+                            }
+
+                            // Normalized finger travel (1.0 == 26% of touchpad span)
+                            mf_dx = (cx - mf_start_cx) / 0.26;
+                            mf_dy = (cy - mf_start_cy) / 0.26;
+                            mf_scale = (spread / mf_start_spread).clamp(0.35, 2.2);
+
+                            if mf_dir.is_empty() {
+                                let pinch_d = (mf_scale - 1.0).abs();
+                                let move_d = (mf_dx * mf_dx + mf_dy * mf_dy).sqrt();
+                                if pinch_d > 0.15 && pinch_d > move_d * 0.45 {
+                                    let pdir = if mf_scale < 1.0 { "pinchin" } else { "pinchout" };
+                                    mf_dir = pdir.to_string();
+                                    let key = format!("g{}-{}", n, pdir);
+                                    mf_action = gestures_conf.get(&key).cloned().unwrap_or_else(|| "none".into());
+                                } else if move_d > 0.14 {
+                                    let dname = if mf_dx.abs() > mf_dy.abs() * 1.15 {
+                                        if mf_dx < 0.0 { "left" } else { "right" }
+                                    } else if mf_dy < 0.0 {
+                                        "up"
+                                    } else {
+                                        "down"
+                                    };
+                                    mf_dir = dname.to_string();
+                                    let key = format!("g{}-{}", n, dname);
+                                    mf_action = gestures_conf.get(&key).cloned().unwrap_or_else(|| "none".into());
+                                }
+                            }
+
+                            if mf_last_emit.elapsed() >= Duration::from_millis(16) {
+                                write_gesture_state("update", n, mf_dx, mf_dy, mf_scale, &mf_dir, &mf_action);
+                                mf_last_emit = Instant::now();
+                            }
+                        } else if mf_fingers >= 3 && active_slots.is_empty() {
+                            write_gesture_state("end", mf_fingers, mf_dx, mf_dy, mf_scale, &mf_dir, &mf_action);
+                            mf_fingers = 0;
+                            mf_dir.clear();
+                            mf_action.clear();
+                        }
                     }
                 }
             }
             Err(e) => {
                 eprintln!("Error reading events: {:?}", e);
-                // ENODEV: the device node went away. Exit so the service restarts and re-finds it.
                 if e.raw_os_error() == Some(19) {
                     std::process::exit(1);
                 }

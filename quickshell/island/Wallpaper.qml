@@ -35,7 +35,7 @@ PanelWindow {
         anchors.fill: parent
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        cache: true
+        cache: false
         sourceSize: Qt.size(wallpaper.decodeW, wallpaper.decodeH)   // decode at screen size, not at the file's (maybe 4K / 8K) size
         opacity: wallpaper.shown ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.OutCubic } }
@@ -53,7 +53,7 @@ PanelWindow {
         visible: false
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        cache: true
+        cache: false
         sourceSize: Qt.size(wallpaper.decodeW, wallpaper.decodeH)
         onStatusChanged: if (status === Image.Ready && wallpaper.waiting) wallpaper.beginReveal()
     }
@@ -160,7 +160,7 @@ PanelWindow {
     // `inc` only exists to feed the reveal. After the hand-over it would keep a second decoded copy + GPU texture alive
     // for as long as the wallpaper stays (hours), so drop it. `cur` has its own reference to the same cached pixmap.
     function releaseIncoming() {
-        if (!revealing && !swapping && !waiting) inc.source = ""
+        if (!revealing && !swapping && !waiting) { inc.source = ""; gc() }
     }
 
     // palette.sh reads the picture's own dominant colours (see island/scripts/palette.sh); the old `hx palette` is the fallback

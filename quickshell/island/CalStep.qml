@@ -2,7 +2,6 @@ import QtQuick
 
 // One step of the calendar's connect page, drawn like a notification in the Timeline look: a number on the left, a dot on a
 // thin rail, the text on the right. Whatever is put inside (buttons) sits under the text.
-// (This used to be an inline component of Calendar.qml; as its own file it can not fail with "Step is not a type".)
 Item {
     id: st
     property var pal
@@ -19,7 +18,7 @@ Item {
 
     property real glow: 0
     SequentialAnimation on glow {
-        running: st.current && st.live
+        running: st.visible && st.current && st.live
         loops: Animation.Infinite
         NumberAnimation { to: 1; duration: 1100; easing.type: Easing.InOutSine }
         NumberAnimation { to: 0; duration: 1100; easing.type: Easing.InOutSine }

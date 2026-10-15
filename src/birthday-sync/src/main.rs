@@ -23,7 +23,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, fs, process};
 
-const SCOPE: &str = "https://www.googleapis.com/auth/calendar.readonly";
+const SCOPE: &str = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly";
+const PEOPLE_API: &str = "https://people.googleapis.com/v1/people/me/connections";
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
@@ -171,7 +172,8 @@ fn reply(s: &mut std::net::TcpStream, code: &str, msg: &str) {
     let _ = write!(s, "HTTP/1.1 {code}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
 }
 
-fn cmd_auth() -> Res<()> {
+fn cmd_auth(flags: &[String]) -> Res<()> {
+    let json_out = flags.iter().any(|f| f == "--json");
     let mut cfg = load_cfg();
     let (id, secret) = match (field(&cfg, "client_id"), field(&cfg, "client_secret")) {
         (Some(a), Some(b)) => (a, b),
@@ -186,7 +188,7 @@ fn cmd_auth() -> Res<()> {
         "{AUTH_URL}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={challenge}&code_challenge_method=S256&state={}&access_type=offline&prompt=consent",
         pct_encode(&id), pct_encode(&redirect), pct_encode(SCOPE), pct_encode(&state)
     );
-    println!("Open this address and allow read-only calendar access:\n\n{url}\n");
+    if !json_out { println!("Open this address and allow read-only calendar + contacts access:\n\n{url}\n"); }
     let _ = process::Command::new("xdg-open").arg(&url).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn();
 
     listener.set_nonblocking(true).map_err(err("local port"))?;
@@ -229,7 +231,7 @@ fn cmd_auth() -> Res<()> {
     let refresh = field(&v, "refresh_token").ok_or("Google sent no refresh token. Remove the app at myaccount.google.com/permissions and run auth again")?;
     cfg["refresh_token"] = Value::String(refresh);
     save_cfg(&cfg)?;
-    println!("Logged in. Next: birthday-sync sync");
+    if json_out { println!("{}", json!({ "ok": true })); } else { println!("Logged in. Next: birthday-sync sync"); }
     Ok(())
 }
 
@@ -392,9 +394,51 @@ fn fetch_events(tok: &str, cal_id: &str, only_birthday_type: bool, structured: b
     Ok(out)
 }
 
+fn fetch_people_contacts(tok: &str, this_year: i64) -> Vec<Bday> {
+    let mut out = Vec::new();
+    let mut page = String::new();
+    loop {
+        let mut q = vec![("personFields", "names,birthdays"), ("pageSize", "1000")];
+        if !page.is_empty() {
+            q.push(("pageToken", &page));
+        }
+        let Ok(v) = get(tok, PEOPLE_API, &q) else {
+            break;
+        };
+        for person in v.get("connections").and_then(Value::as_array).into_iter().flatten() {
+            let raw_name = person
+                .get("names")
+                .and_then(Value::as_array)
+                .and_then(|arr| arr.iter().find_map(|n| n.get("displayName").and_then(Value::as_str)))
+                .unwrap_or("");
+            let name = clean_name(raw_name);
+            if name.is_empty() {
+                continue;
+            }
+            for b in person.get("birthdays").and_then(Value::as_array).into_iter().flatten() {
+                if let Some(d) = b.get("date") {
+                    let m = d.get("month").and_then(Value::as_u64).unwrap_or(0) as u32;
+                    let day = d.get("day").and_then(Value::as_u64).unwrap_or(0) as u32;
+                    let y = d.get("year").and_then(Value::as_i64);
+                    if (1..=12).contains(&m) && (1..=31).contains(&day) {
+                        let year = y.filter(|&yr| (1900..this_year).contains(&yr));
+                        out.push(Bday { name: name.clone(), month: m, day, year });
+                        break;
+                    }
+                }
+            }
+        }
+        match v.get("nextPageToken").and_then(Value::as_str) {
+            Some(t) if !t.is_empty() => page = t.to_string(),
+            _ => break,
+        }
+    }
+    out
+}
+
 fn collect(tok: &str) -> Res<Vec<Bday>> {
     let this_year = current_year();
-    let mut all = Vec::new();
+    let mut all = fetch_people_contacts(tok, this_year);
     let mut ids: Vec<(String, bool)> = Vec::new(); // (calendar id, is the built-in one)
     let mut page = String::new();
     loop {
@@ -520,7 +564,7 @@ fn main() {
     let rest = args.get(1..).unwrap_or(&[]);
     let r = match args.first().map(String::as_str) {
         Some("setup") => cmd_setup(rest),
-        Some("auth") => cmd_auth(),
+        Some("auth") | Some("login") => cmd_auth(rest),
         Some("sync") => cmd_sync(rest),
         Some("status") => cmd_status(),
         Some("logout") => cmd_logout(),

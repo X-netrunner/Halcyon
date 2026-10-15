@@ -14,6 +14,7 @@ Scope {
     id: root
     property var pal
     property bool stars: true
+    property bool constellation: true       // false = only the drifting dots, no constellation picture (Settings > Constellations)
     property string sysmode: ""
     property var starData: null
     property bool profileStars: true
@@ -74,6 +75,9 @@ Scope {
     property string setupMsg: ""
     property bool holidayModalOpen: false
     property string holidayModalMsg: ""
+    property bool bdayModalOpen: false
+    property string bdayModalMsg: ""
+    property var bdayList: []
     property real now: Date.now()
     readonly property bool ready: cfg.configured && !setupOpen
 
@@ -256,22 +260,107 @@ Scope {
                 } catch(e) { msg = "Could not import birthdays" }
                 root.setupMsg = msg
                 root.holidayModalMsg = msg
+                root.bdayModalMsg = msg
                 root.loadConf()
                 root.loadEvents()
+                root.loadBdayList()
             }
         }
     }
+    function loadBdayList() { listBdayProc.running = false; listBdayProc.running = true }
     function importBirthdays() {
-        root.setupMsg = "Looking for contacts.vcf in Downloads..."
+        root.setupMsg = "Scanning Downloads for Google Contacts (.vcf / .csv / .zip)..."
         root.holidayModalMsg = root.setupMsg
+        root.bdayModalMsg = root.setupMsg
         importBdayProc.running = true
+    }
+    function openGoogleContacts() {
+        Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "run", "browser", "https://contacts.google.com/"])
+        root.watchTicks = 0
+        root.watching = true
+        root.hide()
+        Quickshell.execDetached(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "Export Google Contacts (1 click)",
+            "In Google Contacts: click Export (left sidebar) → Export. Halcyon will detect the download in ~/Downloads and import all birthdays automatically!"])
+    }
+    function openGoogleExport() {
+        Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "run", "browser", "https://calendar.google.com/calendar/u/0/r/settings/export"])
+        root.watchTicks = 0
+        root.watching = true
+        root.hide()
+        Quickshell.execDetached(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "Export Google Calendar (1 click)",
+            "Click the 'Export' button on the page — Halcyon will detect the downloaded .zip in ~/Downloads and connect your calendars automatically!"])
+    }
+    Process {
+        id: listBdayProc
+        command: ["python3", root.script, "list-birthdays"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var r = JSON.parse(text.trim())
+                    if (r.ok && r.birthdays) root.bdayList = r.birthdays
+                } catch (e) {}
+            }
+        }
+    }
+    Process {
+        id: singleBdayProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var r = JSON.parse(text.split("\n").filter(function(l){ return l.trim() !== "" }).pop())
+                    if (r.ok) {
+                        root.bdayModalMsg = "✓ Saved birthday for " + (r.name || "contact") + "!"
+                        root.loadConf(); root.loadEvents(); root.loadBdayList()
+                    } else {
+                        root.bdayModalMsg = r.error || "Could not save birthday"
+                    }
+                } catch (e) { root.bdayModalMsg = "Could not save birthday" }
+            }
+        }
+    }
+    Process {
+        id: remBdayProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.bdayModalMsg = "Removed birthday."
+                root.loadConf(); root.loadEvents(); root.loadBdayList()
+            }
+        }
+    }
+    Process {
+        id: autoGrabProc
+        command: ["python3", root.script, "auto-grab"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var r = JSON.parse(text.split("\n").filter(function(l){ return l.trim() !== "" }).pop())
+                    if (r.ok && (r.addedCalendars > 0 || r.addedBirthdays > 0)) {
+                        var msg = "✓ Auto-imported "
+                        if (r.addedCalendars > 0 && r.addedBirthdays > 0)
+                            msg += r.addedCalendars + " calendar(s) & " + r.addedBirthdays + " birthdays from " + r.file
+                        else if (r.addedCalendars > 0)
+                            msg += r.addedCalendars + " calendar(s) from " + r.file
+                        else
+                            msg += r.addedBirthdays + " birthdays from " + r.file
+                        root.setupMsg = msg
+                        root.bdayModalMsg = msg
+                        root.holidayModalMsg = msg
+                        root.watching = false
+                        root.setupOpen = false
+                        root.loadConf(); root.loadEvents(); root.loadBdayList()
+                        root.show()
+                        Quickshell.execDetached(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "Halcyon Calendar Ready", msg])
+                    }
+                } catch (e) {}
+            }
+        }
     }
     // Google's built-in Birthdays calendar has no iCal address, so the birthday-sync helper reads it through the Calendar API
     // (read-only login, nothing is written to Google) and fills the "Google Calendar" block of birthdays.txt.
     // gSync: just sync. gConnect: take the newest client_secret_*.json from Downloads (if there is one), log in in the browser, then sync.
     readonly property string gBin: Quickshell.env("HOME") + "/.config/Halcyon/bin/birthday-sync"
     readonly property string gNoBin: '{"ok":false,"error":"birthday-sync is not installed. Run ./install.sh again."}'
-    function gShow(msg) { root.setupMsg = msg; root.holidayModalMsg = msg }
+    function gShow(msg) { root.setupMsg = msg; root.holidayModalMsg = msg; root.bdayModalMsg = msg }
     Process {
         id: gProc
         stdout: StdioCollector {
@@ -289,6 +378,7 @@ Scope {
                 root.gShow(msg)
                 root.loadConf()
                 root.loadEvents()
+                root.loadBdayList()
             }
         }
     }
@@ -377,10 +467,11 @@ Scope {
     }
     property bool fromWatcher: false
     Timer {
-        interval: 1500; repeat: true; running: root.watching
+        interval: 1500; repeat: true; running: root.watching || (root.open && (root.setupOpen || root.bdayModalOpen))
         onTriggered: {
-            if (++root.watchTicks > 240) { root.watching = false; return }
+            if (root.watching && ++root.watchTicks > 240) { root.watching = false; return }
             if (!clipProc.running) clipProc.running = true
+            if (!autoGrabProc.running) autoGrabProc.running = true
         }
     }
 
@@ -389,8 +480,9 @@ Scope {
     onOpenChanged: {
         if (open) {
             today = midnight(new Date()); gotoDay(new Date()); now = Date.now()
-            setupOpen = !cfg.configured; setupMsg = ""
-            loadConf(); loadEvents()
+            setupOpen = !cfg.configured; setupMsg = ""; bdayModalOpen = false
+            loadConf(); loadEvents(); loadBdayList()
+            if (!autoGrabProc.running) autoGrabProc.running = true
             if (cfg.configured && (Date.now() / 1000 - cfg.synced) > 300) sync()
         }
     }
@@ -460,7 +552,7 @@ Scope {
                 Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
                 focus: root.open
                 Keys.onPressed: e => {
-                    if (e.key === Qt.Key_Escape) { if (root.holidayModalOpen) root.holidayModalOpen = false; else if (root.setupOpen && root.cfg.configured) root.setupOpen = false; else root.hide(); e.accepted = true; return }
+                    if (e.key === Qt.Key_Escape) { if (root.bdayModalOpen) root.bdayModalOpen = false; else if (root.holidayModalOpen) root.holidayModalOpen = false; else if (root.setupOpen && root.cfg.configured) root.setupOpen = false; else root.hide(); e.accepted = true; return }
                     if (!root.ready) return
                     if (e.key === Qt.Key_Left) root.gotoDay(root.addDays(root.sel, -1))
                     else if (e.key === Qt.Key_Right) root.gotoDay(root.addDays(root.sel, 1))
@@ -490,13 +582,13 @@ Scope {
                     Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                     MouseArea { anchors.fill: parent }       // swallow clicks
 
-                    Backdrop { visible: root.open && root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 12; artStrength: 0.5; artFit: 0.85 }
+                    Backdrop { visible: root.open && root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 12; dotAlpha: 2.6; dotDrift: 16; artStrength: !root.constellation ? 0 : ((root.bdayModalOpen || root.holidayModalOpen || root.setupOpen) ? 0.12 : 0.30); artFit: 0.85 }
 
                     // ---------------- header
                     RowLayout {
                         id: head
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 24 }
-                        spacing: 12
+                        spacing: 10
                         Text { text: String.fromCodePoint(0xF00ED); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
                         Text {
                             text: root.ready ? Qt.formatDate(new Date(root.viewY, root.viewM, 1), "MMMM yyyy") : "Calendar"
@@ -505,35 +597,54 @@ Scope {
                             Layout.minimumWidth: 175
                             Layout.maximumWidth: 175
                         }
-                        IconBtn { visible: root.ready && !root.holidayModalOpen; glyph: "‹"; onClicked: root.moveMonth(-1) }
-                        IconBtn { visible: root.ready && !root.holidayModalOpen; glyph: "›"; onClicked: root.moveMonth(1) }
-                        Pill { visible: root.ready && !root.holidayModalOpen; label: "Today"; height: 30; width: 72; onClicked: root.gotoDay(new Date()) }
+                        IconBtn { opacity: (root.ready && !root.holidayModalOpen && !root.bdayModalOpen) ? 1 : 0; enabled: root.ready && !root.holidayModalOpen && !root.bdayModalOpen; glyph: "‹"; onClicked: root.moveMonth(-1) }
+                        IconBtn { opacity: (root.ready && !root.holidayModalOpen && !root.bdayModalOpen) ? 1 : 0; enabled: root.ready && !root.holidayModalOpen && !root.bdayModalOpen; glyph: "›"; onClicked: root.moveMonth(1) }
+                        Pill { opacity: (root.ready && !root.holidayModalOpen && !root.bdayModalOpen) ? 1 : 0; enabled: root.ready && !root.holidayModalOpen && !root.bdayModalOpen; label: "Today"; height: 30; width: 72; onClicked: root.gotoDay(new Date()) }
                         Pill {
-                            label: root.holidayModalOpen ? "Back to Calendar" : "Holidays"
+                            label: root.bdayModalOpen ? "Back" : ("Birthdays" + (root.bdayList.length > 0 ? " (" + root.bdayList.length + ")" : ""))
+                            primary: root.bdayModalOpen
+                            height: 30
+                            Layout.preferredWidth: 136
+                            onClicked: {
+                                root.bdayModalMsg = ""
+                                root.bdayModalOpen = !root.bdayModalOpen
+                                if (root.bdayModalOpen) {
+                                    root.holidayModalOpen = false
+                                    root.setupOpen = false
+                                    root.loadBdayList()
+                                }
+                            }
+                        }
+                        Pill {
+                            label: root.holidayModalOpen ? "Back" : "Holidays"
                             primary: root.holidayModalOpen
                             height: 30
+                            Layout.preferredWidth: 136
                             onClicked: {
                                 root.holidayModalMsg = ""
                                 root.holidayModalOpen = !root.holidayModalOpen
-                                if (root.setupOpen) root.setupOpen = false
+                                if (root.holidayModalOpen) {
+                                    root.bdayModalOpen = false
+                                    root.setupOpen = false
+                                }
                             }
                         }
                         Item { Layout.fillWidth: true }
                         Text {
-                            visible: root.cfg.configured && !root.holidayModalOpen
+                            visible: root.cfg.configured && !root.holidayModalOpen && !root.bdayModalOpen
                             text: root.syncing ? "syncing..." : (root.cfg.error ? "offline · " + root.ago(root.cfg.synced) : root.ago(root.cfg.synced))
                             color: root.cfg.error && !root.syncing ? root.pal.accent2 : root.pal.muted
                             font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                         }
-                        IconBtn { visible: root.cfg.configured && !root.holidayModalOpen; glyph: String.fromCodePoint(0xF04E6); spin: root.syncing; onClicked: root.sync() }
-                        IconBtn { visible: root.cfg.configured && !root.holidayModalOpen; glyph: String.fromCodePoint(0xF0493); onClicked: { root.setupMsg = ""; root.holidayModalOpen = false; root.setupOpen = !root.setupOpen } }
+                        IconBtn { visible: root.cfg.configured && !root.holidayModalOpen && !root.bdayModalOpen; glyph: String.fromCodePoint(0xF04E6); spin: root.syncing; onClicked: root.sync() }
+                        IconBtn { visible: root.cfg.configured && !root.holidayModalOpen && !root.bdayModalOpen; glyph: String.fromCodePoint(0xF0493); onClicked: { root.setupMsg = ""; root.holidayModalOpen = false; root.bdayModalOpen = false; root.setupOpen = !root.setupOpen } }
                         IconBtn { glyph: "✕"; onClicked: root.hide() }
                     }
 
                     // ---------------- the calendar
                     Item {
                         id: body
-                        visible: root.ready && !root.holidayModalOpen
+                        visible: root.ready && !root.holidayModalOpen && !root.bdayModalOpen
                         anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
 
                         // left: month grid + next up
@@ -549,7 +660,7 @@ Scope {
                                 anchors { left: parent.left; right: parent.right; top: parent.top }
                                 height: 12 + weekHead.height + 6 + 6 * grid.ch + 12
                                 radius: root.pal.rLg
-                                color: Qt.alpha(root.pal.surface, 0.5)
+                                color: Qt.alpha(root.pal.surface, 0.8)
                                 border.width: 1; border.color: root.pal.line
                             }
                             Row {
@@ -772,7 +883,7 @@ Scope {
                     // ---------------- connect / manage
                     Item {
                         id: setup
-                        visible: !root.ready && !root.holidayModalOpen
+                        visible: !root.ready && !root.holidayModalOpen && !root.bdayModalOpen
                         anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
                         Flickable {
                             anchors.fill: parent
@@ -801,29 +912,21 @@ Scope {
 
                                 CalStep {
                                     pal: root.pal; live: root.open
-                                    width: sCol.width; num: 1; done: root.watching; current: !root.watching
-                                    title: "Open your calendar settings"
-                                    body: "Opens in your browser. The window steps aside."
-                                    Pill { primary: true; label: "Open Google Calendar"; onClicked: root.openGoogle() }
-                                }
-                                CalStep {
-                                    pal: root.pal; live: root.open
-                                    width: sCol.width; num: 2; current: root.watching
-                                    title: "Pick your calendar"
-                                    body: "Under \"Settings for my calendars\" click the calendar you want to sync (Primary, Work, School, etc.). You can connect multiple calendars."
-                                }
-                                CalStep {
-                                    pal: root.pal; live: root.open
-                                    width: sCol.width; num: 3
-                                    title: "Scroll to Integrate calendar"
-                                    body: "For personal events, copy the \"Secret address in iCal format\". For holidays, birthdays, or subscriptions, copy the \"Public address in iCal format\"."
-                                }
-                                CalStep {
-                                    pal: root.pal; live: root.open
-                                    width: sCol.width; num: 4; last: true; current: root.watching
-                                    title: "Copy the address"
-                                    body: "Press the copy button next to the address. The island sees it and connects by itself."
+                                    width: sCol.width; num: 1; done: root.watching || root.cfg.configured; current: !root.watching && !root.cfg.configured
+                                    title: "Connect Google Calendar in 2 clicks (never make your calendar public!)"
+                                    body: "Click '1-Click Export All Calendars' to open Google's Export page and click Export (Halcyon auto-imports the .zip from ~/Downloads!), OR click 'Live Sync (Secret iCal Link)' → click your calendar → copy 'Secret address in iCal format' (Halcyon auto-detects your clipboard!)."
+                                    Pill { primary: true; label: "1-Click Export All Calendars ↗"; onClicked: root.openGoogleExport() }
+                                    Pill { label: "Live Sync (Secret iCal Link) ↗"; onClicked: root.openGoogle() }
                                     Pill { label: "Paste from clipboard"; onClicked: root.pasteClipboard() }
+                                }
+                                CalStep {
+                                    pal: root.pal; live: root.open
+                                    width: sCol.width; num: 2; last: true; done: root.bdayList.length > 0; current: root.cfg.configured && root.bdayList.length === 0
+                                    title: "Get Google Contacts Birthdays in 2 clicks (" + root.bdayList.length + " saved)"
+                                    body: "Google Calendar's Birthdays calendar is separate from Google Contacts and has no iCal link. Click '1. Open Google Contacts' → click Export (left menu) → Export (CSV or vCard). Halcyon watches ~/Downloads and imports every birthday (with birth years!) automatically."
+                                    Pill { primary: true; label: "1. Open Google Contacts ↗"; onClicked: root.openGoogleContacts() }
+                                    Pill { label: "Auto-Import Downloads"; onClicked: root.importBirthdays() }
+                                    Pill { label: "Manage Birthdays"; onClicked: { root.setupOpen = false; root.bdayModalOpen = true; root.loadBdayList() } }
                                 }
 
                                 Text {
@@ -1190,6 +1293,228 @@ Scope {
                                         label: "Edit birthdays.txt"
                                         onClicked: {
                                             Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.config/Halcyon/birthdays.txt"])
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // ---------------- birthdays & google contacts panel
+                    Item {
+                        id: bdayView
+                        visible: root.bdayModalOpen
+                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
+                        Flickable {
+                            anchors.fill: parent
+                            contentWidth: width; contentHeight: bCol.implicitHeight + 20
+                            clip: true; boundsBehavior: Flickable.StopAtBounds
+                            Column {
+                                id: bCol
+                                width: Math.min(parent.width, 680)
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                spacing: 14
+
+                                RowLayout {
+                                    width: parent.width
+                                    Column {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text {
+                                            text: "Google Contacts & Calendar Birthdays"
+                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            text: "Sync birthdays from Google Contacts in 2 clicks, or add & manage birthdays right here."
+                                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                        }
+                                    }
+                                    Pill {
+                                        label: "Close"
+                                        onClicked: root.bdayModalOpen = false
+                                    }
+                                }
+
+                                Rectangle { width: parent.width; height: 1; color: root.pal.line }
+
+                                Rectangle {
+                                    width: parent.width; height: 36; radius: 10
+                                    visible: root.bdayModalMsg !== ""
+                                    color: Qt.alpha(root.pal.accent, 0.15)
+                                    border.width: 1; border.color: root.pal.accent
+                                    Row {
+                                        anchors.centerIn: parent; spacing: 8
+                                        Text {
+                                            text: root.bdayModalMsg
+                                            color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium
+                                        }
+                                    }
+                                }
+
+                                // Section 1: 2-Click Google Contacts Auto-Sync
+                                Column {
+                                    width: parent.width; spacing: 8
+                                    Text {
+                                        text: "Why Google Calendar & Google Contacts Birthdays Differ — Fixed in 2 Clicks"
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        width: parent.width; wrapMode: Text.WordWrap
+                                        text: "Google Calendar's Birthdays calendar has no iCal address and often misses Google Contacts birthdays or birth years. Click '1. Open Google Contacts', then click Export → Export in your browser (Google CSV, Outlook CSV, or vCard all work!). Halcyon automatically grabs the download from ~/Downloads and imports every birthday with its birth year."
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                    }
+                                    Flow {
+                                        width: parent.width; spacing: 10
+                                        Pill {
+                                            primary: true
+                                            label: "1. Open Google Contacts & Auto-Import ↗"
+                                            onClicked: root.openGoogleContacts()
+                                        }
+                                        Pill {
+                                            label: "Scan ~/Downloads Now"
+                                            onClicked: root.importBirthdays()
+                                        }
+                                        Pill {
+                                            label: "Sync Google API"
+                                            onClicked: root.gSync()
+                                        }
+                                        Pill {
+                                            label: "Connect Google OAuth"
+                                            onClicked: root.gConnect()
+                                        }
+                                    }
+                                }
+
+                                Rectangle { width: parent.width; height: 1; color: root.pal.line }
+
+                                // Section 2: Quick Add Birthday in UI
+                                Column {
+                                    width: parent.width; spacing: 8
+                                    Text {
+                                        text: "Quick Add Birthday"
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        text: "Add a birthday directly (use MM-DD like 05-12, or YYYY-MM-DD like 1998-05-12 to show age):"
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                    }
+                                    RowLayout {
+                                        width: parent.width; spacing: 8
+                                        Rectangle {
+                                            Layout.preferredWidth: 165; height: 38; radius: 19
+                                            color: Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: 1; border.color: bDateIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                            Text {
+                                                anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
+                                                visible: bDateIn.text === ""
+                                                text: "MM-DD or YYYY-MM-DD"
+                                                color: root.pal.muted; font.family: root.pal.mono; font.pixelSize: root.pal.tCap
+                                            }
+                                            TextInput {
+                                                id: bDateIn
+                                                anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                                                verticalAlignment: TextInput.AlignVCenter
+                                                color: root.pal.text
+                                                font.family: root.pal.mono; font.pixelSize: root.pal.tCap
+                                                clip: true
+                                            }
+                                        }
+                                        Rectangle {
+                                            Layout.fillWidth: true; height: 38; radius: 19
+                                            color: Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: 1; border.color: bNameIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                            Text {
+                                                anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
+                                                visible: bNameIn.text === ""
+                                                text: "Person's Name (e.g. Alex Rivera)"
+                                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                            }
+                                            TextInput {
+                                                id: bNameIn
+                                                anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                                                verticalAlignment: TextInput.AlignVCenter
+                                                color: root.pal.text
+                                                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                                clip: true
+                                                onAccepted: {
+                                                    if (bDateIn.text.trim() !== "" && bNameIn.text.trim() !== "") {
+                                                        singleBdayProc.command = ["python3", root.script, "add-birthday", bNameIn.text.trim(), bDateIn.text.trim()]
+                                                        singleBdayProc.running = true
+                                                        bDateIn.text = ""; bNameIn.text = ""
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Pill {
+                                            Layout.preferredWidth: 86; height: 38; radius: 19
+                                            primary: true
+                                            label: "+ Add"
+                                            onClicked: {
+                                                if (bDateIn.text.trim() !== "" && bNameIn.text.trim() !== "") {
+                                                    singleBdayProc.command = ["python3", root.script, "add-birthday", bNameIn.text.trim(), bDateIn.text.trim()]
+                                                    singleBdayProc.running = true
+                                                    bDateIn.text = ""; bNameIn.text = ""
+                                                } else {
+                                                    root.bdayModalMsg = "Enter both a date (MM-DD or YYYY-MM-DD) and a name."
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle { width: parent.width; height: 1; color: root.pal.line }
+
+                                // Section 3: Upcoming Birthdays List
+                                Column {
+                                    width: parent.width; spacing: 6
+                                    RowLayout {
+                                        width: parent.width
+                                        Text {
+                                            text: "Upcoming Birthdays (" + root.bdayList.length + ")"
+                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Pill {
+                                            label: "Edit birthdays.txt"
+                                            height: 28
+                                            onClicked: Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.config/Halcyon/birthdays.txt"])
+                                        }
+                                    }
+                                    Repeater {
+                                        model: root.bdayList
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            width: bCol.width; height: 36; radius: 10
+                                            color: Qt.alpha(root.pal.surface, 0.75)
+                                            border.width: 1; border.color: root.pal.line
+                                            RowLayout {
+                                                anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 10
+                                                Text {
+                                                    text: modelData.name
+                                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold
+                                                    Layout.fillWidth: true; elide: Text.ElideRight
+                                                }
+                                                Text {
+                                                    text: modelData.mmdd + (modelData.year ? (" (" + modelData.year + ")") : "")
+                                                    color: root.pal.muted; font.family: root.pal.mono; font.pixelSize: root.pal.tCap
+                                                }
+                                                Text {
+                                                    text: (modelData.daysUntil === 0 ? "Today!" : ("in " + modelData.daysUntil + "d")) + (modelData.ageNext ? (" · turns " + modelData.ageNext) : "")
+                                                    color: modelData.daysUntil === 0 ? root.pal.accent : root.pal.accent2
+                                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.DemiBold
+                                                }
+                                                Text {
+                                                    text: "✕"
+                                                    color: delBdayMa.containsMouse ? root.pal.accent2 : root.pal.muted
+                                                    font.family: root.pal.uiFont; font.pixelSize: 13
+                                                    MouseArea {
+                                                        id: delBdayMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                                        onClicked: {
+                                                            remBdayProc.command = ["python3", root.script, "remove-birthday", modelData.name]
+                                                            remBdayProc.running = true
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }

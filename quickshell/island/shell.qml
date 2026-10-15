@@ -94,7 +94,7 @@ ShellRoot {
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
         stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
-        starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: true,    // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
+        starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsCalendar: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: true,    // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
         dialogStarStyle: "both",   // moving | constellations | both | none : dialog star style
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
         limRam: 600,               // manual RAM limit (MB) for background helper warnings
@@ -705,6 +705,7 @@ ShellRoot {
         nagGiveUp: root.opt.calNagGiveUp !== undefined ? root.opt.calNagGiveUp : 180
         tasksAll: root.opt.calTasks === "all"
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        constellation: root.opt.stars !== false && root.opt.starsCalendar !== false
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
@@ -1662,9 +1663,9 @@ ShellRoot {
         }
     }
 
-    // visualizer feed, only runs while something is playing
+    // visualizer feed, only runs while something is playing AND a surface showing it is visible
     Process {
-        running: root.playing && !root.gaming && root.opt.viz !== "off" && !root.vizHold
+        running: root.playing && !root.gaming && root.opt.viz !== "off" && !root.vizHold && (win.shown || root.notchStyle || root.opt.barStyle === "custom") && (root.page === "home" || root.page === "media")
         command: ["cava", "-p", Quickshell.shellPath(root.opt.viz === "light" ? "cava-light.conf" : "cava.conf")]
         stdout: SplitParser {
             onRead: d => {
@@ -1788,11 +1789,105 @@ ShellRoot {
     // =====================================================================
     //  TOP: the island (bar -> media / performance pages -> expanding search bar)
     // =====================================================================
+    // ---- Live 1:1 finger-following 3-finger & 4-finger touchpad gesture state (written by touchpad-gestures)
+    property bool gestureActive: false
+    property real gestureProgress: 0.0
+    property real gestureScale: 1.0
+    property string gestureTarget: ""
+    property bool gestureStartOpen: false
+    property bool winLinger: false
+
+    Connections {
+        target: root
+        function onPageChanged() {
+            if (root.page !== "home") {
+                root.winLinger = true
+                winLingerT.stop()
+            } else {
+                winLingerT.restart()
+            }
+        }
+    }
+    Timer {
+        id: winLingerT
+        interval: 480
+        onTriggered: {
+            root.winLinger = false
+            if (root.opt && root.opt.lazyLoad !== false) gc()
+        }
+    }
+
+    FileView {
+        id: liveGestureView
+        path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/halcyon-gesture.json"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            var raw = (text() || "").trim()
+            if (!raw) return
+            try {
+                var g = JSON.parse(raw)
+                var ph = g.phase || ""
+                var act = g.action || ""
+                var dx = Number(g.dx || 0)
+                var dy = Number(g.dy || 0)
+                var sc = Number(g.scale || 1)
+                if (ph === "begin") {
+                    root.gestureActive = true
+                    root.gestureTarget = ""
+                    root.gestureProgress = 0
+                    root.gestureScale = 1
+                    root.gestureStartOpen = root.overviewOpen || root.page !== "home"
+                } else if (ph === "update") {
+                    root.gestureActive = true
+                    if (act && root.gestureTarget === "") {
+                        root.gestureTarget = act
+                        if (act === "overview") {
+                            root.gestureStartOpen = root.overviewOpen
+                            if (!root.overviewOpen) root.overviewOpen = true
+                        } else if ((act === "launcher" || act === "Launcher") && root.page !== "launcher") {
+                            root.page = "launcher"
+                        } else if ((act === "todo" || act === "Calendar") && root.page !== "cal") {
+                            root.page = "cal"
+                        } else if ((act === "notifcenter" || act === "Control") && root.page !== "util") {
+                            root.page = "util"
+                        }
+                    }
+                    var mag = Math.min(1.0, Math.max(Math.abs(dx), Math.abs(dy), Math.abs(sc - 1.0) / 0.35))
+                    root.gestureProgress = root.gestureStartOpen ? Math.max(0.08, 1.0 - mag * 0.85) : Math.max(0.12, mag)
+                    root.gestureScale = sc
+                    if (root.gestureTarget === "" && Math.abs(dy) > Math.abs(dx)) {
+                        island.dragY = dy * 90
+                    }
+                } else if (ph === "end") {
+                    var finalMag = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(sc - 1.0) / 0.35)
+                    if (root.gestureTarget === "overview") {
+                        if (root.gestureStartOpen && finalMag > 0.32) root.overviewOpen = false
+                        else if (!root.gestureStartOpen && finalMag < 0.25) root.overviewOpen = false
+                        else root.overviewOpen = true
+                    } else if (root.gestureTarget === "launcher" || root.gestureTarget === "Launcher" || root.gestureTarget === "todo" || root.gestureTarget === "Calendar" || root.gestureTarget === "notifcenter" || root.gestureTarget === "Control") {
+                        if (finalMag < 0.25 && !root.gestureStartOpen) root.page = "home"
+                    }
+                    island.dragX = 0
+                    island.dragY = 0
+                    root.gestureActive = false
+                    root.gestureTarget = ""
+                    root.gestureProgress = 1.0
+                    root.gestureScale = 1.0
+                }
+            } catch (e) {}
+        }
+    }
+
     PanelWindow {
         id: win
 
         anchors { top: true; left: true; right: true }
-        implicitHeight: 620
+        // Dynamic surface height: when idle on the home bar, shrink the fullscreen-width Wayland surface
+        // from 620px to the bar's actual height + shadow margin (~80px), saving ~87% of top-bar GPU/blur memory!
+        implicitHeight: (root.page === "home" && !root.winLinger && !root.gestureActive)
+            ? (root.notchStyle ? (root.notchBarH + 36) : (root.padSet.top + root.padSet.h + 36))
+            : 620
         // auto-hide frees the strip the bar reserves; otherwise windows start below the bar
         // Hyprland starts windows at (this zone + the outer gap), so the outer gap is taken off to get exactly padSet.gap between bar and windows
         // (it can not go lower than the outer gap itself: Settings > Look > Gaps)
@@ -2442,6 +2537,9 @@ ShellRoot {
                 anchors.fill: parent
                 pal: root.palObj
                 open: root.overviewOpen
+                gestureActive: root.gestureActive && root.gestureTarget === "overview"
+                gestureProgress: root.gestureProgress
+                gestureScale: root.gestureScale
                 compactSpecial: root.compactSpecial
                 profileName: root.profileName
                 profileAvatar: root.profileAvatar
@@ -2476,8 +2574,14 @@ ShellRoot {
         // FIXED size on purpose: it used to grow / shrink with the box (48 px tab <-> full size). Each resize made the compositor
         // re-pick the pointer focus, so a pointer parked in the corner got a leave + enter, which closed and re-opened the box
         // over and over. The input region (mask below) is what keeps the surface from catching clicks while it is closed.
-        implicitWidth: pal.boxW + pal.boxEdge + 30     // same box width / edge gap as the notification centre
-        implicitHeight: 1000
+        property bool cornerLinger: false
+        onOpenChanged: {
+            if (open) { cornerLinger = true; cornerLingerT.stop() }
+            else cornerLingerT.restart()
+        }
+        Timer { id: cornerLingerT; interval: 900; onTriggered: { corner.cornerLinger = false; gc() } }
+        implicitWidth: (corner.open || corner.cornerLinger) ? (pal.boxW + pal.boxEdge + 30) : 32
+        implicitHeight: (corner.open || corner.cornerLinger) ? 1000 : 32
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
 
@@ -2599,8 +2703,14 @@ ShellRoot {
 
         anchors { bottom: true; left: true }
         // fixed size, see the utilities box (a surface that resizes under a parked pointer makes the box flicker)
-        implicitWidth: pal.boxW + pal.boxEdge + 30
-        implicitHeight: 700
+        property bool appsLinger: false
+        onOpenChanged: {
+            if (open) { appsLinger = true; appsLingerT.stop() }
+            else appsLingerT.restart()
+        }
+        Timer { id: appsLingerT; interval: 900; onTriggered: { appsWin.appsLinger = false; gc() } }
+        implicitWidth: (appsWin.open || appsWin.appsLinger) ? (pal.boxW + pal.boxEdge + 30) : 32
+        implicitHeight: (appsWin.open || appsWin.appsLinger) ? 700 : 32
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
 

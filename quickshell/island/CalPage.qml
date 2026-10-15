@@ -187,10 +187,25 @@ Item {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: 28
             Text {
-                anchors { left: parent.left; verticalCenter: parent.verticalCenter; right: full.left; rightMargin: 8 }
+                anchors { left: parent.left; verticalCenter: parent.verticalCenter; right: bdayQuickBtn.left; rightMargin: 8 }
                 elide: Text.ElideRight
                 text: pg.cal.nextTask ? "Next task: " + pg.cal.nextTask.title + " · " + pg.cal.clock(pg.cal.nextTask.start) : ""
                 color: pg.pal.muted; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tCap
+            }
+            Rectangle {
+                id: bdayQuickBtn
+                anchors { right: full.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                width: bqTxt.implicitWidth + 18; height: 26; radius: 13
+                color: bqMa.containsMouse ? Qt.alpha(pg.pal.accent, 0.22) : Qt.alpha(pg.pal.surface, 0.8)
+                border.width: 1; border.color: bqMa.containsMouse ? pg.pal.accent : pg.pal.line
+                Text { id: bqTxt; anchors.centerIn: parent; text: "Birthdays"; color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tCap }
+                MouseArea {
+                    id: bqMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        pg.openFull()
+                        if (pg.cal) { pg.cal.bdayModalOpen = true; if (pg.cal.loadBdayList) pg.cal.loadBdayList() }
+                    }
+                }
             }
             Rectangle {
                 id: full

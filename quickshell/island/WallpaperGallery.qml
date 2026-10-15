@@ -468,7 +468,7 @@ Item {
                                     sourceSize.height: 450
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
-                                    cache: true
+                                    cache: false
                                     mipmap: true
                                     smooth: true
                                     visible: false
@@ -649,7 +649,7 @@ Item {
                                 sourceSize.height: 360
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
-                                cache: true
+                                cache: false
                                 mipmap: true
 
                                 Rectangle {
@@ -751,7 +751,7 @@ Item {
                                 sourceSize.height: 220
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
-                                cache: true
+                                cache: false
                                 opacity: gMa.containsMouse ? 1.0 : 0.90
 
                                 Rectangle {

@@ -18,6 +18,9 @@ Item {
         motion: 1.0, growth: 0, growthOn: false
     })
     property bool open: false
+    property bool gestureActive: false
+    property real gestureProgress: 1.0
+    property real gestureScale: 1.0
     property bool compactSpecial: true
     property string profileName: ""
     property string profileAvatar: ""
@@ -562,7 +565,7 @@ Item {
     onOpenChanged: {
         held = false; dragging = false; moving = false
         dragDone(); toast = ""
-        if (!open) picker.open = false
+        if (!open && pickerLoader.item) { pickerLoader.item.open = false; pickerLoader.active = false }
         if (open) {
             resetPhys(nodes.length)
             idProc.running = true
@@ -589,7 +592,10 @@ Item {
     // The avatar browser is drawn by the island itself (ImagePicker.qml, at the bottom of this file) so it opens ON TOP of
     // the tree. A zenity / kdialog window cannot: it is an ordinary window, the tree is an overlay layer above all of them.
     function browseAvatar() {
-        picker.openAt(avIn.text.trim() !== "" ? avIn.text.trim() : (ov.avatarFile !== "" ? ov.avatarFile : ""))
+        pickerLoader.active = true
+        if (pickerLoader.item) {
+            pickerLoader.item.openAt(avIn.text.trim() !== "" ? avIn.text.trim() : (ov.avatarFile !== "" ? ov.avatarFile : ""))
+        }
     }
     function saveProfile() {
         ov.profileSaved(nameIn.text.trim(), avIn.text.trim())
@@ -598,9 +604,11 @@ Item {
 
     // ---------------------------------------------------------------- visuals
     focus: true
-    opacity: open ? 1 : 0
+    opacity: gestureActive ? Math.max(0.05, Math.min(1.0, gestureProgress)) : (open ? 1 : 0)
+    scale: gestureActive ? (0.86 + 0.14 * Math.max(0.0, Math.min(1.15, gestureScale))) : 1.0
     visible: opacity > 0.01
-    Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+    Behavior on opacity { enabled: !ov.gestureActive; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+    Behavior on scale { enabled: !ov.gestureActive; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
     Keys.onPressed: e => {
         if (e.key === Qt.Key_Escape && ov.dragState === "drag") { ov.cancelDrag(); e.accepted = true }
@@ -609,7 +617,9 @@ Item {
         else if (e.key === Qt.Key_E || e.key === Qt.Key_P) { ov.editing = true; e.accepted = true }
     }
 
-    Rectangle { anchors.fill: parent; color: Qt.alpha(ov.pal.bg, 0.72) }
+    // full-screen dim behind the tree. The compositor no longer blurs this layer (memory saving), so it is nearly solid:
+    // raise toward 1.0 for a darker backdrop, lower it to see the windows behind. Costs no extra memory either way.
+    Rectangle { anchors.fill: parent; color: Qt.alpha(ov.pal.bg, 0.94) }
 
     // your profile picture, turned into a constellation (`hx stars`); redone when the avatar or the tree changes
 
@@ -1432,11 +1442,15 @@ Item {
         }
     }
     // ---- image browser for the avatar (drawn above everything else in the tree)
-    ImagePicker {
-        id: picker
+    Loader {
+        id: pickerLoader
+        active: false
         anchors.fill: parent
-        pal: ov.pal
-        onPicked: path => { avIn.text = path; picker.open = false; Qt.callLater(function () { avIn.forceActiveFocus() }) }
-        onCancelled: { picker.open = false; Qt.callLater(function () { avIn.forceActiveFocus() }) }
+        sourceComponent: ImagePicker {
+            anchors.fill: parent
+            pal: ov.pal
+            onPicked: path => { avIn.text = path; open = false; pickerLoader.active = false; Qt.callLater(function () { avIn.forceActiveFocus() }) }
+            onCancelled: { open = false; pickerLoader.active = false; Qt.callLater(function () { avIn.forceActiveFocus() }) }
+        }
     }
 }

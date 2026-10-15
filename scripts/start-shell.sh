@@ -75,6 +75,13 @@ fi
 # Quickshell links jemalloc. Without tuning, jemalloc retains hundreds of megabytes across multi-core arenas.
 # Restrict to 2 arenas and immediately purge dirty/muzzy pages back to the kernel.
 export MALLOC_CONF="narenas:2,dirty_decay_ms:0,muzzy_decay_ms:0,background_thread:true"
+# Also tune glibc malloc (for Qt/driver allocations), QML V4 JS GC threshold, and QtQuick RHI atlas size:
+export MALLOC_TRIM_THRESHOLD_=65536
+export MALLOC_MMAP_THRESHOLD_=65536
+export MALLOC_ARENA_MAX=2
+export QV4_GC_MAX_ALLOC=16777216
+export QSG_ATLAS_WIDTH=1024
+export QSG_ATLAS_HEIGHT=1024
 
 say "using $qs ($("$qs" --version 2>&1 | head -n1)) on $WAYLAND_DISPLAY, QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}"
 [ "$name" = island ] && bash "$RICE/scripts/notif-guard.sh" 2>/dev/null

@@ -241,12 +241,25 @@ Scope {
     function raise() { cycling = true; raiseT.restart() }
     Timer { id: raiseT; interval: 60; onTriggered: root.cycling = false }
 
+    property bool surfaceLinger: false
+    Connections {
+        target: root
+        function onCenterOpenChanged() {
+            if (root.centerOpen) { root.surfaceLinger = true; surfLingerT.stop() }
+            else surfLingerT.restart()
+        }
+    }
+    Timer { id: surfLingerT; interval: 420; onTriggered: { root.surfaceLinger = false; gc() } }
+    readonly property bool needFullSurface: root.centerOpen || root.surfaceLinger || root.toasts.length > 0
+
     PanelWindow {
         id: win
         visible: !root.cycling
-        anchors { top: true; right: true; bottom: true }
-        // extra room around the cards so their shadows are not cut off by the window edge
-        implicitWidth: Math.max(root.cardW, root.cfg.width) + 30 + root.pal.boxEdge
+        anchors { top: true; right: true; bottom: root.needFullSurface }
+        // When idle (no toasts and notification centre closed), shrink Wayland surface to the thin edge trigger
+        // so Hyprland doesn't allocate a full-height 450x1080 multi-pass Kawase blur FBO!
+        implicitWidth: root.needFullSurface ? (Math.max(root.cardW, root.cfg.width) + 30 + root.pal.boxEdge) : 28
+        implicitHeight: root.needFullSurface ? 900 : (root.corner ? 32 : 280)
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-notifs"

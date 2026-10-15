@@ -14,5 +14,8 @@ hl.config({
         hover_icon_on_border    = true,
         allow_tearing           = false,
         no_focus_fallback       = true,
+    },
+    render = {
+        direct_scanout          = 1,
     }
 })

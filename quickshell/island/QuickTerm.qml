@@ -420,11 +420,18 @@ Scope {
     }
     onWsHasFullscreenChanged: if (wsHasFullscreen && !pinned && open) close()
 
+    property bool termLinger: false
+    onOpenChanged: {
+        if (open) { termLinger = true; termLingerT.stop() }
+        else termLingerT.restart()
+    }
+    Timer { id: termLingerT; interval: 420; onTriggered: { root.termLinger = false; gc() } }
+
     PanelWindow {
         id: win
         anchors { top: true; left: true }
-        implicitWidth: root.boxW + 60
-        implicitHeight: 560
+        implicitWidth: (root.open || root.termLinger) ? (root.boxW + 60) : 32
+        implicitHeight: (root.open || root.termLinger) ? 560 : 32
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-term"
