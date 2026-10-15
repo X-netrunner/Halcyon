@@ -90,6 +90,7 @@ Every helper the island and sysmode used to run through `python3` is now written
 - **`recon-deceiver`** (`~/.config/Halcyon/bin/recon-deceiver`): High-performance multi-port honeypot daemon (replaces `recon-deceiver.py`).
 - **`log-analyst`** (`~/.config/Halcyon/bin/log-analyst`): Real-time IDS signature log analyst daemon (replaces `log-analyst.py`).
 - **`attacker-dossier`** (`~/.config/Halcyon/bin/attacker-dossier`): Attacker log summarizer and intelligence dossier (replaces `attacker-dossier.py`).
+- **`birthday-sync`** (`~/.config/Halcyon/bin/birthday-sync`): reads your Google Birthdays calendar through the Calendar API (read-only login, nothing is written to Google) and fills the "Google Calendar" block of `birthdays.txt`. In the Calendar's setup page press **Connect Google Birthdays** once (needs an OAuth *Desktop app* client JSON saved in `~/Downloads`, with the consent screen set to *In production*), then **Sync Google Birthdays** whenever you add someone.
 - **`setStaticMac`** (`~/.config/Halcyon/bin/setStaticMac`): Static MAC address manager for iwd and NetworkManager (replaces `setStaticMac.py`).
 - **`power-manager`** and **`touchpad-gestures`**: Native Rust desktop background services.
 All former `.py` scripts have been replaced by native Rust binaries, with legacy scripts archived to `.bak`.

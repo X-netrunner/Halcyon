@@ -266,6 +266,47 @@ Scope {
         root.holidayModalMsg = root.setupMsg
         importBdayProc.running = true
     }
+    // Google's built-in Birthdays calendar has no iCal address, so the birthday-sync helper reads it through the Calendar API
+    // (read-only login, nothing is written to Google) and fills the "Google Calendar" block of birthdays.txt.
+    // gSync: just sync. gConnect: take the newest client_secret_*.json from Downloads (if there is one), log in in the browser, then sync.
+    readonly property string gBin: Quickshell.env("HOME") + "/.config/Halcyon/bin/birthday-sync"
+    readonly property string gNoBin: '{"ok":false,"error":"birthday-sync is not installed. Run ./install.sh again."}'
+    function gShow(msg) { root.setupMsg = msg; root.holidayModalMsg = msg }
+    Process {
+        id: gProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var msg = ""
+                try {
+                    var r = JSON.parse(text.split("\n").filter(function(l){ return l.trim() !== "" }).pop())
+                    if (r.ok) {
+                        msg = "Synced " + r.count + " birthdays from Google" + (r.skipped > 0 ? " (" + r.skipped + " already in your list)" : "")
+                        if (r.clashes && r.clashes.length > 0) msg += ". Different date than your list: " + r.clashes.join("; ")
+                    } else if (/not logged in/i.test(r.error || "")) {
+                        msg = "Google is not connected yet. Save your OAuth client JSON (client_secret_*.json) to Downloads and press Connect Google Birthdays."
+                    } else msg = r.error || "Could not sync Google birthdays"
+                } catch(e) { msg = "Could not sync Google birthdays" }
+                root.gShow(msg)
+                root.loadConf()
+                root.loadEvents()
+            }
+        }
+    }
+    function gSync() {
+        gShow("Syncing Google birthdays...")
+        gProc.command = ["sh", "-c", 'B="$1"; [ -x "$B" ] || { echo "$2"; exit 0; }; exec "$B" sync --json', "sh", gBin, gNoBin]
+        gProc.running = true
+    }
+    function gConnect() {
+        gShow("Waiting for Google in your browser (up to 5 minutes)...")
+        gProc.command = ["sh", "-c",
+            'B="$1"; [ -x "$B" ] || { echo "$2"; exit 0; }\n' +
+            'f=$(ls -t "$HOME"/Downloads/client_secret_*.json 2>/dev/null | head -n1)\n' +
+            'if [ -n "$f" ]; then "$B" setup "$f" >/dev/null 2>&1 || { echo \'{"ok":false,"error":"That client_secret file could not be read. Create the credential as type Desktop app."}\'; exit 0; }; fi\n' +
+            'out=$("$B" auth --json) || { printf "%s\\n" "$out" | tail -n 1; exit 0; }\n' +
+            'exec "$B" sync --json', "sh", gBin, gNoBin]
+        gProc.running = true
+    }
     Process {
         id: singleHolidayProc
         stdout: StdioCollector {
@@ -832,6 +873,14 @@ Scope {
                                         onClicked: root.importBirthdays()
                                     }
                                     Pill {
+                                        label: "Sync Google Birthdays"
+                                        onClicked: root.gSync()
+                                    }
+                                    Pill {
+                                        label: "Connect Google Birthdays"
+                                        onClicked: root.gConnect()
+                                    }
+                                    Pill {
                                         label: "Edit Birthdays"
                                         onClicked: {
                                             Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.config/Halcyon/birthdays.txt"])
@@ -1132,6 +1181,10 @@ Scope {
                                     Pill {
                                         label: "Import contacts.vcf"
                                         onClicked: root.importBirthdays()
+                                    }
+                                    Pill {
+                                        label: "Sync Google Birthdays"
+                                        onClicked: root.gSync()
                                     }
                                     Pill {
                                         label: "Edit birthdays.txt"
