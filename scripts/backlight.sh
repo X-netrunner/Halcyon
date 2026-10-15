@@ -8,6 +8,9 @@
 #   3. logind SetBrightness   (D-Bus; needs no group at all inside a normal login session)
 # This is the "driver" layer for the screen and the keyboard light: the kernel driver (acpi_video, intel/amdgpu backlight,
 # asus-wmi, thinkpad_acpi, dell-laptop, ...) creates the sysfs device, this script only talks to it.
+# Native helper: `hal backlight` (src/hal, built by install.sh). While it is not built yet, the shell code below does the same job.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+[ -x "$hal" ] && exec "$hal" backlight "$@"
 best_screen() {
   local best="" bmax=0 m d
   for d in /sys/class/backlight/*; do

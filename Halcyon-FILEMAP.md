@@ -151,7 +151,8 @@ What every file and folder does. This is a separate notes file, it is not part o
 |---|---|
 | `hx` | The multitool: island data feeds (audio, Bluetooth, Wi-Fi, stats, per-window RAM / CPU), wallpaper palette, profile-picture constellation, focus mode, sysmode status, IDS, attacker dossier. One file per job in `src/hx/src/`. |
 | `power-manager` | The Auto power manager (switches profiles by battery / load). |
-| `touchpad-gestures` | Live 1:1 gesture tracker and touchpad edge gestures (volume, brightness, track). |
+| `touchpad-gestures` | Live 1:1 gesture tracker and touchpad edge gestures (volume, brightness, track). `classify.rs` decides pinch vs swipe (pure, unit-tested). |
+| `hal` | Rust ports of `input-conf.sh`, `ws-nav.sh`, `brightness.sh`, `backlight.sh` (`hal input / wsnav / brightness / backlight`). No dependencies. The scripts call it when built and keep their shell code as the fallback. |
 | `birthday-sync` | Google Birthdays calendar to `birthdays.txt`. |
 | `safety-check` | One-command update, malware / rootkit scan, firewall and audit check, backup. |
 | `recon-deceiver` | Multi-port honeypot daemon (sysmode). |

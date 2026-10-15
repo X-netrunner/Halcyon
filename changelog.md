@@ -1,3 +1,8 @@
+## Notification box closed itself about a second after opening
+- **Cause:** `shell.qml` counted `notifs.centerOpen` as an "overlay", so opening the box scheduled `notifs.raise()` (260 ms later). `raise()` un-maps the notification window for 60 ms; the edge strip reported "pointer left", `closeT` (700 ms) started, and because the pointer had not moved no new "enter" came to cancel it.
+- **Fix:** `notifs.centerOpen` is no longer part of `anyOverlay` (`shell.qml`), and `Notifs.setHover(false)` is ignored while the window is being re-mapped (`cycling`). Raising for toasts and for other overlays is unchanged.
+- Changed: `quickshell/island/shell.qml`, `quickshell/island/Notifs.qml`.
+
 ## Desktop builder, corner boxes and a quicker launcher
 - **Settings > Appearance > Desktop builder** (also `>desktop builder` in the launcher): one window with a small live picture of the screen. **Wallpaper on / off** (off = a plain theme-colour, black or gradient background; no picture is decoded, so it also saves RAM; the colours still follow the last wallpaper), **wallpaper blur**, and **moving stars** over the wallpaper or over the plain background (amount, speed, size, direction, colours, twinkle, an occasional shooting star; they stand still in Gaming mode).
 - **Where the boxes open**: the utilities box, the background apps box and the console can each open from the top-left, bottom-left or bottom-right corner (click a box in the picture, then a corner; a taken corner swaps). The top-right corner stays with the notifications, whose trigger can be the right edge or that corner.

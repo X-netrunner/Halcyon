@@ -91,7 +91,7 @@ function fish_greeting
         if test $mt -gt 0
             set -l used_gb (math -s1 "($mt - $ma) / 1048576")
             set -l tot_gb (math -s1 "$mt / 1048576")
-            set memory "{$used_gb}GB / {$tot_gb}GB"
+            set memory (printf '%sGB / %sGB' $used_gb $tot_gb)
         end
     end
 

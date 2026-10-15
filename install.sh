@@ -20,7 +20,7 @@
 #    6  Rust toolchain (for the helpers below)
 #    7  copies the rice to ~/.config/Halcyon (an older copy is backed up; your hypr-user.lua, scheme/current.lua and
 #       gamemode.conf are kept)
-#    8  builds the Rust helpers (hx, power-manager, touchpad-gestures, birthday-sync)
+#    8  builds the Rust helpers (hx, hal, power-manager, touchpad-gestures, birthday-sync)
 #    9  makes Hyprland load Halcyon (~/.config/hypr/hyprland.lua) + a "Halcyon" login-screen session. NO login manager on
 #       this machine? Then the Halcyon LOCK SCREEN becomes the login screen (tty1 logs you in, Halcyon starts locked)
 #   10  user services (gestures, auto power) + the boot service that saves RAM details for the performance page
@@ -344,7 +344,7 @@ fi
 
 if [[ "$REMOVE_LOGIN" != "true" ]]; then
     [[ -f "$RICE_SOURCE/hyprland.lua" ]] || die "The Halcyon files were not found next to this script (${RICE_SOURCE}). Run install.sh from inside the Halcyon folder."
-    for d in power-manager touchpad-gestures hx recon-deceiver log-analyst attacker-dossier setStaticMac safety-check birthday-sync; do
+    for d in power-manager touchpad-gestures hx hal recon-deceiver log-analyst attacker-dossier setStaticMac safety-check birthday-sync; do
         [[ -f "$RICE_SOURCE/src/$d/Cargo.toml" ]] || die "Missing Rust crate: ${RICE_SOURCE}/src/$d"
     done
     log_info "Halcyon files: ${RICE_SOURCE}"
@@ -1103,7 +1103,7 @@ detect_hardware_tier() {
     elif [[ "$vram_mb" -ge 4000 ]] || ([[ "$ram_gb" -ge 16 ]] && [[ "$cpus" -ge 8 ]]); then
         tier_name="Tier 3: High-Performance / Dedicated GPU"
         rec_model="llama3.2:1b"
-        tier_reason="Strong hardware detected (${cpus} threads, ~${ram_gb} GB RAM, ${gpu_desc}). llama3.2:1b (~1.3 GB) runs in milliseconds with stellar reasoning."
+        tier_reason="Strong hardware detected (${cpus} threads, ~${ram_gb} GB RAM, ${gpu_desc}). llama3.2:1b (~1.3 GB) is fast and good for short, structured tasks. For deeper answers, switch later with: advisor model 3b"
     else
         tier_name="Tier 2: Mid-Range / Standard"
         rec_model="qwen2.5:1.5b"
@@ -1423,7 +1423,7 @@ else
         install_pkgs rust                           # the plain package: nothing is removed, nothing conflicts with rustup
     fi
     rust_ok && log_success "Rust: $(run_as_user rustc --version)" \
-            || warn_later "No working Rust toolchain: the helpers (hx, power-manager, touchpad-gestures, recon-deceiver, log-analyst, attacker-dossier, setStaticMac) cannot be built ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install rustc cargo" || echo "sudo pacman -S rust"))."
+            || warn_later "No working Rust toolchain: the helpers (hx, hal, power-manager, touchpad-gestures, recon-deceiver, log-analyst, attacker-dossier, setStaticMac) cannot be built ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install rustc cargo" || echo "sudo pacman -S rust"))."
 fi
 
 # ---------------------------------------------------------------------------------------------- step 7
@@ -1481,7 +1481,7 @@ BUILD_ROOT="$TARGET_HOME/.cache/halcyon-build"           # outside the rice: the
 run_as_user_cmd "Creating $BIN_DIR" mkdir -p "$BIN_DIR" "$BUILD_ROOT" \
     || die "Cannot create $BIN_DIR$([[ "$LINK_CONFIG" == "true" ]] && echo " (with --link the Halcyon folder itself must be writable by $TARGET_USER)")"
 BUILD_FAILED=()
-CRATES=(hx power-manager touchpad-gestures birthday-sync)    # birthday-sync: Calendar > "Sync Google Birthdays" (installed to ~/.config/Halcyon/bin, no root)
+CRATES=(hx hal power-manager touchpad-gestures birthday-sync)    # hal: Rust ports of input-conf / ws-nav / brightness / backlight (no dependencies, installed to ~/.config/Halcyon/bin). birthday-sync: Calendar > "Sync Google Birthdays" (installed to ~/.config/Halcyon/bin, no root)
 SYSMODE_CRATES=(recon-deceiver log-analyst attacker-dossier setStaticMac)       # only sysmode uses these four: no sysmode, no build
 [[ "$SYSMODE" == "true" ]] && CRATES+=("${SYSMODE_CRATES[@]}")
 [[ "$SAFETY" == "true" ]] && CRATES+=(safety-check)

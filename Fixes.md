@@ -134,3 +134,25 @@ For every change, you will find **What** was fixed, **Why** the issue existed, *
   - `shell.qml` watches `$XDG_RUNTIME_DIR/halcyon-gesture.json` via `FileView { watchChanges: true }` (zero polling).
   - Performing a 3-finger pinch or overview gesture immediately opens `Overview.qml` with `gestureActive = true`, binding `Overview.opacity` and `Overview.scale` directly to your live finger pinch/swipe progress (`gestureProgress`, `gestureScale`) and snapping smoothly on release.
   - Performing a 3-finger or 4-finger swipe mapped to `launcher`, `todo` (Calendar), or `notifcenter` immediately morphs the top island pill in real time with your fingers.
+
+---
+
+## 4. 3-Finger Pinch (Tree View) Fix & Rust Ports of Four Scripts
+
+### 4.1 The pinch
+- **Double toggle (`quickshell/island/shell.qml`)**: a 3-finger pinch could be handled twice: once by the live tracker (`touchpad-gestures` opens / closes the tree view as the fingers move) and once by Hyprland's own gesture, which runs `input-conf.sh run g3-pinch*` -> `ipc overview` when the fingers lift. `overview` is a TOGGLE, so the second call undid the first. The IPC `overview()` now ignores that call while a live overview gesture is running and for 900 ms after it (`overviewGestureEndAt`). With the tracker not running nothing is ignored, so Hyprland's call still works as the fallback. Only relevant when Hyprland reports a 3-finger pinch at all: see 4.3.
+- **Pinch vs swipe (`src/touchpad-gestures/src/classify.rs`, new)**: the old rule locked onto whichever threshold was crossed first. The new rule calls it a pinch whenever the fingers moved against each other by at least half as much as the hand moved (`HALCYON_PINCH_BIAS`). In a replay with noisy synthetic data the old rule dropped to ~4 % correct pinches at a hand drift of 0.15 of the pad, the new one stayed at ~98 %; a clean pinch worked with both, and real swipes were never read as pinches. 60 ms after the last finger lands are ignored (`SETTLE_MS`) so touch-down jitter does not count as movement.
+- Tuning without rebuilding: `HALCYON_PINCH_MIN`, `HALCYON_SWIPE_MIN`, `HALCYON_PINCH_BIAS`, and `HALCYON_GESTURE_DEBUG=1` (see the comments in `systemd/touchpad-gestures.service`).
+
+### 4.2 `hal`: Rust ports (new crate `src/hal`, no dependencies)
+| Shell script | Now | Fallback |
+|---|---|---|
+| `scripts/input-conf.sh` | `hal input conf / mice / set / reset / run` | the original shell code, still in the script |
+| `scripts/ws-nav.sh` | `hal wsnav next / prev / gesture-* / wheel-*` | same |
+| `scripts/brightness.sh` | `hal brightness up / down [percent]` | same |
+| `scripts/backlight.sh` | `hal backlight set / best-screen / kbd` | same |
+
+Each script runs `hal` when `bin/hal` exists and otherwise carries on with its own shell code, so nothing changes until `install.sh` has built the crate. `hal` is a separate crate on purpose: if it ever fails to build, `hx` and the rest are not affected.
+
+### 4.3 Is Hyprland firing the pinch at all?
+`tail -f ~/.cache/island/gesture-run.log` while you pinch (written by `input-conf.sh run`, shell or `hal`). A line means Hyprland fired it; no line means only the live tracker handled it (or nothing did: check `journalctl --user -u touchpad-gestures -e`; the daemon needs the `input` group).

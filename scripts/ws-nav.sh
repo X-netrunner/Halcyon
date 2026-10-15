@@ -13,6 +13,9 @@
 #   ws-swipe4 left | right  which 4-finger swipe means "next" (default left); ignores ws-invert
 #   ws-invert 0 | 1                 reverse the direction of swipes and the wheel (Settings > Workspaces > "Invert workspace scrolling")
 #   ws-max    3..10                 highest workspace number "next" may create (default 9)
+# Native helper: `hal wsnav` (src/hal, built by install.sh). While it is not built yet, the shell code below does the same job.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+[ -x "$hal" ] && exec "$hal" wsnav "$@"
 dir="${1:-next}"
 # trace: which call arrived (tail -f ~/.cache/island/ws-nav.log while you swipe: no line = Hyprland never fired the gesture)
 case "$dir" in gesture*) mkdir -p "$HOME/.cache/island"; echo "$(date +%T) $dir" >> "$HOME/.cache/island/ws-nav.log"; [ "$(wc -l < "$HOME/.cache/island/ws-nav.log")" -gt 200 ] && tail -n 50 "$HOME/.cache/island/ws-nav.log" > "$HOME/.cache/island/ws-nav.log.t" && mv "$HOME/.cache/island/ws-nav.log.t" "$HOME/.cache/island/ws-nav.log" ;; esac

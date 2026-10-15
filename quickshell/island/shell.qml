@@ -740,9 +740,11 @@ ShellRoot {
 
     // Notifications are on top of every window, big ones included. Those open on the same layer and later = above, so whenever one
     // opens while a toast is showing (or a toast arrives while one is open) the notification window is put back on top.
+    // notifs.centerOpen is NOT in this list on purpose: the notification window does not need to raise itself above itself, and the
+    // raise() un-maps the window for a moment, which made the box think the pointer had left and close about a second after opening.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
         || calendar.open || powerMenu.open || tour.open || corner.open || appsWin.open
-        || notifs.centerOpen || settingsWin.galleryOpen || settingsWin.builderOpen
+        || settingsWin.galleryOpen || settingsWin.builderOpen
         || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
     onAnyOverlayChanged: {
@@ -1788,7 +1790,13 @@ ShellRoot {
         target: "island"
         function launcher(): void { root.toggleLauncher() }
         function supertap(): void { root.superTapFired() }
-        function overview(): void { root.toggleOverview() }
+        // Hyprland also reports a pinch and runs this when the fingers lift. The live tracker (touchpad-gestures) has already opened or
+        // closed the tree view by then, and this is a TOGGLE, so it used to undo it. Ignored while the tracker is on it and for a moment
+        // after. With the tracker not running, nothing is ignored: this call is then the only thing that opens it.
+        function overview(): void {
+            if ((root.gestureActive && root.gestureTarget === "overview") || (Date.now() - root.overviewGestureEndAt) < 900) return
+            root.toggleOverview()
+        }
         function home(): void { root.page = "home" }
         function media(): void { root.page = "media" }
         function perf(): void { root.page = "perf" }
@@ -1851,6 +1859,7 @@ ShellRoot {
     property real gestureScale: 1.0
     property string gestureTarget: ""
     property bool gestureStartOpen: false
+    property double overviewGestureEndAt: 0     // when a live 3 / 4 finger gesture last decided the tree view (see overview() in the IpcHandler)
     property bool winLinger: false
 
     Connections {
@@ -1918,6 +1927,7 @@ ShellRoot {
                 } else if (ph === "end") {
                     var finalMag = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(sc - 1.0) / 0.35)
                     if (root.gestureTarget === "overview") {
+                        root.overviewGestureEndAt = Date.now()
                         if (root.gestureStartOpen && finalMag > 0.32) root.overviewOpen = false
                         else if (!root.gestureStartOpen && finalMag < 0.25) root.overviewOpen = false
                         else root.overviewOpen = true
