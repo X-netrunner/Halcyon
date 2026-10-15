@@ -19,7 +19,11 @@ State: ~/.local/state/island/calendar/  (config.json is private to you, events.j
 Not included: Google *Tasks* (the to-do list) is not part of the iCal address, only calendar events are.
 """
 import calendar as _cal
+import csv
 import datetime as dt
+import io
+import urllib.parse
+import zipfile
 import hashlib
 import json
 import os
@@ -350,8 +354,13 @@ def build(raw, calname, win_from, win_to):
 
 # ------------------------------------------------------------------ commands
 def fetch(url):
-    url = re.sub(r"^webcal://", "https://", url.strip(), flags=re.I)
-    if not re.match(r"^https://", url, re.I):         # the address is a password: never send it unencrypted (or to file:// / ftp://)
+    url = url.strip()
+    if url.startswith("file://") or (url.startswith("/") and os.path.isfile(url)):
+        fp = url.replace("file://", "")
+        with open(fp, "r", encoding="utf-8", errors="replace") as f:
+            return f.read(MAX_FEED)
+    url = re.sub(r"^webcal://", "https://", url, flags=re.I)
+    if not re.match(r"^https://", url, re.I):         # the address is a password: never send it unencrypted
         raise ValueError("only https:// calendar addresses are accepted")
     ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Halcyon-calendar/1"
     try:
@@ -507,7 +516,7 @@ def load_birthday_events(win_from, win_to):
                 continue
 
             age_str = ""
-            if birth_year and birth_year <= y:
+            if birth_year and 1900 <= birth_year < y:
                 age = y - birth_year
                 suffix = "th" if 11 <= (age % 100) <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(age % 10, "th")
                 age_str = f" ({age}{suffix})"
@@ -1016,7 +1025,13 @@ def cmd_add_birthday(name, date_str, year=None):
     if not updated:
         bj.append({"name": name, "month": mo, "day": day, "year": yr})
     save(BIRTHDAYS_JSON, bj)
-    cmd_sync()
+    import io as _io
+    old_stdout = sys.stdout
+    try:
+        sys.stdout = _io.StringIO()
+        cmd_sync()
+    finally:
+        sys.stdout = old_stdout
     print(json.dumps({"ok": True, "name": name, "month": mo, "day": day, "year": yr}))
     return 0
 
@@ -1025,20 +1040,132 @@ IMPORT_BEGIN = "# >>> imported from contacts (managed by Halcyon: importing agai
 IMPORT_END = "# <<< end of imported contacts <<<"
 
 
+def parse_bday_date_any(raw):
+    """Parses any date format from Google Contacts CSV, Outlook CSV, Apple/Android vCard:
+    YYYY-MM-DD, --MM-DD, MM/DD/YYYY, DD/MM/YYYY, MM-DD, 'Oct 14, 1998', '14 October' -> (year|None, month, day) or None."""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    m = re.search(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s)
+    if m:
+        yr, mo, da = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if yr < 1900 or yr > 2100:
+            yr = None
+        if 1 <= mo <= 12 and 1 <= da <= 31:
+            return yr, mo, da
+    m = re.search(r"--(\d{2})-?(\d{2})", s)
+    if m:
+        mo, da = int(m.group(1)), int(m.group(2))
+        if 1 <= mo <= 12 and 1 <= da <= 31:
+            return None, mo, da
+    m = re.match(r"^(\d{4})(\d{2})(\d{2})$", s)
+    if m:
+        yr, mo, da = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if yr < 1900 or yr > 2100:
+            yr = None
+        if 1 <= mo <= 12 and 1 <= da <= 31:
+            return yr, mo, da
+    m = re.match(r"^(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?$", s)
+    if m:
+        a, b, y_s = int(m.group(1)), int(m.group(2)), m.group(3)
+        yr = None
+        if y_s:
+            yr = int(y_s)
+            if yr < 100:
+                yr += 1900 if yr > 30 else 2000
+            if yr < 1900 or yr > 2100:
+                yr = None
+        mo, da = (b, a) if (a > 12 and b <= 12) else (a, b)
+        if 1 <= mo <= 12 and 1 <= da <= 31:
+            return yr, mo, da
+    months = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+              "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
+    m = re.search(r"([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:,?\s*(\d{4}))?", s)
+    if m and m.group(1)[:3].lower() in months:
+        mo, da = months[m.group(1)[:3].lower()], int(m.group(2))
+        yr = int(m.group(3)) if m.group(3) else None
+        if 1 <= mo <= 12 and 1 <= da <= 31:
+            return yr, mo, da
+    m = re.search(r"(\d{1,2})\s+([A-Za-z]{3,9})\.?(?:,?\s*(\d{4}))?", s)
+    if m and m.group(2)[:3].lower() in months:
+        mo, da = months[m.group(2)[:3].lower()], int(m.group(1))
+        yr = int(m.group(3)) if m.group(3) else None
+        if 1 <= mo <= 12 and 1 <= da <= 31:
+            return yr, mo, da
+    return None
+
+
+def parse_contacts_csv(text):
+    """Parses Google Contacts CSV or Outlook CSV export for birthdays."""
+    out = []
+    try:
+        reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+        for row in reader:
+            if not isinstance(row, dict):
+                continue
+            bday_raw = ""
+            for k, v in row.items():
+                if k and "birthday" in k.lower() and v and v.strip():
+                    bday_raw = v.strip()
+                    break
+            if not bday_raw:
+                continue
+            parsed = parse_bday_date_any(bday_raw)
+            if not parsed:
+                continue
+            yr, mo, da = parsed
+            name = (
+                row.get("Name")
+                or " ".join(
+                    p.strip()
+                    for p in [
+                        row.get("First Name") or row.get("Given Name") or "",
+                        row.get("Middle Name") or row.get("Additional Name") or "",
+                        row.get("Last Name") or row.get("Family Name") or "",
+                    ]
+                    if p and p.strip()
+                )
+                or row.get("Nickname")
+                or row.get("File As")
+                or ""
+            ).strip()
+            if name:
+                out.append({"name": name, "year": yr, "month": mo, "day": da})
+    except Exception:
+        pass
+    return out
+
+
 def find_contacts_vcf():
-    """Newest .vcf with contacts in Downloads (then Documents, Desktop, home). Google exports it as contacts.vcf."""
+    """Newest contacts export (.vcf, .vcard, Google Contacts .csv, or .zip) in Downloads, Documents, Desktop, home, or local contacts."""
     import glob
     home = os.path.expanduser("~")
     found = []
-    for d in ("Downloads", "Documents", "Desktop", ""):
-        for p in glob.glob(os.path.join(home, d, "*.vcf")):
-            try:
-                with open(p, "r", encoding="utf-8", errors="replace") as f:
-                    if "BEGIN:VCARD" in f.read(4096).upper():
-                        found.append((("contact" in os.path.basename(p).lower()), os.path.getmtime(p), p))
-            except Exception:
-                pass
-    found.sort(reverse=True)
+    for d in ("Downloads", "Documents", "Desktop", "", ".local/share/contacts", ".contacts"):
+        base_dir = os.path.join(home, d)
+        if not os.path.isdir(base_dir):
+            continue
+        for pat in ("*.vcf", "*.vcard", "*.csv", "*.ics", "*.zip"):
+            for p in glob.glob(os.path.join(base_dir, pat)):
+                bn = os.path.basename(p).lower()
+                try:
+                    mt = os.path.getmtime(p)
+                    if bn.endswith((".vcf", ".vcard")):
+                        with open(p, "r", encoding="utf-8", errors="replace") as f:
+                            if "BEGIN:VCARD" in f.read(4096).upper():
+                                found.append((2 if "contact" in bn else 1, mt, p))
+                    elif bn.endswith(".csv") and any(k in bn for k in ("contact", "google", "outlook", "birthday", "export")):
+                        with open(p, "r", encoding="utf-8", errors="replace") as f:
+                            head_line = f.readline().lower()
+                            if "birthday" in head_line and ("name" in head_line or "given" in head_line):
+                                found.append((2, mt, p))
+                    elif bn.endswith(".ics") and any(k in bn for k in ("birthday", "contact", "addressbook")):
+                        found.append((1, mt, p))
+                    elif bn.endswith(".zip") and any(k in bn for k in ("contact", "ical", "calendar", "takeout", "birthday")):
+                        found.append((1, mt, p))
+                except Exception:
+                    pass
+    found.sort(key=lambda x: (x[1], x[0]), reverse=True)
     return found[0][2] if found else None
 
 
@@ -1059,17 +1186,45 @@ def cmd_import_birthdays(file_path=None):
                "No contacts .vcf found in Downloads. At contacts.google.com choose Export > vCard (for Google Contacts), save it, then try again.")
         print(json.dumps({"ok": False, "error": msg}))
         return 1
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
-    except Exception as e:
-        print(json.dumps({"ok": False, "error": str(e)}))
-        return 1
-
     new_birthdays = []
-    if "BEGIN:VCARD" in content.upper():
+    if path.lower().endswith(".zip") and zipfile.is_zipfile(path):
+        try:
+            with zipfile.ZipFile(path, "r") as zf:
+                for zname in zf.namelist():
+                    zl = zname.lower()
+                    if zl.endswith((".vcf", ".vcard", ".csv", ".ics")):
+                        ztxt = zf.read(zname).decode("utf-8-sig", errors="replace")
+                        if "BEGIN:VCARD" in ztxt.upper():
+                            new_birthdays.extend(parse_vcf(ztxt))
+                        elif zl.endswith(".csv"):
+                            new_birthdays.extend(parse_contacts_csv(ztxt))
+                        elif "BEGIN:VCALENDAR" in ztxt.upper() and ("birthday" in zl or "contacts" in zl or "addressbook" in zl):
+                            for ev in parse_events(ztxt, "Birthdays"):
+                                p = ev.get("props", {})
+                                summary = unescape(p.get("SUMMARY", ("", ""))[1]).strip()
+                                dtstart = p.get("DTSTART", ("", ""))[1]
+                                if summary and dtstart:
+                                    clean_name = re.sub(r"['’]s Birthday.*| Birthday$", "", summary, flags=re.I).replace("🎂", "").strip()
+                                    m = re.match(r"(\d{4})(\d{2})(\d{2})", dtstart)
+                                    if m and clean_name:
+                                        new_birthdays.append({"name": clean_name, "year": None, "month": int(m.group(2)), "day": int(m.group(3))})
+        except Exception as e:
+            print(json.dumps({"ok": False, "error": str(e)}))
+            return 1
+        content = ""
+    else:
+        try:
+            with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+                content = f.read()
+        except Exception as e:
+            print(json.dumps({"ok": False, "error": str(e)}))
+            return 1
+
+    if content and "BEGIN:VCARD" in content.upper():
         new_birthdays = parse_vcf(content)
-    elif "BEGIN:VCALENDAR" in content.upper():
+    elif content and path.lower().endswith(".csv"):
+        new_birthdays = parse_contacts_csv(content)
+    elif content and "BEGIN:VCALENDAR" in content.upper():
         raw = parse_events(content, "Birthdays")
         for ev in raw:
             p = ev.get("props", {})
@@ -1079,7 +1234,7 @@ def cmd_import_birthdays(file_path=None):
                 clean_name = re.sub(r"'s Birthday.*", "", summary, flags=re.I).strip()
                 m = re.match(r"(\d{4})(\d{2})(\d{2})", dtstart)
                 if m:
-                    new_birthdays.append({"name": clean_name, "year": int(m.group(1)), "month": int(m.group(2)), "day": int(m.group(3))})
+                    new_birthdays.append({"name": clean_name, "year": None, "month": int(m.group(2)), "day": int(m.group(3))})
     else:
         for line in content.splitlines():
             line = line.strip()
@@ -1169,6 +1324,237 @@ def cmd_list_countries():
     return 0
 
 
+
+
+def cmd_list_birthdays():
+    """Returns all birthdays from birthdays.txt and birthdays.json sorted by upcoming date."""
+    b_list = []
+    bj = load(BIRTHDAYS_JSON, [])
+    if isinstance(bj, list):
+        b_list.extend(bj)
+    if os.path.isfile(BIRTHDAYS_FILE):
+        try:
+            with open(BIRTHDAYS_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    m = re.match(r"^(\d{1,2})[-/](\d{1,2})\s+([^(]+)(?:\((\d{4})\))?", line)
+                    if m:
+                        b_list.append({"name": m.group(3).strip(), "month": int(m.group(1)), "day": int(m.group(2)), "year": int(m.group(4)) if m.group(4) else None})
+                    else:
+                        m2 = re.match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(.+)", line)
+                        if m2:
+                            b_list.append({"name": m2.group(4).strip(), "year": int(m2.group(1)), "month": int(m2.group(2)), "day": int(m2.group(3))})
+        except Exception:
+            pass
+    seen = {}
+    for b in b_list:
+        nm = str(b.get("name", "")).strip()
+        mo = int(b.get("month", 0) or 0)
+        da = int(b.get("day", 0) or 0)
+        if not nm or not (1 <= mo <= 12 and 1 <= da <= 31):
+            continue
+        key = (nm.lower(), mo, da)
+        if key not in seen or (b.get("year") and not seen[key].get("year")):
+            seen[key] = {"name": nm, "month": mo, "day": da, "year": b.get("year")}
+    today = dt.date.today()
+    out = []
+    for b in seen.values():
+        mo, da, yr = b["month"], b["day"], b.get("year")
+        try:
+            nxt = dt.date(today.year, mo, da)
+        except ValueError:
+            nxt = dt.date(today.year, 2, 28)
+        if nxt < today:
+            try:
+                nxt = dt.date(today.year + 1, mo, da)
+            except ValueError:
+                nxt = dt.date(today.year + 1, 2, 28)
+        days_until = (nxt - today).days
+        age_next = (nxt.year - int(yr)) if (yr and int(yr) <= nxt.year) else None
+        out.append({
+            "name": b["name"],
+            "month": mo,
+            "day": da,
+            "mmdd": f"{mo:02d}-{da:02d}",
+            "year": yr,
+            "daysUntil": days_until,
+            "ageNext": age_next,
+        })
+    out.sort(key=lambda x: (x["daysUntil"], x["name"].lower()))
+    print(json.dumps({"ok": True, "count": len(out), "birthdays": out}, ensure_ascii=False))
+    return 0
+
+
+def cmd_remove_birthday(name):
+    target = (name or "").strip().lower()
+    if not target:
+        print(json.dumps({"ok": False, "error": "Missing name"}))
+        return 1
+    bj = load(BIRTHDAYS_JSON, [])
+    if isinstance(bj, list):
+        bj = [b for b in bj if str(b.get("name", "")).strip().lower() != target]
+        save(BIRTHDAYS_JSON, bj)
+    if os.path.isfile(BIRTHDAYS_FILE):
+        try:
+            with open(BIRTHDAYS_FILE, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            kept = []
+            for ln in lines:
+                s_ln = ln.strip()
+                if not s_ln or s_ln.startswith("#"):
+                    kept.append(ln)
+                    continue
+                m = re.match(r"^(?:\d{4}[-/])?\d{1,2}[-/]\d{1,2}\s+([^(]+)", s_ln)
+                if m and m.group(1).strip().lower() == target:
+                    continue
+                kept.append(ln)
+            with open(BIRTHDAYS_FILE, "w", encoding="utf-8") as f:
+                f.write("\n".join(kept) + "\n")
+        except Exception:
+            pass
+    cmd_sync()
+    print(json.dumps({"ok": True}))
+    return 0
+
+
+def cmd_auto_grab():
+    """Scans ~/Downloads for newly exported Google Contacts (.vcf/.csv) or Google Calendar (.ics/.zip) files
+    and imports them automatically so users don't have to copy-paste URLs or pick files."""
+    scan_file = os.path.join(STATE, "autoscan.json")
+    seen = load(scan_file, {})
+    added_cals = 0
+    added_bdays = 0
+    last_file = ""
+
+    # 1. Check newest contacts export
+    cand = find_contacts_vcf()
+    if cand and os.path.isfile(cand):
+        mt = round(os.path.getmtime(cand), 2)
+        if seen.get("bday:" + cand) != mt:
+            seen["bday:" + cand] = mt
+            # Run silent import
+            import io as _io
+            old_stdout = sys.stdout
+            buf = _io.StringIO()
+            try:
+                sys.stdout = buf
+                rc = cmd_import_birthdays(cand)
+            finally:
+                sys.stdout = old_stdout
+            if rc == 0:
+                try:
+                    r = json.loads(buf.getvalue().strip().splitlines()[-1])
+                    if r.get("ok"):
+                        added_bdays += int(r.get("count", 0))
+                        last_file = os.path.basename(cand)
+                except Exception:
+                    pass
+
+    # 2. Check ~/Downloads for Google Calendar export .zip or .ics
+    dl = os.path.join(os.path.expanduser("~"), "Downloads")
+    if os.path.isdir(dl):
+        c = conf()
+        existing_urls = {x.get("url") for x in c.get("calendars", [])}
+        local_ics_dir = os.path.join(STATE, "imported_ics")
+        for fn in sorted(os.listdir(dl)):
+            full = os.path.join(dl, fn)
+            if not os.path.isfile(full):
+                continue
+            low = fn.lower()
+            mt = round(os.path.getmtime(full), 2)
+            if seen.get("cal:" + full) == mt:
+                continue
+            if low.endswith(".ics") and not any(k in low for k in ("birthday", "contact")):
+                seen["cal:" + full] = mt
+                try:
+                    with open(full, "r", encoding="utf-8", errors="replace") as f:
+                        txt = f.read(MAX_FEED)
+                    if "BEGIN:VCALENDAR" in txt:
+                        os.makedirs(local_ics_dir, mode=0o700, exist_ok=True)
+                        dest = os.path.join(local_ics_dir, fn)
+                        with open(dest, "w", encoding="utf-8") as wf:
+                            wf.write(txt)
+                        u = "file://" + dest
+                        if u not in existing_urls:
+                            m = re.search(r"^X-WR-CALNAME:(.+)$", txt, re.M)
+                            cname = unescape(m.group(1).strip()) if m else os.path.splitext(fn)[0]
+                            c["calendars"].append({"url": u, "name": cname})
+                            existing_urls.add(u)
+                            added_cals += 1
+                            last_file = fn
+                except Exception:
+                    pass
+            elif low.endswith(".zip") and ("ical" in low or "@gmail" in low or "calendar" in low):
+                seen["cal:" + full] = mt
+                try:
+                    if zipfile.is_zipfile(full):
+                        with zipfile.ZipFile(full, "r") as zf:
+                            for zname in zf.namelist():
+                                if not zname.lower().endswith(".ics"):
+                                    continue
+                                raw = zf.read(zname).decode("utf-8", errors="replace")
+                                if "BEGIN:VCALENDAR" not in raw:
+                                    continue
+                                if "addressbook#contacts" in zname or "birthday" in zname.lower():
+                                    # Extract birthday events from Google Calendar export zip!
+                                    os.makedirs(local_ics_dir, mode=0o700, exist_ok=True)
+                                    b_ics = os.path.join(local_ics_dir, "google_birthdays_export.ics")
+                                    with open(b_ics, "w", encoding="utf-8") as wf:
+                                        wf.write(raw)
+                                    import io as _io
+                                    old_stdout = sys.stdout
+                                    buf = _io.StringIO()
+                                    try:
+                                        sys.stdout = buf
+                                        rc = cmd_import_birthdays(b_ics)
+                                    finally:
+                                        sys.stdout = old_stdout
+                                    if rc == 0:
+                                        try:
+                                            r = json.loads(buf.getvalue().strip().splitlines()[-1])
+                                            if r.get("ok"):
+                                                added_bdays += int(r.get("count", 0))
+                                        except Exception:
+                                            pass
+                                else:
+                                    os.makedirs(local_ics_dir, mode=0o700, exist_ok=True)
+                                    safe_bn = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(zname))
+                                    dest = os.path.join(local_ics_dir, safe_bn)
+                                    with open(dest, "w", encoding="utf-8") as wf:
+                                        wf.write(raw)
+                                    u = "file://" + dest
+                                    if u not in existing_urls:
+                                        m = re.search(r"^X-WR-CALNAME:(.+)$", raw, re.M)
+                                        cname = unescape(m.group(1).strip()) if m else os.path.splitext(os.path.basename(zname))[0]
+                                        c["calendars"].append({"url": u, "name": cname})
+                                        existing_urls.add(u)
+                                        added_cals += 1
+                                        last_file = fn
+                except Exception:
+                    pass
+        if added_cals > 0:
+            save(CONF, c, private=True)
+
+    save(scan_file, seen)
+    if added_cals > 0 or added_bdays > 0:
+        import io as _io
+        old_stdout = sys.stdout
+        try:
+            sys.stdout = _io.StringIO()
+            cmd_sync()
+        finally:
+            sys.stdout = old_stdout
+    print(json.dumps({
+        "ok": True,
+        "addedCalendars": added_cals,
+        "addedBirthdays": added_bdays,
+        "file": last_file,
+    }))
+    return 0
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -1208,6 +1594,12 @@ def main(argv):
         return cmd_list_countries()
     elif a == "add-birthday" and len(argv) >= 4:
         return cmd_add_birthday(argv[2], argv[3], argv[4] if len(argv) >= 5 else None)
+    elif a == "list-birthdays":
+        return cmd_list_birthdays()
+    elif a == "remove-birthday" and len(argv) >= 3:
+        return cmd_remove_birthday(argv[2])
+    elif a == "auto-grab":
+        return cmd_auto_grab()
     elif a == "import-birthdays":
         return cmd_import_birthdays(argv[2] if len(argv) >= 3 else None)
     else:

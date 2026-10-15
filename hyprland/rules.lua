@@ -13,11 +13,18 @@ hl.layer_rule({ match = { namespace = "notification" }, blur = true })
 -- glass body gets frosted while the soft shadow around it stays clear.
 -- Keep ignore_alpha ABOVE the shadow strength and BELOW the glass opacity (Pal.qml: glassBar 0.58 / glassBarOpen 0.74,
 -- glass 0.80, glassSolid 0.94). The bar is the lightest, so it needs the lowest threshold.
-local glass = { island = 0.40, ["island-notch"] = 0.40, ["island-panel"] = 0.55, ["island-notifs"] = 0.55, ["island-term"] = 0.55, ["island-overview"] = 0.55,
-    -- full-screen overlays (power menu, settings): a dim sheet over everything, blurred behind it
-    ["island-power"] = 0.2, ["island-settings"] = 0.2, ["island-barbuilder"] = 0.2, ["island-gallery"] = 0.2, ["island-startup"] = 0.2,
-    -- bottom-left background-apps box
-    ["island-apps"] = 0.55 }
+-- Memory optimization: only enable multi-pass Kawase blur on compact floating bar & corner surfaces.
+-- Full-screen overlay layers (island-overview, island-settings, island-barbuilder, island-gallery,
+-- island-startup, island-power) already draw their own dimmed backdrop and solid cards; avoiding
+-- full-screen 1920x1080 blur FBOs cuts Hyprland VRAM and RSS significantly.
+local glass = {
+    island = 0.40,
+    ["island-notch"] = 0.40,
+    ["island-panel"] = 0.55,
+    ["island-notifs"] = 0.55,
+    ["island-term"] = 0.55,
+    ["island-apps"] = 0.55,
+}
 for ns, a in pairs(glass) do
     hl.layer_rule({ match = { namespace = ns }, blur = true, ignore_alpha = a })
 end

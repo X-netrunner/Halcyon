@@ -9,6 +9,8 @@ Item {
     property int dots: 12
     property real artStrength: 1.0
     property real artFit: 0.9
+    property real dotAlpha: 1.0        // brightness multiplier of the drifting dots
+    property real dotDrift: 8          // how far (px) each dot wanders
     property real artShift: 0          // push the art sideways (px), e.g. towards a corner
     property real energy: 0            // 0..1 flare of the constellation (the lock screen kicks it on every key press)
     // secure / relaxed (and any non-flagship mode): the user's profile picture as a constellation (`hx stars`, owned by shell.qml)
@@ -49,9 +51,9 @@ Item {
             height: width
             radius: width / 2
             // on a solid black box the faint tinted dots would vanish: same accent colour, much brighter
-            color: root.pal.solid ? Qt.alpha(Qt.lighter(root.pal.accent, 1.25), 0.45 + (index % 4) * 0.09) : Qt.alpha(root.pal.accent, 0.10 + (index % 4) * 0.03)
-            x: root.width * fx + 8 * Math.sin(6.2832 * (40 + index * 11 % 50) * root.tt / 1000 + index)
-            y: root.height * fy + 8 * Math.cos(6.2832 * (40 + index * 17 % 50) * root.tt / 1000 + index * 2)
+            color: root.pal.solid ? Qt.alpha(Qt.lighter(root.pal.accent, 1.25), 0.45 + (index % 4) * 0.09) : Qt.alpha(root.pal.accent, Math.min(0.85, (0.10 + (index % 4) * 0.03) * root.dotAlpha))
+            x: root.width * fx + root.dotDrift * Math.sin(6.2832 * (40 + index * 11 % 50) * root.tt / 1000 + index)
+            y: root.height * fy + root.dotDrift * Math.cos(6.2832 * (40 + index * 17 % 50) * root.tt / 1000 + index * 2)
         }
     }
 }

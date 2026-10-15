@@ -47,18 +47,18 @@ return {
 
     -- Frosted glass behind translucent things (bar, panels, notifications, overlays)
     blurEnabled                = true,
-    blurSize                   = 7,
-    blurPasses                 = 3,
+    blurSize                   = 6,
+    blurPasses                 = 2,
     blurNoise                  = 0.022,    -- fine film grain: this is the "texture"
     blurVibrancy               = 0.14,
-    blurSpecialWs              = true,
+    blurSpecialWs              = false,
     blurPopups                 = true,
     blurInputMethods           = true,
     blurXray                   = false,
 
     -- Soft, wide, low-contrast shadow that lifts the focused window a little
     shadowEnabled              = true,
-    shadowRange                = 32,
+    shadowRange                = 22,
     shadowRenderPower          = 3,
     shadowColour               = "rgba(00000058)",
     shadowColourInactive       = "rgba(00000024)",
