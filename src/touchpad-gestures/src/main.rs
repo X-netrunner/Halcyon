@@ -1,3 +1,5 @@
+mod classify;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -6,6 +8,10 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use evdev::{AbsoluteAxisType, Device, EventType};
+
+/// Fingers land one after the other and jitter for a moment: movement in the first few milliseconds after the
+/// last finger touches down is not counted as a swipe or a pinch.
+const SETTLE_MS: u64 = 60;
 
 static CMD_CHANNEL: OnceLock<Sender<(&'static str, Vec<String>)>> = OnceLock::new();
 
@@ -223,6 +229,12 @@ fn main() {
     let mut mf_dir = String::new();
     let mut mf_action = String::new();
     let mut mf_last_emit = Instant::now();
+    let mut mf_settle_until = Instant::now();
+    let thresholds = classify::Thresholds::from_env();
+    let debug = std::env::var("HALCYON_GESTURE_DEBUG").is_ok();
+    if debug {
+        eprintln!("gesture thresholds: {:?}", thresholds);
+    }
     let mut gestures_conf: HashMap<String, String> = HashMap::new();
     let mut last_conf_load = Instant::now() - Duration::from_secs(10);
     load_gestures_conf(&mut last_conf_load, &mut gestures_conf);
@@ -393,6 +405,15 @@ fn main() {
                                 mf_action.clear();
                                 write_gesture_state("begin", n, 0.0, 0.0, 1.0, "", "");
                                 mf_last_emit = Instant::now();
+                                mf_settle_until = Instant::now() + Duration::from_millis(SETTLE_MS);
+                                continue;
+                            }
+
+                            if Instant::now() < mf_settle_until {
+                                // fingers are still landing: keep re-basing so touch-down jitter is not movement
+                                mf_start_cx = cx;
+                                mf_start_cy = cy;
+                                mf_start_spread = spread;
                                 continue;
                             }
 
@@ -402,24 +423,20 @@ fn main() {
                             mf_scale = (spread / mf_start_spread).clamp(0.35, 2.2);
 
                             if mf_dir.is_empty() {
-                                let pinch_d = (mf_scale - 1.0).abs();
-                                let move_d = (mf_dx * mf_dx + mf_dy * mf_dy).sqrt();
-                                if pinch_d > 0.15 && pinch_d > move_d * 0.45 {
-                                    let pdir = if mf_scale < 1.0 { "pinchin" } else { "pinchout" };
-                                    mf_dir = pdir.to_string();
-                                    let key = format!("g{}-{}", n, pdir);
+                                // pinch or swipe? see classify.rs: a pinch wins whenever the fingers moved against
+                                // each other by a fair share of the movement, so hand drift no longer turns it into a swipe
+                                let radial = spread - mf_start_spread;
+                                let kind = classify::classify(&thresholds, radial, cx - mf_start_cx, cy - mf_start_cy);
+                                if let Some(name) = kind.name() {
+                                    mf_dir = name.to_string();
+                                    let key = format!("g{}-{}", n, name);
                                     mf_action = gestures_conf.get(&key).cloned().unwrap_or_else(|| "none".into());
-                                } else if move_d > 0.14 {
-                                    let dname = if mf_dx.abs() > mf_dy.abs() * 1.15 {
-                                        if mf_dx < 0.0 { "left" } else { "right" }
-                                    } else if mf_dy < 0.0 {
-                                        "up"
-                                    } else {
-                                        "down"
-                                    };
-                                    mf_dir = dname.to_string();
-                                    let key = format!("g{}-{}", n, dname);
-                                    mf_action = gestures_conf.get(&key).cloned().unwrap_or_else(|| "none".into());
+                                    if debug {
+                                        eprintln!(
+                                            "{} fingers: {} (radial {:.3}, drift {:.3},{:.3}) -> {}",
+                                            n, name, radial, cx - mf_start_cx, cy - mf_start_cy, mf_action
+                                        );
+                                    }
                                 }
                             }
 

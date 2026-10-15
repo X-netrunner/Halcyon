@@ -9,6 +9,14 @@ Modes:
   adaptive-advisor.py --fix               -> Automatically applies recommended quick-fixes (trims memory, etc.)
   adaptive-advisor.py --llm               -> Synthesizes situational advice using local Ollama LLM
   adaptive-advisor.py "your question..."  -> Answers natural language questions with live hardware context
+  adaptive-advisor.py model               -> Show current model and installed models
+  adaptive-advisor.py model 3b            -> Switch to llama3.2:3b (pulls it if missing)
+  adaptive-advisor.py model <name>        -> Switch to any Ollama model (e.g. qwen2.5:3b)
+  adaptive-advisor.py triage "text"       -> Tag a notification (urgent/chat/system/promo) + one-line summary
+  adaptive-advisor.py write "request"     -> Short friendly text (birthday message, reply, description)
+
+Natural language like "I'm presenting" or "make my screen warmer" runs the matching action:
+keywords first, then the model picks from a fixed list (it can never run anything outside ACTIONS).
 """
 
 import os
@@ -19,6 +27,7 @@ import re
 import subprocess
 import shutil
 import urllib.request
+import urllib.error
 
 HOME = os.path.expanduser("~")
 RICE = os.environ.get("HALCYON_DIR", os.path.join(HOME, ".config/Halcyon"))
@@ -277,6 +286,60 @@ def apply_fixes():
 
     print("\n✔ Optimization complete! Run 'advisor' to view updated score.")
 
+MODEL_ALIASES = {
+    "1b": "llama3.2:1b",
+    "3b": "llama3.2:3b",
+    "llama1b": "llama3.2:1b",
+    "llama3b": "llama3.2:3b",
+    "qwen1.5b": "qwen2.5:1.5b",
+    "qwen3b": "qwen2.5:3b",
+    "qwen4b": "qwen3:4b",
+}
+
+def installed_models():
+    try:
+        out = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=5).stdout
+        return [l.split()[0] for l in out.splitlines()[1:] if l.strip()]
+    except Exception:
+        return []
+
+def free_ram_mb():
+    try:
+        for line in read_file("/proc/meminfo").splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except Exception:
+        pass
+    return 0
+
+def model_command(args):
+    """advisor model [name|alias]"""
+    current = get_advisor_model()
+    have = installed_models()
+    if not args:
+        print(f"Current model : {current}")
+        print("Installed     : " + (", ".join(have) if have else "(none found - is ollama running?)"))
+        print("Aliases       : " + ", ".join(f"{k}={v}" for k, v in MODEL_ALIASES.items()))
+        print("\nSwitch with: advisor model 3b")
+        return
+    name = MODEL_ALIASES.get(args[0].lower(), args[0])
+    if not any(m == name or m.startswith(name + ":") or m.split(":")[0] == name for m in have):
+        free = free_ram_mb()
+        print(f"[*] '{name}' is not installed. Pulling it now (this can take a few minutes)...")
+        if free and free < 3000 and "3b" in name:
+            print(f"[!] Only ~{free} MB RAM free. A 3B model wants roughly 3 GB headroom; it may be slow.")
+        r = subprocess.run(["ollama", "pull", name])
+        if r.returncode != 0:
+            print(f"[!] Pull failed. Keeping '{current}'.")
+            return
+    os.makedirs(RICE, exist_ok=True)
+    conf = os.path.join(RICE, "ai-advisor.conf")
+    with open(conf, "w") as f:
+        f.write(f'MODEL="{name}"\n')
+    print(f"✔ Advisor model set to {name}  (saved in {conf})")
+    if os.environ.get("HALCYON_AI_MODEL"):
+        print("[!] HALCYON_AI_MODEL is set in your shell and overrides this. Unset it to use the saved choice.")
+
 def get_advisor_model():
     if os.environ.get("HALCYON_AI_MODEL"):
         return os.environ.get("HALCYON_AI_MODEL").strip()
@@ -300,115 +363,291 @@ def get_advisor_model():
         pass
     return "llama3.2:1b"
 
-def try_dispatch_intent(prompt):
+# ───────────────────────── Actions the advisor can run ─────────────────────────
+
+def _qs(*call):
+    subprocess.run(["quickshell", "ipc", "-p", os.path.join(RICE, "quickshell/island"), "call", *call])
+
+def _script(name, *a):
+    subprocess.run(["bash", os.path.join(RICE, "scripts", name), *a])
+
+# name -> (message, runner, description shown to the model, keywords, needs_confirm_when_inferred)
+ACTIONS = {
+    "mirror":        ("📽️ Executing Projector Mirror Mode...", lambda: _script("display-manager.sh", "mirror"),
+                      "mirror the laptop screen to a projector / TV / external display (presenting)",
+                      ["projector", "mirror", "clone screen", "presentation"], False),
+    "extend-right":  ("🖥️ Extending display to the right...", lambda: _script("display-manager.sh", "extend-right"),
+                      "use an external monitor as a second screen to the right",
+                      ["extend right", "dual screen", "second monitor", "extend display"], False),
+    "extend-left":   ("🖥️ Extending display to the left...", lambda: _script("display-manager.sh", "extend-left"),
+                      "use an external monitor as a second screen to the left",
+                      ["extend left"], False),
+    "internal-only": ("💻 Switching to internal laptop screen only...", lambda: _script("display-manager.sh", "internal-only"),
+                      "turn off external displays and use only the laptop screen",
+                      ["laptop screen only", "single screen", "disconnect display"], True),
+    "gaming":        ("🎮 Toggling Gaming Mode via Quickshell...", lambda: _qs("island", "gaming"),
+                      "toggle gaming mode (max performance, no background animations)",
+                      ["game mode", "gaming mode", "gaming on", "gaming off"], False),
+    "trim-memory":   ("🧹 Trimming Quickshell RAM and cleaning system caches...", lambda: apply_fixes(),
+                      "free up RAM: trim Quickshell memory and flush caches",
+                      ["trim memory", "clean ram", "free memory", "free ram", "flush cache"], True),
+    "caffeine":      ("☕ Toggling Caffeine mode...", lambda: _qs("island", "caffeine"),
+                      "keep the screen awake and stop it from sleeping or locking",
+                      ["caffeine", "stay awake", "keep awake"], False),
+    "dnd":           ("🔕 Toggling Do Not Disturb...", lambda: _qs("island", "dnd"),
+                      "silence notifications / do not disturb / focus time",
+                      ["do not disturb", "dnd", "mute notifications", "silence"], False),
+    "wallpaper":     ("🖼️ Cycling wallpaper...", lambda: _qs("wallpaper", "next"),
+                      "switch to the next wallpaper",
+                      ["next wallpaper", "change wallpaper", "random wallpaper"], False),
+    "nightlight":    ("🌙 Toggling night light...", lambda: _script("toggle_nightlight.sh"),
+                      "warmer screen colour / reduce blue light for the evening",
+                      ["night light", "nightlight", "blue light", "warm screen"], False),
+}
+
+_QUESTION_START = ("why", "what", "how", "which", "who", "when", "where", "is ", "are ", "does ", "do ", "should ", "explain", "tell me")
+
+def looks_like_question(p):
+    p = p.lower().strip()
+    return p.endswith("?") or p.startswith(_QUESTION_START)
+
+def run_action(name):
+    msg, runner = ACTIONS[name][0], ACTIONS[name][1]
+    print(msg)
+    runner()
+
+def try_dispatch_keywords(prompt):
     p = prompt.lower().strip()
-    if any(k in p for k in ["projector", "mirror", "clone screen", "presentation"]):
-        print("📽️ Executing Projector Mirror Mode...")
-        subprocess.run(["bash", os.path.join(RICE, "scripts/display-manager.sh"), "mirror"])
-        return True
-    if any(k in p for k in ["extend right", "dual screen", "second monitor", "extend display"]):
-        print("🖥️ Extending display to the right...")
-        subprocess.run(["bash", os.path.join(RICE, "scripts/display-manager.sh"), "extend-right"])
-        return True
-    if any(k in p for k in ["extend left"]):
-        print("🖥️ Extending display to the left...")
-        subprocess.run(["bash", os.path.join(RICE, "scripts/display-manager.sh"), "extend-left"])
-        return True
-    if any(k in p for k in ["laptop screen only", "single screen", "disconnect display"]):
-        print("💻 Switching to internal laptop screen only...")
-        subprocess.run(["bash", os.path.join(RICE, "scripts/display-manager.sh"), "internal-only"])
-        return True
-    if any(k in p for k in ["game mode", "gaming mode", "gaming on", "gaming off"]):
-        print("🎮 Toggling Gaming Mode via Quickshell...")
-        subprocess.run(["quickshell", "ipc", "-p", os.path.join(RICE, "quickshell/island"), "call", "island", "gaming"])
-        return True
-    if any(k in p for k in ["trim memory", "clean ram", "free memory", "free ram", "flush cache"]):
-        print("🧹 Trimming Quickshell RAM and cleaning system caches...")
-        apply_fixes()
-        return True
-    if any(k in p for k in ["caffeine", "stay awake", "keep awake"]):
-        print("☕ Toggling Caffeine mode...")
-        subprocess.run(["quickshell", "ipc", "-p", os.path.join(RICE, "quickshell/island"), "call", "island", "caffeine"])
-        return True
-    if any(k in p for k in ["do not disturb", "dnd", "mute notifications", "silence"]):
-        print("🔕 Toggling Do Not Disturb...")
-        subprocess.run(["quickshell", "ipc", "-p", os.path.join(RICE, "quickshell/island"), "call", "island", "dnd"])
-        return True
-    if any(k in p for k in ["next wallpaper", "change wallpaper", "random wallpaper"]):
-        print("🖼️ Cycling wallpaper...")
-        subprocess.run(["quickshell", "ipc", "-p", os.path.join(RICE, "quickshell/island"), "call", "wallpaper", "next"])
-        return True
-    if any(k in p for k in ["night light", "nightlight", "blue light", "warm screen"]):
-        print("🌙 Toggling night light...")
-        subprocess.run(["bash", os.path.join(RICE, "scripts/toggle_nightlight.sh")])
-        return True
+    for name, spec in ACTIONS.items():
+        if any(k in p for k in spec[3]):
+            run_action(name)
+            return True
     return False
+
+# ───────────────────────── Ollama helpers ─────────────────────────
+
+OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+LAST_LLM_ERROR = ""
+
+def ollama_generate(prompt, schema=None, num_predict=260, temperature=0.2, stream=False, timeout=90):
+    """Call Ollama. Returns text or None. With `schema`, output is forced to valid JSON."""
+    global LAST_LLM_ERROR
+    LAST_LLM_ERROR = ""
+    model = get_advisor_model()
+    if "qwen3" in model:
+        stream = False  # <think> blocks are stripped after the fact
+    payload = {
+        "model": model, "prompt": prompt, "stream": bool(stream),
+        "keep_alive": "30m",
+        "options": {"num_predict": num_predict, "temperature": temperature, "num_ctx": 2048},
+    }
+    if schema:
+        payload["format"] = schema
+        payload["stream"] = False
+    req = urllib.request.Request(OLLAMA_URL, data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            if payload["stream"]:
+                out = []
+                for raw in r:
+                    try:
+                        chunk = json.loads(raw.decode("utf-8"))
+                    except Exception:
+                        continue
+                    piece = chunk.get("response", "")
+                    if piece:
+                        out.append(piece)
+                        print(piece, end="", flush=True)
+                    if chunk.get("done"):
+                        break
+                print()
+                return "".join(out).strip() or None
+            data = json.loads(r.read().decode("utf-8"))
+            text = re.sub(r"<think>.*?</think>", "", data.get("response", ""), flags=re.DOTALL).strip()
+            return text or None
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            LAST_LLM_ERROR = f"Model '{model}' is not installed. Run: advisor model {model}"
+        else:
+            LAST_LLM_ERROR = f"Ollama returned HTTP {e.code}."
+    except urllib.error.URLError:
+        LAST_LLM_ERROR = "Can't reach Ollama on 127.0.0.1:11434. Start it with: systemctl --user start ollama  (or: ollama serve)"
+    except Exception as e:
+        LAST_LLM_ERROR = f"Model call failed or timed out ({e})."
+
+    if not schema:  # last resort: CLI
+        try:
+            res = subprocess.run(["ollama", "run", model, prompt], capture_output=True, text=True, timeout=timeout)
+            out = re.sub(r"<think>.*?</think>", "", res.stdout or "", flags=re.DOTALL).strip()
+            if out:
+                LAST_LLM_ERROR = ""
+                print(out)
+                return out
+        except Exception:
+            pass
+    return None
+
+def llm_json(prompt, schema, num_predict=80):
+    text = ollama_generate(prompt, schema=schema, num_predict=num_predict, temperature=0.0)
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except Exception:
+        m = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        try:
+            return json.loads(m.group(0)) if m else None
+        except Exception:
+            return None
+
+# ───────────────────────── 1. Intent routing (model picks from a fixed list) ─────────────────────────
+
+def llm_pick_action(prompt):
+    names = list(ACTIONS.keys())
+    schema = {"type": "object", "properties": {"action": {"type": "string", "enum": names + ["none"]}}, "required": ["action"]}
+    menu = "\n".join(f"- {n}: {ACTIONS[n][2]}" for n in names)
+    instr = (
+        "You route a user's request on a Linux desktop to exactly one action, or 'none'.\n"
+        f"Actions:\n{menu}\n- none: anything else, including questions, advice requests, or unclear requests\n\n"
+        "Examples:\n"
+        'Request: "I\'m presenting to my class" -> {"action": "mirror"}\n'
+        'Request: "make my screen easier on my eyes" -> {"action": "nightlight"}\n'
+        'Request: "I need to focus, no pings" -> {"action": "dnd"}\n'
+        'Request: "my laptop feels slow, why?" -> {"action": "none"}\n'
+        'Request: "what is a good wallpaper size" -> {"action": "none"}\n\n'
+        f'Request: "{prompt}" ->'
+    )
+    res = llm_json(instr, schema)
+    act = (res or {}).get("action", "none")
+    return act if act in ACTIONS else None
+
+def try_dispatch_intent(prompt):
+    if try_dispatch_keywords(prompt):
+        return True
+    if looks_like_question(prompt):
+        return False
+    act = llm_pick_action(prompt)
+    if not act:
+        return False
+    print(f"🧭 Understood as: {ACTIONS[act][2]}")
+    if ACTIONS[act][4] and sys.stdin.isatty():
+        try:
+            if input("   Run it? [y/N] ").strip().lower() not in ("y", "yes"):
+                print("   Skipped.")
+                return True
+        except EOFError:
+            return True
+    run_action(act)
+    return True
+
+# ───────────────────────── 2. Grounded advice (Python finds, model explains) ─────────────────────────
+
+def build_findings(analysis):
+    m, g = analysis["memory"], analysis["gpu"]
+    lines = [
+        f"RAM: {m['used_mb']} of {m['total_mb']} MB used ({m['pct']}%)",
+        f"Quickshell uses {analysis['quickshell_mb']} MB, Hyprland {analysis['hyprland_mb']} MB",
+        f"CPU temp: avg {analysis['temps']['avg']}C, max {analysis['temps']['max']}C",
+    ]
+    if g.get("present"):
+        lines.append(f"GPU: {g['name']}, VRAM {g['vram_used_mb']}/{g['vram_total_mb']} MB, {g['temp_c']}C")
+    if analysis["battery"]:
+        lines.append(f"Battery: {analysis['battery']['capacity']}% ({analysis['battery']['status']})")
+    lines.append(f"Health score: {analysis['score']}/100 ({analysis['rating']})")
+    top = sorted(analysis.get("procs") or [], key=lambda p: p["rss_mb"], reverse=True)[:5]
+    if top:
+        lines.append("Top processes by memory: " + "; ".join(f"{p['comm']} {p['rss_mb']} MB ({p['cpu_pct']}% CPU)" for p in top))
+    flagged = [s for s in analysis["suggestions"] if s["priority"] != "INFO"]
+    if flagged:
+        lines.append("Problems detected by the checker: " + "; ".join(f"[{s['priority']}] {s['title']} -> {s['action']}" for s in flagged))
+    else:
+        lines.append("Problems detected by the checker: none")
+    return "\n".join(lines)
+
+ADVISOR_RULES = (
+    "You are the assistant built into Halcyon, a Hyprland + Quickshell desktop on Linux.\n"
+    "Rules: use ONLY the data given. Never invent numbers, process names or settings. "
+    "If the data cannot answer the question, say what is missing in one line. "
+    "Only suggest these commands: 'advisor fix' (trim memory/caches), 'advisor model <name>', "
+    "SUPER+P (display switcher), SUPER+I (Settings). Be plain, specific and short: at most 5 lines. No preamble.\n"
+)
 
 def run_llm_query(analysis, custom_prompt=""):
     if custom_prompt and try_dispatch_intent(custom_prompt):
         return
 
     print("━" * 64)
-    print("🤖 Local AI Optimization Advisor (Ollama)")
+    print("🤖 Local AI Advisor (Ollama)")
     print("━" * 64)
+    print(f"[*] Model: {get_advisor_model()}\n")
 
-    model_name = get_advisor_model()
-    print(f"[*] Querying model '{model_name}' with live system state...\n")
-
-    system_summary = (
-        f"Hardware: {analysis['memory']['used_mb']}MB used of {analysis['memory']['total_mb']}MB RAM ({analysis['memory']['pct']}%)\n"
-        f"Quickshell RSS: {analysis['quickshell_mb']} MB | Hyprland RSS: {analysis['hyprland_mb']} MB\n"
-        f"CPU Temperature: {analysis['temps']['avg']}°C (max {analysis['temps']['max']}°C)\n"
-        f"GPU: {analysis['gpu']['name']} ({analysis['gpu']['vram_used_mb']}MB used / {analysis['gpu']['vram_total_mb']}MB VRAM, {analysis['gpu']['temp_c']}°C)\n"
-        f"Battery: {json.dumps(analysis['battery'])}\n"
-    )
-
+    findings = build_findings(analysis)
     if custom_prompt:
-        user_prompt = (
-            "You are an expert Linux performance consultant for Hyprland and Quickshell.\n"
-            f"Current Machine State:\n{system_summary}\n"
-            f"User Question: {custom_prompt}\n\n"
-            "Answer directly, concisely, and practically. Do not output internal thoughts."
-        )
+        prompt = f"{ADVISOR_RULES}\nMachine data:\n{findings}\n\nUser question: {custom_prompt}\nAnswer:"
     else:
-        user_prompt = (
-            "You are an expert Linux performance advisor for Hyprland & Quickshell.\n"
-            f"System Metrics:\n{system_summary}\n"
-            "Provide 3 concise, high-impact, bulleted performance recommendations tailored for this hardware. Do not output internal thoughts."
-        )
+        prompt = (f"{ADVISOR_RULES}\nMachine data:\n{findings}\n\n"
+                  "Task: in 2-3 plain sentences say how the machine is doing, then give the ONE most useful next step "
+                  "taken from the checker's problems (or say nothing needs doing).\nAnswer:")
+    if ollama_generate(prompt, stream=True) is None and LAST_LLM_ERROR:
+        print(f"[!] {LAST_LLM_ERROR}\n    Rule-based advice below still applies.")
 
-    # 1. Fast local HTTP API
-    try:
-        payload = json.dumps({
-            "model": model_name,
-            "prompt": user_prompt,
-            "stream": False,
-            "options": {"num_predict": 220, "temperature": 0.2}
-        }).encode("utf-8")
-        req = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            data = json.loads(r.read().decode("utf-8"))
-            resp_text = data.get("response", "").strip()
-            resp_text = re.sub(r"<think>.*?</think>", "", resp_text, flags=re.DOTALL).strip()
-            if resp_text:
-                print(resp_text)
-                return
-    except Exception:
-        pass
+# ───────────────────────── 3. Notification triage & short writing ─────────────────────────
 
-    # 2. Subprocess fallback
-    try:
-        res = subprocess.run(["ollama", "run", model_name, user_prompt], capture_output=True, text=True, timeout=25)
-        out = re.sub(r"<think>.*?</think>", "", res.stdout or "", flags=re.DOTALL).strip()
-        if out:
-            print(out)
-            return
-    except Exception as e:
-        print(f"[!] Local model call timed out ({e}). Review rule-based advice below:")
+def triage_notification(text):
+    if not text.strip():
+        print('Usage: advisor triage "notification text"')
+        return
+    schema = {"type": "object",
+              "properties": {"category": {"type": "string", "enum": ["urgent", "chat", "system", "promo", "other"]},
+                             "one_line": {"type": "string"}},
+              "required": ["category", "one_line"]}
+    prompt = (
+        "Classify this desktop notification and summarise it in at most 12 words.\n"
+        "urgent = needs action soon (security alert, call, deadline, low battery, payment failed); chat = a person messaging; "
+        "system = OS/app status; promo = marketing or offers; other = none of these.\n\n"
+        'Examples:\n"Your verification code is 482913" -> {"category":"urgent","one_line":"Verification code arrived"}\n'
+        '"50% off everything this weekend!" -> {"category":"promo","one_line":"Weekend 50% off sale"}\n\n'
+        f'Notification: "{text}" ->'
+    )
+    res = llm_json(prompt, schema, num_predict=70)
+    if not res:
+        print(f"[!] {LAST_LLM_ERROR or 'No usable answer from the model.'}")
+        return
+    icon = {"urgent": "🚨", "chat": "💬", "system": "⚙️", "promo": "🏷️"}.get(res.get("category"), "•")
+    print(f"{icon} [{res.get('category')}] {res.get('one_line')}")
+
+def write_short(request):
+    if not request.strip():
+        print('Usage: advisor write "short request, e.g. birthday message for my sister, warm and funny"')
+        return
+    prompt = ("Write exactly what is asked, short (under 60 words), natural and friendly. "
+              "Output only the text itself, no preamble, no quotes.\n\n"
+              f"Request: {request}\nText:")
+    if ollama_generate(prompt, num_predict=140, temperature=0.7, stream=True) is None:
+        print(f"[!] {LAST_LLM_ERROR}")
+
 
 def main():
     args = sys.argv[1:]
-    
+
+    if args and args[0] == "model":
+        model_command(args[1:])
+        return
+    if args and args[0] == "triage":
+        triage_notification(" ".join(args[1:]))
+        return
+    if args and args[0] == "write":
+        write_short(" ".join(args[1:]))
+        return
+
+    if "--model" in args:
+        i = args.index("--model")
+        if i + 1 < len(args):
+            val = args[i + 1]
+            os.environ["HALCYON_AI_MODEL"] = MODEL_ALIASES.get(val.lower(), val)
+            del args[i:i + 2]
+
     if "--fix" in args or "-f" in args or (args and args[0] == "fix"):
         apply_fixes()
         return
@@ -463,6 +702,10 @@ def main():
     print("Commands:")
     print("  advisor fix             -> Automatically trim memory & caches")
     print("  advisor \"<question>\"    -> Ask local AI advisor about your system")
+    print("  advisor model 3b        -> Switch AI model (run 'advisor model' to see options)")
+    print("  advisor triage \"text\"   -> Classify & summarise a notification")
+    print("  advisor write \"request\"  -> Draft a short message")
+    print("  advisor \"I'm presenting\" -> Natural language: the AI runs the right action")
     print("  SUPER + P               -> Multi-Monitor & Projector Display Switcher")
     print("  SUPER + I               -> Open Settings (Performance & Suggestions)")
 

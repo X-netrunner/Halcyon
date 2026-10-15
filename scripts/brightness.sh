@@ -6,6 +6,9 @@
 #   2. a direct write to sysfs             works if the backlight file is writable
 #   3. logind SetBrightness over D-Bus     what brightnessctl does inside a session, with your session named explicitly
 # Failures are printed to stderr:  journalctl --user -u touchpad-gestures -e
+# Native helper: `hal brightness` (src/hal, built by install.sh). While it is not built yet, the shell code below does the same job.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+[ -x "$hal" ] && exec "$hal" brightness "$@"
 dir="${1:-up}"; step="${2:-5}"
 case "$dir" in up) arg="${step}%+" ;; down) arg="${step}%-" ;; *) echo "usage: brightness.sh up|down [percent]" >&2; exit 2 ;; esac
 

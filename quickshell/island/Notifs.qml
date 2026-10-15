@@ -146,6 +146,7 @@ Scope {
     //   after closing, the strip ignores the pointer for a short while (lockT)
     function setHover(on) {
         if (!edgeOn) return
+        if (!on && cycling) return          // the window is being re-mapped by raise(): that is not the pointer leaving
         if (on) { closeT.stop(); if (!clickMode && !centerOpen && !lockT.running) openT.restart() }
         else { openT.stop(); if (centerOpen && (!clickMode || autoHide)) { closeT.interval = 700; closeT.restart() } }
     }
@@ -298,10 +299,12 @@ Scope {
                 anchors.top: root.corner ? parent.top : undefined
                 anchors.topMargin: root.corner ? 6 : 3
                 anchors.verticalCenter: root.corner ? undefined : parent.verticalCenter
-                width: root.corner ? (root.centerOpen ? 0 : (badge ? Math.max(18, badgeText.implicitWidth + 10) : 8)) : 4
-                height: root.corner ? (root.centerOpen ? 0 : (badge ? 18 : 8)) : (root.centerOpen ? 0 : 54)
+                width: root.corner ? (root.centerOpen ? 0 : (badge ? Math.max(20, badgeText.implicitWidth + 12) : 8)) : 4
+                height: root.corner ? (root.centerOpen ? 0 : (badge ? 20 : 8)) : (root.centerOpen ? 0 : 54)
                 radius: root.corner ? height / 2 : 2
                 color: root.dnd ? root.pal.muted : root.pal.accent
+                border.width: badge ? 1 : 0
+                border.color: Qt.alpha(root.pal.bg, 0.35)
                 opacity: (!root.centerOpen && (root.unread > 0 || root.dnd || root.clickMode)) ? (root.dnd ? 0.55 : (root.unread > 0 ? 0.95 : 0.22)) : 0
                 Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
                 Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }

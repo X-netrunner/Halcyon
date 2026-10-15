@@ -10,3 +10,11 @@ RestartSec=3
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 
 # Started from hyprland/execs.lua. Needs read access to /dev/input (be in the `input` group, then log in again).
+
+# Tuning the 3 / 4 finger pinch vs swipe decision (optional; see src/touchpad-gestures/src/classify.rs). Uncomment, then:
+#   systemctl --user daemon-reload && systemctl --user restart touchpad-gestures
+# and watch what it decides with:  journalctl --user -u touchpad-gestures -f
+#Environment=HALCYON_GESTURE_DEBUG=1
+#Environment=HALCYON_PINCH_MIN=0.018
+#Environment=HALCYON_SWIPE_MIN=0.035
+#Environment=HALCYON_PINCH_BIAS=0.5

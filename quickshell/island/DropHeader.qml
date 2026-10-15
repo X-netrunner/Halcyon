@@ -105,22 +105,12 @@ Item {
                         font.weight: tab.act > 0.5 ? Font.DemiBold : Font.Medium
                     }
                     // unread count
-                    Rectangle {
+                    Badge {
                         visible: tab.index === 1 && root.unread > 0
                         anchors.verticalCenter: parent.verticalCenter
-                        height: 16
-                        width: Math.max(16, badge.implicitWidth + 10)
-                        radius: 8
-                        color: root.pal.accent
-                        Text {
-                            id: badge
-                            anchors.centerIn: parent
-                            text: root.unread > 9 ? "9+" : root.unread
-                            color: root.pal.bg
-                            font.family: root.pal.uiFont
-                            font.pixelSize: 10
-                            font.weight: Font.Bold
-                        }
+                        pal: root.pal
+                        count: root.unread
+                        size: 18
                     }
                 }
                 TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.pick(tab.index) }

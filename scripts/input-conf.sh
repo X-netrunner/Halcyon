@@ -14,6 +14,9 @@
 # An id that is not in the file has its default (below). hyprland/inputconf.lua reads the same file, and has the same
 # defaults, so keep the two in step. Hyprland has to be reloaded for a change from "nothing" to an action (or back) to
 # count: only gestures / buttons that do something are registered, so the others still reach your apps. Settings does it.
+# Native helper: `hal input` (src/hal, built by install.sh). While it is not built yet, the shell code below does the same job.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+[ -x "$hal" ] && exec "$hal" input "$@"
 state="$HOME/.local/state/island"
 conf="$state/gestures.conf"
 H="$HOME/.config/Halcyon"
@@ -148,6 +151,12 @@ cmd_run() {
   local id="$1"
   valid_id "$id" || exit 2
   load
+  # tail -f ~/.cache/island/gesture-run.log while you gesture: no line = Hyprland never fired it (the live tracker may still have)
+  case "$id" in g*)
+    mkdir -p "$HOME/.cache/island"; log="$HOME/.cache/island/gesture-run.log"
+    echo "$(date +%T) $id -> ${A[$id]}" >> "$log"
+    if [ "$(wc -l < "$log")" -gt 200 ]; then tail -n 50 "$log" > "$log.t" && mv "$log.t" "$log"; fi ;;
+  esac
   do_action "${A[$id]}" "${C[$id]}"
 }
 

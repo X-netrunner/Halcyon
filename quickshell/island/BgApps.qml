@@ -60,22 +60,7 @@ Glass {
                 font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4
             }
             Item { Layout.fillWidth: true }
-            Rectangle {
-                visible: root.count > 0
-                implicitWidth: Math.max(20, cnt.implicitWidth + 12)
-                implicitHeight: 18
-                radius: 9
-                color: Qt.alpha(root.pal.accent, 0.18)
-                border.width: 1
-                border.color: Qt.alpha(root.pal.accent, 0.35)
-                Text {
-                    id: cnt
-                    anchors.centerIn: parent
-                    text: root.count
-                    color: root.pal.accent
-                    font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold
-                }
-            }
+            Badge { pal: root.pal; count: root.count; size: 20; soft: true }
         }
 
         // ---- nothing running

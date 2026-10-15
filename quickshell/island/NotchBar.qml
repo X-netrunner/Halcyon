@@ -576,7 +576,7 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 4
                     Text { text: String.fromCodePoint(0xF003B); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: win.bgCount; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: Math.max(10, win.textPx - 2); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                    Badge { pal: win.pal; count: win.bgCount; size: Math.max(16, win.icoH); tint: win.ac; ink: win.pal.bg; anchors.verticalCenter: parent.verticalCenter }
                 }
                 MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.bgClicked() }
             }
