@@ -33,6 +33,10 @@ Scope {
     property bool profileStars: true
     property bool clickMode: false
     property bool autoHide: false
+    // the corner the console opens from (Desktop builder > Where the boxes open): tl (default) | bl | br
+    property string spot: "tl"
+    readonly property bool atRight: spot.charAt(1) === "r"
+    readonly property bool atBottom: spot.charAt(0) === "b"
 
     readonly property int boxW: 520
     readonly property int maxOut: 400
@@ -64,7 +68,11 @@ Scope {
     readonly property bool shown: open
 
     // where the console box sits on the screen (the guided tour spotlights it)
-    function tourRect() { return { x: 22, y: pal.boxTop, w: boxW, h: Math.min(520, 40 + body.implicitHeight + 76) } }
+    function tourRect(sw, sh) {
+        var h = Math.min(520, 40 + body.implicitHeight + 76)
+        return { x: atRight ? (sw || 1920) - 22 - boxW : 22,
+                 y: atBottom ? (sh || 1080) - pal.boxEdge - h : pal.boxTop, w: boxW, h: h }
+    }
 
     property string cwd: Quickshell.env("HOME")
     property var st: ({})
@@ -429,9 +437,10 @@ Scope {
 
     PanelWindow {
         id: win
-        anchors { top: true; left: true }
-        implicitWidth: (root.open || root.termLinger) ? (root.boxW + 60) : 32
-        implicitHeight: (root.open || root.termLinger) ? 560 : 32
+        anchors { top: !root.atBottom; bottom: root.atBottom; left: !root.atRight; right: root.atRight }
+        // fixed size: resizing on open / close re-sends enter / leave and made the console open and close by itself (mask = click-through)
+        implicitWidth: root.boxW + 60
+        implicitHeight: 660
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-term"
@@ -448,19 +457,23 @@ Scope {
         Item {
             id: zone
             enabled: !root.wsHasFullscreen
-            anchors.top: parent.top
-            anchors.left: parent.left
+            anchors.top: root.atBottom ? undefined : parent.top
+            anchors.bottom: root.atBottom ? parent.bottom : undefined
+            anchors.left: root.atRight ? undefined : parent.left
+            anchors.right: root.atRight ? parent.right : undefined
             width: root.shown ? root.boxW + 40 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14))
-            height: root.shown ? box.y + box.height + 24 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14))
+            // top corner: down to the bottom of the box. bottom corner: the box's height plus its gaps (the box then sits on the bottom edge)
+            height: root.shown ? (root.atBottom ? box.height + root.pal.boxEdge + 24 : box.y + box.height + 24) : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14))
             HoverHandler { enabled: !root.wsHasFullscreen; onHoveredChanged: { root.zoneHover = hovered; root.setHover(hovered) } }
 
             // click mode: a faint tab marks the corner
             Rectangle {
                 visible: root.clickMode && !root.shown
-                x: 3; y: 3; width: 12; height: 12; radius: 6
+                x: root.atRight ? parent.width - 15 : 3; y: root.atBottom ? parent.height - 15 : 3; width: 12; height: 12; radius: 6
                 color: Qt.alpha(root.pal.accent, 0.35)
             }
             Item {
+                x: root.atRight ? parent.width - width : 0; y: root.atBottom ? parent.height - height : 0
                 width: 20; height: 14
                 TapHandler {
                     enabled: root.clickMode
@@ -472,8 +485,12 @@ Scope {
         Glass {
             id: box
             pal: root.pal
-            x: 22 - (1 - root.reveal) * (root.boxW * 0.5)
-            y: root.pal.boxTop - (1 - root.reveal) * (height + root.pal.boxTop + 14)
+            // left corners: 22 px from the screen's left edge, sliding in from the left; right corners: 18 px into a zone that is 40 px wider
+            // than the box = 22 px from the right edge, sliding in from the right. Top: 90 px down (under the bar) and slides down from the
+            // top; bottom: 22 px up from the bottom edge and slides up from below.
+            x: (root.atRight ? 18 + (1 - root.reveal) * (root.boxW * 0.5) : 22 - (1 - root.reveal) * (root.boxW * 0.5))
+            y: root.atBottom ? (zone.height - root.pal.boxEdge - height + (1 - root.reveal) * (height + root.pal.boxEdge + 14))
+                             : (root.pal.boxTop - (1 - root.reveal) * (height + root.pal.boxTop + 14))
             width: root.boxW
             height: Math.min(520, 40 + body.implicitHeight + 76)
             radius: root.pal.rLg

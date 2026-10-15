@@ -1,3 +1,9 @@
+## Desktop builder, corner boxes and a quicker launcher
+- **Settings > Appearance > Desktop builder** (also `>desktop builder` in the launcher): one window with a small live picture of the screen. **Wallpaper on / off** (off = a plain theme-colour, black or gradient background; no picture is decoded, so it also saves RAM; the colours still follow the last wallpaper), **wallpaper blur**, and **moving stars** over the wallpaper or over the plain background (amount, speed, size, direction, colours, twinkle, an occasional shooting star; they stand still in Gaming mode).
+- **Where the boxes open**: the utilities box, the background apps box and the console can each open from the top-left, bottom-left or bottom-right corner (click a box in the picture, then a corner; a taken corner swaps). The top-right corner stays with the notifications, whose trigger can be the right edge or that corner.
+- **Settings > Mouse, touchpad & keyboard > Launcher speed** (Normal / Quick / Instant, default Quick): the launcher grows out of the bar in about half the time. It still opens when Super is *released* (a lone tap cannot be told from the start of Super+T until then); `scripts/super_tap.sh` now runs under plain `sh`, a few ms faster.
+- New files: `DesktopBuilder.qml`, `DesktopBuilderWindow.qml`, `DesktopStars.qml`, `DeskSpots.js`. Changed: `Wallpaper.qml`, `shell.qml`, `QuickTerm.qml`, `Settings.qml`, `Launcher.qml`, `scripts/super_tap.sh`.
+
 ## Installer: pick how much of the machine Halcyon may use
 
 - **install.sh** now asks (once, remembered for update.sh) how much of the computer Halcyon may use: **Low / Medium / High / Adaptive**, each with a rough estimate of the RAM and CPU all of Halcyon needs (shown with a +/- offset range) and a **headroom** choice (Tight 10 % / Balanced 15 % / Relaxed 25 %). The pre-selected answer follows your hardware (low-end = Low, mid-range = Medium, strong = High).

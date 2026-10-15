@@ -115,10 +115,15 @@ wallpaper() {
       fi
     else warn "no wallpapers in $wp and ImageMagick is missing"; fi
   fi
-  first=$(find_first)
+  # Use the SAME wallpaper the island is going to show. wallpaper.sh picks (and remembers for this boot) the one the shell
+  # displays; taking `find | head -n1` here instead gave colours from a different picture, so the accent only matched the
+  # wallpaper after a reload. Falls back to the first file if wallpaper.sh cannot choose.
+  first=$(bash "$RICE/quickshell/island/scripts/wallpaper.sh" 2>/dev/null | head -n1)
+  [ -f "$first" ] || first=$(find_first)
   if [ -n "$first" ]; then
-    # palette.sh takes the wallpaper's own colours (needs ImageMagick); the Rust `hx palette` is only the fallback
-    if bash "$RICE/quickshell/island/scripts/palette.sh" "$first" || { [ -x "$BIN/hx" ] && "$BIN/hx" palette "$first"; }; then
+    # palette.sh takes the wallpaper's own colours (needs ImageMagick); the Rust `hx palette` is only the fallback.
+    # --ipc also tells an already-running island to re-read the colours right away (no reload needed).
+    if bash "$RICE/quickshell/island/scripts/palette.sh" "$first" --ipc || { [ -x "$BIN/hx" ] && "$BIN/hx" palette "$first"; }; then
       ok "colours made from $(basename "$first")"
     else warn "could not make colours from the wallpaper (is ImageMagick installed?)"; fi
   fi

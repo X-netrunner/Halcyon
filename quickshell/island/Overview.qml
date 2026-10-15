@@ -625,21 +625,85 @@ Item {
 
     // flagship sysmodes: a constellation shield (lockdown) / dragon (stealth) behind the tree; any other mode shows your
     // profile picture as one. Stars in the wallpaper accent colour.
+    // Settings > Performance > Tree view constellation: full (behind the whole tree), corner (small, tucked into a corner) or off
+    readonly property string treeConst: pal && pal.treeConst ? pal.treeConst : "full"
+    readonly property string treeCorner: pal && pal.treeConstCorner ? pal.treeConstCorner : "br"
+    readonly property real treeSize: pal && pal.treeConstSize ? pal.treeConstSize : 0.30
+    readonly property string treeDots: pal && pal.treeDots ? pal.treeDots : "load"
+
     ModeArt {
-        anchors.fill: parent
-        anchors.margins: 60
+        id: art
+        readonly property bool small: ov.treeConst === "corner"
+        readonly property real m: small ? 28 : 60
+        width: small ? Math.round(ov.width * ov.treeSize) : ov.width - 120
+        height: small ? Math.round(ov.height * ov.treeSize) : ov.height - 120
+        x: small ? (ov.treeCorner.charAt(1) === "r" ? ov.width - width - m : m) : m
+        y: small ? (ov.treeCorner.charAt(0) === "b" ? ov.height - height - m : m) : m
         clip: true          // same as Backdrop (which draws its lines fine): keeps the line Shapes inside a clip node
         pal: ov.pal
-        mode: (ov.sysmode === "lockdown" || ov.sysmode === "stealth") ? ov.sysmode : (ov.profileStars && ov.starData ? "avatar" : "")
+        // off = no mode at all, so nothing is built and nothing animates
+        mode: ov.treeConst === "off" ? "" : ((ov.sysmode === "lockdown" || ov.sysmode === "stealth") ? ov.sysmode : (ov.profileStars && ov.starData ? "avatar" : ""))
         custom: ov.starData
         strength: ov.open ? 1 : 0
-        fit: 0.82
+        fit: small ? 0.9 : 0.82
         Behavior on strength { NumberAnimation { duration: 500 } }
     }
 
-    // faint drifting dots so the empty space feels alive too
+    // ---- floating dots. "load": every dot belongs to a workspace / window node and circles it, and the nodes that use the
+    // most CPU + memory (hx wsres) own the most dots, so the heavy places look busy and the idle ones stay calm. When the load
+    // changes a dot glides to its new node (no popping), and one dot moves at a time per update so it never looks cluttered.
+    // "even": the old behaviour, spread over the whole screen.
+    readonly property int dotTotal: treeDots === "off" ? 0 : (quality >= 2 ? 40 : (quality === 1 ? 18 : 0))
+    property var dotOwner: []                 // dot index -> node index (load mode)
+    function loadWeights() {
+        var idx = [], w = [], sc = 0, sm = 0, i, n, r
+        for (i = 0; i < nodes.length; i++) {
+            n = nodes[i]
+            if (n.kind === "ws" || n.kind === "special") { r = wsRes[n.key]; idx.push(i); w.push(r ? r : { cpu: 0, mem: 0 }); }
+            else if (n.kind === "win") { r = winRes[String(n.address || "").toLowerCase().replace(/^0x/, "")]; idx.push(i); w.push(r ? r : { cpu: 0, mem: 0 }) }
+        }
+        for (i = 0; i < w.length; i++) { sc += w[i].cpu; sm += w[i].mem }
+        var out = []
+        for (i = 0; i < w.length; i++)
+            out.push((sc > 0 ? 0.5 * w[i].cpu / sc : 0) + (sm > 0 ? 0.5 * w[i].mem / sm : 0) + 0.015)   // small floor: nobody is empty
+        var tot = 0
+        for (i = 0; i < out.length; i++) tot += out[i]
+        return { idx: idx, share: out.map(function (v) { return v / tot }) }
+    }
+    function rebalanceDots() {
+        var N = dotTotal
+        if (N <= 0 || treeDots !== "load") { dotOwner = []; return }
+        var lw = loadWeights()
+        if (lw.idx.length === 0) { dotOwner = []; return }
+        // target dot count per node (largest remainder), capped so one node can never swallow the whole sky
+        var cap = Math.max(4, Math.round(N * 0.45)), want = [], used = 0, i
+        for (i = 0; i < lw.idx.length; i++) { want.push(Math.min(cap, Math.floor(lw.share[i] * N))); used += want[i] }
+        var order = lw.idx.map(function (_, k) { return k }).sort(function (a, b) { return (lw.share[b] * N - Math.floor(lw.share[b] * N)) - (lw.share[a] * N - Math.floor(lw.share[a] * N)) })
+        for (i = 0; used < N && i < order.length * 3; i++) { var k = order[i % order.length]; if (want[k] < cap) { want[k]++; used++ } }
+        // keep the dots that are already on a node that still wants them; only the surplus / unowned ones move
+        var cur = dotOwner.slice(0, N), have = {}, free = [], d
+        for (i = 0; i < lw.idx.length; i++) have[lw.idx[i]] = 0
+        for (d = 0; d < N; d++) {
+            var o = cur[d]
+            var pos = lw.idx.indexOf(o)
+            if (o === undefined || pos < 0 || have[o] >= want[pos]) free.push(d)
+            else have[o]++
+        }
+        var next = cur.slice()
+        var moves = 0
+        for (i = 0; i < lw.idx.length && free.length > 0; i++)
+            while (have[lw.idx[i]] < want[i] && free.length > 0) { next[free.shift()] = lw.idx[i]; have[lw.idx[i]]++; moves++ }
+        for (d = 0; d < free.length; d++) next[free[d]] = lw.idx[d % lw.idx.length]
+        dotOwner = next
+    }
+    onWsResChanged: rebalanceDots()
+    onWinResChanged: rebalanceDots()
+    onNodesChanged: rebalanceDots()
+    onDotTotalChanged: rebalanceDots()
+    onTreeDotsChanged: rebalanceDots()
+
     Repeater {
-        model: ov.quality >= 2 ? 26 : (ov.quality === 1 ? 12 : 0)
+        model: ov.treeDots === "even" ? ov.dotTotal : 0
         delegate: Rectangle {
             required property int index
             readonly property real fx: ((index * 0.6180339) % 1)
@@ -650,6 +714,36 @@ Item {
             color: Qt.alpha(ov.pal.accent, 0.10 + (index % 4) * 0.03)
             x: ov.width * fx + 14 * Math.sin(ov.tau * (40 + index * 11 % 50) * ov.ttq / 1000 + index)
             y: ov.height * fy + 14 * Math.cos(ov.tau * (40 + index * 17 % 50) * ov.ttq / 1000 + index * 2)
+        }
+    }
+    Repeater {
+        model: ov.treeDots === "load" ? ov.dotTotal : 0
+        delegate: Rectangle {
+            id: dot
+            required property int index
+            readonly property int owner: ov.dotOwner[index] !== undefined ? ov.dotOwner[index] : -1
+            readonly property var nd: owner >= 0 ? ov.nodes[owner] : null
+            // an orbit around the node: unhurried (one lap every 14 - 40 s), each dot with its own radius and direction
+            readonly property real lapSecs: 14 + (index * 7) % 27
+            readonly property real dir: index % 2 === 0 ? 1 : -1
+            readonly property real ang: index * 2.399963 + dir * ov.tau * ov.ttq / lapSecs
+            readonly property real rx: (nd ? nd.w / 2 : 60) + 14 + (index % 5) * 9
+            readonly property real ry: (nd ? nd.h / 2 : 30) + 12 + (index % 4) * 8
+            readonly property real tx: nd ? ov.pos[owner * 2] + rx * Math.cos(ang) : 0
+            readonly property real ty: nd ? ov.pos[owner * 2 + 1] + ry * Math.sin(ang) : 0
+            // when the owner changes the dot glides from where it was to the new orbit instead of jumping
+            property real fromX: 0
+            property real fromY: 0
+            property real glide: 1
+            onOwnerChanged: { fromX = x + width / 2; fromY = y + height / 2; glide = 0; glideAnim.restart() }
+            NumberAnimation { id: glideAnim; target: dot; property: "glide"; from: 0; to: 1; duration: 1400; easing.type: Easing.InOutCubic }
+            width: 2 + index % 3
+            height: width
+            radius: width / 2
+            visible: nd !== null
+            color: Qt.alpha(ov.pal.accent, 0.14 + (index % 4) * 0.05)
+            x: (fromX + (tx - fromX) * glide) - width / 2
+            y: (fromY + (ty - fromY) * glide) - height / 2
         }
     }
 

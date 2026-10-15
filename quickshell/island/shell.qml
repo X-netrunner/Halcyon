@@ -9,6 +9,7 @@ import "StarData.js" as Stars
 import "Routes.js" as Routes
 import "Binds.js" as Binds
 import "Tour.js" as TourData
+import "DeskSpots.js" as DS
 
 ShellRoot {
     id: root
@@ -36,6 +37,7 @@ ShellRoot {
     // ---- the rest of the Settings tree. Settings.qml reads / writes these by key ("opt:<key>" and "hy:<key>"), they are saved in
     // settings.json (under "opt" / "hy") and applied below (setOpt / applyHypr)
     property var opt: ({
+        launchSpeed: "quick",      // normal | quick | instant : how fast the launcher grows out of the bar (root.launchK)
         accentMode: "fixed",       // fixed | cycle : the accent is the wallpaper's main colour, or drifts through all of its colours
         cycleSecs: 30,             // seconds from one wallpaper colour to the next
         termMode: "spectrum",      // spectrum | accent : terminal colours from every wallpaper colour, or from the one accent
@@ -84,6 +86,10 @@ ShellRoot {
         scrollLinger: 3000,        // ms a performance / media page opened by scrolling / swiping the bar stays after the pointer leaves (never shorter than pageClose)
         pageClose: 600,            // ms the performance / media page waits after the pointer leaves the bar before it folds back (150 / 600 / 4000)
         cornerTimeout: 6000,       // ms the bottom-right corner pin / quick utilities overlay remains open
+        treeConst: "full",         // full | corner | off : the constellation behind the tree view (corner = small, tucked into treeConstCorner)
+        treeConstCorner: "br",     // tl | tr | bl | br
+        treeConstSize: 30,         // % of the tree's width / height the small constellation takes
+        treeDots: "load",          // load | even | off : floating dots gather around the heaviest workspaces / windows, spread evenly, or none
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
         barStyle: "island",        // island | notch | custom : the floating pill, or a bar hanging from the top edge (NotchBar.qml)
         notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
@@ -314,7 +320,21 @@ ShellRoot {
     }
     // looking at the notifications here counts as reading them (and the popups get out of the way)
     function markSeen() { if (page === "notif" || (page === "util" && dropSide)) { notifs.unread = 0; notifs.hideToasts() } }
-    onPageChanged: { markSeen(); if (page === "home") scrollOpened = false }
+    onPageChanged: {
+        markSeen(); if (page === "home") scrollOpened = false
+        // the launcher's grow / shrink speed (Settings > Mouse, touchpad & keyboard > Launcher speed) applies to the way in AND the way out
+        leavingLauncher = (lastPage === "launcher" && page !== "launcher")
+        lastPage = page
+        if (leavingLauncher) leaveT.restart()
+    }
+    property string lastPage: "home"
+    property bool leavingLauncher: false
+    Timer { id: leaveT; interval: 700; onTriggered: root.leavingLauncher = false }
+    // normal = the same soft 520 ms as every other page; quick = about half; instant = a short snap. Tap-to-open waits for the key to
+    // come UP (a bare Super cannot be told apart from the start of Super+T until then), so the grow animation is the part we can shorten.
+    readonly property real launchK: ({ normal: 1.0, quick: 0.5, instant: 0.2 })[opt.launchSpeed || "quick"] || 0.5
+    readonly property bool launcherMotion: page === "launcher" || leavingLauncher
+    function pageMs(base) { return launcherMotion ? Math.max(40, Math.round(base * launchK)) : base }
     Connections { target: notifs; function onUnreadChanged() { if (notifs.unread > 0) root.markSeen() } }
 
     property var stats: ({ cpu: 0, mem: 0, memGb: "0.0", temp: 0, down: 0, up: 0, bat: 0, charging: false, ac: false, hasBat: false,
@@ -442,6 +462,10 @@ ShellRoot {
         artQuality: root.gaming ? 0 : root.perfLevel
         artFps: root.gaming ? 15 : (root.opt.fps || 0)
         gpuLines: root.opt.lines !== "cpu"
+        treeConst: root.opt.treeConst || "full"
+        treeConstCorner: root.opt.treeConstCorner || "br"
+        treeConstSize: (root.opt.treeConstSize || 30) / 100
+        treeDots: root.opt.treeDots || "load"
         branchShader: root.branchShaderUrl
         accentMode: root.opt.accentMode
         cycleSecs: root.opt.cycleSecs
@@ -454,6 +478,7 @@ ShellRoot {
     Settings {
         id: settingsWin
         pal: pal
+        wallpaperPath: wallpaperLayer.lastPath
         sysmode: root.sysmode
         autoHide: root.autoHide
         clickMode: root.clickMode
@@ -673,6 +698,7 @@ ShellRoot {
     QuickTerm {
         id: quickTerm
         pal: pal
+        spot: root.boxSpots.term
         stars: root.opt.stars !== false && root.opt.starsTerm !== false
         sysmode: root.sysmode
         clickMode: root.clickMode
@@ -717,7 +743,7 @@ ShellRoot {
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
         || calendar.open || powerMenu.open || tour.open || corner.open || appsWin.open
         || notifs.centerOpen || settingsWin.galleryOpen || settingsWin.builderOpen
-        || settingsWin.nbOpen || settingsWin.startupOpen
+        || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
     onAnyOverlayChanged: {
         if (anyOverlay) {
@@ -834,9 +860,10 @@ ShellRoot {
         case "bar": case "perf": case "media": return tourBarRect()          // pages are the island itself, grown
         case "corner":
             if (dropOn) return null
-            return { x: sw - pal.boxEdge - panel.width, y: sh - pal.boxEdge - panel.height, w: panel.width, h: panel.height }
+            return { x: corner.atR ? sw - pal.boxEdge - panel.width : pal.boxEdge,
+                     y: corner.atB ? sh - pal.boxEdge - panel.height : pal.boxTop, w: panel.width, h: panel.height }
         case "notifs": return notifs.tourRect(sw)
-        case "term": return quickTerm.tourRect()
+        case "term": return quickTerm.tourRect(sw, sh)
         }
         return null
     }
@@ -867,6 +894,8 @@ ShellRoot {
         else page = (page === "media") ? "home" : "perf"
     }
     // Super tap can arrive twice (fast file trigger + IPC fallback, or both Super_L bind forms): only the first counts
+    // which corner each corner box opens from (Desktop builder; DeskSpots.js keeps it one box per corner): { util, apps, term } = tl | bl | br
+    readonly property var boxSpots: DS.normalize(opt ? opt.boxSpots : null)
     property double lastSuperTap: 0
     function superTapFired() {
         if (!superTap) return
@@ -910,6 +939,7 @@ ShellRoot {
         if (settingsWin.startupOpen) { settingsWin.startupOpen = false; return true }
         if (settingsWin.builderOpen) { settingsWin.builderOpen = false; return true }
         if (settingsWin.nbOpen) { settingsWin.nbOpen = false; return true }
+        if (settingsWin.dbOpen) { settingsWin.dbOpen = false; return true }
         if (settingsWin.galleryOpen) { settingsWin.galleryOpen = false; return true }
         if (settingsWin.open) { settingsWin.hide(); return true }
         if (cheat.open) { if (cheat.editId !== "") cheat.cancelEdit(); else cheat.hide(); return true }
@@ -1395,6 +1425,7 @@ ShellRoot {
         case "wallgallery": settingsWin.openGallery(); break
         case "barbuilder": settingsWin.openBuilder(); break
         case "notifbuilder": settingsWin.openNotifBuilder(); break
+        case "desktopbuilder": settingsWin.openDesktopBuilder(); break
         case "startupview": settingsWin.openStartup(); break
         case "tour": tourReplay(); break
         case "calendar": calendarKey(); break
@@ -1750,7 +1781,7 @@ ShellRoot {
 
     // the wallpaper layer (circular reveal) lives in this same Quickshell process: one Qt/QML/GL stack instead of two.
     // `quickshell ipc -p ~/.config/Halcyon/quickshell/island call wallpaper next` still works (target "wallpaper" in Wallpaper.qml)
-    Wallpaper { id: wallpaperLayer }
+    Wallpaper { id: wallpaperLayer; pal: pal; opt: root.opt }
 
     // quickshell ipc -p ~/.config/Halcyon/quickshell/island call island <fn>
     IpcHandler {
@@ -1781,6 +1812,7 @@ ShellRoot {
         function settings(): void { settingsWin.toggle() }
         function barbuilder(): void { settingsWin.openBuilder() }
         function notifbuilder(): void { settingsWin.openNotifBuilder() }
+        function desktopbuilder(): void { settingsWin.openDesktopBuilder() }
         function gallery(): void { settingsWin.openGallery() }
         function startup(): void { settingsWin.openStartup() }
         function tour(): void { root.tourReplay() }
@@ -1907,11 +1939,10 @@ ShellRoot {
         id: win
 
         anchors { top: true; left: true; right: true }
-        // Dynamic surface height: when idle on the home bar, shrink the fullscreen-width Wayland surface
-        // from 620px to the bar's actual height + shadow margin (~80px), saving ~87% of top-bar GPU/blur memory!
-        implicitHeight: (root.page === "home" && !root.winLinger && !root.gestureActive)
-            ? (root.notchStyle ? (root.notchBarH + 36) : (root.padSet.top + root.padSet.h + 36))
-            : 620
+        // FIXED height on purpose. Shrinking this surface while the bar is idle made every page open / close re-send the pointer
+        // enter / leave, so the media / performance pages (and the boxes) could open and fold back by themselves. The masks below keep
+        // the empty part click-through, and the blur rule ignores the transparent part, so it costs next to nothing.
+        implicitHeight: 620
         // auto-hide frees the strip the bar reserves; otherwise windows start below the bar
         // Hyprland starts windows at (this zone + the outer gap), so the outer gap is taken off to get exactly padSet.gap between bar and windows
         // (it can not go lower than the outer gap itself: Settings > Look > Gaps)
@@ -2036,10 +2067,10 @@ ShellRoot {
             property real dragY: 0
 
             // one soft curve for everything: fast start, long gentle landing, no overshoot
-            Behavior on anchors.topMargin { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
-            Behavior on width { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
-            Behavior on height { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
-            Behavior on radius { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
+            Behavior on anchors.topMargin { NumberAnimation { duration: root.pageMs(pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
+            Behavior on width { NumberAnimation { duration: root.pageMs(pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
+            Behavior on height { NumberAnimation { duration: root.pageMs(pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
+            Behavior on radius { NumberAnimation { duration: root.pageMs(pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
             // swallow clicks so they don't reach the backdrop
             MouseArea { anchors.fill: parent }
@@ -2431,7 +2462,7 @@ ShellRoot {
                 // instant, fluid fade without lagging pauses
                 Behavior on opacity {
                     NumberAnimation {
-                        duration: root.page === "launcher" ? 160 : 120
+                        duration: root.page === "launcher" ? root.pageMs(160) : 120
                         easing.type: Easing.OutCubic
                     }
                 }
@@ -2594,7 +2625,11 @@ ShellRoot {
         id: corner
         visible: !root.dropOn       // the drop-down (Settings > Bar > Drag the bar down) replaces this box
 
-        anchors { bottom: true; right: true }
+        // the corner it opens from (Desktop builder > Where the boxes open): default bottom-right
+        readonly property string spot: root.boxSpots.util
+        readonly property bool atR: spot.charAt(1) === "r"
+        readonly property bool atB: spot.charAt(0) === "b"
+        anchors { top: !corner.atB; bottom: corner.atB; left: !corner.atR; right: corner.atR }
         // FIXED size on purpose: it used to grow / shrink with the box (48 px tab <-> full size). Each resize made the compositor
         // re-pick the pointer focus, so a pointer parked in the corner got a leave + enter, which closed and re-opened the box
         // over and over. The input region (mask below) is what keeps the surface from catching clicks while it is closed.
@@ -2604,8 +2639,9 @@ ShellRoot {
             else cornerLingerT.restart()
         }
         Timer { id: cornerLingerT; interval: 900; onTriggered: { corner.cornerLinger = false; gc() } }
-        implicitWidth: (corner.open || corner.cornerLinger) ? (pal.boxW + pal.boxEdge + 30) : 32
-        implicitHeight: (corner.open || corner.cornerLinger) ? 1000 : 32
+        // fixed size (see the note above): never resized, so opening / closing never makes the compositor re-send enter / leave
+        implicitWidth: pal.boxW + pal.boxEdge + 30
+        implicitHeight: 1000
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
 
@@ -2637,20 +2673,28 @@ ShellRoot {
         mask: Region { item: zone }
         Item {
             id: zone
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
+            anchors.right: corner.atR ? parent.right : undefined
+            anchors.left: corner.atR ? undefined : parent.left
+            anchors.bottom: corner.atB ? parent.bottom : undefined
+            anchors.top: corner.atB ? undefined : parent.top
             width: corner.open ? panel.width + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
             height: corner.open ? panel.height + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
             HoverHandler { onHoveredChanged: { corner.zoneHover = hovered; corner.syncHover() } }
             Rectangle {
                 visible: root.clickMode && !corner.open
-                anchors.right: parent.right; anchors.bottom: parent.bottom
-                anchors.rightMargin: 3; anchors.bottomMargin: 3
+                anchors.right: corner.atR ? parent.right : undefined
+                anchors.left: corner.atR ? undefined : parent.left
+                anchors.bottom: corner.atB ? parent.bottom : undefined
+                anchors.top: corner.atB ? undefined : parent.top
+                anchors.rightMargin: 3; anchors.leftMargin: 3; anchors.bottomMargin: 3; anchors.topMargin: 3
                 width: 12; height: 12; radius: 6
                 color: Qt.alpha(pal.accent, 0.35)
             }
             Item {
-                anchors.right: parent.right; anchors.bottom: parent.bottom
+                anchors.right: corner.atR ? parent.right : undefined
+                anchors.left: corner.atR ? undefined : parent.left
+                anchors.bottom: corner.atB ? parent.bottom : undefined
+                anchors.top: corner.atB ? undefined : parent.top
                 width: 20; height: 20
                 TapHandler {
                     enabled: root.clickMode
@@ -2662,10 +2706,12 @@ ShellRoot {
 
         Panel {
             id: panel
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.rightMargin: pal.boxEdge
-            anchors.bottomMargin: pal.boxEdge
+            anchors.right: corner.atR ? parent.right : undefined
+            anchors.left: corner.atR ? undefined : parent.left
+            anchors.bottom: corner.atB ? parent.bottom : undefined
+            anchors.top: corner.atB ? undefined : parent.top
+            anchors.rightMargin: pal.boxEdge; anchors.leftMargin: pal.boxEdge
+            anchors.bottomMargin: pal.boxEdge; anchors.topMargin: pal.boxTop
             pal: pal
             active: corner.open
             stats: root.stats
@@ -2693,7 +2739,7 @@ ShellRoot {
             opacity: corner.reveal
             visible: opacity > 0.01
             scale: 0.94 + 0.06 * corner.reveal
-            transformOrigin: Item.BottomRight
+            transformOrigin: corner.atB ? (corner.atR ? Item.BottomRight : Item.BottomLeft) : (corner.atR ? Item.TopRight : Item.TopLeft)
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
@@ -2725,7 +2771,11 @@ ShellRoot {
     PanelWindow {
         id: appsWin
 
-        anchors { bottom: true; left: true }
+        // the corner it opens from (Desktop builder > Where the boxes open): default bottom-left
+        readonly property string spot: root.boxSpots.apps
+        readonly property bool atR: spot.charAt(1) === "r"
+        readonly property bool atB: spot.charAt(0) === "b"
+        anchors { top: !appsWin.atB; bottom: appsWin.atB; left: !appsWin.atR; right: appsWin.atR }
         // fixed size, see the utilities box (a surface that resizes under a parked pointer makes the box flicker)
         property bool appsLinger: false
         onOpenChanged: {
@@ -2733,8 +2783,9 @@ ShellRoot {
             else appsLingerT.restart()
         }
         Timer { id: appsLingerT; interval: 900; onTriggered: { appsWin.appsLinger = false; gc() } }
-        implicitWidth: (appsWin.open || appsWin.appsLinger) ? (pal.boxW + pal.boxEdge + 30) : 32
-        implicitHeight: (appsWin.open || appsWin.appsLinger) ? 700 : 32
+        // fixed size: a resize re-sends enter / leave and made the box open and close by itself; the mask keeps it click-through
+        implicitWidth: pal.boxW + pal.boxEdge + 30
+        implicitHeight: 700
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
 
@@ -2760,20 +2811,28 @@ ShellRoot {
         mask: Region { item: aZone }
         Item {
             id: aZone
-            anchors.left: parent.left
-            anchors.bottom: parent.bottom
+            anchors.right: appsWin.atR ? parent.right : undefined
+            anchors.left: appsWin.atR ? undefined : parent.left
+            anchors.bottom: appsWin.atB ? parent.bottom : undefined
+            anchors.top: appsWin.atB ? undefined : parent.top
             width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
             height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
             HoverHandler { onHoveredChanged: { appsWin.zoneHover = hovered; appsWin.syncHover() } }
             Rectangle {
                 visible: root.clickMode && !appsWin.open
-                anchors.left: parent.left; anchors.bottom: parent.bottom
-                anchors.leftMargin: 3; anchors.bottomMargin: 3
+                anchors.right: appsWin.atR ? parent.right : undefined
+                anchors.left: appsWin.atR ? undefined : parent.left
+                anchors.bottom: appsWin.atB ? parent.bottom : undefined
+                anchors.top: appsWin.atB ? undefined : parent.top
+                anchors.rightMargin: 3; anchors.leftMargin: 3; anchors.bottomMargin: 3; anchors.topMargin: 3
                 width: 12; height: 12; radius: 6
                 color: Qt.alpha(pal.accent, 0.35)
             }
             Item {
-                anchors.left: parent.left; anchors.bottom: parent.bottom
+                anchors.right: appsWin.atR ? parent.right : undefined
+                anchors.left: appsWin.atR ? undefined : parent.left
+                anchors.bottom: appsWin.atB ? parent.bottom : undefined
+                anchors.top: appsWin.atB ? undefined : parent.top
                 width: 20; height: 20
                 TapHandler {
                     enabled: root.clickMode
@@ -2786,8 +2845,11 @@ ShellRoot {
         // how many apps are alive in the background: a small count on the corner while the box is closed
         Rectangle {
             visible: bgPanel.count > 0 && !appsWin.open && root.opt.bgWhere === "corner"
-            anchors.left: parent.left; anchors.bottom: parent.bottom
-            anchors.leftMargin: 6; anchors.bottomMargin: 6
+            anchors.right: appsWin.atR ? parent.right : undefined
+            anchors.left: appsWin.atR ? undefined : parent.left
+            anchors.bottom: appsWin.atB ? parent.bottom : undefined
+            anchors.top: appsWin.atB ? undefined : parent.top
+            anchors.rightMargin: 6; anchors.leftMargin: 6; anchors.bottomMargin: 6; anchors.topMargin: 6
             width: 18; height: 18; radius: 9
             color: Qt.alpha(pal.accent, 0.9)
             Text {
@@ -2800,10 +2862,12 @@ ShellRoot {
 
         BgApps {
             id: bgPanel
-            anchors.left: parent.left
-            anchors.bottom: parent.bottom
-            anchors.leftMargin: pal.boxEdge
-            anchors.bottomMargin: pal.boxEdge
+            anchors.right: appsWin.atR ? parent.right : undefined
+            anchors.left: appsWin.atR ? undefined : parent.left
+            anchors.bottom: appsWin.atB ? parent.bottom : undefined
+            anchors.top: appsWin.atB ? undefined : parent.top
+            anchors.rightMargin: pal.boxEdge; anchors.leftMargin: pal.boxEdge
+            anchors.bottomMargin: pal.boxEdge; anchors.topMargin: pal.boxTop
             pal: pal
             active: appsWin.open
 
@@ -2812,7 +2876,7 @@ ShellRoot {
             opacity: appsWin.reveal
             visible: opacity > 0.01
             scale: 0.94 + 0.06 * appsWin.reveal
-            transformOrigin: Item.BottomLeft
+            transformOrigin: appsWin.atB ? (appsWin.atR ? Item.BottomRight : Item.BottomLeft) : (appsWin.atR ? Item.TopRight : Item.TopLeft)
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
         }

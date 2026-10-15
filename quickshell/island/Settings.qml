@@ -52,6 +52,7 @@ Scope {
     property real scrollMouse: 1.0         // Hyprland (mouse wheel) scroll_factor
     property string barPadding: "normal"   // low | normal | high (bar height, distance from the top, side padding)
     property string powerMgr: "halcyon"    // halcyon | power-profiles-daemon | tlp | auto-cpufreq | tuned
+    property string wallpaperPath: ""      // the wallpaper in use (shell.qml): the Desktop builder's little preview shows it
     property var opt: ({})                 // the extra settings (shell.qml "opt"): colour cycling, workspaces, clock, popups ...
     property var hyCur: ({})               // Hyprland values as they are now (shell.qml): where the sliders start
 
@@ -400,6 +401,12 @@ Scope {
     function openBuilder() { builderOpen = true }
     // the notification box builder window (Settings > Panels & notifications > Notification box builder)
     function openNotifBuilder() { nbOpen = true }
+    // the desktop builder window (Settings > Appearance > Desktop builder): wallpaper on / off + blur, moving stars, the corner each box opens from
+    function openDesktopBuilder() { dbOpen = true }
+    property bool dbOpen: false
+    property bool dbLoaded: false
+    Timer { id: dbUnload; interval: 320; onTriggered: { root.dbLoaded = false; settingsGc.restart() } }
+    onDbOpenChanged: { if (dbOpen) { dbUnload.stop(); dbLoaded = true } else dbUnload.restart() }
     property bool nbOpen: false
     property bool nbLoaded: false
     Timer { id: nbUnload; interval: 320; onTriggered: { root.nbLoaded = false; settingsGc.restart() } }
@@ -410,7 +417,7 @@ Scope {
     Timer { id: startupUnload; interval: 320; onTriggered: { root.startupLoaded = false; settingsGc.restart() } }
     onStartupOpenChanged: { if (startupOpen) { startupUnload.stop(); startupLoaded = true } else startupUnload.restart() }
     function openStartup() { startupOpen = true }
-    function hide() { galleryOpen = false; builderOpen = false; nbOpen = false; startupOpen = false; open = false }
+    function hide() { galleryOpen = false; builderOpen = false; nbOpen = false; dbOpen = false; startupOpen = false; open = false }
     function toggle() { open = !open }
 
     component SChip: Chip { maxLabel: 1000 }
@@ -469,6 +476,9 @@ Scope {
         { id: "wallpaper", title: "Wallpaper", section: "Appearance", items: [
             { type: "custom", name: "wallpaper" },
             { type: "seg", key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] }
+        ] },
+        { id: "desktop", title: "Desktop builder", section: "Appearance", items: [
+            { type: "custom", name: "desktopBuilder" }
         ] },
         { id: "glass", title: "Effects: transparency, blur & motion", section: "Appearance", items: [
             { type: "toggle", key: "opt:accentBorder", label: "Accent colour on the focused window", desc: "A thin border in the wallpaper's accent colour around the window you are using. Off = the neutral white hairline." },
@@ -570,6 +580,7 @@ Scope {
             { type: "chips", label: "Touchpad behaviour", desc: "", opts: [ch("hy:naturalScroll", "Natural scrolling"), ch("hy:tapToClick", "Tap to click"), ch("hy:disableTyping", "Pause while typing")] },
             { type: "slider", key: "scrollTouch", label: "Touchpad scroll speed", min: 0.1, max: 1.5, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
             { type: "toggle", key: "superTap", label: "Tap Super to open the launcher" },
+            { type: "seg", key: "opt:launchSpeed", label: "Launcher speed", desc: "How fast the launcher grows out of the bar. Tapping Super opens it when the key comes UP: the desktop cannot tell a lone tap from the start of Super+T until then, so opening on the press would make every Super shortcut flash the launcher. What can be cut is the animation after that: Quick is about half the time, Instant is a short snap.", opts: [o("normal", "Normal"), o("quick", "Quick"), o("instant", "Instant")], when: "superTap=true" },
             { type: "seg", adv: true, key: "hy:accelProfile", label: "Pointer acceleration", desc: "Flat = the pointer moves exactly as far as your hand does.", opts: [o("adaptive", "Adaptive"), o("flat", "Flat")] },
             { type: "toggle", adv: true, key: "hy:leftHanded", label: "Left-handed buttons" },
             { type: "seg", adv: true, key: "hy:followMouse", label: "Focus follows the pointer", opts: [o(0, "Click to focus"), o(1, "Hover"), o(2, "Hover, no raise")] },
@@ -603,6 +614,10 @@ Scope {
             { type: "toggle", key: "gaming", label: "Gaming mode", desc: "CPU / GPU at full speed, turbo on, Wi-Fi power saving off, effects off, Caffeine and Do not disturb on, background helpers stopped. SUPER+F10." },
             { type: "seg", adv: true, key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", adv: true, key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
+            { type: "seg", adv: true, key: "opt:treeConst", label: "Tree view constellation", desc: "Full: the big constellation behind the tree. Corner: the same constellation made small and tucked into a screen corner, out of the way of the tree. Off: no constellation in the tree at all (the lightest).", opts: [o("full", "Full"), o("corner", "Small, in a corner"), o("off", "Off")] },
+            { type: "seg", adv: true, key: "opt:treeConstCorner", when: "opt:treeConst=corner", label: "Constellation corner", desc: "Which corner the small constellation sits in.", opts: [o("tl", "Top-left"), o("tr", "Top-right"), o("bl", "Bottom-left"), o("br", "Bottom-right")] },
+            { type: "slider", adv: true, key: "opt:treeConstSize", def: 30, when: "opt:treeConst=corner", label: "Small constellation size", desc: "How much of the screen the small constellation takes (a share of the tree's width and height).", min: 15, max: 50, step: 5, unit: " %" },
+            { type: "seg", adv: true, key: "opt:treeDots", label: "Floating dots in the tree", desc: "Where the drifting dots gather. By load: more dots circle the workspaces and windows that use the most CPU and memory, and they glide over as the load changes. Even: spread over the whole screen. Off: none. (Quality Low shows none either way.)", opts: [o("load", "By load"), o("even", "Even"), o("off", "Off")] },
             { type: "seg", adv: true, key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
             { type: "seg", adv: true, key: "opt:bgRefresh", label: "Background refresh", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. Normal: every 2 s / 4 s. Relaxed: 5 s / 10 s. Slow: 10 s / 20 s. Fewer wake-ups and far fewer small processes, nothing looks different. The performance page and the bar's CPU / RAM / TEMP row stay at the normal pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "Normal"), o("relaxed", "Relaxed"), o("slow", "Slow")] },
             { type: "acts", adv: true, label: "Memory", desc: "Show what uses my RAM: opens the console with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
@@ -723,7 +738,7 @@ Scope {
     // Both read the same groups / items and write through the same change(), so nothing is lost by switching.
     readonly property bool pagesMode: opt && opt.settingsStyle === "pages"
     readonly property var pages: [
-        { id: "Appearance", sub: "Look, colours, wallpaper and effects.", groups: ["look", "colours", "greeting", "wallpaper", "glass", "growth"] },
+        { id: "Appearance", sub: "Look, colours, wallpaper and effects.", groups: ["look", "colours", "greeting", "wallpaper", "desktop", "glass", "growth"] },
         { id: "Bar", sub: "The bar and the clock.", groups: ["bar", "clock"] },
         { id: "Desktop", sub: "Workspaces, notifications, focus mode and the calendar.", groups: ["workspaces", "notifications", "focus", "calendar"] },
         { id: "Input", sub: "Mouse, touchpad, gestures, mouse buttons and keyboard.", groups: ["mouse", "gestures", "mousebtn"] },
@@ -803,7 +818,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -1503,6 +1518,19 @@ Scope {
     }
 
     Component {
+        id: cDesktopBuilder
+        DesktopBuilder {
+            pal: root.pal
+            opt: root.opt
+            onOpenRequested: root.dbOpen = true
+            onResetRequested: {
+                root.setting("opt:deskWall", true); root.setting("opt:deskBlur", 0); root.setting("opt:deskBg", "theme")
+                root.setting("opt:deskStars", false); root.setting("opt:boxSpots", null); root.setting("opt:notifSpot", "edge")
+            }
+        }
+    }
+
+    Component {
         id: cBarBuilder
         BarBuilder {
             pal: root.pal
@@ -1942,6 +1970,7 @@ Scope {
                                                                            : pr.m.name === "specialCmds" ? cSpecialCmds
                                                                            : pr.m.name === "focusApps" ? cFocusApps
                                                                            : pr.m.name === "safetyAuto" ? cSafetyAuto
+                                                                           : pr.m.name === "desktopBuilder" ? cDesktopBuilder
                                                                            : pr.m.name === "notifBuilder" ? cNotifBuilder
                                                                            : pr.m.name === "barBuilder" ? cBarBuilder
                                                                            : pr.m.name === "growth" ? cGrowth : cSwatches
@@ -2338,6 +2367,7 @@ Scope {
                                                                                : leaf.m.name === "specialCmds" ? cSpecialCmds
                                                                                : leaf.m.name === "focusApps" ? cFocusApps
                                                                                : leaf.m.name === "safetyAuto" ? cSafetyAuto
+                                                                               : leaf.m.name === "desktopBuilder" ? cDesktopBuilder
                                                                                : leaf.m.name === "notifBuilder" ? cNotifBuilder
                                                                                : leaf.m.name === "barBuilder" ? cBarBuilder
                                                                                : leaf.m.name === "growth" ? cGrowth : cSwatches
@@ -2485,6 +2515,35 @@ Scope {
                 onClosed: root.nbOpen = false
                 onEdited: l => root.setting("opt:notifLayout", l)
                 onLookChosen: v => root.setting("opt:notifStyle", v)
+            }
+        }
+    }
+
+    // ======================================================================== the Desktop builder window
+    LazyLoader {
+        active: root.dbLoaded
+        PanelWindow {
+            id: dbwin
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            WlrLayershell.namespace: "island-desktopbuilder"
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.keyboardFocus: (root.dbOpen && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+            // opens one frame after the window exists, so the fade-in plays
+            property bool shown: false
+            Timer { running: true; interval: 30; onTriggered: dbwin.shown = true }
+
+            DesktopBuilderWindow {
+                anchors.fill: parent
+                open: root.dbOpen && dbwin.shown
+                pal: root.pal
+                opt: root.opt
+                wallpaperPath: root.wallpaperPath
+                onClosed: root.dbOpen = false
+                onChanged: (k, v) => root.setting("opt:" + k, v)
             }
         }
     }
