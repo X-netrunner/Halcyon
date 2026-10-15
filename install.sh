@@ -52,6 +52,9 @@
 #                          (--no-safety-check: skip it; its entry in Settings > Backup is then greyed out and disabled)
 #   --llm[=MODEL]          install Ollama & local AI performance advisor (auto-detects hardware tier or specifies model)
 #   --no-llm               skip Ollama & local AI performance advisor
+#   --resources MODE       how much of the machine Halcyon may use: low | medium | high | adaptive (Settings > Performance > Resource use).
+#                          The menu shows an estimate of the RAM / CPU each one needs; adaptive = medium now, limits learned from your use
+#   --resource-offset N    headroom in percent (0-100) above that estimate before Settings > Performance > Health warns (default 15)
 #   --choose               ask the questions above again (they are asked once, then remembered for update.sh)
 #                          Without these options and in a terminal you get a short menu; with --yes the saved / default choice is used.
 #   -v, --verbose          show the output of every command (this is the default)
@@ -81,6 +84,7 @@ PACKAGES=true; SKIP_DRIVERS=false; SKIP_AUR=false; UPGRADE=auto; SKIP_TUNE=false
 SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=false; SYSMODE_ASKED=true; }
 SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default (answer n, or --no-safety-check, to skip it)
 INSTALL_LLM=false; PICK_LLM_MODEL=""; LLM_ASKED=false # local AI performance advisor with Ollama
+RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 LINK_CONFIG=false; REQUESTED_USER=""; TTY_AUTOSTART=false; LOCK_LOGIN=auto; REMOVE_LOGIN=false
 
@@ -158,6 +162,10 @@ while [[ $# -gt 0 ]]; do
         --editor=*)         PICK_EDITOR="${1#--editor=}" ;;
         --music)            shift; PICK_MUSIC="${1:-}"; [[ -n "$PICK_MUSIC" ]] || die "--music needs a name (see --help)" ;;
         --music=*)          PICK_MUSIC="${1#--music=}" ;;
+        --resources)        shift; RES_MODE="${1:-}"; [[ "$RES_MODE" =~ ^(low|medium|high|adaptive)$ ]] || die "--resources needs low, medium, high or adaptive" ;;
+        --resources=*)      RES_MODE="${1#--resources=}"; [[ "$RES_MODE" =~ ^(low|medium|high|adaptive)$ ]] || die "--resources needs low, medium, high or adaptive" ;;
+        --resource-offset)  shift; RES_OFFSET="${1:-}"; [[ "$RES_OFFSET" =~ ^[0-9]+$ && "$RES_OFFSET" -le 100 ]] || die "--resource-offset needs a number from 0 to 100" ;;
+        --resource-offset=*) RES_OFFSET="${1#--resource-offset=}"; [[ "$RES_OFFSET" =~ ^[0-9]+$ && "$RES_OFFSET" -le 100 ]] || die "--resource-offset needs a number from 0 to 100" ;;
         --choose)           CHOOSE=true ;;
         --no-tune)          SKIP_TUNE=true ;;
         --link)             LINK_CONFIG=true ;;
@@ -1227,6 +1235,75 @@ choose_apps() {
 if [[ "$PACKAGES" == "true" && "$REMOVE_LOGIN" != "true" ]]; then choose_apps
 else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; INSTALL_LLM="${INSTALL_LLM:-false}"; PICK_LLM_MODEL="${PICK_LLM_MODEL:-none}"; fi
 
+# ---------------------------------------------------------------------------------------------- resource use
+# How much of the machine may Halcyon use? One question, answered with a rough estimate you can see before you pick.
+# The answer becomes the DEFAULT of Settings > Performance > Resource use (the preset) and of the RAM / CPU limits that
+# Startup & processes > Health compares against. It is only a starting point: change it any time in Settings.
+# ESTIMATES: planning figures for ALL of Halcyon together (Hyprland, the island and its helpers) at idle / light use, NOT measured on
+# your machine. The offset is the headroom: the limit is set that many percent above the estimate. See the real numbers with
+# Settings > Performance > Memory ("Show what uses my RAM") or scripts/halcyon-mem.sh.
+res_estimate() { case "$1" in low) echo "320 3" ;; high) echo "520 7" ;; *) echo "420 5" ;; esac; }   # RAM MB, CPU %
+res_limits() {   # MODE OFFSET -> RES_LIM_RAM (MB, rounded up to 10) and RES_LIM_CPU (%, at least 3)
+    local est ram cpu; est=$(res_estimate "$1"); ram=${est% *}; cpu=${est#* }
+    RES_LIM_RAM=$(( ( (ram * (100 + $2) / 100 + 9) / 10 ) * 10 ))      # rounded up to 10 MB; the Settings slider runs 300 .. 1500
+    (( RES_LIM_RAM < 300 )) && RES_LIM_RAM=300
+    (( RES_LIM_RAM > 1500 )) && RES_LIM_RAM=1500
+    RES_LIM_CPU=$(( (cpu * (100 + $2) + 99) / 100 ))
+    (( RES_LIM_CPU < 3 )) && RES_LIM_CPU=3
+    return 0
+}
+res_note() {     # MODE OFFSET -> "~420 MB RAM, ~5% CPU (±15%: 357-483 MB)"
+    local est ram cpu; est=$(res_estimate "$1"); ram=${est% *}; cpu=${est#* }
+    echo "~${ram} MB RAM, ~${cpu}% CPU  (±$2%: $(( ram * (100 - $2) / 100 ))-$(( ram * (100 + $2) / 100 )) MB)"
+}
+choose_resources() {
+    local interactive=false s_m s_o rec h_tier h_ram h_cpus hw_data IFS='|' asked=false flagged=false fresh=false
+    [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
+    [[ -s "$TARGET_HOME/.local/state/island/settings.json" ]] || fresh=true
+    s_m=$(saved_choice RESOURCE_MODE); s_o=$(saved_choice RESOURCE_OFFSET)
+    hw_data=($(detect_hardware_tier)); unset IFS
+    h_ram="${hw_data[0]:-8}"; h_cpus="${hw_data[1]:-4}"; h_tier="${hw_data[4]:-}"
+    case "$h_tier" in "Tier 1"*) rec=low ;; "Tier 3"*) rec=high ;; *) rec=medium ;; esac
+    [[ -n "$RES_MODE" || -n "$RES_OFFSET" ]] && flagged=true
+
+    # precedence: command line > the menu (terminal, no --yes) > what was saved > the choice that fits this hardware
+    if [[ -z "$RES_MODE" ]]; then
+        if [[ "$interactive" == "true" && ( "$CHOOSE" == "true" || -z "$s_m" ) ]]; then
+            echo -e "\n  ${CYAN}${BOLD}How much of this computer may Halcyon use?${RESET}  ${DIM}(${h_cpus} CPU threads, ~${h_ram} GB RAM: ${h_tier:-unknown tier})${RESET}"
+            echo -e "   ${DIM}Estimates are for all of Halcyon together at idle / light use: rough planning numbers, not measured here.${RESET}"
+            menu_pick RES_MODE "Resource use" "$rec" 0 \
+                "low|Low|$(res_note low 15) · no blur, shadows or window animations, 30 fps, still stars" \
+                "medium|Medium|$(res_note medium 15) · light blur, no shadows, 60 fps" \
+                "high|High|$(res_note high 15) · everything on, as designed" \
+                "adaptive|Adaptive|starts as Medium, then learns the limits from your own use (3 days)"
+            asked=true
+        else
+            RES_MODE="${s_m:-$rec}"
+            [[ "$RES_MODE" =~ ^(low|medium|high|adaptive)$ ]] || RES_MODE="$rec"
+        fi
+    fi
+    if [[ -z "$RES_OFFSET" ]]; then
+        if [[ "$interactive" == "true" && "$asked" == "true" && "$RES_MODE" != "adaptive" ]]; then
+            menu_pick RES_OFFSET "Headroom above that estimate before Halcyon warns you" "15" 0 \
+                "10|Tight|warn above $( res_limits "$RES_MODE" 10; echo "${RES_LIM_RAM} MB RAM / ${RES_LIM_CPU}% CPU")" \
+                "15|Balanced|warn above $(res_limits "$RES_MODE" 15; echo "${RES_LIM_RAM} MB RAM / ${RES_LIM_CPU}% CPU")" \
+                "25|Relaxed|warn above $(res_limits "$RES_MODE" 25; echo "${RES_LIM_RAM} MB RAM / ${RES_LIM_CPU}% CPU")"
+        else
+            RES_OFFSET="${s_o:-15}"
+        fi
+    fi
+    [[ "$RES_OFFSET" =~ ^[0-9]+$ && "$RES_OFFSET" -le 100 ]] || RES_OFFSET=15
+
+    RES_PRESET="$RES_MODE"; RES_LIMMODE=manual
+    [[ "$RES_MODE" == adaptive ]] && { RES_PRESET=medium; RES_LIMMODE=auto; }
+    res_limits "$RES_PRESET" "$RES_OFFSET"
+    # applied on the next start of Halcyon when YOU decided it now (command line / menu), or when there are no settings yet;
+    # a saved or default choice never overrides what you changed later in Settings > Performance
+    [[ "$flagged" == "true" || "$asked" == "true" || "$fresh" == "true" ]] && RES_APPLY=true
+    log_info "Resource use: ${RES_MODE}  $(res_note "$RES_PRESET" "$RES_OFFSET")  ->  Health warns above ${RES_LIM_RAM} MB RAM / ${RES_LIM_CPU}% CPU$([[ "$RES_LIMMODE" == auto ]] && echo " (adaptive: learned limits take over after 3 days)")$([[ "$RES_APPLY" == true ]] || echo "  [kept as it is: nothing changes on this machine]")"
+}
+[[ "$REMOVE_LOGIN" != "true" ]] && choose_resources
+
 # ---------------------------------------------------------------------------------------------- step 5
 log_step "Step 5: Hyprland and the desktop"
 
@@ -1802,7 +1879,8 @@ user_setup fish-commands || warn_later "The fish commands (halcyon, bar-builder,
 if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
-    user_setup save-choices "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" || true
+    [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" || true
 fi
 [[ "$PACKAGES" == "true" && "$SKIP_DRIVERS" != "true" ]] && { user_setup gpu-env "$GPU_ENV_MODE" || true; }
 
