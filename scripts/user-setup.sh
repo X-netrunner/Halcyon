@@ -17,7 +17,10 @@
 #                                         foot / Thunar / Spotify / Discord become the default terminal / files / music / chat
 #                                         (only for a kind you have not chosen yourself in Settings > Default apps).
 #                                         browser= / files= / editor= are what you picked in the installer: those always win
-#     user-setup.sh save-choices K=V...   remember the installer's picks (~/.local/state/island/install-choices.env: BROWSER FILES EDITOR MUSIC SYSMODE SAFETY_CHECK)
+#     user-setup.sh save-choices K=V...   remember the installer's picks (~/.local/state/island/install-choices.env: BROWSER FILES EDITOR MUSIC SYSMODE SAFETY_CHECK RESOURCE_MODE RESOURCE_OFFSET)
+#     user-setup.sh resource-seed PRESET LIMMODE RAM_MB CPU_PCT
+#                                         the resource use picked in the installer (low|medium|high, manual|auto, the RAM / CPU limits): written
+#                                         once to ~/.local/state/island/resource-seed.json, the island applies it on its next start and deletes it
 #     user-setup.sh gpu-env MODE          ~/.config/Halcyon/gpu.lua for this GPU setup: nvidia | hybrid | none
 # Exit status: 0 = done / nothing to do, 1 = could not do it (a message says why).
 set -uo pipefail
@@ -378,10 +381,24 @@ save_choices() {
   mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
   for a in "$@"; do
     k=${a%%=*}
-    case "$k" in BROWSER|FILES|EDITOR|MUSIC|SYSMODE|SAFETY_CHECK|LLM|LLM_MODEL) ;; *) continue ;; esac
+    case "$k" in BROWSER|FILES|EDITOR|MUSIC|SYSMODE|SAFETY_CHECK|LLM|LLM_MODEL|RESOURCE_MODE|RESOURCE_OFFSET) ;; *) continue ;; esac
     grep -v "^$k=" "$f" > "$f.new" 2>/dev/null; printf '%s="%s"\n' "$k" "${a#*=}" >> "$f.new"; mv "$f.new" "$f"
   done
   ok "your choices are saved in ~/.local/state/island/install-choices.env"
+}
+
+# ---------------------------------------------------------------------------------------------- resource use (first start)
+# The island reads this file once after it has loaded settings.json (shell.qml, "resource-seed"), applies the preset
+# (the same thing as Settings > Performance > Resource use), sets the Halcyon RAM / CPU limits, and deletes the file.
+resource_seed() {
+  local preset="${1:-}" limmode="${2:-manual}" ram="${3:-}" cpu="${4:-}" f="$HOME/.local/state/island/resource-seed.json"
+  case "$preset" in low|medium|high) ;; *) warn "resource-seed: unknown preset '$preset' (low | medium | high)"; return 1 ;; esac
+  case "$limmode" in manual|auto) ;; *) limmode=manual ;; esac
+  [[ "$ram" =~ ^[0-9]+$ ]] || ram=600
+  [[ "$cpu" =~ ^[0-9]+$ ]] || cpu=10
+  mkdir -p "$(dirname "$f")"
+  printf '{"resMode":"%s","limMode":"%s","limRam":%s,"limCpu":%s}\n' "$preset" "$limmode" "$ram" "$cpu" > "$f.new" && mv "$f.new" "$f" \
+    && ok "resource use: $preset (limits $ram MB / $cpu %), applied when Halcyon starts"
 }
 
 # ---------------------------------------------------------------------------------------------- GPU environment
@@ -420,6 +437,7 @@ LUA
 case "${1:-}" in
   default-apps)  shift; default_apps "$@" ;;
   save-choices)  shift; save_choices "$@" ;;
+  resource-seed) shift; resource_seed "$@" ;;
   gpu-env)       gpu_env "${2:-none}" ;;
   hypr-entry)    hypr_entry ;;
   login-add)     login_add || { warn "your login shell is not bash, zsh or fish, so the lock-screen login was NOT set up (auto-login without it would leave an open shell)"; exit 1; } ;;

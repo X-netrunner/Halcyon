@@ -1505,6 +1505,30 @@ ShellRoot {
             }
         }
     }
+    // The resource use picked in the installer (install.sh -> scripts/user-setup.sh resource-seed): applied ONCE, after settings.json has
+    // been loaded, exactly like picking the preset in Settings > Performance > Resource use, plus the RAM / CPU limits of the Health tab.
+    // The file is deleted right after it is read, so a later change in Settings is never overwritten.
+    Process {
+        running: root.settingsLoaded
+        command: ["sh", "-c", "f=\"$HOME/.local/state/island/resource-seed.json\"; [ -s \"$f\" ] && cat \"$f\" && rm -f \"$f\"; true"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    if (text.trim() === "") return
+                    var r = JSON.parse(text)
+                    if (["low", "medium", "high"].indexOf(r.resMode) < 0) return
+                    root.applyResMode(r.resMode)
+                    var o = {}
+                    for (var x in root.opt) o[x] = root.opt[x]
+                    if (r.limMode === "auto" || r.limMode === "manual") o.limMode = r.limMode
+                    if (r.limRam > 0) o.limRam = r.limRam
+                    if (r.limCpu > 0) o.limCpu = r.limCpu
+                    root.opt = o
+                    root.saveSettings()
+                } catch (e) {}
+            }
+        }
+    }
     // tree-branch shader (branch.frag): compiled once with Qt's `qsb` into ~/.cache/halcyon, again only when branch.frag changes.
     // No qsb on the machine (package qt6-shadertools) = the url stays empty and the branches use the Shape fallback.
     property string branchShaderUrl: ""

@@ -1,3 +1,10 @@
+## Installer: pick how much of the machine Halcyon may use
+
+- **install.sh** now asks (once, remembered for update.sh) how much of the computer Halcyon may use: **Low / Medium / High / Adaptive**, each with a rough estimate of the RAM and CPU all of Halcyon needs (shown with a +/- offset range) and a **headroom** choice (Tight 10 % / Balanced 15 % / Relaxed 25 %). The pre-selected answer follows your hardware (low-end = Low, mid-range = Medium, strong = High).
+- The answer becomes the default of **Settings > Performance > Resource use** and of the RAM / CPU limits in **Startup & processes > Health**: limit = estimate + headroom. **Adaptive** starts as Medium with limits learned from your own use.
+- The numbers are planning estimates, not measurements of your machine. See the real ones in Settings > Performance > Memory.
+- Options: `--resources low|medium|high|adaptive`, `--resource-offset N`. Applied once at the first start after the install (resource-seed.json, then deleted), so later changes in Settings are never overwritten.
+
 # Halcyon Optimization & Bugfix Changelog
 
 This changelog documents the complete audit, optimizations, bug fixes, and reliability improvements implemented across the Halcyon repository.
