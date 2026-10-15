@@ -1,0 +1,17 @@
+[package]
+name = "birthday-sync"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ureq = { version = "=2.9.7", features = ["json"] }
+serde_json = "1"
+sha2 = "0.10"
+base64 = "0.21"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

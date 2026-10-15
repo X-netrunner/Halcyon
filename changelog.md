@@ -4,6 +4,15 @@ This changelog documents the complete audit, optimizations, bug fixes, and relia
 
 ---
 
+## 2026-10-14: Google Birthdays sync (`birthday-sync`)
+
+- New Rust helper `src/birthday-sync`: reads the built-in Google Birthdays calendar (no iCal address exists for it) through the Calendar API with a read-only login, and rewrites only the block between the two "Google Calendar" marker lines in `birthdays.txt`. Lines you typed and the contacts-import block are left alone; people already listed elsewhere are skipped.
+- `install.sh` builds it with the other helpers and installs it to `~/.config/Halcyon/bin/birthday-sync` (no root).
+- `Calendar.qml`: **Connect Google Birthdays** (picks up `client_secret_*.json` from Downloads, logs in in the browser, syncs) and **Sync Google Birthdays** buttons next to Import Contacts.
+- Not run against the real Google API yet: only the offline merge/parse tests were run.
+
+---
+
 ## Audit 2026-10-13: security, bugs and reliability fixes
 
 Line-by-line read of the installer, updater, launchers, the root-run parts of `sysmode`, the backup / restore scripts and the calendar helper, targeted searches across the rest (QML, Rust, scripts), plus
