@@ -10,6 +10,7 @@ import "Routes.js" as Routes
 import "Binds.js" as Binds
 import "Tour.js" as TourData
 import "DeskSpots.js" as DS
+import "WidgetData.js" as WD
 
 ShellRoot {
     id: root
@@ -20,7 +21,7 @@ ShellRoot {
     readonly property string powerService: "power-manager.service"
     // Settings > Bar > Padding: low | normal | high  ->  bar height, side padding, and the space ABOVE the bar (to the screen edge)
     // = the space BELOW it (to the windows): the same number, so the bar sits evenly. "low" is almost touching both.
-    readonly property bool notchStyle: opt.barStyle === "notch" || opt.barStyle === "custom"      // custom = the bar builder (CustomBar.qml): the same hanging bar
+    readonly property bool notchStyle: opt.barStyle === "notch" || opt.barStyle === "custom" || opt.barStyle === "off"      // custom = the bar builder (CustomBar.qml): the same hanging bar; off = no bar at all (the pages and the launcher still hang from the top edge)
     property bool notchHovered: false
     readonly property var padSet: ({ low: { h: 32, top: 3, gap: 3, x: 28 }, normal: { h: 44, top: 12, gap: 12, x: 56 }, high: { h: 54, top: 20, gap: 20, x: 76 } })[barPadding] || ({ h: 44, top: 12, gap: 12, x: 56 })
     property int notifMax: 5                 // popups on screen at once (Settings > Notifications); a new one past this hides the oldest popup (it stays in the centre)
@@ -91,11 +92,13 @@ ShellRoot {
         treeConstSize: 30,         // % of the tree's width / height the small constellation takes
         treeDots: "load",          // load | even | off : floating dots gather around the heaviest workspaces / windows, spread evenly, or none
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
-        barStyle: "island",        // island | notch | custom : the floating pill, or a bar hanging from the top edge (NotchBar.qml)
+        barStyle: "island",        // island | notch | custom | off : the floating pill, or a bar hanging from the top edge (NotchBar.qml), or no bar (desktop widgets instead)
         notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
         notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchSpacing: "compact",
         islWs: true, islWsLook: "numbers", islWsMin: 5, islSpecials: true, islViz: true, islTime: true, islWifi: true, islWifiStyle: "symbol", islBtMode: "on", islBat: true, islBatPct: true, islCaffeine: true,   // what the island shows
         notchBat: true, notchBatPct: false, notchCaffeine: true, notchBg: true,
+        deskWidgets: null,         // the desktop widgets { items: [...] } (WidgetData.js; Widget builder + Desktop builder)
+        deskStyles: [],            // looks you saved in the Widget builder [{ name, look }]
         barLayout: null,           // the bar builder's layout { left, center, right } (BarLayout.js); null = the default one
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
@@ -103,6 +106,8 @@ ShellRoot {
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsCalendar: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: true,    // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
         dialogStarStyle: "both",   // moving | constellations | both | none : dialog star style
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
+        recKind: "screen",         // screen | audio : what the recorder (Super + Alt + R) records: the screen, or sound only (Settings > Screen & audio recording)
+        recAudio: "system",        // none | system | mic | both : the sound that goes with it (system = what you hear, mic = the default microphone)
         limRam: 600,               // manual RAM limit (MB) for background helper warnings
         limCpu: 10                 // manual CPU limit (%) for background helper warnings
     })
@@ -130,6 +135,8 @@ ShellRoot {
         case "wsStart": writeFlag("ws-start", v); break
         case "wsMax": writeFlag("ws-max", v); break
         case "wsInvert": writeFlag("ws-invert", v ? "1" : "0"); break
+        case "recKind": writeFlag("rec-kind", v); break           // scripts/screen-record.sh reads these two on every start
+        case "recAudio": writeFlag("rec-audio", v); break
         case "wsSwipe4": writeFlag("ws-swipe4", v); break
         case "connErrOnly": writeFlag("conn-errors-only", v ? "1" : "0"); break
         case "bgRefresh": syncRefresh(); break
@@ -218,6 +225,7 @@ ShellRoot {
     function syncOptFlags() {
         writeFlag("ws-end", opt.wsEnd); writeFlag("ws-start", opt.wsStart); writeFlag("ws-max", opt.wsMax); writeFlag("ws-invert", opt.wsInvert ? "1" : "0"); writeFlag("ws-swipe4", opt.wsSwipe4 || "left")
         writeFlag("term-mode", opt.termMode)
+        writeFlag("rec-kind", opt.recKind || "screen"); writeFlag("rec-audio", opt.recAudio || "system")
     }
     // Settings > Look > "Back to the Lua config": forget every Hyprland value changed here and let the config files rule again
     function resetLook() {
@@ -479,6 +487,8 @@ ShellRoot {
         id: settingsWin
         pal: pal
         wallpaperPath: wallpaperLayer.lastPath
+        env: root
+        onEditOnDesktop: root.deskEditing = true
         sysmode: root.sysmode
         autoHide: root.autoHide
         clickMode: root.clickMode
@@ -539,6 +549,9 @@ ShellRoot {
             else if (id === "greeting-paste") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "paste"])
             else if (id === "greeting-edit") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "edit"])
             else if (id === "greeting-preview") quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh preview")
+            else if (id === "rec-open") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/screen-record.sh", "open"])
+            else if (id === "rec-last") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/screen-record.sh", "last"])
+            else if (id === "rec-toggle") root.toggleRecording()
             else if (id === "mem-report") quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-mem.sh")
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
@@ -684,6 +697,7 @@ ShellRoot {
         layout: root.opt.notifLayout
         look: root.opt.notifStyle === "timeline" || root.opt.notifStyle === "grouped" ? root.opt.notifStyle : "stack"
         spot: root.opt.notifSpot === "corner" ? "corner" : "edge"
+        cornerId: (root.boxSpots && root.boxSpots.notif) || "tr"
         dnd: root.dnd
         edgeOn: !root.dropOn
         clickMode: root.clickMode
@@ -738,12 +752,22 @@ ShellRoot {
         consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
     }
 
+    // SUPER+N: Quick notes overlay (notes, tasks, search, copy)
+    NotesMenu {
+        id: notesMenu
+        pal: pal
+        stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
+    }
+
     // Notifications are on top of every window, big ones included. Those open on the same layer and later = above, so whenever one
     // opens while a toast is showing (or a toast arrives while one is open) the notification window is put back on top.
     // notifs.centerOpen is NOT in this list on purpose: the notification window does not need to raise itself above itself, and the
     // raise() un-maps the window for a moment, which made the box think the pointer had left and close about a second after opening.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
-        || calendar.open || powerMenu.open || tour.open || corner.open || appsWin.open
+        || calendar.open || notesMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
         || settingsWin.galleryOpen || settingsWin.builderOpen
         || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
@@ -937,11 +961,14 @@ ShellRoot {
         if (displayPicker.open) { displayPicker.hide(); return true }
         if (tour.open) { tour.end(false); return true }
         if (powerMenu.open) { powerMenu.hide(); return true }
+        if (notesMenu.open) { notesMenu.close(); return true }
         if (calendar.open) { calendar.hide(); return true }
         if (settingsWin.startupOpen) { settingsWin.startupOpen = false; return true }
         if (settingsWin.builderOpen) { settingsWin.builderOpen = false; return true }
         if (settingsWin.nbOpen) { settingsWin.nbOpen = false; return true }
         if (settingsWin.dbOpen) { settingsWin.dbOpen = false; return true }
+        if (settingsWin.wbOpen) { settingsWin.wbOpen = false; return true }
+        if (deskEditing) { deskEditing = false; return true }
         if (settingsWin.galleryOpen) { settingsWin.galleryOpen = false; return true }
         if (settingsWin.open) { settingsWin.hide(); return true }
         if (cheat.open) { if (cheat.editId !== "") cheat.cancelEdit(); else cheat.hide(); return true }
@@ -1230,6 +1257,7 @@ ShellRoot {
     // ---- Num Lock: the bar builder's "Num lock" widget. It is watched only while that widget is on the bar. The key's LED is read
     // straight from sysfs (no process); a keyboard without a Num Lock LED is asked through scripts/numlock.sh status instead.
     readonly property bool numLockShown: {
+        if (deskNeeds.numlock) return true
         var l = root.opt.barLayout
         if (root.opt.barStyle !== "custom" || !l) return false
         return [].concat(l.left || [], l.center || [], l.right || []).indexOf("numlock") >= 0
@@ -1428,6 +1456,9 @@ ShellRoot {
         case "barbuilder": settingsWin.openBuilder(); break
         case "notifbuilder": settingsWin.openNotifBuilder(); break
         case "desktopbuilder": settingsWin.openDesktopBuilder(); break
+        case "widgetbuilder": settingsWin.openWidgetBuilder(""); break
+        case "desktopedit": deskEditing = !deskEditing; break
+        case "bartoggle": setOpt("barStyle", opt.barStyle === "off" ? "island" : "off"); break
         case "startupview": settingsWin.openStartup(); break
         case "tour": tourReplay(); break
         case "calendar": calendarKey(); break
@@ -1456,6 +1487,10 @@ ShellRoot {
         case "theme": toggleTheme(); break
         case "wifi": toggleWifi(); break
         case "bluetooth": toggleBt(); break
+        case "notes": notesMenu.toggle(); break
+        case "record": toggleRecording(); break
+        case "extradim": toggleExtraDim(); break
+        case "passman": quickTerm.run("passman"); break
         default: session(id)
         }
     }
@@ -1495,6 +1530,8 @@ ShellRoot {
                         var oo = {}
                         for (var ox in root.opt) oo[ox] = root.opt[ox]
                         for (var oy in s.opt) if (oy !== "notchCenter") oo[oy] = s.opt[oy]      // notchCenter is gone: the notch clock is always centred
+                        var mg = WD.migrate(oo)          // the old notes / calendar choice becomes one Notes widget, once
+                        if (mg) oo.deskWidgets = mg
                         root.opt = oo
                         root.syncRefresh()
                     }
@@ -1629,12 +1666,12 @@ ShellRoot {
     // after "Detect RAM details" (Settings): read the hardware list again once the password was given
     Timer { id: specsAgain; interval: 12000; onTriggered: { specsProc.running = false; specsProc.running = true } }
     Process {
-        running: root.page === "perf"
+        running: root.page === "perf" || root.deskNeeds.disk
         command: [root.hx, "disk", "10"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.disks = JSON.parse(d) } catch (e) {} } }
     }
     Process {
-        running: root.page === "perf"
+        running: root.page === "perf" || root.deskNeeds.gpu
         command: ["bash", root.cfg + "/island/scripts/gpu.sh", "2"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.gpu = JSON.parse(d) } catch (e) {} } }
     }
@@ -1686,7 +1723,7 @@ ShellRoot {
 
     // volume / brightness, only polled while the bottom-right panel is open
     Process {
-        running: corner.open || root.page === "util"
+        running: corner.open || root.page === "util" || root.deskNeeds.ctl
         command: [root.hx, "ctl"]
         stdout: SplitParser {
             onRead: d => {
@@ -1732,6 +1769,68 @@ ShellRoot {
             }
         }
         onRunningChanged: if (!running) root.cava = []
+    }
+    // the desktop's audio visualizer widget has its own, finer cava (48 bars): started only while that widget exists and music plays
+    property var cavaDesk: []
+    Process {
+        running: root.playing && !root.gaming && root.opt.viz !== "off" && root.deskNeeds.viz
+        command: ["cava", "-p", Quickshell.shellPath(root.opt.viz === "light" ? "cava-desk-light.conf" : "cava-desk.conf")]
+        stdout: SplitParser {
+            onRead: d => {
+                var a = d.split(";"), out = []
+                for (var i = 0; i < a.length; i++) if (a[i] !== "") out.push(parseInt(a[i]))
+                root.cavaDesk = out
+            }
+        }
+        onRunningChanged: if (!running) root.cavaDesk = []
+    }
+
+    // ================= desktop widgets (WidgetData.js, DeskWidgets.qml, WidgetBuilderWindow.qml, DesktopEditor.qml) =================
+    // `deskNeeds`: which readers the placed widgets need, so nothing runs for a widget that is not there.
+    readonly property var deskNeeds: WD.needs(WD.normalize(opt.deskWidgets))
+    property bool deskEditing: false                     // "place them on the desktop" is open (DesktopEditor.qml)
+    readonly property real deskTop: opt.barStyle === "off" ? 24 : 70
+    function deskSetVol(f) { pendVol = f; vol = f * 100; if (!sliderT.running) sliderT.start() }
+    function deskSetBright(f) { pendBright = f; bright = f * 100; if (!sliderT.running) sliderT.start() }
+    function deskRun(cmd) { Quickshell.execDetached(["sh", "-c", cmd]) }
+    // what a widget button or wheel can do
+    function deskAct(a) {
+        switch (a) {
+        case "wifi": toggleWifi(); break
+        case "bt": toggleBt(); break
+        case "dnd": setDnd(!dnd); break
+        case "caffeine": setCaffeine(!caffeine, 0); break
+        case "gaming": setGaming(!gaming); break
+        case "numlock": toggleNumLock(); break
+        case "theme": toggleTheme(); break
+        case "night": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_nightlight.sh"]); break
+        case "lock": lockScreen.lock(); break
+        case "power": powerMenu.show(); break
+        case "mute": Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]); muted = !muted; break
+        case "ws-up": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", "wheel-up"]); break
+        case "ws-down": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", "wheel-down"]); break
+        }
+    }
+    // Focus streak: the minutes of every work phase are counted here, one a minute, into focus-days.json (scripts/focus-log.sh)
+    property var focusDays: ({})
+    readonly property string focusLogScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/focus-log.sh"
+    function focusDayKey() { return Qt.formatDate(new Date(), "yyyy-MM-dd") }
+    Process {
+        id: focusDaysProc
+        command: ["bash", root.focusLogScript, "json"]
+        stdout: StdioCollector { onStreamFinished: { try { root.focusDays = JSON.parse(text) } catch (e) {} } }
+    }
+    onDeskNeedsChanged: if (deskNeeds.focusLog && !focusDaysProc.running) focusDaysProc.running = true
+    Timer {
+        interval: 60000; repeat: true
+        running: root.focusState.on === true && root.focusState.paused !== true && root.focusState.phase === "work"
+        onTriggered: {
+            var d = {}, k = root.focusDayKey()
+            for (var x in root.focusDays) d[x] = root.focusDays[x]
+            d[k] = (d[k] || 0) + 1
+            root.focusDays = d
+            Quickshell.execDetached(["bash", root.focusLogScript, "add", "1"])
+        }
     }
 
     readonly property var compactEvents: ({ workspacev2: 1, focusedmonv2: 1, openwindow: 1, closewindow: 1, movewindowv2: 1, destroyworkspacev2: 1 })
@@ -1783,7 +1882,7 @@ ShellRoot {
 
     // the wallpaper layer (circular reveal) lives in this same Quickshell process: one Qt/QML/GL stack instead of two.
     // `quickshell ipc -p ~/.config/Halcyon/quickshell/island call wallpaper next` still works (target "wallpaper" in Wallpaper.qml)
-    Wallpaper { id: wallpaperLayer; pal: pal; opt: root.opt }
+    Wallpaper { id: wallpaperLayer; pal: pal; opt: root.opt; env: root; widgetsHidden: root.deskEditing; widgetsTop: root.deskTop }
 
     // quickshell ipc -p ~/.config/Halcyon/quickshell/island call island <fn>
     IpcHandler {
@@ -1821,6 +1920,9 @@ ShellRoot {
         function barbuilder(): void { settingsWin.openBuilder() }
         function notifbuilder(): void { settingsWin.openNotifBuilder() }
         function desktopbuilder(): void { settingsWin.openDesktopBuilder() }
+        function widgetbuilder(): void { settingsWin.openWidgetBuilder("") }
+        function desktopedit(): void { root.deskEditing = !root.deskEditing }
+        function bar(): void { root.setOpt("barStyle", root.opt.barStyle === "off" ? "island" : "off") }      // the top bar on / off
         function gallery(): void { settingsWin.openGallery() }
         function startup(): void { settingsWin.openStartup() }
         function tour(): void { root.tourReplay() }
@@ -1847,6 +1949,10 @@ ShellRoot {
         }
         function advisor(): void { quickTerm.run("python3 " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/adaptive-advisor.py") }
         function advisorLlm(): void { quickTerm.run("python3 " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/adaptive-advisor.py --llm") }
+        function extradim(): void { root.toggleExtraDim() }
+        function notes(): void { notesMenu.toggle() }
+        function refreshNotes(): void { notesMenu.loadNotes() }
+        function record(): void { root.toggleRecording() }
         function reload(): void { fullReloadProc.running = true }
     }
 
@@ -2580,6 +2686,21 @@ ShellRoot {
         }
     }
 
+    // place the desktop widgets right on the screen (DesktopEditor.qml)
+    LazyLoader {
+        active: root.deskEditing
+        DesktopEditor {
+            pal: root.palObj
+            env: root
+            opt: root.opt
+            open: root.deskEditing
+            topInset: root.deskTop
+            onCommit: d => root.setOpt("deskWidgets", d)
+            onDone: root.deskEditing = false
+            onOpenWidget: uid => { root.deskEditing = false; settingsWin.openWidgetBuilder(uid) }
+        }
+    }
+
     // =====================================================================
     //  FULLSCREEN: SUPER+TAB live tree (laptop -> workspaces -> windows)
     // =====================================================================
@@ -2772,7 +2893,37 @@ ShellRoot {
             onMicMoved: v => { root.pendMic = v; root.mic = v * 100; if (!sliderT.running) sliderT.start() }
             onVolumeMoved: v => { root.pendVol = v; root.vol = v * 100; if (!sliderT.running) sliderT.start() }
             onBrightnessMoved: v => { root.pendBright = v; root.bright = v * 100; if (!sliderT.running) sliderT.start() }
+            extraDim: root.opt && root.opt.extraDim === true
+            onExtraDimToggled: root.toggleExtraDim()
+            isRecording: root.isRecording
+            onToggleRecord: root.toggleRecording()
         }
+    }
+
+    property bool isRecording: false
+    Process {
+        id: recStatusProc
+        command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/screen-record.sh", "status"]
+        stdout: StdioCollector { onStreamFinished: root.isRecording = (text.trim() === "recording") }
+    }
+    Timer {
+        id: recPollTimer
+        interval: 3000
+        repeat: true
+        running: root.isRecording
+        onTriggered: recStatusProc.running = true
+    }
+
+    function toggleRecording() {
+        Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/screen-record.sh", "toggle"])
+        recCheckT.restart()
+    }
+    Timer { id: recCheckT; interval: 600; onTriggered: recStatusProc.running = true }
+
+    function toggleExtraDim() {
+        var next = !(root.opt && root.opt.extraDim === true)
+        root.setSetting("opt:extraDim", next)
+        Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/extra-dim.sh", next ? "on" : "off"])
     }
 
     // =====================================================================
@@ -2853,20 +3004,40 @@ ShellRoot {
         }
 
         // how many apps are alive in the background: a small count on the corner while the box is closed
-        Rectangle {
+        Item {
             visible: bgPanel.count > 0 && !appsWin.open && root.opt.bgWhere === "corner"
             anchors.right: appsWin.atR ? parent.right : undefined
             anchors.left: appsWin.atR ? undefined : parent.left
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
             anchors.rightMargin: 6; anchors.leftMargin: 6; anchors.bottomMargin: 6; anchors.topMargin: 6
-            width: 18; height: 18; radius: 9
-            color: Qt.alpha(pal.accent, 0.9)
+            width: Math.max(20, bgCountText.implicitWidth + 10)
+            height: 20
+
+            // soft glow ring
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -2
+                radius: height / 2
+                color: Qt.alpha(pal.accent, 0.28)
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: height / 2
+                color: Qt.alpha(pal.surface, 0.92)
+                border.width: 1.5
+                border.color: Qt.alpha(pal.accent, 0.75)
+            }
+
             Text {
+                id: bgCountText
                 anchors.centerIn: parent
-                text: bgPanel.count
-                color: pal.bg
-                font.family: pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold
+                text: bgPanel.count > 9 ? "9+" : bgPanel.count
+                color: pal.accent
+                font.family: pal.uiFont
+                font.pixelSize: 10
+                font.weight: Font.Bold
             }
         }
 

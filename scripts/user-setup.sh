@@ -334,11 +334,28 @@ app_themes() {
 # ---------------------------------------------------------------------------------------------- fish commands
 # `halcyon <command>` plus bar-builder, notification-builder, wallpaper-gallery, startup-view, hotspot-on / hotspot-off and the hints: they open the same windows as the
 # app menu's ">" commands, through the island's IPC (config/fish/functions, config/fish/completions). Fish only.
+# ai / advisor / notes / passman as real commands in ~/.local/bin, so they also work in bash (the island console runs bash, a fish function is not there)
+bash_shims() {
+  local b script
+  mkdir -p "$HOME/.local/bin"
+  for b in ai:halcyon-chat.py advisor:adaptive-advisor.py notes:halcyon-notes.py passman:halcyon-pass.py; do
+    script="${b#*:}"; b="${b%%:*}"
+    [ -f "$RICE/scripts/$script" ] || continue
+    [ -L "$HOME/.local/bin/$b" ] && rm -f "$HOME/.local/bin/$b"      # an old link into the (empty) bin/ folder
+    if [ ! -e "$HOME/.local/bin/$b" ] || grep -q "Halcyon shim" "$HOME/.local/bin/$b" 2>/dev/null; then
+      printf '#!/bin/sh\n# Halcyon shim\nexec python3 "$HOME/.config/Halcyon/scripts/%s" "$@"\n' "$script" > "$HOME/.local/bin/$b"
+      chmod +x "$HOME/.local/bin/$b"
+    fi
+  done
+  ok "commands ai, advisor, notes, passman work in bash too (~/.local/bin)"
+}
+
 fish_commands() {
+  bash_shims
   command -v fish >/dev/null 2>&1 || { ok "fish is not installed: the halcyon / bar-builder / notification-builder commands were skipped"; return 0; }
   local f n=0
-  mkdir -p "$HOME/.config/fish/functions" "$HOME/.config/fish/completions"
-  for f in halcyon bar-builder notification-builder wallpaper-gallery startup-view hotspot-on hotspot-off; do
+  mkdir -p "$HOME/.config/fish/functions" "$HOME/.config/fish/completions" "$HOME/.local/bin"
+  for f in halcyon bar-builder desktop-builder widget-builder desktop-edit notification-builder wallpaper-gallery startup-view hotspot-on hotspot-off ai advisor notes passman; do
     [ -f "$RICE/config/fish/functions/$f.fish" ] || continue
     cmp -s "$RICE/config/fish/functions/$f.fish" "$HOME/.config/fish/functions/$f.fish" 2>/dev/null || cp "$RICE/config/fish/functions/$f.fish" "$HOME/.config/fish/functions/$f.fish"
     n=$((n + 1))
@@ -351,7 +368,7 @@ fish_commands() {
     mkdir -p "$HOME/.config/fish/conf.d"
     cmp -s "$RICE/config/fish/hints.fish" "$HOME/.config/fish/conf.d/hints.fish" 2>/dev/null || cp "$RICE/config/fish/hints.fish" "$HOME/.config/fish/conf.d/hints.fish"
   fi
-  ok "fish: $n commands installed (halcyon, bar-builder, notification-builder, wallpaper-gallery, startup-view, hotspot-on, hotspot-off) and the one-time hints (conf.d/hints.fish)"
+  ok "fish: $n commands installed (halcyon, bar-builder, desktop-builder, widget-builder, desktop-edit, notification-builder, wallpaper-gallery, startup-view, hotspot-on, hotspot-off, ai, advisor, notes, passman) and ~/.local/bin links created"
   return 0
 }
 

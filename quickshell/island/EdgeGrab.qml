@@ -14,7 +14,7 @@ Item {
         onHoveredChanged: eg.hoverChanged(hovered)
     }
     TapHandler {
-        enabled: eg.clickMode
+        enabled: true
         gesturePolicy: TapHandler.ReleaseWithinBounds
         onTapped: eg.tapped()
     }

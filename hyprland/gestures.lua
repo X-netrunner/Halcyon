@@ -24,10 +24,10 @@ local swipe_invert = (left_act == "ws-next")
 
 pcall(hl.config, {
     gestures = {
-        workspace_swipe_distance           = 230,
+        workspace_swipe_distance           = vars.workspaceSwipeDistance or 380,
         workspace_swipe_invert             = swipe_invert,
-        workspace_swipe_min_speed_to_force = 10,
-        workspace_swipe_cancel_ratio       = 0.22,
+        workspace_swipe_min_speed_to_force = vars.workspaceSwipeMinSpeed or 30,
+        workspace_swipe_cancel_ratio       = vars.workspaceSwipeCancelRatio or 0.38,
         workspace_swipe_create_new         = true,
         workspace_swipe_forever            = true,
     }

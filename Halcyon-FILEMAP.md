@@ -73,6 +73,17 @@ What every file and folder does. This is a separate notes file, it is not part o
 | `branch.frag` | GPU shader for the tree-view branches (compiled to `.qsb` on first run). |
 | `cava.conf`, `cava-light.conf` | Music visualizer settings (full and half frame rate). |
 
+### Desktop widgets (new)
+| File | What it does |
+|---|---|
+| `WidgetData.js` | The list of widget kinds, their layouts and options, the looks, and the rules for editing the layout (`opt.deskWidgets`, `opt.deskStyles`). |
+| `DeskWidgets.qml`, `WidgetHost.qml` | Draw all widgets / one widget's frame (box, colours, place, drag handles while editing). |
+| `WBase.qml`, `WLbl.qml`, `WIco.qml` | What every widget body shares: colours, fonts, options, a text and an icon. |
+| `WClock.qml` (clock, date), `WMonth.qml`, `WMetric.qml` (cpu, ram, temp, gpu, disk, battery, volume, brightness), `WSysmon.qml`, `WNet.qml` (network, uptime), `WMusic.qml`, `WViz.qml`, `WFocus.qml`, `WWorkspaces.qml`, `WToggles.qml` (toggles, shortcuts), `WNotes.qml`, `WWeather.qml`, `WText.qml` | The widget bodies. |
+| `WidgetBuilder.qml`, `WidgetBuilderWindow.qml`, `WbText.qml` | The Settings entry, the builder window (one widget at a time) and its text field. |
+| `DesktopEditor.qml` | Place the widgets right on the screen. |
+| `cava-desk.conf`, `cava-desk-light.conf` | The visualizer widget's own 48-bar cava. |
+
 ### Wallpaper, stars, corner boxes (this round)
 | File | What it does |
 |---|---|
@@ -80,6 +91,7 @@ What every file and folder does. This is a separate notes file, it is not part o
 | `DesktopStars.qml` ★ | The moving stars over the desktop (amount, speed, size, direction, colour, shooting star). |
 | `DesktopBuilder.qml` ★ | The Settings entry (summary + "Open the desktop builder"). |
 | `DesktopBuilderWindow.qml` ★ | The builder window: live screen picture, wallpaper / stars controls, corner picker. |
+| `ChipRow.qml` | A label plus a row of option chips that wraps when it does not fit (used by the desktop builder). |
 | `DeskSpots.js` ★ | Rules for which corner each box uses (one box per corner, swap on conflict). |
 | `Backdrop.qml`, `ModeArt.qml`, `StarData.js` | The constellation art behind boxes (shield, dragon, your profile picture). |
 | `BarStars.qml` | The few small stars on the bar. |

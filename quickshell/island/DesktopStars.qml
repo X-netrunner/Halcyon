@@ -3,8 +3,7 @@ import QtQuick
 // Moving stars for the desktop (Settings > Appearance > Desktop builder). Lives inside Wallpaper.qml, ABOVE the picture, so it
 // works on a wallpaper, on a blurred one and on the plain background you get with the wallpaper switched off.
 //   count / speed / size / direction / colour / twinkle / shooting stars all come from opt.desk* (Desktop builder).
-// Light on purpose: ONE 30 fps timer moves everything; it stops completely when the stars are off, the window is hidden or the
-// motion setting is nearly off (Gaming mode). Nothing is drawn per frame except the star items themselves (a few dozen rectangles).
+// Ultra-optimized: Uses a single hardware-accelerated Canvas instead of hundreds of individual QML scene-graph nodes.
 Item {
     id: root
     property var pal
@@ -25,45 +24,70 @@ Item {
 
     readonly property bool live: on && visible && width > 0 && height > 0 && (pal ? pal.motion > 0.3 : true)
     property real t: 0                      // seconds of drifting so far (kept while hidden, so the stars carry on)
+
     Timer {
-        interval: 33
+        interval: 45
         repeat: true
         running: root.live
-        onTriggered: root.t += interval / 1000
+        onTriggered: {
+            root.t += interval / 1000
+            canvas.requestPaint()
+        }
     }
 
-    Repeater {
-        model: root.live ? root.count : 0
-        delegate: Item {
-            id: st
-            required property int index
-            readonly property real fx: (index * 0.6180339 + 0.11) % 1
-            readonly property real fy: (index * 0.4142135 + 0.23) % 1
-            readonly property int depth: index % 3                                   // 0 far, 1 middle, 2 near: near ones are bigger, brighter, faster
-            readonly property real rate: 0.012 * root.speed * (0.5 + 0.55 * depth)    // screens per second
-            readonly property real px: (((fx + root.vx * rate * root.t) % 1) + 1) % 1
-            readonly property real py: (((fy + root.vy * rate * root.t) % 1) + 1) % 1
-            readonly property real ex: Math.min(1, Math.min(px, 1 - px) * root.width / 36)    // fade at the edges where they wrap round
-            readonly property real ey: Math.min(1, Math.min(py, 1 - py) * root.height / 36)
-            readonly property real size: (1.1 + depth * 0.7 + (index % 4) * 0.25) * root.sizeK
-            readonly property real tw: 0.5 + 0.5 * Math.sin(6.2832 * (root.t * (0.12 + (index % 5) * 0.06) + fx * 7))
-            readonly property real base: 0.35 + 0.22 * depth
-            readonly property color tint: root.tone === "white" ? "#ffffff"
-                                        : root.tone === "accent" ? root.pal.accent
-                                        : (index % 3 === 0 ? root.pal.accent : (index % 3 === 1 ? root.pal.accent2 : "#ffffff"))
+    Canvas {
+        id: canvas
+        anchors.fill: parent
+        visible: root.live
+        renderTarget: Canvas.FramebufferObject
+        renderStrategy: Canvas.Immediate
 
-            x: px * root.width
-            y: py * root.height
-            opacity: ex * ey * base * (root.twinkle ? (0.35 + 0.65 * tw) : 1)
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            var n = root.count
+            var w = width, h = height
+            var sp = root.speed, szK = root.sizeK, t = root.t
+            var vx = root.vx, vy = root.vy
+            var twOn = root.twinkle
+            var tone = root.tone
+            var pAccent = root.pal ? String(root.pal.accent) : "#88c0d0"
+            var pAccent2 = root.pal ? String(root.pal.accent2) : "#81a1c1"
 
-            Rectangle {
-                width: st.size; height: st.size; radius: st.size / 2
-                x: -st.size / 2; y: -st.size / 2
-                color: st.tint
+            for (var i = 0; i < n; i++) {
+                var fx = (i * 0.6180339 + 0.11) % 1
+                var fy = (i * 0.4142135 + 0.23) % 1
+                var depth = i % 3
+                var rate = 0.012 * sp * (0.5 + 0.55 * depth)
+                var px = (((fx + vx * rate * t) % 1) + 1) % 1
+                var py = (((fy + vy * rate * t) % 1) + 1) % 1
+                var ex = Math.min(1, Math.min(px, 1 - px) * w / 36)
+                var ey = Math.min(1, Math.min(py, 1 - py) * h / 36)
+                var size = (1.1 + depth * 0.7 + (i % 4) * 0.25) * szK
+                var tw = twOn ? (0.5 + 0.5 * Math.sin(6.2832 * (t * (0.12 + (i % 5) * 0.06) + fx * 7))) : 1.0
+                var base = 0.35 + 0.22 * depth
+                var op = ex * ey * base * (twOn ? (0.35 + 0.65 * tw) : 1)
+                if (op < 0.01) continue
+
+                var tint = tone === "white" ? "#ffffff"
+                         : tone === "accent" ? pAccent
+                         : (i % 3 === 0 ? pAccent : (i % 3 === 1 ? pAccent2 : "#ffffff"))
+
+                ctx.globalAlpha = op
+                ctx.fillStyle = tint
+                var cx = px * w
+                var cy = py * h
+                ctx.beginPath()
+                ctx.arc(cx, cy, size / 2, 0, 6.2832)
+                ctx.fill()
+
+                if (depth === 2 && i % 2 === 0) {
+                    ctx.globalAlpha = op * 0.45
+                    var gl = size * 4.5
+                    ctx.fillRect(cx - gl / 2, cy - 0.5, gl, 1)
+                    ctx.fillRect(cx - 0.5, cy - gl / 2, 1, gl)
+                }
             }
-            // the near, brighter ones get a small glint cross
-            Rectangle { visible: st.depth === 2 && st.index % 2 === 0; width: st.size * 4.5; height: 1; x: -width / 2; y: -0.5; color: Qt.alpha(st.tint, 0.45) }
-            Rectangle { visible: st.depth === 2 && st.index % 2 === 0; width: 1; height: st.size * 4.5; x: -0.5; y: -height / 2; color: Qt.alpha(st.tint, 0.45) }
         }
     }
 
@@ -84,7 +108,7 @@ Item {
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 1.0; color: Qt.alpha(root.pal.accent2, 0.95) }
+                GradientStop { position: 1.0; color: Qt.alpha(root.pal ? root.pal.accent2 : "#81a1c1", 0.95) }
             }
         }
         Rectangle { width: 3 * root.previewScale + 1; height: width; radius: width / 2; x: -width / 2; y: -width / 2; color: "#ffffff" }

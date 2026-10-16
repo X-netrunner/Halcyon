@@ -43,14 +43,13 @@ Scope {
     readonly property string sysmodeBin: "/usr/local/bin/sysmode"
     readonly property string hx: Quickshell.env("HOME") + "/.config/Halcyon/bin/hx"
     readonly property string rice: Quickshell.env("HOME") + "/.config/Halcyon"
-    // fish-only commands (config/fish/functions) do not exist in this bash console, so the console knows them itself
-    readonly property var halcyonNames: ["launcher", "settings", "notification-builder", "bar-builder", "wallpaper-gallery", "startup-view", "notifications",
+    readonly property var halcyonNames: ["launcher", "settings", "notification-builder", "bar-builder", "desktop-builder", "widget-builder", "desktop-edit", "bar", "wallpaper-gallery", "startup-view", "notifications",
                                          "clear-notifications", "dnd", "cheatsheet", "power-menu", "quick-terminal", "overview", "gaming-mode", "caffeine",
-                                         "lock", "theme", "reload"]
-    readonly property var halcyonCalls: ["launcher", "settings", "notifbuilder", "barbuilder", "gallery", "startup", "notifcenter",
+                                         "lock", "theme", "reload", "notes", "screen-record", "extra-dim"]
+    readonly property var halcyonCalls: ["launcher", "settings", "notifbuilder", "barbuilder", "desktopbuilder", "widgetbuilder", "desktopedit", "bar", "gallery", "startup", "notifcenter",
                                          "clearnotifs", "dnd", "cheatsheet", "power", "quickterm", "overview", "gaming", "caffeine",
-                                         "lock", "theme", "reload"]
-    readonly property var directCmds: ["bar-builder", "notification-builder", "wallpaper-gallery", "startup-view"]
+                                         "lock", "theme", "reload", "notes", "record", "extradim"]
+    readonly property var directCmds: ["bar-builder", "notification-builder", "desktop-builder", "widget-builder", "desktop-edit", "wallpaper-gallery", "startup-view"]
     readonly property string pwMarker: "SUDO_PW"
     readonly property var modes: ["secure", "stealth", "relaxed", "cyber", "lockdown"]   // "cyber" = old name of relaxed (the CLI still takes it)
     readonly property var rootless: ["status", "logs", "dossier", "verify", "check", "doctor", "help", "-h", "--help"]
@@ -171,6 +170,10 @@ Scope {
     function words(s) { return s.trim().split(/\s+/) }
     function sudoed(rest) { return "sudo -S -p $'" + pwMarker + "\\n' " + rest }
 
+    // ai / advisor / notes / passman are fish functions (config/fish/functions), and this console runs bash: call their scripts directly
+    readonly property var pyTools: ({ ai: "halcyon-chat.py", advisor: "adaptive-advisor.py", notes: "halcyon-notes.py", passman: "halcyon-pass.py" })
+    function pyLine(first, line) { return "python3 \"$HOME/.config/Halcyon/scripts/" + pyTools[first] + "\"" + line.trim().substring(first.length) }
+
     function ipcLine(call) { return "quickshell ipc -p '" + rice + "/quickshell/island' call island " + call }
 
     function prepare(line) {
@@ -192,6 +195,10 @@ Scope {
             return { cmd: hi >= 0 ? ipcLine(halcyonCalls[hi]) : "echo 'halcyon <command>: " + halcyonNames.join(" | ") + "'", tui: false }
         }
         if (first === "sudo") return { cmd: sudoed(line.trim().substring(4).trim()), tui: false }
+        if ((first === "python" || first === "python3") && w.length > 1) return { cmd: line, tui: false }
+        if (first === "ai" && w.length > 1) return { cmd: pyLine(first, line), tui: false }
+        if (first === "ai" && w.length === 1) return { cmd: pyLine(first, line), tui: true }
+        if (first === "advisor" || first === "notes" || first === "passman") return { cmd: pyLine(first, line), tui: false }
         return { cmd: line, tui: tuis.indexOf(first) >= 0 }
     }
 
@@ -206,11 +213,13 @@ Scope {
         if (line === "exit" || line === "quit") { close(); return }
         if (line === "help") {
             push("sysmode: secure | stealth | relaxed | lockdown | status | logs | dossier [ip]   (sm = sysmode)\n" +
-                 "hotspot-on / hotspot-off: Wi-Fi hotspot.  halcyon <command>, bar-builder, wallpaper-gallery ...: open the island's windows.\n" +
+                 "ai <question> or ai /diag: local AI assistant.  notes <text>: quick notes.\n" +
+                 "passman [list|get|add|del|gen]: native password vault.  hotspot-on / hotspot-off: Wi-Fi.\n" +
+                 "halcyon <command>, bar-builder, desktop-builder, widget-builder, desktop-edit, wallpaper-gallery ...: open windows.\n" +
                  "sudo works here: it asks for your password in this line.\n" +
                  "SUPER+ALT+/ lists every command.\n" +
-                 "cd, clear, exit, Ctrl+C stop, Ctrl+L clear, Up/Down history, Tab completes (Right arrow takes the grey suggestion). Anything else runs in bash.\n" +
-                 "vim / htop / ssh ... open in a real terminal.", "info")
+                 "cd, clear, exit, Ctrl+C stop, Ctrl+L clear, Up/Down history, Tab completes. Anything else runs in bash.\n" +
+                 "vim / htop / ssh / bare ai ... open in a real terminal.", "info")
             return
         }
         var cd = line.match(/^cd(?:\s+(.*))?$/)
@@ -219,11 +228,11 @@ Scope {
 
         var p = prepare(line)
         if (p.tui) {
-            Quickshell.execDetached({ command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", p.cmd + "; exec bash"], workingDirectory: cwd })
+            Quickshell.execDetached({ command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", "export PATH=\"$HOME/.local/bin:$HOME/.config/Halcyon/bin:$PATH\"; " + p.cmd + "; exec bash"], workingDirectory: cwd })
             push("opened in a terminal window", "info")
             return
         }
-        runner.command = ["bash", "-c", "exec 2>&1; " + p.cmd]
+        runner.command = ["bash", "-c", "export PATH=\"$HOME/.local/bin:$HOME/.config/Halcyon/bin:$PATH\"; exec 2>&1; " + p.cmd]
         runner.running = true
     }
     function cwdLabel() {

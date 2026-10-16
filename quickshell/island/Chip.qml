@@ -8,11 +8,12 @@ Rectangle {
     property string label: ""
     property bool on: false
     property int maxLabel: 120
+    property int padX: 16
     signal clicked()
     signal rightClicked()
 
     implicitHeight: 36
-    implicitWidth: content.implicitWidth + 32
+    implicitWidth: content.implicitWidth + padX * 2
     radius: height / 2
     color: on ? Qt.alpha(pal.accent, 0.18)
                : (ma.pressed ? pal.surfaceHi : (ma.containsMouse ? Qt.alpha(pal.surfaceHi, 0.9) : Qt.alpha(pal.surface, 0.8)))

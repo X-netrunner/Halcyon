@@ -20,6 +20,9 @@ return {
     touchpadDisableTyping      = true,
     touchpadScrollFactor       = 0.3,   -- Settings > Scroll sensitivity changes these live
     mouseScrollFactor          = 1.0,
+    workspaceSwipeDistance     = 380,   -- Higher = lower sensitivity (deliberate swipe needed; default was 230)
+    workspaceSwipeCancelRatio  = 0.38,  -- Ratio needed before swipe commits (default 0.22)
+    workspaceSwipeMinSpeed     = 30,    -- Min speed to force workspace switch without full distance (default 10)
     keyRepeatDelay             = 250,   -- ms before a held key starts repeating (Hyprland default 600)
     keyRepeatRate              = 35,    -- repeats per second once it does (Hyprland default 25)
     gestureFingers             = 3,

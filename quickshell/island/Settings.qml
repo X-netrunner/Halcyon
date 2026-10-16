@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
+import "DeskSpots.js" as DS
 
 // Rice settings: one centred window, blurred backdrop, "node" cards in the same look as the SUPER+TAB tree.
 // Everything here is applied live and remembered (settings.json); Hyprland values are re-applied when the island starts.
@@ -52,6 +53,8 @@ Scope {
     property real scrollMouse: 1.0         // Hyprland (mouse wheel) scroll_factor
     property string barPadding: "normal"   // low | normal | high (bar height, distance from the top, side padding)
     property string powerMgr: "halcyon"    // halcyon | power-profiles-daemon | tlp | auto-cpufreq | tuned
+    property var env: null                 // the shell (shell.qml): the Widget builder previews the widgets with its live feeds
+    signal editOnDesktop()
     property string wallpaperPath: ""      // the wallpaper in use (shell.qml): the Desktop builder's little preview shows it
     property var opt: ({})                 // the extra settings (shell.qml "opt"): colour cycling, workspaces, clock, popups ...
     property var hyCur: ({})               // Hyprland values as they are now (shell.qml): where the sliders start
@@ -403,6 +406,13 @@ Scope {
     function openNotifBuilder() { nbOpen = true }
     // the desktop builder window (Settings > Appearance > Desktop builder): wallpaper on / off + blur, moving stars, the corner each box opens from
     function openDesktopBuilder() { dbOpen = true }
+    // the widget builder window (Settings > Appearance > Widget builder): one widget at a time, its layout and look
+    property bool wbOpen: false
+    property bool wbLoaded: false
+    property string wbPick: ""
+    Timer { id: wbUnload; interval: 320; onTriggered: { root.wbLoaded = false; settingsGc.restart() } }
+    onWbOpenChanged: { if (wbOpen) { wbUnload.stop(); wbLoaded = true } else wbUnload.restart() }
+    function openWidgetBuilder(uid) { wbPick = uid; wbOpen = true }
     property bool dbOpen: false
     property bool dbLoaded: false
     Timer { id: dbUnload; interval: 320; onTriggered: { root.dbLoaded = false; settingsGc.restart() } }
@@ -417,7 +427,7 @@ Scope {
     Timer { id: startupUnload; interval: 320; onTriggered: { root.startupLoaded = false; settingsGc.restart() } }
     onStartupOpenChanged: { if (startupOpen) { startupUnload.stop(); startupLoaded = true } else startupUnload.restart() }
     function openStartup() { startupOpen = true }
-    function hide() { galleryOpen = false; builderOpen = false; nbOpen = false; dbOpen = false; startupOpen = false; open = false }
+    function hide() { galleryOpen = false; builderOpen = false; nbOpen = false; dbOpen = false; wbOpen = false; startupOpen = false; open = false }
     function toggle() { open = !open }
 
     component SChip: Chip { maxLabel: 1000 }
@@ -480,6 +490,9 @@ Scope {
         { id: "desktop", title: "Desktop builder", section: "Appearance", items: [
             { type: "custom", name: "desktopBuilder" }
         ] },
+        { id: "widgets", title: "Widget builder", section: "Appearance", items: [
+            { type: "custom", name: "widgetBuilder" }
+        ] },
         { id: "glass", title: "Effects: transparency, blur & motion", section: "Appearance", items: [
             { type: "toggle", key: "opt:accentBorder", label: "Accent colour on the focused window", desc: "A thin border in the wallpaper's accent colour around the window you are using. Off = the neutral white hairline." },
             { type: "slider", key: "glassShift", label: "Transparency", desc: "Of the island, panels and overlays", min: -0.15, max: 0.05, step: 0.01, scale: 100, signed: true, glyph: 0xF0335 },
@@ -503,7 +516,7 @@ Scope {
             { type: "custom", adv: true, name: "growth" }
         ] },
         { id: "bar", title: "Bar", section: "Desktop", items: [
-            { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Custom: you choose the shape (Notch or Island), what is on the bar, where it goes and how much padding it has (Bar builder below). Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("custom", "Custom")] },
+            { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Custom: you choose the shape (Notch or Island), what is on the bar, where it goes and how much padding it has (Bar builder below). Off: no bar at all, put clock, workspaces, stats and the rest on the desktop as widgets (Widget builder); the launcher and the pages still open from the top edge. Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("custom", "Custom"), o("off", "Off")] },
             { type: "custom", name: "barBuilder", when: "opt:barStyle=custom" },
             { type: "chips", label: "Show in the bar", desc: "Special icons: scratch, music, monitor ... (only the ones that exist). Music bars: only while something plays. Battery % needs the battery or the combined icon.", opts: [ch("pair:ws", "Workspaces", "opt:barStyle=island|notch"), ch("pair:specials", "Special icons", "opt:barStyle=island|notch"), ch("pair:viz", "Music bars", "opt:barStyle=island|notch"), ch("pair:wifi", "Wi-Fi", "opt:barStyle=island|notch"), ch("pair:bat", "Battery", "opt:barStyle=island|notch"), ch("pair:batPct", "Battery %"), ch("pair:caffeine", "Caffeine icon", "opt:barStyle=island|notch")] },
             { type: "seg", key: "barPadding", label: "Bar size and padding", desc: "How tall the bar is. Island: also how far it floats from the top edge and the space at its sides.", opts: [o("low", "Low"), o("normal", "Normal"), o("high", "High")] },
@@ -551,7 +564,8 @@ Scope {
             { type: "seg", adv: true, key: "notifHistoryMax", label: "Notifications the centre keeps", opts: [o(10, "10"), o(20, "20"), o(30, "30"), o(50, "50"), o(100, "100")] },
             { type: "seg", key: "clickMode", label: "Edge boxes (notifications, console, utilities)", opts: [o(false, "Hover"), o(true, "Click")] },
             { type: "toggle", key: "osdOn", label: "Volume / brightness bar", desc: "Slides up from the bottom whenever volume, brightness or the keyboard light changes." },
-            { type: "seg", key: "opt:osdHold", label: "How long that bar stays", opts: [o(1000, "Short"), o(1700, "Normal"), o(3000, "Long")], when: "osdOn=true" }
+            { type: "seg", key: "opt:osdHold", label: "How long that bar stays", opts: [o(1000, "Short"), o(1700, "Normal"), o(3000, "Long")], when: "osdOn=true" },
+            { type: "toggle", key: "opt:extraDim", label: "Extra dim mode", desc: "Drops the display brightness to minimum (1%) for nighttime comfort without losing color fidelity. You can also toggle it from the utilities panel or with Super + Alt + D." }
         ] },
         { id: "focus", title: "Focus mode", section: "Desktop", items: [
             { type: "seg", key: "fc:LENGTH", label: "Session length", desc: "Start it from the utilities box (bottom-right corner, Focus) or SUPER+ALT+F. A timer runs, Do not disturb is on and the apps below are kept closed. When it ends everything goes back to how it was.", opts: [o(15, "15"), o(25, "25"), o(45, "45"), o(50, "50"), o(60, "60"), o(90, "90")] },
@@ -572,6 +586,12 @@ Scope {
             { type: "toggle", key: "opt:calNag", label: "Keep reminding until it is done", desc: "From the moment a task starts you get an urgent notification again and again, each replacing the last, until you press Done on it or tick the task off in the calendar. It is only a notification: nothing is blocked.", when: "opt:calOn=true&opt:calNotify=true" },
             { type: "seg", key: "opt:calNagEvery", label: "Nag every", opts: [o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" },
             { type: "seg", key: "opt:calNagGiveUp", label: "Give up", desc: "How long after the task has ended it still nags.", opts: [o(60, "After 1 h"), o(180, "After 3 h"), o(720, "After 12 h"), o(4320, "After 3 days")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" }
+        ] },
+        { id: "recording", title: "Screen & audio recording", section: "Desktop", items: [
+            { type: "seg", key: "opt:recKind", label: "What to record", desc: "Screen: a video of the whole screen. Audio only: just sound, saved as an .m4a file. Start and stop with Super + Alt + R, the Record button in the utilities box, or the button below.", opts: [o("screen", "Screen video"), o("audio", "Audio only")] },
+            { type: "seg", key: "opt:recAudio", label: "Sound", desc: "Desktop sound is whatever you hear (music, calls, videos). Microphone is the default microphone. Both mixes the two into one track. Sound is recorded with ffmpeg and joined to the video when you stop, so it needs ffmpeg and PipeWire (or PulseAudio).", opts: [o("none", "None"), o("system", "Desktop sound"), o("mic", "Microphone"), o("both", "Both")], when: "opt:recKind=screen" },
+            { type: "seg", key: "opt:recAudio", label: "Sound source", desc: "Desktop sound is whatever you hear (music, calls, videos). Microphone is the default microphone. Both mixes the two into one track. Needs ffmpeg and PipeWire (or PulseAudio).", opts: [o("system", "Desktop sound"), o("mic", "Microphone"), o("both", "Both")], when: "opt:recKind=audio" },
+            { type: "acts", label: "Recordings", desc: "Everything is saved in ~/Videos/Recordings (video as recording_<date>.mp4, sound as audio_<date>.m4a). A different folder: write its path in ~/.local/state/island/rec-dir. A change here applies from the next recording; one that is running is not touched.", btns: [{ id: "rec-toggle", btn: "Start / stop", done: "" }, { id: "rec-last", btn: "Play the latest", done: "" }, { id: "rec-open", btn: "Open the folder", done: "" }] }
         ] },
         { id: "mouse", title: "Mouse, touchpad & keyboard", section: "Input & power", items: [
             { type: "slider", key: "scrollMouse", label: "Mouse wheel scroll speed", desc: "In every app. Higher is faster.", min: 0.25, max: 3, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
@@ -818,7 +838,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -1524,9 +1544,20 @@ Scope {
             opt: root.opt
             onOpenRequested: root.dbOpen = true
             onResetRequested: {
-                root.setting("opt:deskWall", true); root.setting("opt:deskBlur", 0); root.setting("opt:deskBg", "theme")
-                root.setting("opt:deskStars", false); root.setting("opt:boxSpots", null); root.setting("opt:notifSpot", "edge")
+                for (var k in DS.resetValues) root.setting("opt:" + k, DS.resetValues[k])      // the same list the builder window resets
+                root.setting("opt:boxSpots", null)
             }
+        }
+    }
+
+    Component {
+        id: cWidgetBuilder
+        WidgetBuilder {
+            pal: root.pal
+            opt: root.opt
+            onOpenRequested: root.openWidgetBuilder("")
+            onPlaceRequested: root.editOnDesktop()
+            onClearRequested: root.setting("opt:deskWidgets", null)
         }
     }
 
@@ -1971,6 +2002,7 @@ Scope {
                                                                            : pr.m.name === "focusApps" ? cFocusApps
                                                                            : pr.m.name === "safetyAuto" ? cSafetyAuto
                                                                            : pr.m.name === "desktopBuilder" ? cDesktopBuilder
+                                                                           : pr.m.name === "widgetBuilder" ? cWidgetBuilder
                                                                            : pr.m.name === "notifBuilder" ? cNotifBuilder
                                                                            : pr.m.name === "barBuilder" ? cBarBuilder
                                                                            : pr.m.name === "growth" ? cGrowth : cSwatches
@@ -2368,6 +2400,7 @@ Scope {
                                                                                : leaf.m.name === "focusApps" ? cFocusApps
                                                                                : leaf.m.name === "safetyAuto" ? cSafetyAuto
                                                                                : leaf.m.name === "desktopBuilder" ? cDesktopBuilder
+                                                                               : leaf.m.name === "widgetBuilder" ? cWidgetBuilder
                                                                                : leaf.m.name === "notifBuilder" ? cNotifBuilder
                                                                                : leaf.m.name === "barBuilder" ? cBarBuilder
                                                                                : leaf.m.name === "growth" ? cGrowth : cSwatches
@@ -2543,6 +2576,39 @@ Scope {
                 opt: root.opt
                 wallpaperPath: root.wallpaperPath
                 onClosed: root.dbOpen = false
+                onOpenWidgets: { root.dbOpen = false; root.openWidgetBuilder("") }
+                onEditDesktop: { root.dbOpen = false; root.editOnDesktop() }
+                onChanged: (k, v) => root.setting("opt:" + k, v)
+            }
+        }
+    }
+
+    // ======================================================================== the Widget builder window
+    LazyLoader {
+        active: root.wbLoaded
+        PanelWindow {
+            id: wbwin
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            WlrLayershell.namespace: "island-widgetbuilder"
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.keyboardFocus: (root.wbOpen && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+            property bool shown: false
+            Timer { running: true; interval: 30; onTriggered: wbwin.shown = true }
+
+            WidgetBuilderWindow {
+                id: wbw
+                anchors.fill: parent
+                open: root.wbOpen && wbwin.shown
+                pal: root.pal
+                env: root.env
+                opt: root.opt
+                pick: root.wbPick
+                onClosed: { root.wbOpen = false; root.wbPick = "" }
+                onEditOnDesktop: { root.wbOpen = false; root.editOnDesktop() }
                 onChanged: (k, v) => root.setting("opt:" + k, v)
             }
         }

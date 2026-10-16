@@ -255,7 +255,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 16
-                            // a small picture of the screen: the box on its right edge, at the chosen height
+                            // a small picture of the screen: the box on its chosen corner / edge with its activation trigger
                             Rectangle {
                                 id: scr
                                 Layout.preferredWidth: 176
@@ -266,37 +266,78 @@ Item {
                                 border.color: root.pal.line
                                 readonly property real sc: width / 1920
                                 readonly property real bh: Math.min(height - 8, pv.height * sc)
+                                readonly property bool atLeft: root.cur.corner === "tl" || root.cur.corner === "bl"
+                                readonly property bool atBot: root.cur.corner === "bl" || root.cur.corner === "br" || root.cur.vpos === "bottom"
+
+                                // activation area trigger hint in preview
+                                Rectangle {
+                                    id: miniTrigger
+                                    readonly property bool isCorner: root.cur.spot === "corner"
+                                    width: isCorner ? 6 : 2
+                                    height: isCorner ? 6 : (root.cur.vpos === "middle" ? 36 : 28)
+                                    radius: isCorner ? 3 : 1
+                                    x: scr.atLeft ? 1 : scr.width - width - 1
+                                    y: isCorner
+                                        ? (scr.atBot ? scr.height - height - 1 : 1)
+                                        : (root.cur.vpos === "middle" ? (scr.height - height) / 2 : (scr.atBot ? scr.height - height - 4 : 4))
+                                    color: root.pal.accent
+                                    z: 2
+                                    Behavior on x { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.OutCubic } }
+                                    Behavior on y { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.OutCubic } }
+                                }
+
                                 Rectangle {
                                     id: mini
                                     width: Math.max(8, root.cur.width * scr.sc)
                                     height: scr.bh
                                     radius: Math.max(2, root.cur.radius * scr.sc)
-                                    x: scr.width - width - 4
+                                    x: scr.atLeft ? 4 : scr.width - width - 4
                                     y: root.cur.vpos === "middle" ? (scr.height - height) / 2
-                                       : root.cur.vpos === "bottom" ? scr.height - height - Math.max(8, root.pal.boxTop + root.cur.offY) * scr.sc
-                                       : Math.max(8, root.pal.boxTop + root.cur.offY) * scr.sc
+                                       : scr.atBot ? scr.height - height - Math.max(4, (root.pal.boxTop + root.cur.offY) * scr.sc)
+                                       : Math.max(4, (root.pal.boxTop + root.cur.offY) * scr.sc)
                                     color: Qt.alpha(root.pal.accent, 0.35)
                                     border.width: 1
                                     border.color: root.pal.accent
+                                    Behavior on x { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.OutCubic } }
                                     Behavior on y { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.OutCubic } }
                                 }
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                Row {
-                                    spacing: 8
-                                    Chip { pal: root.pal; implicitHeight: 30; label: "Top"; on: root.cur.vpos === "top"; onClicked: root.edited(NL.edit(root.cur, "vpos", "top")) }
-                                    Chip { pal: root.pal; implicitHeight: 30; label: "Middle"; on: root.cur.vpos === "middle"; onClicked: root.edited(NL.edit(root.cur, "vpos", "middle")) }
-                                    Chip { pal: root.pal; implicitHeight: 30; label: "Bottom"; on: root.cur.vpos === "bottom"; onClicked: root.edited(NL.edit(root.cur, "vpos", "bottom")) }
+                                Text {
+                                    text: "Corner placement"
+                                    color: root.pal.text
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tBody
+                                    font.weight: Font.DemiBold
                                 }
                                 Text {
-                                    Layout.fillWidth: true
-                                    text: "It still opens from the right edge of the screen; this is the height it slides out at."
+                                    text: "Assign notifications to any corner in Desktop builder (Settings > Appearance > Desktop builder)."
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tCap
+                                    font.pixelSize: 10
                                     wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                                Text {
+                                    text: "Activation trigger area"
+                                    color: root.pal.text
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tBody
+                                    font.weight: Font.DemiBold
+                                }
+                                Row {
+                                    spacing: 6
+                                    Chip { pal: root.pal; implicitHeight: 28; label: "Screen edge strip"; on: root.cur.spot !== "corner"; onClicked: root.edited(NL.edit(root.cur, "spot", "edge")) }
+                                    Chip { pal: root.pal; implicitHeight: 28; label: "Corner trigger"; on: root.cur.spot === "corner"; onClicked: root.edited(NL.edit(root.cur, "spot", "corner")) }
+                                }
+                                Row {
+                                    spacing: 6
+                                    visible: root.cur.spot !== "corner"
+                                    Chip { pal: root.pal; implicitHeight: 26; label: "Top"; on: root.cur.vpos === "top"; onClicked: root.edited(NL.edit(root.cur, "vpos", "top")) }
+                                    Chip { pal: root.pal; implicitHeight: 26; label: "Middle"; on: root.cur.vpos === "middle"; onClicked: root.edited(NL.edit(root.cur, "vpos", "middle")) }
+                                    Chip { pal: root.pal; implicitHeight: 26; label: "Bottom"; on: root.cur.vpos === "bottom"; onClicked: root.edited(NL.edit(root.cur, "vpos", "bottom")) }
                                 }
                             }
                         }

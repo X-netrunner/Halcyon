@@ -1,22 +1,19 @@
-import pwd
 #!/usr/bin/env python3
 """adaptive-advisor.py : Intelligent System & Resource Performance Advisor for Halcyon
-Analyzes hardware status, CPU/GPU temperatures, VRAM, memory pressure, background daemons,
-and user workflow patterns.
+Analyzes hardware status, CPU/GPU temperatures, VRAM, memory pressure (PSI),
+background daemons, systemd services, display server logs, and user workflow patterns.
 
 Modes:
   adaptive-advisor.py                     -> Full interactive diagnostic dashboard & efficiency score
-  adaptive-advisor.py --fix               -> Automatically applies recommended quick-fixes (trims memory, etc.)
+  adaptive-advisor.py doctor              -> Deep autonomous diagnostic check with confirmed fixes
+  adaptive-advisor.py fix [--yes]         -> Fix detected bottlenecks (asks before changing system unless --yes)
+  adaptive-advisor.py model               -> Show current model and installed models
+  adaptive-advisor.py model recommend     -> Hardware-aware recommendations for running bigger local models
+  adaptive-advisor.py model switch <name> -> Switch to any model (pulls it if missing)
   adaptive-advisor.py --llm               -> Synthesizes situational advice using local Ollama LLM
   adaptive-advisor.py "your question..."  -> Answers natural language questions with live hardware context
-  adaptive-advisor.py model               -> Show current model and installed models
-  adaptive-advisor.py model 3b            -> Switch to llama3.2:3b (pulls it if missing)
-  adaptive-advisor.py model <name>        -> Switch to any Ollama model (e.g. qwen2.5:3b)
   adaptive-advisor.py triage "text"       -> Tag a notification (urgent/chat/system/promo) + one-line summary
   adaptive-advisor.py write "request"     -> Short friendly text (birthday message, reply, description)
-
-Natural language like "I'm presenting" or "make my screen warmer" runs the matching action:
-keywords first, then the model picks from a fixed list (it can never run anything outside ACTIONS).
 """
 
 import os
@@ -26,12 +23,34 @@ import glob
 import re
 import subprocess
 import shutil
+import time
+import socket
+import pwd
 import urllib.request
 import urllib.error
 
 HOME = os.path.expanduser("~")
 RICE = os.environ.get("HALCYON_DIR", os.path.join(HOME, ".config/Halcyon"))
 USAGE_LOG = os.path.join(HOME, ".local/state/island/usage.log")
+ISLAND_LOG = os.path.join(HOME, ".cache/island/quickshell-island.log")
+
+# ───────────────────────── Caching & Helpers ─────────────────────────
+
+_CACHE = {}
+def cached(ttl=2.0):
+    def decorator(fn):
+        def wrapper(*args, **kwargs):
+            key = (fn.__name__, args)
+            now = time.time()
+            if key in _CACHE:
+                res, ts = _CACHE[key]
+                if now - ts < ttl:
+                    return res
+            res = fn(*args, **kwargs)
+            _CACHE[key] = (res, now)
+            return res
+        return wrapper
+    return decorator
 
 def read_file(path):
     try:
@@ -40,6 +59,9 @@ def read_file(path):
     except Exception:
         return ""
 
+# ───────────────────────── Hardware & System Sensors ─────────────────────────
+
+@cached(3.0)
 def get_battery_info():
     bats = glob.glob("/sys/class/power_supply/BAT*")
     if not bats:
@@ -47,12 +69,17 @@ def get_battery_info():
     bat = bats[0]
     status = read_file(os.path.join(bat, "status")) or "Unknown"
     capacity = read_file(os.path.join(bat, "capacity")) or "100"
+    power_now = read_file(os.path.join(bat, "power_now"))
+    watts = None
+    if power_now and power_now.isdigit():
+        watts = round(int(power_now) / 1_000_000.0, 1)
     try:
         cap_val = int(capacity)
     except ValueError:
         cap_val = 100
-    return {"present": True, "status": status, "capacity": cap_val}
+    return {"present": True, "status": status, "capacity": cap_val, "watts": watts}
 
+@cached(2.0)
 def get_temperatures():
     temps = []
     for p in glob.glob('/sys/class/hwmon/hwmon*/temp*_input'):
@@ -83,9 +110,25 @@ def is_nvidia_dgpu_suspended():
             continue
     return False
 
+@cached(3.0)
 def get_gpu_info():
     if is_nvidia_dgpu_suspended():
-        return {"present": True, "name": "NVIDIA dGPU (D3cold suspended)", "temp_c": 0, "vram_used_mb": 0, "vram_total_mb": 0, "util_pct": 0}
+        name = "NVIDIA dGPU (D3cold suspended)"
+        vram_mb = 0
+        try:
+            lsp = subprocess.run(["lspci", "-d", "10de:0300"], capture_output=True, text=True, timeout=1).stdout
+            if not lsp:
+                lsp = subprocess.run(["lspci", "-d", "10de:"], capture_output=True, text=True, timeout=1).stdout
+            m = re.search(r"\[(.*?)\]", lsp)
+            if m:
+                model_str = m.group(1)
+                name = f"NVIDIA {model_str} (D3cold idle)"
+                vmatch = re.search(r"(\d+)\s*GB", model_str, re.I)
+                if vmatch:
+                    vram_mb = int(vmatch.group(1)) * 1024
+        except Exception:
+            pass
+        return {"present": True, "name": name, "temp_c": 0, "vram_used_mb": 0, "vram_total_mb": vram_mb or 6144, "util_pct": 0, "suspended": True}
     try:
         res = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,temperature.gpu,memory.used,memory.total,utilization.gpu",
@@ -101,12 +144,16 @@ def get_gpu_info():
                     "temp_c": int(parts[1]),
                     "vram_used_mb": int(parts[2]),
                     "vram_total_mb": int(parts[3]),
-                    "util_pct": int(parts[4])
+                    "util_pct": int(parts[4]),
+                    "suspended": False
                 }
     except Exception:
         pass
-    return {"present": False, "name": "Integrated", "temp_c": 0, "vram_used_mb": 0, "vram_total_mb": 0, "util_pct": 0}
+    # Check for AMD / Intel integrated GPU
+    dri_cards = glob.glob("/sys/class/drm/card*")
+    return {"present": len(dri_cards) > 0, "name": "Integrated GPU", "temp_c": 0, "vram_used_mb": 0, "vram_total_mb": 0, "util_pct": 0, "suspended": False}
 
+@cached(1.5)
 def get_memory_info():
     meminfo = {}
     for line in read_file("/proc/meminfo").splitlines():
@@ -120,28 +167,147 @@ def get_memory_info():
                 pass
     total_mb = round(meminfo.get("MemTotal", 0) / 1024)
     avail_mb = round(meminfo.get("MemAvailable", 0) / 1024)
+    swap_total = round(meminfo.get("SwapTotal", 0) / 1024)
+    swap_free = round(meminfo.get("SwapFree", 0) / 1024)
+    swap_used = swap_total - swap_free
     used_mb = total_mb - avail_mb
     pct_used = round((used_mb / total_mb * 100), 1) if total_mb > 0 else 0
-    return {"total_mb": total_mb, "used_mb": used_mb, "avail_mb": avail_mb, "pct": pct_used}
+    return {
+        "total_mb": total_mb, "used_mb": used_mb, "avail_mb": avail_mb,
+        "pct": pct_used, "swap_total_mb": swap_total, "swap_used_mb": swap_used
+    }
 
+@cached(2.0)
+def get_psi_pressure():
+    """Reads Linux Pressure Stall Information (PSI) for memory, cpu, and io."""
+    psi = {}
+    for res in ("memory", "cpu", "io"):
+        path = f"/proc/pressure/{res}"
+        data = read_file(path)
+        if data:
+            entry = {}
+            for line in data.splitlines():
+                parts = line.split()
+                if len(parts) >= 2:
+                    k = parts[0]
+                    vals = {}
+                    for p in parts[1:]:
+                        if "=" in p:
+                            vk, vv = p.split("=", 1)
+                            try: vals[vk] = float(vv)
+                            except ValueError: pass
+                    entry[k] = vals
+            psi[res] = entry
+    return psi
+
+@cached(2.0)
 def get_process_stats():
     procs = []
     try:
-        ps = subprocess.run(["ps", "-u", os.environ.get("USER") or pwd.getpwuid(os.getuid()).pw_name, "-o", "pid,rss,%cpu,comm,args"],
+        user = os.environ.get("USER") or pwd.getpwuid(os.getuid()).pw_name
+        ps = subprocess.run(["ps", "-u", user, "-o", "pid,rss,%cpu,stat,comm,args"],
                             capture_output=True, text=True, timeout=3)
         for line in ps.stdout.splitlines()[1:]:
-            parts = line.split(None, 4)
-            if len(parts) >= 5:
+            parts = line.split(None, 5)
+            if len(parts) >= 6:
                 procs.append({
                     "pid": parts[0],
                     "rss_mb": round(int(parts[1]) / 1024, 1),
                     "cpu_pct": float(parts[2]),
-                    "comm": parts[3],
-                    "args": parts[4]
+                    "stat": parts[3],
+                    "comm": parts[4],
+                    "args": parts[5]
                 })
     except Exception:
         pass
     return procs
+
+def get_failed_services():
+    failed = []
+    for scope, flag in [("system", []), ("user", ["--user"])]:
+        try:
+            res = subprocess.run(["systemctl", *flag, "--failed", "--no-legend"], capture_output=True, text=True, timeout=2)
+            for line in res.stdout.splitlines():
+                parts = line.strip().split()
+                # Skip leading bullet (●) if present
+                if parts and parts[0] in ("●", "*", "-"):
+                    parts = parts[1:]
+                if parts and parts[0].endswith(".service"):
+                    failed.append((scope, parts[0]))
+        except Exception:
+            pass
+    return failed
+
+def get_zombie_processes():
+    zombies = []
+    try:
+        ps = subprocess.run(["ps", "-eo", "pid,stat,comm"], capture_output=True, text=True, timeout=2)
+        for line in ps.stdout.splitlines()[1:]:
+            parts = line.split()
+            if len(parts) >= 3 and "Z" in parts[1]:
+                zombies.append((parts[0], parts[2]))
+    except Exception:
+        pass
+    return zombies
+
+def get_disk_health():
+    disks = []
+    for mount in ("/", HOME):
+        try:
+            usage = shutil.disk_usage(mount)
+            total_gb = round(usage.total / (1024**3), 1)
+            used_gb = round(usage.used / (1024**3), 1)
+            free_gb = round(usage.free / (1024**3), 1)
+            pct = round(usage.used / usage.total * 100, 1)
+            disks.append({"mount": mount, "total_gb": total_gb, "free_gb": free_gb, "pct": pct})
+        except Exception:
+            pass
+    return disks
+
+def get_network_health():
+    """Quick non-blocking network & DNS check."""
+    has_default_route = False
+    try:
+        routes = read_file("/proc/net/route")
+        for line in routes.splitlines()[1:]:
+            fields = line.split()
+            if len(fields) >= 2 and fields[1] == "00000000":
+                has_default_route = True
+                break
+    except Exception:
+        pass
+
+    dns_ok = False
+    if has_default_route:
+        try:
+            socket.setdefaulttimeout(1.5)
+            socket.getaddrinfo("archlinux.org", 80, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            dns_ok = True
+        except Exception:
+            try:
+                socket.getaddrinfo("1.1.1.1", 53, socket.AF_INET, socket.SOCK_DGRAM)
+                dns_ok = True
+            except Exception:
+                pass
+    return {"online": has_default_route, "dns_ok": dns_ok}
+
+def get_quickshell_log_health():
+    if not os.path.isfile(ISLAND_LOG):
+        return {"exists": False, "errors": 0, "recent_error": None}
+    recent_errors = []
+    try:
+        with open(ISLAND_LOG, "r", errors="ignore") as f:
+            lines = f.readlines()[-150:]
+            for l in lines:
+                if any(k in l for l in ("CRITICAL", "Error", "TypeError", "ReferenceError")):
+                    recent_errors.append(l.strip())
+    except Exception:
+        pass
+    return {
+        "exists": True,
+        "errors": len(recent_errors),
+        "recent_error": recent_errors[-1] if recent_errors else None
+    }
 
 def get_usage_patterns():
     if not os.path.isfile(USAGE_LOG):
@@ -154,25 +320,34 @@ def get_usage_patterns():
             counts[app] = counts.get(app, 0) + 1
     return counts
 
-def calculate_score(mem, temps, qs_mb, battery):
+# ───────────────────────── Score & Comprehensive Analysis ─────────────────────────
+
+def calculate_score(mem, temps, qs_mb, battery, psi, failed_svcs, zombies):
     score = 100
-    if mem["pct"] > 85:
-        score -= 20
-    elif mem["pct"] > 70:
-        score -= 10
+    if mem["pct"] > 88: score -= 22
+    elif mem["pct"] > 75: score -= 12
 
-    if temps["max"] > 90:
-        score -= 25
-    elif temps["max"] > 80:
-        score -= 12
+    if temps["max"] > 92: score -= 25
+    elif temps["max"] > 82: score -= 12
 
-    if qs_mb > 450:
-        score -= 15
-    elif qs_mb > 300:
-        score -= 8
+    if qs_mb > 450: score -= 15
+    elif qs_mb > 320: score -= 8
 
     if battery and battery["status"] == "Discharging" and battery["capacity"] < 25:
         score -= 10
+
+    # PSI memory stall penalty
+    mem_some = psi.get("memory", {}).get("some", {}).get("avg10", 0.0)
+    if mem_some > 15.0: score -= 15
+    elif mem_some > 5.0: score -= 8
+
+    # Failed services
+    if failed_svcs:
+        score -= min(20, len(failed_svcs) * 10)
+
+    # Zombie processes
+    if zombies:
+        score -= min(10, len(zombies) * 5)
 
     score = max(10, min(100, score))
     rating = "EXCELLENT" if score >= 90 else "GOOD" if score >= 75 else "FAIR" if score >= 55 else "ATTENTION NEEDED"
@@ -185,115 +360,243 @@ def analyze_system():
     usage = get_usage_patterns()
     temps = get_temperatures()
     gpu = get_gpu_info()
+    psi = get_psi_pressure()
+    failed_svcs = get_failed_services()
+    zombies = get_zombie_processes()
+    disks = get_disk_health()
+    net = get_network_health()
+    qs_log = get_quickshell_log_health()
 
     qs_proc = next((p for p in procs if "quickshell" in p["comm"]), None)
     hy_proc = next((p for p in procs if "Hyprland" in p["comm"]), None)
     gaming_active = any(p for p in procs if any(g in p["comm"].lower() for g in ["steam", "wine", "gamescope", "lutris", "heroic"]))
 
-    suggestions = []
     qs_mb = qs_proc["rss_mb"] if qs_proc else 0
     hy_mb = hy_proc["rss_mb"] if hy_proc else 0
 
+    suggestions = []
+    remediations = []  # actionable fixes that require confirmation
+
+    # Failed services
+    for scope, svc in failed_svcs:
+        restart_cmd = f"systemctl {'--user' if scope == 'user' else ''} restart {svc}"
+        suggestions.append({
+            "id": f"restart_svc_{svc}",
+            "priority": "HIGH",
+            "title": f"Service failure: {svc} ({scope})",
+            "action": f"Run '{restart_cmd}' to restore service functionality.",
+            "why": f"Unit {svc} entered failed state and stopped functioning.",
+            "cmd": restart_cmd
+        })
+        remediations.append((f"Restart failed service '{svc}'", restart_cmd, f"Restore failed {scope} service."))
+
+    # Memory pressure & Quickshell trim
     if qs_mb > 350:
+        trim_cmd = f"quickshell ipc -p {os.path.join(RICE, 'quickshell/island')} call island trim"
         suggestions.append({
             "id": "trim_quickshell",
             "priority": "HIGH",
-            "title": f"Quickshell memory is elevated ({qs_mb:.1f} MB)",
-            "action": "Run 'advisor fix' or toggle 'Aggressive Memory Freeing' (opt:lazyLoad) in Settings.",
-            "why": "Frees closed dialog heaps and texture caches back to the operating system."
+            "title": f"Quickshell memory elevated ({qs_mb:.1f} MB)",
+            "action": "Trim Quickshell memory heap caches.",
+            "why": "Frees closed dialog heaps and unused textures back to OS.",
+            "cmd": trim_cmd
         })
+        remediations.append(("Trim Quickshell RAM", trim_cmd, "Frees cached QML dialog textures back to OS."))
 
-    if gaming_active:
+    if mem["pct"] > 82 or psi.get("memory", {}).get("some", {}).get("avg10", 0.0) > 8.0:
+        clean_cmd = "sync"
         suggestions.append({
-            "id": "gaming_mode",
+            "id": "memory_pressure",
             "priority": "HIGH",
-            "title": "Active Gaming Process Detected",
-            "action": "Engage Gaming Mode (SUPER + F10 or Settings > Gaming).",
-            "why": "Uncaps refresh rate, enables tearing mode, and suspends background animations."
+            "title": f"High memory pressure ({mem['pct']}% used, {mem['avail_mb']} MB available)",
+            "action": "Run 'sync' and trim inactive caches.",
+            "why": "System tasks are experiencing memory pressure delays.",
+            "cmd": clean_cmd
+        })
+        remediations.append(("Synchronize page caches", clean_cmd, "Flushes dirty pagecache buffers to disk safely."))
+
+    # Zombies
+    if zombies:
+        z_pids = " ".join(z[0] for z in zombies)
+        suggestions.append({
+            "id": "zombies",
+            "priority": "MEDIUM",
+            "title": f"Found {len(zombies)} zombie/defunct process(es)",
+            "action": f"Reap defunct processes (PIDs: {z_pids})",
+            "why": "Dead processes remain allocated in kernel process table.",
+            "cmd": f"kill -9 {z_pids} 2>/dev/null || true"
         })
 
-    if battery and battery["status"] == "Discharging":
-        if battery["capacity"] < 30:
-            suggestions.append({
-                "id": "battery_saver",
-                "priority": "HIGH",
-                "title": f"Battery Low ({battery['capacity']}%)",
-                "action": "Turn on Power Saving profile and reduce screen brightness.",
-                "why": "Extends remaining battery runtime significantly."
-            })
-
-    if temps["max"] > 82:
+    # Thermals
+    if temps["max"] > 84:
         suggestions.append({
             "id": "thermal_warm",
             "priority": "MEDIUM",
-            "title": f"Elevated CPU Temperature ({temps['max']}°C)",
-            "action": "Switch to Balanced thermal profile or clear heavy background workers.",
-            "why": "Maintains sustained clock boost without thermal throttling."
+            "title": f"High CPU Temperature ({temps['max']}°C)",
+            "action": "Switch to Balanced thermal profile or clear heavy background loops.",
+            "why": "Prevents thermal throttling and fan fatigue."
         })
 
-    # Top apps suggestion
-    if usage:
-        top_apps = sorted(usage.items(), key=lambda x: x[1], reverse=True)[:3]
-        app_summary = ", ".join([f"{k} ({v}x)" for k, v in top_apps])
+    # Disk Space
+    for d in disks:
+        if d["pct"] > 90:
+            suggestions.append({
+                "id": f"disk_full_{d['mount']}",
+                "priority": "HIGH",
+                "title": f"Storage volume {d['mount']} is nearly full ({d['pct']}%)",
+                "action": "Clean package cache: 'paccache -r' or remove old cache files.",
+                "why": f"Only {d['free_gb']} GB remaining on {d['mount']}."
+            })
+
+    # Gaming
+    if gaming_active:
         suggestions.append({
-            "id": "app_habits",
+            "id": "gaming_mode",
             "priority": "INFO",
-            "title": f"Frequently used applications: {app_summary}",
-            "action": "Map dedicated keybinds (Settings > Shortcuts) or autostart rules.",
-            "why": "Optimizes workspace flow and reduces launcher churn."
+            "title": "Active Game Process Detected",
+            "action": "Engage Gaming Mode (SUPER + F10 or Settings > Gaming).",
+            "why": "Uncaps refresh rate and suspends background animations."
         })
 
-    score, rating = calculate_score(mem, temps, qs_mb, battery)
+    # Battery
+    if battery and battery["status"] == "Discharging" and battery["capacity"] < 25:
+        suggestions.append({
+            "id": "battery_saver",
+            "priority": "HIGH",
+            "title": f"Battery Critically Low ({battery['capacity']}%)",
+            "action": "Connect power adapter or activate power saver mode.",
+            "why": f"Battery is discharging at {battery.get('watts', 15)}W."
+        })
+
+    score, rating = calculate_score(mem, temps, qs_mb, battery, psi, failed_svcs, zombies)
 
     return {
         "battery": battery,
         "memory": mem,
         "temps": temps,
         "gpu": gpu,
+        "psi": psi,
+        "failed_svcs": failed_svcs,
+        "zombies": zombies,
+        "disks": disks,
+        "net": net,
+        "qs_log": qs_log,
         "quickshell_mb": qs_mb,
         "hyprland_mb": hy_mb,
         "score": score,
         "rating": rating,
         "suggestions": suggestions,
-        "procs": procs
+        "remediations": remediations,
+        "procs": procs,
+        "usage": usage
     }
 
-def apply_fixes():
-    print("━" * 60)
-    print("🔧 Applying Automatic System Optimizations...")
-    print("━" * 60)
-    
-    # 1. Trim quickshell
-    print("[*] Releasing Quickshell caches & texture heaps...")
-    try:
-        subprocess.run(
-            ["quickshell", "ipc", "-p", os.path.join(RICE, "quickshell", "island"), "call", "island", "trim"],
-            capture_output=True, timeout=4
-        )
-        print("  ✔ Quickshell memory trimmed.")
-    except Exception as e:
-        print(f"  ⚠ Quickshell trim call: {e}")
+# ───────────────────────── Interactive Safe Remediation ─────────────────────────
 
-    # 2. Sync and drop caches if memory is tight
-    mem = get_memory_info()
-    if mem["pct"] > 75:
-        print("[*] Releasing file system pagecache buffers...")
+def ask_and_execute(title, command, reason, assume_yes=False):
+    """Asks user for confirmation before executing any system modification command."""
+    print(f"\n\033[1;33m[?] Action proposed:\033[0m \033[1m{title}\033[0m")
+    print(f"    \033[36mCommand:\033[0m {command}")
+    print(f"    \033[37mReason:\033[0m  {reason}")
+    if assume_yes:
+        print("    \033[32m[Auto-approved via --yes]\033[0m")
+    else:
         try:
-            subprocess.run(["sync"], timeout=3)
-            print("  ✔ Pagecache synchronized.")
-        except Exception:
-            pass
+            choice = input("    Proceed with this system change? [y/N]: ").strip().lower()
+            if choice not in ("y", "yes"):
+                print("    \033[33mSkipped by user.\033[0m")
+                return False
+        except (EOFError, KeyboardInterrupt):
+            print("\n    \033[33mSkipped.\033[0m")
+            return False
+    print("    \033[32mExecuting...\033[0m")
+    try:
+        res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=15)
+        if res.returncode == 0:
+            print("    \033[32m✔ Applied successfully.\033[0m")
+            return True
+        else:
+            print(f"    \033[31m✗ Command exited with code {res.returncode}: {res.stderr.strip()}\033[0m")
+            return False
+    except Exception as e:
+        print(f"    \033[31m✗ Execution failed: {e}\033[0m")
+        return False
 
-    print("\n✔ Optimization complete! Run 'advisor' to view updated score.")
+def run_doctor(assume_yes=False):
+    """Full autonomous diagnostic battery with confirmed fixes."""
+    print("━" * 68)
+    print("🩺 Halcyon Autonomous System Doctor & Diagnostician")
+    print("━" * 68)
+    a = analyze_system()
+
+    # 1. System summary
+    sc = "\033[1;32m" if a["score"] >= 90 else "\033[1;33m" if a["score"] >= 70 else "\033[1;31m"
+    print(f"Overall Health: {sc}{a['score']}/100 [{a['rating']}]\033[0m")
+    print(f"• RAM: {a['memory']['used_mb']}/{a['memory']['total_mb']} MB ({a['memory']['pct']}%)  |  Swap: {a['memory']['swap_used_mb']}/{a['memory']['swap_total_mb']} MB")
+    print(f"• Temperatures: CPU avg {a['temps']['avg']}°C, peak {a['temps']['max']}°C")
+    if a["gpu"]["present"]:
+        print(f"• GPU: {a['gpu']['name']}  |  VRAM: {a['gpu']['vram_used_mb']}/{a['gpu']['vram_total_mb']} MB")
+    if a["battery"]:
+        print(f"• Battery: {a['battery']['capacity']}% ({a['battery']['status']})")
+    print(f"• Network: {'✔ Online' if a['net']['online'] else '✗ Disconnected'} (DNS: {'✔ OK' if a['net']['dns_ok'] else '✗ Failing'})")
+    print(f"• Shell Heaps: Quickshell {a['quickshell_mb']} MB  |  Hyprland {a['hyprland_mb']} MB")
+
+    # 2. Issues report
+    print("\n🔍 Diagnostic Findings:")
+    if not a["suggestions"]:
+        print("  \033[32m✔ No system anomalies, failed services, or severe bottlenecks found.\033[0m")
+        return
+
+    for idx, s in enumerate(a["suggestions"], 1):
+        prio_color = {
+            "HIGH": "\033[1;31m[HIGH]\033[0m",
+            "MEDIUM": "\033[1;33m[MED]\033[0m",
+            "INFO": "\033[1;36m[INFO]\033[0m"
+        }.get(s["priority"], f"[{s['priority']}]")
+        print(f"  {idx}. {prio_color} \033[1m{s['title']}\033[0m")
+        print(f"     Why: {s['why']}")
+        print(f"     Action: {s['action']}")
+
+    # 3. Remediation execution
+    if a["remediations"]:
+        print("\n🔧 Available Remediations (each change requires your explicit confirmation):")
+        applied = 0
+        for title, cmd, why in a["remediations"]:
+            if ask_and_execute(title, cmd, why, assume_yes=assume_yes):
+                applied += 1
+        print(f"\nDoctor finished. {applied} remediation(s) applied.")
+    else:
+        print("\n✔ No automated changes needed.")
+
+def apply_fixes(assume_yes=False):
+    """Trims quickshell and flushes buffers with confirmation."""
+    print("━" * 60)
+    print("🔧 Halcyon System Optimizations")
+    print("━" * 60)
+    trim_cmd = f"quickshell ipc -p {os.path.join(RICE, 'quickshell/island')} call island trim"
+    ask_and_execute("Trim Quickshell Heap Caches", trim_cmd, "Releases unused dialog textures and caches back to the operating system.", assume_yes=assume_yes)
+    mem = get_memory_info()
+    if mem["pct"] > 70:
+        ask_and_execute("Synchronize File Buffers", "sync", "Flushes pending write buffers before freeing pagecache.", assume_yes=assume_yes)
+    print("\n✔ Optimization step complete. Run 'advisor' to check new score.")
+
+# ───────────────────────── Hardware-Aware Model Advisor ─────────────────────────
 
 MODEL_ALIASES = {
     "1b": "llama3.2:1b",
     "3b": "llama3.2:3b",
     "llama1b": "llama3.2:1b",
     "llama3b": "llama3.2:3b",
+    "llama8b": "llama3.1:8b",
+    "7b": "qwen2.5:7b",
+    "8b": "llama3.1:8b",
+    "14b": "qwen2.5:14b",
     "qwen1.5b": "qwen2.5:1.5b",
     "qwen3b": "qwen2.5:3b",
-    "qwen4b": "qwen3:4b",
+    "qwen7b": "qwen2.5:7b",
+    "qwen14b": "qwen2.5:14b",
+    "deepseek8b": "deepseek-r1:8b",
+    "deepseek14b": "deepseek-r1:14b",
 }
 
 def installed_models():
@@ -302,43 +605,6 @@ def installed_models():
         return [l.split()[0] for l in out.splitlines()[1:] if l.strip()]
     except Exception:
         return []
-
-def free_ram_mb():
-    try:
-        for line in read_file("/proc/meminfo").splitlines():
-            if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) // 1024
-    except Exception:
-        pass
-    return 0
-
-def model_command(args):
-    """advisor model [name|alias]"""
-    current = get_advisor_model()
-    have = installed_models()
-    if not args:
-        print(f"Current model : {current}")
-        print("Installed     : " + (", ".join(have) if have else "(none found - is ollama running?)"))
-        print("Aliases       : " + ", ".join(f"{k}={v}" for k, v in MODEL_ALIASES.items()))
-        print("\nSwitch with: advisor model 3b")
-        return
-    name = MODEL_ALIASES.get(args[0].lower(), args[0])
-    if not any(m == name or m.startswith(name + ":") or m.split(":")[0] == name for m in have):
-        free = free_ram_mb()
-        print(f"[*] '{name}' is not installed. Pulling it now (this can take a few minutes)...")
-        if free and free < 3000 and "3b" in name:
-            print(f"[!] Only ~{free} MB RAM free. A 3B model wants roughly 3 GB headroom; it may be slow.")
-        r = subprocess.run(["ollama", "pull", name])
-        if r.returncode != 0:
-            print(f"[!] Pull failed. Keeping '{current}'.")
-            return
-    os.makedirs(RICE, exist_ok=True)
-    conf = os.path.join(RICE, "ai-advisor.conf")
-    with open(conf, "w") as f:
-        f.write(f'MODEL="{name}"\n')
-    print(f"✔ Advisor model set to {name}  (saved in {conf})")
-    if os.environ.get("HALCYON_AI_MODEL"):
-        print("[!] HALCYON_AI_MODEL is set in your shell and overrides this. Unset it to use the saved choice.")
 
 def get_advisor_model():
     if os.environ.get("HALCYON_AI_MODEL"):
@@ -350,20 +616,122 @@ def get_advisor_model():
                 m = line.split("=", 1)[1].strip().strip('"').strip("'")
                 if m:
                     return m
-    try:
-        models_out = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=3).stdout
-        models = [line.split()[0] for line in models_out.splitlines()[1:] if line.strip()]
-        for pref in ["llama3.2:1b", "qwen2.5:1.5b", "qwen2.5:0.5b", "llama3.2:3b", "qwen3:4b"]:
-            match = next((m for m in models if m.startswith(pref)), None)
-            if match:
-                return match
-        if models:
-            return models[0]
-    except Exception:
-        pass
+    have = installed_models()
+    for pref in ["qwen2.5:7b", "llama3.1:8b", "llama3.2:3b", "qwen2.5:3b", "llama3.2:1b"]:
+        match = next((m for m in have if m.startswith(pref)), None)
+        if match:
+            return match
+    if have:
+        return have[0]
     return "llama3.2:1b"
 
-# ───────────────────────── Actions the advisor can run ─────────────────────────
+def recommend_models():
+    """Hardware-aware sizing and suggestions for users wanting a bigger local model."""
+    mem = get_memory_info()
+    gpu = get_gpu_info()
+    disks = get_disk_health()
+    free_disk_gb = disks[0]["free_gb"] if disks else 20.0
+    vram_mb = gpu["vram_total_mb"]
+    ram_gb = round(mem["total_mb"] / 1024, 1)
+
+    print("━" * 68)
+    print("🤖 Halcyon AI Hardware-Aware Model Advisor")
+    print("━" * 68)
+    print(f"Detected Hardware:")
+    print(f"  • System RAM : {ram_gb} GB ({round(mem['avail_mb']/1024, 1)} GB available)")
+    if gpu["present"]:
+        print(f"  • GPU / VRAM : {gpu['name']} ({vram_mb} MB VRAM)")
+    else:
+        print(f"  • GPU        : Integrated Graphics (relies on shared system RAM)")
+    print(f"  • Disk Space : {free_disk_gb} GB free for model weights")
+    print("─" * 68)
+
+    print("Recommended Model Tiers for Your Machine:\n")
+
+    # Tier 1: Sweet spot
+    if vram_mb >= 5500:
+        print("★ TIER 1: SWEET SPOT (100% GPU VRAM Offload, Blazing 40-60+ tps)")
+        print("  Your 6 GB VRAM comfortably fits full 7B-8B quantized models on the GPU:")
+        print("  • \033[1;36mqwen2.5:7b\033[0m     (~4.7 GB) -> \033[1mRECOMMENDED\033[0m for coding, cybersecurity & Linux reasoning")
+        print("  • \033[1;36mllama3.1:8b\033[0m    (~4.9 GB) -> Premier conversational model with high precision")
+        print("  • \033[1;36mdeepseek-r1:8b\033[0m (~4.9 GB) -> Advanced step-by-step reasoning and math")
+    else:
+        print("★ TIER 1: ULTRA-RESPONSIVE (Low RAM & Fast on CPU/Integrated GPU)")
+        print("  • \033[1;36mllama3.2:3b\033[0m    (~2.0 GB) -> Fast, accurate, very gentle on battery")
+        print("  • \033[1;36mqwen2.5:3b\033[0m     (~1.9 GB) -> Great instruction following and compact")
+
+    # Tier 2: Heavyweights
+    print("\n★ TIER 2: ADVANCED REASONING (High Intelligence, Partial CPU Offload)")
+    if ram_gb >= 12:
+        print("  • \033[1;36mqwen2.5:14b\033[0m    (~9.0 GB) -> Near GPT-4 class reasoning for complex coding")
+        print("  • \033[1;36mdeepseek-r1:14b\033[0m(~9.0 GB) -> Deep analytical chain-of-thought")
+        print("    (Runs ~12-18 tps using hybrid GPU + CPU RAM offloading)")
+    else:
+        print("  • \033[1;36mqwen2.5:7b\033[0m     (~4.7 GB) -> Maximum recommended model for this RAM budget")
+
+    # Tier 3: Ultra-light
+    print("\n★ TIER 3: ULTRA-LIGHT / TRAVEL (Zero System Burden)")
+    print("  • \033[1;36mllama3.2:1b\033[0m    (~1.3 GB) -> Instant reply, runs on bare minimum resources")
+
+    print("\n" + "─" * 68)
+    print("Performance & Optimization Tips for Bigger Models:")
+    print("  1. Keep context window optimal: 4096 to 8192 tokens preserves VRAM.")
+    print("  2. In Ollama, keep OLLAMA_NUM_PARALLEL=1 so VRAM is not duplicated.")
+    print("  3. To switch to the best model now, run:")
+    print("     \033[1;32madvisor model switch qwen2.5:7b\033[0m   (or: advisor model switch 8b)")
+    print("━" * 68)
+
+def model_command(args):
+    """advisor model [recommend|switch <name>|<name>]"""
+    if args and args[0] in ("recommend", "suggest", "bigger", "tiers"):
+        recommend_models()
+        return
+
+    current = get_advisor_model()
+    have = installed_models()
+
+    if not args:
+        print(f"Current model : {current}")
+        print("Installed     : " + (", ".join(have) if have else "(none found - is ollama running?)"))
+        print("Aliases       : " + ", ".join(f"{k}={v}" for k, v in MODEL_ALIASES.items()))
+        print("\nCommands:")
+        print("  advisor model recommend         -> View hardware-tailored recommendations for bigger models")
+        print("  advisor model switch qwen2.5:7b -> Pull and activate a new model")
+        print("  advisor model 3b                -> Quick switch to 3B model")
+        return
+
+    target = args[1] if args[0] in ("switch", "set") and len(args) > 1 else args[0]
+    name = MODEL_ALIASES.get(target.lower(), target)
+
+    if not any(m == name or m.startswith(name + ":") or m.split(":")[0] == name for m in have):
+        mem = get_memory_info()
+        free_mb = mem["avail_mb"]
+        print(f"[*] '{name}' is not currently downloaded.")
+        print(f"[*] Available RAM: ~{free_mb} MB.")
+        try:
+            confirm = input(f"    Download and install '{name}' from Ollama registry? [Y/n]: ").strip().lower()
+            if confirm in ("n", "no"):
+                print("    Aborted.")
+                return
+        except (EOFError, KeyboardInterrupt):
+            print("\n    Aborted.")
+            return
+
+        print(f"[*] Pulling '{name}'... (this may take a couple minutes depending on connection)")
+        r = subprocess.run(["ollama", "pull", name])
+        if r.returncode != 0:
+            print(f"[!] Pull failed. Retaining current model '{current}'.")
+            return
+
+    os.makedirs(RICE, exist_ok=True)
+    conf = os.path.join(RICE, "ai-advisor.conf")
+    with open(conf, "w") as f:
+        f.write(f'MODEL="{name}"\n')
+    print(f"✔ Advisor model successfully set to {name}  (saved in {conf})")
+    if os.environ.get("HALCYON_AI_MODEL"):
+        print("[!] Note: HALCYON_AI_MODEL is set in current environment and overrides this file.")
+
+# ───────────────────────── Actions the Advisor Can Dispatch ─────────────────────────
 
 def _qs(*call):
     subprocess.run(["quickshell", "ipc", "-p", os.path.join(RICE, "quickshell/island"), "call", *call])
@@ -371,38 +739,43 @@ def _qs(*call):
 def _script(name, *a):
     subprocess.run(["bash", os.path.join(RICE, "scripts", name), *a])
 
-# name -> (message, runner, description shown to the model, keywords, needs_confirm_when_inferred)
 ACTIONS = {
     "mirror":        ("📽️ Executing Projector Mirror Mode...", lambda: _script("display-manager.sh", "mirror"),
-                      "mirror the laptop screen to a projector / TV / external display (presenting)",
+                      "mirror laptop screen to a projector / TV / external display",
                       ["projector", "mirror", "clone screen", "presentation"], False),
     "extend-right":  ("🖥️ Extending display to the right...", lambda: _script("display-manager.sh", "extend-right"),
-                      "use an external monitor as a second screen to the right",
+                      "use external monitor as second screen to the right",
                       ["extend right", "dual screen", "second monitor", "extend display"], False),
     "extend-left":   ("🖥️ Extending display to the left...", lambda: _script("display-manager.sh", "extend-left"),
-                      "use an external monitor as a second screen to the left",
+                      "use external monitor as second screen to the left",
                       ["extend left"], False),
     "internal-only": ("💻 Switching to internal laptop screen only...", lambda: _script("display-manager.sh", "internal-only"),
-                      "turn off external displays and use only the laptop screen",
+                      "turn off external displays and use only laptop screen",
                       ["laptop screen only", "single screen", "disconnect display"], True),
     "gaming":        ("🎮 Toggling Gaming Mode via Quickshell...", lambda: _qs("island", "gaming"),
-                      "toggle gaming mode (max performance, no background animations)",
+                      "toggle gaming mode (max performance, uncap refresh, suspend animations)",
                       ["game mode", "gaming mode", "gaming on", "gaming off"], False),
     "trim-memory":   ("🧹 Trimming Quickshell RAM and cleaning system caches...", lambda: apply_fixes(),
-                      "free up RAM: trim Quickshell memory and flush caches",
+                      "free up RAM: trim Quickshell memory and sync caches",
                       ["trim memory", "clean ram", "free memory", "free ram", "flush cache"], True),
     "caffeine":      ("☕ Toggling Caffeine mode...", lambda: _qs("island", "caffeine"),
-                      "keep the screen awake and stop it from sleeping or locking",
+                      "keep the screen awake and prevent sleep/lock",
                       ["caffeine", "stay awake", "keep awake"], False),
     "dnd":           ("🔕 Toggling Do Not Disturb...", lambda: _qs("island", "dnd"),
-                      "silence notifications / do not disturb / focus time",
+                      "silence desktop notifications",
                       ["do not disturb", "dnd", "mute notifications", "silence"], False),
     "wallpaper":     ("🖼️ Cycling wallpaper...", lambda: _qs("wallpaper", "next"),
                       "switch to the next wallpaper",
                       ["next wallpaper", "change wallpaper", "random wallpaper"], False),
     "nightlight":    ("🌙 Toggling night light...", lambda: _script("toggle_nightlight.sh"),
-                      "warmer screen colour / reduce blue light for the evening",
+                      "warmer screen colour / reduce blue light",
                       ["night light", "nightlight", "blue light", "warm screen"], False),
+    "doctor":        ("🩺 Running system diagnostics doctor...", lambda: run_doctor(),
+                      "run deep system diagnostics check and diagnose bottlenecks",
+                      ["diagnose", "system check", "doctor", "health check", "scan system"], False),
+    "recommend-model":("🤖 Opening Model Recommendations...", lambda: recommend_models(),
+                      "recommend best local AI models for this hardware",
+                      ["recommend model", "bigger model", "models", "what model"], False),
 }
 
 _QUESTION_START = ("why", "what", "how", "which", "who", "when", "where", "is ", "are ", "does ", "do ", "should ", "explain", "tell me")
@@ -424,22 +797,21 @@ def try_dispatch_keywords(prompt):
             return True
     return False
 
-# ───────────────────────── Ollama helpers ─────────────────────────
+# ───────────────────────── Ollama LLM Interface ─────────────────────────
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 LAST_LLM_ERROR = ""
 
-def ollama_generate(prompt, schema=None, num_predict=260, temperature=0.2, stream=False, timeout=90):
-    """Call Ollama. Returns text or None. With `schema`, output is forced to valid JSON."""
+def ollama_generate(prompt, schema=None, num_predict=320, temperature=0.2, stream=False, timeout=90):
     global LAST_LLM_ERROR
     LAST_LLM_ERROR = ""
     model = get_advisor_model()
     if "qwen3" in model:
-        stream = False  # <think> blocks are stripped after the fact
+        stream = False
     payload = {
         "model": model, "prompt": prompt, "stream": bool(stream),
         "keep_alive": "30m",
-        "options": {"num_predict": num_predict, "temperature": temperature, "num_ctx": 2048},
+        "options": {"num_predict": num_predict, "temperature": temperature, "num_ctx": 4096},
     }
     if schema:
         payload["format"] = schema
@@ -451,16 +823,13 @@ def ollama_generate(prompt, schema=None, num_predict=260, temperature=0.2, strea
             if payload["stream"]:
                 out = []
                 for raw in r:
-                    try:
-                        chunk = json.loads(raw.decode("utf-8"))
-                    except Exception:
-                        continue
+                    try: chunk = json.loads(raw.decode("utf-8"))
+                    except Exception: continue
                     piece = chunk.get("response", "")
                     if piece:
                         out.append(piece)
                         print(piece, end="", flush=True)
-                    if chunk.get("done"):
-                        break
+                    if chunk.get("done"): break
                 print()
                 return "".join(out).strip() or None
             data = json.loads(r.read().decode("utf-8"))
@@ -468,15 +837,15 @@ def ollama_generate(prompt, schema=None, num_predict=260, temperature=0.2, strea
             return text or None
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            LAST_LLM_ERROR = f"Model '{model}' is not installed. Run: advisor model {model}"
+            LAST_LLM_ERROR = f"Model '{model}' is not installed. Run: advisor model switch {model}"
         else:
             LAST_LLM_ERROR = f"Ollama returned HTTP {e.code}."
     except urllib.error.URLError:
-        LAST_LLM_ERROR = "Can't reach Ollama on 127.0.0.1:11434. Start it with: systemctl --user start ollama  (or: ollama serve)"
+        LAST_LLM_ERROR = "Can't reach Ollama on 127.0.0.1:11434. Start it: systemctl --user start ollama"
     except Exception as e:
-        LAST_LLM_ERROR = f"Model call failed or timed out ({e})."
+        LAST_LLM_ERROR = f"Model call failed: {e}"
 
-    if not schema:  # last resort: CLI
+    if not schema:
         try:
             res = subprocess.run(["ollama", "run", model, prompt], capture_output=True, text=True, timeout=timeout)
             out = re.sub(r"<think>.*?</think>", "", res.stdout or "", flags=re.DOTALL).strip()
@@ -488,7 +857,7 @@ def ollama_generate(prompt, schema=None, num_predict=260, temperature=0.2, strea
             pass
     return None
 
-def llm_json(prompt, schema, num_predict=80):
+def llm_json(prompt, schema, num_predict=90):
     text = ollama_generate(prompt, schema=schema, num_predict=num_predict, temperature=0.0)
     if not text:
         return None
@@ -496,103 +865,59 @@ def llm_json(prompt, schema, num_predict=80):
         return json.loads(text)
     except Exception:
         m = re.search(r"\{.*\}", text, flags=re.DOTALL)
-        try:
-            return json.loads(m.group(0)) if m else None
-        except Exception:
-            return None
-
-# ───────────────────────── 1. Intent routing (model picks from a fixed list) ─────────────────────────
-
-def llm_pick_action(prompt):
-    names = list(ACTIONS.keys())
-    schema = {"type": "object", "properties": {"action": {"type": "string", "enum": names + ["none"]}}, "required": ["action"]}
-    menu = "\n".join(f"- {n}: {ACTIONS[n][2]}" for n in names)
-    instr = (
-        "You route a user's request on a Linux desktop to exactly one action, or 'none'.\n"
-        f"Actions:\n{menu}\n- none: anything else, including questions, advice requests, or unclear requests\n\n"
-        "Examples:\n"
-        'Request: "I\'m presenting to my class" -> {"action": "mirror"}\n'
-        'Request: "make my screen easier on my eyes" -> {"action": "nightlight"}\n'
-        'Request: "I need to focus, no pings" -> {"action": "dnd"}\n'
-        'Request: "my laptop feels slow, why?" -> {"action": "none"}\n'
-        'Request: "what is a good wallpaper size" -> {"action": "none"}\n\n'
-        f'Request: "{prompt}" ->'
-    )
-    res = llm_json(instr, schema)
-    act = (res or {}).get("action", "none")
-    return act if act in ACTIONS else None
-
-def try_dispatch_intent(prompt):
-    if try_dispatch_keywords(prompt):
-        return True
-    if looks_like_question(prompt):
-        return False
-    act = llm_pick_action(prompt)
-    if not act:
-        return False
-    print(f"🧭 Understood as: {ACTIONS[act][2]}")
-    if ACTIONS[act][4] and sys.stdin.isatty():
-        try:
-            if input("   Run it? [y/N] ").strip().lower() not in ("y", "yes"):
-                print("   Skipped.")
-                return True
-        except EOFError:
-            return True
-    run_action(act)
-    return True
-
-# ───────────────────────── 2. Grounded advice (Python finds, model explains) ─────────────────────────
+        try: return json.loads(m.group(0)) if m else None
+        except Exception: return None
 
 def build_findings(analysis):
     m, g = analysis["memory"], analysis["gpu"]
     lines = [
-        f"RAM: {m['used_mb']} of {m['total_mb']} MB used ({m['pct']}%)",
-        f"Quickshell uses {analysis['quickshell_mb']} MB, Hyprland {analysis['hyprland_mb']} MB",
-        f"CPU temp: avg {analysis['temps']['avg']}C, max {analysis['temps']['max']}C",
+        f"RAM: {m['used_mb']} of {m['total_mb']} MB used ({m['pct']}%), Swap {m['swap_used_mb']} MB",
+        f"Quickshell {analysis['quickshell_mb']} MB, Hyprland {analysis['hyprland_mb']} MB",
+        f"CPU temperature: avg {analysis['temps']['avg']}C, peak {analysis['temps']['max']}C",
     ]
     if g.get("present"):
-        lines.append(f"GPU: {g['name']}, VRAM {g['vram_used_mb']}/{g['vram_total_mb']} MB, {g['temp_c']}C")
+        lines.append(f"GPU: {g['name']}, VRAM {g['vram_used_mb']}/{g['vram_total_mb']} MB, temp {g['temp_c']}C")
     if analysis["battery"]:
         lines.append(f"Battery: {analysis['battery']['capacity']}% ({analysis['battery']['status']})")
     lines.append(f"Health score: {analysis['score']}/100 ({analysis['rating']})")
+    if analysis["failed_svcs"]:
+        lines.append("Failed systemd units: " + ", ".join(f"{s[1]} ({s[0]})" for s in analysis["failed_svcs"]))
+    if analysis["zombies"]:
+        lines.append(f"Zombie processes: {len(analysis['zombies'])}")
     top = sorted(analysis.get("procs") or [], key=lambda p: p["rss_mb"], reverse=True)[:5]
     if top:
-        lines.append("Top processes by memory: " + "; ".join(f"{p['comm']} {p['rss_mb']} MB ({p['cpu_pct']}% CPU)" for p in top))
+        lines.append("Top memory consumers: " + "; ".join(f"{p['comm']} {p['rss_mb']}MB" for p in top))
     flagged = [s for s in analysis["suggestions"] if s["priority"] != "INFO"]
     if flagged:
-        lines.append("Problems detected by the checker: " + "; ".join(f"[{s['priority']}] {s['title']} -> {s['action']}" for s in flagged))
+        lines.append("Detected issues: " + "; ".join(f"[{s['priority']}] {s['title']} -> {s['action']}" for s in flagged))
     else:
-        lines.append("Problems detected by the checker: none")
+        lines.append("Detected issues: none")
     return "\n".join(lines)
 
 ADVISOR_RULES = (
-    "You are the assistant built into Halcyon, a Hyprland + Quickshell desktop on Linux.\n"
-    "Rules: use ONLY the data given. Never invent numbers, process names or settings. "
-    "If the data cannot answer the question, say what is missing in one line. "
-    "Only suggest these commands: 'advisor fix' (trim memory/caches), 'advisor model <name>', "
-    "SUPER+P (display switcher), SUPER+I (Settings). Be plain, specific and short: at most 5 lines. No preamble.\n"
+    "You are the system assistant built into Halcyon, running on Arch Linux with Hyprland and Quickshell.\n"
+    "Rules: Use the provided system snapshot. Be specific, accurate, and concise (under 5 sentences).\n"
+    "Explain what is happening and specify the exact next command the user should run.\n"
+    "If system changes are required, mention that Halcyon Advisor will ask for confirmation before modifying files or services."
 )
 
 def run_llm_query(analysis, custom_prompt=""):
-    if custom_prompt and try_dispatch_intent(custom_prompt):
+    if custom_prompt and try_dispatch_keywords(custom_prompt):
         return
 
-    print("━" * 64)
+    print("━" * 68)
     print("🤖 Local AI Advisor (Ollama)")
-    print("━" * 64)
+    print("━" * 68)
     print(f"[*] Model: {get_advisor_model()}\n")
 
     findings = build_findings(analysis)
     if custom_prompt:
-        prompt = f"{ADVISOR_RULES}\nMachine data:\n{findings}\n\nUser question: {custom_prompt}\nAnswer:"
+        prompt = f"{ADVISOR_RULES}\nLive Machine Snapshot:\n{findings}\n\nUser Question: {custom_prompt}\nAnswer:"
     else:
-        prompt = (f"{ADVISOR_RULES}\nMachine data:\n{findings}\n\n"
-                  "Task: in 2-3 plain sentences say how the machine is doing, then give the ONE most useful next step "
-                  "taken from the checker's problems (or say nothing needs doing).\nAnswer:")
+        prompt = (f"{ADVISOR_RULES}\nLive Machine Snapshot:\n{findings}\n\n"
+                  "Task: in 2-3 concise sentences summarize machine health, pinpoint any bottlenecks, and recommend the best next action.\nAnswer:")
     if ollama_generate(prompt, stream=True) is None and LAST_LLM_ERROR:
-        print(f"[!] {LAST_LLM_ERROR}\n    Rule-based advice below still applies.")
-
-# ───────────────────────── 3. Notification triage & short writing ─────────────────────────
+        print(f"[!] {LAST_LLM_ERROR}\n    Standard rule-based metrics below still apply.")
 
 def triage_notification(text):
     if not text.strip():
@@ -604,10 +929,6 @@ def triage_notification(text):
               "required": ["category", "one_line"]}
     prompt = (
         "Classify this desktop notification and summarise it in at most 12 words.\n"
-        "urgent = needs action soon (security alert, call, deadline, low battery, payment failed); chat = a person messaging; "
-        "system = OS/app status; promo = marketing or offers; other = none of these.\n\n"
-        'Examples:\n"Your verification code is 482913" -> {"category":"urgent","one_line":"Verification code arrived"}\n'
-        '"50% off everything this weekend!" -> {"category":"promo","one_line":"Weekend 50% off sale"}\n\n'
         f'Notification: "{text}" ->'
     )
     res = llm_json(prompt, schema, num_predict=70)
@@ -619,20 +940,29 @@ def triage_notification(text):
 
 def write_short(request):
     if not request.strip():
-        print('Usage: advisor write "short request, e.g. birthday message for my sister, warm and funny"')
+        print('Usage: advisor write "short request"')
         return
-    prompt = ("Write exactly what is asked, short (under 60 words), natural and friendly. "
-              "Output only the text itself, no preamble, no quotes.\n\n"
+    prompt = ("Write exactly what is asked, under 60 words, natural and friendly. "
+              "Output only the text itself, no preamble.\n\n"
               f"Request: {request}\nText:")
     if ollama_generate(prompt, num_predict=140, temperature=0.7, stream=True) is None:
         print(f"[!] {LAST_LLM_ERROR}")
 
+# ───────────────────────── CLI Entrypoint ─────────────────────────
 
 def main():
     args = sys.argv[1:]
 
-    if args and args[0] == "model":
+    assume_yes = "--yes" in args or "-y" in args
+
+    if args and args[0] in ("model", "models"):
         model_command(args[1:])
+        return
+    if args and args[0] in ("doctor", "diagnose", "--diag"):
+        run_doctor(assume_yes=assume_yes)
+        return
+    if args and args[0] in ("fix", "--fix", "-f"):
+        apply_fixes(assume_yes=assume_yes)
         return
     if args and args[0] == "triage":
         triage_notification(" ".join(args[1:]))
@@ -648,15 +978,11 @@ def main():
             os.environ["HALCYON_AI_MODEL"] = MODEL_ALIASES.get(val.lower(), val)
             del args[i:i + 2]
 
-    if "--fix" in args or "-f" in args or (args and args[0] == "fix"):
-        apply_fixes()
-        return
-
     custom_question = ""
     use_llm = "--llm" in args
 
     for a in args:
-        if a not in ("--llm", "--fix", "-f") and not a.startswith("-"):
+        if a not in ("--llm", "--fix", "-f", "--yes", "-y") and not a.startswith("-"):
             custom_question = a
             use_llm = True
             break
@@ -680,6 +1006,8 @@ def main():
         print(f"• GPU: {analysis['gpu']['name']}  |  VRAM: {analysis['gpu']['vram_used_mb']} MB / {analysis['gpu']['vram_total_mb']} MB ({analysis['gpu']['temp_c']}°C)")
     if analysis['battery']:
         print(f"• Battery: {analysis['battery']['capacity']}% ({analysis['battery']['status']})")
+    if analysis["failed_svcs"]:
+        print(f"• \033[1;31mFailed Services:\033[0m {len(analysis['failed_svcs'])} unit(s) need attention")
     print("─" * 68)
 
     if analysis["suggestions"]:
@@ -696,18 +1024,16 @@ def main():
             print(f"   ➜ Action: {s['action']}")
             print(f"   ℹ Detail: {s['why']}\n")
     else:
-        print("✔ System is in peak operating condition. No bottlenecks detected.")
+        print("✔ System is operating in peak condition. No bottlenecks detected.")
 
     print("─" * 68)
     print("Commands:")
-    print("  advisor fix             -> Automatically trim memory & caches")
-    print("  advisor \"<question>\"    -> Ask local AI advisor about your system")
-    print("  advisor model 3b        -> Switch AI model (run 'advisor model' to see options)")
-    print("  advisor triage \"text\"   -> Classify & summarise a notification")
-    print("  advisor write \"request\"  -> Draft a short message")
-    print("  advisor \"I'm presenting\" -> Natural language: the AI runs the right action")
-    print("  SUPER + P               -> Multi-Monitor & Projector Display Switcher")
-    print("  SUPER + I               -> Open Settings (Performance & Suggestions)")
+    print("  advisor doctor            -> Autonomous diagnostics with confirmed fixes")
+    print("  advisor fix               -> Apply recommended system optimizations")
+    print("  advisor model recommend   -> Hardware-tailored advice for bigger AI models")
+    print("  advisor model switch <m>  -> Download and activate a local AI model")
+    print("  advisor \"<question>\"     -> Ask local AI assistant about your machine")
+    print("  ai                        -> Interactive AI chat with diagnostics & control")
 
 if __name__ == "__main__":
     main()

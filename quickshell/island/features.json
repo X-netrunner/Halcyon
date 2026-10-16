@@ -41,11 +41,17 @@
 
     { "id": "calendar", "demo": "calendar", "title": "Google Calendar",
       "body": "Type >calendar: your events by day, what is next, and a notification before each one starts, on top of everything. Press one button, copy the secret iCal address in your browser, and it connects by itself; it is read-only." },
-    { "id": "notifbuilder", "title": "Notification box builder",
-      "body": "Arrange the notification box: its parts, constellations, spacing, width and where it sits on the edge. Type >notification box builder in the search bar." },
+    { "id": "notifbuilder", "rev": 2, "title": "Notification box builder",
+      "body": "Arrange the notification box: place it in any corner (top-left, top-right, bottom-left, bottom-right) or along the screen edge, switch between edge strip or corner activation triggers, tune width, constellations and padding. Type >notification box builder." },
     { "id": "greeting", "title": "Choose your terminal logo",
       "body": "Settings > Terminal greeting: Adaptive, Arch, BlackArch, Kali, your own ASCII art, or no logo at all." },
     { "id": "display", "keys": ["SUPER", "P"], "title": "Display & Projector Manager",
-      "body": "Press SUPER + P or type >display or >projector: clone screen to a projector/TV, extend right/left for multi-monitors, or switch to external-only for presentations. Themed with Halcyon glass and moving stars." }
+      "body": "Press SUPER + P or type >display or >projector: clone screen to a projector/TV, extend right/left for multi-monitors, or switch to external-only for presentations. Themed with Halcyon glass and moving stars." },
+    { "id": "ai", "rev": 1, "title": "Local AI Assistant & System Diagnostics",
+      "body": "Type 'ai' or 'advisor' in any terminal: an intelligent local AI that diagnoses system health, checks memory pressure, inspects logs, answers questions, and asks for your confirmation before making any system changes. Recommends the best local models for your hardware." },
+    { "id": "bgapps", "rev": 1, "title": "Background Apps & Themed Badges",
+      "body": "Apps running in the tray appear in a clean, compact glass box. Themed status badges highlight active background apps and unread notifications with smooth animations." },
+    { "id": "gestures", "rev": 1, "title": "Touchpad Gestures & Workspaces",
+      "body": "Smooth 1:1 workspace finger tracking with calibrated sensitivity so workspaces switch smoothly when you want them to, without accidental triggers." }
   ]
 }

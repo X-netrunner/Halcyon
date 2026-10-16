@@ -40,7 +40,10 @@ Scope {
     property string avatar: ""              // your profile picture (shell.qml avatarPath): the picture of every notification
     property bool usePfp: true              // Settings > Panels & notifications > Notification picture: profile picture / app icon
     property string spot: "edge"            // Settings > Panels & notifications > Notification trigger spot: edge = strip on the right edge, corner = the top-right corner
+    property string cornerId: "tr"
     readonly property bool corner: spot === "corner"
+    readonly property bool atR: cornerId.charAt(1) === "r"
+    readonly property bool atB: cornerId.charAt(0) === "b"
     property bool edgeOn: true              // false while the bar's drop-down is on (Settings > Bar > Drag the bar down): no edge strip, no edge box; popups still show
     property bool clickMode: false          // Edge toggle: false = hover opens it, true = click the edge to open / close it
     property bool autoHide: false           // auto-hide on: it closes as soon as the pointer leaves, in either mode
@@ -61,7 +64,8 @@ Scope {
     // where the centre sits on the screen (the guided tour spotlights it); null when the edge box is switched off
     function tourRect(sw) {
         if (!edgeOn) return null
-        return { x: sw - panel.width - pal.boxEdge, y: panel.y, w: panel.width, h: panel.height }
+        var px = atR ? (sw - panel.width - pal.boxEdge) : pal.boxEdge
+        return { x: px, y: panel.y, w: panel.width, h: panel.height }
     }
 
     signal dndRequested(bool on)            // shell.qml owns the saved setting
@@ -256,7 +260,7 @@ Scope {
     PanelWindow {
         id: win
         visible: !root.cycling
-        anchors { top: true; right: true; bottom: true }
+        anchors { top: true; bottom: true; right: root.atR; left: !root.atR }
         // FIXED size on purpose. Shrinking this surface when idle made every open / close / toast re-send the pointer enter / leave
         // on the edge strip, so the centre popped in and out by itself. The mask below keeps the idle surface click-through, and
         // the blur rule ignores the transparent part (ignore_alpha), so an idle surface costs next to nothing.
@@ -272,15 +276,18 @@ Scope {
         // enter / leave and could set the centre flickering while the pointer rested on the edge
         mask: Region { regions: [ Region { item: hot }, Region { item: stack }, Region { item: panel } ] }
 
-        // ---------- right-edge trigger ----------
-        // edge: a strip on the right edge, upper part of the screen (the utilities box owns the bottom-right corner)
-        // corner: a small spot in the very top-right corner of the screen
+        // ---------- trigger (screen edge or corner) ----------
+        // edge: a strip on the chosen edge (left or right)
+        // corner: a small spot in the chosen corner of the screen
         EdgeGrab {
             id: hot
             visible: root.edgeOn
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.topMargin: root.corner ? 0 : root.pal.boxTop
+            anchors.right: root.atR ? parent.right : undefined
+            anchors.left: !root.atR ? parent.left : undefined
+            anchors.top: !root.atB ? parent.top : undefined
+            anchors.bottom: root.atB ? parent.bottom : undefined
+            anchors.topMargin: root.corner ? 0 : (root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
+            anchors.bottomMargin: root.corner ? 0 : (!root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
             width: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 22) : (root.clickMode ? 16 : 12)
             height: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 22) : 260
             clickMode: root.clickMode
@@ -290,21 +297,24 @@ Scope {
             // unread / do-not-disturb hint.
             //   edge mode:   a soft bar on the very edge
             //   corner mode: a small round dot tucked into the corner, which becomes a count badge while something is unread
-            // shown only while it has something to say
             Rectangle {
                 id: hint
                 readonly property bool badge: root.corner && root.unread > 0 && !root.dnd
-                anchors.right: parent.right
-                anchors.rightMargin: root.corner ? 6 : 3
-                anchors.top: root.corner ? parent.top : undefined
-                anchors.topMargin: root.corner ? 6 : 3
+                anchors.right: root.atR ? parent.right : undefined
+                anchors.left: !root.atR ? parent.left : undefined
+                anchors.rightMargin: root.atR ? (root.corner ? 6 : 3) : 0
+                anchors.leftMargin: !root.atR ? (root.corner ? 6 : 3) : 0
+                anchors.top: root.corner ? (!root.atB ? parent.top : undefined) : undefined
+                anchors.bottom: root.corner ? (root.atB ? parent.bottom : undefined) : undefined
+                anchors.topMargin: root.corner ? (!root.atB ? 6 : 0) : 0
+                anchors.bottomMargin: root.corner ? (root.atB ? 6 : 0) : 0
                 anchors.verticalCenter: root.corner ? undefined : parent.verticalCenter
                 width: root.corner ? (root.centerOpen ? 0 : (badge ? Math.max(20, badgeText.implicitWidth + 12) : 8)) : 4
                 height: root.corner ? (root.centerOpen ? 0 : (badge ? 20 : 8)) : (root.centerOpen ? 0 : 54)
                 radius: root.corner ? height / 2 : 2
                 color: root.dnd ? root.pal.muted : root.pal.accent
-                border.width: badge ? 1 : 0
-                border.color: Qt.alpha(root.pal.bg, 0.35)
+                border.width: badge ? 1.5 : 0
+                border.color: badge ? Qt.alpha(root.pal.line, 0.7) : Qt.alpha(root.pal.bg, 0.35)
                 opacity: (!root.centerOpen && (root.unread > 0 || root.dnd || root.clickMode)) ? (root.dnd ? 0.55 : (root.unread > 0 ? 0.95 : 0.22)) : 0
                 Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
                 Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
@@ -332,8 +342,8 @@ Scope {
         // ---------- popups ----------
         Column {
             id: stack
-            x: 30
-            y: root.topY
+            x: root.atR ? (win.width - root.cardW - 30) : 30
+            y: root.atB ? (win.height - implicitHeight - 30) : root.topY
             width: root.cardW
             spacing: 16
             move: Transition { NumberAnimation { properties: "y"; duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
@@ -373,13 +383,15 @@ Scope {
             sysmode: root.sysmode
             starData: root.starData
             profileStars: root.profileStars
-            // corner mode pops out of the top-right corner like the utilities and background-apps boxes (fade + grow); edge mode slides in
-            x: win.width - width - root.pal.boxEdge + (root.corner ? 0 : (1 - root.reveal) * (width + 40))
+            // corner mode pops out of the chosen corner; edge mode slides in from its screen edge
+            x: root.atR
+                ? (win.width - width - root.pal.boxEdge + (1 - root.reveal) * (width + 40))
+                : (root.pal.boxEdge - (1 - root.reveal) * (width + 40))
             scale: root.corner ? 0.94 + 0.06 * root.reveal : 1
-            transformOrigin: cfg.vpos === "bottom" ? Item.BottomRight : Item.TopRight
+            transformOrigin: root.atB ? (root.atR ? Item.BottomRight : Item.BottomLeft) : (root.atR ? Item.TopRight : Item.TopLeft)
             Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             y: cfg.vpos === "middle" ? Math.round((win.height - height) / 2)
-             : cfg.vpos === "bottom" ? win.height - height - Math.max(8, root.pal.boxTop + cfg.offY)
+             : (root.atB || cfg.vpos === "bottom") ? win.height - height - Math.max(8, root.pal.boxTop + cfg.offY)
              : Math.max(8, root.pal.boxTop + cfg.offY)
             opacity: Math.min(1, root.reveal * 1.6)
             visible: opacity > 0.01

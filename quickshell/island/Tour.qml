@@ -247,7 +247,7 @@ Scope {
 
                         // key caps
                         Row {
-                            visible: root.step && root.step.keys && root.step.keys.length > 0
+                            visible: !!(root.step && root.step.keys && root.step.keys.length > 0)
                             spacing: 6
                             Repeater {
                                 model: root.step && root.step.keys ? root.step.keys : []

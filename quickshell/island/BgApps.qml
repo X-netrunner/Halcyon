@@ -23,11 +23,12 @@ Glass {
         if (t === "") t = String(it.id || "App")
         return t
     }
-    readonly property int count: {
-        var v = SystemTray.items.values, n = 0
-        for (var i = 0; i < v.length; i++) if (!isHidden(v[i])) n++
-        return n
+    readonly property var visibleApps: {
+        var v = SystemTray.items.values, res = []
+        for (var i = 0; i < v.length; i++) if (!isHidden(v[i])) res.push(v[i])
+        return res
     }
+    readonly property int count: visibleApps.length
 
     width: pal.boxW
     height: implicitHeight
@@ -67,7 +68,8 @@ Glass {
         ColumnLayout {
             visible: root.count === 0
             Layout.fillWidth: true
-            Layout.topMargin: 10; Layout.bottomMargin: 10
+            Layout.preferredHeight: visible ? -1 : 0
+            Layout.topMargin: visible ? 10 : 0; Layout.bottomMargin: visible ? 10 : 0
             spacing: 4
             Text {
                 Layout.fillWidth: true
@@ -91,7 +93,7 @@ Glass {
             id: scroller
             visible: root.count > 0
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(list.implicitHeight, 380)
+            Layout.preferredHeight: visible ? Math.min(list.implicitHeight, 380) : 0
             contentWidth: width
             contentHeight: list.implicitHeight
             clip: true
@@ -104,11 +106,10 @@ Glass {
                 spacing: 8
 
                 Repeater {
-                    model: SystemTray.items
+                    model: root.visibleApps
                     delegate: ColumnLayout {
                         id: appRow
                         required property var modelData
-                        visible: !root.isHidden(modelData)
                         Layout.fillWidth: true
                         spacing: 6
                         property bool showMenu: false

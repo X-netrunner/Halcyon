@@ -198,6 +198,11 @@ Glass {
     signal toggleMute()
     signal volumeMoved(real v)
     signal brightnessMoved(real v)
+    property bool extraDim: false
+    signal extraDimToggled()
+    function toggleExtraDim() { extraDimToggled() }
+    property bool isRecording: false
+    signal toggleRecord()
 
     width: pal.boxW
     height: implicitHeight
@@ -371,12 +376,26 @@ Glass {
             onMoved: v => root.volumeMoved(v)
             onGlyphClicked: root.toggleMute()
         }
-        Slider {
+        RowLayout {
             Layout.fillWidth: true
-            pal: root.pal
-            glyph: String.fromCodePoint(0xF00DF)
-            value: root.bright / 100
-            onMoved: v => root.brightnessMoved(v)
+            spacing: 8
+            Slider {
+                Layout.fillWidth: true
+                pal: root.pal
+                glyph: String.fromCodePoint(root.extraDim ? 0xF058F : 0xF00DF)
+                value: root.bright / 100
+                dimmed: root.extraDim
+                onMoved: v => root.brightnessMoved(v)
+                onGlyphClicked: root.toggleExtraDim()
+            }
+            Chip {
+                Layout.preferredHeight: 30
+                pal: root.pal
+                label: "Extra dim"
+                glyph: String.fromCodePoint(0xF058F)
+                on: root.extraDim
+                onClicked: root.toggleExtraDim()
+            }
         }
 
         // power mode
@@ -403,7 +422,14 @@ Glass {
                 onClicked: root.toggleCaffeine()
                 onRightClicked: root.caffeineHour()
             }
-            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF003B); label: "Background apps"; onClicked: root.openApps() }
+            Chip {
+                Layout.fillWidth: true; pal: root.pal
+                glyph: String.fromCodePoint(0xF0481)
+                label: root.isRecording ? "Recording..." : "Record"
+                on: root.isRecording
+                onClicked: root.toggleRecord()
+            }
+            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF003B); label: "Apps"; onClicked: root.openApps() }
         }
 
         // focus mode: a timer + do-not-disturb + closing the apps on the block list (scripts/focus.sh)

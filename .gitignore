@@ -1,6 +1,10 @@
 # Compiled binaries & build artifacts
 bin/*
 !bin/.gitkeep
+!bin/ai
+!bin/advisor
+!bin/notes
+!bin/passman
 target/
 **/target/
 *.o
