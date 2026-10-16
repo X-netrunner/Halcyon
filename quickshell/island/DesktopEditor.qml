@@ -8,6 +8,9 @@ import "WidgetData.js" as WD
 // The screen dims a little and every widget gets a handle: drag = move (it snaps to the middle and the edges), the dot in the corner
 // or the mouse wheel = resize, a click picks it, "Style and look" opens it in the Widget builder, ✕ takes it away. "Add" puts a new one on.
 // Esc or Done leaves. Everything is saved as you go.
+// The "view bar" above the toolbar draws helpers like a design tool: a grid (size 20 / 40 / 80 / 120 px, optionally snapping to it), the
+// screen's centre lines (they light up when the picked widget is centred), rule-of-thirds lines, the safe area, and the measuring: the gap
+// in px to the screen edge or the next widget on every side of the picked widget, plus its size and place. Your choices are remembered.
 PanelWindow {
     id: win
     property var pal
@@ -17,6 +20,7 @@ PanelWindow {
     property real topInset: 24
     signal commit(var data)
     signal done()
+    signal optToggled(string key, var value)       // a helper switch (grid, centre ...) changed: shell.qml saves it
     signal openWidget(string uid)
 
     visible: true
@@ -30,6 +34,15 @@ PanelWindow {
     property bool adding: false
     property string sel: ""
     readonly property var layout: WD.normalize(opt ? opt.deskWidgets : null)
+    // the helpers (saved as opt.deskGrid ...); the defaults show the grid, the centre and the measuring
+    function flag(k, d) { return opt && opt[k] !== undefined ? opt[k] === true : d }
+    readonly property bool gridOn: flag("deskGrid", true)
+    readonly property int gridPx: opt && opt.deskGridSize ? Number(opt.deskGridSize) : 40
+    readonly property bool snapOn: flag("deskGridSnap", false)
+    readonly property bool centreOn: flag("deskCenter", true)
+    readonly property bool thirdsOn: flag("deskThirds", false)
+    readonly property bool safeOn: flag("deskSafe", true)
+    readonly property bool measureOn: flag("deskMeasure", true)
 
     Item {
         id: fade
@@ -37,12 +50,21 @@ PanelWindow {
         opacity: win.open ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.InOutSine } }
         focus: win.open
-        Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { if (win.adding) win.adding = false; else win.done(); e.accepted = true } }
+        Keys.onPressed: e => {
+            if (e.key === Qt.Key_Escape) { if (win.adding) win.adding = false; else win.done(); e.accepted = true }
+            else if (win.sel !== "" && e.key >= Qt.Key_Left && e.key <= Qt.Key_Down) {
+                // arrow keys move the picked widget 1 px (Shift: 10 px)
+                var st = (e.modifiers & Qt.ShiftModifier) ? 10 : 1
+                dw.nudge(win.sel, e.key === Qt.Key_Left ? -st : (e.key === Qt.Key_Right ? st : 0), e.key === Qt.Key_Up ? -st : (e.key === Qt.Key_Down ? st : 0))
+                e.accepted = true
+            }
+        }
 
         Rectangle { anchors.fill: parent; color: Qt.alpha(win.pal.bg, 0.38) }
         MouseArea { anchors.fill: parent; onClicked: { win.sel = ""; win.adding = false } }
 
         DeskWidgets {
+            id: dw
             anchors.fill: parent
             pal: win.pal
             env: win.env
@@ -50,6 +72,8 @@ PanelWindow {
             editing: true
             selected: win.sel
             topInset: win.topInset
+            showGrid: win.gridOn; gridSize: win.gridPx; snapGrid: win.snapOn
+            showCenter: win.centreOn; showThirds: win.thirdsOn; showSafe: win.safeOn; showMeasure: win.measureOn
             onSelectedRequested: uid => { win.sel = uid; win.adding = false }
             onCommit: d => win.commit(d)
             onOpenRequested: uid => win.openWidget(uid)
@@ -60,7 +84,7 @@ PanelWindow {
             visible: win.adding
             pal: win.pal
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: bar.top; anchors.bottomMargin: 12
+            anchors.bottom: viewBar.top; anchors.bottomMargin: 12
             width: Math.min(parent.width - 80, 760)
             height: Math.min(parent.height * 0.5, shelf.implicitHeight + 36)
             radius: win.pal.rXl
@@ -102,6 +126,41 @@ PanelWindow {
             }
         }
 
+        // the view bar: grid, centre, thirds, safe area, measuring
+        Glass {
+            id: viewBar
+            pal: win.pal
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: bar.top; anchors.bottomMargin: 10
+            width: Math.min(parent.width - 40, vb.implicitWidth + 28)
+            height: 48
+            radius: 24
+            opacityBody: win.pal.glassSolid - 0.02
+            border.color: Qt.alpha(win.pal.accent, 0.25)
+            MouseArea { anchors.fill: parent }
+            RowLayout {
+                id: vb
+                anchors.centerIn: parent
+                spacing: 8
+                Text { text: "View"; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 11; font.letterSpacing: 1.5; Layout.rightMargin: 2 }
+                Chip { pal: win.pal; implicitHeight: 30; label: "Grid"; on: win.gridOn; onClicked: win.optToggled("deskGrid", !win.gridOn) }
+                Repeater {
+                    model: win.gridOn ? WD.gridSizes : []
+                    delegate: Chip {
+                        required property var modelData
+                        pal: win.pal; implicitHeight: 30; padX: 11; label: modelData[1]; on: win.gridPx === modelData[0]
+                        onClicked: win.optToggled("deskGridSize", modelData[0])
+                    }
+                }
+                Chip { visible: win.gridOn; pal: win.pal; implicitHeight: 30; label: "Snap to grid"; on: win.snapOn; onClicked: win.optToggled("deskGridSnap", !win.snapOn) }
+                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 20; color: win.pal.lineSoft }
+                Chip { pal: win.pal; implicitHeight: 30; label: "Centre"; on: win.centreOn; onClicked: win.optToggled("deskCenter", !win.centreOn) }
+                Chip { pal: win.pal; implicitHeight: 30; label: "Thirds"; on: win.thirdsOn; onClicked: win.optToggled("deskThirds", !win.thirdsOn) }
+                Chip { pal: win.pal; implicitHeight: 30; label: "Safe area"; on: win.safeOn; onClicked: win.optToggled("deskSafe", !win.safeOn) }
+                Chip { pal: win.pal; implicitHeight: 30; label: "Measure"; on: win.measureOn; onClicked: win.optToggled("deskMeasure", !win.measureOn) }
+            }
+        }
+
         // the toolbar
         Glass {
             id: bar
@@ -122,7 +181,7 @@ PanelWindow {
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 1
                     Text { text: "Place your widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
-                    Text { text: "Drag to move  ·  corner dot or wheel to resize  ·  double-click = style"; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 10 }
+                    Text { text: "Drag = move, it snaps to the others (Alt = free)  ·  arrows nudge 1 px (Shift 10)  ·  corner dot or wheel = size  ·  Switch off = hide it without deleting"; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 10 }
                 }
                 ActionChip { pal: win.pal; label: win.adding ? "Close" : "Add a widget"; on: !win.adding; onClicked: win.adding = !win.adding }
                 ActionChip { pal: win.pal; label: "Widget builder"; onClicked: win.openWidget(win.sel) }

@@ -17,6 +17,15 @@ Item {
     property real bottomInset: 24
     property real margin: 24
 
+    // the editor's helpers (DesktopEditor.qml sets these; the live desktop never draws them)
+    property bool showGrid: false
+    property int gridSize: 40
+    property bool snapGrid: false
+    property bool showCenter: false
+    property bool showThirds: false
+    property bool showSafe: false
+    property bool showMeasure: false
+
     signal commit(var data)               // the layout changed (moved, resized, removed)
     signal selectedRequested(string uid)
     signal openRequested(string uid)
@@ -34,9 +43,35 @@ Item {
     property real guideX: -1
     property real guideY: -1
 
+    // where the other widgets are (for snapping), and moving one by a few pixels (arrow keys)
+    function rectsExcept(uid) {
+        var out = []
+        for (var i = 0; i < rep.count; i++) {
+            var h = rep.itemAt(i)
+            if (h && h.uid !== uid && h.visible) out.push({ x: h.x, y: h.y, w: h.vw, h: h.vh })
+        }
+        return out
+    }
+    // the host of the picked widget (the guides measure it); refreshed when the pick or the set of widgets changes
+    property var selHost: null
+    function pickHost() {
+        var f = null
+        if (editing && selected !== "") for (var i = 0; i < rep.count; i++) { var h = rep.itemAt(i); if (h && h.uid === selected) { f = h; break } }
+        if (f !== selHost) selHost = f
+    }
+    onSelectedChanged: pickHost()
+    onEditingChanged: pickHost()
+    function nudge(uid, dx, dy) {
+        for (var i = 0; i < rep.count; i++) { var h = rep.itemAt(i); if (h && h.uid === uid) { h.nudge(dx, dy); return } }
+    }
+
     Repeater {
+        id: rep
         model: root.uids
+        onItemAdded: Qt.callLater(root.pickHost)
+        onItemRemoved: Qt.callLater(root.pickHost)
         delegate: WidgetHost {
+            id: dw
             required property string modelData
             pal: root.pal
             env: root.env
@@ -49,14 +84,43 @@ Item {
             margin: root.margin
             topInset: root.topInset
             bottomInset: root.bottomInset
+            collect: root.rectsExcept
+            gridSnap: root.editing && root.snapGrid ? root.gridSize : 0
             z: selected ? 1000 : 1
             onPicked: uid => root.selectedRequested(uid)
             onDragMoved: (gx, gy) => { root.guideX = gx; root.guideY = gy }
             onDropped: (uid, px, py) => root.commit(WD.setPos(root.layout, uid, px, py))
-            onRescaled: (uid, s) => root.commit(WD.setScale(root.layout, uid, s))
+            // resizing keeps the top-left corner where it is (the position is stored relative to the room left, which changes with the size)
+            onRescaled: (uid, s) => root.commit(WD.setScalePos(root.layout, uid, s,
+                WD.fracX(dw.x, root.width, dw.width * s, root.margin),
+                WD.fracY(dw.y, root.height, dw.height * s, root.topInset, root.bottomInset)))
             onRemoveRequested: uid => root.commit(WD.remove(root.layout, uid))
+            onToggleOffRequested: uid => root.commit(WD.setOff(root.layout, uid, !WD.isOff(WD.find(root.layout, uid))))
             onOpenRequested: uid => root.openRequested(uid)
         }
+    }
+
+    // grid, centre, thirds and the gaps / size of the picked widget (editing only)
+    DeskGuides {                          // below the widgets: grid, centre, thirds, safe area
+        anchors.fill: parent
+        visible: root.editing
+        z: 0
+        pal: root.pal
+        showGrid: root.showGrid; gridSize: root.gridSize
+        showCenter: root.showCenter; showThirds: root.showThirds; showSafe: root.showSafe; showMeasure: false
+        margin: root.margin; topInset: root.topInset; bottomInset: root.bottomInset
+    }
+    DeskGuides {                          // above them: the gaps and size of the picked widget
+        anchors.fill: parent
+        visible: root.editing && root.showMeasure
+        z: 1500
+        measureOnly: true
+        pal: root.pal
+        showGrid: root.showGrid; gridSize: root.gridSize
+        showCenter: root.showCenter; showThirds: root.showThirds; showSafe: root.showSafe; showMeasure: root.showMeasure
+        margin: root.margin; topInset: root.topInset; bottomInset: root.bottomInset
+        target: root.selHost
+        collect: root.rectsExcept
     }
 
     // snap guides while dragging

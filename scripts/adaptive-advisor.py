@@ -644,12 +644,10 @@ MODEL_ALIASES = {
     "llama1b": "llama3.2:1b",
     "llama3b": "llama3.2:3b",
     "llama8b": "llama3.1:8b",
-    "7b": "qwen2.5:7b",
     "8b": "llama3.1:8b",
     "14b": "qwen2.5:14b",
     "qwen1.5b": "qwen2.5:1.5b",
     "qwen3b": "qwen2.5:3b",
-    "qwen7b": "qwen2.5:7b",
     "qwen14b": "qwen2.5:14b",
     "deepseek8b": "deepseek-r1:8b",
     "deepseek14b": "deepseek-r1:14b",
@@ -673,7 +671,7 @@ def get_advisor_model():
                 if m:
                     return m
     have = installed_models()
-    for pref in ["qwen2.5:7b", "llama3.1:8b", "llama3.2:3b", "qwen2.5:3b", "llama3.2:1b"]:
+    for pref in ["llama3.1:8b", "llama3.2:3b", "qwen2.5:3b", "llama3.2:1b"]:
         match = next((m for m in have if m.startswith(pref)), None)
         if match:
             return match
@@ -707,9 +705,8 @@ def recommend_models():
     # Tier 1: Sweet spot
     if vram_mb >= 5500:
         print("★ TIER 1: SWEET SPOT (100% GPU VRAM Offload, Blazing 40-60+ tps)")
-        print("  Your 6 GB VRAM comfortably fits full 7B-8B quantized models on the GPU:")
-        print("  • \033[1;36mqwen2.5:7b\033[0m     (~4.7 GB) -> \033[1mRECOMMENDED\033[0m for coding, cybersecurity & Linux reasoning")
-        print("  • \033[1;36mllama3.1:8b\033[0m    (~4.9 GB) -> Premier conversational model with high precision")
+        print("  Your 6 GB VRAM comfortably fits full 8B quantized models on the GPU:")
+        print("  • \033[1;36mllama3.1:8b\033[0m    (~4.9 GB) -> \033[1mRECOMMENDED\033[0m: premier conversational model, tool-capable")
         print("  • \033[1;36mdeepseek-r1:8b\033[0m (~4.9 GB) -> Advanced step-by-step reasoning and math")
     else:
         print("★ TIER 1: ULTRA-RESPONSIVE (Low RAM & Fast on CPU/Integrated GPU)")
@@ -723,7 +720,7 @@ def recommend_models():
         print("  • \033[1;36mdeepseek-r1:14b\033[0m(~9.0 GB) -> Deep analytical chain-of-thought")
         print("    (Runs ~12-18 tps using hybrid GPU + CPU RAM offloading)")
     else:
-        print("  • \033[1;36mqwen2.5:7b\033[0m     (~4.7 GB) -> Maximum recommended model for this RAM budget")
+        print("  • \033[1;36mllama3.1:8b\033[0m    (~4.9 GB) -> Maximum recommended model for this RAM budget")
 
     # Tier 3: Ultra-light
     print("\n★ TIER 3: ULTRA-LIGHT / TRAVEL (Zero System Burden)")
@@ -734,7 +731,7 @@ def recommend_models():
     print("  1. Keep context window optimal: 4096 to 8192 tokens preserves VRAM.")
     print("  2. In Ollama, keep OLLAMA_NUM_PARALLEL=1 so VRAM is not duplicated.")
     print("  3. To switch to the best model now, run:")
-    print("     \033[1;32madvisor model switch qwen2.5:7b\033[0m   (or: advisor model switch 8b)")
+    print("     \033[1;32madvisor model switch llama3.1:8b\033[0m   (or: advisor model switch 8b)")
     print("━" * 68)
 
 def model_command(args):
@@ -752,7 +749,7 @@ def model_command(args):
         print("Aliases       : " + ", ".join(f"{k}={v}" for k, v in MODEL_ALIASES.items()))
         print("\nCommands:")
         print("  advisor model recommend         -> View hardware-tailored recommendations for bigger models")
-        print("  advisor model switch qwen2.5:7b -> Pull and activate a new model")
+        print("  advisor model switch llama3.1:8b -> Pull and activate a new model")
         print("  advisor model 3b                -> Quick switch to 3B model")
         return
 

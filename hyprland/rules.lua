@@ -13,10 +13,13 @@ hl.layer_rule({ match = { namespace = "notification" }, blur = true })
 -- glass body gets frosted while the soft shadow around it stays clear.
 -- Keep ignore_alpha ABOVE the shadow strength and BELOW the glass opacity (Pal.qml: glassBar 0.58 / glassBarOpen 0.74,
 -- glass 0.80, glassSolid 0.94). The bar is the lightest, so it needs the lowest threshold.
--- Memory optimization: only enable multi-pass Kawase blur on compact floating bar & corner surfaces.
--- Full-screen overlay layers (island-overview, island-settings, island-barbuilder, island-gallery,
--- island-startup, island-power) already draw their own dimmed backdrop and solid cards; avoiding
--- full-screen 1920x1080 blur FBOs cuts Hyprland VRAM and RSS significantly.
+-- Memory optimization: multi-pass Kawase blur only on compact floating bar & corner surfaces, plus the windows below.
+-- island-overview stays unblurred: it draws a nearly solid backdrop (0.94), so a blur would not show anyway.
+-- The power menu, Settings, the builders, the wallpaper gallery, Startup & processes, the calendar, the shortcut sheet and
+-- the command tree are windows that exist only while open (each one is destroyed when it closes), so their blur costs nothing
+-- while idle. Their backdrop is ~0.38 - 0.55 alpha, so the threshold 0.25 blurs the backdrop and the cards but not the soft
+-- shadow edges. All of it follows Settings > Performance > Resource use like every other blur: Low turns decoration:blur
+-- off (no blur here either), Medium / High blur it (size and passes come from the preset: a light blur on Medium).
 local glass = {
     island = 0.40,
     ["island-notch"] = 0.40,
@@ -24,6 +27,17 @@ local glass = {
     ["island-notifs"] = 0.55,
     ["island-term"] = 0.55,
     ["island-apps"] = 0.55,
+    ["island-power"] = 0.25,
+    ["island-settings"] = 0.25,
+    ["island-gallery"] = 0.25,
+    ["island-barbuilder"] = 0.25,
+    ["island-notifbuilder"] = 0.25,
+    ["island-desktopbuilder"] = 0.25,
+    ["island-widgetbuilder"] = 0.25,
+    ["island-startup"] = 0.25,
+    ["island-calendar"] = 0.25,
+    ["island-keys"] = 0.25,
+    ["island-cmds"] = 0.25,
 }
 for ns, a in pairs(glass) do
     hl.layer_rule({ match = { namespace = ns }, blur = true, ignore_alpha = a })

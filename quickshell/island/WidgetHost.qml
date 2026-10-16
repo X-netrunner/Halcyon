@@ -3,8 +3,10 @@ import "WidgetData.js" as WD
 
 // One desktop widget: the frame (the surface, the colours, the position) around a body (WClock, WMetric, WMusic ...).
 //   Normal: it sits where the Desktop builder put it and the body works (buttons, scroll).
-//   editing: a drag handle over it. Drag = move (snaps to the screen's middle and edges), the corner dot = resize, the wheel = resize,
-//            a click picks it, a double click opens it in the Widget builder.
+//   editing: a drag handle over it. Drag = move (snaps to the screen's middle and edges AND to the other widgets: lined up with
+//            them, or one gap (snapGap px) beside / under them; hold Alt or Ctrl to move freely), the corner dot = resize (the top-left
+//            corner stays put), the wheel = resize, arrow keys = nudge (DesktopEditor), a click picks it, a double click opens it in the
+//            Widget builder.
 // The look comes from item.look (WidgetData.js), the options from item.opts; the host turns them into the colours / fonts the body uses.
 Item {
     id: host
@@ -20,11 +22,18 @@ Item {
     property real margin: 24
     property real topInset: 24
     property real bottomInset: 24
+    property real snapGap: 16                 // the space snapping leaves between two widgets
+    property real gridSnap: 0                 // > 0: moving snaps to this grid (px), set by the desktop editor
+    property var collect: null                // function(uid) -> [{ x, y, w, h }]: where the other widgets are (DeskWidgets)
+    property var others: []
+    property real pinX: 0
+    property real pinY: 0
 
     signal picked(string uid)
     signal dragMoved(real guideX, real guideY)    // -1 = no guide line on that axis
     signal dropped(string uid, real px, real py)
     signal rescaled(string uid, real s)
+    signal toggleOffRequested(string uid)
     signal removeRequested(string uid)
     signal openRequested(string uid)
 
@@ -40,19 +49,31 @@ Item {
     }
 
     // ---- what the body uses
-    readonly property color accent: look.tone === "custom" ? look.color : (look.tone === "second" ? pal.accent2 : pal.accent)
-    readonly property color fg: look.textTone === "custom" ? look.textColor : pal.text
-    readonly property color dim: look.textTone === "custom" ? Qt.alpha(look.textColor, 0.62) : pal.muted
-    readonly property color track: Qt.alpha(fg, 0.14)
+    // look.contrast (0 .. 1, "Readability" in the Widget builder) lifts the lit colour toward white, brightens the quiet text,
+    // and draws a soft outline round every letter, so it reads on a busy wallpaper (no box is ever drawn for "No box").
+    // look.depth ("Colour depth") pours the accent into the box, the quiet text, the bars and the hairline.
+    readonly property real boost: look.contrast
+    readonly property real depth: look.depth
+    readonly property color accentRaw: look.tone === "custom" ? look.color : (look.tone === "second" ? pal.accent2 : pal.accent)
+    readonly property color accent: boost > 0 ? Qt.tint(accentRaw, Qt.rgba(1, 1, 1, 0.2 * boost)) : accentRaw
+    readonly property color boxTint: Qt.alpha(accentRaw, 0.7 * depth)       // laid over the surface colour
+    readonly property color fg: look.textTone === "custom" ? look.textColor
+                                : (look.textTone === "light" ? "#ffffff" : (look.textTone === "dark" ? "#14151c" : Qt.tint(pal.text, Qt.alpha(accentRaw, 0.16 * depth))))
+    readonly property color dim: (look.textTone === "custom" || look.textTone === "light" || look.textTone === "dark")
+                                 ? Qt.alpha(fg, 0.62 + 0.26 * boost)
+                                 : Qt.tint(Qt.tint(pal.muted, Qt.alpha(accentRaw, 0.5 * depth)), Qt.rgba(1, 1, 1, 0.3 * boost))
+    readonly property color outlineColor: look.textTone === "dark" ? Qt.rgba(1, 1, 1, 0.45 * boost) : Qt.rgba(0, 0, 0, 0.55 * boost)
+    readonly property color track: Qt.alpha(accentRaw, 0.14 + 0.2 * depth)
     readonly property string face: look.font === "mono" ? pal.mono : (look.font === "serif" ? pal.serifFont : pal.uiFont)
     readonly property string iconFont: pal.font
     readonly property real fs: look.fs
-    readonly property bool live: visible && shown
+    readonly property bool live: visible && shown && !off
 
     // ---- size and place
     readonly property real pad: look.pad >= 0 ? look.pad : (look.surface === "clear" ? 4 : 14)
     readonly property real k: resizing ? liveScale : (item ? item.scale : 1)
-    readonly property bool bodyHidden: ld.item ? ld.item.hidden === true : false
+    readonly property bool off: item ? item.off === true : false          // switched off by you (the eye button / Widget builder): not drawn, nothing runs
+    readonly property bool bodyHidden: off || (ld.item ? ld.item.hidden === true : false)
     property bool dragging: false
     property bool resizing: false
     property real dragX: 0
@@ -65,8 +86,17 @@ Item {
     transformOrigin: Item.TopLeft
     readonly property real vw: width * k
     readonly property real vh: height * k
-    x: preview ? 0 : (dragging ? dragX : WD.posX(item || { px: 0 }, screenW, vw, margin))
-    y: preview ? 0 : (dragging ? dragY : WD.posY(item || { py: 0 }, screenH, vh, topInset, bottomInset))
+    // while the corner dot resizes, the top-left corner is pinned (the saved position is a fraction of the free room, which shrinks as the widget grows)
+    x: preview ? 0 : (dragging ? dragX : (resizing ? pinX : WD.posX(item || { px: 0 }, screenW, vw, margin)))
+    y: preview ? 0 : (dragging ? dragY : (resizing ? pinY : WD.posY(item || { py: 0 }, screenH, vh, topInset, bottomInset)))
+
+    // move by dx, dy pixels (arrow keys)
+    function nudge(dx, dy) {
+        var lo = margin, hi = Math.max(lo, screenW - vw - margin)
+        var tlo = topInset, thi = Math.max(tlo, screenH - vh - bottomInset)
+        var nx = Math.max(lo, Math.min(hi, x + dx)), ny = Math.max(tlo, Math.min(thi, y + dy))
+        dropped(uid, WD.fracX(nx, screenW, vw, margin), WD.fracY(ny, screenH, vh, topInset, bottomInset))
+    }
     visible: item !== null && (!bodyHidden || editing || preview)
     opacity: (bodyHidden && editing) ? 0.4 : 1
 
@@ -77,10 +107,11 @@ Item {
         anchors.fill: parent
         pal: host.pal
         radius: host.corner
+        tint: host.boxTint
         opacityBody: host.look.op
         shadow: host.look.shadow
         border.width: host.look.border ? 1 : 0
-        border.color: Qt.alpha(host.accent, 0.28)
+        border.color: Qt.alpha(host.accent, 0.28 + 0.4 * host.depth)
     }
     Item {
         visible: host.look.surface === "solid"
@@ -89,27 +120,21 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: host.corner
-            color: Qt.alpha(host.pal.surface, host.look.op)
+            color: Qt.alpha(Qt.tint(host.pal.surface, host.boxTint), host.look.op)
             border.width: host.look.border ? 1 : 0
-            border.color: Qt.alpha(host.accent, 0.28)
+            border.color: Qt.alpha(host.accent, 0.28 + 0.4 * host.depth)
         }
     }
     Rectangle {
         visible: host.look.surface === "outline"
         anchors.fill: parent
         radius: host.corner
-        color: Qt.alpha(host.pal.bg, host.look.op * 0.5)
+        color: Qt.alpha(Qt.tint(host.pal.bg, host.boxTint), Math.min(1, host.look.op * 0.5 + 0.16 * host.depth))
         border.width: host.look.border ? 1.5 : 0
         border.color: Qt.alpha(host.accent, 0.85)
     }
-    // "No box": a soft glow behind light text keeps it readable on a bright wallpaper
-    Rectangle {
-        visible: host.look.surface === "clear" && host.look.shadow
-        anchors.fill: parent
-        anchors.margins: -10
-        radius: 24
-        color: Qt.alpha("black", 0.10)
-    }
+    // "No box" (surface "clear") draws nothing at all: the words sit straight on the wallpaper. Readability only lifts the colours
+    // a little and outlines the letters; it never puts a dark box behind them.
 
     // ---- the body
     Loader {
@@ -143,32 +168,43 @@ Item {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton
         cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-        property real sx: 0
-        property real sy: 0
+        property real pressX: 0                 // (was sx / sy: the `var sx` inside onPositionChanged shadowed them, so the move was NaN and nothing dragged)
+        property real pressY: 0
         property real ox: 0
         property real oy: 0
         onPressed: m => {
             host.picked(host.uid)
             var p = grab.mapToItem(host.parent, m.x, m.y)
-            sx = p.x; sy = p.y; ox = host.x; oy = host.y
+            pressX = p.x; pressY = p.y; ox = host.x; oy = host.y
+            host.others = host.collect ? host.collect(host.uid) : []
             host.dragX = ox; host.dragY = oy
             host.dragging = true
         }
         onPositionChanged: m => {
             if (!pressed || !host.dragging) return
             var p = grab.mapToItem(host.parent, m.x, m.y)
-            var nx = ox + p.x - sx, ny = oy + p.y - sy
+            var nx = ox + p.x - pressX, ny = oy + p.y - pressY
             var gx = -1, gy = -1
             var lo = host.margin, hi = host.screenW - host.vw - host.margin
-            var cx = (host.screenW - host.vw) / 2
-            if (Math.abs(nx - cx) < 12) { nx = cx; gx = host.screenW / 2 }
-            else if (Math.abs(nx - lo) < 12) { nx = lo; gx = lo }
-            else if (Math.abs(nx - hi) < 12) { nx = hi; gx = hi + host.vw }
             var tlo = host.topInset, thi = host.screenH - host.vh - host.bottomInset
-            var cy = (host.screenH - host.vh) / 2
-            if (Math.abs(ny - cy) < 12) { ny = cy; gy = host.screenH / 2 }
-            else if (Math.abs(ny - tlo) < 12) { ny = tlo; gy = tlo }
-            else if (Math.abs(ny - thi) < 12) { ny = thi; gy = thi + host.vh }
+            // Alt or Ctrl held = move freely, no snapping
+            if ((m.modifiers & (Qt.AltModifier | Qt.ControlModifier)) === 0) {
+                var xo = [], yo = []
+                for (var i = 0; i < host.others.length; i++) {
+                    var o = host.others[i]
+                    xo.push({ p: o.x, s: o.w, near: ny < o.y + o.h + 40 && ny + host.vh > o.y - 40 })   // beside it only if level with it
+                    yo.push({ p: o.y, s: o.h, near: nx < o.x + o.w + 40 && nx + host.vw > o.x - 40 })   // under it only if above / below it
+                }
+                // the grid first (when it is on), then the other widgets / the middle / the edges win when they are close
+                if (host.gridSnap > 0) {
+                    nx = host.margin + Math.round((nx - host.margin) / host.gridSnap) * host.gridSnap
+                    ny = host.topInset + Math.round((ny - host.topInset) / host.gridSnap) * host.gridSnap
+                }
+                var snapX = WD.snapAxis(nx, host.vw, lo, hi, host.screenW, xo, host.snapGap, 10)
+                var snapY = WD.snapAxis(ny, host.vh, tlo, thi, host.screenH, yo, host.snapGap, 10)
+                if (snapX) { nx = snapX.pos; gx = snapX.guide }
+                if (snapY) { ny = snapY.pos; gy = snapY.guide }
+            }
             host.dragX = Math.max(lo, Math.min(Math.max(lo, hi), nx))
             host.dragY = Math.max(tlo, Math.min(Math.max(tlo, thi), ny))
             host.dragMoved(gx, gy)
@@ -202,7 +238,7 @@ Item {
             anchors.margins: -6
             cursorShape: Qt.SizeFDiagCursor
             property real baseW: 1
-            onPressed: { host.liveScale = host.k; host.resizing = true }
+            onPressed: { host.pinX = host.x; host.pinY = host.y; host.liveScale = host.k; host.resizing = true }
             onPositionChanged: m => {
                 if (!pressed) return
                 var p = mapToItem(host.parent, m.x, m.y)
@@ -232,6 +268,13 @@ Item {
             color: Qt.alpha(host.pal.accent, 0.9)
             Text { id: styleT; anchors.centerIn: parent; text: "Style and look"; color: host.pal.bg; font.family: host.pal.uiFont; font.pixelSize: 12; font.weight: Font.DemiBold }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: host.openRequested(host.uid) }
+        }
+        Rectangle {
+            height: 26; width: offT.implicitWidth + 20; radius: 13
+            color: host.off ? Qt.alpha(host.pal.warn, 0.92) : Qt.alpha(host.pal.bg, 0.92)
+            border.width: 1; border.color: Qt.alpha(host.pal.text, 0.35)
+            Text { id: offT; anchors.centerIn: parent; text: host.off ? "Switch on" : "Switch off"; color: host.off ? host.pal.bg : host.pal.text; font.family: host.pal.uiFont; font.pixelSize: 12; font.weight: Font.Medium }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: host.toggleOffRequested(host.uid) }
         }
         Rectangle {
             height: 26; width: 26; radius: 13

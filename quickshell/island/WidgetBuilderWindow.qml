@@ -174,6 +174,7 @@ Item {
                                         required property var modelData
                                         readonly property bool on: modelData.uid === root.sel && !root.adding
                                         width: lst.width; height: 44; radius: 14
+                                        opacity: modelData.off === true ? 0.55 : 1
                                         color: on ? Qt.alpha(root.pal.accent, 0.18) : (lm.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : Qt.alpha(root.pal.surface, 0.5))
                                         border.width: 1; border.color: on ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
                                         Row {
@@ -184,7 +185,7 @@ Item {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: parent.width - 40
                                                 Text { width: parent.width; text: WD.nameOf(modelData.type); elide: Text.ElideRight; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
-                                                Text { width: parent.width; text: WD.spotName(modelData); elide: Text.ElideRight; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
+                                                Text { width: parent.width; text: WD.spotName(modelData) + (modelData.off === true ? "  ·  switched off" : ""); elide: Text.ElideRight; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
                                             }
                                         }
                                         MouseArea { id: lm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.select(modelData.uid) }
@@ -200,6 +201,13 @@ Item {
                             spacing: 8
                             ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Copy"; disabled: root.cur === null; onClicked: root.edit(WD.duplicate(root.layout, root.sel), false) }
                             ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Remove"; disabled: root.cur === null; onClicked: root.edit(WD.remove(root.layout, root.sel), false) }
+                        }
+                        // the master switch: every desktop widget off / on at once (they stay in your layout)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Text { Layout.fillWidth: true; text: "All desktop widgets"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; elide: Text.ElideRight }
+                            Toggle { pal: root.pal; on: !root.opt || root.opt.deskWidgetsOn !== false; onToggled: root.put("deskWidgetsOn", !(!root.opt || root.opt.deskWidgetsOn !== false)) }
                         }
                     }
                 }
@@ -318,6 +326,14 @@ Item {
                         id: cc
                         width: ctl.width - 12
                         spacing: 12
+
+                        // ---- show / hide this one (switched off: not drawn, nothing runs for it, it stays here to switch on again)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Text { Layout.fillWidth: true; text: "Show this widget on the desktop"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; elide: Text.ElideRight }
+                            Toggle { pal: root.pal; on: root.cur !== null && root.cur.off !== true; onToggled: root.edit(WD.setOff(root.layout, root.sel, root.cur !== null && root.cur.off !== true), false) }
+                        }
 
                         // ---- layout
                         NbCap { pal: root.pal; text: "LAYOUT" }
@@ -460,6 +476,23 @@ Item {
                             value: Math.round(root.curLook.fs * 100)
                             onPicked: v => root.setLookV("fs", v / 100, true)
                         }
+                        NbSlider {
+                            Layout.fillWidth: true
+                            pal: root.pal; label: "Colour depth"; from: 0; to: 100; unit: " %"; zeroText: "Plain"
+                            value: Math.round(root.curLook.depth * 100)
+                            onPicked: v => root.setLookV("depth", v / 100, true)
+                        }
+                        NbSlider {
+                            Layout.fillWidth: true
+                            pal: root.pal; label: "Readability"; from: 0; to: 100; unit: " %"; zeroText: "Off"
+                            value: Math.round(root.curLook.contrast * 100)
+                            onPicked: v => root.setLookV("contrast", v / 100, true)
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Colour depth tints the box, bars and quiet text with the wallpaper accent. Readability brightens the colours and outlines each letter; \"No box\" never gets a backing."
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
+                        }
                         ChipRow {
                             Layout.fillWidth: true
                             pal: root.pal; label: "Font"; labelWidth: 90
@@ -502,7 +535,7 @@ Item {
                         ChipRow {
                             Layout.fillWidth: true
                             pal: root.pal; label: "Text colour"; labelWidth: 90
-                            options: [["theme", "Theme"], ["custom", "My colour"]]
+                            options: [["theme", "Theme"], ["light", "White"], ["dark", "Dark"], ["custom", "My colour"]]
                             current: root.curLook.textTone
                             onPicked: id => root.setLookV("textTone", id)
                         }

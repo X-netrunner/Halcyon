@@ -611,12 +611,20 @@ PanelWindow {
                 height: notch.bh
                 implicitWidth: win.bgCount > 0 ? bgRow.width : 0
                 clip: true
-                Row {
+                Item {
                     id: bgRow
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
-                    Text { text: String.fromCodePoint(0xF003B); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: win.bgCount; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: Math.max(10, win.textPx - 2); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                    width: bgIco.implicitWidth
+                    height: bgIco.implicitHeight
+                    Text { id: bgIco; text: String.fromCodePoint(0xF003B); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH }
+                    // a dot on the icon's corner: something is running in the background (click to see what)
+                    Rectangle {
+                        readonly property int d: Math.max(6, Math.round(win.icoH * 0.38))
+                        anchors.top: parent.top; anchors.right: parent.right
+                        width: d; height: d; radius: d / 2
+                        color: win.ac
+                        border.width: 1.5; border.color: Qt.alpha(win.pal.bg, 0.9)
+                    }
                 }
                 MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.bgClicked() }
             }

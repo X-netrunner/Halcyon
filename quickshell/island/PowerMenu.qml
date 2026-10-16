@@ -12,6 +12,7 @@ Scope {
     property string sysmode: ""
     property var starData: null
     property bool profileStars: true
+    property bool blurOn: true             // the compositor blurs what is behind (Resource use: Low turns blur off); without it the dim is stronger
     property bool open: false
     property string pending: ""
     signal session(string action)
@@ -58,8 +59,10 @@ Scope {
                     if (root.items[i].key === e.key) { root.pick(root.items[i].id, root.items[i].confirm); e.accepted = true }
             }
 
-            // dim + (compositor) blur of everything behind; the layer rule in hyprland/rules.lua turns the blur on
-            Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.55) }
+            // dim + (compositor) blur of everything behind; the layer rule in hyprland/rules.lua turns the blur on, and it follows
+            // Settings > Performance > Resource use (Low: no blur at all, Medium / High: blurred, wider and more passes on High).
+            // Without blur the dim is stronger, so the options still read.
+            Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, root.blurOn ? 0.38 : 0.78) }
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
 
             Backdrop { visible: (root.open || fade.opacity > 0.01) && root.stars; anchors.fill: parent; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 26; artStrength: 0.8; artFit: 0.7 }

@@ -99,6 +99,8 @@ ShellRoot {
         notchBat: true, notchBatPct: false, notchCaffeine: true, notchBg: true,
         deskWidgets: null,         // the desktop widgets { items: [...] } (WidgetData.js; Widget builder + Desktop builder)
         deskStyles: [],            // looks you saved in the Widget builder [{ name, look }]
+        deskWidgetsOn: true,       // master switch: false = no desktop widgets are drawn and none of their readers run (each widget also has its own Switch off)
+        deskGrid: true, deskGridSize: 40, deskGridSnap: false, deskCenter: true, deskThirds: false, deskSafe: true, deskMeasure: true,   // the desktop editor's helpers (grid, centre, thirds, safe area, measuring)
         barLayout: null,           // the bar builder's layout { left, center, right } (BarLayout.js); null = the default one
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
@@ -675,6 +677,7 @@ ShellRoot {
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
+        blurOn: root.blur
         onSession: a => root.session(a)
     }
 
@@ -1787,7 +1790,7 @@ ShellRoot {
 
     // ================= desktop widgets (WidgetData.js, DeskWidgets.qml, WidgetBuilderWindow.qml, DesktopEditor.qml) =================
     // `deskNeeds`: which readers the placed widgets need, so nothing runs for a widget that is not there.
-    readonly property var deskNeeds: WD.needs(WD.normalize(opt.deskWidgets))
+    readonly property var deskNeeds: opt.deskWidgetsOn === false ? WD.needs(null) : WD.needs(WD.normalize(opt.deskWidgets))
     property bool deskEditing: false                     // "place them on the desktop" is open (DesktopEditor.qml)
     readonly property real deskTop: opt.barStyle === "off" ? 24 : 70
     function deskSetVol(f) { pendVol = f; vol = f * 100; if (!sliderT.running) sliderT.start() }
@@ -1806,6 +1809,7 @@ ShellRoot {
         case "night": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_nightlight.sh"]); break
         case "lock": lockScreen.lock(); break
         case "power": powerMenu.show(); break
+        case "console": quickTerm.toggle(); break
         case "mute": Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]); muted = !muted; break
         case "ws-up": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", "wheel-up"]); break
         case "ws-down": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", "wheel-down"]); break
@@ -2696,6 +2700,7 @@ ShellRoot {
             open: root.deskEditing
             topInset: root.deskTop
             onCommit: d => root.setOpt("deskWidgets", d)
+            onOptToggled: (k, v) => root.setOpt(k, v)
             onDone: root.deskEditing = false
             onOpenWidget: uid => { root.deskEditing = false; settingsWin.openWidgetBuilder(uid) }
         }
@@ -3003,7 +3008,7 @@ ShellRoot {
             }
         }
 
-        // how many apps are alive in the background: a small count on the corner while the box is closed
+        // apps alive in the background: a small dot on the corner while the box is closed (the box itself lists them)
         Item {
             visible: bgPanel.count > 0 && !appsWin.open && root.opt.bgWhere === "corner"
             anchors.right: appsWin.atR ? parent.right : undefined
@@ -3011,8 +3016,8 @@ ShellRoot {
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
             anchors.rightMargin: 6; anchors.leftMargin: 6; anchors.bottomMargin: 6; anchors.topMargin: 6
-            width: Math.max(20, bgCountText.implicitWidth + 10)
-            height: 20
+            width: 11
+            height: 11
 
             // soft glow ring
             Rectangle {
@@ -3030,14 +3035,10 @@ ShellRoot {
                 border.color: Qt.alpha(pal.accent, 0.75)
             }
 
-            Text {
-                id: bgCountText
+            Rectangle {
                 anchors.centerIn: parent
-                text: bgPanel.count > 9 ? "9+" : bgPanel.count
+                width: 5; height: 5; radius: 2.5
                 color: pal.accent
-                font.family: pal.uiFont
-                font.pixelSize: 10
-                font.weight: Font.Bold
             }
         }
 

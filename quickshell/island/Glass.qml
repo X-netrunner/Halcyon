@@ -7,9 +7,10 @@ Rectangle {
     property var pal
     property real opacityBody: pal.glass
     property bool shadow: true
+    property color tint: "transparent"   // a colour laid over the body (a widget uses the wallpaper accent here); transparent = none
     property bool flat: false       // no body, no hairline, no sheen: something else draws the surface (the notch shape)
 
-    color: flat ? "transparent" : Qt.alpha(pal.bg, opacityBody)
+    color: flat ? "transparent" : Qt.alpha(Qt.tint(pal.bg, tint), opacityBody)
     border.width: flat ? 0 : 1
     border.color: pal.lineTint
 

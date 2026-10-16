@@ -114,6 +114,29 @@ var catalog = [
         { k: "max", kind: "slider", label: "Most lines", def: 4, min: 1, max: 8, unit: "" },
         { k: "width", kind: "slider", label: "Width", def: 290, min: 200, max: 480, unit: " px" }
       ] },
+    { id: "console", cat: "desk", name: "Console", icon: 0xF018D, size: [380, 170], hint: "A console box on the desktop: shows what a command prints (refreshed by itself). Click it to open the real console",
+      styles: [["terminal", "Terminal"], ["window", "Window"], ["glass", "Glass lines"], ["retro", "Retro green"], ["minimal", "Minimal"]],
+      opts: [
+        { k: "cmd", kind: "text", label: "Command to show", def: "printf '%s@%s\\n' \"$USER\" \"$(hostname)\"; uptime -p; free -h | sed -n 2p; df -h / | tail -1", hintText: "any shell command" },
+        { k: "title", kind: "text", label: "Title", def: "console", hintText: "shown on the top bar of the box" },
+        { k: "lines", kind: "slider", label: "Most lines", def: 8, min: 3, max: 24, unit: "" },
+        { k: "width", kind: "slider", label: "Width", def: 380, min: 240, max: 800, unit: " px" },
+        { k: "every", kind: "slider", label: "Run again every", def: 10, min: 2, max: 300, unit: " s" },
+        { k: "prompt", kind: "toggle", label: "Show the command line", def: true },
+        { k: "click", kind: "toggle", label: "A click opens the real console", def: true }
+      ] },
+    { id: "utilbox", cat: "desk", name: "Utilities box", icon: 0xF0493, size: [260, 200], hint: "The utilities box on the desktop: Wi-Fi, Bluetooth, volume, brightness, power",
+      styles: [["list", "List"], ["tiles", "Tiles"], ["slim", "Slim bar"]],
+      opts: [
+        { k: "show", kind: "multi", label: "Show", def: ["wifi", "bt", "volume", "brightness", "power"], options: [["wifi", "Wi-Fi"], ["bt", "Bluetooth"], ["dnd", "Do not disturb"], ["volume", "Volume"], ["brightness", "Brightness"], ["power", "Power"]] },
+        { k: "width", kind: "slider", label: "Width", def: 260, min: 200, max: 460, unit: " px" }
+      ] },
+    { id: "appsbox", cat: "desk", name: "Background apps box", icon: 0xF0570, size: [260, 120], hint: "The apps running in the background (the system tray): click one to open it",
+      styles: [["list", "List"], ["icons", "Icons"], ["count", "Count only"]],
+      opts: [
+        { k: "width", kind: "slider", label: "Width", def: 260, min: 160, max: 460, unit: " px" },
+        { k: "hideEmpty", kind: "toggle", label: "Hide when nothing runs", def: false }
+      ] },
     { id: "weather", cat: "info", name: "Weather", icon: 0xF0590, size: [220, 100], hint: "Temperature and sky (asks wttr.in every 30 minutes)",
       styles: [["card", "Card"], ["compact", "Compact"], ["big", "Big"], ["whisper", "Whisper"]],
       opts: [
@@ -167,6 +190,7 @@ var files = {
     sysmon: "WSysmon.qml", net: "WNet.qml", uptime: "WNet.qml",
     music: "WMusic.qml", viz: "WViz.qml", focus: "WFocus.qml", workspaces: "WWorkspaces.qml", toggles: "WToggles.qml", shortcuts: "WToggles.qml",
     notes: "WNotes.qml", weather: "WWeather.qml", text: "WText.qml",
+    console: "WConsole.qml", utilbox: "WBoxes.qml", appsbox: "WBoxes.qml",
     moon: "WMoon.qml", horizon: "WHorizon.qml", breathe: "WBreathe.qml"
 }
 function fileOf(type) { return files[type] || "WText.qml" }
@@ -178,11 +202,13 @@ function fileOf(type) { return files[type] || "WText.qml" }
 //   pad      room between the surface and the content in px, -1 = automatic
 //   tone     theme | second | custom : the colour of lit parts (accent)
 //   color    #rrggbb for tone = custom
-//   textTone theme | custom   ;  textColor  #rrggbb
+//   textTone theme | light | dark | custom   ;  textColor  #rrggbb
+//   depth    0 .. 1 : Colour depth. How much of the wallpaper accent goes into the box, the quiet text, the bars and the hairline
+//   contrast 0 .. 1 : Readability. Lifts the lit colour a little, brightens quiet text and outlines every letter (never a box: "No box" stays see-through)
 //   font     ui | mono | serif
 //   fs       0.7 .. 1.6 : text size
 //   border   a hairline around it     shadow  a soft shadow
-var lookDefaults = { surface: "glass", op: 0.65, radius: -1, pad: -1, tone: "theme", color: "#9aa9d4", textTone: "theme", textColor: "#ffffff", font: "ui", fs: 1, border: true, shadow: true }
+var lookDefaults = { surface: "glass", op: 0.65, radius: -1, pad: -1, tone: "theme", color: "#9aa9d4", textTone: "theme", textColor: "#ffffff", font: "ui", fs: 1, border: true, shadow: true, contrast: 0.6, depth: 0.5 }
 var surfaces = [["glass", "Frosted glass"], ["solid", "Solid"], ["clear", "No box"], ["outline", "Outline"], ["pill", "Pill"]]
 var tones = [["theme", "Wallpaper accent"], ["second", "Second colour"], ["custom", "My colour"]]
 var swatches = ["#ffffff", "#e6e8ee", "#b9bdc8", "#9aa9d4", "#7ec8e3", "#c2add8", "#e58a8a", "#f5a623"]
@@ -213,7 +239,9 @@ function look(l) {
     if (l && typeof l === "object") for (var x in l) if (x in lookDefaults) o[x] = l[x]
     if (["glass", "solid", "clear", "outline", "pill"].indexOf(o.surface) < 0) o.surface = "glass"
     if (["theme", "second", "custom"].indexOf(o.tone) < 0) o.tone = "theme"
-    if (["theme", "custom"].indexOf(o.textTone) < 0) o.textTone = "theme"
+    if (["theme", "light", "dark", "custom"].indexOf(o.textTone) < 0) o.textTone = "theme"
+    o.contrast = clamp(num(o.contrast, 0.6), 0, 1)
+    o.depth = clamp(num(o.depth, 0.5), 0, 1)
     if (o.font !== "mono" && o.font !== "serif") o.font = "ui"
     o.op = clamp(num(o.op, 0.65), 0, 1)
     o.radius = Math.round(clamp(num(o.radius, -1), -1, 999))
@@ -265,6 +293,7 @@ function cleanItem(it, used) {
     o.opts = {}
     if (it.opts && typeof it.opts === "object") for (var k in it.opts) o.opts[k] = it.opts[k]
     o.look = look(it.look)
+    if (it.off === true) o.off = true
     return o
 }
 
@@ -318,6 +347,39 @@ function patch(d, uid, fn) {
 }
 function setPos(d, uid, px, py) { return patch(d, uid, function (it) { it.px = clamp(px, 0, 1); it.py = clamp(py, 0, 1) }) }
 function setScale(d, uid, s) { return patch(d, uid, function (it) { it.scale = clamp(s, 0.5, 2.5) }) }
+// resize AND keep the widget's top-left corner where it is (positions are fractions of the free room, which changes with the size)
+function setScalePos(d, uid, s, px, py) { return patch(d, uid, function (it) { it.scale = clamp(s, 0.5, 2.5); it.px = clamp(px, 0, 1); it.py = clamp(py, 0, 1) }) }
+
+// ---- snapping while a widget is dragged (one axis at a time)
+// pos / size: where the dragged widget starts and how long it is on this axis. lo / hi: its allowed start range. total: the screen.
+// others: [{ p, s, near }] start and length of every other widget on this axis; near = it is next to us on the OTHER axis (so
+// "sit beside it" only offers itself for neighbours, not for a widget half a screen away).
+// Snaps to: the screen middle and margins, another widget's start / end / middle lining up with ours, and "one gap away" from a neighbour.
+// Returns { pos, guide, kind } or null. guide is where to draw the line.
+function snapAxis(pos, size, lo, hi, total, others, gap, T) {
+    var best = null
+    function tryC(v, g, kind) {
+        var d = Math.abs(pos - v)
+        if (d <= T && (best === null || d < best.d - 0.001)) best = { d: d, pos: v, guide: g, kind: kind }
+    }
+    tryC((total - size) / 2, total / 2, "mid")
+    tryC(lo, lo, "edge")
+    tryC(hi, hi + size, "edge")
+    for (var i = 0; i < others.length; i++) {
+        var o = others[i]
+        tryC(o.p, o.p, "align")
+        tryC(o.p + o.s - size, o.p + o.s, "align")
+        tryC(o.p + (o.s - size) / 2, o.p + o.s / 2, "align")
+        if (o.near) {
+            tryC(o.p + o.s + gap, o.p + o.s + gap / 2, "gap")
+            tryC(o.p - gap - size, o.p - gap / 2, "gap")
+        }
+    }
+    return best
+}
+// switch a widget off (it stays in the layout, nothing is drawn, no reader runs) and on again
+function setOff(d, uid, off) { return patch(d, uid, function (it) { if (off) it.off = true; else delete it.off }) }
+function isOff(it) { return !!it && it.off === true }
 function setStyle(d, uid, s) { return patch(d, uid, function (it) { it.style = s }) }
 function setOpt(d, uid, k, v) { return patch(d, uid, function (it) { it.opts[k] = v }) }
 function setLook(d, uid, k, v) { return patch(d, uid, function (it) { it.look[k] = v; it.look = look(it.look) }) }
@@ -380,6 +442,7 @@ function needs(d) {
     var n = { viz: false, ctl: false, disk: false, gpu: false, numlock: false, weather: false, focusLog: false }
     if (!d || !d.items) return n
     for (var i = 0; i < d.items.length; i++) {
+        if (d.items[i].off === true) continue
         var t = d.items[i].type
         if (t === "viz") n.viz = true
         if (t === "volume" || t === "brightness") n.ctl = true
@@ -398,4 +461,40 @@ function needs(d) {
         }
     }
     return n
+}
+
+// ------------------------------------------------------------------------------------------------ desktop editor: grid and measuring
+var gridSizes = [[20, "20 px"], [40, "40 px"], [80, "80 px"], [120, "120 px"]]
+// the thin lines of the editor's grid, as px positions from a start (margin / top inset) to an end
+function gridLines(start, end, step) {
+    var out = []
+    if (step < 8) return out
+    for (var v = start; v <= end + 0.5; v += step) out.push(Math.round(v))
+    return out
+}
+// distances (px) from a rectangle to the screen's four edges and to the nearest widget on each side
+// r = { x, y, w, h }, others = [{ x, y, w, h }], screen = { w, h }. A side with no neighbour reports the screen edge (kind "edge").
+function measure(r, others, screen) {
+    var res = {
+        left:   { d: r.x, kind: "edge", from: 0, at: r.y + r.h / 2 },
+        right:  { d: screen.w - (r.x + r.w), kind: "edge", from: r.x + r.w, at: r.y + r.h / 2 },
+        top:    { d: r.y, kind: "edge", from: 0, at: r.x + r.w / 2 },
+        bottom: { d: screen.h - (r.y + r.h), kind: "edge", from: r.y + r.h, at: r.x + r.w / 2 }
+    }
+    for (var i = 0; i < others.length; i++) {
+        var o = others[i]
+        var vOverlap = o.y < r.y + r.h && o.y + o.h > r.y
+        var hOverlap = o.x < r.x + r.w && o.x + o.w > r.x
+        if (vOverlap) {
+            var cy = (Math.max(o.y, r.y) + Math.min(o.y + o.h, r.y + r.h)) / 2
+            if (o.x + o.w <= r.x && r.x - (o.x + o.w) < res.left.d)  res.left  = { d: r.x - (o.x + o.w), kind: "widget", from: o.x + o.w, at: cy }
+            if (o.x >= r.x + r.w && o.x - (r.x + r.w) < res.right.d) res.right = { d: o.x - (r.x + r.w), kind: "widget", from: r.x + r.w, at: cy }
+        }
+        if (hOverlap) {
+            var cx = (Math.max(o.x, r.x) + Math.min(o.x + o.w, r.x + r.w)) / 2
+            if (o.y + o.h <= r.y && r.y - (o.y + o.h) < res.top.d)  res.top    = { d: r.y - (o.y + o.h), kind: "widget", from: o.y + o.h, at: cx }
+            if (o.y >= r.y + r.h && o.y - (r.y + r.h) < res.bottom.d) res.bottom = { d: o.y - (r.y + r.h), kind: "widget", from: r.y + r.h, at: cx }
+        }
+    }
+    return res
 }

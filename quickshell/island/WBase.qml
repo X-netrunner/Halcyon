@@ -18,6 +18,8 @@ Item {
     readonly property string face: w ? w.face : "sans-serif"
     readonly property string icons: w ? w.iconFont : "JetBrainsMono Nerd Font"
     readonly property real fs: w ? w.fs : 1
+    readonly property real boost: w ? w.boost : 0                // Readability (look.contrast)
+    readonly property color outlineColor: w ? w.outlineColor : "transparent"
     readonly property bool live: w ? w.live : false        // on screen: readers and timers run only then
     readonly property bool editing: w ? w.editing : false
     property bool hidden: false                            // the body asks the frame to hide the whole widget (nothing to show)
