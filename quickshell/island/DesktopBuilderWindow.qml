@@ -5,8 +5,10 @@ import "DeskSpots.js" as DS
 import "WidgetData.js" as WD
 
 // The desktop builder window (Settings > Appearance > Desktop builder > "Open ..."). A dimmed overlay with one card on it.
-//   Left:   a small picture of the screen: the wallpaper (or the plain background), its blur, the moving stars, and the four
-//           corners with the box that opens from each. Click a box, then click the corner you want it in.
+//   Left:   a picture of the screen (it takes most of the card): the wallpaper (or the plain background), its blur, the moving
+//           stars, your widgets and the four corners with the box that opens from each. A switch above it says what the picture
+//           edits RIGHT NOW: "Widgets" (drag them, the corner boxes stay out of the way) or "Boxes" (click a box, then the corner
+//           you want it in, the widgets stay out of the way). Only one of the two is ever clickable, so they can not fight.
 //   Right:  wallpaper on / off + blur + background, the moving stars, the corner of each box, the notification trigger.
 // Every change is saved and applied to the real desktop at once (it emits changed(key, value); Settings writes "opt:<key>").
 Item {
@@ -29,6 +31,9 @@ Item {
     readonly property string barStyle: (opt && opt.barStyle) || "island"
     readonly property string widgetMode: (opt && opt.deskNotes) || "off"       // off | notes | both
     property string pick: ""                       // the box that was clicked and is waiting for a corner
+    property string mode: "widgets"                // what the picture edits now: widgets | boxes
+    readonly property bool wMode: mode === "widgets"
+    function setMode(m) { mode = m; pick = "" }
 
     function num(k, d) { return opt && opt[k] !== undefined ? Number(opt[k]) : d }
     function put(k, v) { root.changed(k, v) }
@@ -68,7 +73,7 @@ Item {
     visible: opacity > 0.01
     focus: open
     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
-    onOpenChanged: { if (open) { pick = ""; Qt.callLater(function () { root.forceActiveFocus() }) } else flushLive() }
+    onOpenChanged: { if (open) { pick = ""; mode = "widgets"; Qt.callLater(function () { root.forceActiveFocus() }) } else flushLive() }
     Component.onCompleted: if (open) Qt.callLater(function () { root.forceActiveFocus() })
     Keys.onPressed: function (e) { if (e.key === Qt.Key_Escape) { if (root.pick !== "") root.pick = ""; else root.closed(); e.accepted = true } }
 
@@ -82,8 +87,8 @@ Item {
         id: card
         pal: root.pal
         anchors.centerIn: parent
-        width: Math.min(parent.width - 120, 1100)
-        height: Math.min(parent.height - 80, 720)
+        width: Math.min(parent.width - 48, 1560)
+        height: Math.min(parent.height - 40, 900)
         radius: root.pal.rXl
         opacityBody: root.pal.solid ? 1 : 0.78
         border.color: Qt.alpha(root.pal.accent, 0.35)
@@ -93,8 +98,8 @@ Item {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 32
-            spacing: 18
+            anchors.margins: 28
+            spacing: 14
 
             // ---- header
             RowLayout {
@@ -105,7 +110,7 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 2
                     Text { text: "Desktop builder"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Text { text: "The picture on the left is your screen. Change anything on the right."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    Text { text: "The picture on the left is your screen. Pick Widgets or Boxes above it, then drag or click in it. Everything else is on the right."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                 }
                 Item { Layout.fillWidth: true }
                 ActionChip { pal: root.pal; label: "Reset the desktop"; doneLabel: "Reset"; onClicked: root.resetAll() }
@@ -121,7 +126,7 @@ Item {
                 Rectangle {
                     id: stage
                     Layout.fillHeight: true
-                    Layout.preferredWidth: 470
+                    Layout.preferredWidth: Math.max(470, Math.round((card.width - 56 - 24) * 0.64))
                     radius: root.pal.rLg
                     color: Qt.alpha(root.pal.bg, 0.55)
                     border.width: 1
@@ -129,14 +134,25 @@ Item {
                     clip: true
                     NbCap { pal: root.pal; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14; text: "LIVE PREVIEW" }
 
+                    // what the picture edits now (only one of the two is clickable, the other one is drawn faint)
+                    SegSwitch {
+                        id: modeSw
+                        pal: root.pal
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: 12
+                        options: [{ k: "widgets", t: "Widgets  ·  drag to move" }, { k: "boxes", t: "Boxes  ·  pick a corner" }]
+                        current: root.mode
+                        onPicked: k => root.setMode(k)
+                    }
+
                     // the screen, at the real aspect ratio
                     Item {
                         id: scr
                         readonly property real ratio: Math.max(0.5, root.width) / Math.max(0.5, root.height)
-                        width: Math.max(40, Math.min(stage.width - 40, (stage.height - 90) * ratio))
+                        width: Math.max(40, Math.min(stage.width - 32, (stage.height - 128) * ratio))
                         height: width / ratio
                         anchors.horizontalCenter: parent.horizontalCenter
-                        y: 22
+                        y: modeSw.y + modeSw.height + 14
                         readonly property real k: width / Math.max(1, root.width)      // preview scale
 
                         Rectangle {
@@ -190,6 +206,9 @@ Item {
                                     readonly property real rw: (tp ? tp.size[0] : 120) * modelData.scale
                                     readonly property real rh: (tp ? tp.size[1] : 60) * modelData.scale
                                     property bool drag: false
+                                    z: root.wMode ? 5 : 1
+                                    opacity: root.wMode ? 1 : 0.28
+                                    Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
                                     property real gx: 0
                                     property real gy: 0
                                     width: Math.max(14, rw * scr.k); height: Math.max(10, rh * scr.k)
@@ -207,6 +226,7 @@ Item {
                                     }
                                     MouseArea {
                                         anchors.fill: parent
+                                        enabled: root.wMode
                                         cursorShape: Qt.OpenHandCursor
                                         property real ox: 0
                                         property real oy: 0
@@ -242,8 +262,11 @@ Item {
                                     readonly property bool atBottom: c.charAt(0) === "b"
                                     readonly property bool picked: boxId !== "" && boxId === root.pick
                                     readonly property bool target: root.pick !== "" && boxId !== root.pick
-                                    width: Math.min(scr.width * 0.38, 150)
-                                    height: Math.min(scr.height * 0.24, 62)
+                                    z: root.wMode ? 1 : 4
+                                    opacity: root.wMode ? 0.3 : 1
+                                    Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                                    width: Math.min(scr.width * 0.30, 190)
+                                    height: Math.min(scr.height * 0.20, 76)
                                     x: atRight ? scr.width - width - 8 : 8
                                     y: atBottom ? scr.height - height - 8 : 8
 
@@ -276,6 +299,7 @@ Item {
                                         MouseArea {
                                             id: ma
                                             anchors.fill: parent
+                                            enabled: !root.wMode
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: {
@@ -294,10 +318,11 @@ Item {
                         anchors.top: scr.bottom
                         anchors.topMargin: 12
                         anchors.leftMargin: 20; anchors.rightMargin: 20
-                        text: root.pick !== "" ? ("Now click the corner for " + DS.names[root.pick] + ". Esc cancels.") : "Click a box, then click the corner you want it to open from. A box dropped on a taken corner swaps places with it."
-                        color: root.pick !== "" ? root.pal.accent : root.pal.muted
+                        text: root.wMode ? "Drag a widget to move it, double-click it to change how it looks. The faint corner boxes are out of the way here: switch to Boxes to move them."
+                              : (root.pick !== "" ? ("Now click the corner for " + DS.names[root.pick] + ". Esc cancels.") : "Click a box, then click the corner you want it to open from. A box dropped on a taken corner swaps places with it. Your widgets are out of the way here: switch to Widgets to move them.")
+                        color: (!root.wMode && root.pick !== "") ? root.pal.accent : root.pal.muted
                         font.family: root.pal.uiFont
-                        font.pixelSize: 10
+                        font.pixelSize: 11
                         lineHeight: 1.25
                         wrapMode: Text.WordWrap
                     }
@@ -306,6 +331,7 @@ Item {
                 // ================================================ the controls
                 Flickable {
                     id: ctl
+                    Layout.minimumWidth: 340
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     contentWidth: width
@@ -426,7 +452,7 @@ Item {
                         NbCap { pal: root.pal; text: "WIDGETS  ·  " + root.wlayout.items.length }
                         Text {
                             Layout.fillWidth: true
-                            text: "The boxes in the picture are your widgets: drag one to move it. Double-click one, or open the Widget builder, to change its layout and look. \"Place them on the desktop\" lets you drag the real ones."
+                            text: "In the picture (Widgets mode) drag one to move it. Double-click one, or open the Widget builder, to change its layout and look. \"Place them on the desktop\" lets you drag the real ones."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                         }
                         Flow {

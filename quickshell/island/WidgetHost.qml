@@ -44,7 +44,7 @@ Item {
     readonly property color fg: look.textTone === "custom" ? look.textColor : pal.text
     readonly property color dim: look.textTone === "custom" ? Qt.alpha(look.textColor, 0.62) : pal.muted
     readonly property color track: Qt.alpha(fg, 0.14)
-    readonly property string face: look.font === "mono" ? pal.mono : pal.uiFont
+    readonly property string face: look.font === "mono" ? pal.mono : (look.font === "serif" ? pal.serifFont : pal.uiFont)
     readonly property string iconFont: pal.font
     readonly property real fs: look.fs
     readonly property bool live: visible && shown

@@ -154,7 +154,7 @@ What every file and folder does. This is a separate notes file, it is not part o
 | Input / hardware | `input-conf.sh` (gestures + mouse buttons), `toggle_touchpad.sh`, `toggle_gestures.sh`, `numlock.sh`, `brightness.sh`, `backlight.sh`, `kbd-backlight.sh`, `asus-kbd-fix.sh`, `osd-watch.sh`, `refresh-ram.sh` |
 | Network / devices | `hotspot.sh`, `toggle_wifi_powersave.sh`, `display-manager.sh`, `printer.sh`, `notif-guard.sh` |
 | Backup / safety | `backup-device.sh`, `restore-device.sh`, `remind.sh`, `safety-auto.sh` |
-| Diagnostics | `halcyon-doctor.sh` (why does it not work), `halcyon-mem.sh`, `halcyon-mem-where.sh`, `adaptive-advisor.py`, `tool-state.sh` |
+| Diagnostics | `halcyon-doctor.sh` (why does it not work), `halcyon-mem.sh`, `halcyon-mem-where.sh`, `adaptive-advisor.py`, `halcyon-agent.py` (the tools + safety gates that let the local model act, used by `ai` and `advisor "..."`), `halcyon-chat.py`, `tool-state.sh` |
 | Misc | `emoji.sh`, `screenshot-area.sh`, `cheatsheet.sh`, `user-setup.sh` |
 
 ## `src/` (Rust programs, built by `install.sh` into `bin/`)

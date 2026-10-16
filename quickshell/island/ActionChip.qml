@@ -15,8 +15,12 @@ Rectangle {
     property int maxLabel: 1000
     signal clicked()
 
+    // natural (unsqueezed) width of the content; the label only shrinks (elides) when the chip is made narrower than this
+    readonly property real glyphW: glyphText.visible ? glyphText.implicitWidth + content.spacing : 0
+    readonly property real labelNatural: Math.min(lbl.implicitWidth, maxLabel)
     implicitHeight: 36
-    implicitWidth: content.implicitWidth + 32
+    implicitWidth: glyphW + labelNatural + 32
+    clip: true
     radius: height / 2
     color: disabled ? Qt.alpha(pal.surface, 0.35)
          : flashing ? Qt.alpha(pal.accent, 0.30)
@@ -36,6 +40,7 @@ Rectangle {
         anchors.centerIn: parent
         spacing: 8
         Text {
+            id: glyphText
             visible: root.flashing || root.glyph !== ""
             text: root.flashing ? "✓" : root.glyph
             color: root.flashing || root.on ? root.pal.accent : root.pal.muted
@@ -45,8 +50,9 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
+            id: lbl
             text: root.flashing && root.doneLabel !== "" ? root.doneLabel : root.label
-            width: Math.min(implicitWidth, root.maxLabel)
+            width: Math.max(0, Math.min(implicitWidth, root.maxLabel, root.width - 32 - root.glyphW))
             elide: Text.ElideRight
             color: root.disabled ? Qt.alpha(root.pal.muted, 0.55) : (root.flashing || root.on ? root.pal.text : Qt.alpha(root.pal.text, 0.78))
             font.family: root.pal.uiFont

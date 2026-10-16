@@ -69,36 +69,54 @@ Scope {
                 regions: [ Region { item: holeProbe; intersection: Intersection.Subtract } ]
             }
 
-            // ---- where the hole is (animated), refreshed while the target moves / animates ----
+            // ---- where the hole is ----
+            // t* = where the target IS (set at once, never animated: the card and the input mask follow these, so they move once
+            //      per step instead of being re-aimed on every frame of the hole's glide).
+            // h* = what is drawn. A new step glides there (glide = true); once it has settled the hole simply sits on the target
+            //      every frame, so it stays glued to a bar that grows, shrinks or slides (the old 30 Hz poll + 70 ms animation
+            //      restarted five animations over and over and trailed behind the bar).
+            property real tx: width / 2
+            property real ty: height / 2
+            property real tw: 0
+            property real th: 0
+            property real tr: 0
+            readonly property bool hasTarget: tw > 1 && th > 1
             property real hx: width / 2
             property real hy: height / 2
             property real hw: 0
             property real hh: 0
             property real hr: 0
             readonly property bool hasHole: hw > 1 && hh > 1
-            // a new step glides to its place; after that the hole only has to follow the target a little behind, and the bar
-            // changes size all the time (pages, hover, the clock), so it is read about 30 times a second
-            property int holeDur: root.pal.dSlow
-            Behavior on hx { NumberAnimation { duration: win.holeDur; easing.type: Easing.OutCubic } }
-            Behavior on hy { NumberAnimation { duration: win.holeDur; easing.type: Easing.OutCubic } }
-            Behavior on hw { NumberAnimation { duration: win.holeDur; easing.type: Easing.OutCubic } }
-            Behavior on hh { NumberAnimation { duration: win.holeDur; easing.type: Easing.OutCubic } }
-            Behavior on hr { NumberAnimation { duration: win.holeDur; easing.type: Easing.OutCubic } }
+            property bool glide: true
+            // the bar (and its pages) changes size all the time: read it on every frame. The other targets are still after the
+            // first moments, so they are read a few times a second.
+            readonly property bool moving: !!(root.step && ["bar", "perf", "media"].indexOf(root.step.target || "") >= 0)
+            Behavior on hx { enabled: win.glide; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
+            Behavior on hy { enabled: win.glide; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
+            Behavior on hw { enabled: win.glide; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
+            Behavior on hh { enabled: win.glide; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
+            Behavior on hr { enabled: win.glide; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
 
             function refreshHole() {
                 var r = (root.step && root.step.target && root.rectFn) ? root.rectFn(root.step.target, width, height) : null
+                var nx, ny, nw, nh, nr
                 if (r && r.w > 4 && r.h > 4) {
                     var pad = 7
-                    hx = r.x - pad; hy = r.y - pad; hw = r.w + pad * 2; hh = r.h + pad * 2
-                    hr = Math.min((r.r !== undefined ? r.r : root.pal.rLg) + pad, hw / 2, hh / 2)
+                    nx = r.x - pad; ny = r.y - pad; nw = r.w + pad * 2; nh = r.h + pad * 2
+                    nr = Math.min((r.r !== undefined ? r.r : root.pal.rLg) + pad, nw / 2, nh / 2)
                 } else {
-                    hx = width / 2; hy = height / 2; hw = 0; hh = 0; hr = 0
+                    nx = width / 2; ny = height / 2; nw = 0; nh = 0; nr = 0
                 }
+                // ignore sub-pixel noise: it would only re-aim the card and rebuild the input mask for nothing
+                if (Math.abs(nx - tx) < 0.2 && Math.abs(ny - ty) < 0.2 && Math.abs(nw - tw) < 0.2 && Math.abs(nh - th) < 0.2 && Math.abs(nr - tr) < 0.2) return
+                tx = nx; ty = ny; tw = nw; th = nh; tr = nr
+                hx = nx; hy = ny; hw = nw; hh = nh; hr = nr
             }
-            Connections { target: root; function onIndexChanged() { win.holeDur = root.pal.dSlow; settleT.restart() } }
-            Timer { id: settleT; interval: 700; onTriggered: win.holeDur = 70 }
+            Connections { target: root; function onIndexChanged() { win.glide = true; settleT.restart(); win.refreshHole() } }
+            Timer { id: settleT; interval: root.pal.dSlow + 120; onTriggered: win.glide = false }
             Component.onCompleted: { refreshHole(); settleT.restart() }
-            Timer { interval: 33; repeat: true; running: root.open; onTriggered: win.refreshHole() }
+            FrameAnimation { running: root.open && win.moving; onTriggered: win.refreshHole() }
+            Timer { interval: 50; repeat: true; running: root.open && !win.moving; onTriggered: win.refreshHole() }
 
             Item {
                 id: scene
@@ -128,35 +146,39 @@ Scope {
                     Behavior on border.color { ColorAnimation { duration: root.pal.dSlow } }
                 }
 
-                // light around the hole: a thin accent line and a few fading halos, all following the hole
+                // light around the hole: a thin accent line and two fading halos, all following the hole.
+                // The pulse is the opacity of the inner group (one cheap node value per frame); the colours never change.
                 Item {
                     id: light
                     opacity: win.hasHole ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
                     property real pulse: 1
                     SequentialAnimation on pulse {
-                        running: root.open && win.hasHole
+                        running: root.open && win.hasHole && root.pal.motion > 0.3
                         loops: Animation.Infinite
                         NumberAnimation { to: 0.55; duration: 1300; easing.type: Easing.InOutSine }
                         NumberAnimation { to: 1.0; duration: 1300; easing.type: Easing.InOutSine }
                     }
-                    Repeater {
-                        model: 4
-                        delegate: Rectangle {
-                            required property int index
-                            readonly property real grow: 2 + index * 5
-                            x: win.hx - grow; y: win.hy - grow
-                            width: win.hw + grow * 2; height: win.hh + grow * 2
-                            radius: win.hr + grow
-                            color: "transparent"
-                            border.width: index === 0 ? 1.5 : 5
-                            border.color: Qt.alpha(root.pal.accent, (index === 0 ? 0.9 : 0.16 / index) * light.pulse)
+                    Item {
+                        opacity: root.pal.motion > 0.3 ? light.pulse : 1
+                        Repeater {
+                            model: 3
+                            delegate: Rectangle {
+                                required property int index
+                                readonly property real grow: 2 + index * 5
+                                x: win.hx - grow; y: win.hy - grow
+                                width: win.hw + grow * 2; height: win.hh + grow * 2
+                                radius: win.hr + grow
+                                color: "transparent"
+                                border.width: index === 0 ? 1.5 : 5
+                                border.color: Qt.alpha(root.pal.accent, index === 0 ? 0.9 : 0.16 / index)
+                            }
                         }
                     }
                 }
 
-                // invisible: only gives the input mask the hole's shape
-                Item { id: holeProbe; x: win.hx; y: win.hy; width: win.hw; height: win.hh }
+                // invisible: only gives the input mask the hole's shape (the target, so the mask is rebuilt once per step, not on every frame of the glide)
+                Item { id: holeProbe; x: win.tx; y: win.ty; width: win.tw; height: win.th }
 
                 // ---------------- the card ----------------
                 Glass {
@@ -173,20 +195,20 @@ Scope {
                     readonly property var spot: {
                         var sw = scene.width, sh = scene.height, m = 24
                         if (root.view) return { x: (sw - width) / 2, y: sh - height - 36 }
-                        if (!win.hasHole) return { x: (sw - width) / 2, y: (sh - height) / 2 }
-                        var cx = Math.max(m, Math.min(sw - width - m, win.hx + win.hw / 2 - width / 2))
-                        var cy = Math.max(m, Math.min(sh - height - m, win.hy + win.hh / 2 - height / 2))
-                        if (win.hy + win.hh + gap + height < sh - m) return { x: cx, y: win.hy + win.hh + gap }
-                        if (win.hy - gap - height > m) return { x: cx, y: win.hy - gap - height }
-                        if (win.hx + win.hw + gap + width < sw - m) return { x: win.hx + win.hw + gap, y: cy }
-                        if (win.hx - gap - width > m) return { x: win.hx - gap - width, y: cy }
+                        if (!win.hasTarget) return { x: (sw - width) / 2, y: (sh - height) / 2 }
+                        var cx = Math.max(m, Math.min(sw - width - m, win.tx + win.tw / 2 - width / 2))
+                        var cy = Math.max(m, Math.min(sh - height - m, win.ty + win.th / 2 - height / 2))
+                        if (win.ty + win.th + gap + height < sh - m) return { x: cx, y: win.ty + win.th + gap }
+                        if (win.ty - gap - height > m) return { x: cx, y: win.ty - gap - height }
+                        if (win.tx + win.tw + gap + width < sw - m) return { x: win.tx + win.tw + gap, y: cy }
+                        if (win.tx - gap - width > m) return { x: win.tx - gap - width, y: cy }
                         return { x: (sw - width) / 2, y: (sh - height) / 2 }
                     }
                     x: spot.x
                     y: spot.y
-                    Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-                    Behavior on y { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-                    Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                    Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
+                    Behavior on y { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
+                    Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.OutCubic } }
                     MouseArea { anchors.fill: parent }       // clicks on the card do nothing
 
                     Column {

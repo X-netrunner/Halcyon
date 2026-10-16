@@ -11,7 +11,7 @@ Modes:
   adaptive-advisor.py model recommend     -> Hardware-aware recommendations for running bigger local models
   adaptive-advisor.py model switch <name> -> Switch to any model (pulls it if missing)
   adaptive-advisor.py --llm               -> Synthesizes situational advice using local Ollama LLM
-  adaptive-advisor.py "your question..."  -> Answers natural language questions with live hardware context
+  adaptive-advisor.py "your question..."  -> AI agent: investigates with tools, can fix things (asks before each change; --yes pre-approves low-risk ones)
   adaptive-advisor.py triage "text"       -> Tag a notification (urgent/chat/system/promo) + one-line summary
   adaptive-advisor.py write "request"     -> Short friendly text (birthday message, reply, description)
 """
@@ -238,14 +238,47 @@ def get_failed_services():
             pass
     return failed
 
+# systemd-pcr* / tpm2-setup units extend TPM2 PCR registers (measured boot). They fail when the machine has no usable TPM2
+# (fTPM / PTT off in the BIOS, no TPM, or no measured-boot log). Restarting them cannot work, and nothing is broken.
+_TPM_UNIT = re.compile(r"^systemd-(pcr[a-z0-9\-]*|tpm2-setup(-early)?)(@[^.]*)?\.service$")
+
+def tpm_device_present():
+    return os.path.exists("/dev/tpmrm0") or os.path.exists("/sys/class/tpm/tpm0")
+
+@cached(8.0)
+def classify_failed_unit(scope, unit):
+    """Why did this unit fail, and is a restart even the right fix?
+    Returns {"benign": bool, "cause": str, "fix": str, "journal": [lines]}"""
+    flag = ["--user"] if scope == "user" else []
+    try:
+        st = subprocess.run(["systemctl", *flag, "status", "--no-pager", "-n", "8", unit],
+                            capture_output=True, text=True, timeout=5).stdout.strip().splitlines()
+    except Exception:
+        st = []
+    code = next((m.group(0) for l in st for m in [re.search(r"code=\w+, status=\S+", l)] if m), "")
+    pre = "" if scope == "user" else "sudo "
+    if _TPM_UNIT.match(unit):
+        if tpm_device_present():
+            cause = ("A TPM2 is present, but this measured-boot / TPM setup step fails" + (f" ({code})" if code else "") +
+                     ". It only matters if you use measured boot (UKI + systemd-stub, TPM-bound disk keys); otherwise harmless.")
+        else:
+            cause = ("No usable TPM2 device is exposed to Linux (fTPM / Intel PTT / AMD PSP TPM is probably disabled in the BIOS, or the "
+                     "machine has none), so the unit that measures into the TPM cannot work. Restarting it cannot help; nothing is broken.")
+        fix = (f"Clear the flag: {pre}systemctl reset-failed {unit}  (it returns at next boot). To stop it for good: "
+               f"{pre}systemctl mask {unit}  (undo with unmask). Or enable fTPM/PTT in the BIOS if you want a TPM.")
+        return {"benign": True, "cause": cause, "fix": fix, "journal": st}
+    cause = f"The unit failed{(' (' + code + ')') if code else ''}; see the log lines for the reason."
+    fix = (f"Read why first: journalctl {'--user ' if scope == 'user' else ''}-u {unit} -b -n 40   then restart only once the cause is fixed.")
+    return {"benign": False, "cause": cause, "fix": fix, "journal": st}
+
 def get_zombie_processes():
     zombies = []
     try:
-        ps = subprocess.run(["ps", "-eo", "pid,stat,comm"], capture_output=True, text=True, timeout=2)
+        ps = subprocess.run(["ps", "-eo", "pid,stat,comm,ppid"], capture_output=True, text=True, timeout=2)
         for line in ps.stdout.splitlines()[1:]:
             parts = line.split()
-            if len(parts) >= 3 and "Z" in parts[1]:
-                zombies.append((parts[0], parts[2]))
+            if len(parts) >= 4 and "Z" in parts[1]:
+                zombies.append((parts[0], parts[2], parts[3]))   # (pid, name, parent pid)
     except Exception:
         pass
     return zombies
@@ -299,7 +332,7 @@ def get_quickshell_log_health():
         with open(ISLAND_LOG, "r", errors="ignore") as f:
             lines = f.readlines()[-150:]
             for l in lines:
-                if any(k in l for l in ("CRITICAL", "Error", "TypeError", "ReferenceError")):
+                if any(k in l for k in ("CRITICAL", "Error", "TypeError", "ReferenceError")):
                     recent_errors.append(l.strip())
     except Exception:
         pass
@@ -377,18 +410,28 @@ def analyze_system():
     suggestions = []
     remediations = []  # actionable fixes that require confirmation
 
-    # Failed services
+    # Failed services: diagnose first. A blind "restart" is wrong for units that fail for a hardware reason.
+    real_failed, failed_info = [], {}
     for scope, svc in failed_svcs:
-        restart_cmd = f"systemctl {'--user' if scope == 'user' else ''} restart {svc}"
-        suggestions.append({
-            "id": f"restart_svc_{svc}",
-            "priority": "HIGH",
-            "title": f"Service failure: {svc} ({scope})",
-            "action": f"Run '{restart_cmd}' to restore service functionality.",
-            "why": f"Unit {svc} entered failed state and stopped functioning.",
-            "cmd": restart_cmd
-        })
-        remediations.append((f"Restart failed service '{svc}'", restart_cmd, f"Restore failed {scope} service."))
+        d = classify_failed_unit(scope, svc)
+        failed_info[svc] = d
+        sudo = "" if scope == "user" else "sudo "
+        flag = "--user " if scope == "user" else ""
+        if d["benign"]:
+            reset_cmd = f"{sudo}systemctl {flag}reset-failed {svc}"
+            suggestions.append({
+                "id": f"harmless_svc_{svc}", "priority": "LOW",
+                "title": f"Harmless failed unit: {svc} ({scope})",
+                "action": d["fix"], "why": d["cause"], "cmd": reset_cmd})
+            remediations.append((f"Clear the failed flag of '{svc}'", reset_cmd, "Harmless failure; a restart cannot fix it."))
+        else:
+            real_failed.append((scope, svc))
+            restart_cmd = f"{sudo}systemctl {flag}restart {svc}"
+            suggestions.append({
+                "id": f"restart_svc_{svc}", "priority": "HIGH",
+                "title": f"Service failure: {svc} ({scope})",
+                "action": d["fix"], "why": d["cause"], "cmd": restart_cmd})
+            remediations.append((f"Restart failed service '{svc}'", restart_cmd, "Only after reading its log; the log is shown if it fails again."))
 
     # Memory pressure & Quickshell trim
     if qs_mb > 350:
@@ -418,14 +461,17 @@ def analyze_system():
     # Zombies
     if zombies:
         z_pids = " ".join(z[0] for z in zombies)
+        parents = sorted({z[2] for z in zombies})
         suggestions.append({
             "id": "zombies",
             "priority": "MEDIUM",
             "title": f"Found {len(zombies)} zombie/defunct process(es)",
-            "action": f"Reap defunct processes (PIDs: {z_pids})",
-            "why": "Dead processes remain allocated in kernel process table.",
-            "cmd": f"kill -9 {z_pids} 2>/dev/null || true"
+            "action": f"Zombies are already dead (kill -9 does nothing); ask their parent(s) {' '.join(parents)} to reap them.",
+            "why": f"Defunct PIDs {z_pids} stay in the process table until the parent calls wait().",
+            "cmd": "kill -s CHLD " + " ".join(parents)
         })
+        remediations.append(("Ask the parent process(es) to reap zombies", "kill -s CHLD " + " ".join(parents),
+                             "Sends SIGCHLD (harmless); if they remain, restart the parent."))
 
     # Thermals
     if temps["max"] > 84:
@@ -468,7 +514,7 @@ def analyze_system():
             "why": f"Battery is discharging at {battery.get('watts', 15)}W."
         })
 
-    score, rating = calculate_score(mem, temps, qs_mb, battery, psi, failed_svcs, zombies)
+    score, rating = calculate_score(mem, temps, qs_mb, battery, psi, real_failed, zombies)   # harmless failures do not cost points
 
     return {
         "battery": battery,
@@ -477,6 +523,7 @@ def analyze_system():
         "gpu": gpu,
         "psi": psi,
         "failed_svcs": failed_svcs,
+        "failed_info": failed_info,
         "zombies": zombies,
         "disks": disks,
         "net": net,
@@ -511,13 +558,21 @@ def ask_and_execute(title, command, reason, assume_yes=False):
             return False
     print("    \033[32mExecuting...\033[0m")
     try:
-        res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=15)
+        # sudo asks for the password on the terminal itself (not through the captured pipes); allow time to type it
+        res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=90 if "sudo" in command else 20)
         if res.returncode == 0:
             print("    \033[32m✔ Applied successfully.\033[0m")
             return True
-        else:
-            print(f"    \033[31m✗ Command exited with code {res.returncode}: {res.stderr.strip()}\033[0m")
-            return False
+        print(f"    \033[31m✗ Command exited with code {res.returncode}: {(res.stderr or res.stdout).strip()}\033[0m")
+        m = re.search(r"systemctl\s+(--user\s+)?(?:restart|start)\s+(\S+)", command)
+        if m:   # do not leave the user with only "exited with error code": show what the unit says
+            flag = ["--user"] if m.group(1) else []
+            st = subprocess.run(["systemctl", *flag, "status", "--no-pager", "-n", "8", m.group(2)],
+                                capture_output=True, text=True, timeout=8).stdout.strip()
+            print("    \033[37mWhy (unit status / journal):\033[0m\n      " + st.replace("\n", "\n      "))
+            d = classify_failed_unit("user" if m.group(1) else "system", m.group(2))
+            print(f"    \033[33mDiagnosis:\033[0m {d['cause']}\n    \033[33mFix:\033[0m {d['fix']}")
+        return False
     except Exception as e:
         print(f"    \033[31m✗ Execution failed: {e}\033[0m")
         return False
@@ -551,6 +606,7 @@ def run_doctor(assume_yes=False):
         prio_color = {
             "HIGH": "\033[1;31m[HIGH]\033[0m",
             "MEDIUM": "\033[1;33m[MED]\033[0m",
+            "LOW": "\033[1;34m[LOW]\033[0m",
             "INFO": "\033[1;36m[INFO]\033[0m"
         }.get(s["priority"], f"[{s['priority']}]")
         print(f"  {idx}. {prio_color} \033[1m{s['title']}\033[0m")
@@ -881,7 +937,9 @@ def build_findings(analysis):
         lines.append(f"Battery: {analysis['battery']['capacity']}% ({analysis['battery']['status']})")
     lines.append(f"Health score: {analysis['score']}/100 ({analysis['rating']})")
     if analysis["failed_svcs"]:
-        lines.append("Failed systemd units: " + ", ".join(f"{s[1]} ({s[0]})" for s in analysis["failed_svcs"]))
+        lines.append("Failed systemd units: " + ", ".join(
+            f"{s[1]} ({s[0]}, {'harmless: ' + analysis['failed_info'][s[1]]['cause'][:90] if analysis.get('failed_info', {}).get(s[1], {}).get('benign') else 'needs attention'})"
+            for s in analysis["failed_svcs"]))
     if analysis["zombies"]:
         lines.append(f"Zombie processes: {len(analysis['zombies'])}")
     top = sorted(analysis.get("procs") or [], key=lambda p: p["rss_mb"], reverse=True)[:5]
@@ -901,14 +959,58 @@ ADVISOR_RULES = (
     "If system changes are required, mention that Halcyon Advisor will ask for confirmation before modifying files or services."
 )
 
-def run_llm_query(analysis, custom_prompt=""):
-    if custom_prompt and try_dispatch_keywords(custom_prompt):
-        return
+def _self_module():
+    m = sys.modules.get(__name__)
+    if m is None:       # loaded by path (halcyon-chat.py does this) and not registered: hand the agent a module-like view
+        import types
+        m = types.ModuleType(__name__)
+        m.__dict__.update(globals())
+    return m
 
-    print("━" * 68)
-    print("🤖 Local AI Advisor (Ollama)")
-    print("━" * 68)
-    print(f"[*] Model: {get_advisor_model()}\n")
+def load_agent():
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    for p in (os.path.join(RICE, "scripts/halcyon-agent.py"), os.path.join(here, "halcyon-agent.py")):
+        if os.path.isfile(p):
+            try:
+                spec = importlib.util.spec_from_file_location("halcyon_agent", p)
+                m = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(m)
+                return m
+            except Exception as e:
+                print(f"[!] could not load the agent ({e})")
+    return None
+
+def run_agent_query(question, assume_yes=False):
+    """Let the model investigate and act with tools.
+    Returns None if the agent module is missing (caller falls back to plain Q&A), else True when an answer was given, False on an error."""
+    ag = load_agent()
+    if not ag:
+        return None
+    note = ag.small_model_note(get_advisor_model())
+    if note:
+        print(note + "\n")
+    return ag.Agent(_self_module(), get_advisor_model, assume_yes=assume_yes).turn([], question) is not None
+
+def run_llm_query(analysis, custom_prompt="", assume_yes=False):
+    # a direct command ("gaming mode", "next wallpaper") runs at once; a question ("what is dnd?") goes to the model
+    if custom_prompt and not looks_like_question(custom_prompt) and try_dispatch_keywords(custom_prompt):
+        return True
+
+    if custom_prompt:
+        print("━" * 68)
+        print("🤖 Halcyon AI Agent (Ollama)  ·  inspects and manages this machine; every change asks you first")
+        print("━" * 68)
+        print(f"[*] Model: {get_advisor_model()}\n")
+        r = run_agent_query(custom_prompt, assume_yes)
+        if r is not None:
+            return r
+
+    if not custom_prompt:
+        print("━" * 68)
+        print("🤖 Local AI Advisor (Ollama)")
+        print("━" * 68)
+        print(f"[*] Model: {get_advisor_model()}\n")
 
     findings = build_findings(analysis)
     if custom_prompt:
@@ -918,6 +1020,7 @@ def run_llm_query(analysis, custom_prompt=""):
                   "Task: in 2-3 concise sentences summarize machine health, pinpoint any bottlenecks, and recommend the best next action.\nAnswer:")
     if ollama_generate(prompt, stream=True) is None and LAST_LLM_ERROR:
         print(f"[!] {LAST_LLM_ERROR}\n    Standard rule-based metrics below still apply.")
+    return False
 
 def triage_notification(text):
     if not text.strip():
@@ -990,8 +1093,10 @@ def main():
     analysis = analyze_system()
 
     if use_llm:
-        run_llm_query(analysis, custom_question)
+        handled = run_llm_query(analysis, custom_question, assume_yes)
         print()
+        if custom_question and handled:
+            return          # the agent may just have changed the machine: a dashboard from before that would be stale
 
     # Dashboard display
     score_color = "\033[1;32m" if analysis["score"] >= 90 else "\033[1;33m" if analysis["score"] >= 70 else "\033[1;31m"
@@ -1032,8 +1137,9 @@ def main():
     print("  advisor fix               -> Apply recommended system optimizations")
     print("  advisor model recommend   -> Hardware-tailored advice for bigger AI models")
     print("  advisor model switch <m>  -> Download and activate a local AI model")
-    print("  advisor \"<question>\"     -> Ask local AI assistant about your machine")
-    print("  ai                        -> Interactive AI chat with diagnostics & control")
+    print("  advisor \"<question>\"     -> Ask the local AI: it inspects the machine and can fix things (asks before every change)")
+    print("  advisor \"restart bluetooth and check why it failed\"   -> example of a task it can carry out")
+    print("  ai                        -> Interactive AI chat with the same tools (/tools lists them)")
 
 if __name__ == "__main__":
     main()

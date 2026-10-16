@@ -41,7 +41,17 @@ WBase {
 
     implicitWidth: body.item ? body.item.implicitWidth : 150
     implicitHeight: body.item ? body.item.implicitHeight : 60
-    Loader { id: body; sourceComponent: root.style === "compact" ? compactC : (root.style === "big" ? bigC : cardC) }
+    Loader { id: body; sourceComponent: root.style === "compact" ? compactC : (root.style === "big" ? bigC : (root.style === "whisper" ? whisperC : cardC)) }
+
+    Component {
+        id: whisperC
+        Column {
+            spacing: root.sz(6)
+            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.temp; font.pixelSize: root.sz(64); font.weight: Font.ExtraLight }
+            Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: root.sz(28); height: 1; color: Qt.alpha(root.accent, 0.75) }
+            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.desc.toLowerCase(); color: root.dim; font.pixelSize: root.sz(12); font.letterSpacing: 3 }
+        }
+    }
 
     Component {
         id: cardC

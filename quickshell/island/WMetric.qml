@@ -79,7 +79,53 @@ WBase {
     implicitHeight: body.item ? body.item.implicitHeight : 100
     Loader {
         id: body
-        sourceComponent: root.style === "arc" ? arcC : (root.style === "bar" ? barC : (root.style === "pill" ? pillC : (root.style === "number" ? numC : (root.style === "history" ? histC : ringC))))
+        sourceComponent: {
+            switch (root.style) {
+            case "arc": return arcC
+            case "bar": return barC
+            case "pill": return pillC
+            case "number": return numC
+            case "history": return histC
+            case "hairline": return hairC
+            case "petals": return petalC
+            default: return ringC
+            }
+        }
+    }
+    // ---- hairline: the name and the number on one line, a thread under them with a small light at its end
+    Component {
+        id: hairC
+        Column {
+            spacing: root.sz(6)
+            Item {
+                width: root.sz(200); height: root.sz(26)
+                WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 3; anchors.left: parent.left; anchors.baseline: val.baseline }
+                WLbl { id: val; b: root; text: root.m.t; font.pixelSize: root.sz(24); font.weight: Font.ExtraLight; anchors.right: parent.right; anchors.bottom: parent.bottom }
+            }
+            Item {
+                width: root.sz(200); height: root.sz(10)
+                Rectangle { y: parent.height / 2; width: parent.width; height: 1; color: root.track }
+                Rectangle { y: parent.height / 2 - 0.25; width: Math.max(1, parent.width * root.shownV); height: 1.5; color: root.lit }
+                WGlow { x: parent.width * root.shownV - width / 2; y: parent.height / 2 - height / 2; width: root.sz(36); height: width; color: root.lit; strength: 0.28 }
+                Rectangle { x: parent.width * root.shownV - width / 2; y: parent.height / 2 - height / 2; width: root.sz(6); height: width; radius: width / 2; color: root.lit }
+            }
+        }
+    }
+    // ---- petals: a flower whose petals light up one by one as the number grows
+    Component {
+        id: petalC
+        Item {
+            implicitWidth: root.sz(110); implicitHeight: root.sz(110) + (root.showName ? root.sz(18) : 0)
+            WPetals {
+                id: pf
+                b: root
+                width: root.sz(100); height: width
+                anchors.horizontalCenter: parent.horizontalCenter
+                count: 12; open: 1; lit: root.shownV; color: root.lit
+                WLbl { b: root; anchors.centerIn: parent; text: root.m.t; font.pixelSize: root.sz(17); font.weight: Font.Light }
+            }
+            WLbl { b: root; visible: root.showName; anchors.horizontalCenter: parent.horizontalCenter; y: pf.height + root.sz(4); text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 2.4 }
+        }
     }
 
     // ---- ring

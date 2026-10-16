@@ -7,8 +7,12 @@
 #   ~/.config/Halcyon/update.sh --changes    list what changed in the new version, change nothing
 #   ~/.config/Halcyon/update.sh --force      run the setup again even when already up to date
 #   ~/.config/Halcyon/update.sh --rollback   go back to the version you had before the last update (git checkouts)
-#   options: --yes (no questions)   --notify (desktop notification with the result)   -q (less output)
-#            --no-packages / --no-sysmode / --safety-check / --no-safety-check (passed on to install.sh)   -h
+#   options: --yes (no questions)   --notify (desktop notification with the result)   -q (less output)   -h
+#            passed on to install.sh:  --no-packages  --no-drivers  --no-aur  --no-apps  --no-tune  --sysmode / --no-sysmode
+#            --safety-check / --no-safety-check  --llm[=MODEL] / --no-llm  --lock-login / --no-lock-login  --tty-autostart
+#            --browser ID  --files ID[,ID]  --editor ID[,ID]  --music ID[,ID]  --resources low|medium|high|adaptive
+#            --resource-offset N   (a value goes after a space or an =, see ./install.sh --help)
+#   First install on a new machine (nothing to update yet):  curl -fsSL https://raw.githubusercontent.com/X-netrunner/Halcyon/HEAD/get.sh | bash
 #
 # If ~/.config/Halcyon is a git checkout it is updated in place (git pull --rebase --autostash, so your own edits
 # stay). If it is a plain copy, the latest version is cloned to ~/.cache/halcyon-update and installed over it
@@ -40,7 +44,7 @@ warn() { printf '   %s!%s %s\n' "$C_W" "$C_0" "$*"; }
 note() { [ "$NOTIFY" = 1 ] && command -v notify-send >/dev/null 2>&1 && notify-send -a Halcyon "Halcyon update" "$1" >/dev/null 2>&1; return 0; }
 die()  { printf '   %s✗%s %s\n' "$C_E" "$C_0" "$*" >&2; note "Failed: $*"; exit 1; }
 
-usage() { sed -n 2,19p "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,/^# If ~\/\.config\/Halcyon is a git checkout/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 
 # git with a time limit, so a dead network never hangs the updater
 gnet() { timeout "$NET" git "$@"; }
@@ -122,8 +126,9 @@ confirm() {       # confirm "question"  -> 0 = go on
 }
 
 main() {
-  for a in "$@"; do
-    case "$a" in
+  local ALL=("$@")
+  while [ $# -gt 0 ]; do
+    case "$1" in
       --check) CHECK=1 ;;
       --changes) CHANGES=1; CHECK=1 ;;
       --force) FORCE=1 ;;
@@ -131,10 +136,17 @@ main() {
       --notify) NOTIFY=1 ;;
       -q|--quiet) QUIET=1 ;;
       -y|--yes) YES=1 ;;
-      --no-packages|--no-sysmode|--safety-check|--no-safety-check|--llm|--llm=*|--no-llm) PASS+=("$a") ;;
+      # install.sh flags (no value)
+      --no-packages|--no-drivers|--no-aur|--no-apps|--no-tune|--sysmode|--no-sysmode|--safety-check|--no-safety-check|--llm|--no-llm|--lock-login|--no-lock-login|--tty-autostart) PASS+=("$1") ;;
+      # install.sh options with a value, as  --opt=value  or  --opt value
+      --llm=*|--browser=*|--files=*|--editor=*|--music=*|--resources=*|--resource-offset=*) PASS+=("$1") ;;
+      --browser|--files|--editor|--music|--resources|--resource-offset)
+        [ $# -ge 2 ] && [[ "$2" != -* ]] || { echo "$1 needs a value (try --help)"; exit 2; }
+        PASS+=("$1" "$2"); shift ;;
       -h|--help) usage; exit 0 ;;
-      *) echo "unknown option: $a (try --help)"; exit 2 ;;
+      *) echo "unknown option: $1 (try --help)"; exit 2 ;;
     esac
+    shift
   done
 
   [ "$(id -u)" -ne 0 ] || die "Run this as your normal user, not root."
@@ -149,7 +161,7 @@ main() {
   # keep a log of the run, and still show it
   if [ "$CHECK" = 0 ]; then
     [ "$(stat -c %s "$STATE/update.log" 2>/dev/null || echo 0)" -gt 524288 ] && : > "$STATE/update.log"
-    { printf '\n=== %s update.sh %s\n' "$(date '+%F %T')" "$*"; } >> "$STATE/update.log"
+    { printf '\n=== %s update.sh %s\n' "$(date '+%F %T')" "${ALL[*]:-}"; } >> "$STATE/update.log"
     exec > >(tee -a "$STATE/update.log") 2>&1
   fi
   local t0=$SECONDS
