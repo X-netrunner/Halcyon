@@ -296,7 +296,7 @@ Scope {
 
             // unread / do-not-disturb hint.
             //   edge mode:   a soft bar on the very edge
-            //   corner mode: a small round dot tucked into the corner, which becomes a count badge while something is unread
+            //   corner mode: a small round dot tucked into the corner; it grows a little and turns solid while something is unread (no number)
             Rectangle {
                 id: hint
                 readonly property bool badge: root.corner && root.unread > 0 && !root.dnd
@@ -309,8 +309,8 @@ Scope {
                 anchors.topMargin: root.corner ? (!root.atB ? 6 : 0) : 0
                 anchors.bottomMargin: root.corner ? (root.atB ? 6 : 0) : 0
                 anchors.verticalCenter: root.corner ? undefined : parent.verticalCenter
-                width: root.corner ? (root.centerOpen ? 0 : (badge ? Math.max(20, badgeText.implicitWidth + 12) : 8)) : 4
-                height: root.corner ? (root.centerOpen ? 0 : (badge ? 20 : 8)) : (root.centerOpen ? 0 : 54)
+                width: root.corner ? (root.centerOpen ? 0 : (badge ? 11 : 8)) : 4
+                height: root.corner ? (root.centerOpen ? 0 : (badge ? 11 : 8)) : (root.centerOpen ? 0 : 54)
                 radius: root.corner ? height / 2 : 2
                 color: root.dnd ? root.pal.muted : root.pal.accent
                 border.width: badge ? 1.5 : 0
@@ -320,14 +320,6 @@ Scope {
                 Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                Text {
-                    id: badgeText
-                    visible: hint.badge && hint.height >= 16
-                    anchors.centerIn: parent
-                    text: root.unread > 9 ? "9+" : root.unread
-                    color: root.pal.bg
-                    font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold
-                }
                 // breathes while something is unread (edge bar only: the badge stays still so it reads cleanly)
                 SequentialAnimation on scale {
                     running: root.breathe && root.unread > 0 && !root.dnd && !root.centerOpen && !root.corner

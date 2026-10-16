@@ -623,7 +623,7 @@ class Agent:
                 final, _ = self._stream(msgs, use_tools=False)
         except ToolsUnsupported:
             print(f"{YEL}[i] '{self.model_fn()}' cannot call tools; plain chat, commands will be offered for your approval. "
-                  f"For real management use a tool-capable model: advisor model switch 7b{RST}")
+                  f"For real management use a tool-capable model: advisor model switch 8b{RST}")
             final = self.fallback(history, user)
         except RuntimeError as e:
             print(f"\n[!] {e}")
@@ -651,5 +651,5 @@ class Agent:
 def small_model_note(model):
     if re.search(r"(:|-)(0\.5|1|1\.5|2)b\b", model or ""):
         return (f"[i] '{model}' is a very small model: it can chat, but is unreliable at tool use. "
-                f"Your GPU can run a much better one:  advisor model switch 7b")
+                f"Your GPU can run a much better one:  advisor model switch 8b")
     return ""

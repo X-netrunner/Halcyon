@@ -54,7 +54,7 @@ return {
     blurPasses                 = 2,
     blurNoise                  = 0.022,    -- fine film grain: this is the "texture"
     blurVibrancy               = 0.14,
-    blurSpecialWs              = false,
+    blurSpecialWs              = true,     -- blur behind special workspaces (SUPER+S / M / D); set false to save a little GPU memory
     blurPopups                 = true,
     blurInputMethods           = true,
     blurXray                   = false,

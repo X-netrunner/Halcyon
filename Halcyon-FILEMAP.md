@@ -79,9 +79,10 @@ What every file and folder does. This is a separate notes file, it is not part o
 | `WidgetData.js` | The list of widget kinds, their layouts and options, the looks, and the rules for editing the layout (`opt.deskWidgets`, `opt.deskStyles`). |
 | `DeskWidgets.qml`, `WidgetHost.qml` | Draw all widgets / one widget's frame (box, colours, place, drag handles while editing). |
 | `WBase.qml`, `WLbl.qml`, `WIco.qml` | What every widget body shares: colours, fonts, options, a text and an icon. |
-| `WClock.qml` (clock, date), `WMonth.qml`, `WMetric.qml` (cpu, ram, temp, gpu, disk, battery, volume, brightness), `WSysmon.qml`, `WNet.qml` (network, uptime), `WMusic.qml`, `WViz.qml`, `WFocus.qml`, `WWorkspaces.qml`, `WToggles.qml` (toggles, shortcuts), `WNotes.qml`, `WWeather.qml`, `WText.qml` | The widget bodies. |
+| `WClock.qml` (clock, date), `WMonth.qml`, `WMetric.qml` (cpu, ram, temp, gpu, disk, battery, volume, brightness), `WSysmon.qml`, `WNet.qml` (network, uptime), `WMusic.qml`, `WViz.qml`, `WFocus.qml`, `WWorkspaces.qml`, `WToggles.qml` (toggles, shortcuts), `WNotes.qml`, `WWeather.qml`, `WText.qml`, `WConsole.qml` (console), `WBoxes.qml` (utilities box, background apps box; parts `WbLevel.qml`, `WbRow.qml`) | The widget bodies. |
 | `WidgetBuilder.qml`, `WidgetBuilderWindow.qml`, `WbText.qml` | The Settings entry, the builder window (one widget at a time) and its text field. |
-| `DesktopEditor.qml` | Place the widgets right on the screen. |
+| `DesktopEditor.qml` | Place the widgets right on the screen; its view bar switches the grid, centre, thirds, safe area and measuring. |
+| `DeskGuides.qml`, `DgTag.qml`, `DgGap.qml` | What the editor draws to line things up: grid, centre lines, thirds, safe area, the gaps in px and the size of the picked widget. |
 | `cava-desk.conf`, `cava-desk-light.conf` | The visualizer widget's own 48-bar cava. |
 
 ### Wallpaper, stars, corner boxes (this round)

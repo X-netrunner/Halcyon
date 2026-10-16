@@ -566,17 +566,25 @@ PanelWindow {
                 height: notch.bh
                 spacing: win.rightGap
 
-            // apps alive in the background (Settings > Bar > Background apps count: Bar)
+            // apps alive in the background (Settings > Bar > Background apps dot: Bar)
             Item {
                 visible: win.showBg && win.bgCount > 0
                 width: visible ? bgRow.width : 0
                 height: notch.bh
-                Row {
+                Item {
                     id: bgRow
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
-                    Text { text: String.fromCodePoint(0xF003B); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH; anchors.verticalCenter: parent.verticalCenter }
-                    Badge { pal: win.pal; count: win.bgCount; size: Math.max(16, win.icoH); tint: win.ac; ink: win.pal.bg; anchors.verticalCenter: parent.verticalCenter }
+                    width: bgIco.implicitWidth
+                    height: bgIco.implicitHeight
+                    Text { id: bgIco; text: String.fromCodePoint(0xF003B); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH }
+                    // a dot on the icon's corner: something is running in the background (click to see what)
+                    Rectangle {
+                        readonly property int d: Math.max(6, Math.round(win.icoH * 0.38))
+                        anchors.top: parent.top; anchors.right: parent.right
+                        width: d; height: d; radius: d / 2
+                        color: win.ac
+                        border.width: 1.5; border.color: Qt.alpha(win.pal.bg, 0.9)
+                    }
                 }
                 MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.bgClicked() }
             }

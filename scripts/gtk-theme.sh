@@ -9,6 +9,7 @@
 #   --remove                      take the halcyon block out again
 #   --auto                        what the island runs: does nothing while gtk-follow is off
 #   ~/.local/state/island/gtk-follow = off     stops the automatic runs (running it by hand still works)
+#   ~/.local/state/island/gtk-live   = off     do not repaint GTK apps that are already open (see "live reload" at the end)
 #   ~/.local/state/island/gtk-icons  = off     keeps your own icon theme (otherwise Papirus-Dark / Papirus-Light is used when installed:
 #                                              clear, colourful icons that stay readable on the dark and the light surfaces)
 pal="$HOME/.cache/island/palette.json"
@@ -234,6 +235,7 @@ write() {   # write FILE VERSION
   local f="$1" tmp="$1.tmp"
   { strip "$f"; echo "$B"; colors; [ "$2" = 4 ] && colors4; [ "$2" = 3 ] && rules3; echo "$E"; } > "$tmp" && mv "$tmp" "$f"
 }
+sum_before=$(cat "$HOME/.config/gtk-3.0/gtk.css" "$HOME/.config/gtk-4.0/gtk.css" "$HOME/.config/gtk-3.0/settings.ini" 2>/dev/null | cksum)
 write "$HOME/.config/gtk-3.0/gtk.css" 3
 write "$HOME/.config/gtk-4.0/gtk.css" 4
 
@@ -268,5 +270,20 @@ if [ "$(head -n1 "$state/gtk-icons" 2>/dev/null)" != "off" ]; then
     setini "$HOME/.config/gtk-4.0/settings.ini" gtk-icon-theme-name "$want"
     setini "$HOME/.config/gtk-4.0/settings.ini" gtk-application-prefer-dark-theme "$PREFER"
   fi
+fi
+
+# live reload: GTK does not watch gtk.css, so a Thunar (or file dialog) that is already open would keep the old colours until it
+# is restarted. Changing the GTK theme setting makes every running GTK 3 / 4 app re-read its CSS, so the open windows repaint
+# at once. Only when the colours really changed (a wallpaper that gives the same palette repaints nothing); off with gtk-live = off.
+sum_after=$(cat "$HOME/.config/gtk-3.0/gtk.css" "$HOME/.config/gtk-4.0/gtk.css" "$HOME/.config/gtk-3.0/settings.ini" 2>/dev/null | cksum)
+if [ "$sum_before" != "$sum_after" ] && [ "$(head -n1 "$state/gtk-live" 2>/dev/null)" != "off" ] && command -v gsettings >/dev/null 2>&1; then
+  (
+    cur=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | tr -d "'")
+    [ -n "$cur" ] || cur=Adwaita
+    if [ "$cur" = HighContrast ]; then tmp=Adwaita; else tmp=HighContrast; fi
+    gsettings set org.gnome.desktop.interface gtk-theme "$tmp" >/dev/null 2>&1
+    sleep 0.2
+    gsettings set org.gnome.desktop.interface gtk-theme "$cur" >/dev/null 2>&1
+  ) >/dev/null 2>&1 &
 fi
 exit 0

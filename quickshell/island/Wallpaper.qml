@@ -137,7 +137,7 @@ PanelWindow {
     // the desktop widgets (Widget builder = how each looks, Desktop builder / desktop editor = where they sit)
     DeskWidgets {
         anchors.fill: parent
-        visible: !wallpaper.widgetsHidden
+        visible: !wallpaper.widgetsHidden && wallpaper.opt.deskWidgetsOn !== false
         pal: wallpaper.pal
         env: wallpaper.env
         opt: wallpaper.opt

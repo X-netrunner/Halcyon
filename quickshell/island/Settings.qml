@@ -535,7 +535,7 @@ Scope {
             { type: "seg", adv: true, key: "opt:scrollLinger", label: "Page stays after scrolling", desc: "When you open the performance / media page by scrolling or two-finger swiping the bar, how long it stays after the pointer leaves the bar.", opts: [o(1500, "Short"), o(3000, "Normal"), o(6000, "Long"), o(12000, "Very long")] },
             { type: "seg", adv: true, key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")], when: "hoverAction=perf|media" },
             { type: "seg", adv: true, key: "barScroll", label: "Scroll / swipe on the bar to change page", opts: [o("low", "Long swipe"), o("medium", "Medium"), o("high", "Sensitive")] },
-            { type: "seg", adv: true, key: "opt:bgWhere", label: "Background apps count", desc: "Where the number of apps running in the background is shown. The box with the apps always opens bottom-left (on the bar, click the number to open it).", opts: [o("corner", "Corner"), o("bar", "Bar")] }
+            { type: "seg", adv: true, key: "opt:bgWhere", label: "Background apps dot", desc: "Where the dot that says apps are running in the background is shown. The box with the apps always opens bottom-left (on the bar, click the icon to open it).", opts: [o("corner", "Corner"), o("bar", "Bar")] }
         ] },
         { id: "clock", title: "Clock", section: "Desktop", items: [
             { type: "seg", key: "clock24", label: "Time format", opts: [o(false, "12 hour"), o(true, "24 hour")] },

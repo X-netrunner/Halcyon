@@ -23,7 +23,7 @@ RowLayout {
     property string focusText: ""        // Focus mode running: the time left ("" = no session)
     property bool focusPaused: false
     property int bgCount: 0              // apps alive in the background (BgApps.count)
-    property bool showBgCount: false     // Settings > Panels > Background apps count: on the bar instead of the bottom-left corner
+    property bool showBgCount: false     // Settings > Panels > Background apps dot: on the bar instead of the bottom-left corner
     signal bgClicked()                   // opens the background-apps box (it stays bottom-left)
     // Settings > Bar style > what the island shows (all on = how it always looked)
     property bool showWs: true
@@ -391,7 +391,7 @@ RowLayout {
                 z: 1                                   // above the status MouseArea so the count chip gets its own clicks
                 spacing: 10
 
-                // background apps: count in the bar (Settings > Panels > Background apps count), click opens the box in the corner
+                // background apps: icon + dot in the bar (Settings > Panels > Background apps dot), click opens the box in the corner
                 Item {
                     id: bgChip
                     visible: row.showBgCount && row.bgCount > 0
@@ -409,12 +409,10 @@ RowLayout {
                             font.pixelSize: 14
                             anchors.verticalCenter: parent.verticalCenter
                         }
-                        Text {
-                            text: row.bgCount
-                            color: row.pal.text
-                            font.family: row.pal.uiFont
-                            font.pixelSize: row.pal.tBody
-                            font.weight: Font.DemiBold
+                        // a dot instead of a number: something runs in the background (click to see what)
+                        Rectangle {
+                            width: 7; height: 7; radius: 3.5
+                            color: row.pal.accent
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
