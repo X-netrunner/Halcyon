@@ -203,6 +203,14 @@ Scope {
             if (have.indexOf(uiFonts[i]) >= 0) return uiFonts[i]
         return "Sans Serif"
     }
+    // a serif face for the quiet, elegant desktop widgets (Widget builder > Font > Serif): first of these that is installed
+    readonly property var serifFonts: ["Cormorant Garamond", "Playfair Display", "Source Serif 4", "Noto Serif", "DejaVu Serif", "Liberation Serif"]
+    readonly property string serifFont: {
+        var have = Qt.fontFamilies()
+        for (var i = 0; i < serifFonts.length; i++)
+            if (have.indexOf(serifFonts[i]) >= 0) return serifFonts[i]
+        return "Serif"
+    }
     // size scale: caption / body / title / display
     readonly property int tCap: 11
     readonly property int tBody: 13

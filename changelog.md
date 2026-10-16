@@ -1,5 +1,39 @@
 # Changelog
 
+## The local AI can now manage the system, not only suggest; Add-a-widget button no longer leaks
+
+- Fixed: **"Add a widget" overflowed its pill in the Widget builder** (`WidgetBuilderWindow.qml`, `ActionChip.qml`). The left column is ~222 px wide; "Add a widget", "Copy" and "Remove" on one line squeezed the first button to ~46 px and its label spilled out. "Add a widget" now has its own full-width line and Copy / Remove share the next. `ActionChip` also clips and elides its label when it is made narrower than its text, so no chip can spill again anywhere.
+- New: **the AI is now an agent** (`scripts/halcyon-agent.py`, used by `ai` and `advisor "<question>"`). It calls tools, reads what came back, and carries on until it can answer.
+  - *Read* tools run at once and change nothing: system status, failed services (with diagnosis), service status, journal, top processes, disks, network, Hyprland state, Quickshell log, pacman updates / orphans, read a file (secrets refused).
+  - *Action* tools show the exact command and wait: `y` / `N` / `a` (yes for the rest of the session). Restart / start / stop / enable / disable / mask / reset-failed a unit, kill a process, trim RAM, volume, brightness, Halcyon desktop modes, clean the package cache, and `run_shell` as a last resort. Risky ones (kill, stop / disable / mask, cache clean, shell) ask every time; `--yes` / `/yes` only pre-approve the low-risk ones.
+  - After an action the tool re-checks the result and the model is given the new state plus the journal if it failed, so it reports what really happened and finds the cause instead of repeating the command.
+  - Guard rails: protected units (dbus, logind, journald, network, display manager ...) cannot be stopped; `run_shell` refuses `rm -rf /`, disk formatting, `dd` onto devices, `curl | sh`, reboot / poweroff, sudoers / account edits and removing core packages.
+  - Works with tool-capable models (`qwen2.5:7b`, `llama3.1:8b`: `advisor model switch 7b`), also with models that write the call as JSON text. A model without tool support falls back to chat and each ```bash block it writes is offered for approval. `llama3.2:1b` is too small to use tools reliably, and says so.
+  - In `ai`: `/tools` lists everything, `/yes` pre-approves low-risk actions, `/agent` turns tool use off.
+- Fixed: **the advisor told you to restart units that cannot be restarted.** `systemd-pcr*` and `systemd-tpm2-setup*` fail when Linux has no usable TPM2 (often fTPM / PTT off in the BIOS), so `systemctl restart` fails again, and the old score dropped 28 points for it. They are now recognised as harmless (LOW), the advice is `reset-failed` (clear the flag) or `mask`, and they no longer cost health score. Any other failed unit gets its status / journal shown, and when a restart fails the reason is printed right there.
+- Fixed: sudo-needing fixes now say `sudo` and have time to type the password (they had 15 s and no `sudo`); the doubled space in `systemctl  restart` is gone.
+- Fixed: zombie processes were "reaped" with `kill -9`, which does nothing to a dead process; the parent is now sent SIGCHLD.
+- Fixed: the Quickshell log check always reported 0 errors (a variable typo that an exception swallowed).
+- Changed: `advisor "what is dnd?"` is a question and goes to the model; `advisor "gaming mode"` is still a command and runs at once. A question no longer prints a stale dashboard under the answer.
+- Files: `scripts/halcyon-agent.py` (new), `scripts/adaptive-advisor.py`, `scripts/halcyon-chat.py`, `quickshell/island/ActionChip.qml`, `quickshell/island/WidgetBuilderWindow.qml`. Copy over the ones in `~/.config/Halcyon/`, restart the island, open a new terminal.
+
+## Smoother tour, tour updated for the widgets
+
+- Fixed: **the tour was laggy and not smooth** (`Tour.qml`).
+  - The spotlight hole was re-read 30 times a second and each read restarted five 70 ms animations, so on the bar it trailed behind and moved in steps. The bar and its pages are now read on every frame and the hole sits exactly on them; a new step still glides to its place, once.
+  - The card was aimed at the *animating* hole, so its own animation was re-targeted on every frame of the glide and ended with a jump. It is now placed from where the target is, and glides once, on the same curve as the hole.
+  - The input mask (the pointer-through hole) followed the glide too, so the compositor was told a new input region on every frame. It now changes once per step.
+  - The pulsing light changed the colour of four rings on every frame, forever. It is now one opacity value on a group, off when Motion is low, and the faintest ring (about 5 % strong) is gone.
+- Changed: the closing step "That's it" is now last. On a fresh install it used to show as step 13 of 21, with eight more steps after it.
+- New tour steps (shown once to existing users as "What's new"): **Desktop widgets** (`>widget builder`), **Place widgets with the mouse** (`>place widgets on the desktop`), **Desktop builder**, **Top bar on or off**, **Password manager**. The Settings step also points at `>widget builder`.
+- Files: `quickshell/island/Tour.qml`, `quickshell/island/features.json`. Copy both over the ones in `~/.config/Halcyon/quickshell/island/` and restart the island; `>tour` replays it.
+
+## Bigger desktop builder preview, curl installer, update.sh options
+
+- Changed: the **Desktop builder** picture is much bigger (the card grew to 1560 x 900 and the picture takes about two thirds of it) and has a **Widgets / Boxes** switch above it. In *Widgets* mode only the widgets can be dragged and the four corner boxes are drawn faint and ignore the mouse; in *Boxes* mode only the corner boxes react (click one, then the corner) and the widgets are faint. They no longer sit on top of each other, so dragging a widget onto a corner works.
+- New: **`get.sh`**, the one-line installer: `curl -fsSL https://raw.githubusercontent.com/X-netrunner/Halcyon/HEAD/get.sh | bash` (options after `bash -s --`). Clones into `~/.config/Halcyon`, runs `install.sh` with the terminal for its questions, records the version for `update.sh`; hands over to `update.sh` when Halcyon is already there.
+- Changed: `update.sh` passes every install option on to `install.sh` (`--browser`, `--files`, `--editor`, `--music`, `--resources`, `--resource-offset`, `--no-apps`, `--no-tune`, `--no-drivers`, `--no-aur`, `--sysmode`, `--lock-login`, `--no-lock-login`, `--tty-autostart`), values after a space or `=`; `--help` lists them; the log keeps the options you typed.
+
 ## Desktop widgets, top bar off, roomier console command list
 
 - New: **Widget builder** (`widget-builder`, Settings > Appearance > Widget builder). 23 kinds of desktop widgets: clock (digital, big, stacked, analog, minimal), date, month calendar, CPU, memory, temperature, GPU, disk, battery, volume, brightness, system usage (bars, rings, list, compact), network, uptime, now playing, audio visualizer (bars, mirror, wave, dots, circle), Focus timer with a day **streak**, workspaces, quick toggles (Wi-Fi, Bluetooth, DND, Caffeine, Gaming, Num Lock, theme, night light, lock, power), your own app shortcuts, notes and agenda, weather, text and greeting. Each has several layouts and options, and a look (box, opacity, corners, colours, font, text size). Save looks of your own and reuse them on any widget.

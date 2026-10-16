@@ -192,12 +192,14 @@ Item {
                                 }
                             }
                         }
+                        // The column is only ~222 px wide: "Add a widget" + Copy + Remove on one line squeezed the first
+                        // button to ~46 px and its label spilled out. So: Add on its own line, Copy / Remove share the next.
+                        ActionChip { Layout.fillWidth: true; pal: root.pal; label: root.adding ? "Back" : "Add a widget"; on: !root.adding; onClicked: root.adding = !root.adding }
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
-                            ActionChip { Layout.fillWidth: true; pal: root.pal; label: root.adding ? "Back" : "Add a widget"; on: !root.adding; onClicked: root.adding = !root.adding }
-                            ActionChip { pal: root.pal; label: "Copy"; disabled: root.cur === null; onClicked: root.edit(WD.duplicate(root.layout, root.sel), false) }
-                            ActionChip { pal: root.pal; label: "Remove"; disabled: root.cur === null; onClicked: root.edit(WD.remove(root.layout, root.sel), false) }
+                            ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Copy"; disabled: root.cur === null; onClicked: root.edit(WD.duplicate(root.layout, root.sel), false) }
+                            ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Remove"; disabled: root.cur === null; onClicked: root.edit(WD.remove(root.layout, root.sel), false) }
                         }
                     }
                 }
@@ -461,7 +463,7 @@ Item {
                         ChipRow {
                             Layout.fillWidth: true
                             pal: root.pal; label: "Font"; labelWidth: 90
-                            options: [["ui", "Clean"], ["mono", "Code"]]
+                            options: [["ui", "Clean"], ["serif", "Serif"], ["mono", "Code"]]
                             current: root.curLook.font
                             onPicked: id => root.setLookV("font", id)
                         }

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """halcyon-chat.py : talk to your local Ollama model from the terminal, about anything.
-Empowered with autonomous system analysis, live diagnostics, safe remediation, and hardware tuning.
+The model is an AGENT: it can inspect this machine (services, logs, processes, disks, network, Hyprland, updates)
+and manage it (restart/reset services, kill a process, volume, brightness, trim RAM, desktop modes, run a command).
+Anything that changes the system shows the exact command and waits for your y / N / a.
 
 Usage:
   ai                                       -> interactive terminal chat
@@ -16,6 +18,9 @@ Commands inside the chat:
   /hypr           inspect active Hyprland monitors, workspaces & windows
   /logs           inspect recent Quickshell desktop errors
   /do <phrase>    execute a desktop action (e.g. /do gaming, /do night light, /do mirror)
+  /tools          list what the assistant can look at and do
+  /yes            toggle: pre-approve low-risk actions for this session (risky ones always ask)
+  /agent          toggle tool use on/off (off = plain chat)
   /model [name]   view or switch current Ollama model
   /clear          clear conversation history       /help  show this menu       /exit
 """
@@ -60,6 +65,28 @@ def load_advisor():
     return None
 
 ADV = load_advisor()
+
+def load_agent():
+    for p in (os.path.join(RICE, "scripts/halcyon-agent.py"),
+              os.path.join(os.path.dirname(os.path.abspath(__file__)), "halcyon-agent.py")):
+        if os.path.isfile(p):
+            try:
+                spec = importlib.util.spec_from_file_location("halcyon_agent", p)
+                m = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(m)
+                return m
+            except Exception as e:
+                print(f"[!] agent failed to load: {e}")
+    return None
+
+AG = load_agent() if ADV else None
+AGENT = None
+
+def agent(assume_yes=False):
+    global AGENT
+    if AGENT is None and AG and ADV:
+        AGENT = AG.Agent(ADV, model, assume_yes=assume_yes)
+    return AGENT
 MODEL_ALIASES = getattr(ADV, "MODEL_ALIASES", {}) if ADV else {}
 
 def model():
@@ -231,11 +258,16 @@ def repl():
     except Exception:
         pass
 
-    history, with_sys = [], True
+    history, with_sys, use_agent = [], True, True
     print("━" * 68)
     print(f" Halcyon AI Assistant  ·  Model: \033[1;36m{model()}\033[0m")
-    print(" Type your questions, or use /diag, /models, /fix, /help (Ctrl-D to exit)")
+    print(" Ask anything, or tell it what to do: \"why is bluetooth failing, fix it\", \"free some RAM\", \"volume 30\"")
+    print(" It asks before every change.  /tools  /diag  /fix  /models  /help  (Ctrl-D to exit)")
     print("━" * 68)
+    if AG:
+        note = AG.small_model_note(model())
+        if note:
+            print(note)
 
     while True:
         try:
@@ -257,6 +289,25 @@ def repl():
         if line == "/clear":
             history = []
             print("(conversation cleared)")
+            continue
+        if line == "/tools":
+            a = agent()
+            if not a:
+                print("(agent not loaded)")
+            else:
+                for n, t in a.tools.items():
+                    kind = ("\033[1;31mrisky \033[0m" if t["risk"] == "high" else "\033[1;33maction\033[0m") if t["mutating"] else "\033[32mread  \033[0m"
+                    print(f"  {kind}  {n:<20} {t['schema']['function']['description'][:78]}")
+            continue
+        if line == "/yes":
+            a = agent()
+            if a:
+                a.assume_yes = not a.assume_yes
+                print(f"(low-risk actions are {'PRE-APPROVED' if a.assume_yes else 'confirmed one by one'}; risky ones always ask)")
+            continue
+        if line == "/agent":
+            use_agent = not use_agent
+            print(f"(tool use {'ON' if use_agent else 'OFF: plain chat'})")
             continue
         if line == "/sys":
             with_sys = not with_sys
@@ -300,8 +351,11 @@ def repl():
             run_chat_diagnostics(history)
             continue
 
-        print("\033[1;35mAI  ›\033[0m ", end="", flush=True)
-        turn(history, line, with_sys)
+        if use_agent and agent():
+            agent().turn(history, line)          # prints its own "AI ›" prefix, tool calls, confirmations
+        else:
+            print("\033[1;35mAI  ›\033[0m ", end="", flush=True)
+            turn(history, line, with_sys)
 
 def check_piped_input():
     if sys.stdin.isatty():
@@ -326,10 +380,20 @@ def main():
         return
 
     if args or piped:
+        yes = "--yes" in args or "-y" in args
+        args = [a for a in args if a not in ("--yes", "-y")]
         q = " ".join(args) or "Explain this."
         if piped:
             q += "\n\n---\n" + piped[-6000:]
-        turn([], q, True)
+            turn([], q, True)               # piped text is for reading, not for acting on
+            return
+        if agent(yes):
+            note = AG.small_model_note(model())
+            if note:
+                print(note)
+            agent().turn([], q)
+        else:
+            turn([], q, True)
         return
 
     # If running non-interactively without tty and without args, output a friendly greeting / status

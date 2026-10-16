@@ -35,10 +35,15 @@
     { "id": "tree", "core": true, "demo": "tree", "keys": ["SUPER", "TAB"], "title": "Tree view",
       "body": "Your laptop, workspaces and windows as living branches. Click a node to jump there, or drag a window onto another workspace to move it." },
     { "id": "settings", "core": true, "demo": "settings", "title": "Settings",
-      "body": "Type >settings in the search bar: theme, bar style, transparency, motion, gestures, default apps and more. >bar builder lets you drag your own bar together." },
-    { "id": "done", "core": true, "title": "That's it",
-      "body": "Everything follows your wallpaper colours, so try >wallpaper gallery next. Replay this tour any time with >tour." },
-
+      "body": "Type >settings in the search bar: theme, bar style, transparency, motion, gestures, default apps and more. >bar builder lets you drag your own bar together and >widget builder designs your desktop widgets." },
+    { "id": "widgets", "title": "Desktop widgets",
+      "body": "Clocks, system usage, now playing, an audio visualizer, weather, notes, a Focus timer with a day streak and more, drawn right on your desktop. Type >widget builder to pick a layout and a look for each one." },
+    { "id": "deskedit", "title": "Place widgets with the mouse",
+      "body": "Type >place widgets on the desktop, then drag a widget where you want it (it snaps to the middle and the edges), resize it with the corner dot or the mouse wheel, and add or remove widgets on the spot. Esc when you are done." },
+    { "id": "desktopbuilder", "title": "Desktop builder",
+      "body": "A picture of your desktop: where every widget sits, a switch for the top bar, and the screen corner that opens each box. Drag widgets in the picture, or onto a corner. Type >desktop builder." },
+    { "id": "baroff", "title": "Top bar on or off",
+      "body": "Prefer a clean desktop? Type >top bar on / off to hide the bar and use widgets instead. The launcher, the pages and every box still open from the top edge." },
     { "id": "calendar", "demo": "calendar", "title": "Google Calendar",
       "body": "Type >calendar: your events by day, what is next, and a notification before each one starts, on top of everything. Press one button, copy the secret iCal address in your browser, and it connects by itself; it is read-only." },
     { "id": "notifbuilder", "rev": 2, "title": "Notification box builder",
@@ -52,6 +57,11 @@
     { "id": "bgapps", "rev": 1, "title": "Background Apps & Themed Badges",
       "body": "Apps running in the tray appear in a clean, compact glass box. Themed status badges highlight active background apps and unread notifications with smooth animations." },
     { "id": "gestures", "rev": 1, "title": "Touchpad Gestures & Workspaces",
-      "body": "Smooth 1:1 workspace finger tracking with calibrated sensitivity so workspaces switch smoothly when you want them to, without accidental triggers." }
+      "body": "Smooth 1:1 workspace finger tracking with calibrated sensitivity so workspaces switch smoothly when you want them to, without accidental triggers." },
+    { "id": "passman", "title": "Password manager",
+      "body": "passman in the console keeps your passwords in an encrypted vault. passman browser sets up a Brave / Chromium extension that asks \"Save password for this site?\" after you log in, and passman import <csv> brings in a browser export." },
+
+    { "id": "done", "core": true, "title": "That's it",
+      "body": "Everything follows your wallpaper colours, so try >wallpaper gallery next. Replay this tour any time with >tour." }
   ]
 }

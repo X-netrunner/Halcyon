@@ -20,16 +20,16 @@
 var cats = [["time", "Time"], ["system", "System"], ["media", "Media"], ["focus", "Focus"], ["desk", "Desktop"], ["info", "Info"]]
 
 var catalog = [
-    { id: "clock", cat: "time", name: "Clock", icon: 0xF0150, size: [220, 90], hint: "The time, in five looks",
-      styles: [["digital", "Digital"], ["big", "Big"], ["stacked", "Stacked"], ["analog", "Analog"], ["minimal", "Minimal"]],
+    { id: "clock", cat: "time", name: "Clock", icon: 0xF0150, size: [220, 90], hint: "The time, in eight looks",
+      styles: [["digital", "Digital"], ["big", "Big"], ["stacked", "Stacked"], ["analog", "Analog"], ["minimal", "Minimal"], ["glow", "Glow"], ["eclipse", "Eclipse"], ["roman", "Roman"]],
       opts: [
         { k: "h24", kind: "chips", label: "Hours", def: "follow", options: [["follow", "Like the bar"], ["12", "12 h"], ["24", "24 h"]] },
         { k: "seconds", kind: "toggle", label: "Show seconds", def: false },
         { k: "date", kind: "toggle", label: "Show the date", def: true },
         { k: "ampm", kind: "toggle", label: "Show AM / PM", def: true }
       ] },
-    { id: "date", cat: "time", name: "Date", icon: 0xF00ED, size: [200, 70], hint: "Day and date",
-      styles: [["line", "One line"], ["card", "Card"], ["stack", "Stacked"]],
+    { id: "date", cat: "time", name: "Date", icon: 0xF00ED, size: [200, 70], hint: "Day and date (Kanji needs a CJK font: noto-fonts-cjk)",
+      styles: [["line", "One line"], ["card", "Card"], ["stack", "Stacked"], ["hairline", "Hairline"], ["kanji", "Kanji"]],
       opts: [{ k: "year", kind: "toggle", label: "Show the year", def: false }] },
     { id: "month", cat: "time", name: "Month calendar", icon: 0xF0E17, size: [250, 230], hint: "The month, today lit",
       styles: [["grid", "Month grid"], ["week", "Week strip"]],
@@ -97,7 +97,7 @@ var catalog = [
         { k: "week", kind: "toggle", label: "Last 7 days", def: true }
       ] },
     { id: "workspaces", cat: "desk", name: "Workspaces", icon: 0xF0208, size: [260, 50], hint: "Switch workspace (click, scroll)",
-      styles: [["dots", "Dots"], ["numbers", "Numbers"], ["capsules", "Capsules"], ["pills", "Pills"]],
+      styles: [["dots", "Dots"], ["numbers", "Numbers"], ["capsules", "Capsules"], ["pills", "Pills"], ["roman", "Roman"], ["lines", "Hairlines"]],
       opts: [{ k: "min", kind: "slider", label: "Always show at least", def: 5, min: 1, max: 10, unit: "" }] },
     { id: "toggles", cat: "desk", name: "Quick toggles", icon: 0xF0521, size: [300, 70], hint: "Buttons for Wi-Fi, Bluetooth, Do not disturb, Caffeine, Gaming, Num Lock ...",
       styles: [["row", "Row"], ["grid", "Grid"], ["icons", "Icons only"]],
@@ -115,15 +115,42 @@ var catalog = [
         { k: "width", kind: "slider", label: "Width", def: 290, min: 200, max: 480, unit: " px" }
       ] },
     { id: "weather", cat: "info", name: "Weather", icon: 0xF0590, size: [220, 100], hint: "Temperature and sky (asks wttr.in every 30 minutes)",
-      styles: [["card", "Card"], ["compact", "Compact"], ["big", "Big"]],
+      styles: [["card", "Card"], ["compact", "Compact"], ["big", "Big"], ["whisper", "Whisper"]],
       opts: [
         { k: "place", kind: "text", label: "Place (empty = by your address)", def: "", hintText: "Berlin" },
         { k: "unit", kind: "chips", label: "Unit", def: "c", options: [["c", "Celsius"], ["f", "Fahrenheit"]] }
       ] },
     { id: "text", cat: "info", name: "Text & greeting", icon: 0xF0757, size: [260, 60], hint: "A greeting, or any words you want on the desktop",
-      styles: [["greeting", "Greeting"], ["plain", "Plain text"], ["quote", "Quote"]],
-      opts: [{ k: "text", kind: "text", label: "Your text", def: "Stay curious.", hintText: "what to say" }] }
+      styles: [["greeting", "Greeting"], ["plain", "Plain text"], ["quote", "Quote"], ["epigraph", "Epigraph"], ["caption", "Caption"]],
+      opts: [
+        { k: "text", kind: "text", label: "Your text", def: "Stay curious.", hintText: "what to say" },
+        { k: "by", kind: "text", label: "Said by (Epigraph)", def: "", hintText: "a name, or leave empty" }
+      ] },
+    { id: "moon", cat: "info", name: "Moon phase", icon: 0xF0F64, size: [150, 150], hint: "Tonight's moon, worked out on this computer (no internet)",
+      styles: [["disc", "Disc"], ["line", "One line"], ["big", "Big"]],
+      opts: [
+        { k: "label", kind: "toggle", label: "Show the phase name", def: true },
+        { k: "next", kind: "toggle", label: "Days to the full moon", def: true },
+        { k: "south", kind: "toggle", label: "Southern hemisphere (turns it round)", def: false }
+      ] },
+    { id: "horizon", cat: "time", name: "Horizon", icon: 0xF0150, size: [300, 70], hint: "A hairline with a glowing dot: how far through the day (or the year) you are, with its reflection",
+      styles: [["horizon", "Horizon"], ["dual", "Day and year"], ["quiet", "Quiet"]],
+      opts: [
+        { k: "width", kind: "slider", label: "Width", def: 300, min: 140, max: 700, unit: " px" },
+        { k: "reflect", kind: "toggle", label: "Reflection", def: true },
+        { k: "percent", kind: "toggle", label: "Show the percent", def: true }
+      ] },
+    { id: "breathe", cat: "focus", name: "Breathe", icon: 0xF051B, size: [150, 170], hint: "A flower that opens and closes slowly: a calm pace to breathe with",
+      styles: [["bloom", "Bloom"], ["ring", "Ring"], ["dot", "Dot"]],
+      opts: [
+        { k: "secs", kind: "slider", label: "Seconds per breath", def: 10, min: 4, max: 20, unit: " s" },
+        { k: "words", kind: "toggle", label: "Say in / out", def: true }
+      ] }
 ]
+
+// every metric widget (CPU, memory, temperature ...) also gets the two quiet styles
+for (var mi = 0; mi < catalog.length; mi++)
+    if (catalog[mi].metric === true) catalog[mi].styles = catalog[mi].styles.concat([["hairline", "Hairline"], ["petals", "Petals"]])
 
 function typeOf(id) {
     for (var i = 0; i < catalog.length; i++) if (catalog[i].id === id) return catalog[i]
@@ -139,7 +166,8 @@ var files = {
     cpu: "WMetric.qml", ram: "WMetric.qml", temp: "WMetric.qml", gpu: "WMetric.qml", disk: "WMetric.qml", battery: "WMetric.qml", volume: "WMetric.qml", brightness: "WMetric.qml",
     sysmon: "WSysmon.qml", net: "WNet.qml", uptime: "WNet.qml",
     music: "WMusic.qml", viz: "WViz.qml", focus: "WFocus.qml", workspaces: "WWorkspaces.qml", toggles: "WToggles.qml", shortcuts: "WToggles.qml",
-    notes: "WNotes.qml", weather: "WWeather.qml", text: "WText.qml"
+    notes: "WNotes.qml", weather: "WWeather.qml", text: "WText.qml",
+    moon: "WMoon.qml", horizon: "WHorizon.qml", breathe: "WBreathe.qml"
 }
 function fileOf(type) { return files[type] || "WText.qml" }
 
@@ -151,13 +179,13 @@ function fileOf(type) { return files[type] || "WText.qml" }
 //   tone     theme | second | custom : the colour of lit parts (accent)
 //   color    #rrggbb for tone = custom
 //   textTone theme | custom   ;  textColor  #rrggbb
-//   font     ui | mono
+//   font     ui | mono | serif
 //   fs       0.7 .. 1.6 : text size
 //   border   a hairline around it     shadow  a soft shadow
 var lookDefaults = { surface: "glass", op: 0.65, radius: -1, pad: -1, tone: "theme", color: "#9aa9d4", textTone: "theme", textColor: "#ffffff", font: "ui", fs: 1, border: true, shadow: true }
 var surfaces = [["glass", "Frosted glass"], ["solid", "Solid"], ["clear", "No box"], ["outline", "Outline"], ["pill", "Pill"]]
 var tones = [["theme", "Wallpaper accent"], ["second", "Second colour"], ["custom", "My colour"]]
-var swatches = ["#9aa9d4", "#f5a623", "#e58a8a", "#8fcfa0", "#7ec8e3", "#c2add8", "#ffd166", "#ffffff"]
+var swatches = ["#ffffff", "#e6e8ee", "#b9bdc8", "#9aa9d4", "#7ec8e3", "#c2add8", "#e58a8a", "#f5a623"]
 
 // built-in styles (the Widget builder lists these, and your saved ones, under "Styles")
 var presets = [
@@ -167,6 +195,11 @@ var presets = [
     { name: "Outline", look: { surface: "outline", op: 0.0, radius: 14, pad: -1, tone: "theme", font: "ui", fs: 1, border: true, shadow: false } },
     { name: "Terminal", look: { surface: "solid", op: 0.88, radius: 6, pad: 12, tone: "second", font: "mono", fs: 0.92, border: true, shadow: false } },
     { name: "Pill", look: { surface: "pill", op: 0.7, radius: 999, pad: 10, tone: "theme", font: "ui", fs: 0.95, border: true, shadow: true } },
+    { name: "Void", look: { surface: "clear", op: 0.0, radius: -1, pad: 4, tone: "custom", color: "#ffffff", textTone: "custom", textColor: "#f2f3f7", font: "ui", fs: 1, border: false, shadow: false } },
+    { name: "Moonlit", look: { surface: "glass", op: 0.22, radius: 18, pad: 16, tone: "custom", color: "#ffffff", textTone: "custom", textColor: "#eceef4", font: "ui", fs: 1, border: true, shadow: false } },
+    { name: "Ink", look: { surface: "solid", op: 0.55, radius: 4, pad: 14, tone: "custom", color: "#d9dbe1", textTone: "custom", textColor: "#eceef4", font: "ui", fs: 0.96, border: true, shadow: false } },
+    { name: "Haiku", look: { surface: "clear", op: 0.0, radius: -1, pad: 6, tone: "custom", color: "#e6e8ee", textTone: "custom", textColor: "#f2f3f7", font: "serif", fs: 1.05, border: false, shadow: false } },
+    { name: "Silver edge", look: { surface: "outline", op: 0.0, radius: 2, pad: 14, tone: "custom", color: "#cfd2db", textTone: "custom", textColor: "#eceef4", font: "serif", fs: 1, border: true, shadow: false } },
     { name: "Neon", look: { surface: "outline", op: 0.0, radius: 12, pad: -1, tone: "custom", color: "#7ef2d0", font: "mono", fs: 1, border: true, shadow: true } }
 ]
 
@@ -181,7 +214,7 @@ function look(l) {
     if (["glass", "solid", "clear", "outline", "pill"].indexOf(o.surface) < 0) o.surface = "glass"
     if (["theme", "second", "custom"].indexOf(o.tone) < 0) o.tone = "theme"
     if (["theme", "custom"].indexOf(o.textTone) < 0) o.textTone = "theme"
-    if (o.font !== "mono") o.font = "ui"
+    if (o.font !== "mono" && o.font !== "serif") o.font = "ui"
     o.op = clamp(num(o.op, 0.65), 0, 1)
     o.radius = Math.round(clamp(num(o.radius, -1), -1, 999))
     o.pad = Math.round(clamp(num(o.pad, -1), -1, 60))
