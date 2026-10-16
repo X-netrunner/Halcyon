@@ -1,7 +1,7 @@
 # Completions for the `halcyon` command (config/fish/functions/halcyon.fish).
 complete -c halcyon -f
 set -l __halcyon_cmds \
-    "launcher:app menu and commands" "settings:Settings" "notification-builder:notification box builder" "bar-builder:bar builder" \
+    "launcher:app menu and commands" "settings:Settings" "notification-builder:notification box builder" "bar-builder:bar builder" "desktop-builder:desktop builder" "widget-builder:widget builder" "desktop-edit:place widgets on the desktop" "bar:top bar on / off (toggle)" \
     "wallpaper-gallery:wallpaper gallery" "startup-view:startup and processes" "tour:guided tour (replay)" "calendar:Google Calendar" "notifications:notification centre" \
     "clear-notifications:remove all notifications" "dnd:do not disturb (toggle)" "cheatsheet:shortcuts tree" "power-menu:power menu" \
     "quick-terminal:pop-out terminal" "overview:workspace tree" "gaming-mode:gaming mode (toggle)" "caffeine:keep the screen awake (toggle)" \

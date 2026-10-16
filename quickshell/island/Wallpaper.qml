@@ -16,6 +16,9 @@ PanelWindow {
     // ---- Desktop builder (Settings > Appearance > Desktop builder): shell.qml hands over the palette and the options
     property var pal: null
     property var opt: ({})
+    property var env: null                  // the shell: the feeds and actions the desktop widgets use
+    property bool widgetsHidden: false      // the desktop editor shows them itself while you place them
+    property real widgetsTop: 24            // room kept free at the top (the bar)
     readonly property bool wpOn: !opt || opt.deskWall !== false                       // false = no picture: a plain background (colours still follow the last wallpaper)
     readonly property real blurAmt: Math.max(0, Math.min(1, (opt && opt.deskBlur !== undefined ? Number(opt.deskBlur) : 0) / 100))
     readonly property int blurPad: Math.round(blurAmt * 56)                           // the picture is drawn a bit larger so the blur does not darken the screen edges
@@ -129,6 +132,16 @@ PanelWindow {
         anchors.fill: parent
         pal: wallpaper.pal
         opt: wallpaper.opt
+    }
+
+    // the desktop widgets (Widget builder = how each looks, Desktop builder / desktop editor = where they sit)
+    DeskWidgets {
+        anchors.fill: parent
+        visible: !wallpaper.widgetsHidden
+        pal: wallpaper.pal
+        env: wallpaper.env
+        opt: wallpaper.opt
+        topInset: wallpaper.widgetsTop
     }
 
     SequentialAnimation {

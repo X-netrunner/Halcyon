@@ -34,7 +34,8 @@ function defaults() {
         v: 1,
         blocks: [{ id: "sky", on: true }, { id: "header", on: true }, { id: "list", on: true }],
         skyH: 0, art: true, dots: 10, behind: false, fly: 9, toastStars: true,
-        pad: 18, gap: 12, rowGap: 10, radius: 28, width: 392, vpos: "top", offY: 0
+        pad: 18, gap: 12, rowGap: 10, radius: 28, width: 392, vpos: "top", offY: 0,
+        corner: "tr", spot: "edge"
     }
 }
 
@@ -65,6 +66,8 @@ function normalize(l) {
     out.behind = l.behind === true
     out.toastStars = l.toastStars !== false
     out.vpos = (l.vpos === "middle" || l.vpos === "bottom") ? l.vpos : "top"
+    out.corner = (l.corner === "tl" || l.corner === "bl" || l.corner === "br") ? l.corner : "tr"
+    out.spot = (l.spot === "corner") ? "corner" : "edge"
     return out
 }
 
@@ -92,5 +95,7 @@ function isDefault(cur) { return JSON.stringify(normalize(cur)) === JSON.stringi
 function summary(cur) {
     var c = normalize(cur), on = []
     for (var i = 0; i < c.blocks.length; i++) if (c.blocks[i].on) on.push(names[c.blocks[i].id])
-    return c.width + " px wide · padding " + c.pad + " · " + (c.fly > 0 ? c.fly + " flying stars" : "no flying stars") + " · " + on.join(", ")
+    var cornerNames = { tl: "Top-left", tr: "Top-right", bl: "Bottom-left", br: "Bottom-right" }
+    var spotNames = { edge: "screen edge", corner: "corner trigger" }
+    return c.width + " px wide · " + cornerNames[c.corner] + " (" + spotNames[c.spot] + ") · " + (c.fly > 0 ? c.fly + " flying stars" : "no flying stars") + " · " + on.join(", ")
 }

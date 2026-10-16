@@ -1467,7 +1467,7 @@ fi
 
 try run_as_user_cmd "Making the scripts executable" bash -c '
     cd "$1" || exit 0
-    for f in install.sh update.sh scripts/*.sh scripts/halcyon-tune launch/*.sh quickshell/island/scripts/*.sh \
+    for f in install.sh update.sh scripts/*.sh scripts/*.py scripts/halcyon-tune bin/* launch/*.sh quickshell/island/scripts/*.sh \
              sysmode/sysmode sysmode/*.py sysmode/*.py.bak; do
         [ -f "$f" ] && chmod +x "$f"
     done
@@ -1876,6 +1876,11 @@ user_setup wallpaper  || warn_later "Wallpaper / colours: something did not work
 user_setup terminals  || warn_later "Terminal colour files could not be written."
 user_setup app-themes || warn_later "App themes (Starship, fish, btop, yazi, Spotify, spotify-player, Discord, Thunar) could not all be set up: run ~/.config/Halcyon/scripts/user-setup.sh app-themes"
 user_setup fish-commands || warn_later "The fish commands (halcyon, bar-builder, notification-builder ...) could not be installed: run ~/.config/Halcyon/scripts/user-setup.sh fish-commands"
+if [[ -f "$TARGET_RICE/scripts/install-ai.sh" ]]; then
+    run_as_user bash "$TARGET_RICE/scripts/install-ai.sh" || true
+elif [[ -f "$RICE_SOURCE/scripts/install-ai.sh" ]]; then
+    run_as_user bash "$RICE_SOURCE/scripts/install-ai.sh" || true
+fi
 if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking

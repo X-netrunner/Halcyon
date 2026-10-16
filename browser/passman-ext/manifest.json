@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Halcyon passman",
+  "version": "1.0.0",
+  "description": "Asks to save the logins you type into the Halcyon vault (passman). Nothing leaves your computer.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvX5b4wlwB02RcJQMp6ydLwDyjCGDr3HooQ8vY1jQL0PwtfZTMgGcqooxjSji44HpoS2iUeQY5BZwxUX6Amo5bi92khQ69801q5JC5cs3YB189s/xfSZ4GdZR0C7BrDUEejcEciLS9Yi9nZR4Smuncz1dZtoMudzPq4TyJAsWNVGFROgriDNw0e4ZiNC1cOC6ph1EUEhb5vWvUoN7cuW3NurP36GtjS0vEhIdqmkYlv7p6Xi/Gz/gWN14D13sQQPD79aLZ1uRRlKomHoBLu2d3COrJ6fI9N8G64L+uSLnmaT6jKaCzfz1LdU4xuSBg9JoZOPzGfCzo9pmEkxGbblckwIDAQAB",
+  "permissions": ["nativeMessaging", "storage"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"], "js": ["content.js"], "all_frames": false, "run_at": "document_idle" }
+  ]
+}

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
 import "DeskSpots.js" as DS
+import "WidgetData.js" as WD
 
 // The desktop builder window (Settings > Appearance > Desktop builder > "Open ..."). A dimmed overlay with one card on it.
 //   Left:   a small picture of the screen: the wallpaper (or the plain background), its blur, the moving stars, and the four
@@ -16,22 +17,50 @@ Item {
     property string wallpaperPath: ""
     signal changed(string key, var value)
     signal closed()
+    signal openWidgets()                 // the Widget builder (how each widget looks)
+    signal editDesktop()                 // place the widgets right on the desktop
 
     readonly property bool wallOn: !opt || opt.deskWall !== false
     readonly property real blurAmt: Math.max(0, Math.min(1, (opt && opt.deskBlur !== undefined ? Number(opt.deskBlur) : 0) / 100))
     readonly property string bgKind: (opt && opt.deskBg) || "theme"
-    readonly property bool starsOn: opt && opt.deskStars === true
+    readonly property bool starsOn: !!opt && opt.deskStars === true
     readonly property var spots: DS.normalize(opt ? opt.boxSpots : null)
+    readonly property var wlayout: WD.normalize(opt ? opt.deskWidgets : null)
+    readonly property string barStyle: (opt && opt.barStyle) || "island"
+    readonly property string widgetMode: (opt && opt.deskNotes) || "off"       // off | notes | both
     property string pick: ""                       // the box that was clicked and is waiting for a corner
 
     function num(k, d) { return opt && opt[k] !== undefined ? Number(opt[k]) : d }
     function put(k, v) { root.changed(k, v) }
+    // Sliders send a value for every pixel of a drag, and every value rewrites the shared options (and re-blurs the real
+    // wallpaper). putLive passes the first one at once, then at most one every 70 ms, always ending on the last value.
+    property var pending: ({})
+    function putLive(k, v) {
+        if (liveT.running) { var p = pending; p[k] = v; pending = p; return }
+        root.changed(k, v)
+        liveT.start()
+    }
+    Timer {
+        id: liveT
+        interval: 70
+        onTriggered: {
+            var p = root.pending
+            root.pending = ({})
+            var any = false
+            for (var k in p) { root.changed(k, p[k]); any = true }
+            if (any) liveT.start()
+        }
+    }
+    function flushLive() {
+        var p = root.pending
+        root.pending = ({})
+        for (var k in p) root.changed(k, p[k])
+    }
     function moveBox(id, corner) { root.put("boxSpots", DS.move(opt ? opt.boxSpots : null, id, corner)); root.pick = "" }
     function resetAll() {
-        put("deskWall", true); put("deskBlur", 0); put("deskBg", "theme")
-        put("deskStars", false); put("deskStarCount", 70); put("deskStarSpeed", 1); put("deskStarSize", 1)
-        put("deskStarDir", "right"); put("deskStarTone", "mix"); put("deskStarTwinkle", true); put("deskStarShoot", false)
-        put("boxSpots", DS.defaults); put("notifSpot", "edge")
+        liveT.stop(); root.pending = ({})
+        for (var k in DS.resetValues) put(k, DS.resetValues[k])
+        put("boxSpots", DS.clone(DS.defaults))
         root.pick = ""
     }
 
@@ -39,7 +68,7 @@ Item {
     visible: opacity > 0.01
     focus: open
     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
-    onOpenChanged: { if (open) { pick = ""; Qt.callLater(function () { root.forceActiveFocus() }) } }
+    onOpenChanged: { if (open) { pick = ""; Qt.callLater(function () { root.forceActiveFocus() }) } else flushLive() }
     Component.onCompleted: if (open) Qt.callLater(function () { root.forceActiveFocus() })
     Keys.onPressed: function (e) { if (e.key === Qt.Key_Escape) { if (root.pick !== "") root.pick = ""; else root.closed(); e.accepted = true } }
 
@@ -104,8 +133,8 @@ Item {
                     Item {
                         id: scr
                         readonly property real ratio: Math.max(0.5, root.width) / Math.max(0.5, root.height)
-                        width: stage.width - 40
-                        height: Math.min(stage.height - 90, width / ratio)
+                        width: Math.max(40, Math.min(stage.width - 40, (stage.height - 90) * ratio))
+                        height: width / ratio
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: 22
                         readonly property real k: width / Math.max(1, root.width)      // preview scale
@@ -135,7 +164,7 @@ Item {
                                 anchors.fill: parent
                                 anchors.margins: -Math.round(root.blurAmt * 56 * scr.k)
                                 visible: root.wallOn && source.toString() !== ""
-                                source: (root.open && root.wallOn && root.wallpaperPath !== "") ? "file://" + root.wallpaperPath : ""
+                                source: (root.open && root.wallOn && root.wallpaperPath !== "") ? "file://" + encodeURI(root.wallpaperPath).replace(/#/g, "%23").replace(/\?/g, "%3F") : ""
                                 sourceSize: Qt.size(640, 400)
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
@@ -151,23 +180,68 @@ Item {
                                 visible: root.open
                             }
 
+                            // the desktop widgets: where they sit (drag one to move it; how it looks is the Widget builder's job)
+                            Repeater {
+                                model: root.wlayout.items
+                                delegate: Rectangle {
+                                    id: wph
+                                    required property var modelData
+                                    readonly property var tp: WD.typeOf(modelData.type)
+                                    readonly property real rw: (tp ? tp.size[0] : 120) * modelData.scale
+                                    readonly property real rh: (tp ? tp.size[1] : 60) * modelData.scale
+                                    property bool drag: false
+                                    property real gx: 0
+                                    property real gy: 0
+                                    width: Math.max(14, rw * scr.k); height: Math.max(10, rh * scr.k)
+                                    x: drag ? gx : WD.posX(modelData, root.width, rw, 24) * scr.k
+                                    y: drag ? gy : WD.posY(modelData, root.height, rh, root.barStyle === "off" ? 24 : 70, 24) * scr.k
+                                    radius: 8 * scr.k + 2
+                                    color: Qt.alpha(root.pal.accent, drag ? 0.32 : 0.18)
+                                    border.width: 1
+                                    border.color: Qt.alpha(root.pal.accent, drag ? 0.9 : 0.55)
+                                    Column {
+                                        anchors.centerIn: parent
+                                        spacing: 1
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: String.fromCodePoint(WD.iconOf(modelData.type)); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: Math.max(8, Math.min(18, wph.height * 0.38)) }
+                                        Text { visible: wph.height > 30 && wph.width > 46; anchors.horizontalCenter: parent.horizontalCenter; text: WD.nameOf(modelData.type); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 8; elide: Text.ElideRight; width: Math.min(implicitWidth, wph.width - 4) }
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.OpenHandCursor
+                                        property real ox: 0
+                                        property real oy: 0
+                                        property real sx: 0
+                                        property real sy: 0
+                                        onPressed: m => { var p = mapToItem(scr, m.x, m.y); sx = p.x; sy = p.y; ox = wph.x; oy = wph.y; wph.gx = ox; wph.gy = oy; wph.drag = true }
+                                        onPositionChanged: m => {
+                                            if (!pressed) return
+                                            var p = mapToItem(scr, m.x, m.y)
+                                            wph.gx = Math.max(0, Math.min(scr.width - wph.width, ox + p.x - sx))
+                                            wph.gy = Math.max(0, Math.min(scr.height - wph.height, oy + p.y - sy))
+                                        }
+                                        onReleased: {
+                                            if (!wph.drag) return
+                                            wph.drag = false
+                                            var top = root.barStyle === "off" ? 24 : 70
+                                            root.put("deskWidgets", WD.setPos(root.wlayout, wph.modelData.uid, WD.fracX(wph.gx / scr.k, root.width, wph.rw, 24), WD.fracY(wph.gy / scr.k, root.height, wph.rh, top, 24)))
+                                        }
+                                        onDoubleClicked: root.openWidgets()
+                                    }
+                                }
+                            }
+
                             // ---- the four corners
                             Repeater {
-                                model: [
-                                    { c: "tl", fixed: false },
-                                    { c: "tr", fixed: true },
-                                    { c: "bl", fixed: false },
-                                    { c: "br", fixed: false }
-                                ]
+                                model: ["tl", "tr", "bl", "br"]
                                 delegate: Item {
                                     id: slot
-                                    required property var modelData
-                                    readonly property string c: modelData.c
-                                    readonly property string boxId: modelData.fixed ? "notif" : DS.boxAt(root.opt ? root.opt.boxSpots : null, c)
+                                    required property string modelData
+                                    readonly property string c: modelData
+                                    readonly property string boxId: DS.boxAt(root.opt ? root.opt.boxSpots : null, c)
                                     readonly property bool atRight: c.charAt(1) === "r"
                                     readonly property bool atBottom: c.charAt(0) === "b"
                                     readonly property bool picked: boxId !== "" && boxId === root.pick
-                                    readonly property bool target: root.pick !== "" && !modelData.fixed && boxId !== root.pick
+                                    readonly property bool target: root.pick !== "" && boxId !== root.pick
                                     width: Math.min(scr.width * 0.38, 150)
                                     height: Math.min(scr.height * 0.24, 62)
                                     x: atRight ? scr.width - width - 8 : 8
@@ -185,7 +259,7 @@ Item {
                                             spacing: 2
                                             Text {
                                                 anchors.horizontalCenter: parent.horizontalCenter
-                                                text: slot.boxId === "notif" ? "Notifications" : (DS.names[slot.boxId] || "")
+                                                text: DS.names[slot.boxId] || ""
                                                 color: root.pal.text
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 12
@@ -193,7 +267,7 @@ Item {
                                             }
                                             Text {
                                                 anchors.horizontalCenter: parent.horizontalCenter
-                                                text: slot.boxId === "notif" ? (root.opt && root.opt.notifSpot === "corner" ? "corner trigger" : "edge trigger") + " · fixed" : (slot.picked ? "pick a corner" : (slot.target ? "move here" : DS.cornerNames[slot.c]))
+                                                text: slot.picked ? "pick a corner" : (slot.target ? "move here" : (slot.boxId === "notif" ? ((root.opt && root.opt.notifSpot === "corner" ? "corner trigger" : "edge trigger") + " · " + DS.cornerNames[slot.c]) : DS.cornerNames[slot.c]))
                                                 color: slot.picked ? root.pal.accent : root.pal.muted
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 10
@@ -203,7 +277,6 @@ Item {
                                             id: ma
                                             anchors.fill: parent
                                             hoverEnabled: true
-                                            enabled: !slot.modelData.fixed
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: {
                                                 if (root.pick === "") root.pick = slot.boxId
@@ -264,7 +337,7 @@ Item {
                             visible: root.wallOn
                             pal: root.pal; label: "Blur"; from: 0; to: 100; unit: " %"; zeroText: "Off"
                             value: Math.round(root.num("deskBlur", 0))
-                            onPicked: v => root.put("deskBlur", v)
+                            onPicked: v => root.putLive("deskBlur", v)
                         }
                         Text {
                             Layout.fillWidth: true
@@ -272,14 +345,13 @@ Item {
                             text: "A blurred wallpaper is drawn through a GPU effect; it only works again when the picture changes, but on a weak GPU keep it low."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                         }
-                        RowLayout {
+                        ChipRow {
                             Layout.fillWidth: true
                             visible: !root.wallOn
-                            spacing: 8
-                            Text { text: "Background"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; Layout.preferredWidth: 128 }
-                            Chip { pal: root.pal; implicitHeight: 30; label: "Theme colour"; on: root.bgKind === "theme"; onClicked: root.put("deskBg", "theme") }
-                            Chip { pal: root.pal; implicitHeight: 30; label: "Black"; on: root.bgKind === "black"; onClicked: root.put("deskBg", "black") }
-                            Chip { pal: root.pal; implicitHeight: 30; label: "Gradient"; on: root.bgKind === "gradient"; onClicked: root.put("deskBg", "gradient") }
+                            pal: root.pal; label: "Background"
+                            options: [["theme", "Theme colour"], ["black", "Black"], ["gradient", "Gradient"]]
+                            current: root.bgKind
+                            onPicked: id => root.put("deskBg", id)
                         }
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
@@ -301,26 +373,22 @@ Item {
                             Layout.fillWidth: true
                             visible: root.starsOn
                             spacing: 10
-                            NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Amount"; from: 10; to: 250; unit: ""; value: Math.round(root.num("deskStarCount", 70)); onPicked: v => root.put("deskStarCount", v) }
-                            NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Speed"; from: 10; to: 400; unit: " %"; value: Math.round(root.num("deskStarSpeed", 1) * 100); onPicked: v => root.put("deskStarSpeed", v / 100) }
-                            NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Size"; from: 50; to: 300; unit: " %"; value: Math.round(root.num("deskStarSize", 1) * 100); onPicked: v => root.put("deskStarSize", v / 100) }
-                            RowLayout {
+                            NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Amount"; from: 10; to: 250; unit: ""; value: Math.round(root.num("deskStarCount", 70)); onPicked: v => root.putLive("deskStarCount", v) }
+                            NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Speed"; from: 10; to: 400; unit: " %"; value: Math.round(root.num("deskStarSpeed", 1) * 100); onPicked: v => root.putLive("deskStarSpeed", v / 100) }
+                            NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Size"; from: 50; to: 300; unit: " %"; value: Math.round(root.num("deskStarSize", 1) * 100); onPicked: v => root.putLive("deskStarSize", v / 100) }
+                            ChipRow {
                                 Layout.fillWidth: true
-                                spacing: 8
-                                Text { text: "Direction"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; Layout.preferredWidth: 128 }
-                                Repeater {
-                                    model: [["right", "Right"], ["left", "Left"], ["up", "Up"], ["down", "Down"], ["diag", "Diagonal"]]
-                                    delegate: Chip { required property var modelData; pal: root.pal; implicitHeight: 30; label: modelData[1]; on: ((root.opt && root.opt.deskStarDir) || "right") === modelData[0]; onClicked: root.put("deskStarDir", modelData[0]) }
-                                }
+                                pal: root.pal; label: "Direction"
+                                options: [["right", "Right"], ["left", "Left"], ["up", "Up"], ["down", "Down"], ["diag", "Diagonal"]]
+                                current: (root.opt && root.opt.deskStarDir) || "right"
+                                onPicked: id => root.put("deskStarDir", id)
                             }
-                            RowLayout {
+                            ChipRow {
                                 Layout.fillWidth: true
-                                spacing: 8
-                                Text { text: "Colour"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; Layout.preferredWidth: 128 }
-                                Repeater {
-                                    model: [["mix", "Mixed"], ["accent", "Accent"], ["white", "White"]]
-                                    delegate: Chip { required property var modelData; pal: root.pal; implicitHeight: 30; label: modelData[1]; on: ((root.opt && root.opt.deskStarTone) || "mix") === modelData[0]; onClicked: root.put("deskStarTone", modelData[0]) }
-                                }
+                                pal: root.pal; label: "Colour"
+                                options: [["mix", "Mixed"], ["accent", "Accent"], ["white", "White"]]
+                                current: (root.opt && root.opt.deskStarTone) || "mix"
+                                onPicked: id => root.put("deskStarTone", id)
                             }
                             RowLayout {
                                 Layout.fillWidth: true
@@ -332,45 +400,71 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: 10
                                 Text { Layout.fillWidth: true; text: "Now and then a shooting star"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
-                                Toggle { pal: root.pal; on: root.opt && root.opt.deskStarShoot === true; onToggled: root.put("deskStarShoot", !(root.opt && root.opt.deskStarShoot === true)) }
+                                Toggle { pal: root.pal; on: !!root.opt && root.opt.deskStarShoot === true; onToggled: root.put("deskStarShoot", !(root.opt && root.opt.deskStarShoot === true)) }
                             }
                         }
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
-                        // ---- where the boxes open
-                        NbCap { pal: root.pal; text: "WHERE THE BOXES OPEN" }
+                        // ---- the top bar and the widgets
+                        NbCap { pal: root.pal; text: "TOP BAR" }
+                        ChipRow {
+                            Layout.fillWidth: true
+                            pal: root.pal; label: "Bar"
+                            options: [["island", "Island"], ["notch", "Notch"], ["custom", "Custom"], ["off", "Off"]]
+                            current: root.barStyle
+                            onPicked: id => root.put("barStyle", id)
+                        }
                         Text {
                             Layout.fillWidth: true
-                            text: "Each box opens from the corner you pick (hover it or click it, as set in Edge boxes). The top-right corner stays with the notifications."
+                            text: root.barStyle === "off" ? "No bar. The launcher (Super tap), the media and performance pages and every box still open from the top edge, so put the clock, workspaces and stats on the desktop as widgets." : "Switch the bar off once your desktop widgets do its job."
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
+                        }
+
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
+
+                        NbCap { pal: root.pal; text: "WIDGETS  ·  " + root.wlayout.items.length }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "The boxes in the picture are your widgets: drag one to move it. Double-click one, or open the Widget builder, to change its layout and look. \"Place them on the desktop\" lets you drag the real ones."
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ActionChip { pal: root.pal; label: "Open the widget builder"; on: true; onClicked: root.openWidgets() }
+                            ActionChip { pal: root.pal; label: "Place them on the desktop"; onClicked: root.editDesktop() }
+                        }
+
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
+
+                        // ---- where the boxes open
+                        NbCap { pal: root.pal; text: "ACTIVATION ZONES  ·  WHERE THE BOXES OPEN" }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Each of the four boxes (Notifications, Utilities, Background apps, Console) opens from the corner you pick. Moving a box onto an occupied corner swaps them."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                         }
                         Repeater {
                             model: DS.order
-                            delegate: RowLayout {
+                            delegate: ChipRow {
                                 id: boxRow
                                 required property string modelData
                                 Layout.fillWidth: true
-                                spacing: 8
-                                Text { text: DS.names[boxRow.modelData]; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; Layout.preferredWidth: 128; elide: Text.ElideRight }
-                                Repeater {
-                                    model: DS.corners
-                                    delegate: Chip {
-                                        required property string modelData
-                                        pal: root.pal; implicitHeight: 30
-                                        label: DS.cornerNames[modelData]
-                                        on: root.spots[boxRow.modelData] === modelData
-                                        onClicked: root.moveBox(boxRow.modelData, modelData)
-                                    }
-                                }
+                                pal: root.pal
+                                label: DS.names[modelData]
+                                labelWidth: 104; fit: true
+                                options: DS.corners.map(function (c) { return [c, DS.cornerNames[c]] })
+                                current: root.spots[modelData]
+                                onPicked: id => root.moveBox(boxRow.modelData, id)
                             }
                         }
-                        RowLayout {
+                        ChipRow {
                             Layout.fillWidth: true
-                            spacing: 8
-                            Text { text: "Notifications"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; Layout.preferredWidth: 128 }
-                            Chip { pal: root.pal; implicitHeight: 30; label: "Right edge"; on: !(root.opt && root.opt.notifSpot === "corner"); onClicked: root.put("notifSpot", "edge") }
-                            Chip { pal: root.pal; implicitHeight: 30; label: "Top-right corner"; on: root.opt && root.opt.notifSpot === "corner"; onClicked: root.put("notifSpot", "corner") }
+                            pal: root.pal; label: "Notif trigger"
+                            options: [["edge", "Screen edge strip"], ["corner", "Corner trigger"]]
+                            current: (root.opt && root.opt.notifSpot === "corner") ? "corner" : "edge"
+                            onPicked: id => root.put("notifSpot", id)
                         }
                     }
                 }

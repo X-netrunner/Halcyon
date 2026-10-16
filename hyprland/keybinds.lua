@@ -19,8 +19,15 @@ do
 end
 local function bind(id, default, action, opts)
     local keys = user.keys[id] or default
-    if keys == nil or keys == "" or keys == "none" then return end
-    if opts then hl.bind(keys, action, opts) else hl.bind(keys, action) end
+    if keys == nil or keys == "" or keys == "none" or action == nil then return end
+    if type(keys) == "string" then
+        keys = keys:gsub("%s*,%s*", " + ")
+    end
+    if opts then
+        pcall(hl.bind, keys, action, opts)
+    else
+        pcall(hl.bind, keys, action)
+    end
 end
 
 -- Apps
@@ -148,8 +155,11 @@ bind("settings_alt", "SUPER + F11", hl.dsp.exec_cmd(ipc .. "settings"))         
 bind("clearnotifs", vars.kbClearNotifs, hl.dsp.exec_cmd(ipc .. "clearnotifs"))
 bind("apps", "SUPER + SHIFT + A", hl.dsp.exec_cmd(ipc .. "apps"))              -- background apps box (bottom-left)
 bind("notifcenter", "SUPER + SHIFT + N", hl.dsp.exec_cmd(ipc .. "notifcenter"))   -- notification centre
+bind("notes", "SUPER + N", hl.dsp.exec_cmd(ipc .. "notes"))                     -- quick notes menu (SUPER + N)
+bind("extradim", "SUPER + ALT + D", hl.dsp.exec_cmd(ipc .. "extradim"))         -- extra dim mode (SUPER + ALT + D)
+bind("record", "SUPER + ALT + R", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/screen-record.sh toggle")) -- screen recorder
 bind("dnd", "SUPER + SHIFT + D", hl.dsp.exec_cmd(ipc .. "dnd"))
-bind("theme", "SUPER + SHIFT + T", hl.dsp.exec_cmd(ipc .. "theme"))                 -- light / dark theme           -- do not disturb
+bind("theme", "SUPER + SHIFT + T", hl.dsp.exec_cmd(ipc .. "theme"))                 -- light / dark theme
 
 -- Tapping SUPER on its own opens the launcher (no Space needed).
 -- Runs on key RELEASE on purpose: until the key comes up, Hyprland cannot tell a lone tap from the start of SUPER+T / SUPER+Q ...,

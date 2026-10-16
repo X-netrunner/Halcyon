@@ -52,7 +52,7 @@ pub struct Thresholds {
 
 impl Default for Thresholds {
     fn default() -> Self {
-        Thresholds { pinch_min: 0.018, swipe_min: 0.035, pinch_bias: 0.5 }
+        Thresholds { pinch_min: 0.018, swipe_min: 0.048, pinch_bias: 0.5 }
     }
 }
 

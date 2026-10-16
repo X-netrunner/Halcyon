@@ -61,6 +61,10 @@ Scope {
             { cmd: "halcyon launcher", put: "halcyon launcher", sudo: false, desc: "app menu and commands" },
             { cmd: "halcyon settings", put: "halcyon settings", sudo: false, desc: "Settings" },
             { cmd: "bar-builder", put: "bar-builder", sudo: false, desc: "bar builder" },
+            { cmd: "desktop-builder", put: "desktop-builder", sudo: false, desc: "desktop builder: widget places & box activation zones" },
+            { cmd: "widget-builder", put: "widget-builder", sudo: false, desc: "widget builder: layout & look of each desktop widget" },
+            { cmd: "desktop-edit", put: "desktop-edit", sudo: false, desc: "drag your widgets around right on the desktop" },
+            { cmd: "halcyon bar", put: "halcyon bar", sudo: false, desc: "top bar on / off (toggle)" },
             { cmd: "notification-builder", put: "notification-builder", sudo: false, desc: "notification box builder" },
             { cmd: "wallpaper-gallery", put: "wallpaper-gallery", sudo: false, desc: "wallpaper gallery" },
             { cmd: "startup-view", put: "startup-view", sudo: false, desc: "startup and processes" },
@@ -77,6 +81,10 @@ Scope {
             { cmd: "halcyon reload", put: "halcyon reload", sudo: false, desc: "reload the island and Hyprland" }
         ] },
         { title: "In this console", items: [
+            { cmd: "ai <question>", put: "ai ", sudo: false, desc: "local AI assistant" },
+            { cmd: "advisor", put: "advisor", sudo: false, desc: "system analysis and performance advisor" },
+            { cmd: "notes <text>", put: "notes ", sudo: false, desc: "quick notes (Super + N)" },
+            { cmd: "passman [get|add|import|browser]", put: "passman ", sudo: false, desc: "native encrypted password vault; passman browser = ask to save logins from Brave" },
             { cmd: "help", put: "help", sudo: false, desc: "the short help" },
             { cmd: "cd [folder]", put: "cd ", sudo: false, desc: "change folder (remembered)" },
             { cmd: "clear", put: "clear", sudo: false, desc: "clear the output (Ctrl+L too)" },
@@ -197,8 +205,8 @@ Scope {
                         Item {
                             id: tree
                             width: scroll.width
-                            readonly property int colCount: card.width >= 980 ? 2 : 1
-                            readonly property real gap: 28
+                            readonly property int colCount: card.width >= 1100 ? 2 : 1
+                            readonly property real gap: 44
                             readonly property real colW: (width - (colCount - 1) * gap) / colCount
                             readonly property real barY: 72
                             readonly property real colsY: 98
@@ -213,7 +221,7 @@ Scope {
                                     var best = 0
                                     for (var j = 1; j < n; j++) if (hs[j] < hs[best]) best = j
                                     cols[best].push(root.groupsNow[g])
-                                    hs[best] += root.groupsNow[g].items.length + 2
+                                    hs[best] += root.groupsNow[g].items.length * 1.7 + 2
                                 }
                                 return cols
                             }
@@ -298,7 +306,7 @@ Scope {
                                             required property int index
                                             readonly property bool lastGroup: grp.index === col.modelData.length - 1
                                             width: col.width
-                                            height: grpHead.height + leaves.height + 16
+                                            height: grpHead.height + leaves.height + 34
 
                                             // the column's trunk: runs down through every group
                                             Rectangle {
@@ -311,7 +319,7 @@ Scope {
                                             Item {
                                                 id: grpHead
                                                 width: parent.width
-                                                height: 34
+                                                height: 44
                                                 Rectangle {
                                                     x: 3; anchors.verticalCenter: parent.verticalCenter
                                                     width: 15; height: 15; radius: 7.5
@@ -325,9 +333,9 @@ Scope {
                                                     text: grp.modelData.title.toUpperCase()
                                                     color: root.pal.accent
                                                     font.family: root.pal.uiFont
-                                                    font.pixelSize: 11
+                                                    font.pixelSize: 12
                                                     font.weight: Font.DemiBold
-                                                    font.letterSpacing: 1.4
+                                                    font.letterSpacing: 1.6
                                                 }
                                             }
 
@@ -347,47 +355,56 @@ Scope {
                                                         readonly property bool lastLeaf: leaf.index === grp.modelData.items.length - 1
                                                         readonly property bool clickable: leaf.modelData.put !== ""
                                                         width: leaves.width
-                                                        height: 32
+                                                        height: 54
 
                                                         // sub-trunk + elbow
-                                                        Rectangle { x: 34; y: 0; width: 1; height: leaf.lastLeaf ? 16 : leaf.height; color: Qt.alpha(root.pal.accent, 0.28) }
-                                                        Rectangle { x: 34; y: 16; width: 16; height: 1; color: Qt.alpha(root.pal.accent, 0.28) }
-                                                        Rectangle { x: 50; y: 16 - 3; width: 6; height: 6; radius: 3; color: Qt.alpha(root.pal.accent, 0.6) }
+                                                        Rectangle { x: 34; y: 0; width: 1; height: leaf.lastLeaf ? leaf.height / 2 : leaf.height; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                        Rectangle { x: 34; y: leaf.height / 2; width: 16; height: 1; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                        Rectangle { x: 50; y: leaf.height / 2 - 3; width: 6; height: 6; radius: 3; color: Qt.alpha(root.pal.accent, 0.6) }
 
                                                         Rectangle {
                                                             id: rowBg
-                                                            x: 62; y: 1
+                                                            x: 62; y: 3
                                                             width: leaf.width - 62
-                                                            height: 30
-                                                            radius: 9
+                                                            height: leaf.height - 6
+                                                            radius: 12
                                                             color: ma.containsMouse && leaf.clickable ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent"
                                                             Behavior on color { ColorAnimation { duration: root.pal.dFast } }
 
                                                             RowLayout {
                                                                 anchors.fill: parent
-                                                                anchors.leftMargin: 8
-                                                                anchors.rightMargin: 8
-                                                                spacing: 10
+                                                                anchors.leftMargin: 12
+                                                                anchors.rightMargin: 14
+                                                                spacing: 18
                                                                 // the command, as a mono keycap
                                                                 Rectangle {
-                                                                    implicitWidth: cmdText.implicitWidth + 14
-                                                                    implicitHeight: 22
-                                                                    radius: 6
+                                                                    Layout.preferredWidth: 220
+                                                                    Layout.maximumWidth: 220
+                                                                    Layout.alignment: Qt.AlignVCenter
+                                                                    implicitHeight: 28
+                                                                    radius: 8
                                                                     color: Qt.alpha(root.pal.accent2, 0.14)
                                                                     border.width: 1
                                                                     border.color: Qt.alpha(root.pal.accent2, 0.38)
                                                                     Text {
                                                                         id: cmdText
-                                                                        anchors.centerIn: parent
+                                                                        anchors.verticalCenter: parent.verticalCenter
+                                                                        anchors.left: parent.left; anchors.right: parent.right
+                                                                        anchors.leftMargin: 12; anchors.rightMargin: 12
                                                                         text: leaf.modelData.cmd
+                                                                        elide: Text.ElideRight
                                                                         color: root.pal.text
                                                                         font.family: root.pal.mono
-                                                                        font.pixelSize: 11
+                                                                        font.pixelSize: 12
                                                                     }
                                                                 }
                                                                 Text {
                                                                     Layout.fillWidth: true
+                                                                    Layout.alignment: Qt.AlignVCenter
                                                                     text: leaf.modelData.desc
+                                                                    wrapMode: Text.WordWrap
+                                                                    maximumLineCount: 2
+                                                                    lineHeight: 1.15
                                                                     elide: Text.ElideRight
                                                                     color: root.pal.muted
                                                                     font.family: root.pal.uiFont

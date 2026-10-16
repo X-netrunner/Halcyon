@@ -1,3 +1,38 @@
+# Changelog
+
+## Desktop widgets, top bar off, roomier console command list
+
+- New: **Widget builder** (`widget-builder`, Settings > Appearance > Widget builder). 23 kinds of desktop widgets: clock (digital, big, stacked, analog, minimal), date, month calendar, CPU, memory, temperature, GPU, disk, battery, volume, brightness, system usage (bars, rings, list, compact), network, uptime, now playing, audio visualizer (bars, mirror, wave, dots, circle), Focus timer with a day **streak**, workspaces, quick toggles (Wi-Fi, Bluetooth, DND, Caffeine, Gaming, Num Lock, theme, night light, lock, power), your own app shortcuts, notes and agenda, weather, text and greeting. Each has several layouts and options, and a look (box, opacity, corners, colours, font, text size). Save looks of your own and reuse them on any widget.
+- New: **Place the widgets on the desktop** (`desktop-edit`): drag, resize (corner dot or wheel), add and remove them right on the screen; they snap to the middle and the edges.
+- Changed: the **Desktop builder** is now the overview: a picture of where every widget sits (drag them there too), the top bar switch, and the activation zone (screen corner) of each box. The old notes / calendar choice became a Notes widget by itself.
+- New: **top bar Off** (Settings > Bar style > Style > Off, or `halcyon bar`). The launcher, the pages and every box still open from the top edge.
+- New: the Focus streak counts the minutes of every work phase (`scripts/focus-log.sh`, `~/.local/state/island/focus-days.json`).
+- Changed: the console command tree (SUPER+ALT+/) has taller rows, a fixed-width command column and wrapped descriptions, and more space between groups.
+- New files: `WidgetData.js`, `WidgetHost.qml`, `DeskWidgets.qml`, `DesktopEditor.qml`, `WidgetBuilder.qml`, `WidgetBuilderWindow.qml`, `WbText.qml`, `WBase.qml`, `WLbl.qml`, `WIco.qml`, `WClock.qml`, `WMetric.qml`, `WSysmon.qml`, `WNet.qml`, `WMusic.qml`, `WViz.qml`, `WFocus.qml`, `WWorkspaces.qml`, `WToggles.qml`, `WNotes.qml`, `WMonth.qml`, `WWeather.qml`, `WText.qml`, `cava-desk.conf`, `cava-desk-light.conf`, `scripts/focus-log.sh`, fish `widget-builder`, `desktop-edit`. Removed: `DesktopNotesWidget.qml`.
+- Nothing is read for a widget that is not on the desktop (cava, volume, disk, GPU and the weather request only start when a widget needs them).
+
+## Latest
+- Console: `ai`, `advisor`, `notes` and `passman` now run in the island console (they were fish functions, the console runs bash: "command not found"). The installer also puts real commands in ~/.local/bin.
+- passman: `passman browser` sets up a Brave / Chromium extension that asks "Save password for <site>?" after a login (Save / Not now / Never); `passman import <csv>` brings in a Brave / Chrome export.
+- Desktop builder: the four corner buttons of each box sit on one line.
+- App menu ">" commands: grouped (System, Desktop, Tools, Power) in a fixed order; the description moved behind an (i) button that opens a popup under the list.
+- Fix: ChipRow set a read-only property on Flow ("implicitHeight is a read-only property").
+
+- **Password manager (`scripts/halcyon-pass.py`, `passman`)**
+  - **Cause of lost passwords:** when the key file was missing or did not match, every command treated the vault as empty and the next `passman add` saved a new vault over the old one (a test vault of 62 entries became 1). Now an unreadable vault stops the command with a clear message and is never overwritten; the key is only created when there is no vault yet; the last good vault is kept as `vault.enc.bak`; a new vault is checked by decrypting it before it replaces the old one; writes are locked so two `passman` calls cannot collide.
+  - The passphrase now goes to openssl through its own pipe instead of sharing stdin with the data (old vaults still open: same format).
+  - Fixed the broken colour code in the auto-generated password message, `passman get` with no name crashing, the documented but missing `passman search`, and the password showing up in the process list while copying (wl-copy now reads it from stdin; the 30-second clear compares a hash).
+  - New: `passman edit`, `passman backup`, `passman status`, `add ... -g 32` (length), `add ... --stdin`; a replaced password's previous version is kept (last 3); `add` and `del` ask before replacing / deleting in a terminal.
+- **Desktop builder**
+  - The corner rows ("Top-left / Top-right / Bottom-left / Bottom-right"), Direction, Colour, Background, Desktop view and Notif trigger rows ran out of the panel; they are now `ChipRow.qml` rows that wrap.
+  - The desktop notes / calendar widget showed empty bullets (it read `summary`, the calendar calls it `title`) and listed the first cached events instead of today's. It now shows today's unfinished events with their time, pinned notes first, and updates at once when you change the Desktop view.
+  - The live picture now shows the widget and keeps the screen's shape on small windows.
+  - Slider drags (blur, stars) are throttled: they rewrote every shared option on every pixel.
+  - "Reset the desktop" in Settings and in the window now reset the same things (the widget and the star details were left behind) and the Settings button greys out correctly.
+  - Wallpaper paths with `#`, `?` or `%` now show in the preview.
+- **Screen & audio recording (`scripts/screen-record.sh`, Settings > Desktop > Screen & audio recording)**: record **desktop sound, microphone or both** with the screen, or **audio only** (.m4a). Buttons to start / stop, play the latest recording and open the folder. Sound is recorded by ffmpeg beside the video and joined when you stop, so it works with wf-recorder, wl-screenrec and gpu-screen-recorder. If sound cannot start, the screen is still recorded and a notification says why.
+- New: `quickshell/island/ChipRow.qml`. Changed: `halcyon-pass.py`, `screen-record.sh`, `DesktopBuilderWindow.qml`, `DesktopBuilder.qml`, `DesktopNotesWidget.qml`, `DeskSpots.js`, `Settings.qml`, `shell.qml`, `Launcher.qml`.
+
 ## Notification box closed itself about a second after opening
 - **Cause:** `shell.qml` counted `notifs.centerOpen` as an "overlay", so opening the box scheduled `notifs.raise()` (260 ms later). `raise()` un-maps the notification window for 60 ms; the edge strip reported "pointer left", `closeT` (700 ms) started, and because the pointer had not moved no new "enter" came to cancel it.
 - **Fix:** `notifs.centerOpen` is no longer part of `anyOverlay` (`shell.qml`), and `Notifs.setHover(false)` is ignored while the window is being re-mapped (`cycling`). Raising for toasts and for other overlays is unchanged.

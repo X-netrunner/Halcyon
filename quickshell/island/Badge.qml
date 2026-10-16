@@ -20,18 +20,27 @@ Item {
     height: implicitHeight
     Behavior on width { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
+    // subtle theme glow
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -2
+        radius: (height + 4) / 2
+        color: root.soft ? "transparent" : Qt.alpha(root.tint, 0.25)
+        visible: !root.soft && root.count > 0
+    }
+
     Rectangle {
         anchors.fill: parent
         radius: height / 2
-        color: root.soft ? Qt.alpha(root.tint, 0.2) : root.tint
+        color: root.soft ? Qt.alpha(root.tint, 0.18) : root.tint
         border.width: 1
-        border.color: root.soft ? Qt.alpha(root.tint, 0.55) : Qt.alpha(root.ink, 0.28)
+        border.color: root.soft ? Qt.alpha(root.tint, 0.55) : Qt.alpha(root.pal.line, 0.5)
     }
     Text {
         id: num
         anchors.centerIn: parent
         text: root.label
-        color: root.soft ? root.tint : root.ink
+        color: root.soft ? root.tint : (root.pal.solid ? root.ink : root.pal.bg)
         font.family: root.pal.uiFont
         font.pixelSize: Math.max(9, Math.round(root.size * 0.56))
         font.weight: Font.Bold
