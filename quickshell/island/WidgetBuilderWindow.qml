@@ -36,7 +36,7 @@ Item {
 
     // links: this widget follows another one (same width, same size, a fixed gap; see WidgetData.js)
     readonly property string curLinkTo: cur && cur.link ? cur.link : ""
-    readonly property string curLinkSide: cur && cur.linkSide === "above" ? "above" : "below"
+    readonly property string curLinkSide: cur ? WD.sideOf(cur.linkSide) : "below"
     readonly property int curLinkGap: cur && cur.linkGap !== undefined ? cur.linkGap : 14
     // "Nothing" and every other widget it may follow (named by its kind; "2nd" etc. when there are several of one kind)
     readonly property var linkOptions: {
@@ -50,6 +50,19 @@ Item {
         }
         return o
     }
+    // the "?" markers: one shared bubble on the card (so the scrolling column can not cut the text off)
+    property var tipItem: null
+    property string tipText: ""
+    property real tipCx: 0
+    property real tipTop: 0
+    property real tipBottom: 0
+    function setTip(item, on) {
+        if (!on) { if (tipItem === item) tipItem = null; return }
+        var a = card.mapFromItem(item, item.width / 2, 0), b = card.mapFromItem(item, 0, item.height)
+        tipText = item.tip; tipCx = a.x; tipTop = a.y; tipBottom = b.y
+        tipItem = item
+    }
+    onSelChanged: tipItem = null
     function setLinkTo(to) { edit(WD.setLink(layout, sel, to, curLinkSide, curLinkGap), false) }
     function setLinkV(side, gap, live) { edit(WD.setLink(layout, sel, curLinkTo, side, gap), live === true) }
     // the picked one disappeared (or nothing is picked yet): pick the first
@@ -468,7 +481,17 @@ Item {
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // ---- link: follow another widget
-                        NbCap { pal: root.pal; text: "LINK" }
+                        Row {
+                            spacing: 6
+                            NbCap { pal: root.pal; text: "LINK"; anchors.verticalCenter: parent.verticalCenter }
+                            HelpTip {
+                                id: qLink
+                                pal: root.pal
+                                onHoveredChanged: root.setTip(qLink, hovered)
+                                anchors.verticalCenter: parent.verticalCenter
+                                tip: "Link makes this widget follow another one, for example uptime next to the workspaces. It takes the other widget's size and keeps a fixed gap from it. When one of them gets wider (\"9h\" turning into \"1d 11h\") the linked one is pushed along instead of being covered. Drag or resize either one on the desktop and both move together."
+                            }
+                        }
                         ChipRow {
                             Layout.fillWidth: true
                             pal: root.pal; label: "Follow"; labelWidth: 90
@@ -480,7 +503,15 @@ Item {
                             Layout.fillWidth: true
                             visible: root.curLinkTo !== ""
                             pal: root.pal; label: "Sits"; labelWidth: 90
-                            options: [["below", "Below it"], ["above", "Above it"]]
+                            HelpTip {
+                                id: qSide
+                                pal: root.pal
+                                onHoveredChanged: root.setTip(qSide, hovered)
+                                Layout.alignment: Qt.AlignTop
+                                Layout.topMargin: 8
+                                tip: "Which side of the widget it follows this one stays on. Below it / Above it: stacked, same left edge, and both become as wide as the wider of the two. Right of it / Left of it: side by side and centred on each other; each keeps its own width, so one that grows pushes the other along. Gap is the space between them."
+                            }
+                            options: [["below", "Below it"], ["above", "Above it"], ["right", "Right of it"], ["left", "Left of it"]]
                             current: root.curLinkSide
                             onPicked: id => root.setLinkV(id, root.curLinkGap, false)
                         }
@@ -493,8 +524,8 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: root.curLinkTo === "" ? "Link a widget to another one, for example the visualizer to the song title: they become exactly as wide as the wider of the two, line up edge to edge and stay the same distance apart. Move or resize one on the desktop and the other goes with it."
-                                                        : "Linked: this widget takes the size of the one it follows, shares its width and moves with it. On the desktop, drag or resize the one it follows (the Size slider above no longer applies here)."
+                            text: root.curLinkTo === "" ? "Link a widget to another one, for example uptime to the workspaces. Put it above / below (stacked, same width) or right / left (side by side, each its own width) and it keeps the gap you set, even when the other one grows. Move or resize one on the desktop and the other goes with it."
+                                                        : "Linked: this widget takes the size of the one it follows and moves with it (stacked ones also share its width). On the desktop, drag or resize the one it follows (the Size slider above no longer applies here)."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                         }
 
@@ -662,6 +693,31 @@ Item {
                     }
                 }
                 Item { visible: root.cur === null; Layout.preferredWidth: 470; Layout.fillHeight: true }
+            }
+        }
+
+        // the one bubble every "?" shows
+        Rectangle {
+            z: 40
+            visible: root.tipItem !== null
+            width: Math.min(320, card.width - 40)
+            height: tipBody.implicitHeight + 22
+            radius: root.pal.rMd
+            color: Qt.alpha(root.pal.bg, 0.98)
+            border.width: 1
+            border.color: Qt.alpha(root.pal.accent, 0.5)
+            x: Math.max(12, Math.min(card.width - width - 12, root.tipCx - width / 2))
+            y: root.tipBottom + 10 + height > card.height - 8 ? root.tipTop - height - 10 : root.tipBottom + 10
+            Text {
+                id: tipBody
+                x: 12; y: 11
+                width: parent.width - 24
+                text: root.tipText
+                wrapMode: Text.WordWrap
+                color: root.pal.text
+                font.family: root.pal.uiFont
+                font.pixelSize: root.pal.tCap + 1
+                lineHeight: 1.15
             }
         }
     }

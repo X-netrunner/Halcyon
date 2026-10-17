@@ -22,10 +22,9 @@ var resetValues = {
 // true when nothing of the desktop builder differs from the defaults (the "Reset" button greys out then)
 function allDefault(opt) {
     if (!opt) return true
-    if (opt.deskWall === false || opt.deskBlur > 0 || opt.deskStars === true) return false
-    if (opt.deskBg && opt.deskBg !== "theme") return false
-    if (opt.deskNotes && opt.deskNotes !== "off") return false
-    if (opt.notifSpot === "corner") return false
+    // every value "Reset the desktop" puts back (it only looked at a few of them: changing the stars' speed, size, colour ... while the
+    // stars were off left the Reset button greyed out, although there was something to reset)
+    for (var k in resetValues) if (opt[k] !== undefined && opt[k] !== resetValues[k]) return false
     return isDefault(opt.boxSpots)
 }
 

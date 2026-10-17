@@ -21,7 +21,11 @@ WBase {
 
     // ---- the streak
     property date today: new Date()
-    Timer { running: root.live; repeat: true; interval: 60000; onTriggered: root.today = new Date() }
+    // the streak and the week are only worked out again when the DAY changes (they were rebuilt every minute), and at once when
+    // the widget is back on screen (after a full-screen app or past midnight it showed yesterday for up to a minute)
+    function checkDay() { var n = new Date(); if (Qt.formatDate(n, "yyyy-MM-dd") !== Qt.formatDate(today, "yyyy-MM-dd")) today = n }
+    onLiveChanged: if (live) checkDay()
+    Timer { running: root.live; repeat: true; interval: 60000; onTriggered: root.checkDay() }
     readonly property var days: env && env.focusDays ? env.focusDays : ({})
     readonly property int goal: Math.round(opt("goal", 25))
     function key(d) { return Qt.formatDate(d, "yyyy-MM-dd") }

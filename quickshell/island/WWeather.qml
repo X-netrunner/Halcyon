@@ -11,8 +11,9 @@ WBase {
     readonly property bool f: opt("unit", "c") === "f"
     readonly property string place: String(opt("place", "")).trim()
 
-    function ask() { if (!proc.running) proc.running = true }
-    onPlaceChanged: if (live) ask()
+    property bool again: false          // the place changed while a request was running: ask once more when it ends
+    function ask() { if (!proc.running) proc.running = true; else again = true }
+    onPlaceChanged: { cur = null; err = ""; if (live) ask() }       // the old place's weather must not stay on screen
     Timer { running: root.live; repeat: true; interval: 1800000; triggeredOnStart: true; onTriggered: root.ask() }
     Process {
         id: proc
@@ -22,7 +23,10 @@ WBase {
                 try { root.cur = JSON.parse(text).current_condition[0]; root.err = "" } catch (e) { root.err = "no data" }
             }
         }
-        onExited: code => { if (code !== 0) root.err = "offline" }
+        onExited: code => {
+            if (code !== 0) root.err = "offline"
+            if (root.again) { root.again = false; root.ask() }
+        }
     }
 
     readonly property string desc: cur && cur.weatherDesc && cur.weatherDesc.length ? String(cur.weatherDesc[0].value) : (err !== "" ? err : "…")

@@ -7,14 +7,30 @@
 # bash and so cannot see fish functions. It can also be run by hand from any shell. Invoked under the name
 # hotspot-on / hotspot-off (a symlink) it does that action.
 #
-# SSID / password: HOTSPOT_SSID / HOTSPOT_PASS (default BlackHatLab / password123; the password needs 8+ characters).
+# SSID / password: HOTSPOT_SSID / HOTSPOT_PASS (default SSID BlackHatLab; the password needs 8+ characters). Without
+# HOTSPOT_PASS a random password is made the first time and kept in ~/.local/state/island/hotspot-pass (only you can read
+# it): the old fixed default ("password123") was known to everyone who has read this file, so anybody in range could join.
+# `hotspot.sh status` prints it.
 # The connection is called "Halcyon-Hotspot", so it never touches the decoy hotspot that `sysmode stealth --hotspot`
 # starts (that one is NetworkManager's default "Hotspot").
 set -u
 
 SSID="${HOTSPOT_SSID:-BlackHatLab}"
-PASS="${HOTSPOT_PASS:-password123}"
 CON="Halcyon-Hotspot"
+PASSFILE="${XDG_STATE_HOME:-$HOME/.local/state}/island/hotspot-pass"
+
+# the password: HOTSPOT_PASS when set, else the saved random one (made on first use)
+get_pass() {
+  if [ -n "${HOTSPOT_PASS:-}" ]; then printf '%s' "$HOTSPOT_PASS"; return 0; fi
+  local p=""
+  [ -r "$PASSFILE" ] && IFS= read -r p < "$PASSFILE"
+  if [ "${#p}" -lt 8 ]; then
+    p=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 14)
+    mkdir -p "$(dirname "$PASSFILE")" && (umask 077; printf '%s\n' "$p" > "$PASSFILE")
+  fi
+  printf '%s' "$p"
+}
+PASS=$(get_pass)
 
 # colours only on a real terminal (the quick console shows plain text)
 if [ -t 1 ]; then Y=$'\e[1;33m'; C=$'\e[1;36m'; G=$'\e[1;32m'; R=$'\e[1;31m'; Z=$'\e[0m'; else Y=; C=; G=; R=; Z=; fi
@@ -39,6 +55,9 @@ on() {
     warn "IP forwarding is off (secure / lockdown mode): clients may not get internet through the hotspot."
     say  "Run: sudo sysmode relaxed to allow forwarding."
   fi
+
+  # a profile left from an earlier run would keep its old SSID / password (or pile up as a duplicate): the name is ours, so start clean
+  if nmcli -t -f NAME connection show 2>/dev/null | grep -qxF "$CON"; then nmcli connection delete "$CON" >/dev/null 2>&1; fi
 
   # NetworkManager drops a normal Wi-Fi connection on the same adapter while the hotspot runs
   if nmcli device wifi hotspot ifname "$dev" con-name "$CON" ssid "$SSID" password "$PASS" >/dev/null 2>&1; then
@@ -68,7 +87,7 @@ off() {
 
 status() {
   need_nmcli
-  if is_on; then good "hotspot is on: SSID $SSID"; else say "hotspot is off"; fi
+  if is_on; then good "hotspot is on: SSID $SSID, password $PASS"; else say "hotspot is off (SSID $SSID, password $PASS)"; fi
 }
 
 action="${1:-}"

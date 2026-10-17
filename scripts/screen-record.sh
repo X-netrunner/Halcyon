@@ -20,6 +20,8 @@ APID_FILE="$STATE_DIR/record.apid"        # the ffmpeg sound recorder
 OUT_FILE_INFO="$STATE_DIR/record.file"    # the file you will get
 VTMP_INFO="$STATE_DIR/record.vtmp"        # video-only file while sound is recorded separately
 ATMP_INFO="$STATE_DIR/record.atmp"        # sound-only file
+ASTART_INFO="$STATE_DIR/record.astart"    # when the sound recorder was launched (seconds, e.g. 1760680000.123)
+VSTART_INFO="$STATE_DIR/record.vstart"    # when the video recorder was launched: the gap is cut off the sound when they are joined
 mkdir -p "$STATE_DIR"
 
 flag() { local v; v=$(head -n1 "$STATE_DIR/$1" 2>/dev/null); echo "${v:-$2}"; }
@@ -31,13 +33,26 @@ case "$KIND" in screen|audio) ;; *) KIND=screen ;; esac
 case "$AUDIO" in none|system|mic|both) ;; *) AUDIO=system ;; esac
 [ "$KIND" = audio ] && [ "$AUDIO" = none ] && AUDIO=both      # "audio only" with no sound would record nothing
 
-alive() { [ -f "$1" ] && { local p; p=$(cat "$1" 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }; }
+# The pid files hold "PID STARTTIME". A bare PID can belong to a different program by the next time the file is read (after a
+# crash or a reboot the state dir survives), and the old code then called that program "the recorder" and sent it INT, TERM
+# and KILL on stop. The start time (field 22 of /proc/PID/stat) tells the two apart.
+pid_start() { local s; s=$(cat "/proc/$1/stat" 2>/dev/null) || return 1; s=${s##*) }; set -- $s; echo "${20}"; }
+write_pid() { echo "$1 $(pid_start "$1")" > "$2"; }       # write_pid PID FILE
+ours() { local c; c=$(cat "/proc/$1/comm" 2>/dev/null); case "$c" in wf-recorder|wl-screenrec|gpu-screen-rec*|ffmpeg) return 0 ;; esac; return 1; }
+alive() {
+    [ -f "$1" ] || return 1
+    local p st; read -r p st < "$1" 2>/dev/null
+    case "$p" in ''|*[!0-9]*) return 1 ;; esac
+    kill -0 "$p" 2>/dev/null || return 1
+    if [ -n "$st" ]; then [ "$(pid_start "$p")" = "$st" ]; else ours "$p"; fi     # an old file without a start time: go by the program name
+}
 is_recording() { alive "$PID_FILE" || alive "$APID_FILE"; }
 note() { notify-send -a Halcyon "$@" 2>/dev/null; }
 
 stop_pid() {      # stop_pid <pidfile>: Ctrl+C the recorder so it finishes its file; TERM, then KILL, only if it will not stop
-    local p; p=$(cat "$1" 2>/dev/null)
-    [ -n "$p" ] || { rm -f "$1"; return 0; }
+    [ -f "$1" ] || return 0
+    local p; read -r p _ < "$1" 2>/dev/null
+    alive "$1" || { rm -f "$1"; return 0; }          # gone, or the number now belongs to another program: never signal it
     local sig
     for sig in INT TERM KILL; do
         kill "-$sig" "$p" 2>/dev/null || break
@@ -48,7 +63,7 @@ stop_pid() {      # stop_pid <pidfile>: Ctrl+C the recorder so it finishes its f
 
 stop_recording() {
     if ! is_recording; then
-        rm -f "$PID_FILE" "$APID_FILE" "$OUT_FILE_INFO" "$VTMP_INFO" "$ATMP_INFO"
+        rm -f "$PID_FILE" "$APID_FILE" "$OUT_FILE_INFO" "$VTMP_INFO" "$ATMP_INFO" "$ASTART_INFO" "$VSTART_INFO"
         echo idle; exit 0
     fi
     local out vtmp atmp
@@ -56,18 +71,29 @@ stop_recording() {
     stop_pid "$PID_FILE"
     stop_pid "$APID_FILE"
     if [ -n "$vtmp" ] && [ -n "$atmp" ]; then
+        # The sound recorder is started first (and waits 0.3 s to see that it runs), so its first second is older than the
+        # picture's first frame. Joined as they are, the sound comes late. The launch gap is cut off its start.
+        local skip
+        skip=$(awk -v a="$(cat "$ASTART_INFO" 2>/dev/null)" -v v="$(cat "$VSTART_INFO" 2>/dev/null)" \
+               'BEGIN { d = v - a; if (a != "" && v != "" && d > 0 && d < 10) printf "%.3f", d; else printf "0" }')
         # join the picture and the sound (the picture is copied, only the sound is encoded: quick)
         if [ -s "$vtmp" ] && [ -s "$atmp" ]; then
-            if ffmpeg -nostdin -loglevel error -y -i "$vtmp" -i "$atmp" -map 0:v:0 -map 1:a:0 -c:v copy -c:a copy -shortest -movflags +faststart "$out" 2>/dev/null && [ -s "$out" ]; then
+            if ffmpeg -nostdin -loglevel error -y -i "$vtmp" -ss "$skip" -i "$atmp" -map 0:v:0 -map 1:a:0 -c:v copy -c:a copy -shortest -movflags +faststart "$out" 2>/dev/null && [ -s "$out" ]; then
                 rm -f "$vtmp" "$atmp"
             else
-                mv -f "$vtmp" "$out"; note -u normal "Recording saved without sound" "Joining the sound failed; the sound is kept as $(basename "$atmp")"
+                # keep BOTH next to each other in the recordings folder (the sound used to stay in a hidden state folder)
+                local keep="${out%.mp4}.m4a"
+                mv -f "$vtmp" "$out"; mv -f "$atmp" "$keep" 2>/dev/null
+                note -u normal "Recording saved without sound" "Joining the sound failed; the sound is kept as $(basename "$keep")"
             fi
         elif [ -s "$vtmp" ]; then
             mv -f "$vtmp" "$out"; rm -f "$atmp"
+        elif [ -s "$atmp" ]; then
+            # no picture came out, but the sound did: do not lose it
+            out="${out%.mp4}.m4a"; mv -f "$atmp" "$out"; rm -f "$vtmp"
         fi
     fi
-    rm -f "$OUT_FILE_INFO" "$VTMP_INFO" "$ATMP_INFO"
+    rm -f "$OUT_FILE_INFO" "$VTMP_INFO" "$ATMP_INFO" "$ASTART_INFO" "$VSTART_INFO"
     if [ -n "$out" ] && [ -s "$out" ]; then
         note -i video-x-generic -t 4000 "Recording saved" "$(basename "$out")"
     else
@@ -92,7 +118,7 @@ start_sound() {      # start_sound <file>: ffmpeg -> file. Returns 1 if it could
                 args=(-f pulse -i "$sys" -f pulse -i "$mic" -filter_complex "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[a]" -map "[a]") ;;
     esac
     ffmpeg -nostdin -loglevel error -y "${args[@]}" -ac 2 -c:a aac -b:a 160k "$file" >/dev/null 2>&1 &
-    echo $! > "$APID_FILE"
+    write_pid $! "$APID_FILE"; date +%s.%N > "$ASTART_INFO"
     sleep 0.3
     alive "$APID_FILE" || { rm -f "$APID_FILE" "$file"; return 5; }
 }
@@ -144,11 +170,11 @@ start_recording() {
     elif command -v gpu-screen-recorder >/dev/null 2>&1; then
         gpu-screen-recorder -w screen -f 60 -o "$vout" >/dev/null 2>&1 &
     else
-        stop_pid "$APID_FILE"; rm -f "$ATMP_INFO" "$VTMP_INFO"; [ -n "$base" ] && rm -f "$base.m4a"
+        stop_pid "$APID_FILE"; rm -f "$ATMP_INFO" "$ASTART_INFO" "$VSTART_INFO" "$VTMP_INFO"; [ -n "$base" ] && rm -f "$base.m4a"
         note -u critical "Screen recorder" "Please install wf-recorder: sudo pacman -S wf-recorder"
         echo missing_tool; exit 1
     fi
-    echo $! > "$PID_FILE"
+    write_pid $! "$PID_FILE"; date +%s.%N > "$VSTART_INFO"
     echo "$out" > "$OUT_FILE_INFO"
 
     sleep 0.3
@@ -160,7 +186,7 @@ start_recording() {
         echo recording
     else
         stop_pid "$APID_FILE"
-        rm -f "$PID_FILE" "$OUT_FILE_INFO" "$VTMP_INFO" "$ATMP_INFO"; [ -n "$base" ] && rm -f "$base.m4a"
+        rm -f "$PID_FILE" "$OUT_FILE_INFO" "$VTMP_INFO" "$ATMP_INFO" "$ASTART_INFO" "$VSTART_INFO"; [ -n "$base" ] && rm -f "$base.m4a"
         note -u critical "Screen recorder" "The recording did not start."
         echo failed; exit 1
     fi

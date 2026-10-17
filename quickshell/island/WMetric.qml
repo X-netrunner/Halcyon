@@ -34,8 +34,8 @@ WBase {
             v = (s.bat || 0) / 100; t = (s.hasBat ? Math.round(s.bat || 0) + "%" : "AC"); n = s.charging ? "CHARGING" : "BATTERY"; ic = 0xF0079
             inv = true
             break
-        case "volume": v = env ? Math.max(0, Math.min(1, env.vol / 100)) : 0; t = env && env.muted ? "mute" : Math.round(v * 100) + "%"; n = "VOLUME"; ic = (env && env.muted) ? 0xF0581 : 0xF057E; hi = 2; bad = 2; break
-        case "brightness": v = env ? Math.max(0, Math.min(1, env.bright / 100)) : 0; t = Math.round(v * 100) + "%"; n = "BRIGHTNESS"; ic = 0xF00DF; hi = 2; bad = 2; break
+        case "volume": v = env ? Math.max(0, Math.min(1, (env.vol || 0) / 100)) : 0; t = env && env.muted ? "mute" : Math.round(v * 100) + "%"; n = "VOLUME"; ic = (env && env.muted) ? 0xF0581 : 0xF057E; hi = 2; bad = 2; break
+        case "brightness": v = env ? Math.max(0, Math.min(1, (env.bright || 0) / 100)) : 0; t = Math.round(v * 100) + "%"; n = "BRIGHTNESS"; ic = 0xF00DF; hi = 2; bad = 2; break
         }
         return { v: Math.max(0, Math.min(1, v)), t: t, n: n, ic: ic, hi: hi, bad: bad, inv: inv }
     }
@@ -54,7 +54,7 @@ WBase {
     // history: the last 30 readings (only the types that move)
     property var hist: []
     onMChanged: {
-        if (style !== "history") return
+        if (style !== "history" || !live) return          // nothing is recorded while it is off screen or in another style
         var a = hist.slice(-29)
         a.push(m.v)
         hist = a
@@ -63,15 +63,23 @@ WBase {
     // the wheel changes volume / brightness
     readonly property bool wheelable: kind === "volume" || kind === "brightness"
     MouseArea {
+        id: wheelArea
         anchors.fill: parent
         enabled: root.wheelable && !root.editing
         acceptedButtons: root.kind === "volume" ? Qt.LeftButton : Qt.NoButton
         onClicked: if (root.env) root.env.deskAct("mute")
+        // a fast wheel sent every notch from the SAME old reading (the real value arrives later), so five notches moved it by one:
+        // the next notch builds on the value just asked for until the reading catches up
+        property real asked: -1
+        Timer { id: askedT; interval: 700; onTriggered: wheelArea.asked = -1 }
         onWheel: w => {
             if (!root.env) return
             var d = (w.angleDelta.y > 0 ? 0.05 : -0.05)
-            if (root.kind === "volume") root.env.deskSetVol(Math.max(0, Math.min(1, root.m.v + d)))
-            else root.env.deskSetBright(Math.max(0.01, Math.min(1, root.m.v + d)))
+            var base = asked >= 0 ? asked : root.m.v
+            asked = Math.max(root.kind === "volume" ? 0 : 0.01, Math.min(1, base + d))
+            askedT.restart()
+            if (root.kind === "volume") root.env.deskSetVol(asked)
+            else root.env.deskSetBright(asked)
         }
     }
 

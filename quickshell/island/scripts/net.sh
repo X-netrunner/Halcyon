@@ -19,6 +19,8 @@ wait_tick() {
   if read -r -t "$n" -u "$nap" _; then read -r -t 1 -u "$nap" _; fi   # poked: let the action finish, then look
 }
 esc() { local s=${1//\\/\\\\}; printf '%s' "${s//\"/\\\"}"; }
+# nmcli -t writes ':' and '\' inside a value as "\:" and "\\" (a network called "Cafe: Guest" arrived as "Cafe\: Guest" and was shown that way)
+unesc() { local s=${1//\\\\/$'\001'}; s=${s//\\:/:}; printf '%s' "${s//$'\001'/\\}"; }
 nl=$'\n'
 
 while true; do
@@ -33,7 +35,7 @@ while true; do
   case "$nl$devs" in
     *"${nl}wifi:connected"*)
       while IFS= read -r l; do
-        case "$l" in yes:*) l=${l#yes:}; sig=${l%%:*}; ssid=$(esc "${l#*:}"); break ;; esac
+        case "$l" in yes:*) l=${l#yes:}; sig=${l%%:*}; ssid=$(esc "$(unesc "${l#*:}")"); break ;; esac
       done < <(nmcli -t -f active,signal,ssid dev wifi list --rescan no 2>/dev/null)
       case "$sig" in ''|*[!0-9]*) sig=0 ;; esac
       ;;

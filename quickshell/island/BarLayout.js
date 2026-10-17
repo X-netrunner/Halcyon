@@ -206,7 +206,10 @@ function bestMove(l, widthOf, gapL, gapR, tol) {
     var best = null, bd = Math.abs(d0)
     for (var i = 0; i < l[from].length; i++) {
         var id = l[from][i]
-        var o = hop(l, from, i, from === "left" ? 1 : -1)
+        // straight across to the other side, next to the middle (it used to hop only into the CENTRE zone, so the suggested move
+        // ("move X to the right") put X in the middle and the sizes it promised never came out)
+        var o = remove(l, id)
+        if (to === "right") o.right.unshift(id); else o.left.push(id)
         var ad = Math.abs(sideDiff(o, widthOf, gapL, gapR))
         if (ad < bd) { bd = ad; best = { id: id, from: from, to: to, before: Math.abs(d0), after: ad, layout: o } }
     }

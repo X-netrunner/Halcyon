@@ -15,8 +15,12 @@ Rectangle {
     border.width: 1
     border.color: inp.activeFocus ? pal.lineFocus : pal.line
 
-    onTextChanged: if (inp.text !== text && !inp.activeFocus) inp.text = text
-    Component.onCompleted: inp.text = text
+    // the last value sent: the typing pause AND leaving the field both commit, and the second one used to send the same text again
+    // (every send rewrites and saves the whole widget layout)
+    property string sent: ""
+    function send(v) { if (v === sent) return; sent = v; committed(v) }
+    onTextChanged: { sent = text; if (inp.text !== text && !inp.activeFocus) inp.text = text }
+    Component.onCompleted: { inp.text = text; sent = text }
 
     Text {
         anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
@@ -33,8 +37,8 @@ Rectangle {
         font.family: f.pal.uiFont; font.pixelSize: f.pal.tBody
         clip: true
         onTextEdited: pause.restart()
-        onEditingFinished: { pause.stop(); f.committed(text) }
+        onEditingFinished: { pause.stop(); f.send(text) }
         Keys.onEscapePressed: focus = false
     }
-    Timer { id: pause; interval: 450; onTriggered: f.committed(inp.text) }
+    Timer { id: pause; interval: 450; onTriggered: f.send(inp.text) }
 }

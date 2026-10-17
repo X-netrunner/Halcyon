@@ -25,12 +25,17 @@ Item {
     readonly property bool live: on && visible && width > 0 && height > 0 && (pal ? pal.motion > 0.3 : true)
     property real t: 0                      // seconds of drifting so far (kept while hidden, so the stars carry on)
 
+    // the drift follows the clock, not "45 ms per tick": a busy moment (a game, a build) used to slow the stars down
+    property real lastMs: 0
     Timer {
         interval: 45
         repeat: true
         running: root.live
+        onRunningChanged: root.lastMs = 0
         onTriggered: {
-            root.t += interval / 1000
+            var now = Date.now()
+            root.t += root.lastMs > 0 ? Math.min(0.25, (now - root.lastMs) / 1000) : interval / 1000
+            root.lastMs = now
             canvas.requestPaint()
         }
     }

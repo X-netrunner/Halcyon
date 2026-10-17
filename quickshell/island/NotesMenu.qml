@@ -26,7 +26,9 @@ Scope {
     function hide() { open = false }
     function toggle() { if (open) hide(); else show() }
 
+    property bool reloadAgain: false
     function loadNotes() {
+        if (fetchProc.running) { reloadAgain = true; return }      // a list asked for while one is being read was dropped, and the old one stayed
         fetchProc.running = true
     }
 
@@ -35,39 +37,38 @@ Scope {
         command: ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "json"]
         stdout: StdioCollector {
             onStreamFinished: {
-                try {
-                    root.notes = JSON.parse(text)
-                } catch (e) {
-                    root.notes = []
-                }
+                try { root.notes = JSON.parse(text) }
+                catch (e) { /* a failed read keeps the list that is shown instead of emptying it */ }
             }
         }
+        onExited: { if (root.reloadAgain) { root.reloadAgain = false; root.loadNotes() } }
     }
 
-    Process { id: actProc; onExited: root.loadNotes() }
+    // every change (add, delete, pin, done) goes through one queue: a second one started while the first was still running
+    // used to be lost (the process was busy, only its command was swapped), e.g. two quick pins or two notes added in a row
+    property var queue: []
+    function act(args) {
+        queue = queue.concat([args])
+        if (!actProc.running) nextAct()
+    }
+    function nextAct() {
+        if (queue.length === 0) { loadNotes(); return }
+        var a = queue[0]
+        queue = queue.slice(1)
+        actProc.command = ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py"].concat(a)
+        actProc.running = true
+    }
+    Process { id: actProc; onExited: root.nextAct() }
 
     function addNote(t) {
         var str = (t || "").trim()
         if (!str) return
-        actProc.command = ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "add", str]
-        actProc.running = true
+        act(["add", str])
         input.text = ""
     }
-
-    function delNote(id) {
-        actProc.command = ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "del", id]
-        actProc.running = true
-    }
-
-    function pinNote(id) {
-        actProc.command = ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "pin", id]
-        actProc.running = true
-    }
-
-    function toggleDone(id) {
-        actProc.command = ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "done", id]
-        actProc.running = true
-    }
+    function delNote(id) { act(["del", String(id)]) }
+    function pinNote(id) { act(["pin", String(id)]) }
+    function toggleDone(id) { act(["done", String(id)]) }
 
     readonly property var filteredNotes: {
         var q = search.trim().toLowerCase()
@@ -386,10 +387,7 @@ Scope {
                         pal: root.pal
                         label: "Clear completed"
                         visible: root.notes.some(function (n) { return n.done })
-                        onClicked: {
-                            actProc.command = ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "clear"]
-                            actProc.running = true
-                        }
+                        onClicked: root.act(["clear"])
                     }
                 }
             }
