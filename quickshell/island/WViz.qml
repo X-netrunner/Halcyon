@@ -11,6 +11,8 @@ WBase {
     readonly property var feed: (env && env.cavaDesk) ? env.cavaDesk : []
     readonly property int n: Math.round(opt("count", 24))
     readonly property real wide: opt("width", 280)
+    // the width the bars are laid out in: its own, or the wider one a link gives it (the frame sets this item's width)
+    readonly property real lw: Math.max(wide, width)
     readonly property real tall: opt("height", 90)
     hidden: !playing && opt("idle", "dots") === "hide"
 
@@ -37,13 +39,13 @@ WBase {
     Component {
         id: barsC
         Row {
-            spacing: Math.max(1, Math.round(root.wide / root.n * 0.28))
+            spacing: Math.max(1, Math.round(root.lw / root.n * 0.28))
             Repeater {
                 model: root.n
                 delegate: Item {
                     required property int index
                     readonly property real v: root.vals[index] || 0
-                    width: (root.wide - (root.n - 1) * Math.max(1, Math.round(root.wide / root.n * 0.28))) / root.n
+                    width: (root.lw - (root.n - 1) * Math.max(1, Math.round(root.lw / root.n * 0.28))) / root.n
                     height: root.tall
                     Rectangle {
                         anchors.bottom: parent.bottom
@@ -58,13 +60,13 @@ WBase {
     Component {
         id: mirrorC
         Row {
-            spacing: Math.max(1, Math.round(root.wide / root.n * 0.28))
+            spacing: Math.max(1, Math.round(root.lw / root.n * 0.28))
             Repeater {
                 model: root.n
                 delegate: Item {
                     required property int index
                     readonly property real v: root.vals[index] || 0
-                    width: (root.wide - (root.n - 1) * Math.max(1, Math.round(root.wide / root.n * 0.28))) / root.n
+                    width: (root.lw - (root.n - 1) * Math.max(1, Math.round(root.lw / root.n * 0.28))) / root.n
                     height: root.tall
                     Rectangle {
                         anchors.centerIn: parent
@@ -79,14 +81,14 @@ WBase {
     Component {
         id: dotsC
         Row {
-            spacing: Math.max(1, Math.round(root.wide / root.n * 0.28))
+            spacing: Math.max(1, Math.round(root.lw / root.n * 0.28))
             Repeater {
                 model: root.n
                 delegate: Item {
                     required property int index
                     readonly property real v: root.vals[index] || 0
                     readonly property real d: Math.max(4, Math.min(width, 14))
-                    width: (root.wide - (root.n - 1) * Math.max(1, Math.round(root.wide / root.n * 0.28))) / root.n
+                    width: (root.lw - (root.n - 1) * Math.max(1, Math.round(root.lw / root.n * 0.28))) / root.n
                     height: root.tall
                     Rectangle {
                         width: parent.d; height: width; radius: width / 2
@@ -106,7 +108,7 @@ WBase {
             layer.enabled: true
             layer.samples: 4
             readonly property string d: {
-                var w = root.wide, h = root.tall, n = root.n, s = ""
+                var w = root.lw, h = root.tall, n = root.n, s = ""
                 for (var i = 0; i < n; i++) {
                     var x = n > 1 ? i * w / (n - 1) : 0, y = h - 3 - (root.vals[i] || 0) * (h - 6)
                     s += (i === 0 ? "M " : " L ") + x.toFixed(1) + " " + y.toFixed(1)
@@ -119,7 +121,7 @@ WBase {
                 fillColor: Qt.alpha(root.accent, root.playing ? 0.16 : 0.0)
                 joinStyle: ShapePath.RoundJoin
                 capStyle: ShapePath.RoundCap
-                PathSvg { path: sh.d + " L " + root.wide + " " + root.tall + " L 0 " + root.tall + " Z" }
+                PathSvg { path: sh.d + " L " + root.lw + " " + root.tall + " L 0 " + root.tall + " Z" }
             }
         }
     }

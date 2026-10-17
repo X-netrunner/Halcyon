@@ -5,7 +5,15 @@ WBase {
     id: root
 
     property date now: new Date()
-    Timer { running: root.live; repeat: true; interval: 60000; onTriggered: root.now = new Date() }
+    // `now` only changes when the DAY changes: the 42 cells (and their week numbers) used to be rebuilt every minute for nothing.
+    // triggeredOnStart: the moment the widget comes back on screen it checks the date at once.
+    Timer {
+        running: root.live; repeat: true; interval: 60000; triggeredOnStart: true
+        onTriggered: {
+            var n = new Date(), o = root.now
+            if (n.getDate() !== o.getDate() || n.getMonth() !== o.getMonth() || n.getFullYear() !== o.getFullYear()) root.now = n
+        }
+    }
 
     readonly property bool monday: opt("mon", "mon") === "mon"
     readonly property bool wk: opt("weeks", false) === true

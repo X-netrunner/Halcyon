@@ -13,6 +13,8 @@ WBase {
     readonly property bool showBtn: opt("controls", true) === true
     readonly property bool showBar: opt("progress", true) === true
     readonly property real wide: opt("width", 320)
+    // the width the card / compact text columns are laid out in: its own, or the wider one a link gives it
+    readonly property real lw: Math.max(wide, width)
     hidden: !has && opt("hideIdle", false) === true
 
     readonly property string icoPlay: glyph(0xF040A)
@@ -22,10 +24,13 @@ WBase {
 
     Timer { interval: 500; repeat: true; running: root.playing && root.live && (root.showBar || root.style === "cover"); onTriggered: root.pl.positionChanged() }
 
-    implicitWidth: body.item ? body.item.implicitWidth : 200
+    // its own width: card and compact are `width` wide; minimal and cover are as wide as what they show (never the linked width,
+    // or a longer shared width would make them wider on their own and the link would feed on itself)
+    implicitWidth: (style === "card" || style === "compact") ? wide : (body.item ? body.item.implicitWidth : 200)
     implicitHeight: body.item ? body.item.implicitHeight : 60
     Loader {
         id: body
+        x: Math.max(0, (root.width - width) / 2)          // narrower than the frame (linked to something wider): centred in it
         sourceComponent: root.style === "compact" ? compactC : (root.style === "cover" ? coverC : (root.style === "minimal" ? minimalC : cardC))
     }
 
@@ -93,7 +98,7 @@ WBase {
                 WIco { b: root; anchors.centerIn: parent; visible: !root.has || root.pl.trackArtUrl === ""; text: root.glyph(0xF075A); color: root.dim; font.pixelSize: root.sz(34) }
             }
             Column {
-                width: root.wide - root.sz(96) - root.sz(16)
+                width: root.lw - root.sz(96) - root.sz(16)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: root.sz(2)
                 WLbl { b: root; width: parent.width; text: root.has ? (root.pl.trackTitle || "Unknown") : "Nothing playing"; elide: Text.ElideRight; font.pixelSize: root.sz(17); font.weight: Font.DemiBold }
@@ -114,7 +119,7 @@ WBase {
                 Image { anchors.fill: parent; source: root.has ? root.pl.trackArtUrl : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(96, 96) }
             }
             Column {
-                width: root.wide - root.sz(46) - root.sz(12) - (root.showBtn ? root.sz(52) : 0)
+                width: root.lw - root.sz(46) - root.sz(12) - (root.showBtn ? root.sz(52) : 0)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 1
                 WLbl { b: root; width: parent.width; text: root.has ? (root.pl.trackTitle || "Unknown") : "Nothing playing"; elide: Text.ElideRight; font.pixelSize: root.sz(14); font.weight: Font.DemiBold }

@@ -181,7 +181,7 @@ PanelWindow {
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 1
                     Text { text: "Place your widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
-                    Text { text: "Drag = move, it snaps to the others (Alt = free)  ·  arrows nudge 1 px (Shift 10)  ·  corner dot or wheel = size  ·  Switch off = hide it without deleting"; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 10 }
+                    Text { text: "Drag = move, it snaps to the others (Alt = free)  ·  arrows nudge 1 px (Shift 10)  ·  corner dot or wheel = size  ·  linked widgets move and resize together (Widget builder > Link)  ·  Switch off = hide it without deleting"; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 10 }
                 }
                 ActionChip { pal: win.pal; label: win.adding ? "Close" : "Add a widget"; on: !win.adding; onClicked: win.adding = !win.adding }
                 ActionChip { pal: win.pal; label: "Widget builder"; onClicked: win.openWidget(win.sel) }

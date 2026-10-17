@@ -5,7 +5,11 @@ WBase {
     id: root
 
     property date now: new Date()
-    Timer { running: root.live; repeat: true; interval: 300000; onTriggered: root.now = new Date() }
+    // the greeting only depends on the hour: `now` changes when the hour does, and the moment the widget is back on screen
+    Timer {
+        running: root.live; repeat: true; interval: 300000; triggeredOnStart: true
+        onTriggered: { var n = new Date(); if (n.getHours() !== root.now.getHours() || n.getDate() !== root.now.getDate()) root.now = n }
+    }
     readonly property string who: env && env.starName ? String(env.starName) : ""
     readonly property string hello: {
         var h = now.getHours()

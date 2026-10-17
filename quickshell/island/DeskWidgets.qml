@@ -30,7 +30,19 @@ Item {
     signal selectedRequested(string uid)
     signal openRequested(string uid)
 
-    readonly property var layout: WD.normalize(opt ? opt.deskWidgets : null)
+    // opt is replaced by every setting that changes anywhere; the layout is only rebuilt (and every widget re-bound) when the saved
+    // widgets themselves changed
+    property var layout: ({ items: [] })
+    property string layoutKey: "\u0000"
+    function refreshLayout() {
+        var raw = opt ? opt.deskWidgets : null
+        var key = raw ? JSON.stringify(raw) : ""
+        if (key === layoutKey) return
+        layoutKey = key
+        layout = WD.normalize(raw)
+    }
+    onOptChanged: refreshLayout()
+    readonly property bool anyLinks: { for (var i = 0; i < layout.items.length; i++) if (layout.items[i].link) return true; return false }
     property var uids: []
     function syncUids() {
         var u = []
@@ -38,17 +50,43 @@ Item {
         if (u.join("|") !== uids.join("|")) uids = u
     }
     onLayoutChanged: syncUids()
-    Component.onCompleted: syncUids()
+    Component.onCompleted: { refreshLayout(); syncUids() }
 
     property real guideX: -1
     property real guideY: -1
 
-    // where the other widgets are (for snapping), and moving one by a few pixels (arrow keys)
+    // links (WidgetData.js: item.link): `tick` is bumped whenever a widget's own width or visibility changes, so the shared width and
+    // the "who do I follow" bindings below are worked out again (the Repeater's items are not something a binding can watch)
+    property int tick: 0
+    function hostOf(uid) {
+        for (var i = 0; i < rep.count; i++) { var h = rep.itemAt(i); if (h && h.uid === uid) return h }
+        return null
+    }
+    function linkHostOf(uid, t) {
+        if (!anyLinks) return null
+        var l = WD.leaderOf(layout, uid)
+        return l !== "" ? hostOf(l) : null
+    }
+    // the outer width every widget of this chain shares: the widest of them (0 = not linked, nothing is forced)
+    function groupW(uid, t) {
+        if (!anyLinks) return 0
+        var g = WD.linkGroup(layout, uid)
+        if (g.length < 2) return 0
+        var m = 0
+        for (var i = 0; i < g.length; i++) {
+            var h = hostOf(g[i])
+            if (h && (g[i] === uid || !h.bodyHidden)) m = Math.max(m, h.natW)
+        }
+        return m
+    }
+
+    // where the other widgets are (for snapping), and moving one by a few pixels (arrow keys); the widgets linked to the moving one
+    // are not "others": they travel with it
     function rectsExcept(uid) {
-        var out = []
+        var out = [], mine = WD.linkGroup(layout, uid)
         for (var i = 0; i < rep.count; i++) {
             var h = rep.itemAt(i)
-            if (h && h.uid !== uid && h.visible) out.push({ x: h.x, y: h.y, w: h.vw, h: h.vh })
+            if (h && mine.indexOf(h.uid) < 0 && h.visible) out.push({ x: h.x, y: h.y, w: h.vw, h: h.vh })
         }
         return out
     }
@@ -62,14 +100,15 @@ Item {
     onSelectedChanged: pickHost()
     onEditingChanged: pickHost()
     function nudge(uid, dx, dy) {
-        for (var i = 0; i < rep.count; i++) { var h = rep.itemAt(i); if (h && h.uid === uid) { h.nudge(dx, dy); return } }
+        var h = hostOf(WD.linkRoot(layout, uid))      // a linked widget is moved through its leader
+        if (h) h.nudge(dx, dy)
     }
 
     Repeater {
         id: rep
         model: root.uids
-        onItemAdded: Qt.callLater(root.pickHost)
-        onItemRemoved: Qt.callLater(root.pickHost)
+        onItemAdded: { Qt.callLater(root.pickHost); root.tick++ }
+        onItemRemoved: { Qt.callLater(root.pickHost); root.tick++ }
         delegate: WidgetHost {
             id: dw
             required property string modelData
@@ -85,15 +124,23 @@ Item {
             topInset: root.topInset
             bottomInset: root.bottomInset
             collect: root.rectsExcept
+            linkHost: root.linkHostOf(modelData, root.tick)
+            forceW: root.groupW(modelData, root.tick)
+            onNatWChanged: if (root.anyLinks) root.tick++
+            onBodyHiddenChanged: if (root.anyLinks) root.tick++
             gridSnap: root.editing && root.snapGrid ? root.gridSize : 0
             z: selected ? 1000 : 1
             onPicked: uid => root.selectedRequested(uid)
             onDragMoved: (gx, gy) => { root.guideX = gx; root.guideY = gy }
             onDropped: (uid, px, py) => root.commit(WD.setPos(root.layout, uid, px, py))
             // resizing keeps the top-left corner where it is (the position is stored relative to the room left, which changes with the size)
-            onRescaled: (uid, s) => root.commit(WD.setScalePos(root.layout, uid, s,
-                WD.fracX(dw.x, root.width, dw.width * s, root.margin),
-                WD.fracY(dw.y, root.height, dw.height * s, root.topInset, root.bottomInset)))
+            // (a linked widget resizes through the first widget of its chain: they all share one size)
+            onRescaled: (uid, s) => {
+                var ru = WD.linkRoot(root.layout, uid), rh = root.hostOf(ru) || dw
+                root.commit(WD.setScalePos(root.layout, ru, s,
+                    WD.fracX(rh.x, root.width, rh.width * s, root.margin),
+                    WD.fracY(rh.y, root.height, rh.height * s, root.topInset, root.bottomInset)))
+            }
             onRemoveRequested: uid => root.commit(WD.remove(root.layout, uid))
             onToggleOffRequested: uid => root.commit(WD.setOff(root.layout, uid, !WD.isOff(WD.find(root.layout, uid))))
             onOpenRequested: uid => root.openRequested(uid)

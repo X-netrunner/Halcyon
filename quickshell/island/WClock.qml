@@ -30,13 +30,18 @@ WBase {
     readonly property string timeText: hh + ":" + mm + (secs ? ":" + ss : "")
     readonly property string dateText: Qt.formatDate(now, "dddd, MMMM d") + (opt("year", false) === true ? Qt.formatDate(now, " yyyy") : "")
 
+    // Ticks every second with seconds on, else just after each full minute. It also ticks the moment the widget comes back on screen
+    // (triggeredOnStart): before, after a full-screen app the clock showed the old time for up to a minute. `tickMs` is a property, so
+    // switching "Seconds" on in the Widget builder takes effect at once (the interval was only reset by the next tick).
+    property int tickMs: 1000
     Timer {
         running: root.live
         repeat: true
-        interval: 1000
+        triggeredOnStart: true
+        interval: root.secs ? 1000 : root.tickMs
         onTriggered: {
             root.now = new Date()
-            interval = root.secs ? 1000 : Math.max(250, 60000 - (root.now.getSeconds() * 1000 + root.now.getMilliseconds()) + 40)
+            root.tickMs = Math.max(250, 60000 - (root.now.getSeconds() * 1000 + root.now.getMilliseconds()) + 40)
         }
     }
 

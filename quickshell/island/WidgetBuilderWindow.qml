@@ -18,7 +18,10 @@ Item {
     signal closed()
     signal editOnDesktop()
 
-    readonly property var layout: WD.normalize(opt ? opt.deskWidgets : null)
+    // the newest layout a slider made that the 70 ms timer has not sent yet: every edit starts from it, so a click right after a slider
+    // does not start from the old layout (and then get overwritten when the timer sends the slider's value)
+    property var livePending: null
+    readonly property var layout: WD.normalize(livePending !== null ? livePending : (opt ? opt.deskWidgets : null))
     readonly property var saved: (opt && opt.deskStyles && opt.deskStyles.length !== undefined) ? opt.deskStyles : []
     property string sel: ""
     property string pick: ""              // asked to open on this widget (from the desktop editor)
@@ -30,16 +33,39 @@ Item {
     readonly property var curType: cur ? WD.typeOf(cur.type) : null
 
     function select(uid) { sel = uid; adding = false }
+
+    // links: this widget follows another one (same width, same size, a fixed gap; see WidgetData.js)
+    readonly property string curLinkTo: cur && cur.link ? cur.link : ""
+    readonly property string curLinkSide: cur && cur.linkSide === "above" ? "above" : "below"
+    readonly property int curLinkGap: cur && cur.linkGap !== undefined ? cur.linkGap : 14
+    // "Nothing" and every other widget it may follow (named by its kind; "2nd" etc. when there are several of one kind)
+    readonly property var linkOptions: {
+        var o = [["", "Nothing"]], cnt = {}, seen = {}
+        for (var i = 0; i < layout.items.length; i++) cnt[layout.items[i].type] = (cnt[layout.items[i].type] || 0) + 1
+        for (var j = 0; j < layout.items.length; j++) {
+            var it = layout.items[j]
+            seen[it.type] = (seen[it.type] || 0) + 1
+            if (it.uid === sel || !WD.canLink(layout, sel, it.uid)) continue
+            o.push([it.uid, WD.nameOf(it.type) + (cnt[it.type] > 1 ? " " + seen[it.type] : "")])
+        }
+        return o
+    }
+    function setLinkTo(to) { edit(WD.setLink(layout, sel, to, curLinkSide, curLinkGap), false) }
+    function setLinkV(side, gap, live) { edit(WD.setLink(layout, sel, curLinkTo, side, gap), live === true) }
     // the picked one disappeared (or nothing is picked yet): pick the first
     onLayoutChanged: if (WD.find(layout, sel) === null) sel = layout.items.length ? layout.items[0].uid : ""
     Component.onCompleted: if (sel === "" && layout.items.length) sel = layout.items[0].uid
 
     // sliders send a value for every pixel: pass the first at once, then at most one every 70 ms, ending on the last
     property var pending: ({})
-    function put(k, v) { root.changed(k, v) }
+    function send(k, v) { if (k === "deskWidgets") livePending = null; root.changed(k, v) }
+    function put(k, v) {
+        if (k === "deskWidgets") { var p0 = pending; delete p0.deskWidgets; pending = p0 }      // this newer layout replaces a waiting one
+        send(k, v)
+    }
     function putLive(k, v) {
-        if (liveT.running) { var p = pending; p[k] = v; pending = p; return }
-        root.changed(k, v)
+        if (liveT.running) { var p = pending; p[k] = v; pending = p; if (k === "deskWidgets") livePending = v; return }
+        send(k, v)
         liveT.start()
     }
     Timer {
@@ -49,11 +75,11 @@ Item {
             var p = root.pending
             root.pending = ({})
             var any = false
-            for (var k in p) { root.changed(k, p[k]); any = true }
+            for (var k in p) { root.send(k, p[k]); any = true }
             if (any) liveT.start()
         }
     }
-    function flushLive() { var p = root.pending; root.pending = ({}); for (var k in p) root.changed(k, p[k]) }
+    function flushLive() { var p = root.pending; root.pending = ({}); for (var k in p) root.send(k, p[k]) }
 
     function edit(l, live) { if (live) putLive("deskWidgets", l); else put("deskWidgets", l) }
     function setStyle(s) { edit(WD.setStyle(layout, sel, s), false) }
@@ -437,6 +463,39 @@ Item {
                             Layout.fillWidth: true
                             text: "For an exact spot, use \"Place them on the desktop\": drag it there, the wheel resizes it."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
+                        }
+
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
+
+                        // ---- link: follow another widget
+                        NbCap { pal: root.pal; text: "LINK" }
+                        ChipRow {
+                            Layout.fillWidth: true
+                            pal: root.pal; label: "Follow"; labelWidth: 90
+                            options: root.linkOptions
+                            current: root.curLinkTo
+                            onPicked: id => root.setLinkTo(id)
+                        }
+                        ChipRow {
+                            Layout.fillWidth: true
+                            visible: root.curLinkTo !== ""
+                            pal: root.pal; label: "Sits"; labelWidth: 90
+                            options: [["below", "Below it"], ["above", "Above it"]]
+                            current: root.curLinkSide
+                            onPicked: id => root.setLinkV(id, root.curLinkGap, false)
+                        }
+                        NbSlider {
+                            Layout.fillWidth: true
+                            visible: root.curLinkTo !== ""
+                            pal: root.pal; label: "Gap"; from: 0; to: 80; unit: " px"
+                            value: root.curLinkGap
+                            onPicked: v => root.setLinkV(root.curLinkSide, v, true)
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.curLinkTo === "" ? "Link a widget to another one, for example the visualizer to the song title: they become exactly as wide as the wider of the two, line up edge to edge and stay the same distance apart. Move or resize one on the desktop and the other goes with it."
+                                                        : "Linked: this widget takes the size of the one it follows, shares its width and moves with it. On the desktop, drag or resize the one it follows (the Size slider above no longer applies here)."
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                         }
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }

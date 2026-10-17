@@ -1,5 +1,31 @@
 # Changelog
 
+## Bug check, round 3: clock and date widgets
+
+- Fixed: **Clock, Month calendar, Text & greeting and Moon showed old values for a while after coming back on screen** (for example after a full-screen app): their timers only fired at the next tick, up to a minute (clock, month), 5 minutes (greeting) or 10 minutes (moon) later. They now refresh the moment the widget is visible again (`WClock.qml`, `WMonth.qml`, `WText.qml`, `WMoon.qml`).
+- Fixed: **Clock: switching "Seconds" on** only took effect after the next minute tick, because the interval was reset from inside the tick. It is a binding now.
+- Faster: **Month calendar** rebuilt its 42 cells (and the week numbers) every minute; it now does it once a day. **Text & greeting** only updates when the hour changes.
+
+## Bug check, round 2: wallpaper changes, widget builder, desktop editor grid
+
+- Fixed: **changing the wallpaper again while the previous change was still finishing** wiped the name of the new picture, so the colours were then worked out from an empty path. The new picture now keeps its name until it is shown (`Wallpaper.qml`). Switching the wallpaper picture off in the middle of a change no longer leaves a stale name that blocked choosing the same picture later.
+- Fixed: **Widget builder: a change made right after a slider was lost.** The slider's last value waits up to 70 ms for the timer; a click in that time was computed from the old layout and then overwritten by the slider's value. Every edit now starts from the newest layout (`WidgetBuilderWindow.qml`).
+- Faster: **the desktop editor's grid is one canvas** instead of a rectangle per line (about 150 items at 20 px) (`DeskGuides.qml`).
+- The desktop editor's hint now says that linked widgets move and resize together.
+
+## Bug check: widget links, desktop widgets, console
+
+- Fixed: **removing a widget that others followed** left them pointing at its id, and the next new widget got the same id and was followed by accident. They are freed on removal. Duplicating a linked widget gives a free copy (it used to sit exactly on top of its sibling), and "Put it at" on a linked widget moves the first widget of its chain (it used to do nothing).
+- Fixed: **resizing a widget with the corner dot** made it jump back to the old size for a frame when you let go.
+- Fixed: **Console**: a command ending in a `# comment` was a syntax error (the closing bracket was swallowed), and the answer of a command you had just replaced could appear in the new one's box.
+- Faster: **the desktop widgets are only re-bound when the saved widgets really change** (before, every setting you changed anywhere made every widget re-evaluate), and the link bookkeeping does nothing at all while no widget is linked.
+- Checked: no QML file in the project has a signal that clashes with a property's change signal (the error that stopped Quickshell earlier).
+
+## Linked widgets, Desktop builder without the widget placer
+
+- New: **Link** (Widget builder > pick a widget > Link > "Follow"). A linked widget sits straight below or above the one it follows (the gap is a slider), takes its size and shares one width with it: every widget in a chain is as wide as the widest of them, so the visualizer and the song title line up edge to edge whatever the title length. Dragging, resizing (wheel) or nudging any of them on the desktop moves or resizes the whole chain; a linked widget is picked by a click and shows "linked to ...". Removing the leader frees the others. Cycles are refused. Visualizer (all styles but the circle) and Now playing (card, compact) stretch to the shared width; Now playing "minimal" and "cover" and every other widget keep their own look, centred (left-aligned for the other widgets) in the shared width.
+- Changed: **Desktop builder**: the widget placer is gone. The picture of the screen now shows only the boxes and their corners (no Widgets / Boxes switch); widgets are placed with "Place them on the desktop".
+
 ## Colour depth, no-box widgets, console, blur on every window, Thunar live sync
 
 - Fixed: **Quickshell did not start** ("Duplicate signal name" in `DesktopEditor.qml`): the signal `optChanged` clashed with the automatic change signal of `property var opt`. Renamed to `optToggled` (also in `shell.qml`).

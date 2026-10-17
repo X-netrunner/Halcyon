@@ -28,6 +28,9 @@ Item {
     property var others: []
     property real pinX: 0
     property real pinY: 0
+    // links (item.link, see WidgetData.js): DeskWidgets hands over the host this widget follows and the outer width the whole chain shares
+    property var linkHost: null
+    property real forceW: 0
 
     signal picked(string uid)
     signal dragMoved(real guideX, real guideY)    // -1 = no guide line on that axis
@@ -71,7 +74,11 @@ Item {
 
     // ---- size and place
     readonly property real pad: look.pad >= 0 ? look.pad : (look.surface === "clear" ? 4 : 14)
-    readonly property real k: resizing ? liveScale : (item ? item.scale : 1)
+    // a linked widget takes its leader's size; the rest of the chain follows because the leader's k does
+    readonly property bool linked: linkHost !== null && !preview
+    readonly property string linkSide: item && item.linkSide === "above" ? "above" : "below"
+    readonly property real linkGap: item && item.linkGap !== undefined ? Number(item.linkGap) : 14
+    readonly property real k: resizing ? liveScale : (linked ? linkHost.k : (item ? item.scale : 1))
     readonly property bool off: item ? item.off === true : false          // switched off by you (the eye button / Widget builder): not drawn, nothing runs
     readonly property bool bodyHidden: off || (ld.item ? ld.item.hidden === true : false)
     property bool dragging: false
@@ -80,15 +87,19 @@ Item {
     property real dragY: 0
     property real liveScale: 1
 
-    width: Math.max(24, ld.implicitWidth + pad * 2)
+    // natW = how wide it is on its own; linked widgets are all as wide as the widest of the chain (forceW)
+    readonly property real natW: Math.max(24, ld.implicitWidth + pad * 2)
+    width: Math.max(natW, forceW)
     height: Math.max(24, ld.implicitHeight + pad * 2)
     scale: k
     transformOrigin: Item.TopLeft
     readonly property real vw: width * k
     readonly property real vh: height * k
     // while the corner dot resizes, the top-left corner is pinned (the saved position is a fraction of the free room, which shrinks as the widget grows)
-    x: preview ? 0 : (dragging ? dragX : (resizing ? pinX : WD.posX(item || { px: 0 }, screenW, vw, margin)))
-    y: preview ? 0 : (dragging ? dragY : (resizing ? pinY : WD.posY(item || { py: 0 }, screenH, vh, topInset, bottomInset)))
+    // a linked widget sits straight above / below its leader (same left edge, same width), linkGap px away
+    x: preview ? 0 : (linked ? linkHost.x : (dragging ? dragX : (resizing ? pinX : WD.posX(item || { px: 0 }, screenW, vw, margin))))
+    y: preview ? 0 : (linked ? (linkSide === "above" ? linkHost.y - vh - linkGap : linkHost.y + linkHost.vh + linkGap)
+                             : (dragging ? dragY : (resizing ? pinY : WD.posY(item || { py: 0 }, screenH, vh, topInset, bottomInset))))
 
     // move by dx, dy pixels (arrow keys)
     function nudge(dx, dy) {
@@ -140,6 +151,7 @@ Item {
     Loader {
         id: ld
         x: host.pad; y: host.pad
+        width: Math.max(0, host.width - host.pad * 2)     // the body is as wide as the frame: a linked widget stretches to the shared width
         asynchronous: false
         function load() {
             if (!host.item) return
@@ -167,13 +179,14 @@ Item {
         enabled: host.editing
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton
-        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        cursorShape: host.linked ? Qt.ArrowCursor : (pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor)
         property real pressX: 0                 // (was sx / sy: the `var sx` inside onPositionChanged shadowed them, so the move was NaN and nothing dragged)
         property real pressY: 0
         property real ox: 0
         property real oy: 0
         onPressed: m => {
             host.picked(host.uid)
+            if (host.linked) return              // linked: it moves with its leader (drag the leader), a click still picks it
             var p = grab.mapToItem(host.parent, m.x, m.y)
             pressX = p.x; pressY = p.y; ox = host.x; oy = host.y
             host.others = host.collect ? host.collect(host.uid) : []
@@ -225,7 +238,7 @@ Item {
     // the corner dot: drag it to resize
     Rectangle {
         id: dot
-        visible: host.editing && host.selected
+        visible: host.editing && host.selected && !host.linked
         z: 60
         width: 16; height: 16; radius: 8
         x: host.width - 8; y: host.height - 8
@@ -245,7 +258,7 @@ Item {
                 var s = (p.x - host.x) / Math.max(1, host.width)
                 host.liveScale = Math.max(0.5, Math.min(2.5, Math.round(s * 20) / 20))
             }
-            onReleased: { host.resizing = false; host.rescaled(host.uid, host.liveScale) }
+            onReleased: { host.rescaled(host.uid, host.liveScale); host.resizing = false }
         }
     }
 
@@ -261,7 +274,7 @@ Item {
         Rectangle {
             height: 26; width: nameT.implicitWidth + 20; radius: 13
             color: Qt.alpha(host.pal.bg, 0.92); border.width: 1; border.color: Qt.alpha(host.pal.accent, 0.6)
-            Text { id: nameT; anchors.centerIn: parent; text: WD.nameOf(host.type); color: host.pal.text; font.family: host.pal.uiFont; font.pixelSize: 12; font.weight: Font.Medium }
+            Text { id: nameT; anchors.centerIn: parent; text: WD.nameOf(host.type) + (host.linked ? "  ·  linked to " + WD.nameOf(host.linkHost.type) : ""); color: host.pal.text; font.family: host.pal.uiFont; font.pixelSize: 12; font.weight: Font.Medium }
         }
         Rectangle {
             height: 26; width: styleT.implicitWidth + 20; radius: 13
