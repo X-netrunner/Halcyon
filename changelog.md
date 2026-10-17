@@ -1,5 +1,14 @@
 # Changelog
 
+## Bug check, round 11: the password manager and the browser helper
+
+- Fixed: **Copied passwords ended up in the clipboard history.** The clipboard history (`wl-paste --watch cliphist store`, shown by SUPER+V) stored every password `passman get` / `add` / `gen` copied, in plain text on disk; the 30-second clear never reached it. Passwords are now copied with `wl-copy --sensitive`, which tells the history tool to skip them (older `wl-copy` without the flag falls back to the plain call). `passman status` warns when `wl-copy` is too old and cliphist is installed (`scripts/halcyon-pass.py`).
+- Fixed: **`passman import` took minutes and destroyed its own backup.** Every row decrypted and re-encrypted the vault several times (40 rows: 21 s; a few hundred logins: minutes) and overwrote `vault.enc.bak` at every row, so afterwards the backup held the vault from one row before the end instead of from before the import. The file is now merged in memory and the vault is written once (40 rows: 0.5 s) and the backup is the vault as it was before. A file that is not a password export now says so and changes nothing.
+- Fixed: **A question left open froze every other writer.** `passman add` ("Replace it?"), `edit` (new password) and `del` ("Delete?") asked while holding the vault lock, so the browser's "save this login?" and the island waited until someone answered. The questions are now asked first and the lock is only held while writing (tested: another writer finished in 0.4 s while a delete prompt was open).
+- Fixed: **`passman add github -g 32`** took the 32 as the user name; the number right after `-g` is the length now.
+- Fixed: **Browser helper "never ask for this site" list**: two tabs answering at once could lose one, and the file was readable by others until the write ended. It is written atomically, under the vault lock, and private from the first byte (`scripts/passman-host.py`).
+- Checked, nothing to change: the vault format and key handling, the openssl calls, the clipboard clearing, `passman-host.py` message handling. Known limit, not changed: the key sits next to the vault (`~/.local/state/island/.vault.key`), so the vault is only as safe as that folder; there is no master password.
+
 ## Bug check, round 10: scripts the earlier rounds had not looked at (recording, notes, layout, caffeine, gaming mode, hotspot)
 
 - Fixed: **Screen recording could kill an unrelated program.** The recorder's process number was saved in `~/.local/state/island` (it survives a crash or a reboot) and trusted as it was. When that number belonged to another program by the next time, `status` said "recording" and `stop` sent it Ctrl+C, TERM and then KILL. The pid files now hold the number and the process start time, and a process that does not match is never signalled (`scripts/screen-record.sh`).
