@@ -191,7 +191,10 @@ def generate_password(length: int = 20) -> str:
 
 def copy_to_clipboard_timed(text: str, timeout_sec: int = CLIP_SECONDS) -> bool:
     """Copy (the text goes through stdin, never through the process list) and clear it again if it is still there."""
-    for cmd, clear in ((["wl-copy"], ["wl-copy", "--clear"]),
+    # --sensitive marks the copy as a secret: clipboard history tools (cliphist behind SUPER+V) skip it instead of writing
+    # the password to disk in plain text. An older wl-copy does not know the flag, so the plain call follows as a fallback.
+    for cmd, clear in ((["wl-copy", "--sensitive"], ["wl-copy", "--clear"]),
+                       (["wl-copy"], ["wl-copy", "--clear"]),
                        (["xclip", "-selection", "clipboard"], None)):
         if shutil.which(cmd[0]) is None:
             continue
@@ -278,6 +281,38 @@ def get_entry(service: str, show: bool = False) -> int:
     return 0
 
 
+def find_exact(entries: dict, name: str):
+    if name in entries:
+        return name
+    for s in entries:
+        if s.lower() == name.lower():
+            return s
+    return None
+
+
+def _keep_history(old: dict, pwd: str) -> list:
+    hist = list(old.get("history", []))
+    if old.get("pass") and old.get("pass") != pwd:
+        hist = ([{"pass": old["pass"], "changed": old.get("updated", 0)}] + hist)[:3]
+    return hist
+
+
+def _merge(entries: dict, service: str, user: str, pwd: str) -> str:
+    """Put one login into `entries` (the caller holds the lock and saves). Returns saved | updated | unchanged."""
+    existing = find_exact(entries, service)
+    old = entries.get(existing) if existing else None
+    user = user.strip()
+    if old and old.get("pass") == pwd and (old.get("user", "") == user or not user):
+        return "unchanged"
+    rec = {"user": user or (old or {}).get("user", ""), "pass": pwd, "updated": time.time()}
+    if old:
+        hist = _keep_history(old, pwd)
+        if hist:
+            rec["history"] = hist
+    entries[existing or service] = rec
+    return "updated" if old else "saved"
+
+
 def add_entry(service: str, user: str = "", pwd: str = "", generate: bool = False, length: int = 20, from_stdin: bool = False) -> int:
     service = service.strip()
     if not service:
@@ -298,40 +333,27 @@ def add_entry(service: str, user: str = "", pwd: str = "", generate: bool = Fals
         if not pwd:
             pwd = generate_password(length)
             note = "No password was given, so one was generated: " + c("1;32", pwd)
+    # Questions are asked BEFORE the vault lock is taken. The lock used to be held while waiting for an answer, so a prompt
+    # left open froze every other writer (the browser's "save this login?" included) until someone typed something.
+    if sys.stdin.isatty() and not from_stdin:
+        existing = find_exact(load_vault().get("entries", {}), service)
+        if existing and input(f"'{existing}' already exists. Replace it? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("Nothing changed.")
+            return 1
     with locked():
         vault = load_vault(create_ok=True)
         entries = vault["entries"]
         existing = find_exact(entries, service)
-        old = entries.get(existing) if existing else None
-        if old and sys.stdin.isatty() and not from_stdin:
-            if input(f"'{existing}' already exists. Replace it? [y/N] ").strip().lower() not in ("y", "yes"):
-                print("Nothing changed.")
-                return 1
-        rec = {"user": user.strip() or (old or {}).get("user", ""), "pass": pwd, "updated": time.time()}
-        if old:
-            hist = list(old.get("history", []))
-            if old.get("pass") and old.get("pass") != pwd:
-                hist = ([{"pass": old["pass"], "changed": old.get("updated", 0)}] + hist)[:3]
-            if hist:
-                rec["history"] = hist
-            service = existing
-        entries[service] = rec
-        save_vault(vault)
-    print(c("1;32", "OK") + f" {'Updated' if old else 'Saved'} {c('1', service)}")
+        result = _merge(entries, service, user, pwd)
+        if result != "unchanged":
+            save_vault(vault)
+        service = existing or service
+    print(c("1;32", "OK") + f" {'Updated' if result == 'updated' else 'Saved'} {c('1', service)}")
     if note:
         print(note)
     if copy_to_clipboard_timed(pwd):
         print(c("90", f"(copied to the clipboard; clears in {CLIP_SECONDS} s)"))
     return 0
-
-
-def find_exact(entries: dict, name: str):
-    if name in entries:
-        return name
-    for s in entries:
-        if s.lower() == name.lower():
-            return s
-    return None
 
 
 def store_entry(service: str, user: str, pwd: str) -> str:
@@ -341,26 +363,17 @@ def store_entry(service: str, user: str, pwd: str) -> str:
         raise VaultError("service and password are required")
     with locked():
         vault = load_vault(create_ok=True)
-        entries = vault["entries"]
-        existing = find_exact(entries, service)
-        old = entries.get(existing) if existing else None
-        if old and old.get("pass") == pwd and (old.get("user", "") == user.strip() or not user.strip()):
-            return "unchanged"
-        rec = {"user": user.strip() or (old or {}).get("user", ""), "pass": pwd, "updated": time.time()}
-        if old:
-            hist = list(old.get("history", []))
-            if old.get("pass") and old.get("pass") != pwd:
-                hist = ([{"pass": old["pass"], "changed": old.get("updated", 0)}] + hist)[:3]
-            if hist:
-                rec["history"] = hist
-            service = existing
-        entries[service] = rec
-        save_vault(vault)
-    return "updated" if old else "saved"
+        result = _merge(vault["entries"], service, user, pwd)
+        if result != "unchanged":
+            save_vault(vault)
+    return result
 
 
 def import_csv(path: str) -> int:
-    """Chrome / Brave / Edge export: name,url,username,password[,note].  One entry per site; an existing one is only changed if the password differs."""
+    """Chrome / Brave / Edge export: name,url,username,password[,note].  One entry per site; an existing one is only changed if the password differs.
+    The whole file is merged in memory and the vault is written ONCE. It used to decrypt and re-encrypt the vault several
+    times per row (a few hundred logins took minutes) and it overwrote vault.enc.bak at every row, so the backup never held
+    the vault as it was before the import."""
     import csv
     from urllib.parse import urlparse
     path = os.path.expanduser(path)
@@ -368,49 +381,54 @@ def import_csv(path: str) -> int:
         err(f"No such file: {path}")
         return 1
     counts = {"saved": 0, "updated": 0, "unchanged": 0, "skipped": 0}
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        for row in csv.DictReader(f):
-            row = {(k or "").strip().lower(): (v or "") for k, v in row.items()}
-            pwd, user = row.get("password", ""), row.get("username", "") or row.get("user", "")
-            host = (urlparse(row.get("url", "")).hostname or "").removeprefix("www.")
-            name = host or row.get("name", "").strip()
-            if not name or not pwd:
-                counts["skipped"] += 1
-                continue
-            if user and counts_has_user(name, user):
-                name = f"{name} ({user})"
-            counts[store_entry(name, user, pwd)] += 1
+    try:
+        with locked():
+            vault = load_vault(create_ok=True)
+            entries = vault["entries"]
+            with open(path, newline="", encoding="utf-8-sig") as f:
+                for row in csv.DictReader(f):
+                    row = {(k or "").strip().lower(): (v or "") for k, v in row.items() if isinstance(v, (str, type(None)))}
+                    pwd, user = row.get("password", ""), row.get("username", "") or row.get("user", "")
+                    host = (urlparse(row.get("url", "")).hostname or "").removeprefix("www.")
+                    name = host or row.get("name", "").strip()
+                    if not name or not pwd:
+                        counts["skipped"] += 1
+                        continue
+                    k = find_exact(entries, name)
+                    if user and k and entries[k].get("user", "") and entries[k].get("user", "") != user:
+                        name = f"{name} ({user})"      # a second account on the same site
+                    counts[_merge(entries, name, user, pwd)] += 1
+            if counts["saved"] or counts["updated"]:
+                save_vault(vault)
+    except (csv.Error, UnicodeDecodeError) as e:
+        err(f"Could not read {path} as a password export ({type(e).__name__}); the vault was not changed.")
+        return 1
     print(c("1;32", "OK") + f" Imported: {counts['saved']} new, {counts['updated']} updated, {counts['unchanged']} unchanged, {counts['skipped']} skipped")
     print(c("90", "Now delete the CSV (it holds every password in plain text):  shred -u " + path))
     return 0
 
 
-def counts_has_user(name: str, user: str) -> bool:
-    """True when `name` is already in the vault for a DIFFERENT username (two accounts on one site)."""
-    e = load_vault().get("entries", {})
-    k = find_exact(e, name)
-    return bool(k and e[k].get("user", "") and e[k].get("user", "") != user)
-
-
 def edit_entry(service: str, new_user: str = "") -> int:
+    entries = load_vault().get("entries", {})
+    key = find_service(entries, service)
+    if key is None:
+        return 1
+    new_pass = ""
+    if sys.stdin.isatty():            # asked before the lock is taken (see add_entry)
+        new_pass = getpass.getpass(f"New password for {key} (blank = keep, 'g' = generate): ")
+        if new_pass == "g":
+            new_pass = generate_password()
+            print("Generated password: " + c("1;32", new_pass))
     with locked():
         vault = load_vault()
-        key = find_service(vault["entries"], service)
-        if key is None:
+        e = vault["entries"].get(key)
+        if e is None:
+            err(f"Entry not found: {key}")
             return 1
-        e = vault["entries"][key]
         if new_user:
             e["user"] = new_user.strip()
-        if sys.stdin.isatty():
-            p = getpass.getpass(f"New password for {key} (blank = keep, 'g' = generate): ")
-            if p == "g":
-                p = generate_password()
-                print("Generated password: " + c("1;32", p))
-            if p:
-                hist = list(e.get("history", []))
-                if e.get("pass") and e["pass"] != p:
-                    hist = ([{"pass": e["pass"], "changed": e.get("updated", 0)}] + hist)[:3]
-                e["pass"], e["history"] = p, hist
+        if new_pass:
+            e["pass"], e["history"] = new_pass, _keep_history(e, new_pass)
         e["updated"] = time.time()
         save_vault(vault)
     print(c("1;32", "OK") + f" Updated {c('1', key)}")
@@ -418,14 +436,17 @@ def edit_entry(service: str, new_user: str = "") -> int:
 
 
 def del_entry(service: str) -> int:
+    key = find_exact(load_vault().get("entries", {}), service)
+    if key is None:
+        err(f"Entry not found: {service}")
+        return 1
+    if sys.stdin.isatty() and input(f"Delete '{key}'? [y/N] ").strip().lower() not in ("y", "yes"):
+        print("Nothing changed.")
+        return 1
     with locked():
         vault = load_vault()
-        key = find_exact(vault["entries"], service)
-        if key is None:
+        if key not in vault["entries"]:
             err(f"Entry not found: {service}")
-            return 1
-        if sys.stdin.isatty() and input(f"Delete '{key}'? [y/N] ").strip().lower() not in ("y", "yes"):
-            print("Nothing changed.")
             return 1
         del vault["entries"][key]
         save_vault(vault)
@@ -453,6 +474,14 @@ def status() -> int:
     print(f"  {'key file':<14}" + ("present" if read_key() else c("1;31", "missing")))
     print(f"  {'vault file':<14}" + ((f"{os.path.getsize(VAULT_FILE)} bytes") if os.path.isfile(VAULT_FILE) else "none yet"))
     print(f"  {'last backup':<14}" + (time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(BACKUP_FILE))) if os.path.isfile(BACKUP_FILE) else "none yet"))
+    if shutil.which("wl-copy") and shutil.which("cliphist"):
+        try:
+            h = subprocess.run(["wl-copy", "--help"], capture_output=True, text=True, timeout=3)
+            sensitive = "--sensitive" in (h.stdout + h.stderr)
+        except (subprocess.SubprocessError, OSError):
+            sensitive = False
+        if not sensitive:
+            print(f"  {'clip history':<14}" + c("1;33", "wl-copy has no --sensitive: copied passwords are kept by cliphist (SUPER+V). Update wl-clipboard or switch the clipboard history off."))
     try:
         n = len(load_vault().get("entries", {}))
         print(f"  {'opens':<14}" + c("1;32", f"yes, {n} entries"))
@@ -492,10 +521,13 @@ def main() -> int:
             return 1
         flags = ("-g", "--gen", "--generate", "--stdin")
         gen = any(a in rest for a in ("-g", "--gen", "--generate"))
-        pos = [a for a in rest if a not in flags]
         length = 20
-        if gen and len(pos) >= 3 and pos[-1].isdigit():       # passman add svc user -g 32
-            length = int(pos.pop())
+        rest = list(rest)
+        for i, a in enumerate(rest):                          # the number right after -g is the length: passman add svc -g 32
+            if a in ("-g", "--gen", "--generate") and i + 1 < len(rest) and rest[i + 1].isdigit():
+                length = int(rest.pop(i + 1))
+                break
+        pos = [a for a in rest if a not in flags]
         return add_entry(pos[0], pos[1] if len(pos) > 1 else "", pos[2] if len(pos) > 2 else "",
                          generate=gen, length=length, from_stdin="--stdin" in rest)
     elif cmd == "edit":
