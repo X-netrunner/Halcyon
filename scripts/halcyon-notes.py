@@ -11,9 +11,12 @@ Usage:
   notes clear             -> remove completed notes
   notes json              -> output raw JSON for QML widgets
 """
+import contextlib
+import fcntl
 import json
 import os
 import sys
+import tempfile
 import time
 
 STATE_DIR = os.path.expanduser("~/.local/state/island")
@@ -31,12 +34,32 @@ def load_notes():
         pass
     return []
 
+@contextlib.contextmanager
+def locked():
+    """One writer at a time. The notes menu, the widget and a `notes ...` typed in a terminal can all change the file
+    within the same moment; each one reads the list, changes it and writes it back, so without a lock the second
+    writer silently erased what the first one had just done."""
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(NOTES_FILE + ".lock", "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lk, fcntl.LOCK_UN)
+
 def save_notes(notes):
     os.makedirs(STATE_DIR, exist_ok=True)
-    temp_file = NOTES_FILE + ".tmp"
-    with open(temp_file, "w", encoding="utf-8") as f:
-        json.dump(notes, f, indent=2, ensure_ascii=False)
-    os.replace(temp_file, NOTES_FILE)
+    # a temp file of its own (the fixed name ".tmp" was shared by every writer), then an atomic swap
+    fd, temp_file = tempfile.mkstemp(prefix="notes.", suffix=".tmp", dir=STATE_DIR)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(notes, f, indent=2, ensure_ascii=False)
+        os.chmod(temp_file, 0o600)
+        os.replace(temp_file, NOTES_FILE)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temp_file)
+        raise
 
 def add_note(text):
     text = text.strip()
@@ -48,8 +71,13 @@ def add_note(text):
     notes = load_notes()
     now = time.time()
     dt = time.strftime("%Y-%m-%d %H:%M", time.localtime(now))
+    # two notes added in the same millisecond used to get the same id, and then "delete / pin / done" hit the first one
+    ids = {n.get("id") for n in notes if isinstance(n, dict)}
+    nid = int(now * 1000)
+    while f"n_{nid}" in ids:
+        nid += 1
     item = {
-        "id": f"n_{int(now * 1000)}",
+        "id": f"n_{nid}",
         "text": text,
         "created": now,
         "date": dt,
@@ -161,6 +189,15 @@ def main():
         return
 
     cmd = args[0]
+    if cmd in READ_ONLY:
+        run(cmd, args)
+    else:
+        with locked():
+            run(cmd, args)
+
+READ_ONLY = ("list", "ls", "json")
+
+def run(cmd, args):
     if cmd in ("list", "ls"):
         list_notes()
     elif cmd == "json":

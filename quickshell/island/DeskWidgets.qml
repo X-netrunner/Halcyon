@@ -67,10 +67,10 @@ Item {
         var l = WD.leaderOf(layout, uid)
         return l !== "" ? hostOf(l) : null
     }
-    // the outer width every widget of this chain shares: the widest of them (0 = not linked, nothing is forced)
+    // the outer width every widget stacked with this one (above / below links) shares: the widest of them (0 = nothing is forced; side-by-side links never force a width)
     function groupW(uid, t) {
         if (!anyLinks) return 0
-        var g = WD.linkGroup(layout, uid)
+        var g = WD.widthGroup(layout, uid)
         if (g.length < 2) return 0
         var m = 0
         for (var i = 0; i < g.length; i++) {

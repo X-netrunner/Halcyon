@@ -76,7 +76,7 @@ Item {
     readonly property real pad: look.pad >= 0 ? look.pad : (look.surface === "clear" ? 4 : 14)
     // a linked widget takes its leader's size; the rest of the chain follows because the leader's k does
     readonly property bool linked: linkHost !== null && !preview
-    readonly property string linkSide: item && item.linkSide === "above" ? "above" : "below"
+    readonly property string linkSide: item ? WD.sideOf(item.linkSide) : "below"
     readonly property real linkGap: item && item.linkGap !== undefined ? Number(item.linkGap) : 14
     readonly property real k: resizing ? liveScale : (linked ? linkHost.k : (item ? item.scale : 1))
     readonly property bool off: item ? item.off === true : false          // switched off by you (the eye button / Widget builder): not drawn, nothing runs
@@ -96,9 +96,14 @@ Item {
     readonly property real vw: width * k
     readonly property real vh: height * k
     // while the corner dot resizes, the top-left corner is pinned (the saved position is a fraction of the free room, which shrinks as the widget grows)
-    // a linked widget sits straight above / below its leader (same left edge, same width), linkGap px away
-    x: preview ? 0 : (linked ? linkHost.x : (dragging ? dragX : (resizing ? pinX : WD.posX(item || { px: 0 }, screenW, vw, margin))))
-    y: preview ? 0 : (linked ? (linkSide === "above" ? linkHost.y - vh - linkGap : linkHost.y + linkHost.vh + linkGap)
+    // a linked widget sits linkGap px from its leader: straight above / below it (same left edge, same width), or beside it
+    // (left / right, centred on it; its leader's width counts, so when the leader grows this one is pushed along, never overlapped)
+    x: preview ? 0 : (linked ? (linkSide === "right" ? linkHost.x + linkHost.vw + linkGap
+                                : (linkSide === "left" ? linkHost.x - vw - linkGap : linkHost.x))
+                             : (dragging ? dragX : (resizing ? pinX : WD.posX(item || { px: 0 }, screenW, vw, margin))))
+    y: preview ? 0 : (linked ? (linkSide === "above" ? linkHost.y - vh - linkGap
+                                : (linkSide === "below" ? linkHost.y + linkHost.vh + linkGap
+                                   : linkHost.y + (linkHost.vh - vh) / 2))
                              : (dragging ? dragY : (resizing ? pinY : WD.posY(item || { py: 0 }, screenH, vh, topInset, bottomInset))))
 
     // move by dx, dy pixels (arrow keys)

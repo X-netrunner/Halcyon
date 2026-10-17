@@ -10,30 +10,45 @@ WBase {
     readonly property bool isShort: kind === "shortcuts"
     readonly property var nt: env ? env.net : ({})
 
-    // every toggle: its icon, its name, and whether it is lit (undefined = a plain button)
+    // every toggle: its name and icon (fixed)...
     readonly property var all: ({
-        wifi:     { n: "Wi-Fi", i: 0xF05A9, on: nt && nt.wifi !== undefined && nt.wifi !== "off" },
-        bt:       { n: "Bluetooth", i: 0xF00AF, on: nt && nt.bt !== undefined && nt.bt !== "off" },
-        dnd:      { n: "Do not disturb", i: 0xF009B, on: env ? env.dnd === true : false },
-        caffeine: { n: "Caffeine", i: 0xF0176, on: env ? env.caffeine === true : false },
-        gaming:   { n: "Gaming", i: 0xF0297, on: env ? env.gaming === true : false },
-        numlock:  { n: "Num Lock", i: 0xF0313, on: env ? env.numLock === true : false },
-        theme:    { n: "Theme", i: 0xF0335, on: env ? env.theme === "light" : false },
-        night:    { n: "Night light", i: 0xF0594, on: undefined },
-        lock:     { n: "Lock", i: 0xF033E, on: undefined },
-        power:    { n: "Power", i: 0xF0425, on: undefined }
+        wifi:     { n: "Wi-Fi", i: 0xF05A9 },
+        bt:       { n: "Bluetooth", i: 0xF00AF },
+        dnd:      { n: "Do not disturb", i: 0xF009B },
+        caffeine: { n: "Caffeine", i: 0xF0176 },
+        gaming:   { n: "Gaming", i: 0xF0297 },
+        numlock:  { n: "Num Lock", i: 0xF0313 },
+        theme:    { n: "Theme", i: 0xF0335 },
+        night:    { n: "Night light", i: 0xF0594 },
+        lock:     { n: "Lock", i: 0xF033E },
+        power:    { n: "Power", i: 0xF0425 }
     })
+    // ...and whether it is lit right now (the plain buttons - night light, lock, power, your shortcuts - are never lit). Every button
+    // asks for its own state; the list of buttons below no longer depends on these feeds, so it is not rebuilt (every button destroyed
+    // and made again, hover and press lost) each time the Wi-Fi / Bluetooth reading or a switch changes.
+    function isOn(id) {
+        switch (id) {
+        case "wifi": return !!nt && nt.wifi !== undefined && nt.wifi !== "off"
+        case "bt": return !!nt && nt.bt !== undefined && nt.bt !== "off"
+        case "dnd": return env ? env.dnd === true : false
+        case "caffeine": return env ? env.caffeine === true : false
+        case "gaming": return env ? env.gaming === true : false
+        case "numlock": return env ? env.numLock === true : false
+        case "theme": return env ? env.theme === "light" : false
+        }
+        return false
+    }
     readonly property var items: {
         var out = []
         if (isShort) {
             var s = WD.parseShortcuts(opt("items", ""))
-            for (var j = 0; j < s.length; j++) out.push({ id: "run", n: s[j].name, i: 0xF003B, on: undefined, cmd: s[j].cmd })
+            for (var j = 0; j < s.length; j++) out.push({ id: "run", n: s[j].name, i: 0xF003B, cmd: s[j].cmd })
             return out
         }
         var sel = opt("show", [])
         for (var i = 0; i < sel.length; i++) {
             var a = all[sel[i]]
-            if (a) out.push({ id: sel[i], n: a.n, i: a.i, on: a.on, cmd: "" })
+            if (a) out.push({ id: sel[i], n: a.n, i: a.i, cmd: "" })
         }
         return out
     }
@@ -63,8 +78,8 @@ WBase {
             delegate: Rectangle {
                 id: btn
                 required property var modelData
-                readonly property bool lit: modelData.on === true
-                width: root.iconsOnly ? root.sz(44) : (root.style === "list" ? root.sz(190) : (root.style === "grid" ? root.sz(92) : lab.implicitWidth + root.sz(46)))
+                readonly property bool lit: root.isOn(modelData.id)
+                width: root.iconsOnly ? root.sz(44) : (root.style === "list" ? root.sz(190) : (root.style === "grid" ? root.sz(92) : lab.width + root.sz(46)))
                 height: root.iconsOnly ? root.sz(44) : (root.style === "grid" ? root.sz(64) : root.sz(38))
                 radius: root.iconsOnly ? width / 2 : (root.style === "grid" ? root.sz(16) : height / 2)
                 color: lit ? Qt.alpha(root.accent, 0.24) : (bm.containsMouse ? Qt.alpha(root.fg, 0.14) : Qt.alpha(root.fg, 0.07))

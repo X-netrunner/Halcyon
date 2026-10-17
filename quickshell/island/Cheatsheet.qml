@@ -645,7 +645,7 @@ Scope {
                                                                         if (!root.capturing) return
                                                                         if (e.key === Qt.Key_Escape) { root.capturing = false; e.accepted = true; return }
                                                                         if (Binds.isModifierKey(e.key)) { e.accepted = true; return }
-                                                                        var name = Binds.qtKey(e.key)
+                                                                        var name = Binds.qtKey(e.key, e.modifiers)
                                                                         e.accepted = true
                                                                         if (name === "") { root.editError = "That key can not be used"; return }
                                                                         root.editKey = name
@@ -819,7 +819,7 @@ Scope {
                                                                     if (!root.capturing) return
                                                                     if (e.key === Qt.Key_Escape) { root.capturing = false; e.accepted = true; return }
                                                                     if (Binds.isModifierKey(e.key)) { e.accepted = true; return }
-                                                                    var name = Binds.qtKey(e.key)
+                                                                    var name = Binds.qtKey(e.key, e.modifiers)
                                                                     e.accepted = true
                                                                     if (name === "") { root.editError = "That key can not be used"; return }
                                                                     root.editKey = name

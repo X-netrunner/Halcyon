@@ -14,9 +14,9 @@ WBase {
         running: root.live
         loops: Animation.Infinite
         ScriptAction { script: root.inhaling = true }
-        NumberAnimation { target: root; property: "ph"; to: 1; duration: Math.round(root.secs * 500); easing.type: Easing.InOutSine }
+        NumberAnimation { target: root; property: "ph"; from: 0; to: 1; duration: Math.round(root.secs * 500); easing.type: Easing.InOutSine }
         ScriptAction { script: root.inhaling = false }
-        NumberAnimation { target: root; property: "ph"; to: 0; duration: Math.round(root.secs * 500); easing.type: Easing.InOutSine }
+        NumberAnimation { target: root; property: "ph"; from: 1; to: 0; duration: Math.round(root.secs * 500); easing.type: Easing.InOutSine }
     }
 
     readonly property real d: sz(120)

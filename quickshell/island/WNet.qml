@@ -22,16 +22,26 @@ WBase {
     readonly property real sig: nt && nt.signal !== undefined ? Math.max(0, Math.min(100, Number(nt.signal))) : 0
     readonly property string title: (nt && nt.eth === true && ssid === "") ? "Ethernet" : (ssid !== "" ? (opt("ssid", true) === true ? ssid : "Wi-Fi") : (wifiOn ? "Not connected" : "Wi-Fi off"))
 
-    // ---- uptime (read from /proc/uptime once a minute, only while it is on screen)
-    property real up: 0
+    // ---- uptime: /proc/uptime is read once, then the clock carries it on; it is read again every 10 minutes and whenever the widget
+    // comes back on screen after a long time (a suspend or a full-screen app), so the number never drifts and no process runs each minute
+    property real up: 0               // the value read
+    property real syncAt: 0           // when it was read (ms)
+    property real clockTick: 0        // bumped each minute so the text is worked out again
     Process {
         id: upProc
         command: ["cat", "/proc/uptime"]
-        stdout: StdioCollector { onStreamFinished: { var v = parseFloat(text.split(" ")[0]); if (!isNaN(v)) root.up = v } }
+        stdout: StdioCollector { onStreamFinished: { var v = parseFloat(text.split(" ")[0]); if (!isNaN(v)) { root.up = v; root.syncAt = Date.now(); root.clockTick = root.syncAt } } }
     }
-    Timer { running: root.isUptime && root.live; repeat: true; interval: 60000; triggeredOnStart: true; onTriggered: if (!upProc.running) upProc.running = true }
+    Timer {
+        running: root.isUptime && root.live; repeat: true; interval: 60000; triggeredOnStart: true
+        onTriggered: {
+            if (root.syncAt === 0 || Date.now() - root.syncAt > 600000) { if (!upProc.running) upProc.running = true }
+            else root.clockTick = Date.now()
+        }
+    }
+    readonly property real upNow: up + (clockTick > syncAt ? (clockTick - syncAt) / 1000 : 0)
     readonly property string upText: {
-        var s = Math.floor(up), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60)
+        var s = Math.floor(upNow), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60)
         return d > 0 ? d + "d " + h + "h " + m + "m" : (h > 0 ? h + "h " + m + "m" : m + "m")
     }
 

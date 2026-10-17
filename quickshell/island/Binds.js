@@ -174,7 +174,15 @@ var qtModifierKeys = [0x01000020, 0x01000021, 0x01000022, 0x01000023, 0x01000024
                       0x01000055, 0x01000056, 0x01000057, 0x01001103, 0x0100117e]
 
 function isModifierKey(code) { return qtModifierKeys.indexOf(code) >= 0 }
-function qtKey(code) {
+// with Shift held Qt reports the SHIFTED symbol (Shift + 1 arrives as "!"), so "Super + Shift + 1" could never be captured
+// ("That key can not be used"). With Shift held, these go back to the key that carries them (US layout).
+var qtShifted = {
+    0x21: "1", 0x40: "2", 0x23: "3", 0x24: "4", 0x25: "5", 0x5e: "6", 0x26: "7", 0x2a: "8", 0x28: "9", 0x29: "0",
+    0x5f: "minus", 0x2b: "equal", 0x7b: "bracketleft", 0x7d: "bracketright", 0x7c: "backslash", 0x3a: "semicolon",
+    0x22: "apostrophe", 0x3c: "comma", 0x3e: "period", 0x3f: "slash", 0x7e: "grave"
+}
+function qtKey(code, flags) {
+    if ((flags & 0x02000000) && qtShifted[code] !== undefined) return qtShifted[code]
     if (code >= 0x41 && code <= 0x5a) return String.fromCharCode(code)           // A..Z
     if (code >= 0x30 && code <= 0x39) return String.fromCharCode(code)           // 0..9
     if (code >= 0x01000030 && code <= 0x0100003b) return "F" + (code - 0x01000030 + 1)

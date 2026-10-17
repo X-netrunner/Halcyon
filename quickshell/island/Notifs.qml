@@ -83,6 +83,7 @@ Scope {
         toasts = without(toasts, n)
         history = without(history, n)
         delete arrived[n.id]
+        if (unread > history.length) unread = history.length      // there can not be more unread ones than there are notifications
     }
     // the limit was lowered in Settings: drop the oldest ones now instead of at the next notification
     onMaxHistoryChanged: {
@@ -138,6 +139,7 @@ Scope {
         history = []
         toasts = []
         arrived = ({})
+        unread = 0                         // "clear all" from the keyboard while the centre was shut left the unread bar lit for nothing
         for (var j = 0; j < all.length; j++) all[j].dismiss()
     }
     // hover mode: touching the edge opens it, leaving closes it after a short grace period.

@@ -15,11 +15,17 @@ WBase {
     property var notes: []
     property var calEvents: []
 
+    property string today: Qt.formatDate(new Date(), "dddd, MMM d")     // the heading (it was drawn once and stayed on yesterday after midnight)
+    property string lastNotes: ""                                      // the raw answers: the lists are only rebuilt when they really changed
+    property string lastCal: ""
+    property int beat: 0
     function refresh() {
+        today = Qt.formatDate(new Date(), "dddd, MMM d")
         if (!notesProc.running) notesProc.running = true
-        if (events && !calProc.running) calProc.running = true
+        // the calendar file only changes when it syncs: read it every minute, not every 15 seconds
+        if (events && (beat++ % 4 === 0) && !calProc.running) calProc.running = true
     }
-    onEventsChanged: if (live) refresh()
+    onEventsChanged: if (live) { beat = 0; refresh() }
     Timer { interval: 15000; repeat: true; running: root.live; triggeredOnStart: true; onTriggered: root.refresh() }
 
     Process {
@@ -27,10 +33,12 @@ WBase {
         command: ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "json"]
         stdout: StdioCollector {
             onStreamFinished: {
+                if (text === root.lastNotes) return
                 try {
                     var all = JSON.parse(text)
                     root.notes = all.filter(function (n) { return !n.done }).sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) })
-                } catch (e) { root.notes = [] }
+                    root.lastNotes = text
+                } catch (e) { /* a failed read keeps what is shown instead of blanking the list */ }
             }
         }
     }
@@ -45,8 +53,10 @@ WBase {
                     var d = new Date(); d.setHours(23, 59, 59, 0)
                     var endOfDay = d.getTime() / 1000
                     var done = data.done || []
-                    root.calEvents = (data.events || []).filter(function (e) { return e.end > now && e.start <= endOfDay && done.indexOf(e.id) < 0 }).sort(function (a, b) { return a.start - b.start })
-                } catch (e) { root.calEvents = [] }
+                    var list = (data.events || []).filter(function (e) { return e.end > now && e.start <= endOfDay && done.indexOf(e.id) < 0 }).sort(function (a, b) { return a.start - b.start })
+                    var key = JSON.stringify(list)          // events that ended drop out; the list is only swapped when it really differs
+                    if (key !== root.lastCal) { root.lastCal = key; root.calEvents = list }
+                } catch (e) { /* keep the last good list */ }
             }
         }
     }
@@ -71,7 +81,7 @@ WBase {
         Row {
             spacing: root.sz(8)
             Rectangle { width: root.sz(7); height: width; radius: width / 2; color: root.accent; anchors.verticalCenter: parent.verticalCenter }
-            WLbl { b: root; text: Qt.formatDate(new Date(), "dddd, MMM d"); font.pixelSize: root.sz(13); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; text: root.today; font.pixelSize: root.sz(13); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
             WLbl { b: root; text: root.events ? "Calendar & notes" : "Quick notes"; color: root.dim; font.pixelSize: root.sz(10); anchors.verticalCenter: parent.verticalCenter }
         }
         Rectangle { width: parent.width; height: 1; color: root.track }

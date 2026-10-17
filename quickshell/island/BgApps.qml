@@ -195,7 +195,8 @@ Glass {
                                 Chip {
                                     Layout.alignment: Qt.AlignVCenter
                                     pal: root.pal; implicitHeight: 28; label: "Open"; on: true
-                                    onClicked: appRow.modelData.activate()
+                                    // some tray apps only offer a menu (activate() does nothing for them): "Open" shows that menu instead of doing nothing
+                                    onClicked: { if (appRow.modelData.onlyMenu === true && appRow.modelData.hasMenu) appRow.showMenu = true; else appRow.modelData.activate() }
                                 }
                                 // round "more" button (three dots): the app's own menu; right click = the app's secondary action
                                 Rectangle {

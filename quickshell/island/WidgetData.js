@@ -297,7 +297,7 @@ function cleanItem(it, used) {
     // a link: this widget is tied to another one (see "links" below); the target is checked in normalize()
     if (typeof it.link === "string" && it.link !== "" && it.link !== o.uid) {
         o.link = it.link
-        o.linkSide = it.linkSide === "above" ? "above" : "below"
+        o.linkSide = sideOf(it.linkSide)
         o.linkGap = Math.round(clamp(num(it.linkGap, 14), 0, 200))
     }
     return o
@@ -378,9 +378,13 @@ function setScale(d, uid, s) { return patch(d, uid, function (it) { it.scale = c
 function setScalePos(d, uid, s, px, py) { return patch(d, uid, function (it) { it.scale = clamp(s, 0.5, 2.5); it.px = clamp(px, 0, 1); it.py = clamp(py, 0, 1) }) }
 
 // ---- links: "this widget follows that one"
-// A linked widget (item.link = the uid of its leader) sits right below (linkSide "below") or above ("above") its leader, linkGap px
-// away, takes the leader's size (scale) and shares one width with it: every widget in a chain of links is as wide as the widest of
-// them, so a visualizer and a song title line up edge to edge. Moving or resizing any of them moves / resizes the whole chain.
+// A linked widget (item.link = the uid of its leader) sits linkGap px away from its leader: "below" / "above" it (same left edge, and
+// they share one width: the widest of the stacked ones, so a visualizer and a song title line up edge to edge) or beside it, "right"
+// / "left" (side by side, vertically centred on the leader; each keeps its OWN width, so when one grows - "9h" becoming "1d 11h" - the
+// one next to it is pushed along instead of being overlapped). Linked widgets always share the leader's size (scale).
+// Moving or resizing any of them moves / resizes the whole chain.
+function sideOf(s) { return (s === "above" || s === "left" || s === "right") ? s : "below" }
+function isStacked(s) { return s !== "left" && s !== "right" }
 function leaderOf(d, uid) { var it = find(d, uid); return (it && it.link && find(d, it.link)) ? it.link : "" }
 function linkRoot(d, uid) {
     var u = uid, n = 0
@@ -401,6 +405,20 @@ function linkGroup(d, uid) {
     }
     return out
 }
+// the widgets that share one width with this one: those tied to it by "above" / "below" links only (side-by-side links share size, not width)
+function widthGroup(d, uid) {
+    var set = {}, queue = [uid], out = [uid]
+    set[uid] = true
+    while (queue.length) {
+        var u = queue.pop(), it0 = find(d, u)
+        if (it0 && it0.link && isStacked(it0.linkSide) && find(d, it0.link) && !set[it0.link]) { set[it0.link] = true; queue.push(it0.link); out.push(it0.link) }
+        for (var i = 0; i < d.items.length; i++) {
+            var it = d.items[i]
+            if (it.link === u && isStacked(it.linkSide) && !set[it.uid]) { set[it.uid] = true; queue.push(it.uid); out.push(it.uid) }
+        }
+    }
+    return out
+}
 // can `uid` follow `to`? (not itself, it exists, and `to` does not already follow `uid`)
 function canLink(d, uid, to) {
     if (!to || to === uid || !find(d, to)) return false
@@ -412,7 +430,7 @@ function canLink(d, uid, to) {
 function setLink(d, uid, to, side, gap) {
     var ok = canLink(d, uid, to)
     return patch(d, uid, function (it) {
-        if (ok) { it.link = to; it.linkSide = side === "above" ? "above" : "below"; it.linkGap = Math.round(clamp(num(gap, 14), 0, 200)) }
+        if (ok) { it.link = to; it.linkSide = sideOf(side); it.linkGap = Math.round(clamp(num(gap, 14), 0, 200)) }
         else unlink(it)
     })
 }
@@ -521,6 +539,10 @@ function needs(d) {
         if (t === "toggles") {
             var s = optOf(d.items[i], "show") || []
             if (s.indexOf("numlock") >= 0) n.numlock = true
+        }
+        if (t === "utilbox") {          // its volume / brightness sliders read the same feed as the volume and brightness widgets
+            var us = optOf(d.items[i], "show") || []
+            if (us.indexOf("volume") >= 0 || us.indexOf("brightness") >= 0) n.ctl = true
         }
         if (t === "sysmon") {
             var sh = optOf(d.items[i], "show") || []

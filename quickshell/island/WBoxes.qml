@@ -28,8 +28,8 @@ WBase {
     }
     readonly property bool showVol: picks.indexOf("volume") >= 0
     readonly property bool showBri: picks.indexOf("brightness") >= 0
-    readonly property real volV: env ? Math.max(0, Math.min(1, env.vol / 100)) : 0
-    readonly property real briV: env ? Math.max(0, Math.min(1, env.bright / 100)) : 0
+    readonly property real volV: env ? Math.max(0, Math.min(1, (env.vol || 0) / 100)) : 0
+    readonly property real briV: env ? Math.max(0, Math.min(1, (env.bright || 0) / 100)) : 0
 
     // ---------------------------------------------------------------- background apps
     readonly property var hiddenIds: ["nm-applet", "blueman", "blueman-applet", "network-manager-applet", "nm-tray"]
@@ -60,7 +60,7 @@ WBase {
     // measured outside the loader so implicitWidth never depends on the loaded item
     Row { id: slim; visible: false; spacing: root.sz(8); Repeater { model: root.toggles; delegate: Item { width: root.sz(40); height: 1 } } Item { visible: root.showVol; width: root.sz(110); height: 1 } Item { visible: root.showBri; width: root.sz(110); height: 1 } }
     Row { id: icons; visible: false; spacing: root.sz(10); Repeater { model: root.apps; delegate: Item { width: root.sz(36); height: 1 } } }
-    Text { id: cnt; visible: false; text: root.apps.length + " apps in the background"; font.pixelSize: root.sz(14); font.family: root.face }
+    Text { id: cnt; visible: false; text: root.apps.length + (root.apps.length === 1 ? " app" : " apps") + " in the background"; font.pixelSize: root.sz(14); font.family: root.face }
 
     function press(id) {
         if (!env) return

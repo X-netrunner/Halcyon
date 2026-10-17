@@ -5,7 +5,7 @@
 #   off  power profile, CPU/GPU, Hyprland config restored; Caffeine and DND go back to what they were before (a Caffeine or
 #        DND you had switched on yourself stays on).
 # Edit ~/.config/Halcyon/gamemode.conf to choose what gets stopped:
-#   KILL="cava baloo_file baloo_file_extractor tracker-miner-fs-3 tracker-extract-3 syncthing"   # processes killed by name (never restarted)
+#   KILL="cava baloo_file baloo_file_extractor tracker-miner-fs-3 tracker-extract-3 syncthing dropbox nextcloud"   # processes killed by name (never restarted; this is the default)
 #   STOP_SERVICES=""                                                                            # user services stopped now, started again on `off`
 
 STATE=/dev/shm/halcyon-gamemode
@@ -20,6 +20,10 @@ island() { timeout 4 quickshell ipc -p "$HOME/.config/Halcyon/quickshell/island"
 dnd_was_on() { grep -q '"dnd": *true' "$HOME/.local/state/island/settings.json" 2>/dev/null; }
 
 on() {
+  # /dev/shm is writable by every local user: a symlink or a file owned by someone else is not our state, so refuse it
+  if [ -L "$STATE" ] || { [ -e "$STATE" ] && [ ! -O "$STATE" ]; }; then
+    note "Not started: $STATE is not yours (remove it as root)"; return 1
+  fi
   [ -f "$STATE" ] && return 0     # already on
 
   # Save state
@@ -28,13 +32,20 @@ on() {
   caf=no; [ "$(bash "$HOME/.config/Halcyon/scripts/caffeine.sh" status 2>/dev/null)" = on ] && caf=yes
   dnd=no; dnd_was_on && dnd=yes
 
-  { 
+  nvpm=""
+  if command -v nvidia-settings >/dev/null 2>&1; then
+    nvpm=$(timeout 4 nvidia-settings -t -q '[gpu:0]/GPUPowerMizerMode' 2>/dev/null | head -n1)
+    case "$nvpm" in ''|*[!0-9]*) nvpm="" ;; esac     # not readable (no X server / no NVIDIA GPU): leave it alone, now and on `off`
+  fi
+
+  (umask 077; {
     echo "profile=$prof"
     echo "auto=$auto"
     echo "caf=$caf"
     echo "dnd=$dnd"
     echo "stopped=$(for s in $STOP_SERVICES; do systemctl --user is-active --quiet "$s" && printf '%s ' "$s"; done)"
-  } > "$STATE"
+    echo "nvpm=$nvpm"
+  } > "$STATE")
 
   # 1. Power Manager & Power Profile -> Performance
   timeout 4 systemctl --user stop power-manager.service 2>/dev/null
@@ -44,7 +55,7 @@ on() {
   timeout 6 sudo -n /usr/local/bin/halcyon-tune game-on 2>/dev/null || tune_failed=1
 
   # 3. NVIDIA: prefer maximum performance
-  command -v nvidia-settings >/dev/null 2>&1 && timeout 4 nvidia-settings -a '[gpu:0]/GPUPowerMizerMode=1' >/dev/null 2>&1
+  [ -n "$nvpm" ] && timeout 4 nvidia-settings -a '[gpu:0]/GPUPowerMizerMode=1' >/dev/null 2>&1
 
   # 4. Feral GameMode daemon (per-game renice / ioprio / GPU hints) available while gaming mode is on
   systemctl --user start gamemoded.service >/dev/null 2>&1
@@ -69,14 +80,15 @@ on() {
 off() {
   [ -f "$STATE" ] || return 0
   # read the saved values; never `source` this file: /dev/shm is writable by every local user
-  profile=balanced; auto=no; caf=no; dnd=no; stopped=""
+  profile=balanced; auto=no; caf=no; dnd=no; stopped=""; nvpm=""
   while IFS='=' read -r k v; do
     case "$k" in
       profile) case "$v" in power-saver|balanced|performance) profile=$v ;; esac ;;
       auto) [ "$v" = yes ] && auto=yes ;;
       caf) [ "$v" = yes ] && caf=yes ;;
       dnd) [ "$v" = yes ] && dnd=yes ;;
-      stopped) stopped=$v ;;
+      stopped) for u in $v; do [[ $u =~ ^[A-Za-z0-9@:._-]+$ ]] && stopped+="$u "; done ;;     # unit names only
+      nvpm) case "$v" in [0-9]|[0-9][0-9]) nvpm=$v ;; esac ;;
     esac
   done < "$STATE"
   rm -f "$STATE"
@@ -87,6 +99,7 @@ off() {
 
   # Restore CPU / GPU / Wi-Fi settings
   timeout 6 sudo -n /usr/local/bin/halcyon-tune game-off 2>/dev/null
+  [ -n "$nvpm" ] && timeout 4 nvidia-settings -a "[gpu:0]/GPUPowerMizerMode=$nvpm" >/dev/null 2>&1   # it was set to max performance by `on`
 
   # Caffeine and DND: only switch off what Gaming mode switched on
   [ "$caf" = yes ] || bash "$HOME/.config/Halcyon/scripts/caffeine.sh" off 2>/dev/null || true

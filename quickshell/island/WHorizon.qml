@@ -6,6 +6,7 @@ WBase {
     id: root
 
     property date now: new Date()
+    onLiveChanged: if (live) now = new Date()          // the dot was up to 30 s behind after the widget came back on screen
     Timer { running: root.live; repeat: true; interval: 30000; onTriggered: root.now = new Date() }
 
     readonly property real dayFrac: (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86400
