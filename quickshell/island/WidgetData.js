@@ -294,8 +294,15 @@ function cleanItem(it, used) {
     if (it.opts && typeof it.opts === "object") for (var k in it.opts) o.opts[k] = it.opts[k]
     o.look = look(it.look)
     if (it.off === true) o.off = true
+    // a link: this widget is tied to another one (see "links" below); the target is checked in normalize()
+    if (typeof it.link === "string" && it.link !== "" && it.link !== o.uid) {
+        o.link = it.link
+        o.linkSide = it.linkSide === "above" ? "above" : "below"
+        o.linkGap = Math.round(clamp(num(it.linkGap, 14), 0, 200))
+    }
     return o
 }
+function unlink(it) { delete it.link; delete it.linkSide; delete it.linkGap }
 
 // whatever was saved -> a clean list: known types only, unique ids
 function normalize(d) {
@@ -305,6 +312,23 @@ function normalize(d) {
     for (var i = 0; i < a.length; i++) {
         var c = cleanItem(a[i], used)
         if (c) out.items.push(c)
+    }
+    // links: the target must exist and a chain of links must never run back to itself
+    var i2, it2, anyLink = false
+    for (i2 = 0; i2 < out.items.length; i2++) {
+        it2 = out.items[i2]
+        if (it2.link && !used[it2.link]) unlink(it2)
+        if (it2.link) anyLink = true
+    }
+    for (i2 = 0; anyLink && i2 < out.items.length; i2++) {
+        it2 = out.items[i2]
+        var u = it2.link, n = 0
+        while (u && n++ < 100) {
+            if (u === it2.uid) { unlink(it2); break }
+            var t = null
+            for (var q = 0; q < out.items.length; q++) if (out.items[q].uid === u) { t = out.items[q]; break }
+            u = t ? t.link : ""
+        }
     }
     return out
 }
@@ -329,6 +353,8 @@ function add(d, type, look0) {
 function remove(d, uid) {
     var o = copy(d)
     o.items = o.items.filter(function (i) { return i.uid !== uid })
+    // widgets that followed it are freed now (nextUid() can hand the same id to a new widget, which they would then follow by accident)
+    for (var i = 0; i < o.items.length; i++) if (o.items[i].link === uid) unlink(o.items[i])
     return o
 }
 function duplicate(d, uid) {
@@ -337,6 +363,7 @@ function duplicate(d, uid) {
     var c = JSON.parse(JSON.stringify(src))
     c.uid = nextUid(o.items)
     c.px = clamp(src.px + 0.04, 0, 1); c.py = clamp(src.py + 0.06, 0, 1)
+    unlink(c)
     o.items.push(c)
     return o
 }
@@ -349,6 +376,46 @@ function setPos(d, uid, px, py) { return patch(d, uid, function (it) { it.px = c
 function setScale(d, uid, s) { return patch(d, uid, function (it) { it.scale = clamp(s, 0.5, 2.5) }) }
 // resize AND keep the widget's top-left corner where it is (positions are fractions of the free room, which changes with the size)
 function setScalePos(d, uid, s, px, py) { return patch(d, uid, function (it) { it.scale = clamp(s, 0.5, 2.5); it.px = clamp(px, 0, 1); it.py = clamp(py, 0, 1) }) }
+
+// ---- links: "this widget follows that one"
+// A linked widget (item.link = the uid of its leader) sits right below (linkSide "below") or above ("above") its leader, linkGap px
+// away, takes the leader's size (scale) and shares one width with it: every widget in a chain of links is as wide as the widest of
+// them, so a visualizer and a song title line up edge to edge. Moving or resizing any of them moves / resizes the whole chain.
+function leaderOf(d, uid) { var it = find(d, uid); return (it && it.link && find(d, it.link)) ? it.link : "" }
+function linkRoot(d, uid) {
+    var u = uid, n = 0
+    while (n++ < 100) { var l = leaderOf(d, u); if (!l) return u; u = l }
+    return uid
+}
+// every uid tied to this one by links, in either direction (the widget itself included)
+function linkGroup(d, uid) {
+    var set = {}, queue = [uid], out = [uid]
+    set[uid] = true
+    while (queue.length) {
+        var u = queue.pop(), l = leaderOf(d, u)
+        if (l && !set[l]) { set[l] = true; queue.push(l); out.push(l) }
+        for (var i = 0; i < d.items.length; i++) {
+            var it = d.items[i]
+            if (it.link === u && !set[it.uid]) { set[it.uid] = true; queue.push(it.uid); out.push(it.uid) }
+        }
+    }
+    return out
+}
+// can `uid` follow `to`? (not itself, it exists, and `to` does not already follow `uid`)
+function canLink(d, uid, to) {
+    if (!to || to === uid || !find(d, to)) return false
+    var u = to, n = 0
+    while (u && n++ < 100) { if (u === uid) return false; u = leaderOf(d, u) }
+    return true
+}
+// to = "" removes the link
+function setLink(d, uid, to, side, gap) {
+    var ok = canLink(d, uid, to)
+    return patch(d, uid, function (it) {
+        if (ok) { it.link = to; it.linkSide = side === "above" ? "above" : "below"; it.linkGap = Math.round(clamp(num(gap, 14), 0, 200)) }
+        else unlink(it)
+    })
+}
 
 // ---- snapping while a widget is dragged (one axis at a time)
 // pos / size: where the dragged widget starts and how long it is on this axis. lo / hi: its allowed start range. total: the screen.
@@ -396,6 +463,7 @@ function bringFront(d, uid) {
 var spots = [["tl", "Top-left", 0, 0], ["tc", "Top", 0.5, 0], ["tr", "Top-right", 1, 0], ["ml", "Left", 0, 0.5], ["mc", "Centre", 0.5, 0.5], ["mr", "Right", 1, 0.5],
              ["bl", "Bottom-left", 0, 1], ["bc", "Bottom", 0.5, 1], ["br", "Bottom-right", 1, 1]]
 function placeAt(d, uid, spotId) {
+    uid = linkRoot(d, uid)      // a linked widget can not be placed on its own: the first widget of its chain moves and the rest follow
     for (var i = 0; i < spots.length; i++) if (spots[i][0] === spotId) return setPos(d, uid, spots[i][2], spots[i][3])
     return d
 }

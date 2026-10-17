@@ -159,8 +159,8 @@ PanelWindow {
     onWpOnChanged: {
         if (!wpOn) {
             revealAnim.stop()
+            waiting = false                // (before resetReveal, which keeps incomingPath while something is waiting)
             resetReveal()
-            waiting = false
             inc.source = ""
             cur.source = ""
             shown = false
@@ -203,6 +203,7 @@ PanelWindow {
     }
 
     function beginReveal() {
+        if (incomingPath === "") { waiting = false; return }       // nothing to reveal any more (the change was cancelled)
         waiting = false
         maskSize = 0
         revealing = true
@@ -230,7 +231,7 @@ PanelWindow {
         cur.scale = 1
         reveal.scale = 1
         maskSize = 0
-        incomingPath = ""
+        if (!waiting) incomingPath = ""     // a newer wallpaper that is still loading keeps its name (a change during the hand-over used to wipe it, then the palette ran on "")
     }
 
     // `inc` only exists to feed the reveal. After the hand-over it would keep a second decoded copy + GPU texture alive

@@ -33,8 +33,10 @@ WBase {
     // few seconds (timeout) and what it printed so far is shown, instead of the box sitting on "..." forever.
     readonly property int cols: Math.max(20, Math.floor(boxW / Math.max(6, fsz * 0.6)))
     readonly property int killS: Math.max(3, Math.min(20, Math.round(everyS)))
-    readonly property string wrapped: "export PATH=\"$HOME/.config/Halcyon/bin:$HOME/.local/bin:$PATH\" TERM=dumb NO_COLOR=1 COLUMNS=" + cols + "; ( " + cmdText + " ) 2>&1 </dev/null"
+    readonly property string wrapped: "export PATH=\"$HOME/.config/Halcyon/bin:$HOME/.local/bin:$PATH\" TERM=dumb NO_COLOR=1 COLUMNS=" + cols + "; ( " + cmdText + "\n) 2>&1 </dev/null"
+    property string ranCmd: ""                    // the command the running / last run was started with
     function take(t) {
+        if (ranCmd !== cmdText) return            // the command was changed while it ran: that answer belongs to the old one
         var s = String(t).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "").replace(/\r/g, "")
         var a = s.split("\n")
         while (a.length > 0 && a[a.length - 1].trim() === "") a.pop()
@@ -50,7 +52,7 @@ WBase {
         command: ["timeout", "-k", "1", String(root.killS), "sh", "-c", root.wrapped]
         stdout: StdioCollector { onStreamFinished: root.take(text) }
     }
-    function runNow() { if (cmdText !== "" && !proc.running) proc.running = true }
+    function runNow() { if (cmdText !== "" && !proc.running) { ranCmd = cmdText; proc.running = true } }
     Timer { running: root.live && root.cmdText !== ""; repeat: true; interval: root.everyS * 1000; triggeredOnStart: true; onTriggered: root.runNow() }
     // a new command (typed in the builder) replaces a running one at once and runs straight away
     onCmdTextChanged: {

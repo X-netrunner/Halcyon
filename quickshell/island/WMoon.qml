@@ -6,7 +6,8 @@ WBase {
     id: root
 
     property date now: new Date()
-    Timer { running: root.live; repeat: true; interval: 600000; onTriggered: root.now = new Date() }
+    // (triggeredOnStart: the moon is worked out again the moment the widget is back on screen, not up to 10 minutes later)
+    Timer { running: root.live; repeat: true; interval: 600000; triggeredOnStart: true; onTriggered: root.now = new Date() }
 
     readonly property real synodic: 29.530588853
     // days since a known new moon (6 Jan 2000, 18:14 UTC)

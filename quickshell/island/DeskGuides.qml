@@ -38,23 +38,34 @@ Item {
     readonly property bool midX: rect ? Math.abs(rect.x + rect.w / 2 - width / 2) < 1.5 : false
     readonly property bool midY: rect ? Math.abs(rect.y + rect.h / 2 - height / 2) < 1.5 : false
 
-    // ---- grid
-    Repeater {
-        model: (g.showGrid && !g.measureOnly) ? WD.gridLines(g.margin, g.width - g.margin, g.gridSize) : []
-        delegate: Rectangle {
-            required property int index
-            required property int modelData
-            x: modelData; y: g.topInset; width: 1; height: Math.max(0, g.height - g.topInset - g.bottomInset)
-            color: index % 5 === 0 ? g.cLineStrong : g.cLine
-        }
-    }
-    Repeater {
-        model: (g.showGrid && !g.measureOnly) ? WD.gridLines(g.topInset, g.height - g.bottomInset, g.gridSize) : []
-        delegate: Rectangle {
-            required property int index
-            required property int modelData
-            y: modelData; x: g.margin; height: 1; width: Math.max(0, g.width - 2 * g.margin)
-            color: index % 5 === 0 ? g.cLineStrong : g.cLine
+    // ---- grid: ONE canvas that draws every line (it used to be a Repeater with a Rectangle per line: ~150 items at 20 px)
+    Canvas {
+        id: gridCv
+        anchors.fill: parent
+        visible: g.showGrid && !g.measureOnly
+        renderStrategy: Canvas.Cooperative
+        readonly property var xs: WD.gridLines(g.margin, g.width - g.margin, g.gridSize)
+        readonly property var ys: WD.gridLines(g.topInset, g.height - g.bottomInset, g.gridSize)
+        // anything that changes the picture changes this string, which repaints the canvas
+        readonly property string sig: xs.join(",") + "|" + ys.join(",") + "|" + g.margin + "|" + g.topInset + "|" + g.bottomInset + "|" + g.cLine + "|" + g.cLineStrong
+        onSigChanged: if (visible) requestPaint()
+        onVisibleChanged: if (visible) requestPaint()
+        onWidthChanged: if (visible) requestPaint()
+        onHeightChanged: if (visible) requestPaint()
+        Component.onCompleted: if (visible) requestPaint()
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            var vh = Math.max(0, g.height - g.topInset - g.bottomInset)      // vertical lines run between the top and bottom insets
+            var hw = Math.max(0, g.width - 2 * g.margin)                     // horizontal lines run between the side margins
+            for (var i = 0; i < xs.length; i++) {
+                ctx.fillStyle = (i % 5 === 0) ? g.cLineStrong : g.cLine      // every 5th line a little stronger
+                ctx.fillRect(xs[i], g.topInset, 1, vh)
+            }
+            for (var j = 0; j < ys.length; j++) {
+                ctx.fillStyle = (j % 5 === 0) ? g.cLineStrong : g.cLine
+                ctx.fillRect(g.margin, ys[j], hw, 1)
+            }
         }
     }
 
