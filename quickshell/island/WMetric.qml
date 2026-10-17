@@ -148,6 +148,7 @@ WBase {
                     anchors.fill: parent
                     layer.enabled: true
                     layer.samples: 4
+                    layer.textureSize: Qt.size(Math.ceil(width * root.rs), Math.ceil(height * root.rs))
                     ShapePath { strokeColor: root.track; strokeWidth: root.sz(8); fillColor: "transparent"; capStyle: ShapePath.RoundCap
                         PathAngleArc { centerX: rg.width / 2; centerY: rg.height / 2; radiusX: rg.width / 2 - root.sz(6); radiusY: rg.height / 2 - root.sz(6); startAngle: -90; sweepAngle: 359.9 } }
                     ShapePath { strokeColor: root.lit; strokeWidth: root.sz(8); fillColor: "transparent"; capStyle: ShapePath.RoundCap
@@ -175,6 +176,7 @@ WBase {
                     anchors.fill: parent
                     layer.enabled: true
                     layer.samples: 4
+                    layer.textureSize: Qt.size(Math.ceil(width * root.rs), Math.ceil(height * root.rs))
                     ShapePath { strokeColor: root.track; strokeWidth: root.sz(9); fillColor: "transparent"; capStyle: ShapePath.RoundCap
                         PathAngleArc { centerX: ag.width / 2; centerY: ag.height / 2; radiusX: ag.width / 2 - root.sz(8); radiusY: ag.height / 2 - root.sz(8); startAngle: 135; sweepAngle: 270 } }
                     ShapePath { strokeColor: root.lit; strokeWidth: root.sz(9); fillColor: "transparent"; capStyle: ShapePath.RoundCap

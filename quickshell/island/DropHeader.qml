@@ -24,6 +24,40 @@ Item {
         { label: "Notifications", glyph: String.fromCodePoint(0xF009A) }
     ]
 
+    // Round chevron button. Defined here (not in its own file) so the header loads even when only some of the island's files were copied.
+    component DropArrow: Rectangle {
+        id: arrow
+        property var pal
+        property string glyph: ""
+        property bool live: true            // false: there is no page in that direction
+        signal clicked()
+        readonly property bool lit: live && hv.hovered
+
+        width: 34
+        height: 34
+        radius: 17
+        color: lit ? Qt.alpha(pal.accent, 0.20) : Qt.alpha(pal.text, 0.05)
+        border.width: 1
+        border.color: lit ? Qt.alpha(pal.accent, 0.45) : pal.line
+        opacity: live ? 1 : 0.28
+        scale: (live && tap.pressed) ? 0.9 : 1
+        Behavior on opacity { NumberAnimation { duration: arrow.pal.dMed } }
+        Behavior on color { ColorAnimation { duration: arrow.pal.dFast } }
+        Behavior on border.color { ColorAnimation { duration: arrow.pal.dFast } }
+        Behavior on scale { NumberAnimation { duration: arrow.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: arrow.pal.curve } }
+
+        Text {
+            anchors.centerIn: parent
+            text: arrow.glyph
+            color: arrow.lit ? arrow.pal.accent : arrow.pal.text
+            font.family: arrow.pal.font
+            font.pixelSize: 18
+            Behavior on color { ColorAnimation { duration: arrow.pal.dFast } }
+        }
+        HoverHandler { id: hv; cursorShape: arrow.live ? Qt.PointingHandCursor : Qt.ArrowCursor }
+        TapHandler { id: tap; gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: if (arrow.live) arrow.clicked() }
+    }
+
     height: 44
 
     DropArrow {

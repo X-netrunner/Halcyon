@@ -269,6 +269,37 @@ class Agent:
             with open(p, errors="ignore") as f:
                 return clip("".join(f.readlines()[-max(5, min(int(lines or 40), 150)):]))
 
+        @T("leak_report", "Analyse a leak-watch recording (made by `advisor leaks watch` / halcyon-leak-watch.sh): which process leaks memory "
+           "steadily, which one made a single big jump (and when), open-file / thread growth, process clones and zombies. The numbers are computed by "
+           "a script: report them as given. Use this for any 'is something leaking / why does RAM grow / any zombies' question.",
+           {"log": S("path of the log (default: the last recording, ~/.cache/island/leak-watch.log)")})
+        def leak_report(log=""):
+            mod = adv._leaks_module()
+            if mod is None:
+                return "halcyon-leaks.py is missing."
+            res = mod.analyze(os.path.expanduser(log) if log else mod.DEFAULT_LOG)
+            txt = mod.render(res)
+            ctx = adv.leak_context(res) if "error" not in res else []
+            return clip(txt + ("\nisland log around the jump:\n  " + "\n  ".join(ctx) if ctx else ""))
+
+        @T("start_leak_watch", "Start recording a leak-watch IN THE BACKGROUND (samples zombies, process counts, memory/files/threads of the biggest processes). "
+           "Takes `minutes` to finish; afterwards call leak_report. The desktop should stay idle while it runs.",
+           {"minutes": I("how long (default 30, max 240)"), "every_seconds": I("seconds between samples (default 60)")}, mutating=True)
+        def start_leak_watch(minutes=30, every_seconds=60):
+            mins = max(5, min(int(minutes or 30), 240))
+            every = max(10, min(int(every_seconds or 60), 600))
+            script = os.path.join(RICE, "scripts", "halcyon-leak-watch.sh")
+            if not os.path.isfile(script):
+                return f"{script} not found."
+            cmd = ["bash", script, str(mins), str(every)]
+            ok = self.confirm("start_leak_watch", f"record a {mins}-minute leak-watch in the background (sample every {every}s)", cmd)
+            if ok is not True:
+                return ok
+            outp = os.path.join(HOME, ".cache/island/leak-watch.out")
+            os.makedirs(os.path.dirname(outp), exist_ok=True)
+            subprocess.Popen(cmd, stdout=open(outp, "w"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+            return f"started: {mins} min, every {every}s. It will be done in about {mins} minutes; then call leak_report."
+
         @T("package_info", "Pacman queries (read only): pending updates, orphans, whether a package is installed, or a package search.",
            {"query": S("updates, orphans, installed <pkg>, or search <text>")}, ["query"])
         def package_info(query):
@@ -514,7 +545,9 @@ class Agent:
             "4. Failed TPM / PCR units (systemd-pcr*, systemd-tpm2-setup*) mean no usable TPM2 or measured boot: they are harmless and "
             "restarting cannot help. Use reset-failed to clear the flag, or explain how to enable TPM2.\n"
             "5. Use run_shell only when no specific tool fits. Never ask for passwords; sudo prompts the user directly.\n"
-            "6. Answer technical questions (Linux, Rust, security, study) normally without tools. Be concise: no filler.\n\n"
+            "6. Leaks, growing RAM, zombies, clones: call leak_report (it analyses the recorded leak-watch and does the arithmetic); if there is no "
+            "recording, offer start_leak_watch. A single jump that stays is NOT a steady leak: say which one it is. Never invent numbers.\n"
+            "7. Answer technical questions (Linux, Rust, security, study) normally without tools. Be concise: no filler.\n\n"
             f"Snapshot taken just now:\n{snap}"
         )
 

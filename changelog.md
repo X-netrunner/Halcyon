@@ -1,3 +1,19 @@
+## Unreleased
+
+- **Linked widgets stay on screen.** A widget linked to the LEFT of another one (uptime next to the workspaces) used to grow off the left edge
+  when its text got longer ("9h" -> "2h 59m"). The first widget of a chain is now kept far enough from the screen edge for everything linked
+  to it (`DeskWidgets.chainExt`, `WidgetHost.chainX`), so the whole group slides over instead.
+- **Mixed wallpaper patches.** Where the picture behind a widget is part bright, part dark (pink next to black), the widgets now use light text
+  with a strong dark outline (like subtitles) instead of dark text that vanished on the dark part. `Pal.lumSpreadAt` / `lumMaxAt`.
+- **`hx ctl` no longer leaves a `pactl subscribe` behind** each time the panel closes (PDEATHSIG).
+- **Widgets stay readable on bright wallpapers.** `palette.sh` now also writes a 12 x 8 luminance grid of the wallpaper; each desktop widget
+  looks up the brightness right behind itself (`Pal.lumAt`) and, when it is bright and the widget has no dark box, switches its text, lit colour,
+  bars and tracks to a DARK shade of the wallpaper accent with a light halo (`WidgetHost.qml`: `onBright`). Dark wallpapers are unchanged.
+  Only the "Theme" text colour adapts: a text colour you picked yourself is left alone.
+- **`advisor leaks`**: new `scripts/halcyon-leaks.py` reads a leak-watch log and computes what leaked (steady leak vs one-time jump vs stair-steps,
+  open-file / thread growth, process clones, zombies; kernel threads ignored). `advisor leaks watch 30 60` records and analyses; the local model
+  only explains the verdict. The agent (`ai`, `advisor "..."`) got two tools: `leak_report` and `start_leak_watch`.
+
 # Changelog
 
 ## Bug check, round 11: the password manager and the browser helper

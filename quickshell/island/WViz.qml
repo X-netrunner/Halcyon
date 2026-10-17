@@ -107,6 +107,7 @@ WBase {
             id: sh
             layer.enabled: true
             layer.samples: 4
+            layer.textureSize: Qt.size(Math.ceil(width * root.rs), Math.ceil(height * root.rs))
             readonly property string d: {
                 var w = root.lw, h = root.tall, n = root.n, s = ""
                 for (var i = 0; i < n; i++) {

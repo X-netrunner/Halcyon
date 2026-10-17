@@ -6,7 +6,7 @@ Text {
     property var b: null
     color: b ? b.fg : "#dcdde8"
     font.family: b ? b.face : "sans-serif"
-    renderType: Text.NativeRendering
-    style: (b && b.boost > 0.05) ? Text.Outline : Text.Normal
+    renderType: (b && Math.abs(b.zoom - 1) > 0.01) ? Text.QtRendering : Text.NativeRendering   // QtRendering = scalable glyphs: sharp when the widget is bigger
+    style: (b && b.outlineColor.a > 0.04) ? Text.Outline : Text.Normal
     styleColor: b ? b.outlineColor : "transparent"
 }

@@ -149,7 +149,7 @@ WBase {
                     Image {
                         x: root.sz(10); anchors.verticalCenter: parent.verticalCenter
                         width: root.sz(24); height: width
-                        sourceSize.width: 48; sourceSize.height: 48
+                        sourceSize.width: Math.ceil(root.sz(24) * root.rs); sourceSize.height: Math.ceil(root.sz(24) * root.rs)
                         source: ar.modelData.icon
                         fillMode: Image.PreserveAspectFit; smooth: true
                     }
@@ -172,7 +172,7 @@ WBase {
                     required property var modelData
                     width: root.sz(36); height: width; radius: width / 2
                     color: Qt.alpha(root.fg, 0.08); border.width: 1; border.color: Qt.alpha(root.fg, 0.12)
-                    Image { anchors.centerIn: parent; width: root.sz(22); height: width; sourceSize.width: 44; sourceSize.height: 44; source: ic.modelData.icon; fillMode: Image.PreserveAspectFit; smooth: true }
+                    Image { anchors.centerIn: parent; width: root.sz(22); height: width; sourceSize.width: Math.ceil(root.sz(22) * root.rs); sourceSize.height: Math.ceil(root.sz(22) * root.rs); source: ic.modelData.icon; fillMode: Image.PreserveAspectFit; smooth: true }
                     MouseArea { anchors.fill: parent; enabled: !root.editing; cursorShape: Qt.PointingHandCursor; onClicked: ic.modelData.activate() }
                 }
             }

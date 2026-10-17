@@ -22,6 +22,11 @@ Item {
     readonly property color outlineColor: w ? w.outlineColor : "transparent"
     readonly property bool live: w ? w.live : false        // on screen: readers and timers run only then
     readonly property bool editing: w ? w.editing : false
+    // how big the widget is drawn (the frame scales it) and how many real pixels one widget pixel covers: anything that is
+    // rasterised first (a Shape layer, a Canvas, an Image) is made at this size, so it is sharp at any size and not a small
+    // picture stretched up
+    readonly property real zoom: w ? w.k : 1
+    readonly property real rs: Math.max(1, zoom * (Screen.devicePixelRatio || 1))
     property bool hidden: false                            // the body asks the frame to hide the whole widget (nothing to show)
 
     function opt(k, d) {

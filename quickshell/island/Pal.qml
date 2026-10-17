@@ -14,7 +14,8 @@ Scope {
     // the wallpaper still tints the island, only the lightness is turned around.
     property bool light: false
     onLightChanged: refresh()
-    // Settings > Look > Box background: tint (the wallpaper colours every box) | matte (dark grey, no tint) | black (pitch black).
+    // Settings > Look > Box background: tint (the wallpaper colours every box, subtly) | match (the boxes AND their outlines take the
+    // wallpaper's accent colour, clearly) | matte (dark grey, no tint) | black (pitch black).
     // matte / black make every box solid (no see-through glass) and only apply to the dark theme.
     property string surfaceStyle: "tint"
     onSurfaceStyleChanged: refresh()
@@ -131,6 +132,15 @@ Scope {
         if (!light) {
             if (surfaceStyle === "black") { bg = "#000000"; surface = "#0c0c0e"; surfaceHi = "#18181b" }
             else if (surfaceStyle === "matte") { bg = "#0f0f11"; surface = "#19191c"; surfaceHi = "#232327" }
+            else if (surfaceStyle === "match") {
+                // the hue AND most of the saturation of the wallpaper's accent (it drifts along with it while the accent cycles);
+                // still dark and see-through, so text keeps its contrast
+                var hm = hueOf(rawAccent, hueOf(rawBg, 0.62))
+                var sm = Math.max(0.32, Math.min(0.62, rawAccent.hslSaturation * 0.8))
+                bg = Qt.hsla(hm, sm * 0.8, 0.10, 1)
+                surface = Qt.hsla(hm, sm, 0.175, 1)
+                surfaceHi = Qt.hsla(hm, sm, 0.235, 1)
+            }
             else { bg = rawBg; surface = rawSurface; surfaceHi = rawSurfaceHi }
             accent = rawAccent; accent2 = rawAccent2; text = rawText; muted = rawMuted
             return
@@ -157,6 +167,38 @@ Scope {
     // A bright wallpaper makes dark see-through glass look grey and muddy, so the glass gets a little more body the brighter the
     // picture is (wallLum: 0 = black .. 1 = white, from scripts/palette.sh). Only on the dark theme; at most +0.12.
     property real wallLum: 0.3
+    // 12 x 8 grid of the wallpaper's real luminance (0 black .. 1 white, linear), row by row: palette.sh. The desktop widgets ask
+    // lumAt() what is right behind them and switch to dark, accent-tinted text on a bright patch (WidgetHost.qml)
+    property var wallGrid: []
+    function lumAt(fx, fy, fw, fh): real {
+        var g = wallGrid
+        if (!g || g.length !== 96) return wallLum
+        var x0 = Math.max(0, Math.min(11, Math.floor(fx * 12))), x1 = Math.max(x0, Math.min(11, Math.floor((fx + fw) * 12)))
+        var y0 = Math.max(0, Math.min(7, Math.floor(fy * 8))), y1 = Math.max(y0, Math.min(7, Math.floor((fy + fh) * 8)))
+        var sum = 0, n = 0
+        for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) { sum += g[y * 12 + x]; n++ }
+        return n ? sum / n : wallLum
+    }
+    // brightest minus darkest cell under the same rectangle: a big number = a mixed patch (pink next to black), where neither
+    // dark nor light text alone reads, so the widgets use light text with a strong dark outline there
+    function lumSpreadAt(fx, fy, fw, fh): real {
+        var g = wallGrid
+        if (!g || g.length !== 96) return 0
+        var x0 = Math.max(0, Math.min(11, Math.floor(fx * 12))), x1 = Math.max(x0, Math.min(11, Math.floor((fx + fw) * 12)))
+        var y0 = Math.max(0, Math.min(7, Math.floor(fy * 8))), y1 = Math.max(y0, Math.min(7, Math.floor((fy + fh) * 8)))
+        var lo = 9, hi = -1
+        for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) { var v = g[y * 12 + x]; if (v < lo) lo = v; if (v > hi) hi = v }
+        return hi < 0 ? 0 : hi - lo
+    }
+    function lumMaxAt(fx, fy, fw, fh): real {
+        var g = wallGrid
+        if (!g || g.length !== 96) return wallLum
+        var x0 = Math.max(0, Math.min(11, Math.floor(fx * 12))), x1 = Math.max(x0, Math.min(11, Math.floor((fx + fw) * 12)))
+        var y0 = Math.max(0, Math.min(7, Math.floor(fy * 8))), y1 = Math.max(y0, Math.min(7, Math.floor((fy + fh) * 8)))
+        var hi = 0
+        for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) if (g[y * 12 + x] > hi) hi = g[y * 12 + x]
+        return hi
+    }
     readonly property real glassBoost: light ? 0 : Math.max(0, Math.min(0.12, (wallLum - 0.45) * 0.45))
     Behavior on wallLum { NumberAnimation { duration: 900; easing.type: Easing.InOutSine } }
     readonly property real glass: solid ? 1 : (0.80 + glassShift + glassBoost)
@@ -164,9 +206,10 @@ Scope {
     readonly property real glassBar: solid ? 1 : (0.58 + glassShift + glassBoost)      // the top bar at rest: lighter = more wallpaper shows through
     readonly property real glassBarOpen: solid ? 1 : (0.74 + glassShift + glassBoost)  // the bar once it has grown into media / perf / the launcher
     // hairlines are neutral and work with every wallpaper; panels (Glass.qml) add a faint accent tint on top (lineTint)
-    readonly property color line: Qt.alpha(text, 0.09)
+    readonly property bool matchBox: !light && surfaceStyle === "match"     // box outlines in the accent colour too
+    readonly property color line: matchBox ? Qt.alpha(accent, 0.30) : Qt.alpha(text, 0.09)
     readonly property color lineTint: Qt.tint(line, Qt.alpha(accent, 0.12))
-    readonly property color lineSoft: Qt.alpha(text, 0.05)
+    readonly property color lineSoft: matchBox ? Qt.alpha(accent, 0.16) : Qt.alpha(text, 0.05)
     readonly property color lineFocus: Qt.alpha(accent, 0.55)
 
     // ---------- shape (concentric: inner radius = outer radius - padding) ----------
@@ -269,6 +312,7 @@ Scope {
             if (p.text) pal.rawText = p.text
             if (p.muted) pal.rawMuted = p.muted
             if (p.lum !== undefined) pal.wallLum = p.lum
+            if (p.grid && p.grid.length === 96) pal.wallGrid = p.grid
             var sw = p.swatches || []
             if (JSON.stringify(sw) !== JSON.stringify(pal.swatches)) pal.swatches = sw     // rebuilds the ring, then syncs the accent
             else pal.syncAccent()

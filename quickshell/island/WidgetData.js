@@ -71,7 +71,7 @@ var catalog = [
       styles: [["card", "Card"], ["speed", "Speed only"], ["signal", "Signal bars"]],
       opts: [{ k: "ssid", kind: "toggle", label: "Show the Wi-Fi name", def: true }] },
     { id: "uptime", cat: "system", name: "Uptime", icon: 0xF0150, size: [200, 70], hint: "How long the computer has been on",
-      styles: [["line", "One line"], ["card", "Card"]], opts: [] },
+      styles: [["line", "One line"], ["card", "Card"], ["words", "In words"], ["digital", "Digital blocks"], ["ring", "Ring"], ["bar", "Day bar"], ["boot", "Since boot"], ["dot", "Dot"]], opts: [] },
     { id: "music", cat: "media", name: "Now playing", icon: 0xF075A, size: [320, 120], hint: "The song, the cover and the buttons",
       styles: [["card", "Card"], ["compact", "Compact"], ["cover", "Cover"], ["minimal", "Minimal"]],
       opts: [
@@ -205,10 +205,11 @@ function fileOf(type) { return files[type] || "WText.qml" }
 //   textTone theme | light | dark | custom   ;  textColor  #rrggbb
 //   depth    0 .. 1 : Colour depth. How much of the wallpaper accent goes into the box, the quiet text, the bars and the hairline
 //   contrast 0 .. 1 : Readability. Lifts the lit colour a little, brightens quiet text and outlines every letter (never a box: "No box" stays see-through)
+//   match    true: everything (lit colour, text, box tint) follows the wallpaper accent, whatever tone / textTone say
 //   font     ui | mono | serif
 //   fs       0.7 .. 1.6 : text size
 //   border   a hairline around it     shadow  a soft shadow
-var lookDefaults = { surface: "glass", op: 0.65, radius: -1, pad: -1, tone: "theme", color: "#9aa9d4", textTone: "theme", textColor: "#ffffff", font: "ui", fs: 1, border: true, shadow: true, contrast: 0.6, depth: 0.5 }
+var lookDefaults = { surface: "glass", op: 0.65, radius: -1, pad: -1, tone: "theme", color: "#9aa9d4", textTone: "theme", textColor: "#ffffff", font: "ui", fs: 1, border: true, shadow: true, contrast: 0.6, depth: 0.5, match: false }
 var surfaces = [["glass", "Frosted glass"], ["solid", "Solid"], ["clear", "No box"], ["outline", "Outline"], ["pill", "Pill"]]
 var tones = [["theme", "Wallpaper accent"], ["second", "Second colour"], ["custom", "My colour"]]
 var swatches = ["#ffffff", "#e6e8ee", "#b9bdc8", "#9aa9d4", "#7ec8e3", "#c2add8", "#e58a8a", "#f5a623"]
@@ -247,6 +248,7 @@ function look(l) {
     o.radius = Math.round(clamp(num(o.radius, -1), -1, 999))
     o.pad = Math.round(clamp(num(o.pad, -1), -1, 60))
     o.fs = clamp(num(o.fs, 1), 0.6, 1.8)
+    o.match = o.match === true
     o.border = o.border !== false
     o.shadow = o.shadow !== false
     if (!/^#[0-9a-fA-F]{6}$/.test(String(o.color))) o.color = lookDefaults.color
@@ -435,6 +437,42 @@ function setLink(d, uid, to, side, gap) {
     })
 }
 
+// ---- the builder's list: linked widgets are kept together, one coloured bracket and name per group
+var groupColors = ["#7ec8e3", "#f5a623", "#9be37d", "#e58a8a", "#c2add8", "#7ef2d0"]
+function groupColor(g) { return groupColors[((g % groupColors.length) + groupColors.length) % groupColors.length] }
+// rows: [{ it, g (group number, -1 = not linked), pos (solo | first | mid | last), n (members), label, rel ("below Clock") }]
+function listRows(d) {
+    var done = {}, rows = [], g = 0
+    var sides = { below: "below", above: "above", right: "right of", left: "left of" }
+    function kids(u) {
+        var o = []
+        for (var i = 0; i < d.items.length; i++) { var c = d.items[i]; if (c.link === u && leaderOf(d, c.uid) === u) o.push(c.uid) }
+        return o
+    }
+    function rel(it) {
+        var l = it.link ? find(d, it.link) : null
+        return l ? sides[sideOf(it.linkSide)] + " " + nameOf(l.type) : ""
+    }
+    for (var i = 0; i < d.items.length; i++) {
+        var it = d.items[i]
+        if (done[it.uid]) continue
+        var members = linkGroup(d, it.uid)
+        if (members.length < 2) { done[it.uid] = true; rows.push({ it: it, g: -1, pos: "solo", n: 1, label: "", rel: "" }); continue }
+        var order = [], seen = {}
+        var walk = function (u) { if (seen[u]) return; seen[u] = true; order.push(u); var k = kids(u); for (var j = 0; j < k.length; j++) walk(k[j]) }
+        walk(linkRoot(d, it.uid))
+        for (var m = 0; m < members.length; m++) if (!seen[members[m]]) { seen[members[m]] = true; order.push(members[m]) }
+        for (var q = 0; q < order.length; q++) {
+            var mi = find(d, order[q])
+            done[order[q]] = true
+            rows.push({ it: mi, g: g, pos: q === 0 ? "first" : (q === order.length - 1 ? "last" : "mid"), n: order.length,
+                        label: "Group " + String.fromCharCode(65 + g % 26), rel: rel(mi) })
+        }
+        g++
+    }
+    return rows
+}
+
 // ---- snapping while a widget is dragged (one axis at a time)
 // pos / size: where the dragged widget starts and how long it is on this axis. lo / hi: its allowed start range. total: the screen.
 // others: [{ p, s, near }] start and length of every other widget on this axis; near = it is next to us on the OTHER axis (so
@@ -467,6 +505,12 @@ function setOff(d, uid, off) { return patch(d, uid, function (it) { if (off) it.
 function isOff(it) { return !!it && it.off === true }
 function setStyle(d, uid, s) { return patch(d, uid, function (it) { it.style = s }) }
 function setOpt(d, uid, k, v) { return patch(d, uid, function (it) { it.opts[k] = v }) }
+// one look value on EVERY widget (for example "match the wallpaper" on all of them)
+function setLookAll(d, k, v) {
+    var o = copy(d)
+    for (var i = 0; i < o.items.length; i++) { o.items[i].look = o.items[i].look || {}; o.items[i].look[k] = v; o.items[i].look = look(o.items[i].look) }
+    return o
+}
 function setLook(d, uid, k, v) { return patch(d, uid, function (it) { it.look[k] = v; it.look = look(it.look) }) }
 function applyLook(d, uid, l) { return patch(d, uid, function (it) { it.look = look(l) }) }
 function bringFront(d, uid) {
