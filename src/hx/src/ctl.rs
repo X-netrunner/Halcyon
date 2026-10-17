@@ -6,6 +6,7 @@
 //!               without pactl it falls back to a 250 ms poll
 use crate::util;
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -48,7 +49,17 @@ pub fn run() {
     let dirty = Arc::new(AtomicBool::new(true));
     let have_pactl = {
         let d = dirty.clone();
-        match Command::new("pactl").arg("subscribe").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
+        // `hx ctl` is stopped (SIGTERM) every time the panel closes, and a SIGTERM runs no cleanup: without this the `pactl subscribe`
+        // child would be left behind, one more orphan on every open / close of the panel. PDEATHSIG makes the kernel kill it with us.
+        let mut cmd = Command::new("pactl");
+        cmd.arg("subscribe").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+        unsafe {
+            cmd.pre_exec(|| {
+                let _ = libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong);
+                Ok(())
+            });
+        }
+        match cmd.spawn() {
             Ok(mut child) => {
                 let out = child.stdout.take();
                 std::thread::spawn(move || {

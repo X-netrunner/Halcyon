@@ -43,6 +43,8 @@ PanelWindow {
     readonly property bool thirdsOn: flag("deskThirds", false)
     readonly property bool safeOn: flag("deskSafe", true)
     readonly property bool measureOn: flag("deskMeasure", true)
+    // the how-to card: hidden unless you ask for it (the ? in the toolbar, or H); it sits in the bottom-right corner, out of the way
+    property bool helpOpen: false
 
     Item {
         id: fade
@@ -51,7 +53,8 @@ PanelWindow {
         Behavior on opacity { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.InOutSine } }
         focus: win.open
         Keys.onPressed: e => {
-            if (e.key === Qt.Key_Escape) { if (win.adding) win.adding = false; else win.done(); e.accepted = true }
+            if (e.key === Qt.Key_Escape) { if (win.helpOpen) win.helpOpen = false; else if (win.adding) win.adding = false; else win.done(); e.accepted = true }
+            else if (e.key === Qt.Key_H || e.key === Qt.Key_F1 || e.key === Qt.Key_Question) { win.helpOpen = !win.helpOpen; e.accepted = true }
             else if (win.sel !== "" && e.key >= Qt.Key_Left && e.key <= Qt.Key_Down) {
                 // arrow keys move the picked widget 1 px (Shift: 10 px)
                 var st = (e.modifiers & Qt.ShiftModifier) ? 10 : 1
@@ -161,6 +164,55 @@ PanelWindow {
             }
         }
 
+        // the how-to card: a small popup in the bottom-right corner, only while you want it (? in the toolbar, H, or its own ✕)
+        Glass {
+            id: helpCard
+            pal: win.pal
+            visible: opacity > 0.01
+            opacity: win.helpOpen ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: win.pal.dFast } }
+            anchors.right: parent.right; anchors.rightMargin: 24
+            anchors.bottom: parent.bottom; anchors.bottomMargin: 34
+            width: 300
+            height: helpCol.implicitHeight + 28
+            radius: win.pal.rLg
+            opacityBody: win.pal.glassSolid - 0.02
+            border.color: Qt.alpha(win.pal.accent, 0.35)
+            MouseArea { anchors.fill: parent }
+            Column {
+                id: helpCol
+                x: 16; y: 14
+                width: parent.width - 32
+                spacing: 7
+                Item {
+                    width: parent.width; height: 20
+                    Text { text: "How to place widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                    Text {
+                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        text: "✕"; color: hx.containsMouse ? win.pal.text : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 13
+                        MouseArea { id: hx; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.helpOpen = false }
+                    }
+                }
+                Repeater {
+                    model: [
+                        "Drag a widget to move it. It snaps to the others, the middle and the edges (hold Alt or Ctrl to move freely).",
+                        "Arrow keys nudge it 1 px (Shift: 10 px).",
+                        "The corner dot or the mouse wheel changes its size.",
+                        "Linked widgets move and resize together: drag any of them. Set links in the Widget builder > Link.",
+                        "Switch off hides a widget without deleting it.",
+                        "H or ? shows / hides this card, Esc leaves."
+                    ]
+                    delegate: Text {
+                        required property string modelData
+                        width: helpCol.width
+                        text: "·  " + modelData
+                        wrapMode: Text.WordWrap
+                        color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 11
+                    }
+                }
+            }
+        }
+
         // the toolbar
         Glass {
             id: bar
@@ -177,11 +229,14 @@ PanelWindow {
                 id: tb
                 anchors.centerIn: parent
                 spacing: 12
-                Column {
+                Text { Layout.alignment: Qt.AlignVCenter; text: "Place your widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
+                Rectangle {                                   // the ? that opens / closes the how-to card
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: 1
-                    Text { text: "Place your widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
-                    Text { text: "Drag = move, it snaps to the others (Alt = free)  ·  arrows nudge 1 px (Shift 10)  ·  corner dot or wheel = size  ·  linked widgets move and resize together (Widget builder > Link)  ·  Switch off = hide it without deleting"; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 10 }
+                    Layout.preferredWidth: 26; Layout.preferredHeight: 26; radius: 13
+                    color: win.helpOpen ? Qt.alpha(win.pal.accent, 0.22) : (hq.containsMouse ? Qt.alpha(win.pal.surfaceHi, 0.9) : Qt.alpha(win.pal.surface, 0.8))
+                    border.width: 1; border.color: win.helpOpen ? win.pal.accent : win.pal.lineSoft
+                    Text { anchors.centerIn: parent; text: "?"; color: win.helpOpen ? win.pal.accent : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.Bold }
+                    MouseArea { id: hq; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.helpOpen = !win.helpOpen }
                 }
                 ActionChip { pal: win.pal; label: win.adding ? "Close" : "Add a widget"; on: !win.adding; onClicked: win.adding = !win.adding }
                 ActionChip { pal: win.pal; label: "Widget builder"; onClicked: win.openWidget(win.sel) }

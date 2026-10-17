@@ -94,6 +94,7 @@ WBase {
                                 anchors.fill: parent
                                 layer.enabled: true
                                 layer.samples: 4
+                                layer.textureSize: Qt.size(Math.ceil(width * root.rs), Math.ceil(height * root.rs))
                                 ShapePath { strokeColor: root.track; strokeWidth: root.sz(5); fillColor: "transparent"; capStyle: ShapePath.RoundCap
                                     PathAngleArc { centerX: rr.width / 2; centerY: rr.height / 2; radiusX: rr.width / 2 - root.sz(4); radiusY: rr.height / 2 - root.sz(4); startAngle: -90; sweepAngle: 359.9 } }
                                 ShapePath { strokeColor: root.lit(r); strokeWidth: root.sz(5); fillColor: "transparent"; capStyle: ShapePath.RoundCap

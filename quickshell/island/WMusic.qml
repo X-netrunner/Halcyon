@@ -94,7 +94,7 @@ WBase {
                 width: root.sz(96); height: width; radius: root.sz(16)
                 color: root.track
                 anchors.verticalCenter: parent.verticalCenter
-                Image { anchors.fill: parent; source: root.has ? root.pl.trackArtUrl : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(192, 192) }
+                Image { anchors.fill: parent; source: root.has ? root.pl.trackArtUrl : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(Math.ceil(192 * root.rs), Math.ceil(192 * root.rs)) }
                 WIco { b: root; anchors.centerIn: parent; visible: !root.has || root.pl.trackArtUrl === ""; text: root.glyph(0xF075A); color: root.dim; font.pixelSize: root.sz(34) }
             }
             Column {
@@ -116,7 +116,7 @@ WBase {
             ClippingRectangle {
                 width: root.sz(46); height: width; radius: root.sz(12); color: root.track
                 anchors.verticalCenter: parent.verticalCenter
-                Image { anchors.fill: parent; source: root.has ? root.pl.trackArtUrl : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(96, 96) }
+                Image { anchors.fill: parent; source: root.has ? root.pl.trackArtUrl : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(Math.ceil(96 * root.rs), Math.ceil(96 * root.rs)) }
             }
             Column {
                 width: root.lw - root.sz(46) - root.sz(12) - (root.showBtn ? root.sz(52) : 0)
@@ -139,7 +139,7 @@ WBase {
         id: coverC
         ClippingRectangle {
             width: root.sz(190); height: width; radius: root.sz(20); color: root.track
-            Image { anchors.fill: parent; source: root.has ? root.pl.trackArtUrl : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(380, 380) }
+            Image { anchors.fill: parent; source: root.has ? root.pl.trackArtUrl : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(Math.ceil(380 * root.rs), Math.ceil(380 * root.rs)) }
             WIco { b: root; anchors.centerIn: parent; visible: !root.has || root.pl.trackArtUrl === ""; text: root.glyph(0xF075A); color: root.dim; font.pixelSize: root.sz(60) }
             Rectangle {
                 anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom

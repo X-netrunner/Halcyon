@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 
 // "Moon phase": tonight's moon, worked out from the date (no internet, nothing to install).   disc | line | big
 // The lit part is drawn from the sun's side: waxing = lit on the right in the north, turned round for the south.
@@ -38,43 +39,49 @@ WBase {
     readonly property bool showNext: opt("next", true) === true
 
     // the picture
-    component Disc: Canvas {
+    // the picture: drawn as vector paths (a Rectangle and an SVG path), not a Canvas, so it stays sharp at any widget size
+    component Disc: Item {
         id: cv
         property real lp: root.ph
         property bool sth: root.south
         property color lc: root.fg
         property color gc: root.accent
-        onLpChanged: requestPaint()
-        onSthChanged: requestPaint()
-        onLcChanged: requestPaint()
-        onGcChanged: requestPaint()
-        onWidthChanged: requestPaint()
-        Component.onCompleted: requestPaint()
-        onPaint: {
-            var ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-            var cx = width / 2, cy = height / 2, r = Math.max(2, width / 2 - Math.max(3, width * 0.07))
-            // the dark side: a faint disc with a hairline edge
-            ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.closePath()
-            ctx.fillStyle = Qt.alpha(cv.lc, 0.09); ctx.fill()
-            ctx.lineWidth = 1; ctx.strokeStyle = Qt.alpha(cv.lc, 0.22); ctx.stroke()
-            // the lit side: the limb, then the terminator back (a half ellipse)
-            var k = Math.cos(2 * Math.PI * cv.lp)
-            var waxing = cv.lp < 0.5
-            var litRight = cv.sth ? !waxing : waxing
-            if (Math.abs(k) > 0.995 && k > 0) return                      // new moon: nothing lit
+        readonly property real cx: width / 2
+        readonly property real cy: height / 2
+        readonly property real r: Math.max(2, width / 2 - Math.max(3, width * 0.07))
+        // the lit side: the limb, then the terminator back (a half ellipse); "" = new moon, nothing lit
+        readonly property string lit: {
+            var k = Math.cos(2 * Math.PI * lp)
+            if (Math.abs(k) > 0.995 && k > 0) return ""
+            var waxing = lp < 0.5
+            var litRight = sth ? !waxing : waxing
             var s = litRight ? (k > 0 ? 1 : -1) : (k > 0 ? -1 : 1)
-            var rx = r * Math.abs(k)
-            ctx.beginPath()
-            ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, !litRight)
-            var n = 40
-            for (var i = 0; i <= n; i++) {
-                var t = Math.PI / 2 - Math.PI * i / n
-                ctx.lineTo(cx + s * rx * Math.cos(t), cy + r * Math.sin(t))
+            var rx = Math.max(0.01, r * Math.abs(k))
+            var f = function (v) { return v.toFixed(2) }
+            // limb: top -> bottom on the lit side (clockwise on screen when it is the right side)
+            // terminator: bottom -> top through x = cx + s * rx (counter-clockwise when it bulges to the right)
+            return "M " + f(cx) + " " + f(cy - r) +
+                   " A " + f(r) + " " + f(r) + " 0 0 " + (litRight ? 1 : 0) + " " + f(cx) + " " + f(cy + r) +
+                   " A " + f(rx) + " " + f(r) + " 0 0 " + (s > 0 ? 0 : 1) + " " + f(cx) + " " + f(cy - r) + " Z"
+        }
+        // the dark side: a faint disc with a hairline edge
+        Rectangle {
+            x: cv.cx - cv.r; y: cv.cy - cv.r; width: cv.r * 2; height: width; radius: width / 2
+            color: Qt.alpha(cv.lc, 0.09)
+            border.width: 1; border.color: Qt.alpha(cv.lc, 0.22)
+        }
+        Shape {
+            anchors.fill: parent
+            visible: cv.lit !== ""
+            layer.enabled: true
+            layer.samples: 4
+            layer.textureSize: Qt.size(Math.ceil(width * root.rs), Math.ceil(height * root.rs))
+            ShapePath {
+                strokeWidth: -1
+                strokeColor: "transparent"
+                fillColor: Qt.alpha(cv.lc, 0.96)
+                PathSvg { path: cv.lit }
             }
-            ctx.closePath()
-            ctx.fillStyle = Qt.alpha(cv.lc, 0.96)
-            ctx.fill()
         }
     }
 

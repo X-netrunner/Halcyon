@@ -28,6 +28,7 @@ json=$("$IM" "${img}[0]" -resize 64x64! -depth 8 rgb:- 2>/dev/null | od -An -v -
 function max3(a, b, c) { return (a > b ? (a > c ? a : c) : (b > c ? b : c)) }
 function min3(a, b, c) { return (a < b ? (a < c ? a : c) : (b < c ? b : c)) }
 function clamp(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x) }
+function lin(c) { return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ^ 2.4 }
 function hex2(x) { x = int(x * 255 + 0.5); if (x < 0) x = 0; if (x > 255) x = 255; return sprintf("%02x", x) }
 function hue2rgb(m1, m2, h) {
     h = h - int(h); if (h < 0) h += 1
@@ -59,6 +60,9 @@ BEGIN { BINS = 36; PI2 = 6.283185307 }
 NF >= 3 {
     r = $1 / 255; g = $2 / 255; b = $3 / 255
     n++; mr += r; mg += g; mb += b; lsum += 0.2126 * r + 0.7152 * g + 0.0722 * b
+    # coarse 12 x 8 grid of the picture (linear luminance): the desktop widgets look up what is right behind them
+    gi = n - 1; gc = int(((gi % 64) * 12) / 64) + 12 * int((int(gi / 64) * 8) / 64)
+    GS[gc] += 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b); GN[gc]++
     mx = max3(r, g, b); mn = min3(r, g, b); v = mx; d = mx - mn
     if (mx <= 0) next
     s = d / mx
@@ -106,9 +110,10 @@ END {
         }
         for (i = 0; i < nsw; i++) sws = sws (i ? "," : "") "\"" SW[i] "\""
     }
-    printf "{\"bg\":\"%s\",\"surface\":\"%s\",\"surfaceHi\":\"%s\",\"accent\":\"%s\",\"accent2\":\"%s\",\"text\":\"%s\",\"muted\":\"%s\",\"dominant\":\"%s\",\"lum\":%.3f,\"swatches\":[%s]}\n", \
+    for (gc = 0; gc < 96; gc++) grid = grid (gc ? "," : "") sprintf("%.3f", GN[gc] ? GS[gc] / GN[gc] : 0)
+    printf "{\"bg\":\"%s\",\"surface\":\"%s\",\"surfaceHi\":\"%s\",\"accent\":\"%s\",\"accent2\":\"%s\",\"text\":\"%s\",\"muted\":\"%s\",\"dominant\":\"%s\",\"lum\":%.3f,\"grid\":[%s],\"swatches\":[%s]}\n", \
         hsl(h1, sbg, 0.095), hsl(h1, sbg - 0.04, 0.155), hsl(h1, sbg - 0.04, 0.205), \
-        hsl(h1, sa, 0.70), hsl(h2, sa2, 0.72), hsl(h1, 0.20, 0.89), hsl(h1, 0.10, 0.64), dom, lsum / n, sws
+        hsl(h1, sa, 0.70), hsl(h2, sa2, 0.72), hsl(h1, 0.20, 0.89), hsl(h1, 0.10, 0.64), dom, lsum / n, grid, sws
 }')
 [ -n "$json" ] || exit 1
 # palette.sh <image> --print: just print the json (scripts/wallpapers.sh colors uses it to read every wallpaper's colours)

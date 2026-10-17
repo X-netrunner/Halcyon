@@ -12,6 +12,8 @@ Modes:
   adaptive-advisor.py model switch <name> -> Switch to any model (pulls it if missing)
   adaptive-advisor.py --llm               -> Synthesizes situational advice using local Ollama LLM
   adaptive-advisor.py "your question..."  -> AI agent: investigates with tools, can fix things (asks before each change; --yes pre-approves low-risk ones)
+  adaptive-advisor.py leaks               -> Read the last leak-watch log: what leaked, what jumped once, zombies, clones (LLM explains it)
+  adaptive-advisor.py leaks watch [min] [every_s] -> Record a new leak-watch (default 30 min, every 60 s), then analyse it
   adaptive-advisor.py triage "text"       -> Tag a notification (urgent/chat/system/promo) + one-line summary
   adaptive-advisor.py write "request"     -> Short friendly text (birthday message, reply, description)
 """
@@ -1050,6 +1052,101 @@ def write_short(request):
 
 # ───────────────────────── CLI Entrypoint ─────────────────────────
 
+
+# ───────────────────────── Leak watch: record -> analyse (script) -> explain (LLM) ─────────────────────────
+
+def _leaks_module():
+    """scripts/halcyon-leaks.py (the arithmetic lives there, so the model never has to do it)."""
+    import importlib.util
+    for base in (os.path.join(RICE, "scripts"), os.path.dirname(os.path.abspath(__file__))):
+        p = os.path.join(base, "halcyon-leaks.py")
+        if os.path.isfile(p):
+            spec = importlib.util.spec_from_file_location("halcyon_leaks", p)
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            return m
+    return None
+
+def island_log_near(t_from, t_to, limit=12):
+    """Lines of the island log that mention a clock time (HH:MM) inside [t_from, t_to] (best effort: depends on the log's own timestamps)."""
+    if not os.path.isfile(ISLAND_LOG):
+        return []
+    mins = set()
+    t = int(t_from) - 60
+    while t <= int(t_to) + 60:
+        mins.add(time.strftime("%H:%M", time.localtime(t)))
+        t += 30
+    hits = []
+    try:
+        with open(ISLAND_LOG, errors="ignore") as f:
+            for line in f:
+                if any((m + ":") in line for m in mins):
+                    hits.append(line.rstrip()[:220])
+    except Exception:
+        pass
+    return hits[-limit:]
+
+def leak_context(res):
+    """Island-log lines around every memory jump in an analysis result."""
+    out = []
+    for f in res.get("findings", []):
+        if f.get("kind") == "step" and f.get("t_from"):
+            out += island_log_near(f["t_from"], f["t_to"])
+    return out
+
+def leaks_command(args, assume_yes=False):
+    mod = _leaks_module()
+    if mod is None:
+        print("halcyon-leaks.py is missing from the Halcyon scripts folder.")
+        return
+    use_llm = "--no-llm" not in args
+    want_json = "--json" in args
+    args = [a for a in args if not a.startswith("--")]
+    log = mod.DEFAULT_LOG
+    if args and args[0] in ("watch", "record", "run"):
+        mins = args[1] if len(args) > 1 and args[1].isdigit() else "30"
+        every = args[2] if len(args) > 2 and args[2].isdigit() else "60"
+        script = os.path.join(RICE, "scripts", "halcyon-leak-watch.sh")
+        if not os.path.isfile(script):
+            script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "halcyon-leak-watch.sh")
+        print(f"Recording {mins} min, one sample every {every} s. Leave the desktop alone until it finishes (Ctrl+C stops it and keeps the samples).")
+        try:
+            subprocess.run(["bash", script, mins, every])
+        except KeyboardInterrupt:
+            print("\nstopped early: analysing what was recorded.")
+    elif args:
+        log = os.path.expanduser(args[0])
+
+    res = mod.analyze(log)
+    if want_json:
+        print(json.dumps(res, indent=1))
+        return
+    report = mod.render(res)
+    print(report)
+    if "error" in res:
+        return
+    ctx = leak_context(res)
+    if ctx:
+        print("\nisland log around the jump:")
+        for l in ctx:
+            print("  " + l)
+    if not use_llm:
+        return
+    if res["verdict"] == "clean":
+        return          # nothing to explain: the script's verdict is the answer
+    print("\n── what it means ──")
+    prompt = (
+        "You review a memory-leak watch of a Linux desktop (Hyprland + the Quickshell 'island' shell + Rust helpers named hx, cava, hal). "
+        "The numbers below were computed by a script and are CORRECT: never recompute them and never invent others.\n"
+        "Say in plain words, per LEAK / JUMP line: what the pattern means (a steady leak, a one-off jump that was never given back, a "
+        "repeating step, a clone, a zombie) and the most likely cause for THAT program (quickshell = QML/JS heap, images and windows loaded on demand; "
+        "cava = audio visualiser). Then give at most 3 concrete next steps as shell commands. Be short: no preamble, no headings.\n\n"
+        f"REPORT:\n{report}\n"
+        + (f"\nISLAND LOG AROUND THE JUMP:\n" + "\n".join(ctx) + "\n" if ctx else "")
+    )
+    if ollama_generate(prompt, num_predict=380, temperature=0.2, stream=True, timeout=120) is None and LAST_LLM_ERROR:
+        print(LAST_LLM_ERROR + " (the report above stands on its own)")
+
 def main():
     args = sys.argv[1:]
 
@@ -1063,6 +1160,9 @@ def main():
         return
     if args and args[0] in ("fix", "--fix", "-f"):
         apply_fixes(assume_yes=assume_yes)
+        return
+    if args and args[0] in ("leaks", "leak"):
+        leaks_command(args[1:], assume_yes=assume_yes)
         return
     if args and args[0] == "triage":
         triage_notification(" ".join(args[1:]))
@@ -1132,6 +1232,8 @@ def main():
     print("Commands:")
     print("  advisor doctor            -> Autonomous diagnostics with confirmed fixes")
     print("  advisor fix               -> Apply recommended system optimizations")
+    print("  advisor leaks             -> Analyse the last leak-watch: leaks, one-off jumps, zombies, clones (LLM explains)")
+    print("  advisor leaks watch 30 60 -> Record a new 30-minute leak-watch (sample every 60 s), then analyse it")
     print("  advisor model recommend   -> Hardware-tailored advice for bigger AI models")
     print("  advisor model switch <m>  -> Download and activate a local AI model")
     print("  advisor \"<question>\"     -> Ask the local AI: it inspects the machine and can fix things (asks before every change)")

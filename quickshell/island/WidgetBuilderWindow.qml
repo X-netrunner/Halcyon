@@ -208,26 +208,48 @@ Item {
                                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; wrapMode: Text.WordWrap
                                 }
                                 Repeater {
-                                    model: root.layout.items
-                                    delegate: Rectangle {
+                                    model: WD.listRows(root.layout)
+                                    delegate: Item {
+                                        id: rowD
                                         required property var modelData
-                                        readonly property bool on: modelData.uid === root.sel && !root.adding
-                                        width: lst.width; height: 44; radius: 14
-                                        opacity: modelData.off === true ? 0.55 : 1
-                                        color: on ? Qt.alpha(root.pal.accent, 0.18) : (lm.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : Qt.alpha(root.pal.surface, 0.5))
-                                        border.width: 1; border.color: on ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
+                                        readonly property var itm: modelData.it
+                                        readonly property bool grouped: modelData.g >= 0
+                                        readonly property color grpCol: grouped ? WD.groupColor(modelData.g) : "transparent"
+                                        readonly property bool on: itm.uid === root.sel && !root.adding
+                                        readonly property real hdr: (grouped && modelData.pos === "first") ? 20 : 0
+                                        width: lst.width; height: hdr + 44
+                                        opacity: itm.off === true ? 0.55 : 1
+                                        // linked widgets: a small header for the first one, and a coloured bracket down the side of the whole group
                                         Row {
-                                            anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 10
-                                            spacing: 10
-                                            Text { text: String.fromCodePoint(WD.iconOf(modelData.type)); color: on ? root.pal.accent : root.pal.muted; font.family: root.pal.font; font.pixelSize: 18; anchors.verticalCenter: parent.verticalCenter }
-                                            Column {
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                width: parent.width - 40
-                                                Text { width: parent.width; text: WD.nameOf(modelData.type); elide: Text.ElideRight; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
-                                                Text { width: parent.width; text: WD.spotName(modelData) + (modelData.off === true ? "  ·  switched off" : ""); elide: Text.ElideRight; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
-                                            }
+                                            visible: rowD.hdr > 0
+                                            height: 18; spacing: 6
+                                            Text { text: String.fromCodePoint(0xF0337); color: rowD.grpCol; font.family: root.pal.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
+                                            Text { text: rowD.modelData.label + "  ·  " + rowD.modelData.n + " linked"; color: rowD.grpCol; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 1; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
                                         }
-                                        MouseArea { id: lm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.select(modelData.uid) }
+                                        Rectangle {
+                                            visible: rowD.grouped
+                                            x: 3; y: rowD.hdr > 0 ? 20 : 0; width: 3; radius: 1.5
+                                            height: rowD.height - y + (rowD.modelData.pos === "last" ? 0 : 6)
+                                            color: Qt.alpha(rowD.grpCol, 0.9)
+                                        }
+                                        Rectangle {
+                                            x: rowD.grouped ? 14 : 0; y: rowD.hdr
+                                            width: rowD.width - x; height: 44; radius: 14
+                                            color: rowD.on ? Qt.alpha(root.pal.accent, 0.18) : (lm.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : Qt.alpha(root.pal.surface, 0.5))
+                                            border.width: 1; border.color: rowD.on ? Qt.alpha(root.pal.accent, 0.5) : (rowD.grouped ? Qt.alpha(rowD.grpCol, 0.35) : root.pal.lineSoft)
+                                            Row {
+                                                anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 10
+                                                spacing: 10
+                                                Text { text: String.fromCodePoint(WD.iconOf(rowD.itm.type)); color: rowD.on ? root.pal.accent : root.pal.muted; font.family: root.pal.font; font.pixelSize: 18; anchors.verticalCenter: parent.verticalCenter }
+                                                Column {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    width: parent.width - 40
+                                                    Text { width: parent.width; text: WD.nameOf(rowD.itm.type); elide: Text.ElideRight; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
+                                                    Text { width: parent.width; text: (rowD.modelData.rel !== "" ? rowD.modelData.rel : WD.spotName(rowD.itm)) + (rowD.itm.off === true ? "  ·  switched off" : ""); elide: Text.ElideRight; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
+                                                }
+                                            }
+                                            MouseArea { id: lm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.select(rowD.itm.uid) }
+                                        }
                                     }
                                 }
                             }
@@ -590,8 +612,27 @@ Item {
                             current: root.curLook.font
                             onPicked: id => root.setLookV("font", id)
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Text { Layout.fillWidth: true; text: "Match wallpaper accent"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; elide: Text.ElideRight }
+                            Toggle { pal: root.pal; on: root.curLook.match; onToggled: root.setLookV("match", !root.curLook.match) }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Match on all"; onClicked: root.edit(WD.setLookAll(root.layout, "match", true), false) }
+                            ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Off on all"; onClicked: root.edit(WD.setLookAll(root.layout, "match", false), false) }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.curLook.match ? "On: the lit colour, the text and the box tint all follow the wallpaper accent and change with the wallpaper. The colour pickers are hidden while this is on."
+                                                     : "Turn on to make the colours of this widget follow the wallpaper accent (text, bars and box). \"Match on all\" does it for every widget at once."
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
+                        }
                         ChipRow {
                             Layout.fillWidth: true
+                            visible: !root.curLook.match
                             pal: root.pal; label: "Lit colour"; labelWidth: 90
                             options: WD.tones
                             current: root.curLook.tone
@@ -599,7 +640,7 @@ Item {
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            visible: root.curLook.tone === "custom"
+                            visible: root.curLook.tone === "custom" && !root.curLook.match
                             spacing: 8
                             Item { Layout.preferredWidth: 90; height: 1 }
                             Flow {
@@ -624,6 +665,7 @@ Item {
                         }
                         ChipRow {
                             Layout.fillWidth: true
+                            visible: !root.curLook.match
                             pal: root.pal; label: "Text colour"; labelWidth: 90
                             options: [["theme", "Theme"], ["light", "White"], ["dark", "Dark"], ["custom", "My colour"]]
                             current: root.curLook.textTone
@@ -631,7 +673,7 @@ Item {
                         }
                         WbText {
                             Layout.fillWidth: true
-                            visible: root.curLook.textTone === "custom"
+                            visible: root.curLook.textTone === "custom" && !root.curLook.match
                             pal: root.pal; text: root.curLook.textColor; hintText: "#rrggbb"
                             onCommitted: t => { if (/^#[0-9a-fA-F]{6}$/.test(t)) root.setLookV("textColor", t.toLowerCase()) }
                         }

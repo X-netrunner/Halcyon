@@ -67,6 +67,30 @@ Item {
         var l = WD.leaderOf(layout, uid)
         return l !== "" ? hostOf(l) : null
     }
+    // the first widget of the chain this one belongs to (the widget itself when nothing is linked): that is the one a drag really moves
+    function chainRootOf(uid, t) {
+        if (!anyLinks) return hostOf(uid)
+        return hostOf(WD.linkRoot(layout, uid))
+    }
+    // how far the widgets linked to `uid` reach beyond it to the LEFT ("l") or RIGHT ("r"), gap included, followers of followers too. The first
+    // widget of a chain is kept that far from the screen edge, so a linked widget that gets wider (uptime "9h" -> "2h 59m", linked on the
+    // left) pushes the chain to the right instead of growing off the screen.
+    function chainExt(uid, side, t, depth) {
+        if (!anyLinks || (depth || 0) > 8) return 0
+        var m = 0
+        for (var i = 0; i < layout.items.length; i++) {
+            var f = layout.items[i]
+            if (f.link !== uid) continue
+            var h = hostOf(f.uid)
+            if (!h || h.bodyHidden) continue
+            var sd = WD.sideOf(f.linkSide), gap = f.linkGap !== undefined ? Number(f.linkGap) : 14
+            var inner = chainExt(f.uid, side, t, (depth || 0) + 1)
+            if (sd === "left") { if (side === "l") m = Math.max(m, h.vw + gap + inner) }
+            else if (sd === "right") { if (side === "r") m = Math.max(m, h.vw + gap + inner) }
+            else m = Math.max(m, inner)               // stacked above / below: same left edge, same width
+        }
+        return m
+    }
     // the outer width every widget stacked with this one (above / below links) shares: the widest of them (0 = nothing is forced; side-by-side links never force a width)
     function groupW(uid, t) {
         if (!anyLinks) return 0
@@ -126,6 +150,9 @@ Item {
             collect: root.rectsExcept
             linkHost: root.linkHostOf(modelData, root.tick)
             forceW: root.groupW(modelData, root.tick)
+            extL: root.chainExt(modelData, "l", root.tick)
+            extR: root.chainExt(modelData, "r", root.tick)
+            chainRoot: root.chainRootOf(modelData, root.tick)
             onNatWChanged: if (root.anyLinks) root.tick++
             onBodyHiddenChanged: if (root.anyLinks) root.tick++
             gridSnap: root.editing && root.snapGrid ? root.gridSize : 0

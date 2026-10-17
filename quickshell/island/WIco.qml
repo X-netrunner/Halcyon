@@ -5,7 +5,7 @@ Text {
     property var b: null
     color: b ? b.accent : "#9aa9d4"
     font.family: b ? b.icons : "JetBrainsMono Nerd Font"
-    renderType: Text.NativeRendering
-    style: (b && b.boost > 0.05) ? Text.Outline : Text.Normal
+    renderType: (b && Math.abs(b.zoom - 1) > 0.01) ? Text.QtRendering : Text.NativeRendering   // QtRendering = scalable glyphs: sharp when the widget is bigger
+    style: (b && b.outlineColor.a > 0.04) ? Text.Outline : Text.Normal
     styleColor: b ? b.outlineColor : "transparent"
 }

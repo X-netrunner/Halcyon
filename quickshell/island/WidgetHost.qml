@@ -31,6 +31,10 @@ Item {
     // links (item.link, see WidgetData.js): DeskWidgets hands over the host this widget follows and the outer width the whole chain shares
     property var linkHost: null
     property real forceW: 0
+    property real extL: 0                     // room the widgets linked on this chain's LEFT need (DeskWidgets.chainExt): the chain root never sits closer to the edge
+    property real extR: 0                     // ... and on its right
+    function chainX(v) { return Math.max(margin + extL, Math.min(v, screenW - margin - vw - extR)) }
+    property var chainRoot: null              // the first widget of the chain this one belongs to (itself when it is not linked): dragging ANY widget of the chain drags that one, and the rest follow
 
     signal picked(string uid)
     signal dragMoved(real guideX, real guideY)    // -1 = no guide line on that axis
@@ -56,17 +60,49 @@ Item {
     // and draws a soft outline round every letter, so it reads on a busy wallpaper (no box is ever drawn for "No box").
     // look.depth ("Colour depth") pours the accent into the box, the quiet text, the bars and the hairline.
     readonly property real boost: look.contrast
-    readonly property real depth: look.depth
-    readonly property color accentRaw: look.tone === "custom" ? look.color : (look.tone === "second" ? pal.accent2 : pal.accent)
-    readonly property color accent: boost > 0 ? Qt.tint(accentRaw, Qt.rgba(1, 1, 1, 0.2 * boost)) : accentRaw
+    // look.match ("Match wallpaper accent"): the lit colour, the text and the box all follow the wallpaper accent, whatever the colour pickers say
+    readonly property bool match: look.match === true
+    readonly property string toneEff: match ? "theme" : look.tone
+    readonly property string textToneEff: match ? "theme" : look.textTone
+    readonly property real depth: match ? Math.max(look.depth, 0.6) : look.depth
+    // ---- bright wallpaper: when the picture right behind this widget is bright (and the widget has no dark box of its own),
+    // the theme text would be pale on pale. Then the text, the lit colour and the bars turn DARK but keep the wallpaper's accent hue,
+    // with a light halo, so they read on any wallpaper. Only for the "Theme" text colour: a colour you picked yourself stays as you set it.
+    readonly property real bodyOp: (look.surface === "clear" || look.surface === "outline") ? 0 : look.op
+    // the patch of wallpaper behind this widget (screen fractions); the preview in the builder looks at the whole picture
+    readonly property real fX: preview ? 0 : x / Math.max(1, screenW)
+    readonly property real fY: preview ? 0 : y / Math.max(1, screenH)
+    readonly property real fW: preview ? 1 : vw / Math.max(1, screenW)
+    readonly property real fH: preview ? 1 : vh / Math.max(1, screenH)
+    readonly property real backLum: pal ? pal.lumAt(fX, fY, fW, fH) : 0.1
+    readonly property real backSpread: pal ? pal.lumSpreadAt(fX, fY, fW, fH) : 0
+    readonly property real backMax: pal ? pal.lumMaxAt(fX, fY, fW, fH) : 0.1
+    readonly property real effLum: backLum * (1 - bodyOp) + 0.012 * bodyOp     // linear luminance seen through the box (a dark glass box is ~0.012)
+    readonly property bool themed: textToneEff === "theme"
+    // 1) an evenly BRIGHT patch: dark, accent-tinted text.   0.18 is where black text starts to beat white on contrast
+    readonly property bool onBright: themed && effLum > 0.2 && backSpread < 0.15
+    // 2) a MIXED patch (pink next to black ...): neither colour reads on all of it, so light text with a strong dark outline, like subtitles
+    readonly property bool onMixed: themed && !onBright && bodyOp < 0.5 && backSpread >= 0.15 && backMax > 0.2
+    readonly property color accentRaw: toneEff === "custom" ? look.color : (toneEff === "second" ? pal.accent2 : pal.accent)
+    readonly property color accentInk: Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(1, Math.max(0.55, accentRaw.hslSaturation)), 0.22, 1)   // the accent, darkened to read on light
+    readonly property color accentSoft: Qt.tint("#ffffff", Qt.alpha(accentRaw, 0.25))      // the accent, washed towards white: bars / dots on a mixed patch
+    readonly property color accent: onBright && toneEff !== "custom" ? accentInk
+                                    : (onMixed && toneEff !== "custom" ? accentSoft
+                                       : (boost > 0 ? Qt.tint(accentRaw, Qt.rgba(1, 1, 1, 0.2 * boost)) : accentRaw))
     readonly property color boxTint: Qt.alpha(accentRaw, 0.7 * depth)       // laid over the surface colour
-    readonly property color fg: look.textTone === "custom" ? look.textColor
-                                : (look.textTone === "light" ? "#ffffff" : (look.textTone === "dark" ? "#14151c" : Qt.tint(pal.text, Qt.alpha(accentRaw, 0.16 * depth))))
-    readonly property color dim: (look.textTone === "custom" || look.textTone === "light" || look.textTone === "dark")
+    readonly property color fg: textToneEff === "custom" ? look.textColor
+                                : (textToneEff === "light" ? "#ffffff" : (textToneEff === "dark" ? "#14151c"
+                                   : (onBright ? Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(0.7, accentRaw.hslSaturation), 0.10, 1)
+                                      : (onMixed ? Qt.tint("#ffffff", Qt.alpha(accentRaw, 0.10))
+                                                 : Qt.tint(pal.text, Qt.alpha(accentRaw, match ? 0.42 : 0.16 * depth))))))
+    readonly property color dim: (textToneEff === "custom" || textToneEff === "light" || textToneEff === "dark")
                                  ? Qt.alpha(fg, 0.62 + 0.26 * boost)
-                                 : Qt.tint(Qt.tint(pal.muted, Qt.alpha(accentRaw, 0.5 * depth)), Qt.rgba(1, 1, 1, 0.3 * boost))
-    readonly property color outlineColor: look.textTone === "dark" ? Qt.rgba(1, 1, 1, 0.45 * boost) : Qt.rgba(0, 0, 0, 0.55 * boost)
-    readonly property color track: Qt.alpha(accentRaw, 0.14 + 0.2 * depth)
+                                 : (onBright ? Qt.alpha(accentInk, 0.82 + 0.16 * boost)
+                                    : (onMixed ? Qt.alpha("#ffffff", 0.9)
+                                               : Qt.tint(Qt.tint(pal.muted, Qt.alpha(accentRaw, 0.5 * depth)), Qt.rgba(1, 1, 1, 0.3 * boost))))
+    readonly property color outlineColor: onMixed ? Qt.rgba(0, 0, 0, 0.9)
+                                          : ((textToneEff === "dark" || onBright) ? Qt.rgba(1, 1, 1, 0.45 * Math.max(boost, onBright ? 0.7 : 0)) : Qt.rgba(0, 0, 0, 0.55 * boost))
+    readonly property color track: onMixed ? Qt.rgba(1, 1, 1, 0.4) : Qt.alpha(onBright ? accentInk : accentRaw, 0.14 + 0.2 * depth)
     readonly property string face: look.font === "mono" ? pal.mono : (look.font === "serif" ? pal.serifFont : pal.uiFont)
     readonly property string iconFont: pal.font
     readonly property real fs: look.fs
@@ -100,7 +136,7 @@ Item {
     // (left / right, centred on it; its leader's width counts, so when the leader grows this one is pushed along, never overlapped)
     x: preview ? 0 : (linked ? (linkSide === "right" ? linkHost.x + linkHost.vw + linkGap
                                 : (linkSide === "left" ? linkHost.x - vw - linkGap : linkHost.x))
-                             : (dragging ? dragX : (resizing ? pinX : WD.posX(item || { px: 0 }, screenW, vw, margin))))
+                             : (dragging ? dragX : (resizing ? pinX : chainX(WD.posX(item || { px: 0 }, screenW, vw, margin)))))
     y: preview ? 0 : (linked ? (linkSide === "above" ? linkHost.y - vh - linkGap
                                 : (linkSide === "below" ? linkHost.y + linkHost.vh + linkGap
                                    : linkHost.y + (linkHost.vh - vh) / 2))
@@ -184,54 +220,65 @@ Item {
         enabled: host.editing
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton
-        cursorShape: host.linked ? Qt.ArrowCursor : (pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor)
+        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
         property real pressX: 0                 // (was sx / sy: the `var sx` inside onPositionChanged shadowed them, so the move was NaN and nothing dragged)
         property real pressY: 0
         property real ox: 0
         property real oy: 0
+        property var tgt: null                  // the widget that really moves: this one, or (linked) the first of its chain
         onPressed: m => {
             host.picked(host.uid)
-            if (host.linked) return              // linked: it moves with its leader (drag the leader), a click still picks it
+            var t = host.linked ? host.chainRoot : host
+            if (!t) { tgt = null; return }
+            tgt = t
             var p = grab.mapToItem(host.parent, m.x, m.y)
-            pressX = p.x; pressY = p.y; ox = host.x; oy = host.y
-            host.others = host.collect ? host.collect(host.uid) : []
-            host.dragX = ox; host.dragY = oy
-            host.dragging = true
+            pressX = p.x; pressY = p.y; ox = t.x; oy = t.y
+            t.others = t.collect ? t.collect(t.uid) : []      // the widgets of the chain are not "others": they travel along
+            t.dragX = ox; t.dragY = oy
+            t.dragging = true
         }
         onPositionChanged: m => {
-            if (!pressed || !host.dragging) return
+            var t = tgt
+            if (!pressed || !t || !t.dragging) return
             var p = grab.mapToItem(host.parent, m.x, m.y)
             var nx = ox + p.x - pressX, ny = oy + p.y - pressY
             var gx = -1, gy = -1
-            var lo = host.margin, hi = host.screenW - host.vw - host.margin
-            var tlo = host.topInset, thi = host.screenH - host.vh - host.bottomInset
+            var lo = t.margin, hi = t.screenW - t.vw - t.margin
+            var tlo = t.topInset, thi = t.screenH - t.vh - t.bottomInset
             // Alt or Ctrl held = move freely, no snapping
             if ((m.modifiers & (Qt.AltModifier | Qt.ControlModifier)) === 0) {
                 var xo = [], yo = []
-                for (var i = 0; i < host.others.length; i++) {
-                    var o = host.others[i]
-                    xo.push({ p: o.x, s: o.w, near: ny < o.y + o.h + 40 && ny + host.vh > o.y - 40 })   // beside it only if level with it
-                    yo.push({ p: o.y, s: o.h, near: nx < o.x + o.w + 40 && nx + host.vw > o.x - 40 })   // under it only if above / below it
+                for (var i = 0; i < t.others.length; i++) {
+                    var o = t.others[i]
+                    xo.push({ p: o.x, s: o.w, near: ny < o.y + o.h + 40 && ny + t.vh > o.y - 40 })   // beside it only if level with it
+                    yo.push({ p: o.y, s: o.h, near: nx < o.x + o.w + 40 && nx + t.vw > o.x - 40 })   // under it only if above / below it
                 }
                 // the grid first (when it is on), then the other widgets / the middle / the edges win when they are close
-                if (host.gridSnap > 0) {
-                    nx = host.margin + Math.round((nx - host.margin) / host.gridSnap) * host.gridSnap
-                    ny = host.topInset + Math.round((ny - host.topInset) / host.gridSnap) * host.gridSnap
+                if (t.gridSnap > 0) {
+                    nx = t.margin + Math.round((nx - t.margin) / t.gridSnap) * t.gridSnap
+                    ny = t.topInset + Math.round((ny - t.topInset) / t.gridSnap) * t.gridSnap
                 }
-                var snapX = WD.snapAxis(nx, host.vw, lo, hi, host.screenW, xo, host.snapGap, 10)
-                var snapY = WD.snapAxis(ny, host.vh, tlo, thi, host.screenH, yo, host.snapGap, 10)
+                var snapX = WD.snapAxis(nx, t.vw, lo, hi, t.screenW, xo, t.snapGap, 10)
+                var snapY = WD.snapAxis(ny, t.vh, tlo, thi, t.screenH, yo, t.snapGap, 10)
                 if (snapX) { nx = snapX.pos; gx = snapX.guide }
                 if (snapY) { ny = snapY.pos; gy = snapY.guide }
             }
-            host.dragX = Math.max(lo, Math.min(Math.max(lo, hi), nx))
-            host.dragY = Math.max(tlo, Math.min(Math.max(tlo, thi), ny))
-            host.dragMoved(gx, gy)
+            t.dragX = Math.max(lo, Math.min(Math.max(lo, hi), nx))
+            t.dragY = Math.max(tlo, Math.min(Math.max(tlo, thi), ny))
+            t.dragMoved(gx, gy)
         }
         onReleased: {
-            if (!host.dragging) return
-            host.dragging = false
-            host.dragMoved(-1, -1)
-            host.dropped(host.uid, WD.fracX(host.dragX, host.screenW, host.vw, host.margin), WD.fracY(host.dragY, host.screenH, host.vh, host.topInset, host.bottomInset))
+            var t = tgt
+            tgt = null
+            if (!t || !t.dragging) return
+            t.dragging = false
+            t.dragMoved(-1, -1)
+            t.dropped(t.uid, WD.fracX(t.dragX, t.screenW, t.vw, t.margin), WD.fracY(t.dragY, t.screenH, t.vh, t.topInset, t.bottomInset))
+        }
+        onCanceled: {
+            var t = tgt
+            tgt = null
+            if (t && t.dragging) { t.dragging = false; t.dragMoved(-1, -1) }
         }
         onDoubleClicked: host.openRequested(host.uid)
         onWheel: wh => {

@@ -60,7 +60,7 @@ ShellRoot {
         clockAlign: "colon",       // colon | text : which part of the clock sits on the screen's centre line (Settings > Clock)
         clockNudge: 0,             // extra px to push the clock right (negative = left), on top of clockAlign
         accentBorder: true,        // the focused window's border takes the wallpaper accent (off = neutral white hairline)
-        surface: "tint",           // tint | matte | black : the box background (Settings > Look > Box background); matte / black are solid and need the dark theme
+        surface: "tint",           // tint | match | matte | black : the box background (Settings > Look > Box background); matte / black are solid and need the dark theme
         dropDown: "side",          // off | stack | side : drag the bar down for the utilities box (stack: drag again for the notifications; side: notifications beside it)
         osdHold: 1700,             // ms the volume / brightness bar stays
         settingsStyle: "tree",     // tree | pages : the layout of the Settings window (both stay; Settings > Look > Settings layout)
@@ -2090,13 +2090,18 @@ ShellRoot {
         Timer { id: clickGrace; interval: 2500; onTriggered: if (!hov.hovered) win.peek = false }
 
         mask: root.page === "launcher" ? launcherMask : ((root.notchStyle && root.page === "home") ? stripMask : normalMask)
-        Region { id: launcherMask; item: backdrop }
+        // while the launcher is open the window catches the pointer only over the launcher / the bar and a click-away area in the middle;
+        // the left and right sides stay free, so the edge and corner spots (notifications, quick terminal, utilities, background apps) still work
+        readonly property real launcherInset: Math.max(0, Math.min(pal.boxW + 60, (width - launcher.wantedWidth) / 2))
+        Region { id: launcherMask; regions: [ Region { item: backdrop }, Region { item: island } ] }
         Region { id: stripMask; item: strip }
         Region { id: normalMask; regions: [ Region { item: strip }, Region { item: island } ] }
 
         Item {
             id: backdrop
             anchors.fill: parent
+            anchors.leftMargin: win.launcherInset
+            anchors.rightMargin: win.launcherInset
             MouseArea {
                 anchors.fill: parent
                 enabled: root.page === "launcher"
