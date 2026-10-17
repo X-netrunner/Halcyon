@@ -78,10 +78,12 @@ Scope {
         })
     }
 
-    PanelWindow {
-        id: win
-        visible: root.open
-        anchors { top: true; bottom: true; left: true; right: true }
+    LazyLoader {
+        active: root.open
+        PanelWindow {
+            id: win
+            visible: true
+            anchors { top: true; bottom: true; left: true; right: true }
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-notes"
@@ -393,4 +395,6 @@ Scope {
             }
         }
     }
+    }
 }
+
