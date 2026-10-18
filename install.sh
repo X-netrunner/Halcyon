@@ -490,6 +490,9 @@ map_pkg_for_apt() {
         polkit)                 echo "polkitd pkexec" ;;
         dbus)                   echo "dbus" ;;
         libnotify)              echo "libnotify-bin" ;;
+        python-gobject)         echo "python3-gi gir1.2-atspi-2.0" ;;
+        at-spi2-core)           echo "at-spi2-core" ;;
+        wtype)                  echo "wtype" ;;
         xdg-utils)              echo "xdg-utils" ;;
         xdg-user-dirs)          echo "xdg-user-dirs" ;;
         dmidecode)              echo "dmidecode" ;;

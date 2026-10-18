@@ -104,7 +104,7 @@ Item {
     readonly property var cmdOrder: [
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "wallpaper", "theme", "barstyle", "edgemode", "routing",
-        "calendar", "notes", "passman", "calc", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
+        "calendar", "notes", "calc", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
     readonly property bool cmdGrouped: mode === "cmd" && q0.substring(1).trim() === "" && cmdCategory === "all"
@@ -120,7 +120,6 @@ Item {
         { id: "calendar", name: "Calendar", desc: "Google Calendar: your events by day, with reminder notifications", glyph: 0xF00ED, kw: "calender calendar agenda schedule tasks events google reminders meeting", cat: "tools" },
         { id: "notes", name: "Notes & scratchpad", desc: "Quick notes, todos and tasks (Super + N)", glyph: 0xF03EB, kw: "notes memo text scratchpad todo tasks", cat: "tools" },
         { id: "record", name: "Screen recorder", desc: "On-demand screen or audio recording, with desktop sound and / or microphone, to ~/Videos/Recordings (Super + Alt + R)", glyph: 0xF012F, kw: "record screen capture video stream cast obs", cat: "tools" },
-        { id: "passman", name: "Password manager", desc: "Halcyon encrypted vault & auto-clearing credentials", glyph: 0xF030A, kw: "password pass credentials vault secret passman", cat: "tools" },
         { id: "tour", name: "Guided tour", desc: "Replay the walkthrough of the island, its panels and shortcuts", glyph: 0xF02D6, kw: "tutorial help intro welcome walkthrough onboarding whats new release notes learn", cat: "system" },
         { id: "barbuilder", name: "Bar builder", desc: "Drag widgets into the left, middle and right of your own bar", glyph: 0xF0208, kw: "bar custom widgets layout drag drop builder edit", cat: "desktop" },
         { id: "widgetbuilder", name: "Widget builder", desc: "Desktop widgets (clock, system usage, music, visualizer, focus streak ...): pick a layout and a look for each", glyph: 0xF0208, kw: "widgets desktop clock battery wifi stats cpu music visualizer focus streak weather style look design builder customise", cat: "desktop" },

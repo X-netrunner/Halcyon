@@ -58,8 +58,6 @@
       "body": "Apps running in the tray appear in a clean, compact glass box. Themed status badges highlight active background apps and unread notifications with smooth animations." },
     { "id": "gestures", "rev": 1, "title": "Touchpad Gestures & Workspaces",
       "body": "Smooth 1:1 workspace finger tracking with calibrated sensitivity so workspaces switch smoothly when you want them to, without accidental triggers." },
-    { "id": "passman", "title": "Password manager",
-      "body": "passman in the console keeps your passwords in an encrypted vault. passman browser sets up a Brave / Chromium extension that asks \"Save password for this site?\" after you log in, and passman import <csv> brings in a browser export." },
 
     { "id": "done", "core": true, "title": "That's it",
       "body": "Everything follows your wallpaper colours, so try >wallpaper gallery next. Replay this tour any time with >tour." }

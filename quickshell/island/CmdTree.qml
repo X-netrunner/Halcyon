@@ -84,7 +84,6 @@ Scope {
             { cmd: "ai <question>", put: "ai ", sudo: false, desc: "local AI assistant" },
             { cmd: "advisor", put: "advisor", sudo: false, desc: "system analysis and performance advisor" },
             { cmd: "notes <text>", put: "notes ", sudo: false, desc: "quick notes (Super + N)" },
-            { cmd: "passman [get|add|import|browser]", put: "passman ", sudo: false, desc: "native encrypted password vault; passman browser = ask to save logins from Brave" },
             { cmd: "help", put: "help", sudo: false, desc: "the short help" },
             { cmd: "cd [folder]", put: "cd ", sudo: false, desc: "change folder (remembered)" },
             { cmd: "clear", put: "clear", sudo: false, desc: "clear the output (Ctrl+L too)" },
