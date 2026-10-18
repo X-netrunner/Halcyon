@@ -1,0 +1,55 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [attacker-dossier, birthday-sync, hal, hx, log-analyst, power-manager, recon-deceiver, safety-check, setStaticMac, touchpad-gestures]
+    steps:
+      - uses: actions/checkout@v4
+      - name: libraries some crates need (evdev)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build
+        run: cargo build --release --manifest-path src/${{ matrix.crate }}/Cargo.toml
+      - name: test
+        run: cargo test --manifest-path src/${{ matrix.crate }}/Cargo.toml
+      - name: clippy (warnings reported, not blocking yet)
+        continue-on-error: true
+        run: cargo clippy --manifest-path src/${{ matrix.crate }}/Cargo.toml -- -W clippy::unwrap_used
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: syntax check every shell script
+        run: |
+          fail=0
+          for f in $(git ls-files '*.sh') install.sh update.sh get.sh sysmode/sysmode scripts/halcyon-tune; do
+            bash -n "$f" || fail=1
+          done
+          exit $fail
+      - name: shellcheck (errors only, so old scripts do not block a push)
+        run: sudo apt-get install -y shellcheck && shellcheck -S error $(git ls-files '*.sh') install.sh update.sh get.sh sysmode/sysmode scripts/halcyon-tune
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: every Python file compiles
+        run: python3 -m compileall -q scripts quickshell/island/scripts
+
+  qml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: qmllint the island (catches "X is not a type" before you hit it at login)
+        continue-on-error: true
+        run: |
+          sudo apt-get update && sudo apt-get install -y qt6-declarative-dev-tools
+          qmllint6 -I quickshell/island quickshell/island/*.qml 2>&1 | grep -iE "is not a type|unqualified|syntax" | head -50 || true

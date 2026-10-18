@@ -2,13 +2,14 @@ use chrono::Local;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use regex::{Regex, RegexBuilder};
-use std::collections::{HashMap, HashSet};
-use std::fs::{self, File, OpenOptions};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -16,6 +17,28 @@ use std::time::{Duration, Instant};
 const TIME_LIMIT_BEFORE_BAN: u64 = 120;
 const COWRIE_ACTIVE_FILE: &str = "/run/cowrie.active";
 const MAX_UPLOAD_SIZE: usize = 10 * 1024 * 1024; // 10 MB upload cap
+
+// Limits that keep a flood of connections or spoofed packets from turning the decoy into a problem of its own.
+const BAN_SECONDS: u64 = 600;
+const BAN_COMMENT: &str = "recon-deceiver-ban";
+const MAX_ACTIVE_BANS: usize = 256;          // ufw rules this daemon may have open at once
+const MAX_CONNECTIONS: usize = 256;          // decoy connections handled at once (one thread each)
+const MAX_COUNTER_SCANS: usize = 3;          // nmap counter-scans running at once
+const MAX_DNS_REPLIES_PER_SEC: u32 = 50;     // decoy DNS answers per second, all sources together
+const MAX_TRACKED_HOSTS: usize = 4096;       // size cap of every per-address map
+// Addresses that are never banned or counter-scanned, besides the default gateway, the DNS servers and this machine's own
+// addresses (read from the system, refreshed every minute). One address per line, '#' starts a comment.
+const ALLOW_FILE: &str = "/etc/recon-deceiver.allow";
+
+static ACTIVE_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
+static ACTIVE_SCANS: AtomicUsize = AtomicUsize::new(0);
+/// Lock a mutex and carry on even if another thread panicked while holding it. (The release profile aborts on panic, so it cannot be
+/// poisoned there; this keeps tests and any future `panic = "unwind"` build from taking the honeypot down with one bad thread.)
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+static PROTECTED_CACHE: Mutex<Option<(Instant, HashSet<String>)>> = Mutex::new(None);
 
 static PROBE_HEADER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     RegexBuilder::new(
@@ -46,6 +69,7 @@ struct AppState {
     first_seen: Arc<Mutex<HashMap<String, Instant>>>,
     last_notification: Arc<Mutex<HashMap<String, Instant>>>,
     last_scan: Arc<Mutex<HashMap<String, Instant>>>,
+    unban_queue: Arc<Mutex<VecDeque<(Instant, String)>>>,
 }
 
 fn get_hostname() -> String {
@@ -213,6 +237,175 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Protected addresses and ufw bookkeeping
+// ---------------------------------------------------------------------------
+
+/// Default gateways from the text of /proc/net/route (the address is stored as a little-endian hex word).
+fn parse_default_gateways(route_table: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in route_table.lines().skip(1) {
+        let f: Vec<&str> = line.split_whitespace().collect();
+        if f.len() < 4 || f[1] != "00000000" {
+            continue;
+        }
+        let flags = u32::from_str_radix(f[3], 16).unwrap_or(0);
+        if flags & 0x2 == 0 {
+            continue; // not a gateway route
+        }
+        if let Ok(n) = u32::from_str_radix(f[2], 16) {
+            out.push(Ipv4Addr::from(n.to_le_bytes()).to_string());
+        }
+    }
+    out
+}
+
+/// "nameserver X" lines of a resolv.conf.
+fn parse_nameservers(conf: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in conf.lines() {
+        let mut it = line.split_whitespace();
+        if it.next() == Some("nameserver") {
+            if let Some(addr) = it.next() {
+                out.push(addr.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// This machine's own IPv4 addresses from the text of /proc/net/fib_trie.
+fn parse_local_addrs(fib_trie: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut last = String::new();
+    for line in fib_trie.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("|-- ") {
+            last = rest.trim().to_string();
+        } else if t.contains("/32 host LOCAL") && !last.is_empty() {
+            out.push(last.clone());
+        }
+    }
+    out
+}
+
+fn load_protected() -> HashSet<String> {
+    let mut set: HashSet<String> = HashSet::new();
+    if let Ok(r) = fs::read_to_string("/proc/net/route") {
+        set.extend(parse_default_gateways(&r));
+    }
+    for p in ["/etc/resolv.conf", "/run/systemd/resolve/resolv.conf"] {
+        if let Ok(c) = fs::read_to_string(p) {
+            set.extend(parse_nameservers(&c));
+        }
+    }
+    if let Ok(t) = fs::read_to_string("/proc/net/fib_trie") {
+        set.extend(parse_local_addrs(&t));
+    }
+    if let Ok(a) = fs::read_to_string(ALLOW_FILE) {
+        for line in a.lines() {
+            let l = line.split('#').next().unwrap_or("").trim();
+            if let Some(tok) = l.split_whitespace().next() {
+                set.insert(tok.to_string());
+            }
+        }
+    }
+    set
+}
+
+/// True for an address this daemon must never ban or counter-scan: loopback / unspecified / multicast / broadcast, the
+/// default gateway, the DNS servers, this machine itself and anything in ALLOW_FILE. Something that is not an IP at all
+/// is treated as protected too (never act on text we cannot parse).
+fn is_protected_ip(ip: &str) -> bool {
+    let addr = match ip.parse::<IpAddr>() {
+        Ok(a) => a,
+        Err(_) => return true,
+    };
+    if addr.is_loopback() || addr.is_unspecified() || addr.is_multicast() {
+        return true;
+    }
+    if let IpAddr::V4(v4) = addr {
+        if v4.is_broadcast() {
+            return true;
+        }
+    }
+    let mut guard = PROTECTED_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let stale = match guard.as_ref() {
+        Some((when, _)) => when.elapsed() > Duration::from_secs(60),
+        None => true,
+    };
+    if stale {
+        *guard = Some((Instant::now(), load_protected()));
+    }
+    match guard.as_ref() {
+        Some((_, set)) => set.contains(ip),
+        None => false,
+    }
+}
+
+/// Numbers of the ufw rules this daemon added (optionally only those for one address), highest first so that deleting one
+/// does not renumber the ones still to go. `status` is the text of `ufw status numbered`.
+fn ufw_ban_rule_numbers(status: &str, ip: Option<&str>) -> Vec<u32> {
+    let mut nums = Vec::new();
+    for line in status.lines() {
+        if !line.contains(BAN_COMMENT) {
+            continue;
+        }
+        if let Some(want) = ip {
+            if !line.split_whitespace().any(|t| t == want) {
+                continue;
+            }
+        }
+        if let Some(rest) = line.trim_start().strip_prefix('[') {
+            if let Some(end) = rest.find(']') {
+                if let Ok(n) = rest[..end].trim().parse::<u32>() {
+                    nums.push(n);
+                }
+            }
+        }
+    }
+    nums.sort_unstable_by(|a, b| b.cmp(a));
+    nums
+}
+
+/// Remove this daemon's ufw bans: one address, or (None) every one it ever left behind.
+fn ufw_unban(ip: Option<&str>) {
+    let out = match Command::new("ufw").args(["status", "numbered"]).output() {
+        Ok(o) => o,
+        Err(_) => return,
+    };
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    for n in ufw_ban_rule_numbers(&text, ip) {
+        let _ = Command::new("ufw").args(["--force", "delete", &n.to_string()]).output();
+    }
+}
+
+/// One thread for every ban: it wakes every few seconds and lifts the bans that ran out.
+fn start_unban_reaper(state: AppState) {
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(5));
+        let mut due: Vec<String> = Vec::new();
+        {
+            let mut q = state.unban_queue.lock().unwrap_or_else(|e| e.into_inner());
+            let now = Instant::now();
+            loop {
+                let ready = matches!(q.front(), Some((when, _)) if *when <= now);
+                if !ready {
+                    break;
+                }
+                if let Some((_, ip)) = q.pop_front() {
+                    due.push(ip);
+                }
+            }
+        }
+        for ip in due {
+            state.log_event(&format!("[INFO] Unbanning IP {}...", ip));
+            ufw_unban(Some(&ip));
+            state.banned_ips.lock().unwrap_or_else(|e| e.into_inner()).remove(&ip);
+        }
+    });
+}
+
 impl AppState {
     fn log_event(&self, msg: &str) {
         let path = format!("{}/recon-attempts.log", self.logs_dir);
@@ -226,10 +419,13 @@ impl AppState {
     }
 
     fn send_notification(&self, ip: &str, port_info: &str) {
-        let mut map = self.last_notification.lock().unwrap();
+        let mut map = lock(&self.last_notification);
         let now = Instant::now();
         if map.len() >= 1024 {
             map.retain(|_, v| now.duration_since(*v) < Duration::from_secs(3600));
+        }
+        if map.len() >= MAX_TRACKED_HOSTS {
+            return;
         }
         if let Some(last) = map.get(ip) {
             if now.duration_since(*last) < Duration::from_secs(10) {
@@ -269,12 +465,16 @@ impl AppState {
     }
 
     fn ban_ip(&self, ip: &str) {
-        if ip == "127.0.0.1" || ip == "localhost" || ip == "::1" {
+        if is_protected_ip(ip) {
+            self.log_event(&format!(
+                "[INFO] Not banning {}: gateway, DNS server, this machine or on the allow list",
+                ip
+            ));
             return;
         }
 
         {
-            let fs_map = self.first_seen.lock().unwrap();
+            let fs_map = lock(&self.first_seen);
             if let Some(first) = fs_map.get(ip) {
                 if first.elapsed().as_secs() < TIME_LIMIT_BEFORE_BAN {
                     return;
@@ -285,42 +485,48 @@ impl AppState {
         }
 
         {
-            let mut banned = self.banned_ips.lock().unwrap();
-            if banned.contains(ip) {
+            let mut banned = lock(&self.banned_ips);
+            if banned.contains(ip) || banned.len() >= MAX_ACTIVE_BANS {
                 return;
             }
             banned.insert(ip.to_string());
         }
 
+        let added = Command::new("ufw")
+            .args(["insert", "1", "deny", "from", ip, "to", "any", "comment", BAN_COMMENT])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !added {
+            self.log_event(&format!("[ERROR] ufw could not ban {} (is ufw installed and active?)", ip));
+            lock(&self.banned_ips).remove(ip);
+            return;
+        }
+
         self.log_event(&format!(
-            "[ALERT] Tarpit time limit reached. Banning IP {} for 10 minutes...",
-            ip
+            "[ALERT] Tarpit time limit reached. Banning IP {} for {} seconds...",
+            ip, BAN_SECONDS
         ));
         self.send_ban_notification(ip);
-
-        let _ = Command::new("ufw")
-            .args(["insert", "1", "deny", "from", ip, "to", "any", "comment", "recon-deceiver-ban"])
-            .output();
-
-        let state_clone = self.clone();
-        let ip_clone = ip.to_string();
-        thread::spawn(move || {
-            thread::sleep(Duration::from_secs(600));
-            state_clone.log_event(&format!("[INFO] Unbanning IP {}...", ip_clone));
-            let _ = Command::new("ufw")
-                .args(["delete", "deny", "from", &ip_clone, "to", "any", "comment", "recon-deceiver-ban"])
-                .output();
-            let mut banned = state_clone.banned_ips.lock().unwrap();
-            banned.remove(&ip_clone);
-        });
+        lock(&self.unban_queue)
+            .push_back((Instant::now() + Duration::from_secs(BAN_SECONDS), ip.to_string()));
     }
 
     fn scan_attacker(&self, ip: &str) {
+        if is_protected_ip(ip) || skip_scan_target(ip) {
+            return;
+        }
+        if ACTIVE_SCANS.load(Ordering::Relaxed) >= MAX_COUNTER_SCANS {
+            return;
+        }
         {
-            let mut scans = self.last_scan.lock().unwrap();
+            let mut scans = lock(&self.last_scan);
             let now = Instant::now();
             if scans.len() >= 1024 {
                 scans.retain(|_, v| now.duration_since(*v) < Duration::from_secs(3600));
+            }
+            if scans.len() >= MAX_TRACKED_HOSTS {
+                return;
             }
             if let Some(last) = scans.get(ip) {
                 if now.duration_since(*last) < Duration::from_secs(300) {
@@ -334,6 +540,7 @@ impl AppState {
             return;
         }
 
+        ACTIVE_SCANS.fetch_add(1, Ordering::Relaxed);
         let state_clone = self.clone();
         let ip_clone = ip.to_string();
         thread::spawn(move || {
@@ -390,14 +597,18 @@ impl AppState {
                 }
                 _ => {}
             }
+            ACTIVE_SCANS.fetch_sub(1, Ordering::Relaxed);
         });
     }
 
     fn touch_tracker(&self, ip: &str) {
-        let mut fs_map = self.first_seen.lock().unwrap();
+        let mut fs_map = lock(&self.first_seen);
         if fs_map.len() >= 1024 {
             let now = Instant::now();
             fs_map.retain(|_, v| now.duration_since(*v) < Duration::from_secs(3600));
+        }
+        if fs_map.len() >= MAX_TRACKED_HOSTS && !fs_map.contains_key(ip) {
+            return;
         }
         fs_map.entry(ip.to_string()).or_insert_with(Instant::now);
     }
@@ -1341,7 +1552,7 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                         state.send_notification(&ip, &format!("FTP STOR: attacker payload {} captured", args));
 
                         if fname.ends_with(".php") || fname.ends_with(".phtml") || fname.ends_with(".php5") {
-                            let mut shells = state.uploaded_webshells.lock().unwrap();
+                            let mut shells = lock(&state.uploaded_webshells);
                             if shells.len() >= 256 { shells.clear(); }
                             shells.insert(fname.clone(), format!("(ftp-uploaded {})", save_path));
                             state.log_event(&format!("[INFO] FTP-uploaded PHP registered as live webshell: {}", fname));
@@ -1371,7 +1582,7 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
             "CPTO" => {
                 if let Some(ref cpfr) = current_cpfr {
                     let filename = args.rsplit('/').next().unwrap_or("shell.php").to_string();
-                    let mut shells = state.uploaded_webshells.lock().unwrap();
+                    let mut shells = lock(&state.uploaded_webshells);
                             if shells.len() >= 256 { shells.clear(); }
                     shells.insert(filename.clone(), cpfr.clone());
                     state.log_event(&format!(
@@ -1392,7 +1603,7 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                     } else if site_cmd.eq_ignore_ascii_case("CPTO") {
                         if let Some(ref cpfr) = current_cpfr {
                             let filename = site_args.trim().rsplit('/').next().unwrap_or("shell.php").to_string();
-                            let mut shells = state.uploaded_webshells.lock().unwrap();
+                            let mut shells = lock(&state.uploaded_webshells);
                             if shells.len() >= 256 { shells.clear(); }
                             shells.insert(filename.clone(), cpfr.clone());
                             state.log_event(&format!(
@@ -1482,7 +1693,7 @@ fn handle_http(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let basename = filename.rsplit('/').next().unwrap_or("");
 
     let is_webshell = {
-        let shells = state.uploaded_webshells.lock().unwrap();
+        let shells = lock(&state.uploaded_webshells);
         shells.contains_key(basename)
     };
 
@@ -1890,15 +2101,25 @@ fn start_dns_listener(state: AppState) {
             return;
         }
     };
-    state.log_event("[*] Started DNS deception poisoner on UDP 0.0.0.0:53");
+    state.log_event(
+        "[*] Started DNS deception poisoner on UDP 0.0.0.0:53 (rate-limited; a UDP source address can be forged, so it is never banned or counter-scanned)",
+    );
 
     let mut buf = [0u8; 2048];
+    let mut window_start = Instant::now();
+    let mut replies_in_window: u32 = 0;
     while let Ok((n, src_addr)) = socket.recv_from(&mut buf) {
+        if window_start.elapsed() >= Duration::from_secs(1) {
+            window_start = Instant::now();
+            replies_in_window = 0;
+        }
+        if replies_in_window >= MAX_DNS_REPLIES_PER_SEC {
+            continue;
+        }
         let ip = src_addr.ip().to_string();
-        state.touch_tracker(&ip);
-        state.scan_attacker(&ip);
 
         if let Some((domain, _)) = parse_dns_query(&buf[..n]) {
+            replies_in_window += 1;
             state.log_event(&format!(
                 "[ALERT] DNS QUERY DETECTED: Source IP {} queried '{}'",
                 ip, domain
@@ -1914,7 +2135,6 @@ fn start_dns_listener(state: AppState) {
             }
 
             state.send_notification(&ip, &format!("53 (DNS query for {})", domain));
-            state.ban_ip(&ip);
         }
     }
 }
@@ -1940,6 +2160,11 @@ fn start_listener(port: u16, state: AppState) {
                     Ok(a) => a,
                     Err(_) => continue,
                 };
+                if ACTIVE_CONNECTIONS.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
+                    drop(s);
+                    continue;
+                }
+                ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
                 let ip = addr.ip().to_string();
                 let state_clone = state.clone();
 
@@ -1957,6 +2182,7 @@ fn start_listener(port: u16, state: AppState) {
                     }
 
                     state_clone.ban_ip(&ip);
+                    ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
                 });
             }
             Err(_) => continue,
@@ -1986,16 +2212,15 @@ fn main() {
     if let Some(parent) = Path::new(&cred_file).parent() {
         let _ = fs::create_dir_all(parent);
     }
-    if let Ok(mut f) = File::create(&cred_file) {
+    let cred_open = OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&cred_file);
+    if let Ok(mut f) = cred_open {
         let _ = writeln!(
             f,
             "Decoy telnet credential (generated at daemon start)\nUsername: {}\nPassword: {}",
             telnet_user, telnet_pass
         );
-        let mut perms = f.metadata().unwrap().permissions();
-        perms.set_mode(0o600);
-        let _ = fs::set_permissions(&cred_file, perms);
     }
+    let _ = fs::set_permissions(&cred_file, fs::Permissions::from_mode(0o600));
 
     let state = AppState {
         logs_dir: logs_dir.clone(),
@@ -2007,6 +2232,7 @@ fn main() {
         first_seen: Arc::new(Mutex::new(HashMap::new())),
         last_notification: Arc::new(Mutex::new(HashMap::new())),
         last_scan: Arc::new(Mutex::new(HashMap::new())),
+        unban_queue: Arc::new(Mutex::new(VecDeque::new())),
     };
 
     state.log_event("--- Recon Deception Honeypot Daemon Started ---");
@@ -2018,6 +2244,11 @@ fn main() {
         "[*] Decoy telnet credential set: Username={}, Password={} (saved to {})",
         telnet_user, telnet_pass, cred_file
     ));
+
+    // A crash or kill leaves this daemon's ufw bans behind for good (the timer died with it): lift them, then keep the books
+    ufw_unban(None);
+    state.log_event("[*] Lifted any ufw bans left by an earlier run");
+    start_unban_reaper(state.clone());
 
     // Spawn DNS listener
     let dns_state = state.clone();
@@ -2092,6 +2323,32 @@ mod tests {
         let resp = build_dns_response(&query, "192.168.1.100").expect("should build response");
         assert_eq!(&resp[0..2], &[0x12, 0x34]);
         assert_eq!(&resp[resp.len() - 4..], &[192, 168, 1, 100]);
+    }
+
+    #[test]
+    fn test_default_gateway_parse() {
+        let table = "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n\
+                     wlan0\t00000000\t0100A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0\n\
+                     wlan0\t0000A8C0\t00000000\t0001\t0\t0\t600\t00FFFFFF\t0\t0\t0\n";
+        assert_eq!(parse_default_gateways(table), vec!["192.168.0.1".to_string()]);
+    }
+
+    #[test]
+    fn test_ufw_rule_numbers() {
+        let status = "Status: active\n\n     To                         Action      From\n     --                         ------      ----\n\
+[ 1] Anywhere                   DENY IN     203.0.113.9                # recon-deceiver-ban\n\
+[ 2] 22/tcp                     ALLOW IN    Anywhere\n\
+[ 3] Anywhere                   DENY IN     198.51.100.7               # recon-deceiver-ban\n";
+        assert_eq!(ufw_ban_rule_numbers(status, None), vec![3, 1]);
+        assert_eq!(ufw_ban_rule_numbers(status, Some("203.0.113.9")), vec![1]);
+        assert!(ufw_ban_rule_numbers(status, Some("10.0.0.1")).is_empty());
+    }
+
+    #[test]
+    fn test_protected_ip_basics() {
+        assert!(is_protected_ip("127.0.0.1"));
+        assert!(is_protected_ip("not-an-ip"));
+        assert!(is_protected_ip("224.0.0.1"));
     }
 
     #[test]

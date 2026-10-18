@@ -263,8 +263,13 @@ fn main() {
     notify("4/7 — Firewall Status", "normal", &real_user);
     if command_exists("ufw") {
         println!("{}", "  [EXEC] Running: ufw status".bold().yellow());
-        let output = Command::new("ufw").arg("status").output().expect("Failed to check UFW status");
-        let status = String::from_utf8_lossy(&output.stdout);
+        let status = match Command::new("ufw").arg("status").output() {
+            Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
+            Err(e) => {
+                log_warn(&format!("Could not run ufw status: {}", e));
+                String::new()
+            }
+        };
         println!("  Firewall Status output:");
         for line in status.lines() {
             println!("    {}", line.dimmed());
@@ -319,8 +324,9 @@ fn main() {
             let run_aide = if !Path::new(&month_marker).exists() {
                 true
             } else {
-                let metadata = fs::metadata(&month_marker).unwrap();
-                let modified = metadata.modified().unwrap();
+                let modified = fs::metadata(&month_marker)
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::UNIX_EPOCH);          // unreadable marker: treat as very old, so AIDE runs
                 let now = std::time::SystemTime::now();
                 let thirty_days = std::time::Duration::from_secs(30 * 24 * 60 * 60);
                 now.duration_since(modified).unwrap_or(std::time::Duration::from_secs(0)) > thirty_days
@@ -426,9 +432,9 @@ fn main() {
         Command::new("lsblk").args(&["-o", "NAME,SIZE,TYPE,MOUNTPOINT"]).status().ok();
         
         print!("\nEnter backup device [Default: sda1]: ");
-        io::stdout().flush().unwrap();
+        let _ = io::stdout().flush();
         let mut user_input = String::new();
-        io::stdin().read_line(&mut user_input).unwrap();
+        let _ = io::stdin().read_line(&mut user_input);
         let mut input_dev = user_input.trim().to_string();
         if input_dev.is_empty() {
             input_dev = "sda1".to_string();
@@ -453,12 +459,25 @@ fn main() {
 
         let mut proceed = true;
         if !auto_backup {
+            if let Some(mounts) = mounted_at(&backup_dev) {
+                if mounts.lines().any(|m| m != backup_dest) {
+                    log_error(&format!(
+                        "{} is in use (mounted at {}): unmount it first or pick another device. Backup skipped.",
+                        backup_dev,
+                        mounts.lines().collect::<Vec<_>>().join(", ")
+                    ));
+                    notify("⚠ Backup skipped — that device is in use", "critical", &real_user);
+                    proceed = false;
+                }
+            }
+        }
+        if !auto_backup && proceed {
             if backup_dev.contains("nvme") {
                 println!("\n{} DANGER: You selected an INTERNAL NVMe partition!", "⚠".red());
                 print!("Type WIPE-NVME to confirm: ");
-                io::stdout().flush().unwrap();
+                let _ = io::stdout().flush();
                 let mut confirm = String::new();
-                io::stdin().read_line(&mut confirm).unwrap();
+                let _ = io::stdin().read_line(&mut confirm);
                 if confirm.trim() != "WIPE-NVME" {
                     println!("↻ Backup cancelled — refusing to touch internal NVMe");
                     proceed = false;
@@ -468,9 +487,9 @@ fn main() {
             if proceed {
                 println!("\n{} WARNING: This will FORMAT {} as ext4 and ERASE ALL DATA!", "⚠".red(), backup_dev);
                 print!("Type YES to continue: ");
-                io::stdout().flush().unwrap();
+                let _ = io::stdout().flush();
                 let mut confirm = String::new();
-                io::stdin().read_line(&mut confirm).unwrap();
+                let _ = io::stdin().read_line(&mut confirm);
                 if confirm.trim() != "YES" {
                     println!("↻ Backup skipped — user cancelled");
                     proceed = false;
@@ -525,6 +544,10 @@ fn main() {
                             "--exclude=/tmp/*",
                             "--exclude=/run/*",
                             "--exclude=/mnt/*",
+                            "--exclude=/media/*",
+                            "--exclude=/var/tmp/*",
+                            "--exclude=/var/cache/pacman/pkg/*",
+                            "--exclude=/swapfile",
                             "--exclude=/lost+found",
                             "/",
                             &format!("{}/arch-backup/", backup_dest),
@@ -603,9 +626,22 @@ fn main() {
     println!("{}", "═══════════════════════════════════════════════".cyan());
 }
 
+/// Where a device is mounted right now (one mount point per line), or None when it is not mounted.
+fn mounted_at(dev: &str) -> Option<String> {
+    let out = Command::new("findmnt").args(["-rn", "-o", "TARGET", "-S", dev]).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
 fn is_root() -> bool {
-    let output = Command::new("id").arg("-u").output().unwrap();
-    String::from_utf8_lossy(&output.stdout).trim() == "0"
+    match Command::new("id").arg("-u").output() {
+        Ok(output) => String::from_utf8_lossy(&output.stdout).trim() == "0",
+        Err(_) => false,
+    }
 }
 
 fn section(title: &str) {

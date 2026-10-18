@@ -28,7 +28,7 @@ Item {
     // the drift follows the clock, not "45 ms per tick": a busy moment (a game, a build) used to slow the stars down
     property real lastMs: 0
     Timer {
-        interval: 45
+        interval: Math.round(45 * (root.pal ? root.pal.starSlow : 1))
         repeat: true
         running: root.live
         onRunningChanged: root.lastMs = 0

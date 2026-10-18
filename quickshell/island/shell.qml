@@ -478,6 +478,7 @@ ShellRoot {
         // Gaming mode: tree view and constellations drop to the lightest settings whatever Settings > Performance says
         artQuality: root.gaming ? 0 : root.perfLevel
         artFps: root.gaming ? 15 : (root.opt.fps || 0)
+        lowPower: root.stats.hasBat === true && root.stats.ac !== true
         gpuLines: root.opt.lines !== "cpu"
         treeConst: root.opt.treeConst || "full"
         treeConstCorner: root.opt.treeConstCorner || "br"

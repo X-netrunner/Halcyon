@@ -15,7 +15,7 @@ if [ -e "$state/no-autostart" ]; then
   echo "Halcyon autostart is off (remove $state/no-autostart to turn it on)."
   exit 0
 fi
-guard="/tmp/halcyon-login-$(id -u)"        # lives until the next reboot
+guard="$state/login-guard"                 # in your own cache folder: no shared /tmp name for someone else to pre-create, and it survives the logout this guard causes (entries older than 90 s are ignored anyway)
 now=$(date +%s); recent=0; kept=""
 if [ -f "$guard" ]; then
   while read -r t; do
