@@ -45,10 +45,10 @@ Scope {
     readonly property string rice: Quickshell.env("HOME") + "/.config/Halcyon"
     readonly property var halcyonNames: ["launcher", "settings", "notification-builder", "bar-builder", "desktop-builder", "widget-builder", "desktop-edit", "bar", "wallpaper-gallery", "startup-view", "notifications",
                                          "clear-notifications", "dnd", "cheatsheet", "power-menu", "quick-terminal", "overview", "gaming-mode", "caffeine",
-                                         "lock", "theme", "reload", "notes", "screen-record", "extra-dim"]
+                                         "lock", "theme", "reload", "notes", "notes-all", "screen-record", "extra-dim"]
     readonly property var halcyonCalls: ["launcher", "settings", "notifbuilder", "barbuilder", "desktopbuilder", "widgetbuilder", "desktopedit", "bar", "gallery", "startup", "notifcenter",
                                          "clearnotifs", "dnd", "cheatsheet", "power", "quickterm", "overview", "gaming", "caffeine",
-                                         "lock", "theme", "reload", "notes", "record", "extradim"]
+                                         "lock", "theme", "reload", "notes", "notesAll", "record", "extradim"]
     readonly property var directCmds: ["bar-builder", "notification-builder", "desktop-builder", "widget-builder", "desktop-edit", "wallpaper-gallery", "startup-view"]
     readonly property string pwMarker: "SUDO_PW"
     readonly property var modes: ["secure", "stealth", "relaxed", "cyber", "lockdown"]   // "cyber" = old name of relaxed (the CLI still takes it)

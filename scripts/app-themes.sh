@@ -12,7 +12,9 @@
 # The colours are the island palette + the 16 terminal colours (term-colors.sh --export  ->  ~/.cache/island/ansi.env).
 #   --auto    what the island runs after every wallpaper change (does nothing while ~/.local/state/island/app-follow is "off")
 #   --now     regenerate everything now, and apply the Spotify theme
-#   --setup   once, from install.sh: also point btop / yazi / spicetify / Vesktop at the halcyon theme (existing choices are backed up)
+#   --setup   once, from install.sh: also point btop / yazi / spicetify / Vesktop at the halcyon theme (existing choices are backed up),
+#             and carry out the prompt choice of install.sh (--prompt keep | colours | halcyon, asked once, saved as PROMPT in
+#             ~/.local/state/island/install-choices.env): "keep" never touches your Starship at all
 # Every app is skipped when it is not installed. Spotify and Discord stay dark: their themes use the wallpaper's dark palette.
 mode="${1:---now}"
 state="$HOME/.local/state/island"
@@ -52,8 +54,48 @@ strip_block() {   # strip_block FILE BEGIN END : the file without the block betw
 }
 
 # ================================================================== Starship
+# the installer's prompt choice: keep | colours | halcyon, or empty (an install from before the question existed: handled as it always was)
+prompt_choice() {
+  local c="${HALCYON_PROMPT:-}"
+  [ -n "$c" ] || c=$(sed -n 's/^PROMPT="\(.*\)"$/\1/p' "$state/install-choices.env" 2>/dev/null | tail -n1)
+  case "$c" in keep|colours|halcyon) echo "$c" ;; *) echo "" ;; esac
+}
+is_full_halcyon() { [ -f "$1" ] && grep -qF '[◈ halcyon](bold italic accent)' "$1" 2>/dev/null; }   # Halcyon's own prompt file (not just your layout with its colours)
+# --setup: carry out the choice. keep = hands off (conf.d/halcyon.fish then does not start Starship either: the marker file keep-prompt),
+# colours = your layout + the wallpaper colours, halcyon = the rice's prompt. Whatever is replaced is saved next to it, so every switch can be undone.
+starship_choice() {
+  local f="$HOME/.config/starship.toml" B="# >>> HALCYON STARSHIP PALETTE >>>" c
+  c=$(prompt_choice); [ -n "$c" ] || return 0
+  mkdir -p "$state"
+  case "$c" in
+    keep)
+      touch "$state/keep-prompt"
+      if [ -f "$f" ] && grep -qF "$B" "$f" 2>/dev/null; then       # an earlier install put Halcyon's colours / prompt in your file: give yours back
+        if [ -f "$f.before-halcyon" ]; then
+          cp -p "$f" "$f.halcyon" && cp -p "$f.before-halcyon" "$f" && echo "   starship: your own prompt is back (Halcyon's is saved as starship.toml.halcyon)"
+        else
+          mv "$f" "$f.halcyon" && echo "   starship: Halcyon's prompt file moved aside to starship.toml.halcyon (Starship uses its own defaults again)"
+        fi
+      else
+        echo "   starship: your prompt is left alone"
+      fi ;;
+    colours)
+      rm -f "$state/keep-prompt"
+      if is_full_halcyon "$f" && [ -f "$f.before-halcyon" ]; then    # back to your layout first: starship_adopt then adds only the colours
+        cp -p "$f" "$f.halcyon" && cp -p "$f.before-halcyon" "$f"
+      fi ;;
+    halcyon)
+      rm -f "$state/keep-prompt"
+      if ! is_full_halcyon "$f" && [ -f "$RICE/config/starship.toml" ]; then
+        mkdir -p "$HOME/.config"
+        [ -f "$f" ] && [ ! -e "$f.before-halcyon" ] && cp -p "$f" "$f.before-halcyon"
+        cp "$RICE/config/starship.toml" "$f" && echo "   starship: Halcyon prompt installed$([ -e "$f.before-halcyon" ] && echo ' (your old file: starship.toml.before-halcyon)')"
+      fi ;;
+  esac
+}
 starship_adopt() {   # make ~/.config/starship.toml use the halcyon palette: your layout is kept, only the colours are taken over
   have starship || return 0
+  case "$(prompt_choice)" in keep|halcyon) return 0 ;; esac    # keep: not yours to touch.  halcyon: the whole file is the rice's (starship_choice)
   local f="$HOME/.config/starship.toml" B="# >>> HALCYON STARSHIP PALETTE >>>" E="# <<< HALCYON STARSHIP PALETTE <<<"
   grep -qF "$B" "$f" 2>/dev/null && return 0
   mkdir -p "$HOME/.config"
@@ -77,6 +119,7 @@ starship_adopt() {   # make ~/.config/starship.toml use the halcyon palette: you
 # `shell = ["sh"]`, so Starship ran it in fish and it printed nothing) for the one in the rice
 starship_sysmode_migrate() {
   local f="$HOME/.config/starship.toml" src="$RICE/config/starship.toml" blk
+  [ "$(prompt_choice)" = keep ] && return 0
   [ -f "$f" ] && [ -f "$src" ] || return 0
   grep -q '^\[custom\.sysmode\]' "$f" 2>/dev/null || return 0
   grep -qF "halcyon-sysmode-badge v2" "$f" 2>/dev/null && return 0
@@ -92,8 +135,24 @@ starship_sysmode_migrate() {
     !skip { print }' "$f" > "$f.new" && mv "$f.new" "$f" && echo "   starship: sysmode badge updated (your old file: starship.toml.before-sysmode-fix)"
   rm -f "$blk"
 }
+# The sysmode badge asks sysmode for the mode before every prompt. Without sysmode there is nothing to ask, so the badge is switched OFF
+# (disabled = true: Starship then starts no shell for it at all) and switched on again as soon as sysmode is installed. Only the table that
+# carries Halcyon's own marker is touched; one you wrote yourself is not.
+starship_sysmode_sync() {
+  local f="$HOME/.config/starship.toml" want
+  [ -f "$f" ] && grep -qF "halcyon-sysmode-badge" "$f" 2>/dev/null || return 0
+  [ "$(prompt_choice)" = keep ] && return 0
+  if [ -x /usr/local/bin/sysmode ] || have sysmode; then want=on; else want=off; fi
+  awk -v want="$want" '
+    /^\[/ { intab = ($0 == "[custom.sysmode]"); print; if (intab && want == "off") print "disabled = true"; next }
+    intab && /^[[:space:]]*disabled[[:space:]]*=/ { next }
+    { print }' "$f" > "$f.new" 2>/dev/null || { rm -f "$f.new"; return 0; }
+  if cmp -s "$f" "$f.new"; then rm -f "$f.new"
+  else mv "$f.new" "$f" && echo "   starship: sysmode badge $([ "$want" = on ] && echo 'on (sysmode is installed)' || echo 'off (sysmode is not installed: nothing is checked before every prompt)')"; fi
+}
 starship_theme() {
   local f="$HOME/.config/starship.toml" B="# >>> HALCYON STARSHIP PALETTE >>>" E="# <<< HALCYON STARSHIP PALETTE <<<"
+  [ "$(prompt_choice)" = keep ] && return 0
   [ -f "$f" ] && grep -qF "$B" "$f" || { log "starship: $f has no halcyon block (starship installed: $(have starship && echo yes || echo no))"; return 0; }
   local t="$f.tmp"
   {
@@ -614,8 +673,10 @@ ensure_choices() {
 [ -f "$here/app-themes-extra.sh" ] && . "$here/app-themes-extra.sh"
 
 # every run: pick the halcyon theme where an app still has another one (existing choices are backed up once), then write the files
+[ "$mode" = "--setup" ] && starship_choice
 starship_adopt
 starship_sysmode_migrate
+starship_sysmode_sync
 starship_theme; fish_theme; btop_theme; micro_theme; yazi_theme; spotify_player_theme; spotify_theme; discord_theme
 if declare -F editors_theme >/dev/null; then editors_theme; browser_theme; qt_theme; fi
 ensure_choices >/dev/null          # after the files exist (Vesktop needs its theme file first)

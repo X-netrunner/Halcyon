@@ -10,6 +10,13 @@ WBase {
     id: root
 
     readonly property bool events: opt("events", false) === true
+    readonly property bool addRow: opt("add", true) === true
+    function dueOf(ts) {                       // "18:00" today, "Tomorrow 09:00", "20 Oct 14:30"
+        var d = new Date(ts * 1000), t0 = new Date(); t0.setHours(0, 0, 0, 0)
+        var day = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - t0.getTime()) / 86400000)
+        var hm = Qt.formatTime(d, "hh:mm")
+        return day === 0 ? hm : day === 1 ? "Tomorrow " + hm : Qt.formatDate(d, "d MMM") + " " + hm
+    }
     readonly property int most: Math.round(opt("max", 4))
     readonly property real wide: opt("width", 290)
     property var notes: []
@@ -68,7 +75,7 @@ WBase {
             var e = calEvents[i]
             out.push({ kind: "event", t: (e.allDay ? "" : Qt.formatTime(new Date(e.start * 1000), "hh:mm") + "  ") + (e.title || ""), pinned: false })
         }
-        for (var j = 0; j < notes.length && out.length < most; j++) out.push({ kind: "note", t: notes[j].text || "", pinned: !!notes[j].pinned })
+        for (var j = 0; j < notes.length && out.length < most; j++) out.push({ kind: "note", t: (notes[j].text || "") + (notes[j].task && notes[j].due ? "  \u00b7  " + dueOf(notes[j].due) : ""), pinned: !!notes[j].pinned })
         return out
     }
 
@@ -101,6 +108,24 @@ WBase {
                     WLbl { b: root; text: modelData.kind === "event" ? "•" : (modelData.pinned ? "★" : "›"); color: modelData.pinned ? "#f5a623" : root.accent; font.pixelSize: root.sz(12); anchors.verticalCenter: parent.verticalCenter }
                     WLbl { id: ln; b: root; width: parent.width - root.sz(20); text: modelData.t; elide: Text.ElideRight; font.pixelSize: root.sz(12); anchors.verticalCenter: parent.verticalCenter }
                 }
+            }
+        }
+        Rectangle {      // opens the real new-note panel; nothing is typed in the widget
+            visible: root.addRow
+            width: parent.width
+            height: addTxt.implicitHeight + root.sz(10)
+            radius: root.sz(10)
+            color: addMa.containsMouse ? Qt.alpha(root.accent, 0.18) : Qt.alpha(root.fg, 0.05)
+            border.width: 1
+            border.color: Qt.alpha(root.accent, addMa.containsMouse ? 0.5 : 0.22)
+            WLbl { id: addTxt; b: root; anchors.centerIn: parent; text: "+  Add a note"; color: root.accent; font.pixelSize: root.sz(11) }
+            MouseArea {
+                id: addMa
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: !root.editing && !!root.env
+                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: root.env.deskAct("notes")
             }
         }
         WLbl { b: root; visible: root.lines.length === 0; width: parent.width; text: "Nothing to show. Super + N adds a note."; color: root.dim; font.pixelSize: root.sz(11); wrapMode: Text.WordWrap }

@@ -97,8 +97,9 @@ hdr "App themes (wallpaper colours in the apps)"
 [ -f "$HOME/.cache/island/ansi.env" ] && ok "colours ready (~/.cache/island/ansi.env)" || warn "no colours yet: run $RICE/scripts/term-colors.sh --now"
 A_ACC=$(sed -n 's/^A_ACC=//p' "$HOME/.cache/island/ansi.env" 2>/dev/null | head -n1)
 [ -n "${STARSHIP_CONFIG:-}" ] && warn "STARSHIP_CONFIG is set ($STARSHIP_CONFIG): Starship reads THAT file, not ~/.config/starship.toml"
-if have starship; then grep -q "HALCYON STARSHIP PALETTE" "$HOME/.config/starship.toml" 2>/dev/null && ok "Starship: Halcyon prompt + palette" || warn "Starship is installed but ~/.config/starship.toml is not the Halcyon one: $RICE/scripts/user-setup.sh app-themes"
-  [ -n "${A_ACC:-}" ] && { grep -qi "^accent *= *\"$A_ACC\"" "$HOME/.config/starship.toml" 2>/dev/null && ok "Starship: colours match the wallpaper" || warn "Starship: palette is not the wallpaper's: $RICE/scripts/app-themes.sh --now  (then: tail ~/.cache/island/app-themes.log)"; }
+if have starship && [ -e "$HOME/.local/state/island/keep-prompt" ]; then ok "Starship: your own prompt is kept, Halcyon does not touch it (./install.sh --choose to change that)"
+elif have starship; then grep -q "HALCYON STARSHIP PALETTE" "$HOME/.config/starship.toml" 2>/dev/null && ok "Starship: Halcyon prompt + palette" || warn "Starship is installed but ~/.config/starship.toml is not the Halcyon one: $RICE/scripts/user-setup.sh app-themes"
+  [ -n "${A_ACC:-}" ] && [ ! -e "$HOME/.local/state/island/keep-prompt" ] && { grep -qi "^accent *= *\"$A_ACC\"" "$HOME/.config/starship.toml" 2>/dev/null && ok "Starship: colours match the wallpaper" || warn "Starship: palette is not the wallpaper's: $RICE/scripts/app-themes.sh --now  (then: tail ~/.cache/island/app-themes.log)"; }
 else warn "starship not installed ($PKG_INSTALL starship)"; fi
 if have fish; then
   grep -q __halcyon_colors "$HOME/.config/fish/conf.d/halcyon.fish" 2>/dev/null && ok "fish: Halcyon colours (re-applied at every prompt)" || warn "fish: colours missing or old: $RICE/scripts/app-themes.sh --now"

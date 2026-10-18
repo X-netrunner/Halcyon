@@ -38,6 +38,14 @@ Item {
     readonly property string curLinkTo: cur && cur.link ? cur.link : ""
     readonly property string curLinkSide: cur ? WD.sideOf(cur.linkSide) : "below"
     readonly property int curLinkGap: cur && cur.linkGap !== undefined ? cur.linkGap : 14
+    // several widgets may follow the same one: on one side they stand in a line, and this one can be moved along it
+    readonly property var curSiblings: cur && cur.link ? WD.siblings(layout, cur.link, WD.sideOf(cur.linkSide)) : []
+    readonly property int curSlot: cur ? curSiblings.indexOf(cur.uid) : 0
+    readonly property var slotOptions: {
+        var o = []
+        for (var i = 0; i < curSiblings.length; i++) o.push([i, i === 0 ? "1st" : (i === 1 ? "2nd" : (i === 2 ? "3rd" : (i + 1) + "th"))])
+        return o
+    }
     // "Nothing" and every other widget it may follow (named by its kind; "2nd" etc. when there are several of one kind)
     readonly property var linkOptions: {
         var o = [["", "Nothing"]], cnt = {}, seen = {}
@@ -64,6 +72,7 @@ Item {
     }
     onSelChanged: tipItem = null
     function setLinkTo(to) { edit(WD.setLink(layout, sel, to, curLinkSide, curLinkGap), false) }
+    function setLinkSlot(n) { edit(WD.setLinkSlot(layout, sel, n), false) }
     function setLinkV(side, gap, live) { edit(WD.setLink(layout, sel, curLinkTo, side, gap), live === true) }
     // the picked one disappeared (or nothing is picked yet): pick the first
     onLayoutChanged: if (WD.find(layout, sel) === null) sel = layout.items.length ? layout.items[0].uid : ""
@@ -511,7 +520,7 @@ Item {
                                 pal: root.pal
                                 onHoveredChanged: root.setTip(qLink, hovered)
                                 anchors.verticalCenter: parent.verticalCenter
-                                tip: "Link makes this widget follow another one, for example uptime next to the workspaces. It takes the other widget's size and keeps a fixed gap from it. When one of them gets wider (\"9h\" turning into \"1d 11h\") the linked one is pushed along instead of being covered. Drag or resize either one on the desktop and both move together."
+                                tip: "Link makes this widget follow another one, for example uptime next to the workspaces. It takes the other widget's size and keeps a fixed gap from it. When one of them gets wider (\"9h\" turning into \"1d 11h\") the linked one is pushed along instead of being covered. Drag or resize either one on the desktop and both move together. Two or more widgets can follow the same one: on the same side of it they line up one after the other."
                             }
                         }
                         ChipRow {
@@ -543,6 +552,15 @@ Item {
                             pal: root.pal; label: "Gap"; from: 0; to: 80; unit: " px"
                             value: root.curLinkGap
                             onPicked: v => root.setLinkV(root.curLinkSide, v, true)
+                        }
+                        // another widget follows the same one on the same side: they stand in a line, this says who comes first
+                        ChipRow {
+                            Layout.fillWidth: true
+                            visible: root.curLinkTo !== "" && root.curSiblings.length > 1
+                            pal: root.pal; label: "Place in line"; labelWidth: 90
+                            options: root.slotOptions
+                            current: root.curSlot
+                            onPicked: id => root.setLinkSlot(id)
                         }
                         Text {
                             Layout.fillWidth: true

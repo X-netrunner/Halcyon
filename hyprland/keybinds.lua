@@ -44,6 +44,14 @@ bind("float", vars.kbToggleWindowFloating, hl.dsp.window.float())
 bind("fullscreen", vars.kbWindowFullscreen, hl.dsp.window.fullscreen())
 bind("pin", vars.kbPinWindow, hl.dsp.window.pin())
 
+-- Move focus between windows with SUPER+arrows. In the scrolling (niri) layout left / right walk the columns and the
+-- view scrolls with you, so you can always get back to what you opened earlier; up / down walk the windows in a column.
+-- SUPER+SHIFT+arrows moves the focused window the same way. (SUPER+CTRL+Left/Right stays workspace next / previous.)
+for _, d in ipairs({ { "left", "Left" }, { "right", "Right" }, { "up", "Up" }, { "down", "Down" } }) do
+    bind("focus_" .. d[1], "SUPER + " .. d[2], hl.dsp.focus({ direction = d[1] }))
+    bind("movewin_" .. d[1], "SUPER + SHIFT + " .. d[2], hl.dsp.window.move({ direction = d[1] }))
+end
+
 -- Mouse: hold SUPER and drag. Right button = move the window, left button = resize it (buttons are in variables.lua:
 -- kbMouseMove / kbMouseResize). On a floating window it moves / resizes freely; on a tiled one, moving drops it onto
 -- another tile (it swaps) and resizing drags the split. They are plain binds with { mouse = true } on purpose: the
@@ -114,6 +122,7 @@ bind("shot", "Print", hl.dsp.exec_cmd("mkdir -p ~/Pictures/Screenshots && grim ~
 bind("shotplain", "SUPER + SHIFT + Print", hl.dsp.exec_cmd("mkdir -p ~/Pictures/Screenshots && g=$(slurp) && [ -n \"$g\" ] && grim -g \"$g\" ~/Pictures/Screenshots/$(date +%s).png"))
 
 bind("shotarea", "SUPER + SHIFT + S", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/screenshot-area.sh"))
+bind("shotpanel", "SUPER + CTRL + S", hl.dsp.exec_cmd(ipc .. "screenshot"))   -- the screenshot panel: Region / Window / Full screen, then Copy / Save / Both
 
 -- Clipboard
 bind("clipboard", "SUPER + V", hl.dsp.exec_cmd("cliphist list | fuzzel -d | cliphist decode | wl-copy"))
@@ -150,6 +159,8 @@ do
     end
 end
 bind("gaming", "SUPER + F10", hl.dsp.exec_cmd(ipc .. "gaming"))                 -- gaming mode on / off
+-- safe mode on / off: blur, shadows, animations, stars and motion off and back. Goes straight to the script (not through the island), so it works when the island is stuck
+bind("safemode", "SUPER + ALT + F12", hl.dsp.exec_cmd("python3 " .. home .. "/.config/Halcyon/scripts/halcyon-fx.py safe-mode toggle"))
 bind("settings", "SUPER + I", hl.dsp.exec_cmd(ipc .. "settings"))                 -- rice settings window (SUPER + I)
 bind("settings_alt", "SUPER + F11", hl.dsp.exec_cmd(ipc .. "settings"))           -- rice settings window (legacy fallback)
 bind("clearnotifs", vars.kbClearNotifs, hl.dsp.exec_cmd(ipc .. "clearnotifs"))

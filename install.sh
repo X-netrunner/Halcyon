@@ -55,7 +55,13 @@
 #   --resources MODE       how much of the machine Halcyon may use: low | medium | high | adaptive (Settings > Performance > Resource use).
 #                          The menu shows an estimate of the RAM / CPU each one needs; adaptive = medium now, limits learned from your use
 #   --resource-offset N    headroom in percent (0-100) above that estimate before Settings > Performance > Health warns (default 15)
+#   --prompt ID            your shell prompt (Starship): keep | colours | halcyon
+#                            keep     your prompt is not touched at all (Halcyon does not start Starship, and does not edit your starship.toml)
+#                            colours  your own layout stays, only the colours follow the wallpaper
+#                            halcyon  Halcyon's prompt (your old starship.toml is saved as starship.toml.before-halcyon)
+#                          Asked once when another prompt setup is found on the machine (CachyOS, your own starship.toml ...), then remembered.
 #   --choose               ask the questions above again (they are asked once, then remembered for update.sh)
+#                          The FIRST install of Halcyon on a machine does this by itself: no --choose needed, you are asked everything once.
 #                          Without these options and in a terminal you get a short menu; with --yes the saved / default choice is used.
 #   -v, --verbose          show the output of every command (this is the default)
 #   -q, --quiet            only the steps, the output goes to the log file          -h, --help      this text
@@ -86,6 +92,7 @@ SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default 
 INSTALL_LLM=false; PICK_LLM_MODEL=""; LLM_ASKED=false # local AI performance advisor with Ollama
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
+PICK_PROMPT=""; FIRST_INSTALL=false        # your shell prompt: keep | colours | halcyon (see choose_prompt); FIRST_INSTALL: nothing was chosen on this machine yet
 LINK_CONFIG=false; REQUESTED_USER=""; TTY_AUTOSTART=false; LOCK_LOGIN=auto; REMOVE_LOGIN=false
 
 WARNINGS=()          # non-fatal problems, listed again at the end
@@ -166,6 +173,10 @@ while [[ $# -gt 0 ]]; do
         --resources=*)      RES_MODE="${1#--resources=}"; [[ "$RES_MODE" =~ ^(low|medium|high|adaptive)$ ]] || die "--resources needs low, medium, high or adaptive" ;;
         --resource-offset)  shift; RES_OFFSET="${1:-}"; [[ "$RES_OFFSET" =~ ^[0-9]+$ && "$RES_OFFSET" -le 100 ]] || die "--resource-offset needs a number from 0 to 100" ;;
         --resource-offset=*) RES_OFFSET="${1#--resource-offset=}"; [[ "$RES_OFFSET" =~ ^[0-9]+$ && "$RES_OFFSET" -le 100 ]] || die "--resource-offset needs a number from 0 to 100" ;;
+        --prompt)           shift; PICK_PROMPT="${1:-}"; [[ "$PICK_PROMPT" == colors ]] && PICK_PROMPT=colours
+                            [[ "$PICK_PROMPT" =~ ^(keep|colours|halcyon)$ ]] || die "--prompt needs keep, colours or halcyon (see --help)" ;;
+        --prompt=*)         PICK_PROMPT="${1#--prompt=}"; [[ "$PICK_PROMPT" == colors ]] && PICK_PROMPT=colours
+                            [[ "$PICK_PROMPT" =~ ^(keep|colours|halcyon)$ ]] || die "--prompt needs keep, colours or halcyon (see --help)" ;;
         --choose)           CHOOSE=true ;;
         --no-tune)          SKIP_TUNE=true ;;
         --link)             LINK_CONFIG=true ;;
@@ -193,7 +204,7 @@ as_root() { if [[ $EUID -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
 run_as_user() {
     local env_args=( "HOME=$TARGET_HOME" "USER=$TARGET_USER" "LOGNAME=$TARGET_USER"
                      "PATH=$TARGET_HOME/.cargo/bin:$PATH" "XDG_RUNTIME_DIR=/run/user/$TARGET_UID"
-                     "HALCYON_DIR=$TARGET_RICE" "HALCYON_STAMP=$TIMESTAMP" )
+                     "HALCYON_DIR=$TARGET_RICE" "HALCYON_STAMP=$TIMESTAMP" "HALCYON_PROMPT=${PICK_PROMPT:-}" )
     if [[ $EUID -eq $TARGET_UID ]]; then
         env "${env_args[@]}" "$@"
     elif [[ $EUID -eq 0 ]] && command -v runuser >/dev/null 2>&1; then
@@ -1238,6 +1249,54 @@ choose_apps() {
 if [[ "$PACKAGES" == "true" && "$REMOVE_LOGIN" != "true" ]]; then choose_apps
 else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; INSTALL_LLM="${INSTALL_LLM:-false}"; PICK_LLM_MODEL="${PICK_LLM_MODEL:-none}"; fi
 
+# ---- your shell prompt (Starship): keep yours, keep your layout with Halcyon's colours, or switch to Halcyon's
+# Asked once when ANOTHER prompt setup is found (your own starship.toml, a prompt started from your shell config, the CachyOS fish config,
+# oh-my-posh, powerlevel10k ...), and on --choose. On a machine with no prompt of its own there is nothing to ask: Halcyon's is used.
+# The answer is remembered (PROMPT in install-choices.env), so update.sh and the next install.sh keep it without asking again.
+# Order of precedence: --prompt > the menu > what was saved > keep (another prompt found) / halcyon (nothing found).
+foreign_prompt() {   # prints a short description of another prompt setup on this machine, or nothing
+    local h="$TARGET_HOME" f rc
+    f="$h/.config/starship.toml"
+    if [[ -f "$f" ]] && ! grep -q "HALCYON STARSHIP PALETTE" "$f" 2>/dev/null; then echo "your own ~/.config/starship.toml"; return 0; fi
+    if [[ -f "$f.before-halcyon" ]]; then echo "your old starship.toml (starship.toml.before-halcyon)"; return 0; fi
+    for rc in "$h/.bashrc" "$h/.zshrc" "$h/.config/fish/config.fish"; do
+        [[ -r "$rc" ]] || continue
+        if grep -qE 'oh-my-posh|powerlevel10k|p10k' "$rc" 2>/dev/null; then echo "another prompt (oh-my-posh / powerlevel10k) in $(basename "$rc")"; return 0; fi
+        if grep -qE 'STARSHIP_CONFIG|starship init' "$rc" 2>/dev/null; then echo "a Starship prompt started from your $(basename "$rc")"; return 0; fi
+    done
+    if compgen -G "$h/.config/fish/conf.d/*.fish" >/dev/null 2>&1; then
+        for rc in "$h"/.config/fish/conf.d/*.fish; do
+            [[ "$(basename "$rc")" == halcyon.fish ]] && continue
+            if grep -qE 'starship init' "$rc" 2>/dev/null; then echo "a Starship prompt started from fish/conf.d/$(basename "$rc")"; return 0; fi
+        done
+    fi
+    if [[ -d /usr/share/cachyos-fish-config ]] && grep -rqs 'starship' /usr/share/cachyos-fish-config 2>/dev/null; then echo "the CachyOS fish prompt (Starship)"; return 0; fi
+    return 0
+}
+choose_prompt() {
+    local interactive=false saved found def="" asked=false
+    [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
+    [[ -f "$CHOICES_FILE" ]] || FIRST_INSTALL=true
+    saved=$(saved_choice PROMPT); found=$(foreign_prompt)
+    if [[ -n "$PICK_PROMPT" ]]; then :                                                  # --prompt on the command line
+    elif [[ "$interactive" == "true" && ( "$CHOOSE" == "true" || ( -z "$saved" && -n "$found" ) ) ]]; then
+        def="${saved:-$([[ -n "$found" ]] && echo keep || echo halcyon)}"
+        [[ "$FIRST_INSTALL" == "true" && "$CHOOSE" != "true" ]] && echo -e "\n${BOLD}Make it yours${RESET} ${DIM}(first install: you are asked once, ./install.sh --choose asks again later)${RESET}"
+        [[ -n "$found" ]] && echo -e "\n  ${YELLOW}Found:${RESET} $found"
+        menu_pick PICK_PROMPT "Shell prompt (Starship)" "$def" 0 \
+            "keep|Keep mine|Halcyon does not touch your prompt or your starship.toml" \
+            "colours|My layout, Halcyon colours|your prompt stays as it is, only its colours follow the wallpaper" \
+            "halcyon|Halcyon's prompt|the rice's own prompt (your old starship.toml is saved as starship.toml.before-halcyon)"
+        asked=true
+    elif [[ -n "$saved" ]]; then PICK_PROMPT="$saved"
+    elif [[ -f "$CHOICES_FILE" ]]; then PICK_PROMPT=""                                 # installed before this question existed: its prompt stays as it is
+    else PICK_PROMPT="$([[ -n "$found" ]] && echo keep || echo halcyon)"
+    fi
+    [[ "$PICK_PROMPT" =~ ^(keep|colours|halcyon|)$ ]] || PICK_PROMPT=""
+    log_info "Your prompt: ${PICK_PROMPT:-unchanged}$([[ -n "$found" ]] && echo "  (found: $found)")"
+}
+[[ "$REMOVE_LOGIN" != "true" ]] && choose_prompt
+
 # ---------------------------------------------------------------------------------------------- resource use
 # How much of the machine may Halcyon use? One question, answered with a rough estimate you can see before you pick.
 # The answer becomes the DEFAULT of Settings > Performance > Resource use (the preset) and of the RAM / CPU limits that
@@ -1437,7 +1496,7 @@ run_as_user_cmd "Creating the config, state and cache folders" mkdir -p \
     "$TARGET_HOME/.cache/island" "$TARGET_HOME/Pictures/Wallpapers" "$TARGET_HOME/Pictures/Screenshots" "$TARGET_HOME/logs" \
     || die "Could not create folders in $TARGET_HOME"
 
-KEEP_FILES=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf backup-exclude.conf birthdays.txt)     # yours: never overwritten by the copy
+KEEP_FILES=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf notes.conf backup-exclude.conf birthdays.txt)     # yours: never overwritten by the copy
 if [[ "$(readlink -f "$TARGET_RICE" 2>/dev/null)" == "$(readlink -f "$RICE_SOURCE")" ]]; then
     log_success "Halcyon is already in ${TARGET_RICE}"
 else
@@ -1623,7 +1682,8 @@ log_step "Step 10: Services"
 UNITS="$TARGET_HOME/.config/systemd/user"
 try run_as_user_cmd "Installing the user services (gestures start with the desktop, Auto power from the island)" \
     install -m644 "$TARGET_RICE/systemd/power-manager.service" "$TARGET_RICE/systemd/touchpad-gestures.service" \
-        "$TARGET_RICE/systemd/halcyon-remind.service" "$TARGET_RICE/systemd/halcyon-remind.timer" "$UNITS/"
+        "$TARGET_RICE/systemd/halcyon-remind.service" "$TARGET_RICE/systemd/halcyon-remind.timer" \
+        "$TARGET_RICE/systemd/halcyon-notes-due.service" "$TARGET_RICE/systemd/halcyon-notes-due.timer" "$UNITS/"
 if [[ "$DRY_RUN" != "true" ]] && have_systemd && user_bus_ready; then
     try run_cmd "Reloading the user systemd" user_systemctl daemon-reload
     # only inside a running desktop (the gestures need it); otherwise they start with the next login via execs.lua
@@ -1888,7 +1948,9 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "PROMPT=$PICK_PROMPT" || true
+elif [[ -n "$PICK_PROMPT" ]]; then
+    user_setup save-choices "PROMPT=$PICK_PROMPT" || true     # --no-packages: the prompt choice is still remembered
 fi
 [[ "$PACKAGES" == "true" && "$SKIP_DRIVERS" != "true" ]] && { user_setup gpu-env "$GPU_ENV_MODE" || true; }
 

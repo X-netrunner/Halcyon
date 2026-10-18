@@ -3,7 +3,7 @@ import "WidgetData.js" as WD
 
 // "Quick toggles" (Wi-Fi, Bluetooth, Do not disturb, Caffeine, Gaming, Num Lock, theme, night light, lock, power) and
 // "App shortcuts" (your own buttons that start an app or a command). One file: both are a set of buttons.
-//   toggles: row | grid | icons        shortcuts: row | grid | list
+//   toggles: row | grid | icons | list | outline | glyphs        shortcuts: row | grid | list | outline | glyphs
 WBase {
     id: root
 
@@ -52,7 +52,9 @@ WBase {
         }
         return out
     }
-    readonly property bool iconsOnly: !isShort && style === "icons"
+    readonly property bool iconsOnly: !isShort && (style === "icons" || style === "glyphs")
+    readonly property bool outlined: style === "outline"      // no fill, just a line round each button
+    readonly property bool bare: style === "glyphs"           // no box at all: the icon (and name) alone, a dot under the lit one
     readonly property int cols: style === "grid" ? 3 : (style === "list" ? 1 : Math.max(1, items.length))
 
     function press(it) {
@@ -82,13 +84,22 @@ WBase {
                 width: root.iconsOnly ? root.sz(44) : (root.style === "list" ? root.sz(190) : (root.style === "grid" ? root.sz(92) : lab.width + root.sz(46)))
                 height: root.iconsOnly ? root.sz(44) : (root.style === "grid" ? root.sz(64) : root.sz(38))
                 radius: root.iconsOnly ? width / 2 : (root.style === "grid" ? root.sz(16) : height / 2)
-                color: lit ? Qt.alpha(root.accent, 0.24) : (bm.containsMouse ? Qt.alpha(root.fg, 0.14) : Qt.alpha(root.fg, 0.07))
-                border.width: 1
-                border.color: lit ? Qt.alpha(root.accent, 0.8) : Qt.alpha(root.fg, 0.10)
+                color: root.bare ? "transparent"
+                     : (root.outlined ? (lit ? Qt.alpha(root.accent, 0.14) : (bm.containsMouse ? Qt.alpha(root.fg, 0.08) : "transparent"))
+                     : (lit ? Qt.alpha(root.accent, 0.24) : (bm.containsMouse ? Qt.alpha(root.fg, 0.14) : Qt.alpha(root.fg, 0.07))))
+                border.width: root.bare ? 0 : (root.outlined ? 1.5 : 1)
+                border.color: lit ? Qt.alpha(root.accent, 0.8) : Qt.alpha(root.fg, root.outlined ? 0.38 : 0.10)
                 scale: bm.pressed ? 0.95 : 1
                 Behavior on color { ColorAnimation { duration: 140 } }
                 Behavior on scale { NumberAnimation { duration: 120 } }
 
+                // glyphs: the lit one has a small dot under it
+                Rectangle {
+                    visible: root.bare && btn.lit
+                    anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: root.sz(2)
+                    width: root.sz(5); height: width; radius: width / 2
+                    color: root.accent
+                }
                 Item {
                     anchors.centerIn: parent
                     width: content.width; height: content.height

@@ -4,7 +4,9 @@ import Quickshell
 import Quickshell.Wayland
 import "Binds.js" as Binds
 
-// Every shortcut, gesture and command as a tree (same look as the SUPER+TAB tree): the root splits into branches
+// Every shortcut, gesture and command, in two layouts like Settings: a tree (same look as the SUPER+TAB tree, the default) or
+// pages (a menu of groups on the left, one group at a time on the right). The chip in the header switches (opt.keysStyle).
+// Tree: every shortcut as a tree (same look as the SUPER+TAB tree): the root splits into branches
 // (Apps, Windows, ...), each branch has its leaves, a leaf is a keycap row.
 //   Type to search.   Click a shortcut to change it: pick the modifiers, press the key, Enter (or Save).
 //   "Your shortcuts" holds the ones you added (key combination -> command).   Esc closes (or cancels an edit).
@@ -19,6 +21,11 @@ Scope {
     property bool profileStars: true
     property bool open: false
     property bool consoleOpen: false
+    property string style: "tree"        // tree | pages (opt.keysStyle, owned by shell.qml)
+    readonly property bool pagesMode: style === "pages"
+    property string page: ""              // pages layout: the group id on show ("" = the first)
+    signal styleChosen(string mode)
+    readonly property real lx: pagesMode ? 0 : 62     // where a row starts (the tree needs room for its branch)
     property bool hasSysmode: false       // sysmode is installed: the shortcuts that need it are listed (Binds.js: needs "sysmode")
 
     // owned by shell.qml
@@ -98,7 +105,7 @@ Scope {
 
     // ---------------------------------------------------------------- the tree data (rebuilt when the search or a shortcut changes)
     property string query: ""
-    readonly property int colCount: (typeof card !== "undefined" && card) ? (card.width >= 1180 ? 3 : (card.width >= 780 ? 2 : 1)) : 2
+    readonly property int colCount: pagesMode ? 1 : (typeof card !== "undefined" && card) ? (card.width >= 1180 ? 3 : (card.width >= 780 ? 2 : 1)) : 2
 
     function visibleGroups() {
         var q = query.toLowerCase().trim()
@@ -138,7 +145,17 @@ Scope {
         _gc.sig = r.sig; _gc.out = r
         return r
     }
+    // pages layout: the page picked in the menu, or every group that matches while a search is typed
+    readonly property string curPage: {
+        for (var i = 0; i < groupsNow.length; i++) if (groupsNow[i].id === page) return page
+        return groupsNow.length > 0 ? groupsNow[0].id : ""
+    }
     readonly property var columns: {
+        if (pagesMode) {
+            var one = []
+            for (var q = 0; q < groupsNow.length; q++) if (query.trim() !== "" || groupsNow[q].id === curPage) one.push(groupsNow[q])
+            return [one]
+        }
         var n = colCount || 2, cols = [], hs = []
         for (var i = 0; i < n; i++) { cols.push([]); hs.push(0) }
         for (var g = 0; g < groupsNow.length; g++) {
@@ -152,6 +169,7 @@ Scope {
         return cols
     }
     readonly property int shownCount: { var n = 0; for (var g = 0; g < groupsNow.length; g++) n += groupsNow[g].items.length; return n }
+    readonly property bool oneGroup: pagesMode && query.trim() === ""      // the menu already names the group: no title row
     // columns that actually hold a group: the tree lines are drawn for those only (a search with few hits = one line,
     // nothing found = no line at all)
     readonly property int usedCols: {
@@ -309,13 +327,65 @@ Scope {
                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                     }
                     Item { Layout.fillWidth: true }
+                    Chip { pal: root.pal; implicitHeight: 30; label: root.pagesMode ? "Tree view" : "Pages view"; onClicked: root.styleChosen(root.pagesMode ? "tree" : "pages") }
                     RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
                 }
 
-                // ---------------- the tree
+                // ---------------- pages layout: the menu of groups
+                Flickable {
+                    id: menu
+                    visible: root.pagesMode
+                    anchors { left: parent.left; top: head.bottom; bottom: parent.bottom; margins: 26; topMargin: 18; bottomMargin: 26 }
+                    width: 210
+                    contentWidth: width
+                    contentHeight: menuCol.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    Column {
+                        id: menuCol
+                        width: menu.width
+                        spacing: 4
+                        Repeater {
+                            model: root.pagesMode ? root.groupsNow : []
+                            delegate: Rectangle {
+                                id: mi
+                                required property var modelData
+                                readonly property bool cur: root.query.trim() === "" && mi.modelData.id === root.curPage
+                                width: menuCol.width
+                                height: 36
+                                radius: 12
+                                color: mi.cur ? Qt.alpha(root.pal.accent, 0.16) : (mma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent")
+                                border.width: mi.cur ? 1 : 0
+                                border.color: Qt.alpha(root.pal.accent, 0.45)
+                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                Text {
+                                    anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
+                                    text: mi.modelData.title
+                                    color: mi.cur ? root.pal.text : root.pal.muted
+                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                                    font.weight: mi.cur ? Font.DemiBold : Font.Normal
+                                }
+                                Text {
+                                    anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter
+                                    text: mi.modelData.items.length
+                                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                }
+                                MouseArea {
+                                    id: mma
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: { root.cancelEdit(); search.text = ""; root.query = ""; root.page = mi.modelData.id; scroll.contentY = 0 }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ---------------- the tree (tree layout) / the list of the page (pages layout)
                 Flickable {
                     id: scroll
-                    anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 26; topMargin: 18 }
+                    anchors { left: root.pagesMode ? menu.right : parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 26; topMargin: 18; leftMargin: root.pagesMode ? 22 : 26 }
                     contentWidth: width
                     contentHeight: tree.height + 12
                     clip: true
@@ -327,7 +397,7 @@ Scope {
                         readonly property real gap: 28
                         readonly property real colW: (width - (root.colCount - 1) * gap) / root.colCount
                         readonly property real barY: 72
-                        readonly property real colsY: 98
+                        readonly property real colsY: root.pagesMode ? 0 : 98
                         property real colsH: 0
                         height: colsY + colsH + 8
 
@@ -348,6 +418,7 @@ Scope {
                         // ---- root node
                         Rectangle {
                             id: rootNode
+                            visible: !root.pagesMode
                             width: rootRow.implicitWidth + 36
                             height: 42
                             radius: 21
@@ -367,9 +438,9 @@ Scope {
                         }
 
                         // ---- branches from the root to every column: one stem, one bar, one drop per column
-                        Rectangle { visible: root.usedCols > 0; x: tree.width / 2; y: rootNode.height; width: 1; height: tree.barY - rootNode.height; color: Qt.alpha(root.pal.accent, 0.45) }
+                        Rectangle { visible: !root.pagesMode && root.usedCols > 0; x: tree.width / 2; y: rootNode.height; width: 1; height: tree.barY - rootNode.height; color: Qt.alpha(root.pal.accent, 0.45) }
                         Rectangle {
-                            visible: root.usedCols > 0
+                            visible: !root.pagesMode && root.usedCols > 0
                             readonly property real firstX: 10
                             readonly property real lastX: (Math.max(1, root.usedCols) - 1) * (tree.colW + tree.gap) + 10
                             x: Math.min(firstX, tree.width / 2)
@@ -379,7 +450,7 @@ Scope {
                             color: Qt.alpha(root.pal.accent, 0.45)
                         }
                         Repeater {
-                            model: root.usedCols
+                            model: root.pagesMode ? 0 : root.usedCols
                             delegate: Item {
                                 required property int index
                                 readonly property real cx: index * (tree.colW + tree.gap) + 10
@@ -424,6 +495,7 @@ Scope {
 
                                         // the column's trunk: runs down through every group
                                         Rectangle {
+                                            visible: !root.pagesMode
                                             x: 10; y: 0; width: 1
                                             height: grp.lastGroup ? grpHead.height / 2 : grp.height
                                             color: Qt.alpha(root.pal.accent, 0.45)
@@ -432,9 +504,11 @@ Scope {
                                         // group node + title
                                         Item {
                                             id: grpHead
+                                            visible: !root.oneGroup
                                             width: parent.width
-                                            height: 34
+                                            height: root.oneGroup ? 0 : 34
                                             Rectangle {
+                                                visible: !root.pagesMode
                                                 x: 3; anchors.verticalCenter: parent.verticalCenter
                                                 width: 15; height: 15; radius: 7.5
                                                 color: Qt.alpha(root.pal.accent, 0.25)
@@ -443,7 +517,7 @@ Scope {
                                                 Rectangle { anchors.centerIn: parent; width: 5; height: 5; radius: 2.5; color: root.pal.accent }
                                             }
                                             Text {
-                                                x: 28; anchors.verticalCenter: parent.verticalCenter
+                                                x: root.pagesMode ? 4 : 28; anchors.verticalCenter: parent.verticalCenter
                                                 text: grp.modelData.title.toUpperCase()
                                                 color: root.pal.accent
                                                 font.family: root.pal.uiFont
@@ -476,9 +550,10 @@ Scope {
                                                     height: 32 + (leaf.editing ? editor.height + 8 : 0)
 
                                                     // sub-trunk + elbow
-                                                    Rectangle { x: 34; y: 0; width: 1; height: leaf.lastLeaf ? 16 : leaf.height; color: Qt.alpha(root.pal.accent, 0.28) }
-                                                    Rectangle { x: 34; y: 16; width: 16; height: 1; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                    Rectangle { visible: !root.pagesMode; x: 34; y: 0; width: 1; height: leaf.lastLeaf ? 16 : leaf.height; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                    Rectangle { visible: !root.pagesMode; x: 34; y: 16; width: 16; height: 1; color: Qt.alpha(root.pal.accent, 0.28) }
                                                     Rectangle {
+                                                        visible: !root.pagesMode
                                                         x: 50; y: 16 - 3; width: 6; height: 6; radius: 3
                                                         color: leaf.modelData.changed || leaf.isCustom ? root.pal.accent2 : Qt.alpha(root.pal.accent, 0.6)
                                                     }
@@ -486,8 +561,8 @@ Scope {
                                                     // row: label on the left, keycaps on the right
                                                     Rectangle {
                                                         id: rowBg
-                                                        x: 62; y: 1
-                                                        width: leaf.width - 62
+                                                        x: root.lx; y: 1
+                                                        width: leaf.width - root.lx
                                                         height: 30
                                                         radius: 9
                                                         color: leaf.editing ? Qt.alpha(root.pal.accent, 0.12) : (ma.containsMouse && leaf.modelData.editable ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent")
@@ -547,8 +622,8 @@ Scope {
                                                     Rectangle {
                                                         id: editor
                                                         visible: leaf.editing
-                                                        x: 62; y: 36
-                                                        width: leaf.width - 62
+                                                        x: root.lx; y: 36
+                                                        width: leaf.width - root.lx
                                                         height: edCol.implicitHeight + 24
                                                         radius: 12
                                                         color: Qt.alpha(root.pal.surface, 0.95)
@@ -712,11 +787,11 @@ Scope {
                                                 width: leaves.width
                                                 height: grp.modelData.custom ? (addEditing ? 32 + addEditor.height + 8 : 32) : 0
                                                 readonly property bool addEditing: root.editId === "custom:new"
-                                                Rectangle { x: 34; y: 0; width: 1; height: 16; color: Qt.alpha(root.pal.accent, 0.28) }
-                                                Rectangle { x: 34; y: 16; width: 16; height: 1; color: Qt.alpha(root.pal.accent, 0.28) }
-                                                Rectangle { x: 50; y: 13; width: 6; height: 6; radius: 3; color: "transparent"; border.width: 1; border.color: root.pal.accent }
+                                                Rectangle { visible: !root.pagesMode; x: 34; y: 0; width: 1; height: 16; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                Rectangle { visible: !root.pagesMode; x: 34; y: 16; width: 16; height: 1; color: Qt.alpha(root.pal.accent, 0.28) }
+                                                Rectangle { visible: !root.pagesMode; x: 50; y: 13; width: 6; height: 6; radius: 3; color: "transparent"; border.width: 1; border.color: root.pal.accent }
                                                 Rectangle {
-                                                    x: 62; y: 1; width: leaves.width - 62; height: 30; radius: 9
+                                                    x: root.lx; y: 1; width: leaves.width - root.lx; height: 30; radius: 9
                                                     color: addMa.containsMouse || addLeaf.addEditing ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent"
                                                     Text {
                                                         anchors.left: parent.left; anchors.leftMargin: 8; anchors.verticalCenter: parent.verticalCenter
@@ -734,8 +809,8 @@ Scope {
                                                 Rectangle {
                                                     id: addEditor
                                                     visible: addLeaf.addEditing
-                                                    x: 62; y: 36
-                                                    width: leaves.width - 62
+                                                    x: root.lx; y: 36
+                                                    width: leaves.width - root.lx
                                                     height: newCol.implicitHeight + 24
                                                     radius: 12
                                                     color: Qt.alpha(root.pal.surface, 0.95)

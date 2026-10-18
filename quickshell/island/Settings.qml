@@ -80,7 +80,7 @@ Scope {
     }
 
     // ---- Startup & background (scripts/startup-conf.sh): tray applets, polkit agent, GPU. Keys \"st:NAME\" in the tree below.
-    property var startup: ({ NM_APPLET: false, BLUEMAN: false, POLKIT: "auto", GPU: "igpu", FILE_ICONS: "medium", CLIPBOARD: true, GESTURES: true, PORTAL: "login", has: ({ nm: true, blueman: true, hyprpolkit: true, gnome: true, kde: true, nvidia: false, safety: false }) })
+    property var startup: ({ NM_APPLET: false, BLUEMAN: false, POLKIT: "auto", GPU: "igpu", FILE_ICONS: "medium", CLIPBOARD: true, GESTURES: true, AUDIO_FOCUS: true, AUDIO_RESUME: true, AUDIO_DELAY: "2", PORTAL: "login", has: ({ nm: true, blueman: true, hyprpolkit: true, gnome: true, kde: true, nvidia: false, safety: false }) })
     property string startupNote: ""        // "applies at the next login" hint after changing the agent or the GPU
     readonly property string startupScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-conf.sh"
     // every change in the tree goes through here: "st:" values are written by the script, everything else goes to shell.qml
@@ -123,6 +123,25 @@ Scope {
             remindAgain.restart()
             return
         }
+        if (typeof key === "string" && key.indexOf("fx:") === 0) {
+            if (key === "fx:profile" && !fxConf.safe) {
+                var fc2 = JSON.parse(JSON.stringify(fxConf))
+                fc2.profile = v                                 // show it at once; the real state is read again below
+                fxConf = fc2
+                setting("fxProfile", v)
+                fxAgain.restart()
+            }
+            return
+        }
+        if (typeof key === "string" && key.indexOf("nt:") === 0) {
+            var nk = key.substring(3)
+            var ncf = JSON.parse(JSON.stringify(notesConf))
+            ncf[nk] = v
+            notesConf = ncf                                // show it at once; the real state is read again below
+            Quickshell.execDetached(["python3", notesScript, "set", nk, (v === true ? "1" : v === false ? "0" : String(v))])
+            notesAgain.restart()
+            return
+        }
         if (typeof key === "string" && key.indexOf("gr:") === 0) {
             var gk = key.substring(3)
             var gc = JSON.parse(JSON.stringify(greeting))
@@ -150,6 +169,27 @@ Scope {
         stdout: StdioCollector { onStreamFinished: { try { root.startup = JSON.parse(text) } catch (e) {} } }
     }
 
+    // ---- Notes (scripts/halcyon-notes.py): should the local Ollama model sort new notes into tasks? Keys "nt:NAME" in the tree below.
+    property var notesConf: ({ NOTES_AI: false, NOTES_AI_MODE: "ask", ollama: null, model: "" })
+    readonly property string notesScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py"
+    Timer { id: notesAgain; interval: 900; onTriggered: if (!notesProc.running) notesProc.running = true }
+    Process {
+        id: notesProc
+        command: ["python3", root.notesScript, "conf"]
+        stdout: StdioCollector { onStreamFinished: { try { root.notesConf = JSON.parse(text) } catch (e) {} } }
+    }
+
+    // ---- Profiles and Safe mode (scripts/halcyon-fx.py). Keys "fx:NAME" in the tree below; the choice itself is made by shell.qml (fxProfile).
+    property var fxConf: ({ profile: "custom", safe: false })
+    readonly property string fxScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-fx.py"
+    Timer { id: fxAgain; interval: 1800; onTriggered: if (!fxProc.running) fxProc.running = true }
+    Process {
+        id: fxProc
+        command: ["python3", root.fxScript, "status", "--json"]
+        stdout: StdioCollector { onStreamFinished: { try { root.fxConf = JSON.parse(text) } catch (e) {} } }
+    }
+    Connections { target: root; function onOpenChanged() { if (root.open && !fxProc.running) fxProc.running = true } }
+
     // ---- Terminal greeting (scripts/greeting-conf.sh): which logo the fish greeting shows. Keys "gr:LOGO" in the tree below.
     // The buttons (paste / edit / preview) are handled in shell.qml; this window only re-reads the choice afterwards, because
     // pasting or editing switches the greeting to "custom".
@@ -169,10 +209,25 @@ Scope {
     readonly property string remindScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/remind.sh"
     readonly property string autoScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/safety-auto.sh"
     Timer { id: remindAgain; interval: 700; onTriggered: if (!remindProc.running) remindProc.running = true }
+    Timer { interval: 30000; running: root.open; repeat: true; onTriggered: if (!remindProc.running) remindProc.running = true }   // keeps the scan clock honest while Settings is open
     Process {
         id: remindProc
         command: ["bash", root.remindScript, "conf"]
         stdout: StdioCollector { onStreamFinished: { try { root.remind = JSON.parse(text) } catch (e) {} } }
+    }
+
+    // ---- Timelines elsewhere (scripts/timeline.py): when the wallpaper last changed, when the system was last updated and the
+    // Focus streak. It only READS files that already exist and prints one line of JSON; it runs while Settings is open (at
+    // open, every 60 s, and a moment after the wallpaper changes) and never while it is closed.
+    property var tl: ({})
+    readonly property string timelineScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/timeline.py"
+    Timer { id: tlAgain; interval: 1500; onTriggered: if (!tlProc.running) tlProc.running = true }
+    Timer { interval: 60000; running: root.open; repeat: true; onTriggered: if (!tlProc.running) tlProc.running = true }
+    onWallpaperPathChanged: if (root.open) tlAgain.restart()
+    Process {
+        id: tlProc
+        command: ["python3", root.timelineScript, "conf"]
+        stdout: StdioCollector { onStreamFinished: { try { root.tl = JSON.parse(text) } catch (e) {} } }
     }
 
     // ---- Focus mode (scripts/focus.sh): options are keys "fc:NAME" in the tree below; the block list is the custom leaf at the end
@@ -503,6 +558,7 @@ Scope {
     // (a search or the header switch shows them all). The two reminder blocks of Backup / Safety come from remind() below.
     readonly property var groups: [
         { id: "look", title: "Look", section: "Appearance", items: [
+            { type: "seg", key: "opt:keysStyle", label: "Shortcuts layout", desc: "Tree: every shortcut on a branching tree. Pages: a menu of groups on the left and one group at a time. Same shortcuts in both; the chip in the Shortcuts header switches too.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
             { type: "seg", key: "opt:settingsStyle", label: "Settings layout", desc: "Tree: the branching view. Pages: a menu on the left and one page at a time. Same settings in both.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
             { type: "seg", key: "opt:surface", label: "Box background", desc: "What every box, the bar and this window are filled with. Wallpaper tint: dark, coloured by the wallpaper and a little see-through. Match wallpaper accent: the same, but the boxes and their outlines take the accent colour of the wallpaper clearly (and follow it while the accent cycles). Matte black: dark grey, solid. Pitch black: true black, solid (best on OLED). The little stars and drifting dots turn up their brightness and keep the accent colour so they still show on black. Dark theme only.", opts: [o("tint", "Wallpaper tint"), o("match", "Match accent"), o("matte", "Matte black"), o("black", "Pitch black")], when: "theme=dark" },
@@ -528,6 +584,7 @@ Scope {
             { type: "acts", label: "Your own ASCII art", desc: "Copy some ASCII art, then Paste from clipboard: it is saved and the greeting switches to Custom. Edit file opens it in your editor. Write @C1@ (accent colour) or @C2@ (grey) in the text to colour parts of it; colour codes that are already in the text keep working. Up to 40 rows. Preview shows the greeting in a terminal.", btns: [{ id: "greeting-paste", btn: "Paste from clipboard", done: "Saved" }, { id: "greeting-edit", btn: "Edit file", done: "", close: true }, { id: "greeting-preview", btn: "Preview", done: "" }] }
         ] },
         { id: "wallpaper", title: "Wallpaper", section: "Appearance", items: [
+            { type: "custom", name: "wallClock" },
             { type: "custom", name: "wallpaper" },
             { type: "seg", key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] }
         ] },
@@ -612,6 +669,7 @@ Scope {
             { type: "toggle", key: "opt:extraDim", label: "Extra dim mode", desc: "Drops the display brightness to minimum (1%) for nighttime comfort without losing color fidelity. You can also toggle it from the utilities panel or with Super + Alt + D." }
         ] },
         { id: "focus", title: "Focus mode", section: "Desktop", items: [
+            { type: "custom", name: "focusClock" },
             { type: "seg", key: "fc:LENGTH", label: "Session length", desc: "Start it from the utilities box (bottom-right corner, Focus) or SUPER+ALT+F. A timer runs, Do not disturb is on and the apps below are kept closed. When it ends everything goes back to how it was.", opts: [o(15, "15"), o(25, "25"), o(45, "45"), o(50, "50"), o(60, "60"), o(90, "90")] },
             { type: "chips", label: "While focusing", desc: "Pomodoro: work, a short break, work again ... with a long break after the last round (a reminder at every change, even with Do not disturb on). Do not disturb: popups muted, urgent ones get through. Awake: no dimming, lock or sleep. Close blocked apps: windows of the apps in the list below are closed the moment they open (a normal close request, never a kill).", opts: [ch("fc:POMODORO", "Pomodoro"), ch("fc:DND", "Do not disturb"), ch("fc:CAFFEINE", "Keep the screen awake"), ch("fc:BLOCK", "Close blocked apps")] },
             { type: "seg", key: "fc:BREAK", label: "Short break (minutes)", opts: [o(3, "3"), o(5, "5"), o(10, "10")], when: "fc:POMODORO=true" },
@@ -630,6 +688,10 @@ Scope {
             { type: "toggle", key: "opt:calNag", label: "Keep reminding until it is done", desc: "From the moment a task starts you get an urgent notification again and again, each replacing the last, until you press Done on it or tick the task off in the calendar. It is only a notification: nothing is blocked.", when: "opt:calOn=true&opt:calNotify=true" },
             { type: "seg", key: "opt:calNagEvery", label: "Nag every", opts: [o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" },
             { type: "seg", key: "opt:calNagGiveUp", label: "Give up", desc: "How long after the task has ended it still nags.", opts: [o(60, "After 1 h"), o(180, "After 3 h"), o(720, "After 12 h"), o(4320, "After 3 days")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" }
+        ] },
+        { id: "notes", title: "Notes", section: "Desktop", items: [
+            { type: "toggle", key: "nt:NOTES_AI", label: "Sort new notes into tasks", desc: "Super + N saves a note at once, as always. In the background your local Ollama model then decides whether it is a task: \"call mom at 6\" becomes a task due 18:00, \"idea: dark theme for the lock screen\" stays a plain note. Tasks show in the All notes window under Tasks, and a task with a time sends a notification when it is due. Off by default; nothing is sent anywhere (the model runs on this PC) and if Ollama is not running the note is simply saved." },
+            { type: "seg", key: "nt:NOTES_AI_MODE", label: "When the model thinks it is a task", desc: "Ask me: the note shows \"Make task / Keep as note\" in the All notes window. Automatically: it just becomes a task (you can turn it back with Note on its row).", opts: [o("ask", "Ask me first"), o("auto", "Do it automatically")], when: "nt:NOTES_AI=true" }
         ] },
         { id: "recording", title: "Screen & audio recording", section: "Desktop", items: [
             { type: "seg", key: "opt:recKind", label: "What to record", desc: "Screen: a video of the whole screen. Audio only: just sound, saved as an .m4a file. Start and stop with Super + Alt + R, the Record button in the utilities box, or the button below.", opts: [o("screen", "Screen video"), o("audio", "Audio only")] },
@@ -663,7 +725,7 @@ Scope {
             { type: "seg", key: "powerMgr", label: "Power manager", desc: "Which program controls CPU power. Only one runs at a time; the others are stopped. Halcyon Auto drives power-profiles-daemon by itself.", opts: [o("halcyon", "Halcyon Auto"), o("power-profiles-daemon", "power-profiles-daemon"), o("tlp", "TLP"), o("auto-cpufreq", "auto-cpufreq"), o("tuned", "Tuned")] },
             { type: "seg", key: "idleDim", label: "Dim the screen and keyboard light after", opts: [o(0, "Never"), o(1, "1 min"), o(2, "2 min"), o(3, "3 min"), o(5, "5 min"), o(10, "10 min")] },
             { type: "seg", key: "idleLock", label: "Lock the screen after", opts: [o(0, "Never"), o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")] },
-            { type: "seg", key: "opt:lockBg", label: "Lock screen background", desc: "Solid: the plain colour of your theme. Blurred wallpaper: your current wallpaper, blurred, behind the clock and the password box. The wallpaper is only loaded while the screen is locked.", opts: [o("solid", "Solid colour"), o("wallpaper", "Blurred wallpaper")] },
+            { type: "seg", key: "opt:lockBg", label: "Lock screen background", desc: "Solid: the plain colour of your theme. Blurred wallpaper: your current wallpaper, blurred, behind the clock and the password box. The wallpaper is only loaded while the screen is locked and let go when you unlock. If the picture cannot be read, the plain colour stays; the password box is never affected.", opts: [o("solid", "Solid colour"), o("wallpaper", "Blurred wallpaper")] },
             { type: "slider", key: "opt:lockBlur", def: 40, label: "Lock screen blur", desc: "How strongly the wallpaper is blurred.", min: 4, max: 64, step: 2, unit: "", when: "opt:lockBg=wallpaper" },
             { type: "slider", key: "opt:lockTint", def: 0.55, label: "Lock screen tint", desc: "How much of the theme colour covers the wallpaper. 0 % = the wallpaper as it is, 100 % = no wallpaper visible.", min: 0, max: 0.95, step: 0.05, scale: 100, unit: " %", when: "opt:lockBg=wallpaper" },
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] },
@@ -685,6 +747,10 @@ Scope {
             { type: "seg", adv: true, key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
             { type: "seg", adv: true, key: "opt:bgRefresh", label: "Background refresh", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. Normal: every 2 s / 4 s. Relaxed: 5 s / 10 s. Slow: 10 s / 20 s. Fewer wake-ups and far fewer small processes, nothing looks different. The performance page and the bar's CPU / RAM / TEMP row stay at the normal pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "Normal"), o("relaxed", "Relaxed"), o("slow", "Slow")] },
             { type: "acts", adv: true, label: "Memory", desc: "Show what uses my RAM: opens the console with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
+        ] },
+        { id: "profiles", title: "Profiles & safe mode", section: "Performance", items: [
+            { type: "seg", key: "fx:profile", label: "Profile", desc: "One switch for stars, blur, island motion, screen brightness and the top bar. Work: no stars, blur on, fast motion. Gaming: no stars, no blur, no motion, top bar off. Battery: no stars, no blur, fast motion, brightness 40 %. Night: stars on, brightness 15 %. Custom is your own setup: it is saved when you leave it and comes back when you pick Custom again. Terminal: halcyon profile <name>. To change what a profile does, edit ~/.local/state/island/profiles.json (halcyon profile --help).", opts: [o("custom", "Custom"), o("work", "Work"), o("gaming", "Gaming"), o("battery", "Battery"), o("night", "Night")] },
+            { type: "acts", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading..." }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring..." }] }
         ] },
         { id: "suggestions", title: "Optimization & Suggestions", section: "Performance", items: [
             { type: "acts", label: "Recommended Sweet Spot (Aesthetic + Speed)", desc: "Optimizes performance without compromising visual fidelity: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied!" }] },
@@ -709,7 +775,10 @@ Scope {
             { type: "action", id: "startup-view", label: "Startup & processes", btn: "Open the window", done: "", desc: "Everything that starts with the desktop (Halcyon's parts, your hypr-user.lua lines, systemd user services, autostart files) with the processes it runs, their RAM and CPU, a switch for each, and every other process of yours with an End button. The Health tab compares all of Halcyon with the RAM and CPU limits (Performance & memory) and lists the likely causes when it is over. Also `>startup` in the launcher." },
             { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
             { type: "toggle", key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
-            { type: "toggle", key: "st:CLIPBOARD", label: "Clipboard history", desc: "The two small watchers that remember what you copy (text and pictures) for the clipboard picker. Off stops them at once and saves a few MB; the picker then only shows what was saved before." },
+            { type: "toggle", key: "st:CLIPBOARD", label: "Clipboard history", desc: "The two small watchers that remember what you copy (text and pictures) for the clipboard pickers: Super + V and >clipboard in the launcher. A copy that a password manager marks as secret is never saved. Off stops them at once and saves a few MB; the pickers then only show what was saved before. Empty the history from >clipboard (Clear history)." },
+            { type: "toggle", key: "st:AUDIO_FOCUS", label: "One thing plays at a time", desc: "Start a video or any other player while music is going and the music pauses; when the video stops or ends, the music carries on by itself. Only what it paused itself comes back: if you paused the music yourself, it stays paused. Works with everything that shows up as a media player (Spotify, browser tabs, mpv, VLC ...). Needs playerctl." },
+            { type: "toggle", key: "st:AUDIO_RESUME", when: "st:AUDIO_FOCUS=true", label: "Bring the music back afterwards", desc: "When the video or other player stops or ends, what was paused for it starts again. Off: the music is only paused for you, you start it yourself. Something you paused by hand is never started either way." },
+            { type: "seg", key: "st:AUDIO_DELAY", when: "st:AUDIO_FOCUS=true&st:AUDIO_RESUME=true", label: "Wait before bringing it back", desc: "Seconds of silence first, so a song change or the next video in a playlist does not count as a stop.", opts: [o("1", "1 s"), o("2", "2 s"), o("5", "5 s"), o("10", "10 s")] },
             { type: "seg", adv: true, key: "st:PORTAL", label: "Screen-sharing helper", desc: "At login: it is always ready (Hyprland's own screen-share portal). On demand: it is not started until the first app asks to share or record the screen (browser, OBS), which then takes a moment longer once. Saves its memory until then.", opts: [o("login", "At login"), o("demand", "On demand")] },
             { type: "seg", adv: true, key: "st:POLKIT", label: "Password prompt helper (polkit agent)", desc: "The small program that shows the 'enter your password' window for apps that need admin rights. Auto picks the lightest one installed: Hyprland's, then GNOME's, then KDE's (the heaviest). None = no password windows at all. Takes effect at the next login.", opts: [o("auto", "Auto"), o("hyprpolkitagent", "Hyprland"), o("gnome", "GNOME"), o("kde", "KDE"), o("none", "None")] },
             { type: "seg", adv: true, key: "st:GPU", label: "Graphics card for the desktop", desc: "Integrated: the Intel / AMD graphics draw the desktop; the NVIDIA card sleeps until you run a program with prime-run. Lowest RAM and battery use. NVIDIA: the NVIDIA card draws the desktop; smoother with heavy blur, but it loads the NVIDIA libraries (+100 MB or more RAM) and uses a lot more battery. Takes effect at the next login.", opts: [o("igpu", "Integrated (saves RAM)"), o("dgpu", "NVIDIA")] }
@@ -720,12 +789,13 @@ Scope {
             { type: "acts", label: "Rice", desc: "Edit config: opens the config files. Shortcuts: the shortcut tree. Reload: re-reads the config files and puts the island's own values back on top.", btns: [{ id: "config", btn: "Edit config", done: "", close: true }, { id: "cheatsheet", btn: "Shortcuts", done: "", close: true }, { id: "reload", btn: "Reload Hyprland", done: "Reloading…" }] }
         ] },
         { id: "backup", title: "Backup & safety", section: "System", items: [
+            { type: "custom", name: "dayClock" },
             { type: "acts", label: "Backup", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the files are copied onto it (scripts/backup-device.sh). Whole system: everything (asks for your admin password). Home folder: only your files, no password. Nothing on the disk is erased; every backup goes in its own dated folder. Caches, trash, package downloads and game files are skipped; add your own in ~/.config/Halcyon/backup-exclude.conf.", btns: [{ id: "backup-device", btn: "Whole system", done: "Opening…" }, { id: "backup-home", btn: "Home folder only", done: "Opening…" }] },
             { type: "acts", label: "Restore", desc: "Plug in the backup disk and pick a backup in the terminal that opens. Whole system: a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Home folder only: only ever touches your home folder (any backup works), you can restore just one folder or file, no password. Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder.", btns: [{ id: "restore-device", btn: "From a backup", done: "Opening…" }, { id: "restore-home", btn: "Home folder only", done: "Opening…" }] }
         ].concat(root.remindRows("BACKUP", "Remind me to back up", "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off.")).concat([
             { type: "action", adv: true, id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in ~/logs/safety_check/." }
         ]).concat(root.remindRows("SAFETY", "Remind me to run the safety check", "Same, for the safety check (by hand or automatic, either counts as done).", "safety")).concat([
-            { type: "custom", adv: true, name: "safetyAuto" }
+            { type: "custom", name: "safetyAuto" }
         ]) }
     ]
 
@@ -736,6 +806,8 @@ Scope {
         if (key.indexOf("hy:") === 0) return hyCur ? hyCur[key.substring(3)] : undefined
         if (key.indexOf("st:") === 0) return startup ? startup[key.substring(3)] : undefined
         if (key.indexOf("gr:") === 0) return greeting ? greeting[key.substring(3)] : undefined
+        if (key.indexOf("nt:") === 0) return notesConf ? notesConf[key.substring(3)] : undefined
+        if (key.indexOf("fx:") === 0) return fxConf ? fxConf[key.substring(3)] : undefined
         if (key.indexOf("fc:") === 0) return focusConf ? focusConf[key.substring(3)] : undefined
         if (key.indexOf("rm:") === 0) return remind ? remind[key.substring(3)] : undefined
         if (key.indexOf("rmwhen:") === 0) {          // BACKUP / SAFETY: "off", or the interval it is on with
@@ -758,6 +830,10 @@ Scope {
             : (m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman / apt install blueman)"
             : (m.key === "st:GPU" && root.startup.has && !root.startup.has.nvidia) ? (m.desc || "") + " (The NVIDIA driver is not loaded now, so the NVIDIA choice does nothing until it is.)"
             : ((m.key === "st:POLKIT" || m.key === "st:GPU" || m.key === "st:PORTAL") && root.startupNote !== "") ? (m.desc || "") + "  \u2192 " + root.startupNote
+            : (m.key === "fx:profile" && root.fxConf.safe) ? (m.desc || "") + "  Safe mode is on, so profiles are paused: turn safe mode off first."
+            : (m.label === "Safe mode" && root.fxConf.safe) ? "Safe mode is ON: blur, shadows, window animations, stars and motion are off. Back to normal puts your earlier values back."
+            : (m.key === "nt:NOTES_AI" && root.notesConf.NOTES_AI && root.notesConf.ollama === false) ? (m.desc || "") + "  Ollama is not running right now, so new notes are saved as plain notes until it is."
+            : (m.key === "nt:NOTES_AI" && root.notesConf.NOTES_AI && root.notesConf.model) ? (m.desc || "") + "  Model in use: " + root.notesConf.model + " (the same one `ai` uses; change it under Performance)."
             : m.key === "rmwhen:BACKUP" ? (m.desc || "") + "  Last backup made here: " + root.remind.backupAgo + "."
             : m.key === "rmwhen:SAFETY" ? (m.desc || "") + "  Last safety check: " + root.remind.safetyAgo + "."
             : (m.id === "layout" ? "Now: " + (root.hyCur.layout || "dwindle") : (m.desc || ""))
@@ -805,10 +881,10 @@ Scope {
     readonly property var pages: [
         { id: "Appearance", sub: "Look, colours, wallpaper and effects.", groups: ["look", "colours", "greeting", "wallpaper", "desktop", "glass", "growth"] },
         { id: "Bar", sub: "The bar and the clock.", groups: ["bar", "clock"] },
-        { id: "Desktop", sub: "Workspaces, notifications, focus mode and the calendar.", groups: ["workspaces", "notifications", "focus", "calendar"] },
+        { id: "Desktop", sub: "Workspaces, notifications, focus mode, the calendar and notes.", groups: ["workspaces", "notifications", "focus", "calendar", "notes"] },
         { id: "Input", sub: "Mouse, touchpad, gestures, mouse buttons and keyboard.", groups: ["mouse", "gestures", "mousebtn"] },
         { id: "Power & lock", sub: "Power manager, dimming, lock screen and sleep.", groups: ["power"] },
-        { id: "Performance", sub: "Speed, sweet spot, memory limits and suggestions.", groups: ["suggestions", "performance"] },
+        { id: "Performance", sub: "Profiles, safe mode, speed, sweet spot, memory limits and suggestions.", groups: ["profiles", "suggestions", "performance"] },
         { id: "System", sub: "Preferences, timeouts, login manager, startup and apps.", groups: ["sysoptions", "startup", "apps"] },
         { id: "Backup", sub: "Backups, restore and the safety check.", groups: ["backup"] }
     ]
@@ -883,7 +959,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 5 : t.name === "dayClock" ? 13 : t.name === "wallClock" ? 5 : t.name === "focusClock" ? 6 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -921,7 +997,9 @@ Scope {
         if (!specialProc.running) specialProc.running = true
         if (!startupProc.running) startupProc.running = true
         if (!greetProc.running) greetProc.running = true
+        if (!notesProc.running) notesProc.running = true
         if (!remindProc.running) remindProc.running = true
+        if (!tlProc.running) tlProc.running = true
         startupNote = ""
         query = ""
         focusLoad()
@@ -1327,6 +1405,143 @@ Scope {
                     text: "Not sure which button is which? The usual numbers are 275 = back, 276 = forward, 274 = the wheel press, and 277 and up for a gaming mouse's extra buttons. `wev` (a small Wayland tool) shows the number of whatever you press."
                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
                 }
+            }
+        }
+    }
+
+    // Wallpaper timeline (top of Settings > Wallpaper): when the picture last changed. wallpaper.sh saves the time when it really
+    // changes (wallpaper-changed); an install from before that has no file yet, and then the date of the wallpaper state file is used.
+    Component {
+        id: cWallClock
+        ColumnLayout {
+            id: wc
+            width: parent ? parent.width : 0
+            readonly property int since: Number(root.tl.wallSince !== undefined ? root.tl.wallSince : -1)
+            readonly property int every: Number(root.opt.wpEvery || 0)
+            DayTimeline {
+                Layout.fillWidth: true
+                pal: root.pal
+                heading: "Wallpaper"
+                plain: true
+                since: wc.since
+                span: wc.since > 90 ? 365 : wc.since > 30 ? 90 : wc.since > 14 ? 30 : 14
+                neverText: "No change on record yet"
+                lastText: wc.since < 0 ? "" : "Changed: " + String(root.tl.wallAgo || "")
+                nextText: wc.every > 0 ? "Changes by itself every " + wc.every + " min" : "Changes when you pick one"
+                status: String(root.tl.wallSource || "") === "file" ? "Approximate" : ""
+                detail: wc.since < 0
+                    ? "The date shows up after the next wallpaper change."
+                    : "Last change: " + String(root.tl.wallAt || "") + "."
+                      + (String(root.tl.wallSource || "") === "file" ? "  Taken from the date of the wallpaper file until the next change is recorded." : "")
+            }
+        }
+    }
+
+    // Focus streak timeline (top of Settings > Focus mode): days in a row you reached the goal, against your best streak. The goal is
+    // the Focus widget's "Minutes that count as a focus day" (25 when there is no Focus widget), the same rule the widget uses.
+    Component {
+        id: cFocusClock
+        ColumnLayout {
+            id: fc
+            width: parent ? parent.width : 0
+            readonly property bool tracked: root.tl.focusTracked === true
+            readonly property int st: Number(root.tl.focusStreak || 0)
+            readonly property int best: Math.max(st, Number(root.tl.focusBest || 0))
+            readonly property int goal: Number(root.tl.focusGoal || 25)
+            readonly property int todayMin: Number(root.tl.focusToday || 0)
+            function plural(n) { return n + (n === 1 ? " day" : " days") }
+            DayTimeline {
+                Layout.fillWidth: true
+                pal: root.pal
+                heading: "Focus streak"
+                plain: true
+                since: fc.tracked ? fc.st : -1
+                next: !fc.tracked ? -1 : (fc.best > fc.st ? fc.best - fc.st : (fc.st > 0 ? 0 : -1))
+                span: Math.max(7, fc.best)
+                neverText: "No focus sessions yet"
+                todayText: fc.st > 0 ? "Day " + fc.st : "Today"
+                lastText: !fc.tracked ? "" : (fc.st === 0 ? "No streak right now" : "Streak: " + fc.plural(fc.st))
+                nextText: !fc.tracked ? "Start a Focus session to begin"
+                    : fc.best > fc.st ? "Best: " + fc.plural(fc.best) + "  \u00b7  " + (fc.best - fc.st) + " to go"
+                    : fc.st > 0 ? "This is your best" : "Reach " + fc.goal + " min in one day"
+                status: !fc.tracked ? "" : (fc.st > 0 && fc.st >= fc.best ? "Your best" : (fc.st > 0 ? "On a streak" : "No streak"))
+                detail: "A day counts from " + fc.goal + " minutes of focus (Widget builder > Focus timer & streak > Minutes that count as a focus day)."
+                    + (fc.tracked ? "  Today: " + fc.todayMin + " min." : "")
+                    + (fc.tracked && fc.st > 0 && fc.todayMin < fc.goal ? "  Focus " + (fc.goal - fc.todayMin) + " more min today to keep the streak going." : "")
+            }
+        }
+    }
+
+    // Backup and safety-check clocks: two timelines (last time, today, due day) in place of the old pair of rings
+    Component {
+        id: cDayClock
+        ColumnLayout {
+            id: dc
+            width: parent ? parent.width : 0
+            spacing: 22
+            readonly property bool safetyInstalled: root.startup.has && root.startup.has.safety === true
+            readonly property int bSince: Number(root.remind.backupSince !== undefined ? root.remind.backupSince : -1)
+            readonly property int bNext: Number(root.remind.backupNext !== undefined ? root.remind.backupNext : -1)
+            readonly property int bSpan: Math.max(1, Number(root.remind.backupSpan || 7))
+            readonly property int sSince: Number(root.remind.safetySince !== undefined ? root.remind.safetySince : -1)
+            readonly property int sNext: Number(root.remind.safetyNext !== undefined ? root.remind.safetyNext : -1)
+            readonly property string sKind: String(root.remind.safetyNextKind || "none")
+            readonly property int sSpan: sKind === "auto" ? Math.max(1, Number(root.remind.auto.days || 30))
+                : (root.remind.SAFETY_EVERY === "custom" ? Number(root.remind.SAFETY_DAYS || 14) : Number(root.remind.SAFETY_EVERY || 30))
+            function plural(n) { return n + (n === 1 ? " day" : " days") }
+            readonly property int uSince: Number(root.tl.updSince !== undefined ? root.tl.updSince : -1)
+            readonly property int hSince: Number(root.tl.halSince !== undefined ? root.tl.halSince : -1)
+            readonly property string halcyonNote: hSince < 0 ? "" : "  Halcyon itself was last installed or updated " + String(root.tl.halAgo || "") + "."
+
+            DayTimeline {
+                Layout.fillWidth: true
+                pal: root.pal
+                heading: "Backup"
+                since: dc.bSince
+                next: dc.bNext
+                span: dc.bSpan
+                status: root.remind.BACKUP_REMIND ? (dc.bNext === 0 ? "Due now" : "Reminder on") : "No reminder"
+                detail: root.remind.BACKUP_REMIND
+                    ? "Last backup made here: " + root.remind.backupAgo + ".  Next reminder: " + (dc.bNext === 0 ? "today." : "in " + dc.plural(dc.bNext) + ".")
+                    : "Last backup made here: " + root.remind.backupAgo + ".  Switch on \"Remind me to back up\" above to get a countdown."
+            }
+            DayTimeline {
+                Layout.fillWidth: true
+                opacity: dc.safetyInstalled ? 1 : 0.45
+                pal: root.pal
+                heading: "Safety check"
+                since: dc.sSince
+                next: dc.sNext
+                span: dc.sSpan
+                active: !!root.remind.safetyRunning
+                status: !dc.safetyInstalled ? "Not installed"
+                    : root.remind.safetyRunning ? "Scanning now"
+                    : dc.sKind === "auto" ? "Automatic"
+                    : dc.sKind === "reminder" ? "Reminder on"
+                    : "Not scheduled"
+                detail: !dc.safetyInstalled ? "Install it with ./install.sh --safety-check."
+                    : "Last scan: " + root.remind.safetyAgo + "."
+                      + (dc.sKind === "auto" ? (dc.sNext === 0 ? "  Next: due now, it starts at the next look (every 6 hours, on AC power)." : "  Next: in " + dc.plural(dc.sNext) + ".")
+                         : dc.sKind === "reminder" ? "  Next reminder: " + (dc.sNext === 0 ? "today." : "in " + dc.plural(dc.sNext) + ".")
+                         : "  Switch on the automatic scan below to get a countdown.")
+            }
+            // the system update: when pacman last really replaced a package (scripts/timeline.py reads /var/log/pacman.log). Nothing is
+            // scheduled and nothing is run from here; it only shows the date, and turns amber after 60 days.
+            DayTimeline {
+                Layout.fillWidth: true
+                pal: root.pal
+                heading: "System update"
+                plain: true
+                warnAfter: 60
+                since: dc.uSince
+                span: dc.uSince > 90 ? 365 : dc.uSince > 30 ? 90 : 30
+                neverText: "No update on record"
+                lastText: dc.uSince < 0 ? "" : "Updated: " + String(root.tl.updAgo || "")
+                nextText: "You start updates yourself"
+                status: dc.uSince < 0 ? "Unknown" : (dc.uSince > 60 ? "Long ago" : "")
+                detail: dc.uSince < 0
+                    ? "There is no readable pacman log here, so no date can be shown (this needs Arch's /var/log/pacman.log)." + dc.halcyonNote
+                    : "Last package upgrade: " + String(root.tl.updAt || "") + ", read from /var/log/pacman.log." + dc.halcyonNote
             }
         }
     }
@@ -2221,6 +2436,9 @@ Scope {
                                                                            : pr.m.name === "apps" ? cApps
                                                                            : pr.m.name === "specialCmds" ? cSpecialCmds
                                                                            : pr.m.name === "focusApps" ? cFocusApps
+                                                                           : pr.m.name === "dayClock" ? cDayClock
+                                                                           : pr.m.name === "wallClock" ? cWallClock
+                                                                           : pr.m.name === "focusClock" ? cFocusClock
                                                                            : pr.m.name === "safetyAuto" ? cSafetyAuto
                                                                            : pr.m.name === "desktopBuilder" ? cDesktopBuilder
                                                                            : pr.m.name === "widgetBuilder" ? cWidgetBuilder
@@ -2620,6 +2838,9 @@ Scope {
                                                                                : leaf.m.name === "apps" ? cApps
                                                                                : leaf.m.name === "specialCmds" ? cSpecialCmds
                                                                                : leaf.m.name === "focusApps" ? cFocusApps
+                                                                               : leaf.m.name === "dayClock" ? cDayClock
+                                                                               : leaf.m.name === "wallClock" ? cWallClock
+                                                                               : leaf.m.name === "focusClock" ? cFocusClock
                                                                                : leaf.m.name === "safetyAuto" ? cSafetyAuto
                                                                                : leaf.m.name === "desktopBuilder" ? cDesktopBuilder
                                                                                : leaf.m.name === "widgetBuilder" ? cWidgetBuilder

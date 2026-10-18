@@ -7,6 +7,7 @@ Item {
     id: root
     property var pal
     property var player: null
+    signal openMusic(string tab)                 // the Lyrics / Queue chips: the lyrics and queue panel (MusicMenu.qml) opens on that tab
     readonly property bool has: player !== null && player !== undefined
     readonly property real frac: (has && player.length > 0) ? Math.min(1, player.position / player.length) : 0
 
@@ -74,13 +75,30 @@ Item {
                 font.pixelSize: 17
                 font.weight: Font.DemiBold
             }
-            Text {
+            // the artist, and two small chips that open the lyrics / queue panel (MusicMenu.qml)
+            RowLayout {
                 Layout.fillWidth: true
-                text: root.has ? (root.player.trackArtist || "") : ""
-                elide: Text.ElideRight
-                color: root.pal.muted
-                font.family: root.pal.uiFont
-                font.pixelSize: root.pal.tBody
+                spacing: 6
+                Text {
+                    Layout.fillWidth: true
+                    text: root.has ? (root.player.trackArtist || "") : ""
+                    elide: Text.ElideRight
+                    color: root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tBody
+                }
+                ActionChip {
+                    pal: root.pal
+                    label: "Lyrics"
+                    implicitHeight: 24
+                    onClicked: root.openMusic("lyrics")
+                }
+                ActionChip {
+                    pal: root.pal
+                    label: "Queue"
+                    implicitHeight: 24
+                    onClicked: root.openMusic("queue")
+                }
             }
 
             Item {

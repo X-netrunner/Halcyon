@@ -168,6 +168,30 @@ Item {
         return out
     }
     readonly property real maxItemMem: { var m = 1, all = info.items || []; for (var i = 0; i < all.length; i++) m = Math.max(m, all[i].mem); return m }
+    // ---------------------------------------------------------------- memory history (Health tab): one reading per poll, kept only in
+    // this window's memory while it is open (about 10 minutes), so a step up can be matched to the part that caused it
+    property var hist: []                     // [{ total: MB, by: { itemId: MB } }]
+    readonly property int histMax: 120
+    function pushHist(d) {
+        var by = {}, tot = 0, all = d.items || []
+        for (var i = 0; i < all.length; i++) if (all[i].kind === "halcyon") { by[all[i].id] = all[i].mem; tot += all[i].mem }
+        var h = hist.length >= histMax ? hist.slice(1) : hist.slice()
+        h.push({ total: tot, by: by })
+        hist = h
+    }
+    // the Halcyon parts that grew most since the first reading: [{ name, from, to, d }]
+    readonly property var growers: {
+        if (hist.length < 2) return []
+        var first = hist[0].by, out = [], all = info.items || []
+        for (var i = 0; i < all.length; i++) {
+            var it = all[i]
+            if (it.kind !== "halcyon" || first[it.id] === undefined) continue
+            var dm = it.mem - first[it.id]
+            if (dm >= 1) out.push({ name: it.name, from: first[it.id], to: it.mem, d: dm })
+        }
+        out.sort(function (a, b) { return b.d - a.d })
+        return out.slice(0, 4)
+    }
     // ---------------------------------------------------------------- Halcyon against its limits
     // "Halcyon" = its own parts together (Hyprland, the island with everything it starts, the helpers: the items marked Halcyon in the list).
     readonly property real halRam: { var m = 0, all = info.items || []; for (var i = 0; i < all.length; i++) if (all[i].kind === "halcyon") m += all[i].mem; return m }
@@ -250,6 +274,7 @@ Item {
                     var lc = (root.adaptive && d.adaptive && d.adaptive.state === "ready") ? Number(d.adaptive.cpu_limit) : root.limCpu
                     root.cpuStreak = (hc / Math.max(1, d.ncpu || 1)) > lc ? root.cpuStreak + 1 : 0
                     root.info = d
+                    root.pushHist(d)
                     root.loaded = true
                     root.busyIds = ({})
                 } catch (e) {}
@@ -304,7 +329,7 @@ Item {
     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
     onOpenChanged: {
         if (open) { note = ""; Qt.callLater(function () { root.forceActiveFocus() }) }
-        else { info = empty; loaded = false; busyIds = ({}); cpuMemo = ({}); cpuStreak = 0; tipItem = null; query = ""; searchInput.text = "" }       // let go of the numbers: nothing is kept while it is closed
+        else { info = empty; hist = []; loaded = false; busyIds = ({}); cpuMemo = ({}); cpuStreak = 0; tipItem = null; query = ""; searchInput.text = "" }       // let go of the numbers: nothing is kept while it is closed
     }
     Component.onCompleted: if (open) Qt.callLater(function () { root.forceActiveFocus() })
     Keys.onPressed: function (e) {
@@ -870,6 +895,79 @@ Item {
                                     valueText: root.loaded ? root.pct(root.halCpu) : "—"
                                     limitText: root.effCpu + "%"
                                     tone: root.overCpu ? root.pal.bad : (root.halCpu > root.effCpu * 0.85 ? root.pal.warn : root.pal.good)
+                                }
+                            }
+                        }
+
+                        // ---- Halcyon's memory over the last minutes: which part made it step up
+                        Rectangle {
+                            width: parent.width
+                            height: 36 + 120 + 16 + (root.growers.length > 0 ? 24 + root.growers.length * 20 : 24) + 16
+                            radius: root.pal.rLg
+                            color: Qt.alpha(root.pal.bg, 0.55)
+                            border.width: 1
+                            border.color: root.pal.lineTint
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 8
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { text: "MEMORY OVER TIME"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 1.2 }
+                                    Item { Layout.fillWidth: true }
+                                    Text {
+                                        text: root.hist.length < 2 ? "collecting…" : "last " + Math.max(1, Math.round(root.hist.length * 5 / 60)) + " min, one point every 5 s"
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                    }
+                                }
+                                Canvas {
+                                    id: histCv
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 120
+                                    visible: root.tab === "health"
+                                    onPaint: {
+                                        var c = getContext("2d")
+                                        c.clearRect(0, 0, width, height)
+                                        var h = root.hist
+                                        if (h.length < 2) return
+                                        var lo = 1e9, hi = 0
+                                        for (var i = 0; i < h.length; i++) { lo = Math.min(lo, h[i].total); hi = Math.max(hi, h[i].total) }
+                                        hi = Math.max(hi, lo + 20)                      // a flat line stays flat, not stretched to the edges
+                                        var pad = (hi - lo) * 0.15, y0 = lo - pad, y1 = hi + pad
+                                        function X(i) { return 2 + (width - 4) * i / (root.histMax - 1) + (width - 4) * (root.histMax - h.length) / (root.histMax - 1) }
+                                        function Y(v) { return height - 4 - (height - 8) * (v - y0) / (y1 - y0) }
+                                        c.strokeStyle = String(Qt.alpha(root.pal.muted, 0.25)); c.lineWidth = 1
+                                        c.beginPath(); c.moveTo(0, height - 0.5); c.lineTo(width, height - 0.5); c.stroke()
+                                        c.beginPath()
+                                        for (var j = 0; j < h.length; j++) { if (j === 0) c.moveTo(X(j), Y(h[j].total)); else c.lineTo(X(j), Y(h[j].total)) }
+                                        c.strokeStyle = String(root.pal.accent); c.lineWidth = 2; c.lineJoin = "round"; c.stroke()
+                                        c.lineTo(X(h.length - 1), height); c.lineTo(X(0), height); c.closePath()
+                                        c.fillStyle = String(Qt.alpha(root.pal.accent, 0.12)); c.fill()
+                                        c.fillStyle = String(root.pal.muted); c.font = "10px sans-serif"
+                                        c.fillText(root.fmt(hi), 4, 11); c.fillText(root.fmt(lo), 4, height - 6)
+                                    }
+                                    Connections { target: root; function onHistChanged() { if (root.tab === "health") histCv.requestPaint() } }
+                                    onVisibleChanged: if (visible) requestPaint()
+                                }
+                                Text {
+                                    visible: root.growers.length === 0
+                                    text: root.hist.length < 2 ? "Leave this window open and a part that keeps growing will be named here." : "No Halcyon part has grown since this window opened."
+                                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                }
+                                Text {
+                                    visible: root.growers.length > 0
+                                    text: "GREW MOST SINCE THIS WINDOW OPENED"
+                                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 1.2
+                                }
+                                Repeater {
+                                    model: root.growers
+                                    delegate: RowLayout {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        Text { Layout.fillWidth: true; text: modelData.name; elide: Text.ElideRight; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                        Text { text: root.fmt(modelData.from) + "  \u2192  " + root.fmt(modelData.to); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        Text { text: "+" + root.fmt(modelData.d); color: root.pal.warn; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
+                                    }
                                 }
                             }
                         }
