@@ -568,6 +568,7 @@ ShellRoot {
             else if (id === "fx-safe-on") root.fxRun(["safe-mode", "on"])
             else if (id === "fx-safe-off") root.fxRun(["safe-mode", "back"])
             else if (id === "adapt-reset") Quickshell.execDetached([Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "adapt-reset"])
+            else if (id === "netlearn-reset") Quickshell.execDetached(["rm", "-f", Quickshell.env("HOME") + "/.local/state/island/adaptive-net.tsv"])
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
             else if (id === "opt-sweet-spot") {
                 root.applyResMode("medium")
@@ -826,6 +827,9 @@ ShellRoot {
         profileStars: root.profileStars
         title: root.player ? (root.player.trackTitle || "") : ""
         artist: root.player ? (root.player.trackArtist || "") : ""
+        album: root.player ? (root.player.trackAlbum || "") : ""
+        duration: root.player && root.player.length > 0 ? root.player.length : 0        // seconds (MPRIS length)
+        fileUrl: root.player && root.player.metadata ? String(root.player.metadata["xesam:url"] || "") : ""
     }
 
     // Notifications are on top of every window, big ones included. Those open on the same layer and later = above, so whenever one

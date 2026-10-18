@@ -98,6 +98,15 @@ Scope {
     function toggleTask(id) { act(["task", String(id)]) }
     function setDue(id, spec) { act(["due", String(id), spec]) }            // "+1h" | "18:00" | "tomorrow 09:00" | "none"
     function answerTask(id, yes) { act([yes ? "accept" : "dismiss", String(id)]) }
+    function thinkNote(id) { act(["think", String(id)]) }                 // run the AI over the note again
+    // what the AI says under a note (the script writes think = {state, why, at}); "thinking" counts only while it is fresh,
+    // so a crashed helper can never leave "thinking ..." on a note for ever
+    function aiThinking(n) { return !!n.think && n.think.state === "thinking" && (Date.now() / 1000 - (n.think.at || 0)) < 120 }
+    function aiLine(n) {
+        if (!n.think) return ""
+        if (n.think.state === "thinking") return aiThinking(n) ? "AI is thinking ..." : ""
+        return n.think.why || ""
+    }
     function delNote(id) { act(["del", String(id)]) }
     function pinNote(id) { act(["pin", String(id)]) }
     function toggleDone(id) { act(["done", String(id)]) }
@@ -140,6 +149,7 @@ Scope {
         return [
             { t: "In 30 min", s: "+30m" },
             { t: "In 1 hour", s: "+1h" },
+            { t: "Later today", s: "later" },                 // a few gentle nudges during the day instead of one time
             { t: (h < 18 ? "Today" : "Tomorrow") + " 18:00", s: "18:00" },
             { t: "Tomorrow 09:00", s: "tomorrow 09:00" },
             { t: "No reminder", s: "none" }
@@ -646,6 +656,34 @@ Scope {
                                             font.pixelSize: 10
                                             font.weight: Font.Medium
                                         }
+                                        Text {
+                                            visible: !!noteRow.modelData.later && !noteRow.modelData.done
+                                            text: "Later today" + (noteRow.modelData.nudges ? "  \u00b7  nudged " + noteRow.modelData.nudges + (noteRow.modelData.nudges === 1 ? " time" : " times") : "")
+                                            color: root.pal.accent
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 10
+                                            font.weight: Font.Medium
+                                        }
+                                    }
+
+                                    // what the AI made of this note (Settings > Notes > Sort new notes into tasks): a short line right under it
+                                    Text {
+                                        id: aiText
+                                        visible: root.aiLine(noteRow.modelData) !== ""
+                                        Layout.fillWidth: true
+                                        text: (root.aiThinking(noteRow.modelData) ? "" : "AI  \u00b7  ") + root.aiLine(noteRow.modelData)
+                                        color: Qt.alpha(root.pal.muted, 0.95)
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tCap
+                                        font.italic: true
+                                        wrapMode: Text.Wrap
+                                        SequentialAnimation on opacity {
+                                            running: root.aiThinking(noteRow.modelData) && root.open
+                                            loops: Animation.Infinite
+                                            NumberAnimation { to: 0.45; duration: 700; easing.type: Easing.InOutSine }
+                                            NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
+                                            onStopped: aiText.opacity = 1
+                                        }
                                     }
 
                                     // the model thinks this is a task (Settings > Notes > ask first)
@@ -693,6 +731,7 @@ Scope {
                                         model: [
                                             { k: "pin", t: noteRow.modelData.pinned ? "Unpin" : "Pin" },
                                             { k: "task", t: noteRow.modelData.task ? "Note" : "Task" },
+                                            { k: "think", t: root.aiThinking(noteRow.modelData) ? "Thinking" : "Think", hide: false },
                                             { k: "remind", t: noteRow.picking ? "Close" : "Remind", hide: !noteRow.modelData.task },
                                             { k: "copy", t: noteRow.copied ? "Copied" : "Copy" },
                                             { k: "del", t: "Delete" }
@@ -723,6 +762,7 @@ Scope {
                                                     if (modelData.k === "pin") root.pinNote(noteRow.modelData.id)
                                                     else if (modelData.k === "del") root.delNote(noteRow.modelData.id)
                                                     else if (modelData.k === "task") root.toggleTask(noteRow.modelData.id)
+                                                    else if (modelData.k === "think") { if (!root.aiThinking(noteRow.modelData)) root.thinkNote(noteRow.modelData.id) }
                                                     else if (modelData.k === "remind") noteRow.picking = !noteRow.picking
                                                     else {
                                                         Quickshell.execDetached(["wl-copy", noteRow.modelData.text || ""])

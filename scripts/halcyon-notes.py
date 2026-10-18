@@ -15,9 +15,13 @@ Tasks (a note with a job and, optionally, a time to be reminded at):
   notes due <idx_or_id> <when>    -> remind me at <when>: 18:00 | 6pm | +30m | +2h | tomorrow 09:00 | 2026-10-20 14:30 | none
   notes tasks                     -> list the tasks only
   notes sort <idx_or_id>          -> let the local Ollama model decide if it is a task (what Enter does when Settings > Notes is on)
+  notes due <idx_or_id> later     -> "later today": a few gentle nudges during the rest of today (every NOTES_NUDGE_HOURS hours,
+                                     only between NOTES_NUDGE_FROM and NOTES_NUDGE_TO o'clock, at most NOTES_NUDGE_MAX times, then it stops)
+  notes think <idx_or_id>         -> run the AI over this note again (it shows its short comment under the note)
   notes accept / dismiss <id>     -> answer "Make this a task?" (ask mode)
   notes remind-check              -> what the timer runs: one notification for every task whose time has come
-  notes conf | set KEY VALUE      -> NOTES_AI 0|1 , NOTES_AI_MODE ask|auto  (~/.config/Halcyon/notes.conf)
+  notes conf | set KEY VALUE      -> NOTES_AI 0|1 , NOTES_OVERVIEW 0|1 , NOTES_AI_MODE ask|auto , NOTES_NUDGE_HOURS 1..12 , NOTES_NUDGE_MAX 1..12 ,
+                                     NOTES_NUDGE_FROM 0..23 , NOTES_NUDGE_TO 1..24   (~/.config/Halcyon/notes.conf)
 """
 import contextlib
 import fcntl
@@ -106,7 +110,8 @@ def add_note(text):
     print(f"\033[1;32m✓\033[0m Note added: \033[1m{text}\033[0m")
     refresh_ui()
     # sorting is a separate background process: saving is already done and never waits for the model
-    if read_conf()["NOTES_AI"] == "1" and len(text) <= 280:
+    cf = read_conf()
+    if (cf["NOTES_AI"] == "1" or cf["NOTES_OVERVIEW"] == "1") and len(text) <= 6000:
         with contextlib.suppress(Exception):
             subprocess.Popen([sys.executable, os.path.abspath(__file__), "sort", item["id"]], start_new_session=True,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -125,7 +130,7 @@ def list_notes():
         reset = "\033[0m"
         date = n.get("date", "")
         task = "\033[38;5;214m☑ \033[0m" if n.get("task") else ""
-        due = f" \033[38;5;214m⏰ {due_text(n['due'])}\033[0m" if n.get("due") else ""
+        due = f" \033[38;5;214m⏰ {due_text(n['due'])}\033[0m" if n.get("due") else (" \033[38;5;214m⏰ later today\033[0m" if n.get("later") else "")
         print(f"{i:2d}. {pin}{task}{status}{n.get('text', '')}{reset}{due} \033[38;5;240m({date})\033[0m")
     print("──────────────────────────────────────────────────")
     print("\033[38;5;244mCommands: notes del <num> | notes pin <num> | notes done <num>\033[0m")
@@ -202,8 +207,12 @@ def clear_done():
 # =====================================================================================================================
 #  Tasks: "call mom at 6" -> a task with a time, and a notification when the time comes
 # =====================================================================================================================
+CONF_DEFAULTS = {"NOTES_AI": "0", "NOTES_OVERVIEW": "0", "NOTES_AI_MODE": "ask", "NOTES_NUDGE_HOURS": "3", "NOTES_NUDGE_MAX": "4",
+                 "NOTES_NUDGE_FROM": "9", "NOTES_NUDGE_TO": "21"}
+CONF_RANGE = {"NOTES_NUDGE_HOURS": (1, 12), "NOTES_NUDGE_MAX": (1, 12), "NOTES_NUDGE_FROM": (0, 23), "NOTES_NUDGE_TO": (1, 24)}
+
 def read_conf():
-    c = {"NOTES_AI": "0", "NOTES_AI_MODE": "ask"}
+    c = dict(CONF_DEFAULTS)
     try:
         with open(CONF_FILE, "r", encoding="utf-8") as f:
             for line in f:
@@ -215,8 +224,17 @@ def read_conf():
         pass
     if c["NOTES_AI"] != "1":
         c["NOTES_AI"] = "0"
+    if c["NOTES_OVERVIEW"] != "1":
+        c["NOTES_OVERVIEW"] = "0"
     if c["NOTES_AI_MODE"] not in ("ask", "auto"):
         c["NOTES_AI_MODE"] = "ask"
+    for k, (lo, hi) in CONF_RANGE.items():
+        try:
+            c[k] = str(min(hi, max(lo, int(c[k]))))
+        except ValueError:
+            c[k] = CONF_DEFAULTS[k]
+    if int(c["NOTES_NUDGE_TO"]) <= int(c["NOTES_NUDGE_FROM"]):        # an empty window would mean "never": use the default one
+        c["NOTES_NUDGE_FROM"], c["NOTES_NUDGE_TO"] = CONF_DEFAULTS["NOTES_NUDGE_FROM"], CONF_DEFAULTS["NOTES_NUDGE_TO"]
     return c
 
 def write_conf(c):
@@ -224,12 +242,13 @@ def write_conf(c):
     keep = []
     try:                       # lines that are not ours stay as they are
         with open(CONF_FILE, "r", encoding="utf-8") as f:
-            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*NOTES_AI(_MODE)?=", l)]
+            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*(NOTES_AI(_MODE)?|NOTES_OVERVIEW|NOTES_NUDGE_(HOURS|MAX|FROM|TO))=", l)]
     except OSError:
         pass
     fd, tmp = tempfile.mkstemp(prefix="notes.conf.", dir=os.path.dirname(CONF_FILE))
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(f"NOTES_AI={c['NOTES_AI']}\nNOTES_AI_MODE={c['NOTES_AI_MODE']}\n")
+        for k in CONF_DEFAULTS:
+            f.write(f"{k}={c[k]}\n")
         for l in keep:
             f.write(l + "\n")
     os.replace(tmp, CONF_FILE)
@@ -338,6 +357,35 @@ def due_text(ts):
     hm = time.strftime("%H:%M", d)
     return ("Today " + hm) if round(days) == 0 else ("Tomorrow " + hm) if round(days) == 1 else time.strftime("%-d %b ", d) + hm
 
+# ---- "later today": a few gentle nudges instead of one reminder at a clock time
+def day_window(t, conf):
+    """(start of the day, nudge window start, nudge window end, end of the day) as epochs, for the local day of t."""
+    lt = time.localtime(t)
+    base = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
+    nxt = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + 1, 0, 0, 0, 0, 0, -1))
+    return base, base + int(conf["NOTES_NUDGE_FROM"]) * 3600, min(base + int(conf["NOTES_NUDGE_TO"]) * 3600, nxt), nxt
+
+def start_later(n, conf, now=None):
+    """Mark a note as "later today": the first nudge comes NOTES_NUDGE_HOURS from now (never before the window opens), then the same
+    gap again, at most NOTES_NUDGE_MAX times, only inside the window, and all of it ends at midnight. Said after the window closed
+    for the day = it means tomorrow. A note with a clock time (due) and "later" exclude each other."""
+    now = time.time() if now is None else now
+    base, fr, to, end = day_window(now, conf)
+    if now >= to:                                         # "later" at 22:00 = tomorrow
+        base, fr, to, end = day_window(end + 3600, conf)
+    first = max(now + int(conf["NOTES_NUDGE_HOURS"]) * 3600, fr)
+    n["task"] = True
+    n.pop("due", None)
+    n.pop("reminded", None)
+    n["later"] = end
+    n["nudges"] = 0
+    n["nudge_at"] = first if first < to else None         # None: too late today for even one nudge
+    return n["nudge_at"]
+
+def clear_later(n):
+    for k in ("later", "nudge_at", "nudges"):
+        n.pop(k, None)
+
 def refresh_ui():
     """Tell the notes window (if the island is running) to read the file again."""
     try:
@@ -355,12 +403,16 @@ def notify(title, body, icon="appointment-soon"):
 def pending_due(notes):
     return [n for n in notes if isinstance(n, dict) and n.get("task") and n.get("due") and not n.get("done") and not n.get("reminded")]
 
+def pending_nudge(notes):
+    return [n for n in notes if isinstance(n, dict) and n.get("task") and n.get("nudge_at") and not n.get("done")]
+
 def sync_timer(notes=None):
     """The once-a-minute timer exists only while a task with a time is waiting. Nothing is installed or running for people
     who never use it."""
     if not shutil.which("systemctl"):
         return
-    pending = bool(pending_due(load_notes() if notes is None else notes))
+    notes = load_notes() if notes is None else notes
+    pending = bool(pending_due(notes) or pending_nudge(notes))
     wants = os.path.join(UNIT_DIR, "timers.target.wants", DUE_TIMER)       # the link `enable` makes
     if not pending and not os.path.lexists(wants):
         return                                                            # not on, nothing to switch off: no systemctl at all
@@ -399,27 +451,31 @@ def keep_alive():
     return "10s" if lazy is not False else "2m"
 
 def ask_model(text):
-    """-> {"task": bool, "when": str|None}, or None when Ollama is not there / answers nonsense. Never raises."""
+    """-> {"task": bool, "when": str|None, "later": bool, "why": str (the model's one-sentence summary of the note)}, or None when Ollama is not there / answers nonsense. Never raises."""
     import urllib.request
     now = time.time()
     today = time.strftime("%Y-%m-%d", time.localtime(now))
     tomorrow = time.strftime("%Y-%m-%d", time.localtime(now + 86400))
     prompt = (
         "You sort short personal notes. A TASK is something the writer has to do (maybe at a certain time). "
-        "A NOTE is an idea, a fact, a thought, a quote or something to remember.\n"
+        "A NOTE is an idea, a fact, a thought, a quote, a question or something to remember.\n"
         f"Now: {time.strftime('%Y-%m-%d %H:%M', time.localtime(now))} ({time.strftime('%A', time.localtime(now))}).\n"
-        'Answer with JSON only: {"task": true or false, "when": "YYYY-MM-DD HH:MM" or null}. '
-        '"when" only if the note names a time or a day, else null. A bare time ("at 6") is the next time it happens; '
-        "without am/pm, small hours like 6 mean the evening.\n"
-        f'Note: call mom at 6\n{{"task": true, "when": "{today} 18:00"}}\n'
-        f'Note: dentist tomorrow at 9am\n{{"task": true, "when": "{tomorrow} 09:00"}}\n'
-        'Note: buy milk\n{"task": true, "when": null}\n'
-        'Note: idea: dark theme for the lock screen\n{"task": false, "when": null}\n'
-        'Note: the wifi password is on the router\n{"task": false, "when": null}\n'
+        'Answer with JSON only: {"task": true or false, "when": "YYYY-MM-DD HH:MM" or null, "later": true or false, "summary": "one sentence"}. '
+        '"when" only if the note names a clock time or a day in its own words, else null. A bare time ("at 6") is the next time it happens; '
+        "without am/pm, small hours like 6 mean the evening. "
+        '"later" is true only for a task meant for later today with no clock time ("later", "this evening", "some time today"). '
+        '"summary" is a short overview of what the note is ABOUT: say what the task or idea involves, in plain words, at most 18 words. '
+        "Describe the subject itself. Do not talk about reminders, times or what you decided, and never copy the wording of the examples.\n"
+        f'Note: call mom at 6\n{{"task": true, "when": "{today} 18:00", "later": false, "summary": "A phone call to your mom this evening."}}\n'
+        f'Note: dentist tomorrow at 9am\n{{"task": true, "when": "{tomorrow} 09:00", "later": false, "summary": "A dental appointment tomorrow morning."}}\n'
+        'Note: water the plants later\n{"task": true, "when": null, "later": true, "summary": "Watering the house plants, a quick chore for today."}\n'
+        'Note: how to make pancakes\n{"task": true, "when": null, "later": false, "summary": "Making pancakes: mix batter, rest it, fry in a hot pan, flip once."}\n'
+        'Note: idea: dark theme for the lock screen\n{"task": false, "when": null, "later": false, "summary": "An idea for a dark theme on the lock screen."}\n'
+        'Note: the wifi password is on the router\n{"task": false, "when": null, "later": false, "summary": "Where to find the wifi password: on the router."}\n'
         f"Note: {text}\n"
     )
     body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "format": "json", "think": False,
-                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 60}}).encode()
+                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 130}}).encode()
     try:
         req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=60) as r:
@@ -431,7 +487,145 @@ def ask_model(text):
     if not isinstance(out, dict) or not isinstance(out.get("task"), bool):
         return None
     when = out.get("when")
-    return {"task": out["task"], "when": when if isinstance(when, str) and when.strip() else None}
+    why = out.get("summary") if isinstance(out.get("summary"), str) else out.get("why")   # "why" = older answers
+    why = re.sub(r"\s+", " ", why).strip().strip('"') if isinstance(why, str) else ""
+    if not why or parrots_example(text, why):
+        why = summarise_only(text)          # the model copied an example (or said nothing): ask it again, only for the summary
+    return {"task": out["task"], "when": when if isinstance(when, str) and when.strip() else None,
+            "later": out.get("later") is True, "why": why[:160]}
+
+def summarise_only(text, words=18):
+    """A second, tiny question with no examples to copy from: one sentence about what the note is. "" when that fails too."""
+    import urllib.request
+    prompt = (f"Summarise this personal note in one short sentence (at most {words} words). Say what it is about and what it involves. "
+              "Do not mention reminders or times. Answer with the sentence only.\n\nNote: " + text + "\n")
+    body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "think": False,
+                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 40 + 3 * words}}).encode()
+    try:
+        req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            raw = json.loads(r.read().decode("utf-8", "replace")).get("response", "")
+    except Exception:
+        return ""
+    out = re.sub(r"\s+", " ", raw).strip().strip('"')
+    return "" if parrots_example(text, out) else out[:240]
+
+def clean_overview(raw):
+    """The model's overview as plain lines: no markdown, no 'Here's a summary:' opener, bullets as '- ', at most 8 lines."""
+    out = []
+    for ln in raw.replace("\r", "").split("\n"):
+        ln = re.sub(r"\*\*|__|`", "", ln).strip()
+        ln = re.sub(r"^(#+\s*|[*\u2022\u2013]\s+)", lambda m: "- " if m.group(1)[0] in "*\u2022\u2013" else "", ln)
+        if not ln or re.match(r"^(here'?s|here is|sure|okay|summary)\b.*:\s*$", ln, re.I):
+            continue
+        out.append(ln)
+    return "\n".join(out[:8])[:700]
+
+def _sentences(text):
+    return [x.strip() for x in re.split(r"(?<=[.!?])\s+|\n+", text) if len(x.strip()) > 12]
+
+STOPWORDS = set("""about after also and any are been before between both but can could did does each from had has have her his how into its
+just may more most much must not off only other our out over per she should some such than that the their them then there these they this
+those through too under until upon very was were what when where which while who whom will with within without would you your""".split())
+
+def _stems(text):
+    """The words of a text (3+ letters), lower case; _grounded compares them by their first letters so that 'resumed' / 'resume',
+    'week' / 'weeks' and 'dip' / 'dipped' count as the same word."""
+    return set(re.findall(r"[a-z]{3,}", text.lower()))
+
+def _has_word(w, note_words):
+    """The word, or a form of it ('dip' / 'dipped', 'week' / 'weeks', 'resume' / 'resumed'), is in the note."""
+    n = min(5, len(w))
+    for x in note_words:
+        if w[:n] == x[:n] and len(x) >= n:
+            return True
+        short, long_ = (w, x) if len(w) <= len(x) else (x, w)
+        if len(short) >= 3 and long_.startswith(short) and len(long_) - len(short) <= 3:
+            return True
+    return False
+
+def _numbers(text):
+    """Every number in a text as it is written ('2:00', '14', '1.2', '45'), without a trailing dot or comma."""
+    return {re.sub(r"[.,:]+$", "", n) for n in re.findall(r"\d[\d.,:]*", text)}
+
+def _grounded(piece, note_stems, note_nums):
+    """Is this line made of what the note says? Every number must be a number of the note, and at most 30% of its content words
+    may be missing from the note. A small model invents ('reduces latency by up to 90%', 'exceeded expectations'); this is what
+    keeps those lines off the screen."""
+    if not _numbers(piece) <= note_nums:
+        return False
+    words = [w for w in re.findall(r"[a-z]{4,}", piece.lower()) if w not in STOPWORDS]
+    if not words:
+        return True
+    missing = [w for w in words if not _has_word(w, note_stems)]
+    return len(missing) <= 0.3 * len(words)
+
+def overview_of(text):
+    """What the AI line shows under a note when Settings > Notes > AI overview is on: a one-sentence summary for a short note;
+    for a longer one a headline (the main point, or the FINAL outcome when the note corrects itself) and up to 3 short bullets.
+    Faithful before clever: the model may only use what the note says, and every line it writes is checked against the note
+    (_grounded); lines that are not are dropped. When nothing is left, the note's own first and last sentences are shown.
+    "" when Ollama does not answer."""
+    import urllib.request
+    text = text.strip()
+    if len(text) <= 140 and "\n" not in text:
+        out = summarise_only(text, 18)
+        return out if out and _grounded(out, _stems(text), _numbers(text)) else ""
+    prompt = (
+        "You write a short overview of a note for the person who saved it. Use ONLY facts that are written in the note. "
+        "Do not add numbers, causes, opinions or anything else that is not in the note. Reply with JSON only: "
+        '{"headline": "one sentence", "points": ["short bullet", "short bullet"]}.\n'
+        "headline: one sentence with the main point. If the note first says one thing and later says it turned out "
+        "differently (a rumour, a plan, a forecast that changed), the headline says what finally happened.\n"
+        "points: 2 or 3 short bullets with the most important facts of the note, using its own numbers.\n\n"
+        "Note:\n" + text[:4000] + "\n")
+    body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "format": "json", "think": False,
+                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 220}}).encode()
+    try:
+        req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=90) as r:
+            raw = json.loads(r.read().decode("utf-8", "replace")).get("response", "")
+    except Exception:
+        return ""
+    try:
+        m = re.search(r"\{.*\}", raw, re.S)
+        d = json.loads(m.group(0) if m else raw)
+        head = re.sub(r"\s+", " ", str(d.get("headline") or "")).strip()
+        pts = [re.sub(r"\s+", " ", re.sub(r"\*\*|__|`", "", str(x))).strip(" -*\u2022") for x in (d.get("points") or []) if isinstance(x, str)]
+    except (ValueError, AttributeError, TypeError):
+        head, pts = "", []
+    ns, nn = _stems(text), _numbers(text)
+    head = head if head and _grounded(head, ns, nn) else ""
+    keep = [x for x in pts if x and len(x.split()) <= 20 and _grounded(x, ns, nn)][:3]
+    lines = ([head] if head else []) + ["- " + x for x in keep]
+    if not lines:                                        # nothing the note backs up: show the note's own words, never an invention
+        sents = _sentences(text)
+        pick = [sents[0]] + ([sents[-1]] if len(sents) > 1 else [])
+        lines = [x[:200] for x in pick]
+    return "\n".join(lines)[:600]
+
+EXAMPLE_WORDS = ("mom", "dentist", "plants", "pancake", "wifi", "wi-fi", "router", "lock screen", "dark theme")
+
+def parrots_example(text, summary):
+    """Small models sometimes answer with the sentence of one of the prompt's examples. A summary that names an example's
+    subject the note itself never mentions is that: it is thrown away."""
+    t, sm = text.lower(), summary.lower()
+    return any(w in sm and w not in t for w in EXAMPLE_WORDS)
+
+def plain_summary(text):
+    """What the AI line says when the model's own sentence was unusable: the note itself, shortened."""
+    t = re.sub(r"\s+", " ", text).strip()
+    return ("Note about: " + (t[:90] + ("..." if len(t) > 90 else ""))) if t else ""
+
+def make_why(task, due, later, conf):
+    """What the AI line says when the model gave no sentence of its own (small models often skip it)."""
+    if not task:
+        return "Looks like a plain note: nothing you have to do."
+    if due:
+        return f"A task with a time: I will remind you {due_text(due).lower()}."
+    if later:
+        return f"A task for later today: I will nudge you every {conf['NOTES_NUDGE_HOURS']} h, at most {conf['NOTES_NUDGE_MAX']} times."
+    return "A task with no time named, so no reminder."
 
 def resolve_due(text, when):
     """The model's guess -> an epoch, or None. Small models invent times, so a time is only taken when the note has a digit
@@ -457,12 +651,30 @@ def resolve_due(text, when):
             return None                    # a day that is already over
     return ts
 
-def sort_note(arg):
+def finish_think(nid, think):
+    """Write the AI line of one note (the notes window shows it under the text) and nothing else."""
+    with locked():
+        notes = load_notes()
+        n = next((x for x in notes if x.get("id") == nid), None)
+        if n is None:
+            return
+        if think is None:
+            n.pop("think", None)
+        else:
+            n["think"] = think
+        save_notes(notes)
+    refresh_ui()
+
+def sort_note(arg, force=False):
     """Run in the background after saving. The model is asked WITHOUT holding the lock (it can take seconds); only the small
-    update at the end takes it."""
+    updates take it. While it works the note carries think = {"state": "thinking"} so the notes window can say so, and whatever
+    happens (Ollama down, a crash) that flag is replaced before this returns.
+    force (notes think): ask again about a note that was sorted before; a note that already is a task stays as it is, only the
+    AI line is renewed."""
     conf = read_conf()
-    if conf["NOTES_AI"] != "1":
-        print("[!] Notes AI is off (Settings > Notes, or: notes set NOTES_AI 1)")
+    sort_on, ov_on = conf["NOTES_AI"] == "1", conf["NOTES_OVERVIEW"] == "1"
+    if not (sort_on or ov_on):
+        print("[!] The notes AI is off (Settings > Notes, or: notes set NOTES_AI 1 / notes set NOTES_OVERVIEW 1)")
         return
     notes = load_notes()
     target = find_note(notes, arg)
@@ -470,31 +682,66 @@ def sort_note(arg):
         print(f"[!] Note not found: {arg}")
         return
     nid, text = target.get("id"), (target.get("text") or "").strip()
-    if not text or len(text) > 280 or text.count("\n") > 3 or "task" in target or target.get("sorted"):
+    if not text or len(text) > 6000 or (not force and (target.get("sorted") or target.get("think"))):
         return
-    ans = ask_model(text)
-    if ans is None:
-        print("[!] Ollama did not answer; the note stays a plain note.")
-        return
-    due = resolve_due(text, ans["when"]) if ans["task"] else None
-    with locked():
-        notes = load_notes()
-        n = next((x for x in notes if x.get("id") == nid), None)
-        if n is None or "task" in n or n.get("done"):          # deleted, done or set by hand in the meantime
+    finish_think(nid, {"state": "thinking", "at": time.time()})
+    try:
+        if not sort_on or len(text) > 280 or text.count("\n") > 3:
+            # no task sorting (it is off, or the note is long: an article is never a task): only the overview of what it says
+            ov = overview_of(text)
+            if not ov:
+                finish_think(nid, {"state": "offline", "at": time.time(),
+                                   "why": "Ollama is not running (or did not answer), so there is no overview yet. Start it and use Think on this note."})
+                return
+            with locked():
+                notes = load_notes()
+                n = next((x for x in notes if x.get("id") == nid), None)
+                if n is None:
+                    return
+                n["sorted"] = True
+                n["think"] = {"state": "done", "at": time.time(), "why": ov, "task": bool(n.get("task"))}
+                save_notes(notes)
+            refresh_ui()
             return
-        n["sorted"] = True
-        if ans["task"]:
-            if conf["NOTES_AI_MODE"] == "auto":
-                n["task"] = True
-                n["ai"] = True
-                if due:
-                    n["due"] = due
-                    n["reminded"] = False
+        ans = ask_model(text)
+        if ans is None:
+            finish_think(nid, {"state": "offline", "at": time.time(),
+                               "why": "Ollama is not running (or did not answer), so this stays a plain note. Start it and use Think again on this note."})
+            return
+        due = resolve_due(text, ans["when"]) if ans["task"] else None
+        later = bool(ans["task"] and ans["later"] and not due)
+        why = ans["why"] or plain_summary(text) or make_why(ans["task"], due, later, conf)
+        if ov_on and len(text) > 140:
+            why = overview_of(text) or why
+        if due and ans["why"] and not (ov_on and len(text) > 140):
+            why = (why.rstrip(".") + f"  ·  reminder {due_text(due).lower()}")[:200]
+        with locked():
+            notes = load_notes()
+            n = next((x for x in notes if x.get("id") == nid), None)
+            if n is None:                                              # deleted in the meantime
+                return
+            think = {"state": "done", "at": time.time(), "why": why, "task": bool(ans["task"])}
+            if n.get("done") or (not force and "task" in n):            # done or set by hand in the meantime: only the AI line
+                n["think"] = think
             else:
-                n["suggest"] = {"due": due}
-        save_notes(notes)
-        sync_timer(notes)
-    refresh_ui()
+                n["sorted"] = True
+                n["think"] = think
+                if ans["task"] and "task" not in n:
+                    if conf["NOTES_AI_MODE"] == "auto":
+                        n["task"] = True
+                        n["ai"] = True
+                        if due:
+                            n["due"] = due
+                            n["reminded"] = False
+                        elif later:
+                            start_later(n, conf)
+                    else:
+                        n["suggest"] = {"due": due, "later": later}
+            save_notes(notes)
+            sync_timer(notes)
+        refresh_ui()
+    except Exception as e:
+        finish_think(nid, {"state": "offline", "at": time.time(), "why": "The AI could not finish this note (%s)." % type(e).__name__})
 
 def toggle_task(arg):
     notes = load_notes()
@@ -508,6 +755,7 @@ def toggle_task(arg):
     if not n["task"]:
         n.pop("due", None)
         n.pop("reminded", None)
+        clear_later(n)
     save_notes(notes)
     print(("✓ Task: " if n["task"] else "✓ Plain note: ") + f"\"{n.get('text')}\"")
 
@@ -517,6 +765,17 @@ def set_due(arg, spec):
     if not n:
         print(f"[!] Note not found: {arg}")
         return
+    if (spec or "").strip().lower() in ("later", "later today", "today later", "nudge", "nudges"):
+        n.pop("suggest", None)
+        n["sorted"] = True
+        conf = read_conf()
+        first = start_later(n, conf)
+        save_notes(notes)
+        if first:
+            print(f"⏰ Later today: a nudge about every {conf['NOTES_NUDGE_HOURS']} h from {time.strftime('%H:%M', time.localtime(first))}: \"{n.get('text')}\"")
+        else:
+            print(f"⏰ Later today: it is too late in the day for a nudge; it stays in your tasks: \"{n.get('text')}\"")
+        return
     try:
         ts = parse_when(spec)
     except ValueError as e:
@@ -524,6 +783,7 @@ def set_due(arg, spec):
         return
     n.pop("suggest", None)
     n["sorted"] = True
+    clear_later(n)
     if ts is None:
         n.pop("due", None)
         n.pop("reminded", None)
@@ -549,12 +809,17 @@ def answer_suggestion(arg, yes):
         if sg.get("due"):
             n["due"] = sg["due"]
             n["reminded"] = False
+        elif sg.get("later"):
+            start_later(n, read_conf())
     save_notes(notes)
     print("✓ Task" if yes else "✓ Stays a note")
 
 def remind_check():
-    """What the timer runs every minute: one notification for each task whose time has come (once)."""
+    """What the timer runs every minute: one notification for each task whose time has come (once), and a gentle nudge for each
+    "later today" task whose next nudge has come (every NOTES_NUDGE_HOURS hours, inside the window, at most NOTES_NUDGE_MAX, until midnight)."""
     now = time.time()
+    conf = read_conf()
+    hours, maxn = int(conf["NOTES_NUDGE_HOURS"]), int(conf["NOTES_NUDGE_MAX"])
     notes = load_notes()
     changed = False
     for n in pending_due(notes):
@@ -563,6 +828,26 @@ def remind_check():
             notify("Reminder" if not late else "Reminder (a little late)", (n.get("text") or "").strip()[:200])
             n["reminded"] = True
             changed = True
+    for n in notes:
+        if not isinstance(n, dict) or not n.get("later"):
+            continue
+        if now > n["later"] or n.get("done") or not n.get("task"):       # the day is over (or it is done): no more nudges
+            clear_later(n)
+            changed = True
+            continue
+        if not n.get("nudge_at") or now < n["nudge_at"]:
+            continue
+        _, fr, to, _ = day_window(now, conf)
+        if now < fr:                                                      # woke up before the window: wait for it
+            n["nudge_at"] = fr
+        elif now >= to or n.get("nudges", 0) >= maxn:                     # window closed for today / enough nudges
+            n["nudge_at"] = None
+        else:
+            notify("Still on your list", (n.get("text") or "").strip()[:200])
+            n["nudges"] = n.get("nudges", 0) + 1
+            nxt = now + hours * 3600
+            n["nudge_at"] = nxt if (nxt < to and nxt < n["later"] and n["nudges"] < maxn) else None
+        changed = True
     if changed:
         save_notes(notes)
     sync_timer(notes)
@@ -582,15 +867,19 @@ def list_tasks():
 
 def conf_json():
     c = read_conf()
-    print(json.dumps({"NOTES_AI": c["NOTES_AI"] == "1", "NOTES_AI_MODE": c["NOTES_AI_MODE"],
-                      "ollama": ollama_up() if c["NOTES_AI"] == "1" else None, "model": model_name()}))
+    print(json.dumps({"NOTES_AI": c["NOTES_AI"] == "1", "NOTES_OVERVIEW": c["NOTES_OVERVIEW"] == "1", "NOTES_AI_MODE": c["NOTES_AI_MODE"],
+                      "NOTES_NUDGE_HOURS": c["NOTES_NUDGE_HOURS"], "NOTES_NUDGE_MAX": c["NOTES_NUDGE_MAX"],
+                      "NOTES_NUDGE_FROM": c["NOTES_NUDGE_FROM"], "NOTES_NUDGE_TO": c["NOTES_NUDGE_TO"],
+                      "ollama": ollama_up() if "1" in (c["NOTES_AI"], c["NOTES_OVERVIEW"]) else None, "model": model_name()}))
 
 def set_conf(k, v):
     c = read_conf()
-    if k == "NOTES_AI":
+    if k in ("NOTES_AI", "NOTES_OVERVIEW"):
         c[k] = "1" if str(v).lower() in ("1", "true", "on", "yes") else "0"
     elif k == "NOTES_AI_MODE" and v in ("ask", "auto"):
         c[k] = v
+    elif k in CONF_RANGE and str(v).isdigit() and CONF_RANGE[k][0] <= int(v) <= CONF_RANGE[k][1]:
+        c[k] = str(int(v))
     else:
         print(f"[!] unknown key or value: {k}={v}")
         return
@@ -614,7 +903,7 @@ def main():
                 sync_timer()        # the minute timer only runs while a task with a time is waiting
 
 READ_ONLY = ("list", "ls", "json")
-NO_LOCK = ("sort",)
+NO_LOCK = ("sort", "think")
 
 def is_ref(a):
     return a.isdigit() or a.startswith("n_")
@@ -622,9 +911,9 @@ def is_ref(a):
 def run(cmd, args):
     # the new words only count as commands when they are used like commands, so "notes set the table" is still a note
     if (cmd in ("tasks", "conf", "remind-check") and len(args) > 1) \
-            or (cmd in ("task", "sort", "accept", "dismiss") and not (len(args) == 2 and is_ref(args[1]))) \
+            or (cmd in ("task", "sort", "think", "accept", "dismiss") and not (len(args) == 2 and is_ref(args[1]))) \
             or (cmd == "due" and not (len(args) > 2 and is_ref(args[1]))) \
-            or (cmd == "set" and not (len(args) == 3 and args[1] in ("NOTES_AI", "NOTES_AI_MODE"))):
+            or (cmd == "set" and not (len(args) == 3 and args[1] in CONF_DEFAULTS)):
         add_note(" ".join(args))
         return
     if cmd in ("list", "ls"):
@@ -639,12 +928,17 @@ def run(cmd, args):
         if len(args) > 2:
             set_conf(args[1], args[2])
         else:
-            print("usage: notes set NOTES_AI 0|1  |  notes set NOTES_AI_MODE ask|auto")
+            print("usage: notes set NOTES_AI 0|1  |  NOTES_OVERVIEW 0|1  |  NOTES_AI_MODE ask|auto  |  NOTES_NUDGE_HOURS 1..12  |  NOTES_NUDGE_MAX 1..12  |  NOTES_NUDGE_FROM 0..23  |  NOTES_NUDGE_TO 1..24")
     elif cmd == "sort":
         if len(args) > 1:
             sort_note(args[1])
         else:
             print("usage: notes sort <number or id>")
+    elif cmd == "think":
+        if len(args) > 1:
+            sort_note(args[1], force=True)
+        else:
+            print("usage: notes think <number or id>")
     elif cmd == "task":
         if len(args) > 1:
             toggle_task(args[1])
@@ -654,7 +948,7 @@ def run(cmd, args):
         if len(args) > 2:
             set_due(args[1], " ".join(args[2:]))
         else:
-            print("usage: notes due <number> <18:00 | 6pm | +30m | +2h | tomorrow 09:00 | none>")
+            print("usage: notes due <number> <18:00 | 6pm | +30m | +2h | tomorrow 09:00 | later | none>")
     elif cmd in ("accept", "dismiss"):
         if len(args) > 1:
             answer_suggestion(args[1], cmd == "accept")

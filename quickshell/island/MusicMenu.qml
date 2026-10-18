@@ -9,8 +9,10 @@ import Quickshell.Wayland
 // A panel on the side of the screen (same place and look as the clipboard and new-note panels) with two tabs: the lyrics of the song
 // that is playing, and what plays next. Tab (or Left / Right) switches, Up / Down / Page Up / Page Down scroll, R reads again, Esc closes.
 //
-// The data is scripts/halcyon-music.py, which asks the `spotify_player` command line (`spotify_player lyrics`, `get key queue`).
-// That is YOUR Spotify account's own answer: no third-party lyrics site, nothing to set up. The queue is read-only: spotify_player has
+// The data is scripts/halcyon-music.py. LYRICS work with any player that speaks MPRIS: the panel hands the helper the title, artist,
+// album, length and file of what plays, and the helper asks (music.conf LYRICS_SOURCE, default auto): a .lrc / .txt next to the song
+// file, then lrclib.net (free, no account), then api.lyrics.ovh, then `spotify_player` if it is installed. spotify_player is optional.
+// The QUEUE is still Spotify's (`spotify_player get key queue`), so that tab needs it. The queue is read-only: spotify_player has
 // no "play this one now" command, so a row is not a button.
 //
 // Nothing runs while the panel is closed (LazyLoader, no surface, no timer, no process). While it is open it asks once when it opens,
@@ -27,6 +29,9 @@ Scope {
     property string spot: "tl"              // where the pop-out console opens (the panel goes to the other side)
     property string title: ""               // what the media page shows (only used to notice a song change)
     property string artist: ""
+    property string album: ""
+    property real duration: 0               // seconds, 0 = unknown (helps pick the right version of a song)
+    property string fileUrl: ""             // file:// address of the song when the player plays a local file (for a .lrc next to it)
     property bool open: false
     property string tab: "lyrics"           // lyrics | queue
 
@@ -93,7 +98,8 @@ Scope {
     }
     Process {
         id: lyrProc
-        command: ["python3", root.script, "lyrics", "json"]
+        command: ["python3", root.script, "lyrics", "json", "--title", root.title, "--artist", root.artist, "--album", root.album,
+                  "--duration", String(Math.round(root.duration)), "--url", root.fileUrl]
         stdout: StdioCollector {
             onStreamFinished: {
                 var d = null
@@ -168,7 +174,7 @@ Scope {
     }
     readonly property string counter: {
         if (busy) return "Reading ..."
-        if (tab === "lyrics") return lyr.ok ? lyr.lines.filter(function (l) { return l !== "" }).length + " lines" : ""
+        if (tab === "lyrics") return lyr.ok ? lyr.lines.filter(function (l) { return l !== "" }).length + " lines" + (lyr.source ? "   \u00b7   " + ({ lrclib: "LRCLIB", ovh: "lyrics.ovh", local: "local file", spotify: "Spotify" }[lyr.source] || lyr.source) : "") : ""
         return que.ok ? (que.total + (que.total === 1 ? " song next" : " songs next")) : ""
     }
 
@@ -403,7 +409,7 @@ Scope {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                visible: root.busy
+                                visible: root.busy && root.tab === "queue"
                                 horizontalAlignment: Text.AlignHCenter
                                 wrapMode: Text.Wrap
                                 text: "The first read can take a few seconds when spotify_player is not already running."
@@ -424,7 +430,7 @@ Scope {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Tab switches   \u00b7   Up / Down scroll   \u00b7   R reads again   \u00b7   Esc closes   \u00b7   From your Spotify account"
+                            text: "Tab switches   \u00b7   Up / Down scroll   \u00b7   R reads again   \u00b7   Esc closes"
                             elide: Text.ElideRight
                             color: Qt.alpha(root.pal.muted, 0.85)
                             font.family: root.pal.uiFont
