@@ -93,7 +93,7 @@ smart_rel=( .cache .thumbnails .local/share/Trash .local/share/gvfs-metadata .lo
 smart_any=( node_modules __pycache__ )
 conf="$HOME/.config/Halcyon/backup-exclude.conf"      # your own additions: one rsync pattern per line
 if [ "$SMART" = 1 ]; then
-  excl+=(--exclude-if-present=CACHEDIR.TAG --exclude-if-present=.nobackup)
+  # (rsync has no --exclude-if-present: folders holding CACHEDIR.TAG or .nobackup are found below and passed as --exclude-from)
   if [ "$HOME_ONLY" = 1 ]; then
     for r in "${smart_rel[@]}"; do excl+=("--exclude=/$r"); done
     for a in "${smart_any[@]}"; do excl+=("--exclude=$a"); done
@@ -138,6 +138,30 @@ if [ "$SMART" = 1 ]; then
 fi
 [ "$DRY" = 1 ] || { printf 'Start the backup? [Y/n] '; read -r ok; case "$ok" in n|N|no|No|NO) echo cancelled; exit 0 ;; esac; }
 
+# Folders that carry a CACHEDIR.TAG (the standard "this is only a cache" marker) or an empty .nobackup file are left out whole.
+# rsync cannot do that by itself, so look for the markers first and give rsync the folders as exact, anchored excludes.
+exfile=""
+if [ "$SMART" = 1 ]; then
+  exfile=$(mktemp 2>/dev/null) || exfile=""
+  if [ -n "$exfile" ]; then
+    trap 'rm -f "$exfile"' EXIT
+    if [ "$HOME_ONLY" = 1 ]; then scan=("$HOME"); strip="$HOME"; else scan=(/home /root); strip=""; fi
+    printf '%sLooking for folders marked CACHEDIR.TAG / .nobackup ...%s\n' "$D" "$N"
+    while IFS= read -r -d '' f; do
+      d=${f%/*}
+      case "${f##*/}" in
+        CACHEDIR.TAG) head -c 43 "$f" 2>/dev/null | grep -q '^Signature: 8a477f597d28d172789f06886806bc55' || continue ;;
+      esac
+      [ -n "$strip" ] && d=${d#"$strip"}
+      [ -n "$d" ] || continue                                   # never exclude the whole transfer root
+      d=$(printf '%s' "$d" | sed 's/[][*?\\]/\\&/g')            # a folder name with * ? [ ] or \ must match literally
+      printf '%s/\n' "$d" >> "$exfile"
+    done < <(timeout 120 find "${scan[@]}" -xdev \( -name node_modules -o -name .cache -o -path "*/steamapps/common" \) -prune -o \
+               \( -name CACHEDIR.TAG -o -name .nobackup \) -type f -print0 2>/dev/null)
+    [ -s "$exfile" ] && excl+=("--exclude-from=$exfile")
+  fi
+fi
+
 opts=("${flags[@]}" --info=progress2 --human-readable --numeric-ids "${excl[@]}")
 [ "$link" = 1 ] && [ -e "$root/latest" ] && opts+=("--link-dest=$(readlink -f "$root/latest")")
 [ "$DRY" = 1 ] && opts+=(--dry-run)
@@ -154,4 +178,9 @@ if [ "$rc" = 0 ] || [ "$rc" = 24 ]; then
     bash "${HALCYON_DIR:-$HOME/.config/Halcyon}/scripts/remind.sh" done backup 2>/dev/null   # for Settings > Backup > Remind me
     have udisksctl && { printf 'Safely eject the disk now? [Y/n] '; read -r e; case "$e" in n|N|no|No|NO) ;; *) udisksctl unmount -b "$dev" >/dev/null 2>&1 && udisksctl power-off -b "${dev%%[0-9]*}" >/dev/null 2>&1; echo "You can unplug it." ;; esac; }
   fi
-else printf '\n%s✘ rsync stopped with code %s.%s The unfinished copy is in %s : run again to continue (it is not marked as "latest").\n' "$R" "$rc" "$N" "$dest"; exit "$rc"; fi
+else
+  rmdir "$dest" 2>/dev/null          # nothing was copied: do not leave an empty dated folder on the disk
+  if [ -d "$dest" ]; then printf '\n%s✘ rsync stopped with code %s.%s The partly copied folder is %s (not marked as "latest"). Running again starts a new dated folder; delete this one when you no longer need it.\n' "$R" "$rc" "$N" "$dest"
+  else printf '\n%s✘ rsync stopped with code %s before copying anything.%s Nothing was left on the disk.\n' "$R" "$rc" "$N"; fi
+  exit "$rc"
+fi

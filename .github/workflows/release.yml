@@ -1,0 +1,34 @@
+name: release
+# Push a tag (git tag v1.2.3 && git push --tags): this builds every helper once and attaches them to the GitHub release, with a
+# SHA256SUMS list. install.sh downloads them when the checkout is exactly that tag, so users need no Rust toolchain.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    # an older Ubuntu on purpose: binaries built against its glibc also run on newer distros (Arch, Debian testing, ...)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: libraries some crates need (evdev)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build every helper
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          export CARGO_TARGET_DIR="$PWD/target"
+          for c in attacker-dossier birthday-sync hal hx log-analyst power-manager recon-deceiver safety-check setStaticMac touchpad-gestures; do
+            cargo build --release --locked --manifest-path "src/$c/Cargo.toml"
+            cp "target/release/$c" "dist/$c-x86_64-linux"
+          done
+          (cd dist && sha256sum ./* | sed 's#  \./#  #' > SHA256SUMS && cat SHA256SUMS)
+      - name: attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
