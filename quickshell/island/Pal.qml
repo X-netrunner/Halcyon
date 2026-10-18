@@ -270,6 +270,10 @@ Scope {
     // animate); artFps = how often they update, 0 = every frame of the screen
     property int artQuality: 2
     property int artFps: 0
+    // On battery (a laptop that is not plugged in) the moving stars redraw half as often: same drift speed (it follows the clock),
+    // half the repaints. Every star timer multiplies its interval by this.
+    property bool lowPower: false
+    readonly property real starSlow: lowPower ? 2 : 1
     // Settings > Performance > Tree view: the constellation behind the tree (full | corner | off) and where its floating dots gather
     property string treeConst: "full"
     property string treeConstCorner: "br"

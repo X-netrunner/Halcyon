@@ -16,7 +16,7 @@ Item {
     readonly property bool live: active && visible && width > 0 && (pal ? pal.motion > 0.3 : true)
     property real t: 0
     Timer {
-        interval: 66
+        interval: Math.round(66 * (root.pal ? root.pal.starSlow : 1))
         repeat: true
         running: root.live
         onTriggered: root.t = (root.t + interval / root.loopMs) % 1

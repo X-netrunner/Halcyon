@@ -26,7 +26,7 @@ Item {
     property real lastMs: 0
 
     Timer {
-        interval: 40
+        interval: Math.round(40 * (root.pal ? root.pal.starSlow : 1))
         repeat: true
         running: root.live
         onRunningChanged: root.lastMs = 0

@@ -22,6 +22,7 @@
 #                                  scheme/current.lua and the other files of yours).
 #
 # Environment: HALCYON_REPO (another repository / fork)   HALCYON_DIR (another folder than ~/.config/Halcyon)
+#               HALCYON_REF (a tag, branch or commit to install instead of the newest HEAD, e.g. HALCYON_REF=v1.2.3)
 #
 # You are piping a script into bash: read it first if you like (curl -fsSL <the url above> | less). It only runs git and
 # install.sh from the repository above, never as root, and asks for sudo only where install.sh needs it.
@@ -113,6 +114,14 @@ main() {
   if ! timeout 600 git clone --quiet "$REPO_URL" "$SRC"; then
     [ "$kind" = fresh ] && rm -rf "$SRC"
     die "git clone failed"
+  fi
+  # HALCYON_REF=v1.2.3 (a tag, a branch or a full commit hash) installs exactly that, instead of whatever HEAD is today
+  if [ -n "${HALCYON_REF:-}" ]; then
+    if ! git -C "$SRC" -c advice.detachedHead=false checkout --quiet "$HALCYON_REF" 2>/dev/null; then
+      [ "$kind" = fresh ] && rm -rf "$SRC"
+      die "HALCYON_REF '$HALCYON_REF' does not exist in $REPO_URL"
+    fi
+    ok "using $HALCYON_REF (pinned: to move to another version run get.sh again with a new HALCYON_REF)"
   fi
   [ -f "$SRC/install.sh" ] || { [ "$kind" = fresh ] && rm -rf "$SRC"; die "the download has no install.sh"; }
   local COMMIT; COMMIT=$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)

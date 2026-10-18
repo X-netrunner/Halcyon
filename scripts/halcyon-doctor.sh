@@ -167,3 +167,28 @@ else
   ok "available RAM: ${avail_mb} MB"
 fi
 echo
+
+hdr "Optional tools (a missing one only switches its own feature off)"
+# name|what needs it|package
+opt_tools='cava|audio visualiser in the music widgets|cava
+magick|wallpaper colours (hx palette), portrait sky|imagemagick
+brightnessctl|brightness keys and the top-edge gesture|brightnessctl
+playerctl|media keys, now playing|playerctl
+wl-copy|clipboard history|wl-clipboard
+grim|screenshots|grim
+slurp|area screenshots|slurp
+clamscan|leak and malware checks (halcyon-leaks)|clamav
+dmidecode|exact hardware names in the specs panel (needs root)|dmidecode
+nmap|sysmode counter-recon|nmap
+tcpdump|sysmode packet capture|tcpdump
+ufw|sysmode firewall and honeypot bans|ufw
+docker|sysmode honeypot runtime|docker
+python3|Notes, local AI, calendar import, lyrics, Focus mode|python'
+missing=0
+while IFS='|' read -r cmd what pkg; do
+  [ -n "$cmd" ] || continue
+  if have "$cmd"; then ok "$cmd"
+  else warn "$cmd not found: $what ($PKG_INSTALL $pkg)"; missing=$((missing+1)); fi
+done <<<"$opt_tools"
+[ "$missing" -eq 0 ] && ok "every optional tool is installed"
+echo

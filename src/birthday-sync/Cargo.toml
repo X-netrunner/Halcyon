@@ -10,7 +10,7 @@ sha2 = "0.10"
 base64 = "0.21"
 
 [profile.release]
-opt-level = 3
+opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true
