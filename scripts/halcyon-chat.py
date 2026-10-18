@@ -92,7 +92,7 @@ MODEL_ALIASES = getattr(ADV, "MODEL_ALIASES", {}) if ADV else {}
 def model():
     if ADV:
         return ADV.get_advisor_model()
-    return os.environ.get("HALCYON_AI_MODEL", "llama3.2:1b")
+    return os.environ.get("HALCYON_AI_MODEL", "qwen2.5:3b-instruct")
 
 def snapshot():
     if not ADV:

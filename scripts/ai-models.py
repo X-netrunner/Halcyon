@@ -108,11 +108,11 @@ def current_model(have):
     except OSError:
         pass
     names = [h["name"] for h in have]
-    for pref in ("llama3.1:8b", "llama3.2:3b", "qwen2.5:3b", "llama3.2:1b"):
+    for pref in ("llama3.1:8b", "llama3.2:3b", "qwen2.5:3b", "llama3.2:1b"):      # "qwen2.5:3b" also matches qwen2.5:3b-instruct
         for n in names:
             if n.startswith(pref):
                 return n
-    return names[0] if names else "llama3.2:1b"
+    return names[0] if names else "qwen2.5:3b-instruct"
 
 
 def hardware():

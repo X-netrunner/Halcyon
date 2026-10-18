@@ -1113,15 +1113,15 @@ detect_hardware_tier() {
     if [[ "$ram_gb" -lt 8 ]] || [[ "$cpus" -le 2 ]]; then
         tier_name="Tier 1: Minimal / Low-end"
         rec_model="qwen2.5:0.5b"
-        tier_reason="Low RAM/CPU detected. qwen2.5:0.5b (~390 MB) provides instant response with virtually zero RAM footprint."
+        tier_reason="Low RAM/CPU detected. qwen2.5:0.5b (~390 MB) provides instant response with virtually zero RAM footprint. (The Notes AI overview is better on qwen2.5:3b-instruct, ~1.9 GB, if you have room.)"
     elif [[ "$vram_mb" -ge 4000 ]] || ([[ "$ram_gb" -ge 16 ]] && [[ "$cpus" -ge 8 ]]); then
         tier_name="Tier 3: High-Performance / Dedicated GPU"
-        rec_model="llama3.2:1b"
-        tier_reason="Strong hardware detected (${cpus} threads, ~${ram_gb} GB RAM, ${gpu_desc}). llama3.2:1b (~1.3 GB) is fast and good for short, structured tasks. For deeper answers, switch later with: advisor model 3b"
+        rec_model="qwen2.5:3b-instruct"
+        tier_reason="Strong hardware detected (${cpus} threads, ~${ram_gb} GB RAM, ${gpu_desc}). qwen2.5:3b-instruct (~1.9 GB) follows rules and keeps facts straight, which the Notes AI overview needs (it gave the best, most consistent overviews in our tests, 3-6 s a note), and it is let go from memory 10 s after use. For long chats a bigger model is better: advisor model 8b"
     else
         tier_name="Tier 2: Mid-Range / Standard"
         rec_model="qwen2.5:1.5b"
-        tier_reason="Standard hardware detected. qwen2.5:1.5b (~1.0 GB) delivers ideal balance of speed, low memory usage, and structured advice."
+        tier_reason="Standard hardware detected. qwen2.5:1.5b (~1.0 GB) delivers ideal balance of speed, low memory usage, and structured advice. (The Notes AI overview is better on qwen2.5:3b-instruct, ~1.9 GB: pick it below if you want that.)"
     fi
 
     echo "$ram_gb|$cpus|$gpu_desc|$vram_mb|$tier_name|$rec_model|$tier_reason"
@@ -1140,7 +1140,7 @@ choose_apps() {
     # saved safety-check answer (same rule: the command line wins, --choose asks again)
     [[ "$SAFETY_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_c" ]] && { [[ "$s_c" == yes ]] && SAFETY=true || SAFETY=false; SAFETY_ASKED=true; }
     # saved LLM answer
-    [[ "$LLM_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_l" ]] && { [[ "$s_l" == yes ]] && INSTALL_LLM=true || INSTALL_LLM=false; PICK_LLM_MODEL="${s_lm:-llama3.2:1b}"; LLM_ASKED=true; }
+    [[ "$LLM_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_l" ]] && { [[ "$s_l" == yes ]] && INSTALL_LLM=true || INSTALL_LLM=false; PICK_LLM_MODEL="${s_lm:-$(detect_hardware_tier | cut -d'|' -f6)}"; LLM_ASKED=true; }
 
     if [[ "$interactive" == "true" ]]; then
         [[ -z "$PICK_BROWSER" && ( "$CHOOSE" == "true" || -z "$s_b" ) ]] && ask_b=true
@@ -1207,9 +1207,10 @@ choose_apps() {
         if confirm "  Install local AI advisor with Ollama?"; then
             INSTALL_LLM=true
             menu_pick PICK_LLM_MODEL "AI Advisor Model" "$h_rec" 0 \
-                "llama3.2:1b|Llama 3.2 1B|~1.3 GB, lightning fast, high quality reasoning (Tier 3 Pick)" \
-                "qwen2.5:1.5b|Qwen 2.5 1.5B|~1.0 GB, ultra-compact, great structured output (Tier 2 Pick)" \
+                "qwen2.5:3b-instruct|Qwen 2.5 3B Instruct|~1.9 GB, best Notes AI overview in our tests, follows rules well (Tier 3 Pick)" \
+                "qwen2.5:1.5b|Qwen 2.5 1.5B|~1.0 GB, ultra-compact, good structured output (Tier 2 Pick)" \
                 "qwen2.5:0.5b|Qwen 2.5 0.5B|~390 MB, absolute minimal memory footprint (Tier 1 Pick)" \
+                "llama3.2:1b|Llama 3.2 1B|~1.3 GB, fast, fine for short answers (the Notes overview may copy text)" \
                 "llama3.2:3b|Llama 3.2 3B|~2.0 GB, balanced deeper analysis (needs >=3GB free VRAM/RAM)" \
                 "keep|Keep existing / custom|use existing local model without pulling another"
             if [[ "$PICK_LLM_MODEL" == "keep" ]]; then
@@ -1224,7 +1225,7 @@ choose_apps() {
         local hw_data IFS='|'
         hw_data=($(detect_hardware_tier))
         unset IFS
-        PICK_LLM_MODEL="${hw_data[5]:-llama3.2:1b}"
+        PICK_LLM_MODEL="${hw_data[5]:-qwen2.5:1.5b}"
     fi
     # ---- check the names (a typo in --browser must not silently install nothing)
     local lst

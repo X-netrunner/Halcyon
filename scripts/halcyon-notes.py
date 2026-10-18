@@ -208,7 +208,8 @@ def clear_done():
 #  Tasks: "call mom at 6" -> a task with a time, and a notification when the time comes
 # =====================================================================================================================
 CONF_DEFAULTS = {"NOTES_AI": "0", "NOTES_OVERVIEW": "0", "NOTES_AI_MODE": "ask", "NOTES_NUDGE_HOURS": "3", "NOTES_NUDGE_MAX": "4",
-                 "NOTES_NUDGE_FROM": "9", "NOTES_NUDGE_TO": "21"}
+                 "NOTES_NUDGE_FROM": "9", "NOTES_NUDGE_TO": "21", "NOTES_MODEL": ""}
+DEFAULT_MODEL = "qwen2.5:3b-instruct"      # what the notes AI was tested and tuned on (fast, keeps facts and tenses straight)
 CONF_RANGE = {"NOTES_NUDGE_HOURS": (1, 12), "NOTES_NUDGE_MAX": (1, 12), "NOTES_NUDGE_FROM": (0, 23), "NOTES_NUDGE_TO": (1, 24)}
 
 def read_conf():
@@ -242,7 +243,7 @@ def write_conf(c):
     keep = []
     try:                       # lines that are not ours stay as they are
         with open(CONF_FILE, "r", encoding="utf-8") as f:
-            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*(NOTES_AI(_MODE)?|NOTES_OVERVIEW|NOTES_NUDGE_(HOURS|MAX|FROM|TO))=", l)]
+            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*(NOTES_AI(_MODE)?|NOTES_OVERVIEW|NOTES_MODEL|NOTES_NUDGE_(HOURS|MAX|FROM|TO))=", l)]
     except OSError:
         pass
     fd, tmp = tempfile.mkstemp(prefix="notes.conf.", dir=os.path.dirname(CONF_FILE))
@@ -269,17 +270,21 @@ def ollama_up():
         return False
 
 def model_name():
-    """The same model `ai` and the advisor use (HALCYON_AI_MODEL, else MODEL= in ai-advisor.conf)."""
+    """The model the notes AI asks: HALCYON_AI_MODEL, else NOTES_MODEL (notes set NOTES_MODEL <name>; empty = not set), else the one
+    `ai` and the advisor use (MODEL= in ai-advisor.conf), else qwen2.5:3b-instruct."""
     if os.environ.get("HALCYON_AI_MODEL"):
         return os.environ["HALCYON_AI_MODEL"].strip()
+    own = read_conf().get("NOTES_MODEL", "").strip()
+    if own:
+        return own
     try:
         with open(os.path.join(RICE, "ai-advisor.conf"), "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith("MODEL="):
-                    return line.split("=", 1)[1].strip().strip('"\'') or "llama3.2:1b"
+                    return line.split("=", 1)[1].strip().strip('"\'') or DEFAULT_MODEL
     except OSError:
         pass
-    return "llama3.2:1b"
+    return DEFAULT_MODEL
 
 DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
@@ -490,7 +495,7 @@ def ask_model(text):
     why = out.get("summary") if isinstance(out.get("summary"), str) else out.get("why")   # "why" = older answers
     why = re.sub(r"\s+", " ", why).strip().strip('"') if isinstance(why, str) else ""
     if not why or parrots_example(text, why):
-        why = summarise_only(text)          # the model copied an example (or said nothing): ask it again, only for the summary
+        why = summarise_only(text) or ""    # the model copied an example (or said nothing): ask it again, only for the summary
     return {"task": out["task"], "when": when if isinstance(when, str) and when.strip() else None,
             "later": out.get("later") is True, "why": why[:160]}
 
@@ -506,7 +511,7 @@ def summarise_only(text, words=18):
         with urllib.request.urlopen(req, timeout=60) as r:
             raw = json.loads(r.read().decode("utf-8", "replace")).get("response", "")
     except Exception:
-        return ""
+        return None
     out = re.sub(r"\s+", " ", raw).strip().strip('"')
     return "" if parrots_example(text, out) else out[:240]
 
@@ -520,6 +525,46 @@ def clean_overview(raw):
             continue
         out.append(ln)
     return "\n".join(out[:8])[:700]
+
+CODE_START = re.compile(r"^\s*(\$ |sudo |#!/|#include|import |from \w+ import |def |class |fn |let |const |var |function |pub |use |impl |if ?\(|for ?\(|while ?\(|[{}]\s*$)")
+
+def code_label(text):
+    """A static line for a note that is source code or terminal commands (a language model only grabs lines of it): "" when the
+    note is ordinary text."""
+    t = text.strip().strip('"\u201c\u201d\u0027').strip()      # a snippet pasted inside quotes
+    lines = [l for l in t.split("\n") if l.strip()]
+    m = re.search(r"```\s*([A-Za-z0-9+#_-]*)", t)
+    if not m:
+        hits = sum(1 for l in lines if CODE_START.match(l) or l.rstrip().endswith((";", "{", "}")))
+        if len(lines) < 2 or hits < 0.6 * len(lines):
+            return ""
+    lang = (m.group(1).lower() if m else "")
+    names = {"rs": "Rust", "rust": "Rust", "py": "Python", "python": "Python", "js": "JavaScript", "javascript": "JavaScript",
+             "ts": "TypeScript", "sh": "Shell", "bash": "Shell", "fish": "Shell", "c": "C", "cpp": "C++", "go": "Go", "lua": "Lua",
+             "qml": "QML", "json": "JSON", "html": "HTML", "css": "CSS"}
+    if lang in names:
+        lang = names[lang]
+    else:
+        if re.search(r"\bfn \w+|let mut |\bimpl\b|println!", t): lang = "Rust"
+        elif re.search(r"^\s*(def \w+\(|import \w+|from \w+ import)", t, re.M): lang = "Python"
+        elif re.search(r"#include|std::|int main", t): lang = "C/C++"
+        elif re.search(r"\bfunction\b|=>|console\.log|\bconst \w+ =", t): lang = "JavaScript"
+        elif re.search(r"^\s*(\$ |sudo |#!/)", t, re.M): lang = "Shell"
+        else: lang = ""
+    n = len([l for l in lines if not l.strip().startswith("```")])
+    what = "Terminal commands" if lang == "Shell" else ("Code snippet" + (f" ({lang})" if lang else ""))
+    return f"{what}, {n} line{'s' if n != 1 else ''}"
+
+# a to-do must never come back as a done thing: these words may only be in an overview when the note itself says them
+DONE_WORDS = ("fixed", "completed", "finished", "resolved", "solved", "done", "paid", "sent", "called", "booked", "bought",
+              "cleaned", "submitted", "installed", "updated", "created", "cancelled", "canceled", "cleared")
+
+def _tense_ok(piece, note):
+    low_note = set(re.findall(r"[a-z]+", note.lower()))
+    return all(w in low_note for w in re.findall(r"[a-z]+", piece.lower()) if w in DONE_WORDS)
+
+def _word_count(text):
+    return len(re.findall(r"\w+", text))
 
 def _sentences(text):
     return [x.strip() for x in re.split(r"(?<=[.!?])\s+|\n+", text) if len(x.strip()) > 12]
@@ -548,17 +593,87 @@ def _numbers(text):
     """Every number in a text as it is written ('2:00', '14', '1.2', '45'), without a trailing dot or comma."""
     return {re.sub(r"[.,:]+$", "", n) for n in re.findall(r"\d[\d.,:]*", text)}
 
-def _grounded(piece, note_stems, note_nums):
+def _grounded(piece, note_stems, note_nums, note=None):
     """Is this line made of what the note says? Every number must be a number of the note, and at most 30% of its content words
     may be missing from the note. A small model invents ('reduces latency by up to 90%', 'exceeded expectations'); this is what
     keeps those lines off the screen."""
     if not _numbers(piece) <= note_nums:
+        return False
+    if note is not None and not _tense_ok(piece, note):
         return False
     words = [w for w in re.findall(r"[a-z]{4,}", piece.lower()) if w not in STOPWORDS]
     if not words:
         return True
     missing = [w for w in words if not _has_word(w, note_stems)]
     return len(missing) <= 0.3 * len(words)
+
+def checklist_of(text):
+    """A note that is a list of 3+ bullets / dashes / numbers: shown as it is (no model, so nothing can be dropped, invented or put
+    in the wrong tense): 'Checklist, 4 items' and the items. \"\" when the note is not a list."""
+    t = text.strip()
+    marks = len(re.findall(r"[\u2022\u25cf\u25aa\u25e6\u2023]|(?:^|\n)\s*(?:[-*]\s+|\d{1,2}[.)]\s+)", t))
+    if marks < 3:
+        return ""
+    parts = re.split(r"[\u2022\u25cf\u25aa\u25e6\u2023]|\n\s*(?:[-*]\s+|\d{1,2}[.)]\s+)", t)
+    items = [re.sub(r"\s+", " ", x).strip(" -*\n") for x in parts]
+    items = [x for x in items if x]
+    if len(items) < 3:
+        return ""
+    lines = [f"Checklist, {len(items)} items"] + ["- " + (x if len(x) <= 70 else x[:67].rstrip() + "...") for x in items[:6]]
+    if len(items) > 6:
+        lines.append(f"- and {len(items) - 6} more")
+    return "\n".join(lines)
+
+NEG_RE = re.compile(r"\b(fell|fall|falls|fallen|dip|dipped|drop|dropped|decline|declined|down|loss|losses|lower|slump|slumped|cut|cuts|worse|reduced|shrank)\b", re.I)
+ORDINAL_RE = re.compile(r"^(first|second|third|fourth|finally|however|despite)\b", re.I)
+
+def _trim(s, n=22):
+    """A sentence of at most n words: whole when short, else its first clause, else its first n words."""
+    s = re.sub(r"\s+", " ", s).strip()
+    if len(s.split()) <= n:
+        return s
+    for piece in re.split(r",\s+|;\s+", s):
+        if 6 <= len(piece.split()) <= n:
+            return piece
+    return " ".join(s.split()[:n]) + "..."
+
+def _percents(text):
+    return set(re.findall(r"\d[\d.,]*\s*%", text))
+
+def missing_bad_news(lines, text):
+    """A small model likes good news: a decline that has a figure in the note ('net income fell by 3%', 'the stock dipped 4%') and
+    is not in any line of the overview is added from the note's own words (as a clause of the note, so it is grounded)."""
+    shown = " ".join(lines)
+    extra = []
+    for sent in _sentences(text):
+        if not NEG_RE.search(sent):
+            continue
+        for clause in re.split(r",\s+(?:while|but|and)\s+|;\s+|\s+while\s+|\s+but\s+", sent):
+            if NEG_RE.search(clause):
+                pc = _percents(clause)
+                if pc and not any(re.search(r"(?<![\d.,])" + re.escape(x.replace(" ", "")), shown.replace(" ", "")) for x in pc):
+                    c = _trim(clause.strip().rstrip("."))
+                    extra.append("- " + c[:1].upper() + c[1:])
+    return extra
+
+def _content(x):
+    return {w[:5] for w in re.findall(r"[a-z]{4,}", x.lower()) if w not in STOPWORDS}
+
+def _overlap(a, b):
+    """How much of the shorter text's content words are in the other (0..1)."""
+    A, B = _content(a), _content(b)
+    return len(A & B) / min(len(A), len(B)) if A and B else 0.0
+
+PIVOT_RE = re.compile(r"^(however|but|yet|later|by \d|by (?:noon|evening|afternoon|the end)|in the end|eventually|finally|update|turned out)\b|\bturned out\b|\bconfirm(?:ed|ing)\b", re.I)
+INITIAL_RE = re.compile(r"\b(initial(?:ly)?|early|suggested|reported|rumou?rs?|expected|planned|forecast|predicted|at first|originally)\b", re.I)
+
+def pivot_index(sents):
+    """Index of the sentence where a note turns around ('However, ... / By 2 PM ... confirmed'), when it first says what was
+    expected or reported; None for a note that does not correct itself."""
+    for i, sx in enumerate(sents):
+        if i >= 1 and PIVOT_RE.search(sx) and any(INITIAL_RE.search(y) for y in sents[:i]):
+            return i
+    return None
 
 def overview_of(text):
     """What the AI line shows under a note when Settings > Notes > AI overview is on: a one-sentence summary for a short note;
@@ -568,15 +683,28 @@ def overview_of(text):
     "" when Ollama does not answer."""
     import urllib.request
     text = text.strip()
+    code = code_label(text)
+    if code:
+        return code                                      # source code / terminal commands: a static line, the model is not asked
+    cl = checklist_of(text)
+    if cl:
+        return cl                                        # a list of items: shown as written, the model is not asked
+    if _word_count(text) < 8:
+        return ""                                        # too little to summarise: a small model only guesses (and "invents" a context)
     if len(text) <= 140 and "\n" not in text:
         out = summarise_only(text, 18)
-        return out if out and _grounded(out, _stems(text), _numbers(text)) else ""
+        if out is None:
+            return None
+        return out if out and _grounded(out, _stems(text), _numbers(text), text) else ""
     prompt = (
         "You write a short overview of a note for the person who saved it. Use ONLY facts that are written in the note. "
-        "Do not add numbers, causes, opinions or anything else that is not in the note. Reply with JSON only: "
+        "Do not add numbers, causes, opinions or anything else that is not in the note. Keep the tenses of the note: things still to do "
+        "(remember to, need to, todo, a checklist) stay things to do and are never described as done, fixed or completed unless the "
+        "note says so. Reply with JSON only: "
         '{"headline": "one sentence", "points": ["short bullet", "short bullet"]}.\n'
         "headline: one sentence with the main point. If the note first says one thing and later says it turned out "
         "differently (a rumour, a plan, a forecast that changed), the headline says what finally happened.\n"
+        "If the note has both good and bad news (growth and a decline, a gain and a loss), the headline says the main result and the bullets keep the bad news too; never leave a decline out.\n"
         "points: 2 or 3 short bullets with the most important facts of the note, using its own numbers.\n\n"
         "Note:\n" + text[:4000] + "\n")
     body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "format": "json", "think": False,
@@ -586,7 +714,7 @@ def overview_of(text):
         with urllib.request.urlopen(req, timeout=90) as r:
             raw = json.loads(r.read().decode("utf-8", "replace")).get("response", "")
     except Exception:
-        return ""
+        return None
     try:
         m = re.search(r"\{.*\}", raw, re.S)
         d = json.loads(m.group(0) if m else raw)
@@ -595,9 +723,42 @@ def overview_of(text):
     except (ValueError, AttributeError, TypeError):
         head, pts = "", []
     ns, nn = _stems(text), _numbers(text)
-    head = head if head and _grounded(head, ns, nn) else ""
-    keep = [x for x in pts if x and len(x.split()) <= 20 and _grounded(x, ns, nn)][:3]
-    lines = ([head] if head else []) + ["- " + x for x in keep]
+    head = head if head and _grounded(head, ns, nn, text) else ""
+    keep = [x for x in pts if x and len(x.split()) <= 20 and _grounded(x, ns, nn, text)][:3]
+    sents = _sentences(text)
+    piv = pivot_index(sents)
+    if piv is not None and sents:                        # the note corrects itself: the overview says what finally happened
+        def at(x):
+            return max(range(len(sents)), key=lambda i: _overlap(x, sents[i]))
+        late = [x for x in keep if at(x) >= piv]
+        if head and at(head) < piv:
+            head = max(late, key=lambda x: (at(x), len(x))) if late else _trim(sents[-1])
+        keep = [x for x in late if x != head]
+    if piv is not None and not head and sents:           # corrected note and the model gave no headline: the final outcome is the headline
+        c = _trim(sents[-1])
+        head = c[:1].upper() + c[1:]
+    uniq = []
+    for x in keep:                                       # a bullet that is the headline again (0.85) or says an earlier bullet again (0.6) is dropped
+        if (not head or _overlap(x, head) < 0.85) and all(_overlap(x, y) < 0.6 for y in uniq):
+            uniq.append(x)
+    keep = uniq
+    bad = missing_bad_news([head] + keep, text)[:2]        # the declines the model skipped, from the note's own words
+    if bad:                                              # make room: bullets with a % or $ figure stay, the ones without go first
+        keep = sorted(keep, key=lambda x: 0 if re.search(r"\d\s*%|\$", x) else 1)[:4 - len(bad)]
+    lines = ([head] if head else []) + ["- " + x for x in keep] + bad
+    if not keep and _word_count(text) >= 60:             # a long note with a headline only: its own marked-up sentences ('First, ... Second, ...')
+        marked = [_trim(x) for x in _sentences(text) if ORDINAL_RE.match(x)][:3]
+        lines += ["- " + x for x in marked if _grounded(x, ns, nn, text)]
+    if piv is None and _word_count(text) >= 60 and len(lines) < 5:   # a "Despite ... / However ..." caveat the overview does not mention
+        shown = " ".join(lines)
+        for sx in sents:
+            if re.match(r"(despite|however|although|but)\b", sx, re.I) and _overlap(sx, shown) < 0.5:
+                c = _trim(sx)
+                if _grounded(c, ns, nn, text):
+                    for piece in [c] + re.split(r",\s+", c):
+                        if 6 <= len(piece.split()) <= 22 and not re.match(r"(despite|however|although|but)\b", piece, re.I):
+                            lines.append("- " + piece[:1].upper() + piece[1:]); break
+                break
     if not lines:                                        # nothing the note backs up: show the note's own words, never an invention
         sents = _sentences(text)
         pick = [sents[0]] + ([sents[-1]] if len(sents) > 1 else [])
@@ -622,14 +783,28 @@ def make_why(task, due, later, conf):
     if not task:
         return "Looks like a plain note: nothing you have to do."
     if due:
-        return f"A task with a time: I will remind you {due_text(due).lower()}."
+        return f"Reminder set for {due_text(due).lower()}."
     if later:
         return f"A task for later today: I will nudge you every {conf['NOTES_NUDGE_HOURS']} h, at most {conf['NOTES_NUDGE_MAX']} times."
     return "A task with no time named, so no reminder."
 
+CLOCK_RE = re.compile(r"\b(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\\.m\\.|p\\.m\\.)|(?:[01]?\d|2[0-3]):[0-5]\d|(?<=\bat )\d{1,2})(?![\d:%])", re.I)
+
+def note_time(text):
+    """A clock time the note itself writes ('9:30 AM', 'at 6', '19:45'), as a spec parse_when understands, with the day word in front when
+    the note names one. None when the note has none. A small model gets times wrong ('9:30 AM' became 'tomorrow 19:58'), so when the
+    note says a time, that time wins."""
+    m = CLOCK_RE.search(text)
+    if not m:
+        return None
+    clock = re.sub(r"\s+", "", m.group(1).lower())
+    day = re.search(r"\b(tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", text, re.I)
+    return (day.group(1).lower() + " " if day else "") + clock
+
 def resolve_due(text, when):
     """The model's guess -> an epoch, or None. Small models invent times, so a time is only taken when the note has a digit
     or a time word in it, and one that is already past is dropped."""
+    when = note_time(text) or when          # the time written in the note beats the model's guess
     if not when or not TIME_WORDS.search(text):
         return None
     now = time.time()
@@ -686,10 +861,10 @@ def sort_note(arg, force=False):
         return
     finish_think(nid, {"state": "thinking", "at": time.time()})
     try:
-        if not sort_on or len(text) > 280 or text.count("\n") > 3:
+        if not sort_on or len(text) > 280 or text.count("\n") > 3 or code_label(text):
             # no task sorting (it is off, or the note is long: an article is never a task): only the overview of what it says
             ov = overview_of(text)
-            if not ov:
+            if ov is None:
                 finish_think(nid, {"state": "offline", "at": time.time(),
                                    "why": "Ollama is not running (or did not answer), so there is no overview yet. Start it and use Think on this note."})
                 return
@@ -710,10 +885,12 @@ def sort_note(arg, force=False):
             return
         due = resolve_due(text, ans["when"]) if ans["task"] else None
         later = bool(ans["task"] and ans["later"] and not due)
-        why = ans["why"] or plain_summary(text) or make_why(ans["task"], due, later, conf)
-        if ov_on and len(text) > 140:
+        tiny = _word_count(text) < 8
+        say = ans["why"] if (ans["why"] and not tiny and _grounded(ans["why"], _stems(text), _numbers(text), text)) else ""
+        why = say or (make_why(ans["task"], due, later, conf) if tiny else (plain_summary(text) or make_why(ans["task"], due, later, conf)))
+        if ov_on and (len(text) > 140 or checklist_of(text)):
             why = overview_of(text) or why
-        if due and ans["why"] and not (ov_on and len(text) > 140):
+        if due and say and not (ov_on and (len(text) > 140 or checklist_of(text))):
             why = (why.rstrip(".") + f"  ·  reminder {due_text(due).lower()}")[:200]
         with locked():
             notes = load_notes()
@@ -869,7 +1046,7 @@ def conf_json():
     c = read_conf()
     print(json.dumps({"NOTES_AI": c["NOTES_AI"] == "1", "NOTES_OVERVIEW": c["NOTES_OVERVIEW"] == "1", "NOTES_AI_MODE": c["NOTES_AI_MODE"],
                       "NOTES_NUDGE_HOURS": c["NOTES_NUDGE_HOURS"], "NOTES_NUDGE_MAX": c["NOTES_NUDGE_MAX"],
-                      "NOTES_NUDGE_FROM": c["NOTES_NUDGE_FROM"], "NOTES_NUDGE_TO": c["NOTES_NUDGE_TO"],
+                      "NOTES_NUDGE_FROM": c["NOTES_NUDGE_FROM"], "NOTES_NUDGE_TO": c["NOTES_NUDGE_TO"], "NOTES_MODEL": c["NOTES_MODEL"],
                       "ollama": ollama_up() if "1" in (c["NOTES_AI"], c["NOTES_OVERVIEW"]) else None, "model": model_name()}))
 
 def set_conf(k, v):
@@ -878,6 +1055,8 @@ def set_conf(k, v):
         c[k] = "1" if str(v).lower() in ("1", "true", "on", "yes") else "0"
     elif k == "NOTES_AI_MODE" and v in ("ask", "auto"):
         c[k] = v
+    elif k == "NOTES_MODEL" and re.fullmatch(r"[A-Za-z0-9._:/@+-]{0,100}", str(v)):
+        c[k] = "" if str(v).lower() in ("default", "none", "-") else str(v)      # "default" = use the advisor's model again
     elif k in CONF_RANGE and str(v).isdigit() and CONF_RANGE[k][0] <= int(v) <= CONF_RANGE[k][1]:
         c[k] = str(int(v))
     else:
@@ -928,7 +1107,7 @@ def run(cmd, args):
         if len(args) > 2:
             set_conf(args[1], args[2])
         else:
-            print("usage: notes set NOTES_AI 0|1  |  NOTES_OVERVIEW 0|1  |  NOTES_AI_MODE ask|auto  |  NOTES_NUDGE_HOURS 1..12  |  NOTES_NUDGE_MAX 1..12  |  NOTES_NUDGE_FROM 0..23  |  NOTES_NUDGE_TO 1..24")
+            print("usage: notes set NOTES_AI 0|1  |  NOTES_OVERVIEW 0|1  |  NOTES_AI_MODE ask|auto  |  NOTES_MODEL <ollama name>|default  |  NOTES_NUDGE_HOURS 1..12  |  NOTES_NUDGE_MAX 1..12  |  NOTES_NUDGE_FROM 0..23  |  NOTES_NUDGE_TO 1..24")
     elif cmd == "sort":
         if len(args) > 1:
             sort_note(args[1])
@@ -936,7 +1115,13 @@ def run(cmd, args):
             print("usage: notes sort <number or id>")
     elif cmd == "think":
         if len(args) > 1:
+            t0 = time.time()
             sort_note(args[1], force=True)
+            if sys.stdout.isatty():                      # typed in a terminal: show what the AI line now says (and which model, how long)
+                n = find_note(load_notes(), args[1]) or {}
+                th = n.get("think") or {}
+                print(f"[{model_name()}]  {time.time() - t0:.1f}s")
+                print(th.get("why") or "(empty AI line: the note is too short, or the model's sentence did not match the note and was dropped)")
         else:
             print("usage: notes think <number or id>")
     elif cmd == "task":
