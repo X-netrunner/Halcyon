@@ -388,6 +388,16 @@ def sync_timer(notes=None):
 # ---- the model decides: task or plain note? (only when Settings > Notes is on; never in the way of saving)
 TIME_WORDS = re.compile(r"\d|today|tonight|tomorrow|morning|evening|afternoon|noon|midnight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\bin an? (hour|minute)|next week", re.I)
 
+def keep_alive():
+    """How long Ollama keeps the model in memory after a note was sorted. With Settings > Performance > "Aggressive Memory Freeing"
+    on (the default in Low / Medium resource use) it is let go after 10 s; otherwise it stays 2 minutes so a few notes in a row are quick."""
+    try:
+        with open(os.path.join(STATE_DIR, "settings.json"), "r", encoding="utf-8") as f:
+            lazy = (json.load(f).get("opt") or {}).get("lazyLoad", True)
+    except (OSError, ValueError, AttributeError):
+        lazy = True
+    return "10s" if lazy is not False else "2m"
+
 def ask_model(text):
     """-> {"task": bool, "when": str|None}, or None when Ollama is not there / answers nonsense. Never raises."""
     import urllib.request
@@ -409,7 +419,7 @@ def ask_model(text):
         f"Note: {text}\n"
     )
     body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "format": "json", "think": False,
-                       "keep_alive": "2m", "options": {"temperature": 0, "num_predict": 60}}).encode()
+                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 60}}).encode()
     try:
         req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=60) as r:

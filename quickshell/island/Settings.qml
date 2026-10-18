@@ -201,7 +201,18 @@ Scope {
         command: ["bash", root.greetScript, "list"]
         stdout: StdioCollector { onStreamFinished: { try { root.greeting = JSON.parse(text) } catch (e) {} } }
     }
-    Connections { target: root; function onAction(id) { if (id.indexOf("greeting-") === 0) greetAgain.restart() } }
+    Connections {
+        target: root
+        function onAction(id) {
+            if (id.indexOf("greeting-") === 0) greetAgain.restart()
+            if (id === "fx-safe-on" || id === "fx-safe-off") {       // the button that no longer applies goes away at once; the real state is read again a moment later
+                var fcs = JSON.parse(JSON.stringify(root.fxConf))
+                fcs.safe = (id === "fx-safe-on")
+                root.fxConf = fcs
+                fxAgain.interval = 2600; fxAgain.restart()
+            }
+        }
+    }
 
     // ---- Backup / safety-check reminders (scripts/remind.sh): keys "rm:NAME" in the tree below. The automatic safety-check run
     // (root, behind your sudo password) is the custom leaf at the end of Settings > Backup; its state comes in as remind.auto.
@@ -612,8 +623,8 @@ Scope {
             { type: "seg", key: "opt:dialogStarStyle", label: "Dialog stars effect (Battery saver)", desc: "Choose whether Settings, Display Switcher, Cheatsheet and dialogs use lightweight Moving Stars (drifting particles with tails, saving significant CPU/GPU and battery), Constellations (connected geometric nodes), Both, or Off.", opts: [o("moving", "Moving Stars (Lightweight)"), o("constellations", "Constellations"), o("both", "Both"), o("none", "Off")] },
             { type: "toggle", key: "opt:starsBar", label: "Moving stars in bars", desc: "A handful of tiny stars flying slowly across the bar (island, notch and custom bar), the bar builder and the wallpaper picker. Independent of the constellation switches below. Very light: they stand still while the bar is hidden or a page is open." },
             { type: "toggle", key: "opt:stars", label: "Constellations in the boxes", desc: "The drifting dots and lines behind the Settings, notification centre, cheat sheet, power menu, lock screen and console. Off = none anywhere, whatever the switches below say (the moving stars above are separate)." },
-            { type: "chips", adv: true, label: "Show the constellations in", desc: "Pick the boxes that get them. (Needs the master switch above.)", opts: [ch("opt:starsSettings", "Settings"), ch("opt:starsNotifs", "Notification centre"), ch("opt:starsCheatsheet", "Cheat sheet"), ch("opt:starsCalendar", "Calendar"), ch("opt:starsPower", "Power menu"), ch("opt:starsLock", "Lock screen"), ch("opt:starsTerm", "Console")], when: "opt:stars=true" },
-            { type: "toggle", adv: true, key: "profileStars", label: "Profile picture constellation" },
+            { type: "chips", adv: true, label: "Show the constellations in", desc: "Pick the boxes that get them. (Needs the master switch above.)", opts: [ch("opt:starsSettings", "Settings"), ch("opt:starsNotifs", "Notification centre"), ch("opt:starsCheatsheet", "Cheat sheet"), ch("opt:starsCalendar", "Calendar"), ch("opt:starsPower", "Power menu"), ch("opt:starsLock", "Lock screen"), ch("opt:starsTerm", "Console")], when: "opt:stars=true", soft: true },
+            { type: "toggle", adv: true, key: "profileStars", label: "Profile picture constellation", when: "opt:stars=true||opt:treeConst=full|corner", soft: true, why: "Turn on \u201cConstellations in the boxes\u201d (or show the tree view constellation) to change this." },
             { type: "custom", adv: true, name: "growth" }
         ] },
         { id: "bar", title: "Bar", section: "Desktop", items: [
@@ -732,7 +743,7 @@ Scope {
             { type: "tool", adv: true, key: "wifips", label: "Wi-Fi power saving", desc: "On saves battery. Off gives the lowest latency (Gaming mode switches it off by itself)." }
         ] },
         { id: "performance", title: "Performance & memory", section: "Performance", items: [
-            { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars (no moving stars in the bar), 30 fps, small notification lists, slow background refresh, light music bars. Medium: light blur, no shadows, 60 fps, relaxed background refresh. High: everything on, as designed. It sets the options on this page and in Effects and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
+            { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars (no moving stars in the bar), 30 fps, small notification lists, light music bars. Medium: light blur, no shadows, 60 fps. (How often the readers look again is separate: Update speed.) High: everything on, as designed. It sets the options on this page and in Effects and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", key: "opt:limMode", label: "Limits", desc: "Manual: you set the two limits below. Adaptive: Halcyon measures its own RAM and CPU use every 5 minutes while the desktop runs (not while Gaming mode is on), and after 3 days sets the limits itself, a little above what is normal for you (the busy 5 % of the time plus headroom). It keeps adjusting over the last 14 days. Until it has learned, the manual limits apply. It only measures and advises, like the manual limits.", opts: [o("manual", "Manual"), o("auto", "Adaptive")] },
             { type: "acts", label: "Adaptive limits", desc: "Start learning again from zero, for example after a big change to the setup.", btns: [{ id: "adapt-reset", btn: "Forget what it learned", done: "Learning again" }], when: "opt:limMode=auto" },
             { type: "slider", key: "opt:limRam", def: 600, when: "opt:limMode=manual", label: "Halcyon RAM limit", desc: "How much memory all of Halcyon together (Hyprland, the island with its helpers, the daemons) should stay under. Above it, Startup & processes > Health shows the likely causes and what to do. It only measures and advises: nothing is changed or stopped by itself.", min: 300, max: 1500, step: 50, unit: " MB" },
@@ -741,16 +752,16 @@ Scope {
             { type: "seg", adv: true, key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", adv: true, key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
             { type: "seg", adv: true, key: "opt:treeConst", label: "Tree view constellation", desc: "Full: the big constellation behind the tree. Corner: the same constellation made small and tucked into a screen corner, out of the way of the tree. Off: no constellation in the tree at all (the lightest).", opts: [o("full", "Full"), o("corner", "Small, in a corner"), o("off", "Off")] },
-            { type: "seg", adv: true, key: "opt:treeConstCorner", when: "opt:treeConst=corner", label: "Constellation corner", desc: "Which corner the small constellation sits in.", opts: [o("tl", "Top-left"), o("tr", "Top-right"), o("bl", "Bottom-left"), o("br", "Bottom-right")] },
-            { type: "slider", adv: true, key: "opt:treeConstSize", def: 30, when: "opt:treeConst=corner", label: "Small constellation size", desc: "How much of the screen the small constellation takes (a share of the tree's width and height).", min: 15, max: 50, step: 5, unit: " %" },
+            { type: "seg", adv: true, key: "opt:treeConstCorner", when: "opt:treeConst=corner", soft: true, label: "Constellation corner", desc: "Which corner the small constellation sits in.", opts: [o("tl", "Top-left"), o("tr", "Top-right"), o("bl", "Bottom-left"), o("br", "Bottom-right")] },
+            { type: "slider", adv: true, key: "opt:treeConstSize", def: 30, when: "opt:treeConst=corner", soft: true, label: "Small constellation size", desc: "How much of the screen the small constellation takes (a share of the tree's width and height).", min: 15, max: 50, step: 5, unit: " %" },
             { type: "seg", adv: true, key: "opt:treeDots", label: "Floating dots in the tree", desc: "Where the drifting dots gather. By load: more dots circle the workspaces and windows that use the most CPU and memory, and they glide over as the load changes. Even: spread over the whole screen. Off: none. (Quality Low shows none either way.)", opts: [o("load", "By load"), o("even", "Even"), o("off", "Off")] },
             { type: "seg", adv: true, key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
-            { type: "seg", adv: true, key: "opt:bgRefresh", label: "Background refresh", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. Normal: every 2 s / 4 s. Relaxed: 5 s / 10 s. Slow: 10 s / 20 s. Fewer wake-ups and far fewer small processes, nothing looks different. The performance page and the bar's CPU / RAM / TEMP row stay at the normal pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "Normal"), o("relaxed", "Relaxed"), o("slow", "Slow")] },
+            { type: "seg", key: "opt:bgRefresh", label: "Update speed", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. It is its own choice, the Resource use presets do not touch it, so you can have low RAM and CPU use and still live numbers. High: every 2 s / 4 s (live). Medium: 5 s / 10 s. Low: 10 s / 20 s (fewest wake-ups). Adaptive: live on the mains, slower on battery, slowest while the machine is busy (a game, a build) or the battery is nearly empty. The performance page and the bar's CPU / RAM / TEMP row always stay at the live pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "High"), o("relaxed", "Medium"), o("slow", "Low"), o("auto", "Adaptive")] },
             { type: "acts", adv: true, label: "Memory", desc: "Show what uses my RAM: opens the console with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
         ] },
         { id: "profiles", title: "Profiles & safe mode", section: "Performance", items: [
             { type: "seg", key: "fx:profile", label: "Profile", desc: "One switch for stars, blur, island motion, screen brightness and the top bar. Work: no stars, blur on, fast motion. Gaming: no stars, no blur, no motion, top bar off. Battery: no stars, no blur, fast motion, brightness 40 %. Night: stars on, brightness 15 %. Custom is your own setup: it is saved when you leave it and comes back when you pick Custom again. Terminal: halcyon profile <name>. To change what a profile does, edit ~/.local/state/island/profiles.json (halcyon profile --help).", opts: [o("custom", "Custom"), o("work", "Work"), o("gaming", "Gaming"), o("battery", "Battery"), o("night", "Night")] },
-            { type: "acts", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading..." }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring..." }] }
+            { type: "acts", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading...", when: "fx:safe=false" }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring...", when: "fx:safe=true" }] }
         ] },
         { id: "suggestions", title: "Optimization & Suggestions", section: "Performance", items: [
             { type: "acts", label: "Recommended Sweet Spot (Aesthetic + Speed)", desc: "Optimizes performance without compromising visual fidelity: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied!" }] },
@@ -821,8 +832,27 @@ Scope {
         return root[key]
     }
     // ---- shared by both layouts: what to say under a row
-    function isOff(m) { return m.needs !== undefined && !(startup.has && startup.has[m.needs] === true) }   // an optional part that is not installed
+    function isOff(m) { return (m.needs !== undefined && !(startup.has && startup.has[m.needs] === true)) || m.dis !== undefined }   // an optional part that is not installed, or a row whose switch is off (see disWhy)
+    // A row marked soft: true that has a `when` is not hidden while that `when` fails: it moves to the "Disabled" part at the bottom of
+    // its group, greyed out and locked, and hovering it says what to turn on. (Search still lists only what is active.)
+    function findItem(key) {
+        for (var g = 0; g < groups.length; g++)
+            for (var i = 0; i < groups[g].items.length; i++)
+                if (groups[g].items[i].key === key) return groups[g].items[i]
+        return null
+    }
+    function disWhy(it) {
+        if (it.why) return it.why
+        var p = String(it.when || "").split("||")[0].split("&")[0].split("=")
+        var dep = p.length > 1 ? findItem(p[0]) : null
+        var lab = dep && dep.label ? "\u201c" + dep.label + "\u201d" : "the option above"
+        if (!dep || dep.type === "toggle") return "Turn on " + lab + " to change this."
+        var want = p[1].split("|")[0], ol = want
+        if (dep.opts) for (var i = 0; i < dep.opts.length; i++) if (String(dep.opts[i].v) === want) ol = dep.opts[i].t
+        return "Set " + lab + " to " + ol + " to change this."
+    }
     function descOf(m) {
+        if (m.dis !== undefined) return "Turned off"
         var off = isOff(m)
         return off ? "Not installed, so this is switched off. Add it with ./install.sh --safety-check (or ./install.sh --choose and answer yes), then open Settings again."
             : (m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset / apt install hyprsunset)"
@@ -925,15 +955,29 @@ Scope {
         var q = query.toLowerCase().trim()
         var out = [], sig = ""
         for (var g = 0; g < groups.length; g++) {
-            var grp = groups[g], items = [], idx = "", advN = 0
+            var grp = groups[g], items = [], idx = "", advN = 0, dis = [], didx = ""
             var advShow = advAll || !!advMap[grp.id]
             if (q === "" && !pagesMode && section !== "" && grp.section !== section) continue
             for (var i = 0; i < grp.items.length; i++) {
                 var it = grp.items[i]
-                if (it.when && !whenOk(it.when)) continue
+                if (it.when && !whenOk(it.when)) {
+                    if (it.soft === true && q === "" && (it.adv !== true || advShow)) {      // kept, but greyed out under "Disabled"
+                        var dc = {}
+                        for (var dk in it) dc[dk] = it[dk]
+                        delete dc.when
+                        dc.dis = disWhy(it)
+                        dis.push(dc); didx += i + ","
+                    }
+                    continue
+                }
                 if (q !== "" && itemText(grp, it).indexOf(q) < 0) continue
                 if (q === "" && it.adv === true) { advN++; if (!advShow) continue }
                 items.push(it); idx += i + ","
+            }
+            if (items.length > 0 && dis.length > 0) {
+                items.push({ type: "divider", label: "Disabled" })
+                for (var dd = 0; dd < dis.length; dd++) items.push(dis[dd])
+                idx += "D" + didx
             }
             if (items.length > 0) { out.push({ id: grp.id, title: grp.title, section: grp.section, items: items, advN: advN, advShow: advShow }); sig += grp.id + ":" + idx + advN + (advShow ? "A" : "a") + ";" }
         }
@@ -2298,6 +2342,8 @@ Scope {
                                                     Rectangle { visible: pr.index > 0; x: 18; width: parent.width - 36; height: 1; color: root.pal.lineSoft }
                                                     Rectangle { anchors.fill: parent; color: prMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.35) : "transparent" }
                                                     MouseArea { id: prMa; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+                                                    // a disabled row: greyed out (see isOff), nothing in it can be clicked, hovering says what to turn on
+                                                    MouseArea { id: disMa; z: 20; anchors.fill: parent; visible: pr.m.dis !== undefined; enabled: pr.m.dis !== undefined; hoverEnabled: true; cursorShape: Qt.ForbiddenCursor }
                                                     // a dependent row hangs off the one above it
                                                     Rectangle { visible: pr.child; x: 30; y: 0; width: 1; height: 30; color: Qt.alpha(root.pal.accent, 0.45) }
                                                     Rectangle { visible: pr.child; x: 30; y: 30; width: 12; height: 1; color: Qt.alpha(root.pal.accent, 0.45) }
@@ -2321,8 +2367,8 @@ Scope {
                                                                     spacing: 8
                                                                     Text {
                                                                         Layout.maximumWidth: Math.max(60, body.width - 120)
-                                                                        text: pr.m.label || ""
-                                                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium; wrapMode: Text.WordWrap
+                                                                        text: pr.m.type === "divider" ? (pr.m.label || "").toUpperCase() : (pr.m.label || "")
+                                                                        color: pr.m.type === "divider" ? root.pal.muted : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: pr.m.type === "divider" ? 11 : root.pal.tBody + 1; font.weight: pr.m.type === "divider" ? Font.DemiBold : Font.Medium; font.letterSpacing: pr.m.type === "divider" ? 1.6 : 0; wrapMode: Text.WordWrap
                                                                     }
                                                                     Rectangle {
                                                                         visible: pr.longDesc
@@ -2337,7 +2383,7 @@ Scope {
                                                                 Text {
                                                                     Layout.fillWidth: true
                                                                     visible: text !== ""
-                                                                    text: pr.descText
+                                                                    text: (pr.m.dis !== undefined && disMa.containsMouse) ? pr.m.dis : pr.descText
                                                                     maximumLineCount: pr.longDesc && !pr.descOpen ? 1 : 100
                                                                     elide: pr.longDesc && !pr.descOpen ? Text.ElideRight : Text.ElideNone
                                                                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 12; lineHeight: 1.25; wrapMode: Text.WordWrap
@@ -2418,6 +2464,7 @@ Scope {
                                                                 model: pr.m.type === "acts" ? pr.m.btns : []
                                                                 delegate: ActionChip {
                                                                     required property var modelData
+                                                                    visible: !modelData.when || root.whenOk(modelData.when)
                                                                     pal: root.pal
                                                                     label: modelData.btn || ""
                                                                     doneLabel: modelData.done || ""
@@ -2682,7 +2729,7 @@ Scope {
                                                         required property int index
                                                         readonly property var m: leaf.modelData
                                                         readonly property bool lastLeaf: leaf.index === grp.modelData.items.length - 1
-                                                        readonly property bool off: m.needs !== undefined && !(root.startup.has && root.startup.has[m.needs] === true)   // an optional part that was not installed: greyed out
+                                                        readonly property bool off: (m.needs !== undefined && !(root.startup.has && root.startup.has[m.needs] === true)) || m.dis !== undefined   // an optional part that was not installed, or a switch that is off (Disabled): greyed out
                                                         readonly property bool inline: m.type === "toggle" || m.type === "tool" || m.type === "action"
                                                         // the description as one line; the full text opens with the small "?" (or a click on the line)
                                                         readonly property string descText: root.descOf(leaf.m)
@@ -2703,6 +2750,8 @@ Scope {
                                                             Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                                         }
                                                         MouseArea { id: leafMa; anchors.fill: content; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+                                                        // a disabled row: nothing in it can be clicked, hovering says what to turn on
+                                                        MouseArea { id: leafDisMa; z: 20; anchors.fill: content; visible: leaf.m.dis !== undefined; enabled: leaf.m.dis !== undefined; hoverEnabled: true; cursorShape: Qt.ForbiddenCursor }
 
                                                         ColumnLayout {
                                                             id: content
@@ -2724,11 +2773,12 @@ Scope {
                                                                         spacing: 8
                                                                         Text {
                                                                             Layout.maximumWidth: Math.max(60, content.width - 140)
-                                                                            text: leaf.m.label || ""
-                                                                            color: root.pal.text
+                                                                            text: leaf.m.type === "divider" ? (leaf.m.label || "").toUpperCase() : (leaf.m.label || "")
+                                                                            color: leaf.m.type === "divider" ? root.pal.muted : root.pal.text
                                                                             font.family: root.pal.uiFont
-                                                                            font.pixelSize: root.pal.tBody
-                                                                            font.weight: Font.Medium
+                                                                            font.pixelSize: leaf.m.type === "divider" ? 11 : root.pal.tBody
+                                                                            font.letterSpacing: leaf.m.type === "divider" ? 1.6 : 0
+                                                                            font.weight: leaf.m.type === "divider" ? Font.DemiBold : Font.Medium
                                                                             wrapMode: Text.WordWrap
                                                                         }
                                                                         Rectangle {
@@ -2746,7 +2796,7 @@ Scope {
                                                                     Text {
                                                                         Layout.fillWidth: true
                                                                         visible: text !== ""
-                                                                        text: leaf.descText
+                                                                        text: (leaf.m.dis !== undefined && leafDisMa.containsMouse) ? leaf.m.dis : leaf.descText
                                                                         maximumLineCount: leaf.longDesc && !leaf.descOpen ? 1 : 100
                                                                         elide: leaf.longDesc && !leaf.descOpen ? Text.ElideRight : Text.ElideNone
                                                                         color: root.pal.muted
@@ -2803,6 +2853,7 @@ Scope {
                                                                     model: leaf.m.type === "acts" ? leaf.m.btns : []
                                                                     delegate: ActionChip {
                                                                         required property var modelData
+                                                                        visible: !modelData.when || root.whenOk(modelData.when)
                                                                         pal: root.pal
                                                                         label: modelData.btn || ""
                                                                         doneLabel: modelData.done || ""

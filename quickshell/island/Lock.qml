@@ -17,6 +17,8 @@ Scope {
     id: root
     property var pal
     property bool stars: true             // constellations in this box (Settings > Constellations)
+    property int flyCount: 0              // moving stars drifting in this box (0 = none): set by shell.qml from Resource use
+    property int flyLoop: 150000          // ms for one slow pass of them
     property string sysmode: ""
     property var starData: null
     property bool profileStars: true
@@ -142,6 +144,17 @@ Scope {
                 artStrength: 0.9
                 artFit: 0.78
                 energy: root.energy
+                opacity: surf.appear
+            }
+            BarStars {
+                anchors.fill: parent
+                anchors.margins: 24
+                pal: root.pal
+                count: root.flyCount
+                loopMs: root.flyLoop
+                sizeScale: 1.5
+                active: root.locked
+                visible: root.locked && root.flyCount > 0
                 opacity: surf.appear
             }
             // (no vignette gradient here: bg-over-bg with varying alpha is invisible in theory but Qt's 8-bit premultiplied

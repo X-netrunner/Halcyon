@@ -12,9 +12,25 @@ wake="${XDG_RUNTIME_DIR:-/tmp}/halcyon-net.wake"
 [ -e "$wake" ] && [ ! -p "$wake" ] && rm -f "$wake"
 [ -p "$wake" ] || mkfifo -m 600 "$wake" 2>/dev/null
 if [ -p "$wake" ]; then exec {nap}<>"$wake"; else exec {nap}<> <(:); fi
+# Adaptive (Settings > Performance > Update speed): slow down while the machine is busy or running on a nearly empty battery,
+# stay live on the mains. Sets m to normal | relaxed | slow. Bash builtins only (no process), same rules as the Rust feed in src/hx.
+cores=$(nproc 2>/dev/null || echo 1)
+adaptive_pace() {
+  local l1 cap st b
+  m=normal
+  read -r l1 _ < /proc/loadavg 2>/dev/null; l1=${l1/./}; l1=$((10#${l1:-0}))       # hundredths
+  [ "$l1" -ge $(( cores * 90 )) ] && { m=slow; return; }
+  for b in /sys/class/power_supply/BAT*; do
+    [ -r "$b/status" ] || continue
+    read -r st < "$b/status"; read -r cap < "$b/capacity"
+    if [ "$st" = Discharging ]; then case "$cap" in ''|*[!0-9]*) m=relaxed ;; *) [ "$cap" -le 20 ] && m=slow || m=relaxed ;; esac; fi
+    return
+  done
+}
 wait_tick() {
   local m n=$iv
   { read -r m < "$st/bg-refresh"; } 2>/dev/null || m=normal
+  [ "$m" = auto ] && adaptive_pace
   case "$m" in relaxed) n=$(( iv * 5 / 2 )) ;; slow) n=$(( iv * 5 )) ;; esac
   if read -r -t "$n" -u "$nap" _; then read -r -t 1 -u "$nap" _; fi   # poked: let the action finish, then look
 }

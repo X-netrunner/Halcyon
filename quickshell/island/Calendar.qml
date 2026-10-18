@@ -14,6 +14,9 @@ Scope {
     id: root
     property var pal
     property bool stars: true
+
+    property int flyCount: 0              // moving stars drifting in this box (0 = none): set by shell.qml from Resource use
+    property int flyLoop: 150000          // ms for one slow pass of them
     property bool constellation: true       // false = only the drifting dots, no constellation picture (Settings > Constellations)
     property string sysmode: ""
     property var starData: null
@@ -583,6 +586,7 @@ Scope {
                     MouseArea { anchors.fill: parent }       // swallow clicks
 
                     Backdrop { visible: root.open && root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 12; dotAlpha: 2.6; dotDrift: 16; artStrength: !root.constellation ? 0 : ((root.bdayModalOpen || root.holidayModalOpen || root.setupOpen) ? 0.12 : 0.30); artFit: 0.85 }
+                    BarStars { anchors.fill: parent; anchors.margins: 12; pal: root.pal; count: root.flyCount; loopMs: root.flyLoop; sizeScale: 1.3; active: root.open; visible: root.open && root.flyCount > 0 }
 
                     // ---------------- header
                     RowLayout {

@@ -407,12 +407,12 @@ def cpu_advice(it, inside, o, procs):
             actions.append(pt("Lighten the music bars", "Settings > Bar > Music bars quality: Light (about half the work) or switch the bars off."))
         if kid.get("hx", 0) > 3:
             causes.append("The Rust helper hx (workspace and stats readers) is busy.")
-            actions.append(pt("Slow the readers", "Settings > Performance & memory > Background refresh: Relaxed or Slow."))
+            actions.append(pt("Slow the readers", "Settings > Performance > Update speed: Medium, Low or Adaptive."))
         if o.get("lines") == "cpu":
             causes.append("Line drawing is set to CPU; the GPU setting draws the same lines for free.")
             actions.append(pt("Draw lines on the GPU", "Settings > Performance & memory > Line drawing: GPU."))
         if o.get("bgRefresh", "normal") == "normal":
-            causes.append("Background refresh is Normal: the CPU, battery, Wi-Fi and Bluetooth readers look again every 2-4 s.")
+            causes.append("Update speed is High: the CPU, battery, Wi-Fi and Bluetooth readers look again every 2-4 s.")
         if res == "high":
             causes.append("Resource use is on High: every effect is on, as designed.")
         if not causes:
