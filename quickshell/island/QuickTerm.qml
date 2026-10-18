@@ -28,6 +28,8 @@ Scope {
     id: root
     property var pal
     property bool stars: true             // constellations in this box (Settings > Constellations)
+    property int flyCount: 0              // moving stars drifting in this box (0 = none): set by shell.qml from Resource use
+    property int flyLoop: 150000          // ms for one slow pass of them
     property string sysmode: ""
     property var starData: null
     property bool profileStars: true
@@ -543,6 +545,7 @@ Scope {
                 artFit: 0.95
                 artShift: 90
             }
+            BarStars { anchors.fill: parent; anchors.margins: 14; pal: root.pal; count: root.flyCount; loopMs: root.flyLoop; sizeScale: 1.3; active: root.shown; visible: root.shown && root.flyCount > 0 }
 
 
             // ---------- title line ----------

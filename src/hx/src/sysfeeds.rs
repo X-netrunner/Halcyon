@@ -129,7 +129,30 @@ impl Drop for Wake {
     }
 }
 
-/// Settings > Performance & memory > Background refresh: normal | relaxed | slow = 1x / 2.5x / 5x.
+/// Adaptive update speed: how much slower than normal the feeds may look right now, worked out from what the machine is doing.
+/// A busy machine (a game, a build, a render: the 1-minute load is about every core) is left alone: 5x. On a laptop running on
+/// its battery: 2.5x, and 5x once it is nearly empty. On the mains, or a desktop: 1x, the feeds stay live. It only looks at
+/// /proc and /sys (no process), and it is asked once per wait, so it follows the machine within a few seconds.
+fn adaptive_factor() -> f64 {
+    let load: f64 = read("/proc/loadavg").split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0.0);
+    let cores = std::thread::available_parallelism().map(|n| n.get() as f64).unwrap_or(1.0);
+    if load >= cores * 0.9 {
+        return 5.0;
+    }
+    for n in names("/sys/class/power_supply") {
+        if n.starts_with("BAT") {
+            if ac_online() {
+                return 1.0;
+            }
+            let cap: i64 = first_line(&format!("/sys/class/power_supply/{}/capacity", n)).parse().unwrap_or(100);
+            return if cap <= 20 { 5.0 } else { 2.5 };
+        }
+    }
+    1.0
+}
+
+/// Settings > Performance > Update speed (flag file bg-refresh): normal | relaxed | slow = 1x / 2.5x / 5x (High / Medium / Low),
+/// or auto (Adaptive, see adaptive_factor). It is its own choice: the Resource use presets no longer set it.
 /// `fast_aware`: the stats feed keeps its normal pace while the performance page (or the bar's CPU / RAM row) can be on
 /// screen (flag stats-fast = 1, missing = 1).
 fn pace(iv: f64, fast_aware: bool) -> f64 {
@@ -143,6 +166,7 @@ fn pace(iv: f64, fast_aware: bool) -> f64 {
     match first_line(&format!("{}/bg-refresh", dir)).as_str() {
         "relaxed" => iv * 2.5,
         "slow" => iv * 5.0,
+        "auto" => iv * adaptive_factor(),
         _ => iv,
     }
 }

@@ -4,7 +4,7 @@
 # + auto / pmode / pprofile (power-manager daemon: running? + its state file, see src/power-manager)
 iv=${1:-2}
 # Pace: $1 seconds normally. Settings > Performance & memory > "Background refresh" writes ~/.local/state/island/bg-refresh
-# (normal | relaxed | slow = 1x / 2.5x / 5x). While the performance page (or the bar's CPU / RAM / TEMP row) can be on screen the
+# (normal | relaxed | slow = 1x / 2.5x / 5x, or auto). While the performance page (or the bar's CPU / RAM / TEMP row) can be on screen the
 # island writes stats-fast=1 and the pace stays at $1. Missing flag files = the old behaviour (every $1 seconds).
 # The wait is a timed read on a pipe in $XDG_RUNTIME_DIR (no `sleep` process); the island pokes the pipe when a flag changes,
 # so a change shows within a second instead of at the end of a slow wait.
@@ -13,9 +13,25 @@ wake="${XDG_RUNTIME_DIR:-/tmp}/halcyon-stats.wake"
 [ -e "$wake" ] && [ ! -p "$wake" ] && rm -f "$wake"
 [ -p "$wake" ] || mkfifo -m 600 "$wake" 2>/dev/null
 if [ -p "$wake" ]; then exec {nap}<>"$wake"; else exec {nap}<> <(:); fi
+# Adaptive (Settings > Performance > Update speed): slow down while the machine is busy or running on a nearly empty battery,
+# stay live on the mains. Sets m to normal | relaxed | slow. Bash builtins only (no process), same rules as the Rust feed in src/hx.
+cores=$(nproc 2>/dev/null || echo 1)
+adaptive_pace() {
+  local l1 cap st b
+  m=normal
+  read -r l1 _ < /proc/loadavg 2>/dev/null; l1=${l1/./}; l1=$((10#${l1:-0}))       # hundredths
+  [ "$l1" -ge $(( cores * 90 )) ] && { m=slow; return; }
+  for b in /sys/class/power_supply/BAT*; do
+    [ -r "$b/status" ] || continue
+    read -r st < "$b/status"; read -r cap < "$b/capacity"
+    if [ "$st" = Discharging ]; then case "$cap" in ''|*[!0-9]*) m=relaxed ;; *) [ "$cap" -le 20 ] && m=slow || m=relaxed ;; esac; fi
+    return
+  done
+}
 wait_tick() {
   local m f n=$iv
   { read -r m < "$sdir/bg-refresh"; } 2>/dev/null || m=normal
+  [ "$m" = auto ] && adaptive_pace
   { read -r f < "$sdir/stats-fast"; } 2>/dev/null || f=1
   if [ "$f" != 1 ]; then case "$m" in relaxed) n=$(( iv * 5 / 2 )) ;; slow) n=$(( iv * 5 )) ;; esac; fi
   # poked (a flag changed): give it a second so the first sample after the change is not a tiny window

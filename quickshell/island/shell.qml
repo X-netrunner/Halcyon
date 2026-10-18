@@ -72,7 +72,7 @@ ShellRoot {
         notifLayout: null,         // the notification box builder's layout (NotifLayout.js); null = the default box
         notifIcon: "pfp",          // pfp | app : the picture of a notification is your profile picture (app icon as a badge), or the app's icon
         connErrOnly: false,        // Wi-Fi / Bluetooth: false = a notification for every connect / disconnect, true = only when connecting fails (scripts/wifi-connect.sh, bt-set.sh read the flag conn-errors-only)
-        bgRefresh: "normal",       // normal | relaxed | slow : how often the always-on readers (CPU / battery / network state) look again while nothing needs them fresh (see syncRefresh below)
+        bgRefresh: "normal",       // normal | relaxed | slow | auto (High / Medium / Low / Adaptive; its own choice, not part of the Resource use presets) : how often the always-on readers (CPU / battery / network state) look again while nothing needs them fresh (see syncRefresh below)
         viz: "full",               // full | light | off : the music bars in the bar: cava at 30 fps / 15 fps / not started at all
         wsSwipe4: "left",          // left | right : only the starting point for the 4-finger swipes now (Settings > Touchpad gestures sets them; scripts/input-conf.sh reads it once)
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
@@ -114,6 +114,12 @@ ShellRoot {
         limRam: 600,               // manual RAM limit (MB) for background helper warnings
         limCpu: 10                 // manual CPU limit (%) for background helper warnings
     })
+    // Moving stars in the boxes (Settings, cheat sheet, calendar, power menu, console, tree view, lock screen) follow Resource use:
+    // Low a few and slow, Medium some, High a little more. Not many on purpose, just enough to feel alive. They are on while
+    // "Dialog stars effect" is Moving stars or Both, and they are separate from the constellations (which Low switches off).
+    readonly property bool boxStarsOn: opt.dialogStarStyle === undefined || opt.dialogStarStyle === "moving" || opt.dialogStarStyle === "both"
+    readonly property int boxStarCount: !boxStarsOn ? 0 : (opt.resMode === "low" ? 4 : opt.resMode === "medium" ? 7 : 10)
+    readonly property int boxStarLoop: opt.resMode === "low" ? 220000 : opt.resMode === "medium" ? 170000 : 140000
     // Hyprland values you changed in Settings: only these are pushed (the Lua config rules for everything else).
     // hyCur = what Hyprland has right now (read at start by scripts/hypr-values.sh, then your changes) = where the sliders start.
     property var hy: ({})
@@ -166,7 +172,7 @@ ShellRoot {
     // ---- background refresh (Settings > Performance & memory > Background refresh) ----------------------------------------
     // The always-on readers (scripts/stats.sh: CPU / battery / sysmode, scripts/net.sh: Wi-Fi / Bluetooth state) look again every
     // 2 s / 4 s. "Relaxed" and "Slow" stretch that to 2.5x / 5x while nothing needs fresh numbers. Two flag files in
-    // ~/.local/state/island tell them: bg-refresh (normal | relaxed | slow) and stats-fast (1 while the performance page or the
+    // ~/.local/state/island tell them: bg-refresh (normal | relaxed | slow | auto) and stats-fast (1 while the performance page or the
     // bar's CPU / RAM / TEMP hover row can be on screen: stats.sh then keeps its normal pace). The scripts wait on a pipe in
     // $XDG_RUNTIME_DIR and writing the flags pokes that pipe, so a change shows within a second instead of after a slow wait.
     readonly property bool statsFast: page === "perf" || hoverAction === "stats"
@@ -186,13 +192,13 @@ ShellRoot {
     // Settings > Performance > Resource use: three presets that set many options at once. The options stay changeable afterwards.
     // (Startup items and the GPU are NOT part of it: they only change at the next login, see Settings > Startup & background.)
     readonly property var resPresets: ({
-        low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, starsBar: false, accentMode: "fixed", termDrift: false, clockSeconds: false, bgRefresh: "slow", viz: "light", lazyLoad: true },
+        low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, starsBar: false, dialogStarStyle: "moving", accentMode: "fixed", termDrift: false, clockSeconds: false, viz: "light", lazyLoad: true },
                   blur: false, shadows: false, hyprAnim: false, motion: 0.5, profileStars: false, notifHistoryMax: 10, notifMax: 3,
                   hy: { blurSize: 4, blurPasses: 1 } },
-        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true, starsBar: false, bgRefresh: "relaxed", viz: "full", lazyLoad: true },
+        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true, starsBar: false, dialogStarStyle: "both", viz: "full", lazyLoad: true },
                   blur: true,  shadows: false, hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 20, notifMax: 5,
                   hy: { blurSize: 5, blurPasses: 2 } },
-        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true, starsBar: true, bgRefresh: "normal", viz: "full", lazyLoad: false },
+        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true, starsBar: true, dialogStarStyle: "both", viz: "full", lazyLoad: false },
                   blur: true,  shadows: true,  hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 30, notifMax: 5,
                   hy: { blurSize: 7, blurPasses: 3 } }
     })
@@ -588,6 +594,8 @@ ShellRoot {
         id: cheat
         pal: pal
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        flyCount: root.boxStarCount
+        flyLoop: root.boxStarLoop
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
@@ -657,6 +665,8 @@ ShellRoot {
         id: lockScreen
         pal: pal
         stars: root.opt.stars !== false && root.opt.starsLock !== false
+        flyCount: root.boxStarCount
+        flyLoop: root.boxStarLoop
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
@@ -679,6 +689,8 @@ ShellRoot {
         id: powerMenu
         pal: pal
         stars: root.opt.stars !== false && root.opt.starsPower !== false
+        flyCount: root.boxStarCount
+        flyLoop: root.boxStarLoop
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
@@ -722,6 +734,8 @@ ShellRoot {
         pal: pal
         spot: root.boxSpots.term
         stars: root.opt.stars !== false && root.opt.starsTerm !== false
+        flyCount: root.boxStarCount
+        flyLoop: root.boxStarLoop
         sysmode: root.sysmode
         clickMode: root.clickMode
         autoHide: root.autoHide
@@ -734,6 +748,8 @@ ShellRoot {
         id: cmdTree
         pal: pal
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        flyCount: root.boxStarCount
+        flyLoop: root.boxStarLoop
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
@@ -753,6 +769,8 @@ ShellRoot {
         nagGiveUp: root.opt.calNagGiveUp !== undefined ? root.opt.calNagGiveUp : 180
         tasksAll: root.opt.calTasks === "all"
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        flyCount: root.boxStarCount
+        flyLoop: root.boxStarLoop
         constellation: root.opt.stars !== false && root.opt.starsCalendar !== false
         sysmode: root.sysmode
         starData: root.starData
