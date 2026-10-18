@@ -80,6 +80,16 @@ var catalog = [
         { k: "width", kind: "slider", label: "Width", def: 320, min: 220, max: 520, unit: " px" },
         { k: "hideIdle", kind: "toggle", label: "Hide while nothing plays", def: false }
       ] },
+    { id: "lyrics", cat: "media", name: "Lyrics", icon: 0xF0387, size: [380, 170], hint: "The words of the song that plays: the line being sung is lit, the others fade away (needs lyrics with time stamps, found by itself)",
+      styles: [["fade", "Fade"], ["karaoke", "Karaoke sweep"], ["spotlight", "Spotlight"], ["single", "One line"]],
+      opts: [
+        { k: "lines", kind: "slider", label: "Lines on screen", def: 5, min: 3, max: 9, unit: "" },
+        { k: "size", kind: "slider", label: "Text size", def: 20, min: 12, max: 40, unit: " px" },
+        { k: "fall", kind: "slider", label: "How fast the other lines fade", def: 3, min: 1, max: 6, unit: "" },
+        { k: "width", kind: "slider", label: "Width", def: 380, min: 220, max: 800, unit: " px" },
+        { k: "sync", kind: "slider", label: "Timing, in tenths of a second (+ earlier, - later)", def: 0, min: -30, max: 30, unit: "" },
+        { k: "hideIdle", kind: "toggle", label: "Hide while nothing plays", def: true }
+      ] },
     { id: "viz", cat: "media", name: "Audio visualizer", icon: 0xF075A, size: [280, 90], hint: "Bars that move with the music (needs cava)",
       styles: [["bars", "Bars"], ["mirror", "Mirror"], ["wave", "Wave"], ["dots", "Dots"], ["circle", "Circle"]],
       opts: [
@@ -192,7 +202,7 @@ var files = {
     clock: "WClock.qml", date: "WClock.qml", month: "WMonth.qml",
     cpu: "WMetric.qml", ram: "WMetric.qml", temp: "WMetric.qml", gpu: "WMetric.qml", disk: "WMetric.qml", battery: "WMetric.qml", volume: "WMetric.qml", brightness: "WMetric.qml",
     sysmon: "WSysmon.qml", net: "WNet.qml", uptime: "WNet.qml",
-    music: "WMusic.qml", viz: "WViz.qml", focus: "WFocus.qml", workspaces: "WWorkspaces.qml", special: "WSpecial.qml", toggles: "WToggles.qml", shortcuts: "WToggles.qml",
+    music: "WMusic.qml", lyrics: "WLyrics.qml", viz: "WViz.qml", focus: "WFocus.qml", workspaces: "WWorkspaces.qml", special: "WSpecial.qml", toggles: "WToggles.qml", shortcuts: "WToggles.qml",
     notes: "WNotes.qml", weather: "WWeather.qml", text: "WText.qml",
     console: "WConsole.qml", utilbox: "WBoxes.qml", appsbox: "WBoxes.qml",
     moon: "WMoon.qml", horizon: "WHorizon.qml", breathe: "WBreathe.qml"

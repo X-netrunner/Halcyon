@@ -22,5 +22,5 @@ complete -c halcyon -n __fish_use_subcommand -a clip -d "clipboard history from 
 complete -c halcyon -n "__fish_seen_subcommand_from clip" -a "list status clear" -d "clipboard history"
 complete -c halcyon -n __fish_use_subcommand -a music -d "lyrics and queue panel"
 complete -c halcyon -n "__fish_seen_subcommand_from music" -a "lyrics queue status" -d "music panel"
-complete -c halcyon -n __fish_use_subcommand -a lyrics -d "print the lyrics of what plays (spotify_player 0.24+)"
+complete -c halcyon -n __fish_use_subcommand -a lyrics -d "print the lyrics of what plays (any player)"
 complete -c halcyon -n __fish_use_subcommand -a queue -d "print what plays next"

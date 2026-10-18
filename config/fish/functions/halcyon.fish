@@ -16,7 +16,7 @@ function halcyon --description 'Open and control the Halcyon desktop from a term
         printf "  %-20s %s\n" "shot" "shot region|window|full [copy|save|both]: take it now, no panel (works without the island)"
         printf "  %-20s %s\n" "clip" "clip list|status|clear: the clipboard history from a terminal"
         printf "  %-20s %s\n" "music" "lyrics and queue panel (music lyrics | music queue to pick the tab)"
-        printf "  %-20s %s\n" "lyrics" "print the lyrics of what plays, in the terminal (needs spotify_player 0.24+)"
+        printf "  %-20s %s\n" "lyrics" "print the lyrics of what plays, in the terminal (any source: .lrc file, lrclib.net, lyrics.ovh, spotify_player)"
         printf "  %-20s %s\n" "queue" "print what plays next, in the terminal"
         return 0
     end
@@ -55,6 +55,8 @@ function halcyon --description 'Open and control the Halcyon desktop from a term
                 quickshell ipc -p $HOME/.config/Halcyon/quickshell/island call island queue >/dev/null 2>&1; or begin; echo "halcyon: the island is not running" >&2; return 1; end
             case status
                 python3 $HOME/.config/Halcyon/scripts/halcyon-music.py status
+            case source
+                python3 $HOME/.config/Halcyon/scripts/halcyon-music.py source $rest[2..-1]
             case '*'
                 quickshell ipc -p $HOME/.config/Halcyon/quickshell/island call island lyrics >/dev/null 2>&1; or begin; echo "halcyon: the island is not running" >&2; return 1; end
         end

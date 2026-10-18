@@ -739,6 +739,142 @@ impl Net {
     }
 }
 
+// ------------------------------------------------------------------ Adaptive update speed: the part that learns
+// Settings > Performance > Update speed > Adaptive. adaptive_factor() above looks at what the MACHINE is doing; this looks at what
+// the USER does: how often the Wi-Fi / Bluetooth picture really changes (a network or device connects, disconnects, a radio is
+// switched). Someone who sets it up once and never touches it gets slower background looks (up to 4x, never slower than one look a
+// minute); someone who hops between networks and devices all day stays live. The signal strength is NOT counted (it moves all the
+// time). Learning needs 3 days the desktop was used; after a change the feed is live again for 5 minutes. Actions done in the island
+// (Wi-Fi / Bluetooth switches, connecting) poke the wake pipe, so they never wait for a slow look.
+// File: ~/.local/state/island/adaptive-net.tsv, lines "d <day number>" (a day the feed ran) and "c <epoch>" (a change), the last
+// 14 days only. scripts/net.sh (the fallback) reads and writes the same file. Deleting it (Settings: "Forget what it learned") starts over.
+const LEARN_DAYS: u64 = 14;
+const LEARN_MIN_DAYS: usize = 3;
+const LEARN_MAX_SECS: f64 = 60.0;
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+struct Learner {
+    path: String,
+    days: Vec<u64>,
+    changes: Vec<u64>,
+    last_key: Option<String>,
+}
+
+impl Learner {
+    fn load() -> Learner {
+        let path = format!("{}/adaptive-net.tsv", state_dir());
+        let oldest = now_secs().saturating_sub(LEARN_DAYS * 86400);
+        let mut days: Vec<u64> = Vec::new();
+        let mut changes: Vec<u64> = Vec::new();
+        for l in read(&path).lines() {
+            let mut it = l.split_whitespace();
+            let kind = it.next().unwrap_or("");
+            let v: u64 = match it.next().and_then(|x| x.parse().ok()) {
+                Some(v) => v,
+                None => continue,
+            };
+            if kind == "d" && v.saturating_mul(86400).saturating_add(86400) > oldest {
+                days.push(v);
+            } else if kind == "c" && v > oldest {
+                changes.push(v);
+            }
+        }
+        let l = Learner { path, days, changes, last_key: None };
+        l.rewrite(); // drops what is older than 14 days
+        l
+    }
+
+    fn rewrite(&self) {
+        if self.days.is_empty() && self.changes.is_empty() {
+            return;
+        }
+        let mut text = String::new();
+        for d in &self.days {
+            text.push_str(&format!("d {}\n", d));
+        }
+        for c in &self.changes {
+            text.push_str(&format!("c {}\n", c));
+        }
+        let _ = std::fs::create_dir_all(state_dir());
+        let _ = std::fs::write(&self.path, text);
+    }
+
+    fn append(&self, line: &str) {
+        let _ = std::fs::create_dir_all(state_dir());
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.path) {
+            let _ = writeln!(f, "{}", line);
+        }
+    }
+
+    /// Called with every sample line: notes the day, and a change of anything except the signal strength.
+    fn seen(&mut self, line: &str) {
+        if (!self.days.is_empty() || !self.changes.is_empty()) && !Path::new(&self.path).exists() {
+            self.days.clear(); // the file was deleted ("Forget what it learned"): start again
+            self.changes.clear();
+        }
+        let key = match line.rsplit_once(",\"signal\":") {
+            Some((a, _)) => a,
+            None => line,
+        };
+        let now = now_secs();
+        let day = now / 86400;
+        if !self.days.contains(&day) {
+            self.days.push(day);
+            self.append(&format!("d {}", day));
+        }
+        let first = self.last_key.is_none();
+        let same = self.last_key.as_deref() == Some(key);
+        if !same {
+            self.last_key = Some(key.to_string());
+            if !first {
+                self.changes.push(now);
+                if self.changes.len() > 2000 {
+                    self.changes.remove(0);
+                }
+                self.append(&format!("c {}", now));
+            }
+        }
+    }
+
+    /// 1.0 = no change to the pace; 2 / 3 / 4 = how many times slower the looks may be.
+    fn factor(&self) -> f64 {
+        let now = now_secs();
+        let oldest = now.saturating_sub(LEARN_DAYS * 86400);
+        let days = self.days.iter().filter(|d| d.saturating_mul(86400).saturating_add(86400) > oldest).count();
+        if days < LEARN_MIN_DAYS {
+            return 1.0;
+        }
+        if let Some(last) = self.changes.last() {
+            if now.saturating_sub(*last) < 300 {
+                return 1.0;
+            }
+        }
+        let n = self.changes.iter().filter(|c| **c > oldest).count() as f64;
+        let rate = n / days as f64; // changes per day the desktop was used
+        if rate < 1.0 {
+            4.0
+        } else if rate < 4.0 {
+            3.0
+        } else if rate < 12.0 {
+            2.0
+        } else {
+            1.0
+        }
+    }
+}
+
+/// The wait between two looks of the net feed: the usual pace, and with Adaptive chosen also what was learned about this user.
+fn net_pace(iv: f64, learner: &Learner) -> f64 {
+    let p = pace(iv, false);
+    if first_line(&format!("{}/bg-refresh", state_dir())) == "auto" {
+        return (p * learner.factor()).min(LEARN_MAX_SECS.max(p));
+    }
+    p
+}
+
 pub fn net(iv: f64) {
     if exists(&format!("{}/net-legacy", state_dir())) {
         std::process::exit(3);
@@ -746,11 +882,14 @@ pub fn net(iv: f64) {
     let wake = Wake::open("net");
     let mut n = Net::new();
     let mut out = Out { last: String::new() };
+    let mut learner = Learner::load();
     loop {
-        if !out.line(n.sample()) {
+        let line = n.sample();
+        learner.seen(&line);
+        if !out.line(line) {
             return;
         }
-        wake.wait(pace(iv, false));
+        wake.wait(net_pace(iv, &learner));
     }
 }
 

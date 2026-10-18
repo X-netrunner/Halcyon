@@ -21,7 +21,7 @@
     { "id": "perf", "core": true, "target": "perf", "demo": "perf", "title": "Performance page",
       "body": "Drag the bar to the left, or scroll or two-finger swipe over it: CPU, RAM, temperature and GPU, plus your hardware and the active power mode. The GPU is never woken up just to be measured." },
     { "id": "media", "core": true, "target": "media", "demo": "media", "title": "Media page",
-      "body": "Drag the bar to the right for whatever is playing: cover, track, play / pause and a seek bar. Works with any player that speaks MPRIS. The Lyrics and Queue chips next to the artist open a panel with the lyrics and what plays next (Spotify, via spotify_player)." },
+      "body": "Drag the bar to the right for whatever is playing: cover, track, play / pause and a seek bar. Works with any player that speaks MPRIS. The Lyrics chip next to the artist opens the lyrics of whatever plays (any player; no account needed), the Queue chip shows what plays next on Spotify (needs spotify_player)." },
     { "id": "corner", "core": true, "target": "corner", "demo": "corner", "title": "Quick settings",
       "body": "Touch the bottom-right corner for Wi-Fi, Bluetooth, sound, brightness, power mode, Focus mode and the power buttons. Click a Wi-Fi or Bluetooth chip to pick a network or device; right-click it to switch the radio off." },
     { "id": "notifs", "core": true, "target": "notifs", "demo": "notifs", "keys": ["SUPER", "SHIFT", "N"], "title": "Notifications",
@@ -49,7 +49,7 @@
     { "id": "notifbuilder", "rev": 2, "title": "Notification box builder",
       "body": "Arrange the notification box: place it in any corner (top-left, top-right, bottom-left, bottom-right) or along the screen edge, switch between edge strip or corner activation triggers, tune width, constellations and padding. Type >notification box builder." },
     { "id": "notes", "keys": ["SUPER", "N"], "title": "Notes, tasks and reminders",
-      "body": "SUPER + N opens a small panel on the side: type, press Enter, saved. >all notes lists everything with search, pin, tick off and a Tasks filter. The Notes widget on the desktop has an Add a note row that opens the same panel. Turn on Settings > Notes > Sort new notes into tasks and your local Ollama model decides whether a note is a task (\"call mom at 6\" gets a time and a reminder notification, \"idea: dark lock screen\" stays a note); it is off by default and a note is always saved first. The stars in the panels drift like your desktop stars and follow the Desktop builder's direction, speed and colour." },
+      "body": "SUPER + N opens a small panel on the side: type, press Enter, saved. >all notes lists everything with search, pin, tick off and a Tasks filter. The Notes widget on the desktop has an Add a note row that opens the same panel. Turn on Settings > Notes > Sort new notes into tasks and your local Ollama model decides whether a note is a task (\"call mom at 6\" gets a time and a reminder notification, \"idea: dark lock screen\" stays a note); the model's short comment shows right under the note in All notes (Think asks again), and a note that says \"later\" gets a few gentle nudges during the day (Remind > Later today, every 3 hours by default, never at night); it is off by default and a note is always saved first. The stars in the panels drift like your desktop stars and follow the Desktop builder's direction, speed and colour." },
 
     { "id": "greeting", "title": "Choose your terminal logo",
       "body": "Settings > Terminal greeting: Adaptive, Arch, BlackArch, Kali, your own ASCII art, or no logo at all." },
@@ -86,7 +86,7 @@
       "body": "A small panel: Region, Window or Full screen, then Copy, Save or Both. Also >screenshot. SUPER + SHIFT + S still drags a region at once, as before." },
 
     { "id": "musicpanel", "target": "media", "demo": "media", "title": "Lyrics and queue",
-      "body": "On the music page (hover the music in the bar) there are two new chips next to the artist: Lyrics and Queue. They open a panel with the lyrics of what plays and what plays next, read from your own Spotify account with spotify_player (version 0.24 or newer, logged in). Also >lyrics and >queue. The queue is read-only." },
+      "body": "On the music page (hover the music in the bar) there are two new chips next to the artist: Lyrics and Queue. They open a panel with the lyrics of what plays and what plays next. Lyrics need nothing installed: Halcyon asks a free lyrics site (lrclib.net, then lyrics.ovh) or reads a .lrc file next to a local song, and uses spotify_player too when you have it (choose the source with halcyon-music.py source). The queue is Spotify's and needs spotify_player. Also >lyrics and >queue. The queue is read-only." },
 
     { "id": "done", "core": true, "title": "That's it",
       "body": "Everything follows your wallpaper colours, so try >wallpaper gallery next. Replay this tour any time with >tour." }

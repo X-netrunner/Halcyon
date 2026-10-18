@@ -27,11 +27,60 @@ adaptive_pace() {
     return
   done
 }
+# --- Adaptive, the part that learns (same file and rules as Learner in src/hx/src/sysfeeds.rs, which does this for the Rust feed):
+# how often does the Wi-Fi / Bluetooth picture REALLY change for this user (signal strength not counted)? Rarely = slower looks, up to
+# 4x and never slower than one look a minute; often = live. Needs 3 days of use; live again for 5 minutes after a change. Island actions
+# poke the wake pipe, so they never wait. File ~/.local/state/island/adaptive-net.tsv: "d <day>" a day it ran, "c <epoch>" a change.
+lfile="$st/adaptive-net.tsv"
+ldays=(); lchanges=(); lkey=""; lhave=0; lf=10
+learn_load() {
+  local now oldest k v; printf -v now '%(%s)T' -1; oldest=$(( now - 14 * 86400 ))
+  ldays=(); lchanges=()
+  if [ -r "$lfile" ]; then
+    while read -r k v; do
+      case "$v" in ''|*[!0-9]*) continue ;; esac
+      case "$k" in
+        d) [ $(( v * 86400 + 86400 )) -gt "$oldest" ] && ldays+=("$v") ;;
+        c) [ "$v" -gt "$oldest" ] && lchanges+=("$v") ;;
+      esac
+    done < "$lfile"
+    { for v in "${ldays[@]}"; do echo "d $v"; done; for v in "${lchanges[@]}"; do echo "c $v"; done; } > "$lfile.tmp" 2>/dev/null && mv "$lfile.tmp" "$lfile"
+  fi
+}
+learn_seen() {   # one sample line: note the day, and a change of anything except the signal strength
+  local line=$1 key now day d have=0
+  key=${line%,\"signal\":*}
+  printf -v now '%(%s)T' -1; day=$(( now / 86400 ))
+  if [ ! -e "$lfile" ] && { [ "${#ldays[@]}" -gt 0 ] || [ "${#lchanges[@]}" -gt 0 ]; }; then ldays=(); lchanges=(); fi   # deleted = start again
+  for d in "${ldays[@]}"; do [ "$d" = "$day" ] && have=1; done
+  [ "$have" = 1 ] || { ldays+=("$day"); printf 'd %s\n' "$day" >> "$lfile" 2>/dev/null; }
+  if [ "$lhave" = 1 ] && [ "$key" != "$lkey" ]; then
+    lchanges+=("$now"); printf 'c %s\n' "$now" >> "$lfile" 2>/dev/null
+    [ "${#lchanges[@]}" -gt 2000 ] && lchanges=("${lchanges[@]:1}")
+  fi
+  lkey=$key; lhave=1
+}
+learn_factor() {   # sets lf = 10 / 20 / 30 / 40 (tenths: 1x .. 4x)
+  local now oldest d c n=0 days=0 last=0 rate10
+  lf=10
+  printf -v now '%(%s)T' -1; oldest=$(( now - 14 * 86400 ))
+  for d in "${ldays[@]}"; do [ $(( d * 86400 + 86400 )) -gt "$oldest" ] && days=$(( days + 1 )); done
+  [ "$days" -ge 3 ] || return 0
+  for c in "${lchanges[@]}"; do [ "$c" -gt "$oldest" ] && { n=$(( n + 1 )); last=$c; }; done
+  [ "$last" -gt 0 ] && [ $(( now - last )) -lt 300 ] && return 0
+  rate10=$(( n * 10 / days ))
+  if [ "$rate10" -lt 10 ]; then lf=40; elif [ "$rate10" -lt 40 ]; then lf=30; elif [ "$rate10" -lt 120 ]; then lf=20; fi
+}
 wait_tick() {
-  local m n=$iv
+  local m was n=$iv base
   { read -r m < "$st/bg-refresh"; } 2>/dev/null || m=normal
+  was=$m
   [ "$m" = auto ] && adaptive_pace
   case "$m" in relaxed) n=$(( iv * 5 / 2 )) ;; slow) n=$(( iv * 5 )) ;; esac
+  if [ "$was" = auto ]; then
+    learn_factor; base=$n; n=$(( n * lf / 10 ))
+    [ "$n" -gt 60 ] && { [ "$base" -gt 60 ] && n=$base || n=60; }
+  fi
   if read -r -t "$n" -u "$nap" _; then read -r -t 1 -u "$nap" _; fi   # poked: let the action finish, then look
 }
 esc() { local s=${1//\\/\\\\}; printf '%s' "${s//\"/\\\"}"; }
@@ -39,6 +88,7 @@ esc() { local s=${1//\\/\\\\}; printf '%s' "${s//\"/\\\"}"; }
 unesc() { local s=${1//\\\\/$'\001'}; s=${s//\\:/:}; printf '%s' "${s//$'\001'/\\}"; }
 nl=$'\n'
 
+learn_load
 while true; do
   wifi=off
   sig=0
@@ -70,6 +120,8 @@ while true; do
       ;;
   esac
 
-  printf '{"wifi":"%s","ssid":"%s","eth":%s,"bt":"%s","btdev":"%s","btn":%s,"signal":%s}\n' "$wifi" "$ssid" "$eth" "$bt" "$btdev" "$btn" "$sig"
+  printf -v line '{"wifi":"%s","ssid":"%s","eth":%s,"bt":"%s","btdev":"%s","btn":%s,"signal":%s}' "$wifi" "$ssid" "$eth" "$bt" "$btdev" "$btn" "$sig"
+  printf '%s\n' "$line"
+  learn_seen "$line"
   wait_tick
 done

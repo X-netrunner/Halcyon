@@ -1,19 +1,30 @@
 #!/usr/bin/env python3
 """halcyon-music.py: the data side of the lyrics and queue panel (media page > Lyrics / Queue, >lyrics and >queue in the launcher).
 
-  halcyon-music.py lyrics [json]   lyrics of the song that is playing on your Spotify account
+  halcyon-music.py lyrics [json] [--title T --artist A --album B --duration SEC --url file://...]
+                                   lyrics of the song that plays (any player: the panel passes what MPRIS says)
+  halcyon-music.py source [auto|local|lrclib|ovh|spotify]   which lyrics source to use (no argument: show it)
   halcyon-music.py queue [json] [N]  what plays next (default 30, at most 100)
   halcyon-music.py status          plain text: is spotify_player installed, how new, can it do lyrics / queue
 
 With `json` (what the panel uses) the answer is ONE line of JSON, always, also when something is wrong:
-  lyrics: {"ok": bool, "state": str, "message": str, "title": str, "artist": str, "lines": [str]}
+  lyrics: {"ok": bool, "state": str, "message": str, "title": str, "artist": str, "source": str, "lines": [str]}
   queue:  {"ok": bool, "state": str, "message": str, "now": {"title","artist"}|null, "total": int, "items": [{"title","artist","ms","kind"}]}
 Without `json` it prints plain text for a terminal. Exit code 0 when it worked, 1 when it did not.
 
 `state` says what went wrong, so the panel can say it in words: ok | missing (spotify_player not installed) | old (installed, too
 old for lyrics) | auth (not logged in) | idle (nothing is playing) | none (no lyrics for this song) | error.
 
-Where the data comes from: the `spotify_player` command line (`spotify_player lyrics`, `spotify_player get key queue`). It asks YOUR
+Where the lyrics come from (music.conf: LYRICS_SOURCE=auto, or one of them). spotify_player is OPTIONAL now:
+  local    a .lrc / .txt file next to the song file (same name), when the player says where the file is. Offline, no account.
+  lrclib   lrclib.net: a free lyrics database, no account and no key. Needs only the title and the artist of the song
+           (any player that speaks MPRIS: Spotify app, a browser, mpv, Rhythmbox, VLC ...). One small HTTPS request per song.
+  ovh      api.lyrics.ovh: a second free site, plain text, used only as a last resort in auto.
+  spotify  the `spotify_player` command line (below), for people who have it and are logged in.
+auto tries them in that order and stops at the first that has the song. Nothing is stored: no cache file, no log.
+HALCYON_LRCLIB_URL / HALCYON_OVH_URL point the sites somewhere else (tests, a self-hosted LRCLIB).
+
+The spotify source: the `spotify_player` command line (`spotify_player lyrics`, `spotify_player get key queue`). It asks YOUR
 Spotify account (the session spotify_player already has), so there is no third-party lyrics site and no key to set up. The lyrics
 command exists since spotify_player 0.24.0; the queue command is older. Both work with the Spotify app, a phone or spotify_player
 itself as the player: the queue and the "now playing" song are the account's, not one program's. When spotify_player is not running,
@@ -23,9 +34,13 @@ It adds no process: every call is a one-shot command that exits when done, and H
 once more when the song changes). Nothing is stored: no cache, no file, no log.
 """
 import json
+import os
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from shutil import which
 
 TIMEOUT = 25          # seconds: a cold start has to log in first
@@ -93,7 +108,195 @@ def fail(state, message, extra=None):
 
 
 # ------------------------------------------------------------------ lyrics
-def get_lyrics():
+SOURCES = ("auto", "local", "lrclib", "ovh", "spotify")
+CONF = os.path.join(os.environ.get("HALCYON_DIR", os.path.expanduser("~/.config/Halcyon")), "music.conf")
+LRCLIB = os.environ.get("HALCYON_LRCLIB_URL", "https://lrclib.net/api")
+OVH = os.environ.get("HALCYON_OVH_URL", "https://api.lyrics.ovh/v1")
+UA = "Halcyon-rice (lyrics panel)"
+NET_TIMEOUT = 8
+
+
+def read_source():
+    try:
+        with open(CONF, "r", encoding="utf-8") as f:
+            for line in f:
+                k, _, v = line.partition("=")
+                if k.strip() == "LYRICS_SOURCE" and v.strip().strip('"') in SOURCES:
+                    return v.strip().strip('"')
+    except OSError:
+        pass
+    return "auto"
+
+
+def write_source(v):
+    keep = []
+    try:
+        with open(CONF, "r", encoding="utf-8") as f:
+            keep = [l.rstrip("\n") for l in f if not l.strip().startswith("LYRICS_SOURCE=")]
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(CONF), exist_ok=True)
+    tmp = CONF + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("LYRICS_SOURCE=%s\n" % v)
+        for l in keep:
+            f.write(l + "\n")
+    os.replace(tmp, CONF)
+
+
+TS = re.compile(r"^\s*(\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]\s*)+")
+META = re.compile(r"^\s*\[(ar|ti|al|au|by|offset|length|re|ve|id):.*\]\s*$", re.I)
+
+
+def tidy(text):
+    """Plain lines from lyrics text: LRC time stamps and tags removed, runs of blank lines folded into one, at most 600 lines."""
+    out, blank = [], 0
+    for ln in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if META.match(ln):
+            continue
+        ln = TS.sub("", ln).rstrip()
+        if ln.strip():
+            blank = 0
+            out.append(ln)
+        else:
+            blank += 1
+            if blank == 1 and out:
+                out.append("")
+    while out and not out[-1].strip():
+        out.pop()
+    return out[:600]
+
+
+TS_ANY = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")
+
+
+def tidy_synced(text):
+    """LRC text with time stamps -> (lines, times) with times in seconds, one per line, or None when the text has no time stamps.
+    Used by the lyrics widget to light the line that plays; the plain panel just shows the lines."""
+    rows = []
+    for ln in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if META.match(ln):
+            continue
+        head = TS.match(ln)
+        if not head:
+            continue
+        body = ln[head.end():].rstrip()
+        for m, sec, frac in TS_ANY.findall(head.group(0)):
+            t = int(m) * 60 + int(sec) + (int(frac) / (10 ** len(frac)) if frac else 0.0)
+            rows.append((t, body))
+    if len(rows) < 2:
+        return None
+    rows.sort(key=lambda r: r[0])
+    lines, times = [], []
+    for t, body in rows:
+        if not body.strip():
+            if not lines or lines[-1] == "":
+                continue
+            body = ""
+        lines.append(body)
+        times.append(round(t, 2))
+    while lines and not lines[-1].strip():
+        lines.pop()
+        times.pop()
+    return (lines[:600], times[:600]) if lines else None
+
+
+def first_artist(a):
+    return re.split(r"\s*(?:,|;|&| feat\.? | ft\.? | x )\s*", a or "", maxsplit=1, flags=re.I)[0].strip()
+
+
+def clean_title(t):
+    """'Song - Remastered 2011' / 'Song (feat. X)' -> 'Song' (the plain title matches more often in a lyrics database)."""
+    t = re.sub(r"\s*[-\u2013]\s*(remaster(ed)?|live|mono|stereo|single version|radio edit|deluxe|bonus).*$", "", t or "", flags=re.I)
+    t = re.sub(r"\s*[(\[](feat|ft|with|remaster|live|mono|stereo|deluxe|bonus)[^)\]]*[)\]]", "", t, flags=re.I)
+    return t.strip()
+
+
+def http_json(url):
+    """(status, parsed JSON or None). A missing song is status 404, a dead network / timeout is None."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=NET_TIMEOUT) as r:
+            return r.status, json.loads(r.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        return e.code, None
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        return None, None
+
+
+def lyrics_local(meta):
+    """A .lrc / .txt with the same name as the song file, when the player gave a file:// address."""
+    u = meta.get("url") or ""
+    if not u.startswith("file://"):
+        return None
+    base = os.path.splitext(urllib.parse.unquote(urllib.parse.urlparse(u).path))[0]
+    for ext in (".lrc", ".txt"):
+        try:
+            with open(base + ext, "r", encoding="utf-8", errors="replace") as f:
+                raw = f.read(200000)
+        except OSError:
+            continue
+        sy = tidy_synced(raw) if ext == ".lrc" else None
+        if sy:
+            return "ok", sy[0], sy[1]
+        lines = tidy(raw)
+        if lines:
+            return "ok", lines
+    return None
+
+
+def lyrics_lrclib(meta):
+    """-> ("ok", lines) | ("none", None) | ("net", None) | None (not enough to ask with)."""
+    title, artist = clean_title(meta.get("title")), first_artist(meta.get("artist"))
+    if not title:
+        return None
+    q = {"track_name": title, "artist_name": artist}
+    if meta.get("album"):
+        q["album_name"] = meta["album"]
+    if meta.get("duration"):
+        q["duration"] = str(int(meta["duration"]))
+    st, d = http_json("%s/get?%s" % (LRCLIB, urllib.parse.urlencode(q)))
+    if st is None:
+        return "net", None
+    cands = [d] if st == 200 and isinstance(d, dict) else []
+    if not cands:                                     # not an exact match: let the site search
+        st2, d2 = http_json("%s/search?%s" % (LRCLIB, urllib.parse.urlencode({"track_name": title, "artist_name": artist})))
+        if st2 is None:
+            return "net", None
+        if isinstance(d2, list):
+            cands = [x for x in d2 if isinstance(x, dict)]
+            dur = meta.get("duration")
+            if dur:                                  # the closest length first: the same song, not a live version
+                cands.sort(key=lambda x: abs((x.get("duration") or 0) - dur))
+    for c in cands:
+        if c.get("instrumental"):
+            return "none", None
+        sy = tidy_synced(c.get("syncedLyrics") or "")      # with times: the lyrics widget lights the line that plays
+        if sy:
+            return "ok", sy[0], sy[1]
+        text = c.get("plainLyrics") or c.get("syncedLyrics") or ""
+        lines = tidy(text)
+        if lines:
+            return "ok", lines
+    return "none", None
+
+
+def lyrics_ovh(meta):
+    title, artist = clean_title(meta.get("title")), first_artist(meta.get("artist"))
+    if not title or not artist:
+        return None
+    st, d = http_json("%s/%s/%s" % (OVH, urllib.parse.quote(artist, safe=""), urllib.parse.quote(title, safe="")))
+    if st is None:
+        return "net", None
+    if st == 200 and isinstance(d, dict):
+        lines = tidy(d.get("lyrics") or "")
+        if lines:
+            return "ok", lines
+    return "none", None
+
+
+def lyrics_spotify():
+    """The `spotify_player` command line, as before. Returns the old-style answer dict."""
     empty = {"title": "", "artist": "", "lines": []}
     rc, out, err = run(["lyrics"])
     if rc != 0:
@@ -114,23 +317,71 @@ def get_lyrics():
     if " - " in head:
         title, _, artist = head.rpartition(" - ")      # a title can hold " - " ("Song - Remastered"), an artist list does not
     body = body.strip("\n")
-    base = {"title": title.strip(), "artist": artist.strip()}
+    base = {"title": title.strip(), "artist": artist.strip(), "source": "spotify"}
     if body.strip() == "" or body.strip().lower() == "lyrics not found":
         return fail("none", "Spotify has no lyrics for this song.", dict(base, lines=[]))
-    lines = [ln.rstrip() for ln in body.split("\n")]
-    while lines and not lines[-1].strip():
-        lines.pop()
-    # long blank runs (instrumental breaks) become one blank line
-    out_lines, blank = [], 0
-    for ln in lines:
-        if ln.strip():
-            blank = 0
-            out_lines.append(ln)
-        else:
-            blank += 1
-            if blank == 1:
-                out_lines.append("")
-    return {"ok": True, "state": "ok", "message": "", "lines": out_lines[:600], **base}
+    return {"ok": True, "state": "ok", "message": "", "lines": tidy(body), **base}
+
+
+def meta_from_mpris():
+    """What the player says it plays, for the terminal (`halcyon lyrics`: the panel passes this itself). Needs `playerctl`; {} without."""
+    pc = which("playerctl")
+    if not pc:
+        return {}
+    try:
+        r = subprocess.run([pc, "metadata", "--format", "{{title}}\t{{artist}}\t{{album}}\t{{mpris:length}}\t{{xesam:url}}"],
+                           capture_output=True, timeout=3, stdin=subprocess.DEVNULL)
+    except (subprocess.TimeoutExpired, OSError):
+        return {}
+    if r.returncode != 0:
+        return {}
+    f = (r.stdout.decode("utf-8", "replace").rstrip("\n").split("\t") + [""] * 5)[:5]
+    try:
+        dur = int(f[3]) / 1000000.0 if f[3] else 0
+    except ValueError:
+        dur = 0
+    return {k: v for k, v in (("title", f[0]), ("artist", f[1]), ("album", f[2]), ("duration", dur), ("url", f[4])) if v}
+
+
+def get_lyrics(meta=None, source=None):
+    """Try the chosen source (auto: local, lrclib, ovh, spotify_player) and answer with the first that has the song."""
+    meta = meta or {}
+    if not meta.get("title"):
+        meta = meta_from_mpris()
+    source = source or read_source()
+    base = {"title": meta.get("title", ""), "artist": meta.get("artist", ""), "source": "", "lines": []}
+    if source == "spotify":
+        return lyrics_spotify()
+    order = {"auto": ("local", "lrclib", "ovh", "spotify"), "local": ("local",), "lrclib": ("lrclib",), "ovh": ("ovh",)}[source]
+    have_meta = bool(meta.get("title"))
+    net_down = False
+    for name in order:
+        if name == "spotify":
+            if which("spotify_player") or which("spotify-player"):
+                d = lyrics_spotify()
+                if d["ok"]:
+                    return d
+            continue
+        r = {"local": lyrics_local, "lrclib": lyrics_lrclib, "ovh": lyrics_ovh}[name](meta)
+        if r is None:
+            continue
+        if r[0] == "ok":
+            out = {"ok": True, "state": "ok", "message": "", **dict(base, source=name, lines=r[1])}
+            if len(r) > 2 and r[2]:
+                out["times"] = r[2]            # seconds, one per line (synced lyrics only)
+            return out
+        if r[0] == "net":
+            net_down = True
+    if not have_meta and source != "auto":
+        return fail("idle", "Nothing is playing, or the player does not say which song it is.", base)
+    if not have_meta:
+        # no title from the player: spotify_player may still know the account's song
+        if which("spotify_player") or which("spotify-player"):
+            return lyrics_spotify()
+        return fail("idle", "Nothing is playing, or the player does not say which song it is.", base)
+    if net_down:
+        return fail("error", "The lyrics site could not be reached. Check the network and press R.", base)
+    return fail("none", "No lyrics found for this song.", base)
 
 
 # ------------------------------------------------------------------ queue
@@ -209,7 +460,7 @@ def print_lyrics(d):
         print(d["message"], file=sys.stderr)
         return 1
     head = d["title"] + ((" - " + d["artist"]) if d["artist"] else "")
-    print(head)
+    print(head + (("   [%s]" % d["source"]) if d.get("source") else ""))
     print()
     print("\n".join(d["lines"]))
     return 0
@@ -229,19 +480,54 @@ def print_queue(d):
 
 
 def status():
+    print("lyrics source: %s  (halcyon-music.py source auto|local|lrclib|ovh|spotify)" % read_source())
+    print("lyrics: local files, lrclib.net and api.lyrics.ovh need nothing installed; any player that speaks MPRIS works")
     b = binary()
     if b is None:
-        print("spotify_player: not installed (Arch: spotify-player)")
-        return 1
+        print("spotify_player: not installed (optional: gives the Spotify queue and Spotify's own lyrics; Arch: spotify-player)")
+        return 0
     v = version()
     print("spotify_player: %s (%s)" % (b, ".".join(map(str, v)) if v else "version unknown"))
     print("queue:  available")
     if v is None:
-        print("lyrics: unknown (could not read the version; try `halcyon lyrics`)")
+        print("spotify lyrics: unknown (could not read the version)")
     elif v >= (0, 24, 0):
-        print("lyrics: available")
+        print("spotify lyrics: available")
     else:
-        print("lyrics: NOT available (needs 0.24.0 or newer)")
+        print("spotify lyrics: NOT available (needs 0.24.0 or newer)")
+    return 0
+
+
+def parse_meta(rest):
+    """--title T --artist A --album B --duration SEC --url U  ->  dict (what the panel got from the player)."""
+    meta, i = {}, 0
+    while i < len(rest):
+        a = rest[i]
+        if a in ("--title", "--artist", "--album", "--duration", "--url") and i + 1 < len(rest):
+            v = rest[i + 1]
+            if a == "--duration":
+                try:
+                    v = float(v)
+                except ValueError:
+                    v = 0
+                if v > 100000:                          # milliseconds, not seconds
+                    v = v / 1000.0
+            meta[a[2:]] = v
+            i += 2
+        else:
+            i += 1
+    return meta
+
+
+def source_cmd(rest):
+    if not rest:
+        print(read_source())
+        return 0
+    if rest[0] not in SOURCES:
+        print("halcyon-music.py: source must be one of: %s" % ", ".join(SOURCES), file=sys.stderr)
+        return 2
+    write_source(rest[0])
+    print("lyrics source: %s" % rest[0])
     return 0
 
 
@@ -253,11 +539,13 @@ def main(argv):
     as_json = "json" in rest
     nums = [a for a in rest if a.isdigit()]
     if cmd == "lyrics":
-        d = get_lyrics()
+        d = get_lyrics(parse_meta(rest))
         if as_json:
             print(json.dumps(d, ensure_ascii=False))
             return 0 if d["ok"] else 1
         return print_lyrics(d)
+    if cmd == "source":
+        return source_cmd(rest)
     if cmd == "queue":
         d = get_queue(int(nums[0]) if nums else QUEUE_DEFAULT)
         if as_json:
@@ -266,7 +554,7 @@ def main(argv):
         return print_queue(d)
     if cmd == "status":
         return status()
-    print("halcyon-music.py: unknown command '%s' (lyrics | queue | status)" % cmd, file=sys.stderr)
+    print("halcyon-music.py: unknown command '%s' (lyrics | queue | source | status)" % cmd, file=sys.stderr)
     return 2
 
 
