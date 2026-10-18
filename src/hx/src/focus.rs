@@ -879,3 +879,54 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_classes_allow_only_safe_characters() {
+        assert!(class_ok("firefox"));
+        assert!(class_ok("org.kde.dolphin"));
+        assert!(class_ok("steam_app_*"));
+        assert!(!class_ok(""));
+        assert!(!class_ok("bad class"));
+        assert!(!class_ok("a;rm -rf"));
+        assert!(!class_ok(&"a".repeat(81)));
+    }
+
+    #[test]
+    fn glob_star_matches_any_run() {
+        assert!(glob(b"fire*", b"firefox"));
+        assert!(glob(b"*fox", b"firefox"));
+        assert!(glob(b"f*x", b"firefox"));
+        assert!(!glob(b"fire", b"firefox"));
+        assert!(!glob(b"chrome*", b"firefox"));
+    }
+
+    #[test]
+    fn matches_ignores_case_and_empty_names() {
+        let pats = vec!["Fire*".to_string()];
+        assert!(matches(&pats, &["", "FIREFOX"]));
+        assert!(!matches(&pats, &["chromium"]));
+        assert!(!matches(&[], &["firefox"]));
+    }
+
+    #[test]
+    fn numeric_settings_are_clamped_and_junk_falls_back() {
+        assert_eq!(clean("LENGTH", "25", 10), 25);
+        assert_eq!(clean("LENGTH", "9999", 10), 480);
+        assert_eq!(clean("LENGTH", "0", 10), 1);
+        assert_eq!(clean("LENGTH", "abc", 10), 10);
+        assert_eq!(clean("LENGTH", "NaN", 10), 10);
+        assert_eq!(clean("UNKNOWN_KEY", "5", 7), 7);
+    }
+
+    #[test]
+    fn flags_accept_the_usual_spellings() {
+        assert_eq!(clean("DND", "on", 0), 1);
+        assert_eq!(clean("DND", "YES", 0), 1);
+        assert_eq!(clean("DND", "false", 1), 0);
+        assert_eq!(clean("DND", "maybe", 1), 1);
+    }
+}

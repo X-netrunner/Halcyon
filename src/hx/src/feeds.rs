@@ -279,3 +279,27 @@ pub fn disk(iv: f64) {
         std::thread::sleep(Duration::from_secs_f64(iv.max(0.5)));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::unescape_mount;
+
+    #[test]
+    fn mount_names_decode_octal_escapes() {
+        assert_eq!(unescape_mount("/mnt/my\\040disk"), "/mnt/my disk");
+        assert_eq!(unescape_mount("a\\011b\\012c"), "a\tb\nc");
+        assert_eq!(unescape_mount("back\\134slash"), "back\\slash");
+    }
+
+    #[test]
+    fn mount_names_without_escapes_are_unchanged() {
+        assert_eq!(unescape_mount("/home"), "/home");
+        assert_eq!(unescape_mount(""), "");
+    }
+
+    #[test]
+    fn a_backslash_not_followed_by_three_octal_digits_stays() {
+        assert_eq!(unescape_mount("a\\04"), "a\\04");
+        assert_eq!(unescape_mount("a\\xyz"), "a\\xyz");
+    }
+}

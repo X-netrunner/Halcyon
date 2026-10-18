@@ -34,6 +34,7 @@
 # Options
 #   -y, --yes              no questions                       --dry-run        show the steps, change nothing
 #   --no-packages          skip pacman / AUR (also drivers)   --no-drivers      skip GPU driver + microcode detection
+#   --build-from-source    compile the Rust helpers here instead of downloading the release binaries (HALCYON_PREBUILT=0 does the same)
 #   --no-aur               never install from the AUR         --upgrade        run a full system upgrade (pacman -Syu) first
 #   --no-sysmode           skip the hardening CLI + services  --no-tune        skip halcyon-tune and its sudo rule
 #   --link                 symlink ~/.config/Halcyon to this folder instead of copying it (for development)
@@ -86,6 +87,7 @@ else RICE_SOURCE="$SCRIPT_DIR"; fi
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 AUTO_CONFIRM=false; DRY_RUN=false; VERBOSE=true        # verbose by default: you see every command's output (-q hides it)
 INSTALL_APPS=true
+PREBUILT=true                                  # use the helper binaries from the GitHub release of this tag when there is one (--build-from-source: compile them)
 PACKAGES=true; SKIP_DRIVERS=false; SKIP_AUR=false; UPGRADE=auto; SKIP_TUNE=false
 SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=false; SYSMODE_ASKED=true; }
 SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default (answer n, or --no-safety-check, to skip it)
@@ -151,6 +153,7 @@ while [[ $# -gt 0 ]]; do
         -y|--yes)           AUTO_CONFIRM=true ;;
         --dry-run)          DRY_RUN=true ;;
         --no-packages)      PACKAGES=false ;;
+        --build-from-source) PREBUILT=false ;;
         --no-drivers)       SKIP_DRIVERS=true ;;
         --no-aur)           SKIP_AUR=true ;;
         --upgrade)          UPGRADE=yes ;;
@@ -1475,11 +1478,17 @@ log_step "Step 6: Rust toolchain"
 [[ -d "$TARGET_HOME/.cargo/bin" ]] && export PATH="$TARGET_HOME/.cargo/bin:$PATH"
 rust_ok() { run_as_user cargo --version >/dev/null 2>&1 && run_as_user rustc --version >/dev/null 2>&1; }
 
-if [[ "$DRY_RUN" == "true" ]]; then
-    log_task "[DRY-RUN] would check for cargo / rustc and install one if missing"
-elif rust_ok; then
-    log_success "Rust: $(run_as_user rustc --version)"
-else
+# Prebuilt helpers: possible when this checkout is exactly a release tag (so the binaries match the source), on x86_64, with curl and
+# sha256sum, and the user did not ask to compile. Then no Rust toolchain is needed unless a download fails (step 8 installs one then).
+prebuilt_possible() {
+    [[ "$PREBUILT" == "true" && "${HALCYON_PREBUILT:-1}" != "0" ]] || return 1
+    [[ "$(uname -m)" == "x86_64" ]] || return 1
+    command -v curl >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1 && command -v git >/dev/null 2>&1 || return 1
+    git -C "$RICE_SOURCE" describe --tags --exact-match >/dev/null 2>&1
+}
+
+ensure_rust() {
+    if rust_ok; then log_success "Rust: $(run_as_user rustc --version)"; return 0; fi
     if command -v rustup >/dev/null 2>&1; then
         run_as_user_cmd "Setting up the stable Rust toolchain (rustup)" rustup default stable || warn_later "rustup could not set up a toolchain."
     elif [[ "$PACKAGES" == "true" ]]; then
@@ -1487,6 +1496,14 @@ else
     fi
     rust_ok && log_success "Rust: $(run_as_user rustc --version)" \
             || warn_later "No working Rust toolchain: the helpers (hx, hal, power-manager, touchpad-gestures, recon-deceiver, log-analyst, attacker-dossier, setStaticMac) cannot be built ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install rustc cargo" || echo "sudo pacman -S rust"))."
+}
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    log_task "[DRY-RUN] would check for cargo / rustc and install one if missing"
+elif prebuilt_possible; then
+    log_info "This is a release checkout: the helpers are downloaded prebuilt (checksum-verified), so no Rust toolchain is needed now."
+else
+    ensure_rust
 fi
 
 # ---------------------------------------------------------------------------------------------- step 7
@@ -1549,27 +1566,83 @@ SYSMODE_CRATES=(recon-deceiver log-analyst attacker-dossier setStaticMac)       
 [[ "$SYSMODE" == "true" ]] && CRATES+=("${SYSMODE_CRATES[@]}")
 [[ "$SAFETY" == "true" ]] && CRATES+=(safety-check)
 
+
+link_sysmode() {     # keep the sysmode symlinks in sync
+    case "$1" in
+        recon-deceiver|log-analyst|attacker-dossier|setStaticMac)
+            [[ -d "$TARGET_RICE/sysmode" ]] && ln -sf "$BIN_DIR/$1" "$TARGET_RICE/sysmode/$1" 2>/dev/null || true
+            ;;
+    esac
+}
+
+# ---- prebuilt binaries from the GitHub release of this exact tag (see .github/workflows/release.yml) ----
+# The release carries <crate>-x86_64-linux files and a SHA256SUMS list. Each download is checked against that list and with ldd
+# (no missing libraries) before it replaces anything. The checksum list comes from the same release, so it guards against a broken or
+# truncated download, not against a compromised release: if you want to trust only your own compiler, use --build-from-source.
+PREBUILT_TAG=""; PREBUILT_URL=""; PREBUILT_DIR="$BUILD_ROOT/prebuilt"
+prebuilt_setup() {
+    prebuilt_possible || return 1
+    local url
+    PREBUILT_TAG="$(git -C "$RICE_SOURCE" describe --tags --exact-match 2>/dev/null)" || return 1
+    [[ "$PREBUILT_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+    url="$(git -C "$RICE_SOURCE" remote get-url origin 2>/dev/null)" || return 1
+    url="${url%.git}"
+    [[ "$url" =~ ^git@github\.com:(.+)$ ]] && url="https://github.com/${BASH_REMATCH[1]}"
+    [[ "$url" =~ ^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || return 1
+    PREBUILT_URL="$url"
+    run_as_user mkdir -p "$PREBUILT_DIR" || return 1
+    run_as_user curl -fsSL --proto '=https' --tlsv1.2 --retry 2 --connect-timeout 15 \
+        -o "$PREBUILT_DIR/SHA256SUMS" "$PREBUILT_URL/releases/download/$PREBUILT_TAG/SHA256SUMS" 2>>"$LOG_FILE" || {
+        log_info "No prebuilt release for $PREBUILT_TAG: compiling the helpers instead."; PREBUILT_TAG=""; return 1; }
+    return 0
+}
+fetch_prebuilt() {
+    local crate="$1" file="$PREBUILT_DIR/$1" want got
+    want="$(awk -v n="$crate-x86_64-linux" '$2==n {print $1}' "$PREBUILT_DIR/SHA256SUMS")"
+    [[ "$want" =~ ^[0-9a-f]{64}$ ]] || return 1
+    run_as_user curl -fsSL --proto '=https' --tlsv1.2 --retry 2 --connect-timeout 15 \
+        -o "$file" "$PREBUILT_URL/releases/download/$PREBUILT_TAG/$crate-x86_64-linux" 2>>"$LOG_FILE" || return 1
+    got="$(sha256sum "$file" 2>/dev/null | awk '{print $1}')"
+    if [[ "$got" != "$want" ]]; then log_warn "$crate: checksum does not match the release list; not using the download."; rm -f "$file"; return 1; fi
+    if command -v ldd >/dev/null 2>&1 && ldd "$file" 2>&1 | grep -q 'not found'; then
+        log_warn "$crate: the prebuilt binary needs a library this system lacks; compiling it instead."; rm -f "$file"; return 1
+    fi
+    run_as_user bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$file" "$BIN_DIR/$crate"
+}
+
 if [[ "$DRY_RUN" != "true" ]]; then
     user_bus_ready && user_systemctl stop power-manager.service touchpad-gestures.service >/dev/null 2>&1 || true
     pkill -u "$TARGET_UID" -x touchpad-gestures 2>/dev/null || true
 fi
-if [[ "$DRY_RUN" != "true" ]] && ! rust_ok; then
-    warn_later "No Rust toolchain: skipped building the helpers. Install it ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install rustc cargo" || echo "sudo pacman -S rust")), then run install.sh again."
-    BUILD_FAILED=("${CRATES[@]}")
-else
+
+NEED_BUILD=("${CRATES[@]}")
+if [[ "$DRY_RUN" != "true" ]] && prebuilt_setup; then
+    NEED_BUILD=()
     for crate in "${CRATES[@]}"; do
+        if fetch_prebuilt "$crate"; then
+            log_success "Installed ${BIN_DIR}/${crate} (prebuilt $PREBUILT_TAG)"; link_sysmode "$crate"
+        else
+            NEED_BUILD+=("$crate")
+        fi
+    done
+    [[ ${#NEED_BUILD[@]} -eq 0 ]] || log_info "Compiling what could not be downloaded: ${NEED_BUILD[*]}"
+fi
+
+if [[ ${#NEED_BUILD[@]} -gt 0 && "$DRY_RUN" != "true" ]] && ! rust_ok; then
+    ensure_rust       # only reached when no prebuilt binaries were available (or a download failed)
+fi
+if [[ ${#NEED_BUILD[@]} -gt 0 && "$DRY_RUN" != "true" ]] && ! rust_ok; then
+    warn_later "No Rust toolchain: skipped building the helpers. Install it ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install rustc cargo" || echo "sudo pacman -S rust")), then run install.sh again."
+    BUILD_FAILED=("${NEED_BUILD[@]}")
+else
+    for crate in "${NEED_BUILD[@]}"; do
         MANIFEST="$TARGET_RICE/src/$crate/Cargo.toml"; [[ -f "$MANIFEST" ]] || MANIFEST="$RICE_SOURCE/src/$crate/Cargo.toml"
         log_info "Building ${BOLD}${crate}${RESET} (the first time takes a few minutes)..."
         if run_as_user_cmd "cargo build --release: $crate" env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" cargo build --release --manifest-path "$MANIFEST" \
            && { [[ "$DRY_RUN" == "true" ]] || [[ -f "$BUILD_ROOT/shared/release/$crate" ]]; } \
            && run_as_user_cmd "Installing $crate" bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$BUILD_ROOT/shared/release/$crate" "$BIN_DIR/$crate"; then
             [[ "$DRY_RUN" == "true" ]] || log_success "Installed ${BIN_DIR}/${crate}"
-            # Keep sysmode symlinks in sync
-            case "$crate" in
-                recon-deceiver|log-analyst|attacker-dossier|setStaticMac)
-                    [[ -d "$TARGET_RICE/sysmode" ]] && ln -sf "$BIN_DIR/$crate" "$TARGET_RICE/sysmode/$crate" 2>/dev/null || true
-                    ;;
-            esac
+            link_sysmode "$crate"
         else
             BUILD_FAILED+=("$crate")
             warn_later "$crate did not build. Retry: cargo build --release --manifest-path $TARGET_RICE/src/$crate/Cargo.toml"
