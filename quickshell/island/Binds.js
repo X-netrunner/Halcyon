@@ -23,6 +23,14 @@ var groups = [
         { id: "float", label: "Toggle floating", keys: "SUPER + ALT + space" },
         { label: "Move a window with the mouse", kind: "text", keys: "Super + right button, drag" },
         { label: "Resize a window with the mouse", kind: "text", keys: "Super + left button, drag" },
+        { id: "focus_left", label: "Focus window / column left", keys: "SUPER + Left" },
+        { id: "focus_right", label: "Focus window / column right", keys: "SUPER + Right" },
+        { id: "focus_up", label: "Focus window above", keys: "SUPER + Up" },
+        { id: "focus_down", label: "Focus window below", keys: "SUPER + Down" },
+        { id: "movewin_left", label: "Move window left", keys: "SUPER + SHIFT + Left" },
+        { id: "movewin_right", label: "Move window right", keys: "SUPER + SHIFT + Right" },
+        { id: "movewin_up", label: "Move window up", keys: "SUPER + SHIFT + Up" },
+        { id: "movewin_down", label: "Move window down", keys: "SUPER + SHIFT + Down" },
         { id: "swapsplit", label: "Swap split", keys: "SUPER + Y" },
         { id: "layout", label: "Layout: dwindle / scrolling", keys: "SUPER + ALT + T" }
     ] },
@@ -56,6 +64,7 @@ var groups = [
         { id: "cmdlist", label: "Console commands list (needs sysmode)", keys: "SUPER + ALT + slash", needs: "sysmode" },
         { id: "apps", label: "Background apps box", keys: "SUPER + SHIFT + A" },
         { id: "gaming", label: "Gaming mode", keys: "SUPER + F10" },
+        { id: "safemode", label: "Safe mode (effects off / back)", keys: "SUPER + ALT + F12" },
         { label: "Drag the bar left / right", kind: "text", keys: "perf / media page" },
         { label: "Hover the bottom-right corner", kind: "text", keys: "utilities" },
         { label: "Hover the bottom-left corner", kind: "text", keys: "background apps" }
@@ -76,6 +85,7 @@ var groups = [
         { id: "emoji", label: "Emoji picker", keys: "SUPER + period" },
         { id: "shot", label: "Screenshot (full)", keys: "Print" },
         { id: "shotarea", label: "Screenshot area (freeze, save + copy)", keys: "SUPER + SHIFT + S" },
+        { id: "shotpanel", label: "Screenshot panel (region, window, full screen)", keys: "SUPER + CTRL + S" },
         { id: "shotplain", label: "Screenshot area (save only)", keys: "SUPER + SHIFT + Print" },
         { id: "lock", label: "Lock screen", keys: "SUPER + L" },
         { id: "session", label: "Session menu", keys: "CTRL + ALT + Delete" }

@@ -31,6 +31,8 @@ Scope {
     property real blurRadius: 40          // 4 .. 64
     property real tint: 0.55              // 0 .. 0.95
     readonly property bool useWall: bgMode === "wallpaper" && wallpaper !== ""
+    // the picture's address: a space, %, # or ? in the file name must not break it (same rule as the Desktop builder's preview)
+    readonly property string wallUrl: wallpaper === "" ? "" : "file://" + encodeURI(wallpaper).replace(/#/g, "%23").replace(/\?/g, "%3F")
 
     // shared by every screen's surface
     property string buffer: ""
@@ -88,22 +90,31 @@ Scope {
             property real appear: 0
             NumberAnimation on appear { from: 0; to: 1; duration: 1100; easing.type: Easing.OutCubic }
 
-            // ---- blurred wallpaper (only exists while locked and only when chosen in Settings > Sleep & lock)
+            // ---- blurred wallpaper (only exists while locked and only when chosen in Settings > Power & lock)
             // The blur sits in its own layer, so it is drawn once and kept as a texture, not redone every frame the stars move.
+            // It is only drawn once the picture has really loaded. Until then, and for good if the file is missing or cannot be read,
+            // the plain theme colour of the surface stays: exactly the "Solid colour" look, with no empty full-screen texture behind it.
+            // When the picture arrives (the wallpaper path is known a moment later at login, or the wallpaper changes while locked)
+            // it fades in instead of popping.
             Item {
                 id: wallBox
                 anchors.fill: parent
-                visible: root.useWall
-                opacity: surf.appear
-                layer.enabled: root.useWall
+                readonly property bool ready: root.useWall && wallImg.status === Image.Ready
+                property real fadeIn: ready ? 1 : 0
+                Behavior on fadeIn { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
+                visible: fadeIn > 0.001
+                opacity: surf.appear * fadeIn
+                layer.enabled: ready
                 Image {
                     id: wallImg
                     anchors.fill: parent
                     visible: false
                     asynchronous: true
+                    cache: false          // like Wallpaper.qml: the decoded picture is not kept by Qt once this screen is gone
                     fillMode: Image.PreserveAspectCrop
-                    // decode at the screen's size, like Wallpaper.qml does, not at the picture's own (maybe 4K) size
-                    source: root.useWall && surf.width > 0 ? "file://" + root.wallpaper : ""
+                    // decode at the screen's size, like Wallpaper.qml does, not at the picture's own (maybe 4K) size.
+                    // Empty again the moment the lock ends, so the picture is let go before the surface itself is torn down.
+                    source: root.useWall && root.locked && surf.width > 0 ? root.wallUrl : ""
                     sourceSize: Qt.size(Math.max(1, Math.round(surf.width)), Math.max(1, Math.round(surf.height)))
                 }
                 MultiEffect {

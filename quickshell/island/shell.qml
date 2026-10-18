@@ -63,6 +63,7 @@ ShellRoot {
         surface: "tint",           // tint | match | matte | black : the box background (Settings > Look > Box background); matte / black are solid and need the dark theme
         dropDown: "side",          // off | stack | side : drag the bar down for the utilities box (stack: drag again for the notifications; side: notifications beside it)
         osdHold: 1700,             // ms the volume / brightness bar stays
+        keysStyle: "tree",         // tree | pages : the layout of the Shortcuts cheatsheet (the chip in its header, or Settings > Look > Shortcuts layout)
         settingsStyle: "tree",     // tree | pages : the layout of the Settings window (both stay; Settings > Look > Settings layout)
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
         critSecs: 30,              // seconds an urgent popup stays before it hides itself (0 = until clicked); it stays in the centre either way
@@ -558,6 +559,8 @@ ShellRoot {
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
+            else if (id === "fx-safe-on") root.fxRun(["safe-mode", "on"])
+            else if (id === "fx-safe-off") root.fxRun(["safe-mode", "back"])
             else if (id === "adapt-reset") Quickshell.execDetached([Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "adapt-reset"])
             else if (id === "detect-ram") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/refresh-ram.sh", "--gui"]); specsAgain.restart() }
             else if (id === "opt-sweet-spot") {
@@ -592,6 +595,8 @@ ShellRoot {
         hasSysmode: cmdTree.available
         keyMap: root.keyMap
         customs: root.customBinds
+        style: root.opt.keysStyle === "pages" ? "pages" : "tree"
+        onStyleChosen: m => root.setOpt("keysStyle", m)
         onRebind: (id, keys) => root.setBind(id, keys)
         onCustomSaved: (i, label, keys, cmd) => root.saveCustomBind(i, label, keys, cmd)
         onCustomRemoved: i => root.removeCustomBind(i)
@@ -755,14 +760,54 @@ ShellRoot {
         consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
     }
 
-    // SUPER+N: Quick notes overlay (notes, tasks, search, copy)
+    // SUPER+N: the new-note panel on the side of the screen (type, Enter saves). ">all notes" in the launcher: the full list (NotesMenu.qml)
     NotesMenu {
         id: notesMenu
         pal: pal
+        opt: root.opt
+        spot: root.boxSpots.term
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
         sysmode: root.sysmode
         starData: root.starData
         profileStars: root.profileStars
+    }
+
+    // >clipboard in the launcher: what you copied lately, click or Enter to put it back (ClipMenu.qml; the history itself is cliphist's)
+    ClipMenu {
+        id: clipMenu
+        pal: pal
+        opt: root.opt
+        spot: root.boxSpots.term
+        stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
+    }
+
+    // SUPER + CTRL + S, >screenshot: Region / Window / Full screen, then Copy, Save or Both (ShotMenu.qml, scripts/halcyon-shot.py)
+    ShotMenu {
+        id: shotMenu
+        pal: pal
+        opt: root.opt
+        spot: root.boxSpots.term
+        stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
+    }
+
+    // the Lyrics / Queue chips on the media page, >lyrics, >queue: the lyrics of what plays and what plays next (MusicMenu.qml, scripts/halcyon-music.py)
+    MusicMenu {
+        id: musicMenu
+        pal: pal
+        opt: root.opt
+        spot: root.boxSpots.term
+        stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
+        sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
+        title: root.player ? (root.player.trackTitle || "") : ""
+        artist: root.player ? (root.player.trackArtist || "") : ""
     }
 
     // Notifications are on top of every window, big ones included. Those open on the same layer and later = above, so whenever one
@@ -770,7 +815,7 @@ ShellRoot {
     // notifs.centerOpen is NOT in this list on purpose: the notification window does not need to raise itself above itself, and the
     // raise() un-maps the window for a moment, which made the box think the pointer had left and close about a second after opening.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
-        || calendar.open || notesMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
+        || calendar.open || notesMenu.open || clipMenu.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
         || settingsWin.galleryOpen || settingsWin.builderOpen
         || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
@@ -965,6 +1010,9 @@ ShellRoot {
         if (tour.open) { tour.end(false); return true }
         if (powerMenu.open) { powerMenu.hide(); return true }
         if (notesMenu.open) { notesMenu.close(); return true }
+        if (clipMenu.open) { clipMenu.close(); return true }
+        if (shotMenu.open) { shotMenu.close(); return true }
+        if (musicMenu.open) { musicMenu.close(); return true }
         if (calendar.open) { calendar.hide(); return true }
         if (settingsWin.startupOpen) { settingsWin.startupOpen = false; return true }
         if (settingsWin.builderOpen) { settingsWin.builderOpen = false; return true }
@@ -1025,6 +1073,18 @@ ShellRoot {
     function writeFlag(name, value) {
         Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && printf '%s\\n' \"$3\" > \"$1/$2\"", "sh", stateDir, name, String(value)])
     }
+    // ---- Safe mode and Profiles (scripts/halcyon-fx.py). The script edits settings.json and asks the island to read it again.
+    // fxRun first writes any save that is still waiting (so the script never reads, or gets overwritten by, older values), then starts it.
+    readonly property string fxScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-fx.py"
+    property var fxArgs: []
+    function fxRun(args) {
+        if (saveT.running) { saveT.stop(); writeSettings() }
+        fxArgs = args
+        fxStartT.restart()
+    }
+    Timer { id: fxStartT; interval: 450; onTriggered: Quickshell.execDetached(["python3", root.fxScript].concat(root.fxArgs)) }
+    // read settings.json again inside the running island (no restart): `halcyon profile ...` calls this through IPC (applyFx)
+    function reloadSettingsFile() { settingsLoadProc.running = false; settingsLoadProc.running = true }
     Timer { id: boostT; interval: 350; onTriggered: Quickshell.execDetached(["bash", cfg + "/island/scripts/palette.sh"]) }
     function setAutoHide(v) { autoHide = v; saveSettings() }
     function setCompactSpecial(v) { compactSpecial = v; saveSettings(); applySpecialScale() }
@@ -1048,6 +1108,7 @@ ShellRoot {
         case "dnd": setDnd(v); return
         case "clickMode": setEdgeMode(v ? "click" : "hover"); return
         case "gaming": setGaming(v); return
+        case "fxProfile": fxRun(["profile", String(v)]); return        // Settings > Performance > Profiles (Custom | Work | Gaming | Battery | Night)
         case "profileStars": profileStars = v; break
         case "notifHistoryMax": notifHistoryMax = v; break
         case "notifMax": notifMax = v; break
@@ -1491,6 +1552,11 @@ ShellRoot {
         case "wifi": toggleWifi(); break
         case "bluetooth": toggleBt(); break
         case "notes": notesMenu.toggle(); break
+        case "notesall": notesMenu.toggleAll(); break
+        case "clipboard": shotMenu.hide(); musicMenu.hide(); clipMenu.toggle(); break
+        case "screenshot": clipMenu.hide(); musicMenu.hide(); shotMenu.toggle(); break
+        case "lyrics": clipMenu.hide(); shotMenu.hide(); musicMenu.toggleTab("lyrics"); break
+        case "queue": clipMenu.hide(); shotMenu.hide(); musicMenu.toggleTab("queue"); break
         case "record": toggleRecording(); break
         case "extradim": toggleExtraDim(); break
         default: session(id)
@@ -1499,6 +1565,7 @@ ShellRoot {
 
     // ---------- data sources ----------
     Process {
+        id: settingsLoadProc
         running: true
         command: ["sh", "-c", "cat \"$HOME/.local/state/island/settings.json\" 2>/dev/null || echo '{}'"]
         stdout: StdioCollector {
@@ -1809,6 +1876,7 @@ ShellRoot {
         case "lock": lockScreen.lock(); break
         case "power": powerMenu.show(); break
         case "console": quickTerm.toggle(); break
+        case "notes": notesMenu.show(); break
         case "mute": Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]); muted = !muted; break
         case "ws-up": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", "wheel-up"]); break
         case "ws-down": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", "wheel-down"]); break
@@ -1954,9 +2022,16 @@ ShellRoot {
         function advisorLlm(): void { quickTerm.run("python3 " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/adaptive-advisor.py --llm") }
         function extradim(): void { root.toggleExtraDim() }
         function notes(): void { notesMenu.toggle() }
+        function notesAll(): void { notesMenu.toggleAll() }
+        function clipboard(): void { root.runCommand("clipboard") }
+        function screenshot(): void { root.runCommand("screenshot") }
+        function lyrics(): void { root.runCommand("lyrics") }
+        function queue(): void { root.runCommand("queue") }
+        function music(): void { root.runCommand("lyrics") }
         function refreshNotes(): void { notesMenu.loadNotes() }
         function record(): void { root.toggleRecording() }
         function reload(): void { fullReloadProc.running = true }
+        function applyFx(): void { root.reloadSettingsFile() }          // halcyon-fx.py: settings.json changed, read it again now
     }
 
     // =====================================================================
@@ -2342,6 +2417,11 @@ ShellRoot {
                     anchors.fill: parent
                     pal: pal
                     player: root.player
+                    onOpenMusic: tab => {
+                        clipMenu.hide(); shotMenu.hide()
+                        root.page = "home"             // the island folds back; the panel opens on the side
+                        musicMenu.show(tab)
+                    }
                     opacity: root.page === "media" ? 1 : 0
                     visible: opacity > 0.01
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }

@@ -32,7 +32,7 @@ var catalog = [
       styles: [["line", "One line"], ["card", "Card"], ["stack", "Stacked"], ["hairline", "Hairline"], ["kanji", "Kanji"]],
       opts: [{ k: "year", kind: "toggle", label: "Show the year", def: false }] },
     { id: "month", cat: "time", name: "Month calendar", icon: 0xF0E17, size: [250, 230], hint: "The month, today lit",
-      styles: [["grid", "Month grid"], ["week", "Week strip"]],
+      styles: [["grid", "Month grid"], ["week", "Week strip"], ["mini", "Compact grid"], ["dots", "Dot grid"]],
       opts: [
         { k: "mon", kind: "chips", label: "Week starts", def: "mon", options: [["mon", "Monday"], ["sun", "Sunday"]] },
         { k: "weeks", kind: "toggle", label: "Week numbers", def: false }
@@ -97,23 +97,24 @@ var catalog = [
         { k: "week", kind: "toggle", label: "Last 7 days", def: true }
       ] },
     { id: "workspaces", cat: "desk", name: "Workspaces", icon: 0xF0208, size: [260, 50], hint: "Switch workspace (click, scroll)",
-      styles: [["dots", "Dots"], ["numbers", "Numbers"], ["capsules", "Capsules"], ["pills", "Pills"], ["roman", "Roman"], ["lines", "Hairlines"]],
+      styles: [["dots", "Dots"], ["numbers", "Numbers"], ["capsules", "Capsules"], ["pills", "Pills"], ["roman", "Roman"], ["lines", "Hairlines"], ["squares", "Squares"], ["outline", "Outline"]],
       opts: [{ k: "min", kind: "slider", label: "Always show at least", def: 5, min: 1, max: 10, unit: "" }] },
-    { id: "special", cat: "desk", name: "Special workspaces", icon: 0xF0208, size: [300, 50], hint: "Scratch, music, chat and monitor workspaces: lit when shown, a click shows / hides one",
-      styles: [["pills", "Pills"], ["icons", "Icons"], ["dots", "Dots"]],
+    { id: "special", cat: "desk", name: "Special workspaces", icon: 0xF0208, size: [300, 50], hint: "Scratch, music, chat and monitor workspaces, in ten looks: lit when shown, a click shows / hides one",
+      styles: [["pills", "Pills"], ["icons", "Icons"], ["dots", "Dots"], ["outline", "Outline"], ["segmented", "Segmented"], ["tabs", "Tabs"], ["labels", "Labels"], ["rings", "Rings"], ["stack", "Stack"], ["glow", "Glow"]],
       opts: [{ k: "show", kind: "multi", label: "Workspaces", def: ["special", "music", "communication", "sysmon"], options: [["special", "Scratch"], ["music", "Music"], ["communication", "Chat"], ["sysmon", "Monitor"]] }] },
     { id: "toggles", cat: "desk", name: "Quick toggles", icon: 0xF0521, size: [300, 70], hint: "Buttons for Wi-Fi, Bluetooth, Do not disturb, Caffeine, Gaming, Num Lock ...",
-      styles: [["row", "Row"], ["grid", "Grid"], ["icons", "Icons only"]],
+      styles: [["row", "Row"], ["grid", "Grid"], ["icons", "Icons only"], ["list", "List"], ["outline", "Outline"], ["glyphs", "Bare icons"]],
       opts: [
         { k: "show", kind: "multi", label: "Buttons", def: ["wifi", "bt", "dnd", "caffeine", "gaming", "theme"], options: [["wifi", "Wi-Fi"], ["bt", "Bluetooth"], ["dnd", "Do not disturb"], ["caffeine", "Caffeine"], ["gaming", "Gaming"], ["numlock", "Num Lock"], ["theme", "Theme"], ["night", "Night light"], ["lock", "Lock"], ["power", "Power"]] }
       ] },
     { id: "shortcuts", cat: "desk", name: "App shortcuts", icon: 0xF003B, size: [300, 70], hint: "Your own buttons that start apps or commands",
-      styles: [["row", "Row"], ["grid", "Grid"], ["list", "List"]],
+      styles: [["row", "Row"], ["grid", "Grid"], ["list", "List"], ["outline", "Outline"], ["glyphs", "Bare"]],
       opts: [{ k: "items", kind: "text", label: "Buttons", def: "Browser=xdg-open https://;Files=thunar;Terminal=kitty", hintText: "Name=command;Name=command" }] },
     { id: "notes", cat: "desk", name: "Notes & agenda", icon: 0xF03EB, size: [290, 150], hint: "Your pinned notes and today's calendar",
       styles: [["glass", "List"], ["cards", "Cards"]],
       opts: [
         { k: "events", kind: "toggle", label: "Today's calendar", def: false },
+        { k: "add", kind: "toggle", label: "\"Add a note\" row (opens the Super + N panel; the widget itself takes no typing)", def: true },
         { k: "max", kind: "slider", label: "Most lines", def: 4, min: 1, max: 8, unit: "" },
         { k: "width", kind: "slider", label: "Width", def: 290, min: 200, max: 480, unit: " px" }
       ] },
@@ -160,14 +161,14 @@ var catalog = [
         { k: "south", kind: "toggle", label: "Southern hemisphere (turns it round)", def: false }
       ] },
     { id: "horizon", cat: "time", name: "Horizon", icon: 0xF0150, size: [300, 70], hint: "A hairline with a glowing dot: how far through the day (or the year) you are, with its reflection",
-      styles: [["horizon", "Horizon"], ["dual", "Day and year"], ["quiet", "Quiet"]],
+      styles: [["horizon", "Horizon"], ["dual", "Day and year"], ["quiet", "Quiet"], ["arc", "Sun arc"], ["ticks", "Hour ticks"]],
       opts: [
         { k: "width", kind: "slider", label: "Width", def: 300, min: 140, max: 700, unit: " px" },
         { k: "reflect", kind: "toggle", label: "Reflection", def: true },
         { k: "percent", kind: "toggle", label: "Show the percent", def: true }
       ] },
     { id: "breathe", cat: "focus", name: "Breathe", icon: 0xF051B, size: [150, 170], hint: "A flower that opens and closes slowly: a calm pace to breathe with",
-      styles: [["bloom", "Bloom"], ["ring", "Ring"], ["dot", "Dot"]],
+      styles: [["bloom", "Bloom"], ["ring", "Ring"], ["dot", "Dot"], ["orbs", "Ripples"], ["bars", "Bars"]],
       opts: [
         { k: "secs", kind: "slider", label: "Seconds per breath", def: 10, min: 4, max: 20, unit: " s" },
         { k: "words", kind: "toggle", label: "Say in / out", def: true }
@@ -304,10 +305,12 @@ function cleanItem(it, used) {
         o.link = it.link
         o.linkSide = sideOf(it.linkSide)
         o.linkGap = Math.round(clamp(num(it.linkGap, 14), 0, 200))
+        var lo = Math.round(clamp(num(it.linkOrder, 0), 0, 99))
+        if (lo > 0) o.linkOrder = lo
     }
     return o
 }
-function unlink(it) { delete it.link; delete it.linkSide; delete it.linkGap }
+function unlink(it) { delete it.link; delete it.linkSide; delete it.linkGap; delete it.linkOrder }
 
 // whatever was saved -> a clean list: known types only, unique ids
 function normalize(d) {
@@ -387,7 +390,8 @@ function setScalePos(d, uid, s, px, py) { return patch(d, uid, function (it) { i
 // they share one width: the widest of the stacked ones, so a visualizer and a song title line up edge to edge) or beside it, "right"
 // / "left" (side by side, vertically centred on the leader; each keeps its OWN width, so when one grows - "9h" becoming "1d 11h" - the
 // one next to it is pushed along instead of being overlapped). Linked widgets always share the leader's size (scale).
-// Moving or resizing any of them moves / resizes the whole chain.
+// Moving or resizing any of them moves / resizes the whole chain. Several widgets can follow the SAME leader: on one side of it they
+// line up one after the other (see siblings()), so "two widgets linked to one" sit neatly in a row or a column.
 function sideOf(s) { return (s === "above" || s === "left" || s === "right") ? s : "below" }
 function isStacked(s) { return s !== "left" && s !== "right" }
 function leaderOf(d, uid) { var it = find(d, uid); return (it && it.link && find(d, it.link)) ? it.link : "" }
@@ -424,6 +428,27 @@ function widthGroup(d, uid) {
     }
     return out
 }
+// the widgets that follow `leader` on one side of it, in the order they are laid out. Several widgets may follow the same one: on the
+// same side they line up one after the other (the first sits against the leader, the next against the first ...), so they never cover
+// each other. item.linkOrder says who is first; widgets with the same number keep the order they were added in.
+function siblings(d, leader, side) {
+    var out = []
+    for (var i = 0; i < d.items.length; i++) {
+        var c = d.items[i]
+        if (c.link === leader && leaderOf(d, c.uid) === leader && sideOf(c.linkSide) === side) out.push({ uid: c.uid, o: num(c.linkOrder, 0), i: i })
+    }
+    out.sort(function (a, b) { return a.o !== b.o ? a.o - b.o : a.i - b.i })
+    return out.map(function (x) { return x.uid })
+}
+// put `uid` at place `slot` (0 = first) among the widgets that follow the same one on the same side
+function setLinkSlot(d, uid, slot) {
+    var o = copy(d), it = find(o, uid)
+    if (!it || !it.link) return o
+    var sib = siblings(o, it.link, sideOf(it.linkSide)).filter(function (u) { return u !== uid })
+    sib.splice(Math.max(0, Math.min(sib.length, Math.round(num(slot, 0)))), 0, uid)
+    for (var i = 0; i < sib.length; i++) { var s = find(o, sib[i]); if (i > 0) s.linkOrder = i; else delete s.linkOrder }
+    return o
+}
 // can `uid` follow `to`? (not itself, it exists, and `to` does not already follow `uid`)
 function canLink(d, uid, to) {
     if (!to || to === uid || !find(d, to)) return false
@@ -435,7 +460,11 @@ function canLink(d, uid, to) {
 function setLink(d, uid, to, side, gap) {
     var ok = canLink(d, uid, to)
     return patch(d, uid, function (it) {
-        if (ok) { it.link = to; it.linkSide = sideOf(side); it.linkGap = Math.round(clamp(num(gap, 14), 0, 200)) }
+        if (ok) {
+            // a new leader or a new side: it goes to the end of the line of widgets that follow there (a gap slider keeps its place)
+            if (it.link !== to || sideOf(it.linkSide) !== sideOf(side)) it.linkOrder = 99
+            it.link = to; it.linkSide = sideOf(side); it.linkGap = Math.round(clamp(num(gap, 14), 0, 200))
+        }
         else unlink(it)
     })
 }

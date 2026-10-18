@@ -62,10 +62,19 @@ Item {
         for (var i = 0; i < rep.count; i++) { var h = rep.itemAt(i); if (h && h.uid === uid) return h }
         return null
     }
+    // the widget this one sits next to: its leader, or (when several widgets follow the same leader on the same side) the one
+    // before it in that line, so they line up one after the other instead of lying on top of each other
     function linkHostOf(uid, t) {
         if (!anyLinks) return null
         var l = WD.leaderOf(layout, uid)
-        return l !== "" ? hostOf(l) : null
+        if (l === "") return null
+        var me = WD.find(layout, uid)
+        var sib = WD.siblings(layout, l, WD.sideOf(me ? me.linkSide : ""))
+        for (var j = sib.indexOf(uid) - 1; j >= 0; j--) {
+            var h = hostOf(sib[j])
+            if (h && !h.bodyHidden) return h
+        }
+        return hostOf(l)
     }
     // the first widget of the chain this one belongs to (the widget itself when nothing is linked): that is the one a drag really moves
     function chainRootOf(uid, t) {
@@ -77,7 +86,7 @@ Item {
     // left) pushes the chain to the right instead of growing off the screen.
     function chainExt(uid, side, t, depth) {
         if (!anyLinks || (depth || 0) > 8) return 0
-        var m = 0
+        var m = 0, sum = 0
         for (var i = 0; i < layout.items.length; i++) {
             var f = layout.items[i]
             if (f.link !== uid) continue
@@ -85,13 +94,16 @@ Item {
             if (!h || h.bodyHidden) continue
             var sd = WD.sideOf(f.linkSide), gap = f.linkGap !== undefined ? Number(f.linkGap) : 14
             var inner = chainExt(f.uid, side, t, (depth || 0) + 1)
-            if (sd === "left") { if (side === "l") m = Math.max(m, h.vw + gap + inner) }
-            else if (sd === "right") { if (side === "r") m = Math.max(m, h.vw + gap + inner) }
+            // several followers on the same side stand in a row, so their widths add up
+            if (sd === "left") { if (side === "l") sum += h.vw + gap + inner }
+            else if (sd === "right") { if (side === "r") sum += h.vw + gap + inner }
             else m = Math.max(m, inner)               // stacked above / below: same left edge, same width
         }
-        return m
+        return Math.max(m, sum)
     }
     // the outer width every widget stacked with this one (above / below links) shares: the widest of them (0 = nothing is forced; side-by-side links never force a width)
+    // A member that is only hidden for now (a visualizer while nothing plays, "hide when idle") still counts: the others keep their width and
+    // their place instead of shrinking to their own text and jumping to the left edge every time the music stops. Only a widget you switched OFF drops out.
     function groupW(uid, t) {
         if (!anyLinks) return 0
         var g = WD.widthGroup(layout, uid)
@@ -99,7 +111,7 @@ Item {
         var m = 0
         for (var i = 0; i < g.length; i++) {
             var h = hostOf(g[i])
-            if (h && (g[i] === uid || !h.bodyHidden)) m = Math.max(m, h.natW)
+            if (h && (g[i] === uid || !h.off)) m = Math.max(m, h.natW)
         }
         return m
     }

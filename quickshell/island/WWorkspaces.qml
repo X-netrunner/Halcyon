@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell.Hyprland
 
 // "Workspaces": the same switcher as the bar, on the desktop. A click goes to that workspace, the wheel walks through them.
-//   dots | numbers | capsules | pills
+//   dots | numbers | capsules | pills | roman | lines | squares | outline
 WBase {
     id: root
 
@@ -38,18 +38,21 @@ WBase {
                 readonly property var ws: root.findWs(wid)
                 readonly property bool cur: ws !== null && ws.focused
                 readonly property bool used: ws !== null && root.wins(ws) > 0
-                readonly property bool num: root.style === "numbers" || root.style === "pills" || root.style === "roman"
-                implicitWidth: root.style === "lines" ? root.sz(cur ? 3 : 2) : (root.style === "roman" ? root.sz(30) : root.style === "capsules" ? root.sz(cur ? 10 : 8)
-                             : (root.style === "dots" ? root.sz(cur ? 26 : 10) : (root.style === "pills" ? root.sz(cur ? 40 : 30) : root.sz(28))))
-                implicitHeight: root.style === "lines" ? root.sz(cur ? 28 : 16) : root.style === "capsules" ? root.sz(cur ? 26 : 18) : (root.style === "dots" ? root.sz(10) : root.sz(root.style === "pills" ? 26 : 28))
+                readonly property bool num: root.style === "numbers" || root.style === "pills" || root.style === "roman" || root.style === "squares" || root.style === "outline"
+                implicitWidth: root.style === "squares" ? root.sz(cur ? 28 : 22) : (root.style === "outline" ? root.sz(26)
+                             : root.style === "lines" ? root.sz(cur ? 3 : 2) : (root.style === "roman" ? root.sz(30) : root.style === "capsules" ? root.sz(cur ? 10 : 8)
+                             : (root.style === "dots" ? root.sz(cur ? 26 : 10) : (root.style === "pills" ? root.sz(cur ? 40 : 30) : root.sz(28)))))
+                implicitHeight: root.style === "squares" ? root.sz(22) : (root.style === "outline" ? root.sz(26) : root.style === "lines" ? root.sz(cur ? 28 : 16) : root.style === "capsules" ? root.sz(cur ? 26 : 18) : (root.style === "dots" ? root.sz(10) : root.sz(root.style === "pills" ? 26 : 28)))
                 width: implicitWidth; height: implicitHeight
                 anchors.verticalCenter: parent.verticalCenter
                 Behavior on implicitWidth { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                 Behavior on implicitHeight { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                 Rectangle {
                     anchors.fill: parent
-                    radius: root.style === "numbers" ? width / 2 : Math.min(width, height) / 2
-                    color: cell.cur ? root.accent : (cell.used ? Qt.alpha(root.fg, 0.55) : root.track)
+                    radius: root.style === "squares" ? root.sz(6) : (root.style === "numbers" ? width / 2 : Math.min(width, height) / 2)
+                    color: root.style === "outline" ? (cell.cur ? Qt.alpha(root.accent, 0.2) : "transparent") : (cell.cur ? root.accent : (cell.used ? Qt.alpha(root.fg, 0.55) : root.track))
+                    border.width: root.style === "outline" ? 1.5 : 0
+                    border.color: cell.cur ? root.accent : (cell.used ? Qt.alpha(root.fg, 0.55) : Qt.alpha(root.dim, 0.5))
                     opacity: cell.cur || cell.used ? 1 : 0.8
                     visible: root.style !== "roman" && !(root.style === "numbers" && !cell.cur)
                     Behavior on color { ColorAnimation { duration: 160 } }
@@ -59,7 +62,7 @@ WBase {
                     anchors.centerIn: parent
                     visible: cell.num
                     text: root.style === "roman" ? root.roman(cell.wid) : cell.wid
-                    color: root.style === "roman" ? (cell.cur ? root.accent : (cell.used ? root.fg : root.dim)) : (cell.cur ? (root.pal ? root.pal.bg : "black") : (cell.used ? root.fg : root.dim))
+                    color: root.style === "roman" || root.style === "outline" ? (cell.cur ? root.accent : (cell.used ? root.fg : root.dim)) : (cell.cur ? (root.pal ? root.pal.bg : "black") : (cell.used ? root.fg : root.dim))
                     font.pixelSize: root.sz(13)
                     font.weight: cell.cur ? Font.Bold : Font.Medium
                 }

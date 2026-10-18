@@ -17,7 +17,7 @@
 #                                         foot / Thunar / Spotify / Discord become the default terminal / files / music / chat
 #                                         (only for a kind you have not chosen yourself in Settings > Default apps).
 #                                         browser= / files= / editor= are what you picked in the installer: those always win
-#     user-setup.sh save-choices K=V...   remember the installer's picks (~/.local/state/island/install-choices.env: BROWSER FILES EDITOR MUSIC SYSMODE SAFETY_CHECK RESOURCE_MODE RESOURCE_OFFSET)
+#     user-setup.sh save-choices K=V...   remember the installer's picks (~/.local/state/island/install-choices.env: BROWSER FILES EDITOR MUSIC SYSMODE SAFETY_CHECK PROMPT RESOURCE_MODE RESOURCE_OFFSET)
 #     user-setup.sh resource-seed PRESET LIMMODE RAM_MB CPU_PCT
 #                                         the resource use picked in the installer (low|medium|high, manual|auto, the RAM / CPU limits): written
 #                                         once to ~/.local/state/island/resource-seed.json, the island applies it on its next start and deletes it
@@ -308,16 +308,8 @@ terminals() {
 
 # ---------------------------------------------------------------------------------------------- app themes
 app_themes() {
-  local s="$HOME/.config/starship.toml"
-  # Starship: the Halcyon prompt. Put in place once; your own starship.toml is kept as starship.toml.before-halcyon.
-  if [ -f "$RICE/config/starship.toml" ] && command -v starship >/dev/null 2>&1; then
-    if [ -f "$s" ] && grep -q "HALCYON STARSHIP PALETTE" "$s"; then ok "starship: the Halcyon prompt is already in place"
-    else
-      mkdir -p "$HOME/.config"
-      [ -f "$s" ] && [ ! -e "$s.before-halcyon" ] && cp -p "$s" "$s.before-halcyon" && ok "starship: your own starship.toml is kept as starship.toml.before-halcyon"
-      cp "$RICE/config/starship.toml" "$s" && ok "starship: Halcyon prompt (with the rice name) installed"
-    fi
-  fi
+  # Starship: what happens to ~/.config/starship.toml is YOUR choice (install.sh --prompt keep | colours | halcyon, asked once and saved):
+  # scripts/app-themes.sh --setup below carries it out. Whatever it replaces is saved next to the file (starship.toml.before-halcyon / .halcyon).
   # fish: colours (the terminal's ANSI names) + starts Starship
   if [ -f "$RICE/config/fish/halcyon.fish" ] && command -v fish >/dev/null 2>&1; then
     mkdir -p "$HOME/.config/fish/conf.d" && cp "$RICE/config/fish/halcyon.fish" "$HOME/.config/fish/conf.d/halcyon.fish" && ok "fish: colours installed (conf.d/halcyon.fish)"
@@ -338,7 +330,7 @@ app_themes() {
 bash_shims() {
   local b script
   mkdir -p "$HOME/.local/bin"
-  for b in ai:halcyon-chat.py advisor:adaptive-advisor.py notes:halcyon-notes.py; do
+  for b in ai:halcyon-chat.py advisor:adaptive-advisor.py notes:halcyon-notes.py halcyon:halcyon-fx.py; do
     script="${b#*:}"; b="${b%%:*}"
     [ -f "$RICE/scripts/$script" ] || continue
     [ -L "$HOME/.local/bin/$b" ] && rm -f "$HOME/.local/bin/$b"      # an old link into the (empty) bin/ folder
@@ -347,7 +339,7 @@ bash_shims() {
       chmod +x "$HOME/.local/bin/$b"
     fi
   done
-  ok "commands ai, advisor, notes work in bash too (~/.local/bin)"
+  ok "commands ai, advisor, notes, halcyon (safe-mode, profile) work in bash too (~/.local/bin)"
 }
 
 fish_commands() {
@@ -403,7 +395,7 @@ save_choices() {
   mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
   for a in "$@"; do
     k=${a%%=*}
-    case "$k" in BROWSER|FILES|EDITOR|MUSIC|SYSMODE|SAFETY_CHECK|LLM|LLM_MODEL|RESOURCE_MODE|RESOURCE_OFFSET) ;; *) continue ;; esac
+    case "$k" in BROWSER|FILES|EDITOR|MUSIC|SYSMODE|SAFETY_CHECK|PROMPT|LLM|LLM_MODEL|RESOURCE_MODE|RESOURCE_OFFSET) ;; *) continue ;; esac
     grep -v "^$k=" "$f" > "$f.new" 2>/dev/null; printf '%s="%s"\n' "$k" "${a#*=}" >> "$f.new"; mv "$f.new" "$f"
   done
   ok "your choices are saved in ~/.local/state/island/install-choices.env"

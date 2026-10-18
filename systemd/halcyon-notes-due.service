@@ -1,0 +1,7 @@
+[Unit]
+Description=Halcyon: notify about notes (tasks) whose time has come (started once a minute by halcyon-notes-due.timer)
+
+[Service]
+Type=oneshot
+Nice=10
+ExecStart=/usr/bin/env python3 %h/.config/Halcyon/scripts/halcyon-notes.py remind-check

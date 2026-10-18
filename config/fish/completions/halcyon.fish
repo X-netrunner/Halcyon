@@ -5,8 +5,22 @@ set -l __halcyon_cmds \
     "wallpaper-gallery:wallpaper gallery" "startup-view:startup and processes" "tour:guided tour (replay)" "calendar:Google Calendar" "notifications:notification centre" \
     "clear-notifications:remove all notifications" "dnd:do not disturb (toggle)" "cheatsheet:shortcuts tree" "power-menu:power menu" \
     "quick-terminal:pop-out terminal" "overview:workspace tree" "gaming-mode:gaming mode (toggle)" "caffeine:keep the screen awake (toggle)" \
-    "lock:lock the screen" "theme:light / dark theme (toggle)" "reload:reload the island and Hyprland"
+    "lock:lock the screen" "theme:light / dark theme (toggle)" "reload:reload the island and Hyprland" \
+    "notes:new-note panel on the side (type, Enter saves)" "notes-all:all notes: search, pin, tick off" \
+    "clipboard:clipboard history panel" "screenshot:screenshot panel"
 for __e in $__halcyon_cmds
     set -l __p (string split -m1 : $__e)
     complete -c halcyon -n __fish_use_subcommand -a $__p[1] -d $__p[2]
 end
+complete -c halcyon -n __fish_use_subcommand -a safe-mode -d "effects off if the desktop misbehaves (works without the island)"
+complete -c halcyon -n "__fish_seen_subcommand_from safe-mode" -a "on back toggle status" -d "safe mode"
+complete -c halcyon -n __fish_use_subcommand -a profile -d "work | gaming | battery | night | custom"
+complete -c halcyon -n "__fish_seen_subcommand_from profile" -a "work gaming battery night custom list status" -d "profile"
+complete -c halcyon -n __fish_use_subcommand -a shot -d "take a screenshot now: region | window | full"
+complete -c halcyon -n "__fish_seen_subcommand_from shot" -a "region window full copy save both conf" -d "screenshot"
+complete -c halcyon -n __fish_use_subcommand -a clip -d "clipboard history from a terminal"
+complete -c halcyon -n "__fish_seen_subcommand_from clip" -a "list status clear" -d "clipboard history"
+complete -c halcyon -n __fish_use_subcommand -a music -d "lyrics and queue panel"
+complete -c halcyon -n "__fish_seen_subcommand_from music" -a "lyrics queue status" -d "music panel"
+complete -c halcyon -n __fish_use_subcommand -a lyrics -d "print the lyrics of what plays (spotify_player 0.24+)"
+complete -c halcyon -n __fish_use_subcommand -a queue -d "print what plays next"

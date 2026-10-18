@@ -6,14 +6,15 @@
 #   POLKIT=auto      auto | hyprpolkitagent | gnome | kde | none
 #   CLIPBOARD=1      0 = no clipboard history (the two wl-paste watchers + cliphist are not started)
 #   GESTURES=1       0 = touchpad edge gestures are not started
+#   AUDIO_FOCUS=1    0 = no "one thing plays at a time" (scripts/audio-focus.sh pauses the other player and brings it back after)
 #   PORTAL=login     demand = the screen-sharing helper (xdg-desktop-portal-hyprland) is not started at login; the first app that
 #                    asks for screen sharing starts it through D-Bus
 conf="$HOME/.config/Halcyon/autostart.conf"
 if [ ! -f "$conf" ]; then
   mkdir -p "$(dirname "$conf")"
-  printf 'NM_APPLET=0\nBLUEMAN=0\nPOLKIT=auto\nCLIPBOARD=1\nGESTURES=1\nPORTAL=login\n' > "$conf"
+  printf 'NM_APPLET=0\nBLUEMAN=0\nPOLKIT=auto\nCLIPBOARD=1\nGESTURES=1\nAUDIO_FOCUS=1\nPORTAL=login\n' > "$conf"
 fi
-NM_APPLET=0; BLUEMAN=0; POLKIT=auto; CLIPBOARD=1; GESTURES=1; PORTAL=login
+NM_APPLET=0; BLUEMAN=0; POLKIT=auto; CLIPBOARD=1; GESTURES=1; AUDIO_FOCUS=1; PORTAL=login
 . "$conf" 2>/dev/null
 
 first_exec() { for p in "$@"; do [ -x "$p" ] && { echo "$p"; return 0; }; done; return 1; }
@@ -30,10 +31,12 @@ esac
 [ -n "$agent" ] && { setsid -f "$agent" >/dev/null 2>&1 </dev/null; }
 # (these three used to be fixed lines in hyprland/execs.lua)
 if [ "$CLIPBOARD" = 1 ] && command -v wl-paste >/dev/null 2>&1 && command -v cliphist >/dev/null 2>&1; then
-  setsid -f wl-paste --type text --watch cliphist store >/dev/null 2>&1 </dev/null
-  setsid -f wl-paste --type image --watch cliphist store >/dev/null 2>&1 </dev/null
+  # clip-store.sh = `cliphist store`, but a copy from a password manager is not kept
+  setsid -f wl-paste --type text --watch bash "$HOME/.config/Halcyon/scripts/clip-store.sh" >/dev/null 2>&1 </dev/null
+  setsid -f wl-paste --type image --watch bash "$HOME/.config/Halcyon/scripts/clip-store.sh" >/dev/null 2>&1 </dev/null
 fi
 [ "$GESTURES" = 1 ] && systemctl --user start touchpad-gestures.service >/dev/null 2>&1
+[ "$AUDIO_FOCUS" = 1 ] && command -v playerctl >/dev/null 2>&1 && setsid -f bash "$HOME/.config/Halcyon/scripts/audio-focus.sh" run >/dev/null 2>&1 </dev/null
 if [ "$PORTAL" != demand ]; then
   for p in /usr/lib/hyprland/xdg-desktop-portal-hyprland /usr/lib/xdg-desktop-portal-hyprland /usr/libexec/xdg-desktop-portal-hyprland /usr/lib/x86_64-linux-gnu/xdg-desktop-portal-hyprland; do
     [ -x "$p" ] && { setsid -f "$p" >/dev/null 2>&1 </dev/null; break; }

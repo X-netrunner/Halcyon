@@ -69,14 +69,50 @@ notify() {   # title body icon
   return 0
 }
 
+days_since() {   # epoch -> whole days since then, -1 = never
+  local t=$1; [ "$t" -gt 0 ] || { echo -1; return; }
+  echo $(( ( $(now) - t ) / 86400 ))
+}
+days_until() {   # epoch it is due -> whole days left (0 = today / overdue)
+  local rem=$(( $1 - $(now) ))
+  [ "$rem" -le 0 ] && { echo 0; return; }
+  echo $(( (rem + 86399) / 86400 ))
+}
+auto_running() { command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet halcyon-safety-check.service 2>/dev/null; }
+next_safety() {   # -> "KIND DAYS": auto | reminder | none, and the days until the next scan / reminder (-1 for none)
+  local ld d ref t f
+  ld=$(last_done safety)
+  if auto_on; then
+    d=$(auto_days); [ "$d" -gt 0 ] || d=30
+    echo "auto $(days_until $(( ld + d * 86400 - 7200 )))"; return
+  fi
+  if [ "$SAFETY_REMIND" = 1 ]; then
+    d=$(days_of safety); ref=$ld
+    for f in "reminded-safety" "since-safety"; do t=$(stamp "$sdir/$f"); [ "$t" -gt "$ref" ] && ref=$t; done
+    echo "reminder $(days_until $(( ref + d * 86400 - 3600 )))"; return
+  fi
+  echo "none -1"
+}
+
+next_backup() {   # -> days until the next backup reminder is due (0 = due / overdue), -1 = no backup reminder is on
+  local d ref t f
+  [ "$BACKUP_REMIND" = 1 ] || { echo -1; return; }
+  d=$(days_of backup); ref=$(last_done backup)
+  for f in "reminded-backup" "since-backup"; do t=$(stamp "$sdir/$f"); [ "$t" -gt "$ref" ] && ref=$t; done
+  days_until $(( ref + d * 86400 - 3600 ))
+}
+
 json() {
-  local bd sd ad al
+  local bd sd ad al ns nk nd bn
   bd=$(last_done backup); sd=$(last_done safety); ad=$(auto_days)
   al=custom; case "$ad" in 1|7|30|90) al=$ad ;; esac
-  printf '{"BACKUP_REMIND":%s,"BACKUP_EVERY":"%s","BACKUP_DAYS":%s,"SAFETY_REMIND":%s,"SAFETY_EVERY":"%s","SAFETY_DAYS":%s,"backupAgo":"%s","safetyAgo":"%s","auto":{"on":%s,"days":%s,"every":"%s"}}\n' \
+  ns=$(next_safety); nk=${ns% *}; nd=${ns#* }
+  bn=$(next_backup)
+  printf '{"BACKUP_REMIND":%s,"BACKUP_EVERY":"%s","BACKUP_DAYS":%s,"SAFETY_REMIND":%s,"SAFETY_EVERY":"%s","SAFETY_DAYS":%s,"backupAgo":"%s","safetyAgo":"%s","backupSince":%s,"backupNext":%s,"backupSpan":%s,"safetySince":%s,"safetyNext":%s,"safetyNextKind":"%s","safetyRunning":%s,"auto":{"on":%s,"days":%s,"every":"%s"}}\n' \
     "$([ "$BACKUP_REMIND" = 1 ] && echo true || echo false)" "$BACKUP_EVERY" "$BACKUP_DAYS" \
     "$([ "$SAFETY_REMIND" = 1 ] && echo true || echo false)" "$SAFETY_EVERY" "$SAFETY_DAYS" \
-    "$(ago "$bd")" "$(ago "$sd")" \
+    "$(ago "$bd")" "$(ago "$sd")" "$(days_since "$bd")" "$bn" "$(days_of backup)" "$(days_since "$sd")" "$nd" "$nk" \
+    "$(auto_running && echo true || echo false)" \
     "$(auto_on && echo true || echo false)" "$ad" "$al"
 }
 
@@ -120,6 +156,7 @@ case "${1:-conf}" in
   status)
     printf 'backup reminder : %s (every %s day(s)), last backup %s\n' "$([ "$BACKUP_REMIND" = 1 ] && echo on || echo off)" "$(days_of backup)" "$(ago "$(last_done backup)")"
     printf 'safety reminder : %s (every %s day(s)), last check %s\n' "$([ "$SAFETY_REMIND" = 1 ] && echo on || echo off)" "$(days_of safety)" "$(ago "$(last_done safety)")"
-    printf 'automatic run   : %s (every %s day(s))\n' "$(auto_on && echo on || echo off)" "$(auto_days)" ;;
+    printf 'automatic run   : %s (every %s day(s))\n' "$(auto_on && echo on || echo off)" "$(auto_days)"
+    ns=$(next_safety); printf 'next scan       : %s\n' "$([ "${ns#* }" -ge 0 ] && echo "in ${ns#* } day(s) (${ns% *})" || echo "nothing scheduled")" ;;
   *) echo "usage: remind.sh conf | set KEY VALUE | check | done backup|safety | status" >&2; exit 2 ;;
 esac

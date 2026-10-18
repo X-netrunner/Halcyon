@@ -106,6 +106,10 @@ What every file and folder does. This is a separate notes file, it is not part o
 | `BarBuilder.qml`, `BarBuilderWindow.qml` | Settings entry and drag-and-drop builder window. |
 | `BbChip.qml`, `BbEmptyZone.qml`, `BbMock.qml`, `BbNumBox.qml`, `BbPlaced.qml` | Parts of the bar builder window. |
 | `StatusRing.qml`, `WifiIcon.qml`, `Visualizer.qml` | Combined status icon, Wi-Fi icon looks, music bars. |
+| `NotesMenu.qml` | SUPER + N: the new-note panel on the side (type, Enter saves); `>all notes`: the full list. Data: `scripts/halcyon-notes.py`. |
+| `ClipMenu.qml` | `>clipboard`: the clipboard history panel (search, click / Enter copies back, delete, clear). Data: `scripts/halcyon-clip.py` over cliphist; no watcher of its own. |
+| `ShotMenu.qml` | Super + Ctrl + S, `>screenshot`: Region / Window / Full screen, then Copy / Save / Both. Engine: `scripts/halcyon-shot.py`. |
+| `MusicMenu.qml` | Lyrics / Queue chips on the music page, `>lyrics`, `>queue`: the lyrics and queue panel. Data: `scripts/halcyon-music.py` over the `spotify_player` command line; no process of its own, read-only. |
 | `MediaPage.qml`, `PerfPage.qml`, `CalPage.qml` | Pages that grow out of the bar: media, performance, calendar. |
 | `DropHeader.qml`, `DropArrow.qml`, `NotifCentre.qml` | The "drag the bar down" drop-down mode. |
 
@@ -121,7 +125,7 @@ What every file and folder does. This is a separate notes file, it is not part o
 | `Cheatsheet.qml`, `CmdTree.qml` | SUPER+/ shortcut tree; SUPER+ALT+/ console command tree. |
 | `Calendar.qml`, `CalMarks.qml`, `CalStep.qml` | The calendar and its small parts. |
 | `PowerMenu.qml`, `DisplayPicker.qml`, `Osd.qml` | Power menu, projector manager, volume / brightness pop-up. |
-| `Lock.qml` | Halcyon's own lock screen (real session lock). |
+| `Lock.qml` | Halcyon's own lock screen (real session lock). Optional blurred wallpaper (Settings > Power & lock): drawn only once loaded, plain colour otherwise. |
 | `StartupWindow.qml`, `WallpaperGallery.qml`, `ImagePicker.qml`, `AppPicker.qml` | Startup & processes window, wallpaper gallery, image and app pickers. |
 | `TrayMenu.qml`, `DeviceMenu.qml` | Tray app menus; Wi-Fi / Bluetooth / audio device lists. |
 
@@ -129,12 +133,12 @@ What every file and folder does. This is a separate notes file, it is not part o
 `NotifBuilder.qml` + `NotifBuilderWindow.qml` (builder), `NotifLayout.js` (layout rules), `NotifSurface.qml` (the box), `NotifBox.qml` + `NotifBlock.qml` (its parts), `NotifList.qml`, `NotifRow.qml`, `NotifLine.qml`, `NotifGroup.qml` (the three list looks), `NotifCard.qml` (popup toast), `NotifIcon.qml` (picture).
 
 ### Small shared building blocks
-`Glass.qml` (frosted surface), `Shadow.qml`, `HaloShadow.qml`, `Chip.qml`, `ActionChip.qml`, `Toggle.qml`, `Slider.qml`, `SegSwitch.qml`, `NbSlider.qml`, `NbCap.qml`, `ActionPick.qml`, `RoundBtn.qml`, `RoundIcon.qml`, `Ring.qml`, `SpecItem.qml`, `SwatchDots.qml`, `HelpTip.qml`, `HalRow.qml`.
+`Glass.qml` (frosted surface), `Shadow.qml`, `HaloShadow.qml`, `Chip.qml`, `ActionChip.qml`, `Toggle.qml`, `Slider.qml`, `SegSwitch.qml`, `NbSlider.qml`, `NbCap.qml`, `ActionPick.qml`, `RoundBtn.qml`, `RoundIcon.qml`, `Ring.qml`, `DayTimeline.qml` (last time / today / due day: Backup, Safety check; plain mode, no due date: last wallpaper change, last system update, Focus streak), `NoteStars.qml` (falling stars in the notes), `SpecItem.qml`, `SwatchDots.qml`, `HelpTip.qml`, `HalRow.qml`.
 
 ### `quickshell/island/scripts/` (helpers for the island)
 | File | What it does |
 |---|---|
-| `wallpaper.sh` | Prints the wallpaper to show (one pick per boot, `next`, `set`). |
+| `wallpaper.sh` | Prints the wallpaper to show (one pick per boot, `next`, `set`); saves `wallpaper-changed` (epoch) when the picture really changes. |
 | `palette.sh` | Wallpaper to colour palette (`~/.cache/island/palette.json`). |
 | `portrait.sh` | Profile picture to a constellation (slow awk fallback of `hx portrait`). |
 | `stats.sh`, `net.sh`, `gpu.sh` | CPU / memory / battery, network state, GPU load feeds (the Rust `hx` replaces most of these). |
@@ -150,12 +154,16 @@ What every file and folder does. This is a separate notes file, it is not part o
 | Launch / session | `start-shell.sh` (keeps the island running), `super_tap.sh` (Super tap trigger), `close.sh` (SUPER+Q), `reload.sh`, `lock.sh`, `login-status.sh`, `login-watchdog.sh`, `idle.sh`, `idle-dim.sh` |
 | Look / themes | `theme.sh`, `gtk-theme.sh`, `app-themes.sh`, `app-themes-extra.sh`, `term-colors.sh`, `thunar-look.sh`, `greeting-conf.sh`, `avatar.sh` |
 | Wallpaper | `wallpapers.sh` (folder + list), `toggle_livewallpaper.sh` |
-| Apps / workspaces | `apps.sh` (default apps), `special.sh` (scratch / music / chat workspaces), `ws-nav.sh`, `toggle_layout.sh`, `autostart-extras.sh`, `startup-conf.sh`, `startup-view.py` |
+| Apps / workspaces | `apps.sh` (default apps), `special.sh` (scratch / music / chat workspaces), `ws-nav.sh`, `toggle_layout.sh`, `audio-focus.sh` (one thing plays at a time), `autostart-extras.sh`, `startup-conf.sh`, `startup-view.py` |
+| Timelines | `timeline.py conf` (JSON for Settings) / `status` (text): last wallpaper change, last system update (`/var/log/pacman.log`), Focus streak. Read-only; Settings runs it only while open. |
+| Safe mode, Profiles | `halcyon-fx.py`: `halcyon safe-mode [back]` and `halcyon profile <name>`; edits `~/.local/state/island/settings.json`, keeps `safe-mode.json` / `profile.json` / optional `profiles.json` beside it. Run from the Settings buttons, Super + Alt + F12, fish, or the `halcyon` shim in `~/.local/bin`. |
 | Modes | `gamemode.sh`, `caffeine.sh`, `focus.sh` + `focus.py`, `toggle_nightlight.sh`, `toggle_power.sh`, `power_manager_select.sh`, `gpu-mode.sh`, `halcyon-tune` (root helper) |
 | Input / hardware | `input-conf.sh` (gestures + mouse buttons), `toggle_touchpad.sh`, `toggle_gestures.sh`, `numlock.sh`, `brightness.sh`, `backlight.sh`, `kbd-backlight.sh`, `asus-kbd-fix.sh`, `osd-watch.sh`, `refresh-ram.sh` |
 | Network / devices | `hotspot.sh`, `toggle_wifi_powersave.sh`, `display-manager.sh`, `printer.sh`, `notif-guard.sh` |
 | Backup / safety | `backup-device.sh`, `restore-device.sh`, `remind.sh`, `safety-auto.sh` |
 | Diagnostics | `halcyon-doctor.sh` (why does it not work), `halcyon-mem.sh`, `halcyon-mem-where.sh`, `adaptive-advisor.py`, `halcyon-agent.py` (the tools + safety gates that let the local model act, used by `ai` and `advisor "..."`), `halcyon-chat.py`, `tool-state.sh` |
+| Clipboard, screenshots | `halcyon-clip.py` (list / copy / delete / clear over cliphist), `clip-store.sh` (what the two `wl-paste --watch` watchers run: `cliphist store` minus password-manager copies), `halcyon-shot.py` (region / window / full, copy / save / both; `screenshot-area.sh` stays for Super + Shift + S) |
+| Music panel | `halcyon-music.py` (`lyrics` / `queue` as one line of JSON for the panel or plain text for a terminal, `status`; asks `spotify_player lyrics` and `spotify_player get key queue`, never stores anything) |
 | Misc | `emoji.sh`, `screenshot-area.sh`, `cheatsheet.sh`, `user-setup.sh` |
 
 ## `src/` (Rust programs, built by `install.sh` into `bin/`)

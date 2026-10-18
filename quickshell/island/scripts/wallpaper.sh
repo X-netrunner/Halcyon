@@ -11,9 +11,20 @@ state="$HOME/.local/state/island/wallpaper"
 boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 mkdir -p "$(dirname "$state")"
 
+# When the picture really changes the time is kept in wallpaper-changed (one epoch number, read by scripts/timeline.py for the
+# Settings timeline). The same picture picked again is not a change, and a failed write never matters here.
+prev=""; [ -f "$state" ] && prev=$(sed -n 2p "$state")
+stampf="$(dirname "$state")/wallpaper-changed"
+mark() {
+  [ "$1" = "$prev" ] && return 0
+  { printf '%(%s)T\n' -1 > "$stampf.tmp" && mv -f "$stampf.tmp" "$stampf"; } 2>/dev/null
+  return 0
+}
+
 if [ "$1" = "set" ]; then
   [ -f "$2" ] || exit 1
   printf '%s\n%s\n' "$boot" "$2" > "$state"
+  mark "$2"
   echo "$2"; exit 0
 fi
 
@@ -35,4 +46,5 @@ if [ "$1" = "next" ]; then            # try not to repeat the current one
 fi
 [ -n "$p" ] || exit 0
 printf '%s\n%s\n' "$boot" "$p" > "$state"
+mark "$p"
 echo "$p"

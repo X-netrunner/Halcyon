@@ -15,8 +15,9 @@ function __halcyon_colors --on-event fish_prompt
 end
 __halcyon_colors
 
-# the prompt: Starship (only when ~/.config/fish/config.fish does not start it already)
-if type -q starship
+# the prompt: Starship (only when ~/.config/fish/config.fish does not start it already, and not when you chose "keep my prompt"
+# in the installer: ~/.local/state/island/keep-prompt exists then. ./install.sh --choose changes that.)
+if type -q starship; and not test -e $HOME/.local/state/island/keep-prompt
     set -l has_starship 0
     if test -r $HOME/.config/fish/config.fish
         string match -q '*starship init fish*' < $HOME/.config/fish/config.fish; and set has_starship 1

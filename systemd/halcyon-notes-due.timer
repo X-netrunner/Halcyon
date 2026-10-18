@@ -1,0 +1,13 @@
+[Unit]
+Description=Halcyon: once a minute, look for tasks in Notes whose reminder time has come (only switched on while one is waiting)
+
+[Timer]
+# Not part of the daily halcyon-remind.timer: that one looks once a day at 10:00, far too coarse for "call mom at 6".
+# `notes` (scripts/halcyon-notes.py) enables this timer when a task with a time is waiting and disables it again when none is,
+# so nothing wakes up every minute for people who do not use reminders. A reminder missed while the laptop was off is
+# shown at the first minute after login.
+OnCalendar=minutely
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

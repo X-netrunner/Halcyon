@@ -320,6 +320,8 @@ format = " spack [$symbol$environment]($style)"
 
 [custom.sysmode]
 # halcyon-sysmode-badge v2
+# While sysmode is not installed, scripts/app-themes.sh adds `disabled = true` here (nothing is started before every prompt) and removes it
+# again once sysmode is there. Do not delete the marker line above if you want that to keep working.
 # `shell` matters: without it Starship runs the command in YOUR shell (fish), and this one-liner is POSIX sh, so it printed nothing.
 # Reads /etc/sysmode.mode directly (one tiny sh per prompt; `sysmode status` ran ~15 commands every time, docker included).
 # Old names still work: cyber = relaxed, hacking = stealth. No file yet (sysmode never switched): fall back to asking sysmode.

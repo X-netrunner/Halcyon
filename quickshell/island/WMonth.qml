@@ -1,6 +1,6 @@
 import QtQuick
 
-// "Month calendar": the month with today lit, or just this week as a strip.   grid | week
+// "Month calendar": the month with today lit, or just this week as a strip.   grid | week | mini (smaller grid) | dots (a dot for every day)
 WBase {
     id: root
 
@@ -43,9 +43,12 @@ WBase {
         }
         return out
     }
-    readonly property real cw: sz(style === "week" ? 36 : 32)
+    // grid, mini and dots are all a month of 6 rows; only the week strip is different
+    readonly property bool isGrid: style !== "week"
+    readonly property bool dots: style === "dots"
+    readonly property real cw: sz(style === "week" ? 36 : (style === "mini" ? 24 : (dots ? 26 : 32)))
 
-    implicitWidth: (wk && style === "grid" ? cw : 0) + cw * 7
+    implicitWidth: (wk && isGrid ? cw : 0) + cw * 7
     implicitHeight: head.height + sz(8) + (style === "week" ? cw + sz(18) : cw * 6 + cw)
 
     Column {
@@ -57,19 +60,19 @@ WBase {
             WLbl { b: root; text: Qt.formatDate(root.now, "yyyy"); color: root.dim; font.pixelSize: root.sz(16) }
         }
         Row {
-            visible: root.style === "grid"
+            visible: root.isGrid
             Item { visible: root.wk; width: root.wk ? root.cw : 0; height: 1 }
-            Repeater { model: root.names; delegate: WLbl { required property string modelData; b: root; width: root.cw; horizontalAlignment: Text.AlignHCenter; text: modelData; color: root.dim; font.pixelSize: root.sz(11); font.weight: Font.Medium } }
+            Repeater { model: root.names; delegate: WLbl { required property string modelData; b: root; width: root.cw; horizontalAlignment: Text.AlignHCenter; text: modelData; color: root.dim; font.pixelSize: root.sz(root.style === "mini" ? 9 : 11); font.weight: Font.Medium } }
         }
         Grid {
-            columns: root.wk && root.style === "grid" ? 8 : 7
+            columns: root.wk && root.isGrid ? 8 : 7
             Repeater {
-                model: root.style === "grid" && root.wk ? 48 : root.cells.length
+                model: root.isGrid && root.wk ? 48 : root.cells.length
                 delegate: Item {
                     required property int index
                     // with week numbers every 8th cell is the week number of its row
-                    readonly property bool isWk: root.wk && root.style === "grid" && index % 8 === 0
-                    readonly property var c: isWk ? undefined : root.cells[(root.wk && root.style === "grid") ? Math.floor(index / 8) * 7 + (index % 8) - 1 : index]
+                    readonly property bool isWk: root.wk && root.isGrid && index % 8 === 0
+                    readonly property var c: isWk ? undefined : root.cells[(root.wk && root.isGrid) ? Math.floor(index / 8) * 7 + (index % 8) - 1 : index]
                     readonly property var rowc: root.cells[Math.floor(index / 8) * 7]
                     width: root.cw; height: root.cw
                     Rectangle {
@@ -78,12 +81,20 @@ WBase {
                         width: root.cw - root.sz(4); height: width; radius: width / 2
                         color: root.accent
                     }
+                    // dots: every day is a small dot (this month brighter), today is the big one and keeps its number
+                    Rectangle {
+                        visible: root.dots && !parent.isWk && parent.c !== undefined && !parent.c.today
+                        anchors.centerIn: parent
+                        width: root.sz(parent.c !== undefined && parent.c.cur ? 5 : 3); height: width; radius: width / 2
+                        color: parent.c !== undefined && parent.c.cur ? Qt.alpha(root.fg, 0.7) : Qt.alpha(root.dim, 0.4)
+                    }
                     WLbl {
                         b: root
+                        visible: !root.dots || parent.isWk || (parent.c !== undefined && parent.c.today)
                         anchors.centerIn: parent
                         text: parent.isWk ? (parent.rowc ? parent.rowc.wk : "") : (parent.c ? parent.c.d : "")
                         color: parent.isWk ? Qt.alpha(root.dim, 0.7) : ((parent.c && parent.c.today) ? (root.pal ? root.pal.bg : "black") : ((parent.c && parent.c.cur) ? root.fg : Qt.alpha(root.dim, 0.5)))
-                        font.pixelSize: root.sz(parent.isWk ? 10 : 13)
+                        font.pixelSize: root.sz(parent.isWk ? 10 : (root.style === "mini" ? 10 : 13))
                         font.weight: (parent.c && parent.c.today) ? Font.Bold : Font.Normal
                     }
                 }

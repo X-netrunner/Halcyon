@@ -38,6 +38,7 @@ local glass = {
     ["island-calendar"] = 0.25,
     ["island-keys"] = 0.25,
     ["island-cmds"] = 0.25,
+    ["island-notes"] = 0.25,
 }
 for ns, a in pairs(glass) do
     hl.layer_rule({ match = { namespace = ns }, blur = true, ignore_alpha = a })

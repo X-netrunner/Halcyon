@@ -244,6 +244,7 @@ function fish_greeting
         "Ctrl + Shift + Esc  → Toggle dedicated Btop system monitor" \
         "Super + Alt + T     → Toggle Scrolling (Niri) / Dwindle layout" \
         "Super + /           → Open full Keybinds Cheatsheet HUD" \
+        "Super + ← →         → Focus the previous / next window (columns in Scrolling layout)" \
         "Super + I           → Open Halcyon Settings" \
         "Super + M           → Toggle Music workspace" \
         "Super + Alt + N     → Toggle Nightlight (Gamma)" \

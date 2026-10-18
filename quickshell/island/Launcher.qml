@@ -104,7 +104,7 @@ Item {
     readonly property var cmdOrder: [
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "wallpaper", "theme", "barstyle", "edgemode", "routing",
-        "calendar", "notes", "calc", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
+        "calendar", "notes", "notesall", "clipboard", "screenshot", "lyrics", "queue", "calc", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
     readonly property bool cmdGrouped: mode === "cmd" && q0.substring(1).trim() === "" && cmdCategory === "all"
@@ -118,7 +118,12 @@ Item {
         { id: "wallgallery", name: "Wallpaper gallery", desc: "Interactive 3D carousel & search gallery (Tide style)", glyph: 0xF024B, kw: "wallpapers gallery background images picker choose coverflow", cat: "desktop" },
         { id: "startupview", name: "Startup & processes", desc: "Everything that starts with the desktop and what is running: RAM, CPU, switches, End", glyph: 0xF035B, kw: "startup autostart boot login processes running ram memory cpu htop task manager services apps kill end", cat: "system" },
         { id: "calendar", name: "Calendar", desc: "Google Calendar: your events by day, with reminder notifications", glyph: 0xF00ED, kw: "calender calendar agenda schedule tasks events google reminders meeting", cat: "tools" },
-        { id: "notes", name: "Notes & scratchpad", desc: "Quick notes, todos and tasks (Super + N)", glyph: 0xF03EB, kw: "notes memo text scratchpad todo tasks", cat: "tools" },
+        { id: "notes", name: "New note", desc: "A small panel on the side of the screen: type a note and press Enter to save it (Super + N)", glyph: 0xF03EB, kw: "notes note new write memo text scratchpad todo tasks quick add", cat: "tools" },
+        { id: "notesall", name: "All notes", desc: "Every note in one window: search, filter, pin, tick off, copy and delete", glyph: 0xF03EB, kw: "notes all view list browse read search saved memo scratchpad todo tasks pinned", cat: "tools" },
+        { id: "clipboard", name: "Clipboard history", desc: "What you copied lately: search, click or Enter to copy it back, delete one or clear all. Copies from password managers are not kept", glyph: 0xF014C, kw: "clipboard history copy paste copied clip cliphist recent wl-copy", cat: "tools" },
+        { id: "screenshot", name: "Screenshot", desc: "A small panel: Region, Window or Full screen, then Copy, Save or Both (Super + Ctrl + S). Super + Shift + S still drags a region at once", glyph: 0xF0100, kw: "screenshot screen capture grim slurp region window full print snip snap", cat: "tools" },
+        { id: "lyrics", name: "Lyrics", desc: "The lyrics of the song that plays on your Spotify account, in a panel on the side. Needs spotify_player 0.24 or newer, logged in. Also the Lyrics chip on the music page", glyph: 0xF0387, kw: "lyrics song words music spotify sing text genius spotify_player", cat: "tools" },
+        { id: "queue", name: "Music queue", desc: "What plays next on your Spotify account. Read-only: it shows the queue, it does not change it. Also the Queue chip on the music page", glyph: 0xF0CB9, kw: "queue next up music spotify playlist upcoming songs spotify_player", cat: "tools" },
         { id: "record", name: "Screen recorder", desc: "On-demand screen or audio recording, with desktop sound and / or microphone, to ~/Videos/Recordings (Super + Alt + R)", glyph: 0xF012F, kw: "record screen capture video stream cast obs", cat: "tools" },
         { id: "tour", name: "Guided tour", desc: "Replay the walkthrough of the island, its panels and shortcuts", glyph: 0xF02D6, kw: "tutorial help intro welcome walkthrough onboarding whats new release notes learn", cat: "system" },
         { id: "barbuilder", name: "Bar builder", desc: "Drag widgets into the left, middle and right of your own bar", glyph: 0xF0208, kw: "bar custom widgets layout drag drop builder edit", cat: "desktop" },
