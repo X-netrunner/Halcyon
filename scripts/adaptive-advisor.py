@@ -649,7 +649,8 @@ MODEL_ALIASES = {
     "8b": "llama3.1:8b",
     "14b": "qwen2.5:14b",
     "qwen1.5b": "qwen2.5:1.5b",
-    "qwen3b": "qwen2.5:3b",
+    "qwen3b": "qwen2.5:3b-instruct",
+    "3b-instruct": "qwen2.5:3b-instruct",
     "qwen14b": "qwen2.5:14b",
     "deepseek8b": "deepseek-r1:8b",
     "deepseek14b": "deepseek-r1:14b",
@@ -673,13 +674,13 @@ def get_advisor_model():
                 if m:
                     return m
     have = installed_models()
-    for pref in ["llama3.1:8b", "llama3.2:3b", "qwen2.5:3b", "llama3.2:1b"]:
+    for pref in ["llama3.1:8b", "llama3.2:3b", "qwen2.5:3b", "llama3.2:1b"]:      # "qwen2.5:3b" also matches qwen2.5:3b-instruct
         match = next((m for m in have if m.startswith(pref)), None)
         if match:
             return match
     if have:
         return have[0]
-    return "llama3.2:1b"
+    return "qwen2.5:3b-instruct"
 
 def recommend_models():
     """Hardware-aware sizing and suggestions for users wanting a bigger local model."""
@@ -713,7 +714,7 @@ def recommend_models():
     else:
         print("★ TIER 1: ULTRA-RESPONSIVE (Low RAM & Fast on CPU/Integrated GPU)")
         print("  • \033[1;36mllama3.2:3b\033[0m    (~2.0 GB) -> Fast, accurate, very gentle on battery")
-        print("  • \033[1;36mqwen2.5:3b\033[0m     (~1.9 GB) -> Great instruction following and compact")
+        print("  • \033[1;36mqwen2.5:3b-instruct\033[0m (~1.9 GB) -> Great instruction following and compact; best for the Notes AI overview")
 
     # Tier 2: Heavyweights
     print("\n★ TIER 2: ADVANCED REASONING (High Intelligence, Partial CPU Offload)")
@@ -734,6 +735,8 @@ def recommend_models():
     print("  2. In Ollama, keep OLLAMA_NUM_PARALLEL=1 so VRAM is not duplicated.")
     print("  3. To switch to the best model now, run:")
     print("     \033[1;32madvisor model switch llama3.1:8b\033[0m   (or: advisor model switch 8b)")
+    print("  4. The Notes AI overview does better on a small, fast model than on 8B: keep chat on the big one and give Notes its own:")
+    print("     \033[1;32mnotes set NOTES_MODEL qwen2.5:3b-instruct\033[0m   (ollama pull qwen2.5:3b-instruct first; 'default' undoes it)")
     print("━" * 68)
 
 def model_command(args):
