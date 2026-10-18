@@ -26,7 +26,7 @@ write_conf() {   # rewrite our keys, keep any other line the user added
   mkdir -p "$(dirname "$conf")"
   local tmp; tmp="$(mktemp)"
   { printf 'NM_APPLET=%s\nBLUEMAN=%s\nPOLKIT=%s\nCLIPBOARD=%s\nGESTURES=%s\nPORTAL=%s\n' "$NM_APPLET" "$BLUEMAN" "$POLKIT" "$CLIPBOARD" "$GESTURES" "$PORTAL"
-    if [ -f "$conf" ]; then grep -v -E '^(NM_APPLET|BLUEMAN|POLKIT|CLIPBOARD|GESTURES|PORTAL)=' "$conf" || true; fi
+    if [ -f "$conf" ]; then grep -v -E '^(NM_APPLET|BLUEMAN|POLKIT|CLIPBOARD|GESTURES|PORTAL|PASSMAN_AUTO)=' "$conf" || true; fi
   } > "$tmp" && mv "$tmp" "$conf"
 }
 

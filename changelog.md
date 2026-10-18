@@ -1,5 +1,19 @@
 ## Unreleased
 
+- **Removed: Passman (the password manager).** `passman`, its automatic save / fill watcher, the Brave / Chromium extension and
+  helper, the Settings toggle, the launcher and console entries and the tour page are gone. The installer no longer pulls in
+  python-gobject, at-spi2-core or wtype for it. An old `PASSMAN_AUTO` line in `autostart.conf` is dropped the next time that file
+  is written. (Your own vault files are not touched by an update; `apply-update.sh --purge-vault` deletes them.)
+- **New: pick the AI advisor's model from Settings.** Settings > Performance > Optimization & Suggestions now has an "AI advisor
+  model" drop-down: the models installed in Ollama (click one to use it), then a list scraped from ollama.com/library (click one
+  to download it; it becomes the model in use when the download finishes). The list is sorted so what fits this PC's memory
+  comes first, marks the best fit per family, shows a progress bar with Cancel, caches for 12 h and falls back to a built-in list
+  offline. New `scripts/ai-models.py` does the work; the choice is saved in `ai-advisor.conf`, the file `advisor model switch`
+  already used, so `ai`, `advisor --llm` and the console all follow it.
+- **New: "Special workspaces" desktop widget** (Widget builder > Desktop). The scratch, music, chat and monitor workspaces as
+  buttons: lit while shown, a count of the windows hidden in each, a click shows / hides one (music and chat start their app the
+  first time, like SUPER+M / SUPER+D). Layouts: pills, icons, dots.
+
 - **Linked widgets stay on screen.** A widget linked to the LEFT of another one (uptime next to the workspaces) used to grow off the left edge
   when its text got longer ("9h" -> "2h 59m"). The first widget of a chain is now kept far enough from the screen edge for everything linked
   to it (`DeskWidgets.chainExt`, `WidgetHost.chainX`), so the whole group slides over instead.

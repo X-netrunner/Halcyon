@@ -1493,7 +1493,6 @@ ShellRoot {
         case "notes": notesMenu.toggle(); break
         case "record": toggleRecording(); break
         case "extradim": toggleExtraDim(); break
-        case "passman": quickTerm.run("passman"); break
         default: session(id)
         }
     }

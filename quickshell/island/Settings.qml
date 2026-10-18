@@ -198,6 +198,50 @@ Scope {
         stdout: StdioCollector { onStreamFinished: { try { root.focusApps = JSON.parse(text) } catch (e) {} } }
     }
 
+    // ---- AI advisor model (scripts/ai-models.py): what is installed, the online catalog, the download in progress
+    property var ai: ({ installed: [], catalog: [], current: "", pull: null, running: true, ollama: true, source: "", hw: ({}), envOverride: false })
+    readonly property string aiScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/ai-models.py"
+    function aiLoad(refresh) {
+        aiProc.command = ["python3", aiScript, "list"].concat(refresh ? ["--refresh"] : [])
+        if (!aiProc.running) aiProc.running = true
+    }
+    function aiUse(name) {                                  // an installed model: switch at once
+        Quickshell.execDetached(["python3", aiScript, "use", name])
+        var a = JSON.parse(JSON.stringify(ai)); a.current = name; ai = a
+        aiAgain.restart()
+    }
+    function aiPull(name) {                                 // an online one: download it, and switch to it when it is there
+        Quickshell.execDetached(["python3", aiScript, "pull", name, "--use"])
+        var a = JSON.parse(JSON.stringify(ai)); a.pull = { name: name, pct: 0, status: "starting", done: false, error: "" }; ai = a
+        aiAgain.restart()
+    }
+    function aiCancel() { Quickshell.execDetached(["python3", aiScript, "cancel"]); aiAgain.restart() }
+    function aiRemove(name) { Quickshell.execDetached(["python3", aiScript, "rm", name]); aiAgain.restart() }
+    Timer { id: aiAgain; interval: 900; onTriggered: root.aiLoad(false) }
+    Timer {                                                 // while a download runs: its progress, once a second
+        interval: 1000; repeat: true
+        running: root.open && !!root.ai.pull && !root.ai.pull.done
+        onTriggered: if (!aiPullProc.running) aiPullProc.running = true
+    }
+    Process {
+        id: aiProc
+        stdout: StdioCollector { onStreamFinished: { try { root.ai = JSON.parse(text) } catch (e) {} } }
+    }
+    Process {
+        id: aiPullProc
+        command: ["python3", root.aiScript, "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var d = JSON.parse(text), a = JSON.parse(JSON.stringify(root.ai))
+                    a.pull = d.name ? d : null
+                    root.ai = a
+                    if (d.done) root.aiLoad(false)          // finished: the installed list and the model in use changed
+                } catch (e) {}
+            }
+        }
+    }
+
     // ---- options that exist twice (island AND notch): ONE entry in the tree writes both. Keys "pair:NAME".
     readonly property var pairs: ({
         ws: ["islWs", "notchWs"], wsMin: ["islWsMin", "notchWsMin"], specials: ["islSpecials", "notchSpecials"],
@@ -648,6 +692,7 @@ Scope {
                 { id: "opt-adaptive-advisor", btn: "Analyze My Setup", done: "Opening…" },
                 { id: "opt-llm-advisor", btn: "AI / LLM Advisor (Experimental)", done: "Analyzing…" }
             ] },
+            { type: "custom", name: "aiModel" },
             { type: "toggle", key: "opt:lazyLoad", def: true, label: "Aggressive Memory Freeing & Lazy Loading", desc: "Unloads heavy background dialogs (Settings, Cheatsheet, Calendar) when closed and triggers garbage collection to keep Quickshell's resident RAM low. Enabled automatically in Low and Medium resource modes." },
             { type: "acts", label: "Live Memory Trimming", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] }
         ] },
@@ -838,7 +883,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 8 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -880,6 +925,7 @@ Scope {
         startupNote = ""
         query = ""
         focusLoad()
+        aiLoad(false)
         if (pendingGroup !== "") { unfoldOnly(pendingGroup); pendingGroup = "" }
     }
 
@@ -1431,6 +1477,181 @@ Scope {
                 text: sa.msg
                 color: sa.bad ? root.pal.bad : root.pal.good
                 font.family: root.pal.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    Component {
+        id: cAiModel
+        ColumnLayout {
+            id: am
+            width: parent ? parent.width : 0
+            spacing: 10
+            property bool menu: false
+            readonly property var pull: root.ai.pull
+            readonly property bool pulling: !!pull && !pull.done
+            readonly property var rows: {
+                var r = [], ins = root.ai.installed || [], cat = root.ai.catalog || []
+                r.push({ k: "head", t: "Installed on this PC  (click to use)" })
+                if (!ins.length) r.push({ k: "note", t: root.ai.ollama === false ? "Ollama is not installed: pacman -S ollama" : "nothing downloaded yet" })
+                for (var i = 0; i < ins.length; i++) r.push({ k: "inst", n: ins[i].name, gb: ins[i].gb })
+                var src = root.ai.source === "online" ? "just fetched from ollama.com" : root.ai.source === "cache" ? "from ollama.com, saved earlier" : "built-in list, you are offline"
+                r.push({ k: "head", t: "Online  (click to download and use)  -  " + src })
+                for (var j = 0; j < cat.length; j++) if (!cat[j].installed) r.push({ k: "cat", n: cat[j].name, gb: cat[j].gb, fits: cat[j].fits, best: cat[j].best, d: cat[j].desc, caps: cat[j].caps, pulls: cat[j].pulls })
+                return r
+            }
+
+            Text { text: "AI advisor model"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 38; radius: 19
+                    color: Qt.alpha(root.pal.surface, 0.8)
+                    border.width: 1
+                    border.color: am.menu ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: 16; width: parent.width - 48
+                        elide: Text.ElideRight
+                        text: root.ai.current !== "" ? root.ai.current : "no model yet"
+                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.right: parent.right; anchors.rightMargin: 16
+                        text: am.menu ? "\u25b4" : "\u25be"
+                        color: root.pal.muted; font.pixelSize: 14
+                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { am.menu = !am.menu; if (am.menu) root.aiLoad(false) } }
+                }
+                SChip { pal: root.pal; label: "Refresh list"; onClicked: root.aiLoad(true) }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: root.ai.ollama !== false && root.ai.running === false
+                text: "Ollama is installed but not running. Downloading a model starts it, or: systemctl start ollama"
+                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: !!root.ai.envOverride
+                text: "HALCYON_AI_MODEL is set in your environment and overrides this choice."
+                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap
+            }
+
+            // download in progress
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: !!am.pull && (am.pulling || am.pull.error !== "" || am.pull.used)
+                spacing: 6
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Text {
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                        text: !am.pull ? "" : am.pulling ? "Downloading " + am.pull.name + "  " + am.pull.pct + " %" : am.pull.error !== "" ? am.pull.name + ": " + am.pull.error : am.pull.name + " is ready and in use"
+                        color: (am.pull && !am.pulling && am.pull.error !== "") ? root.pal.bad : root.pal.text
+                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                    }
+                    SChip { visible: am.pulling; pal: root.pal; label: "Cancel"; onClicked: root.aiCancel() }
+                }
+                Rectangle {
+                    visible: am.pulling
+                    Layout.fillWidth: true
+                    height: 6; radius: 3; color: root.pal.lineSoft
+                    Rectangle { width: parent.width * Math.max(0.02, (am.pull ? am.pull.pct : 0) / 100); height: parent.height; radius: 3; color: root.pal.accent; Behavior on width { NumberAnimation { duration: 300 } } }
+                }
+            }
+
+            // the drop-down: installed first, then the online catalog
+            Rectangle {
+                visible: am.menu
+                Layout.fillWidth: true
+                height: Math.min(320, menuCol.implicitHeight + 12)
+                radius: 14
+                color: Qt.alpha(root.pal.surface, 0.9)
+                border.width: 1; border.color: root.pal.lineSoft
+                clip: true
+                Flickable {
+                    anchors.fill: parent; anchors.margins: 6
+                    contentHeight: menuCol.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
+                    Column {
+                        id: menuCol
+                        width: parent.width
+                        spacing: 2
+                        Repeater {
+                            model: am.rows
+                            delegate: Rectangle {
+                                id: mr
+                                required property var modelData
+                                readonly property bool head: modelData.k === "head" || modelData.k === "note"
+                                readonly property bool isCur: modelData.k === "inst" && modelData.n === root.ai.current
+                                readonly property bool blocked: modelData.k === "cat" && am.pulling
+                                width: menuCol.width
+                                height: head ? 28 : 44
+                                radius: 9
+                                color: (!head && !blocked && mma.containsMouse) ? Qt.alpha(root.pal.accent, 0.14) : (isCur ? Qt.alpha(root.pal.accent, 0.10) : "transparent")
+                                opacity: blocked ? 0.45 : 1
+                                Text {
+                                    visible: mr.head
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: 10; width: parent.width - 20; elide: Text.ElideRight
+                                    text: modelData.t || ""
+                                    color: modelData.k === "head" ? root.pal.accent : root.pal.muted
+                                    font.family: root.pal.uiFont; font.pixelSize: 11; font.bold: modelData.k === "head"
+                                }
+                                Column {
+                                    visible: !mr.head
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: 12; width: parent.width - 150; spacing: 2
+                                    Text {
+                                        width: parent.width; elide: Text.ElideRight
+                                        text: (mr.isCur ? "\u2713  " : "") + (modelData.n || "") + (modelData.best ? "   \u2605 best for this PC" : "")
+                                        color: mr.isCur ? root.pal.accent : root.pal.text
+                                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.bold: mr.isCur
+                                    }
+                                    Text {
+                                        width: parent.width; elide: Text.ElideRight
+                                        visible: modelData.k === "cat"
+                                        text: (modelData.d || "") + ((modelData.caps && modelData.caps.length) ? "  [" + modelData.caps.join(", ") + "]" : "")
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
+                                    }
+                                }
+                                Text {
+                                    visible: !mr.head
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.right: parent.right; anchors.rightMargin: 12
+                                    horizontalAlignment: Text.AlignRight
+                                    text: modelData.k === "inst" ? (modelData.gb ? modelData.gb + " GB" : "")
+                                          : ((modelData.gb ? "~" + modelData.gb + " GB" : "") + (modelData.fits === false ? "   heavy for this PC" : "") + (modelData.pulls ? "   " + modelData.pulls : ""))
+                                    color: modelData.fits === false ? root.pal.warn : root.pal.muted
+                                    font.family: root.pal.uiFont; font.pixelSize: 11
+                                }
+                                MouseArea {
+                                    id: mma
+                                    anchors.fill: parent
+                                    enabled: !mr.head && !mr.blocked
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (modelData.k === "inst") root.aiUse(modelData.n)
+                                        else root.aiPull(modelData.n)
+                                        am.menu = false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Used by the AI / LLM Advisor and the `ai` command. Bigger models answer better but need more memory: sizes are estimates for the usual 4-bit download, and the list is sorted so what fits this PC comes first. Downloads keep going if you close Settings."
+                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
             }
         }
     }
@@ -2005,6 +2226,7 @@ Scope {
                                                                            : pr.m.name === "widgetBuilder" ? cWidgetBuilder
                                                                            : pr.m.name === "notifBuilder" ? cNotifBuilder
                                                                            : pr.m.name === "barBuilder" ? cBarBuilder
+                                                                           : pr.m.name === "aiModel" ? cAiModel
                                                                            : pr.m.name === "growth" ? cGrowth : cSwatches
                                                         }
                                                     }
@@ -2403,7 +2625,8 @@ Scope {
                                                                                : leaf.m.name === "widgetBuilder" ? cWidgetBuilder
                                                                                : leaf.m.name === "notifBuilder" ? cNotifBuilder
                                                                                : leaf.m.name === "barBuilder" ? cBarBuilder
-                                                                               : leaf.m.name === "growth" ? cGrowth : cSwatches
+                                                                               : leaf.m.name === "aiModel" ? cAiModel
+                                                                           : leaf.m.name === "growth" ? cGrowth : cSwatches
                                                             }
                                                         }
                                                     }

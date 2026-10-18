@@ -114,7 +114,7 @@ def blocked_reason(cmd):
             return why
     return None
 
-SECRET_PATH = re.compile(r"(\.ssh|\.gnupg|\.password-store|passman|\.mozilla|\.config/(google-chrome|chromium|BraveSoftware)|"
+SECRET_PATH = re.compile(r"(\.ssh|\.gnupg|\.password-store|\.mozilla|\.config/(google-chrome|chromium|BraveSoftware)|"
                          r"/etc/(shadow|gshadow|sudoers)|\.aws|\.netrc|id_(rsa|ed25519)|\.env$|credentials|token)", re.I)
 
 class ThinkFilter:

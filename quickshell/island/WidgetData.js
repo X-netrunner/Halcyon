@@ -99,6 +99,9 @@ var catalog = [
     { id: "workspaces", cat: "desk", name: "Workspaces", icon: 0xF0208, size: [260, 50], hint: "Switch workspace (click, scroll)",
       styles: [["dots", "Dots"], ["numbers", "Numbers"], ["capsules", "Capsules"], ["pills", "Pills"], ["roman", "Roman"], ["lines", "Hairlines"]],
       opts: [{ k: "min", kind: "slider", label: "Always show at least", def: 5, min: 1, max: 10, unit: "" }] },
+    { id: "special", cat: "desk", name: "Special workspaces", icon: 0xF0208, size: [300, 50], hint: "Scratch, music, chat and monitor workspaces: lit when shown, a click shows / hides one",
+      styles: [["pills", "Pills"], ["icons", "Icons"], ["dots", "Dots"]],
+      opts: [{ k: "show", kind: "multi", label: "Workspaces", def: ["special", "music", "communication", "sysmon"], options: [["special", "Scratch"], ["music", "Music"], ["communication", "Chat"], ["sysmon", "Monitor"]] }] },
     { id: "toggles", cat: "desk", name: "Quick toggles", icon: 0xF0521, size: [300, 70], hint: "Buttons for Wi-Fi, Bluetooth, Do not disturb, Caffeine, Gaming, Num Lock ...",
       styles: [["row", "Row"], ["grid", "Grid"], ["icons", "Icons only"]],
       opts: [
@@ -188,7 +191,7 @@ var files = {
     clock: "WClock.qml", date: "WClock.qml", month: "WMonth.qml",
     cpu: "WMetric.qml", ram: "WMetric.qml", temp: "WMetric.qml", gpu: "WMetric.qml", disk: "WMetric.qml", battery: "WMetric.qml", volume: "WMetric.qml", brightness: "WMetric.qml",
     sysmon: "WSysmon.qml", net: "WNet.qml", uptime: "WNet.qml",
-    music: "WMusic.qml", viz: "WViz.qml", focus: "WFocus.qml", workspaces: "WWorkspaces.qml", toggles: "WToggles.qml", shortcuts: "WToggles.qml",
+    music: "WMusic.qml", viz: "WViz.qml", focus: "WFocus.qml", workspaces: "WWorkspaces.qml", special: "WSpecial.qml", toggles: "WToggles.qml", shortcuts: "WToggles.qml",
     notes: "WNotes.qml", weather: "WWeather.qml", text: "WText.qml",
     console: "WConsole.qml", utilbox: "WBoxes.qml", appsbox: "WBoxes.qml",
     moon: "WMoon.qml", horizon: "WHorizon.qml", breathe: "WBreathe.qml"

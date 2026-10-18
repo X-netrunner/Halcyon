@@ -170,8 +170,8 @@ Scope {
     function words(s) { return s.trim().split(/\s+/) }
     function sudoed(rest) { return "sudo -S -p $'" + pwMarker + "\\n' " + rest }
 
-    // ai / advisor / notes / passman are fish functions (config/fish/functions), and this console runs bash: call their scripts directly
-    readonly property var pyTools: ({ ai: "halcyon-chat.py", advisor: "adaptive-advisor.py", notes: "halcyon-notes.py", passman: "halcyon-pass.py" })
+    // ai / advisor / notes are fish functions (config/fish/functions), and this console runs bash: call their scripts directly
+    readonly property var pyTools: ({ ai: "halcyon-chat.py", advisor: "adaptive-advisor.py", notes: "halcyon-notes.py" })
     function pyLine(first, line) { return "python3 \"$HOME/.config/Halcyon/scripts/" + pyTools[first] + "\"" + line.trim().substring(first.length) }
 
     function ipcLine(call) { return "quickshell ipc -p '" + rice + "/quickshell/island' call island " + call }
@@ -198,7 +198,7 @@ Scope {
         if ((first === "python" || first === "python3") && w.length > 1) return { cmd: line, tui: false }
         if (first === "ai" && w.length > 1) return { cmd: pyLine(first, line), tui: false }
         if (first === "ai" && w.length === 1) return { cmd: pyLine(first, line), tui: true }
-        if (first === "advisor" || first === "notes" || first === "passman") return { cmd: pyLine(first, line), tui: false }
+        if (first === "advisor" || first === "notes") return { cmd: pyLine(first, line), tui: false }
         return { cmd: line, tui: tuis.indexOf(first) >= 0 }
     }
 
@@ -214,7 +214,7 @@ Scope {
         if (line === "help") {
             push("sysmode: secure | stealth | relaxed | lockdown | status | logs | dossier [ip]   (sm = sysmode)\n" +
                  "ai <question> or ai /diag: local AI assistant.  notes <text>: quick notes.\n" +
-                 "passman [list|get|add|del|gen]: native password vault.  hotspot-on / hotspot-off: Wi-Fi.\n" +
+                 "hotspot-on / hotspot-off: Wi-Fi.\n" +
                  "halcyon <command>, bar-builder, desktop-builder, widget-builder, desktop-edit, wallpaper-gallery ...: open windows.\n" +
                  "sudo works here: it asks for your password in this line.\n" +
                  "SUPER+ALT+/ lists every command.\n" +
