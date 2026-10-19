@@ -5,3 +5,8 @@ Description=Halcyon: notify about notes (tasks) whose time has come (started onc
 Type=oneshot
 Nice=10
 ExecStart=/usr/bin/env python3 %h/.config/Halcyon/scripts/halcyon-notes.py remind-check
+# Hardening that cannot change what this job does (no namespaces needed, so it works in the user manager everywhere):
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes

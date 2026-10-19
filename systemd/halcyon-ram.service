@@ -4,6 +4,16 @@ Description=Halcyon: save RAM type / speed (dmidecode needs root) for the perfor
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# This one runs as root, so it is worth fencing in: it may only write /var/lib/halcyon (StateDirectory creates it) and cannot see /home.
+StateDirectory=halcyon
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+ProtectControlGroups=yes
 ExecStart=/bin/sh -c 'mkdir -p /var/lib/halcyon && dmidecode -t memory > /var/lib/halcyon/dmi-memory.txt.new && mv /var/lib/halcyon/dmi-memory.txt.new /var/lib/halcyon/dmi-memory.txt && chmod 644 /var/lib/halcyon/dmi-memory.txt'
 
 [Install]
