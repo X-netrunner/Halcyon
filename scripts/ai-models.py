@@ -6,6 +6,8 @@
   ai-models.py status             JSON: just the download in progress (cheap)
   ai-models.py use <name>         make <name> the advisor / `ai` model (ai-advisor.conf, the same file `advisor model switch` writes)
   ai-models.py pull <name> [--use]  download it with Ollama, progress in ~/.cache/island/ai-pull.json ; --use = switch to it when done
+  ai-models.py master [on|off]    the master AI switch: no argument prints {"enabled": true|false}; "off" stops every AI feature (notes AI,
+                                  `ai`, `advisor --llm`) until it is switched on again. Nothing is deleted, Ollama is left alone.
   ai-models.py cancel             stop the download in progress
   ai-models.py rm <name>          delete an installed model
 
@@ -31,6 +33,12 @@ CONF = os.path.join(RICE, "ai-advisor.conf")
 HOST = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434")
 if not HOST.startswith("http"):
     HOST = "http://" + HOST
+# Master AI switch: Settings > Performance > "AI features" (or: python3 ai-models.py master on|off). Off = this file exists.
+# Nothing local is deleted and Ollama itself is left running; Halcyon just stops asking any model anything.
+AI_OFF_FLAG = os.path.join(os.path.expanduser("~"), ".local", "state", "island", "ai-off")
+
+def ai_enabled():
+    return not os.path.exists(AI_OFF_FLAG)
 CATALOG_TTL = 12 * 3600
 LIB_URL = "https://ollama.com/library?sort=popular"
 
@@ -280,10 +288,15 @@ def set_model(name):
 
 # ------------------------------------------------------------------------------------------------ commands
 def cmd_list(refresh):
+    if not ai_enabled():                    # master switch off: no Ollama calls, no catalog download, just the state
+        out({"enabled": False, "ollama": have_ollama(), "running": False, "current": "", "envOverride": False,
+             "installed": [], "catalog": [], "source": "", "hw": {}, "pull": read_pull()})
+        return
     have = installed()
     hw = hardware()
     entries, src = fetch_catalog(force=refresh)
     out({
+        "enabled": ai_enabled(),
         "ollama": have_ollama(), "running": ollama_up(), "current": current_model(have),
         "envOverride": bool(os.environ.get("HALCYON_AI_MODEL")),
         "installed": have, "catalog": build_catalog(entries, have, hw), "source": src, "hw": hw,
@@ -372,6 +385,21 @@ def main():
     c, rest = a[0], a[1:]
     if c == "list":
         cmd_list("--refresh" in rest)
+    elif c == "master":
+        if rest and rest[0] in ("on", "off", "1", "0", "true", "false"):
+            want = rest[0] in ("on", "1", "true")
+            try:
+                if want:
+                    if os.path.exists(AI_OFF_FLAG):
+                        os.unlink(AI_OFF_FLAG)
+                else:
+                    os.makedirs(os.path.dirname(AI_OFF_FLAG), exist_ok=True)
+                    with open(AI_OFF_FLAG, "w", encoding="utf-8") as f:
+                        f.write("AI features are switched off (Settings > Performance > AI features)\n")
+            except OSError as e:
+                print(f"[!] could not change the AI switch: {e}", file=sys.stderr)
+                return 1
+        out({"enabled": ai_enabled()})
     elif c == "status":                                     # cheap: only the download state (the UI polls this once a second)
         out(read_pull() or {})
     elif c == "use" and rest:

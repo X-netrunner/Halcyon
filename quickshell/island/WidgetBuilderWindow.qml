@@ -8,6 +8,8 @@ import "WidgetData.js" as WD
 //   Right:   its layout (style), its options, its size, its look (box, colours, font, text size), saved styles of your own,
 //            and a quick place on the screen. Where everything sits overall is the Desktop builder's job.
 // Every change is saved and shows on the real desktop at once (changed("deskWidgets", layout) / changed("deskStyles", list)).
+// The switch in the header picks WHICH screen's widgets you shape: the desktop's (opt.deskWidgets) or the lock screen's (opt.lockDeskWidgets, only the
+// types WidgetData.js allows there). The saved looks (deskStyles) are shared by both.
 Item {
     id: root
     property var pal
@@ -16,12 +18,16 @@ Item {
     property var opt: ({})
     signal changed(string key, var value)
     signal closed()
-    signal editOnDesktop()
+    signal editOnDesktop(string which)         // which = "desktop" or "lock": the screen to place the widgets on
+    signal targetPicked(string t)
+    property string target: "desktop"          // "desktop" or "lock" (Settings wbTarget)
+    readonly property bool lockT: target === "lock"
+    readonly property string lkey: WD.keyOf(target)          // the settings key of this screen's list
 
     // the newest layout a slider made that the 70 ms timer has not sent yet: every edit starts from it, so a click right after a slider
     // does not start from the old layout (and then get overwritten when the timer sends the slider's value)
     property var livePending: null
-    readonly property var layout: WD.normalize(livePending !== null ? livePending : (opt ? opt.deskWidgets : null))
+    readonly property var layout: WD.normalizeFor(livePending !== null ? livePending : (opt ? opt[lkey] : null), target)
     readonly property var saved: (opt && opt.deskStyles && opt.deskStyles.length !== undefined) ? opt.deskStyles : []
     property string sel: ""
     property string pick: ""              // asked to open on this widget (from the desktop editor)
@@ -76,17 +82,19 @@ Item {
     function setLinkV(side, gap, live) { edit(WD.setLink(layout, sel, curLinkTo, side, gap), live === true) }
     // the picked one disappeared (or nothing is picked yet): pick the first
     onLayoutChanged: if (WD.find(layout, sel) === null) sel = layout.items.length ? layout.items[0].uid : ""
+    // the other screen's list: send what a slider had waiting (it still carries its own key), then start on that list's first widget
+    onTargetChanged: { flushLive(); livePending = null; adding = false; sel = layout.items.length ? layout.items[0].uid : "" }
     Component.onCompleted: if (sel === "" && layout.items.length) sel = layout.items[0].uid
 
     // sliders send a value for every pixel: pass the first at once, then at most one every 70 ms, ending on the last
     property var pending: ({})
-    function send(k, v) { if (k === "deskWidgets") livePending = null; root.changed(k, v) }
+    function send(k, v) { if (k === root.lkey) livePending = null; root.changed(k, v) }
     function put(k, v) {
-        if (k === "deskWidgets") { var p0 = pending; delete p0.deskWidgets; pending = p0 }      // this newer layout replaces a waiting one
+        if (k === root.lkey) { var p0 = pending; delete p0[root.lkey]; pending = p0 }      // this newer layout replaces a waiting one
         send(k, v)
     }
     function putLive(k, v) {
-        if (liveT.running) { var p = pending; p[k] = v; pending = p; if (k === "deskWidgets") livePending = v; return }
+        if (liveT.running) { var p = pending; p[k] = v; pending = p; if (k === root.lkey) livePending = v; return }
         send(k, v)
         liveT.start()
     }
@@ -103,7 +111,7 @@ Item {
     }
     function flushLive() { var p = root.pending; root.pending = ({}); for (var k in p) root.send(k, p[k]) }
 
-    function edit(l, live) { if (live) putLive("deskWidgets", l); else put("deskWidgets", l) }
+    function edit(l, live) { if (live) putLive(root.lkey, l); else put(root.lkey, l) }
     function setStyle(s) { edit(WD.setStyle(layout, sel, s), false) }
     function setOptV(k, v, live) { edit(WD.setOpt(layout, sel, k, v), live === true) }
     function setLookV(k, v, live) { edit(WD.setLook(layout, sel, k, v), live === true) }
@@ -174,10 +182,17 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 2
                     Text { text: "Widget builder"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Text { text: "One widget at a time: pick it on the left, shape it on the right. Where they all sit is the Desktop builder's job."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    Text { text: root.lockT ? "The widgets of your lock screen. Only ones that show something are offered, and nothing on them can be clicked while it is locked." : "One widget at a time: pick it on the left, shape it on the right. Where they all sit is the Desktop builder's job."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                }
+                SegSwitch {
+                    Layout.alignment: Qt.AlignVCenter
+                    pal: root.pal
+                    options: [{ k: "desktop", t: "Desktop" }, { k: "lock", t: "Lock screen" }]
+                    current: root.target
+                    onPicked: k => root.targetPicked(k)
                 }
                 Item { Layout.fillWidth: true }
-                ActionChip { pal: root.pal; label: "Place them on the desktop"; onClicked: root.editOnDesktop() }
+                ActionChip { pal: root.pal; label: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"; onClicked: root.editOnDesktop(root.target) }
                 ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
             }
 
@@ -213,7 +228,7 @@ Item {
                                 Text {
                                     visible: root.layout.items.length === 0
                                     width: parent.width
-                                    text: "Nothing on the desktop yet. Add a widget below."
+                                    text: root.lockT ? "Nothing on the lock screen yet. Add a widget below." : "Nothing on the desktop yet. Add a widget below."
                                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; wrapMode: Text.WordWrap
                                 }
                                 Repeater {
@@ -276,8 +291,8 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
-                            Text { Layout.fillWidth: true; text: "All desktop widgets"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; elide: Text.ElideRight }
-                            Toggle { pal: root.pal; on: !root.opt || root.opt.deskWidgetsOn !== false; onToggled: root.put("deskWidgetsOn", !(!root.opt || root.opt.deskWidgetsOn !== false)) }
+                            Text { Layout.fillWidth: true; text: root.lockT ? "All lock screen widgets" : "All desktop widgets"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; elide: Text.ElideRight }
+                            Toggle { pal: root.pal; on: WD.isOn(root.opt, root.target); onToggled: root.put(WD.onKeyOf(root.target), !WD.isOn(root.opt, root.target)) }
                         }
                     }
                 }
@@ -313,6 +328,8 @@ Item {
                             env: root.env
                             item: root.cur
                             preview: true
+                            inert: root.lockT
+                            lockLum: (root.lockT && root.env && root.env.lockBackLum !== undefined) ? root.env.lockBackLum : -1
                             shown: root.open
                         }
                     }
@@ -344,10 +361,20 @@ Item {
                             id: cat
                             width: parent.width
                             spacing: 14
+                            Text {
+                                visible: root.lockT
+                                width: cat.width
+                                wrapMode: Text.WordWrap
+                                text: "Not offered on the lock screen (they run commands or show private things): " + WD.lockBlockedNames() + "."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
+                            }
                             Repeater {
                                 model: WD.cats
                                 delegate: Column {
+                                    id: catGroup
                                     required property var modelData
+                                    readonly property var kinds: WD.catalog.filter(function (t) { return t.cat === modelData[0] && (!root.lockT || WD.lockOk(t.id)) })
+                                    visible: kinds.length > 0
                                     width: cat.width
                                     spacing: 8
                                     NbCap { pal: root.pal; text: modelData[1].toUpperCase() }
@@ -355,7 +382,7 @@ Item {
                                         width: parent.width
                                         spacing: 8
                                         Repeater {
-                                            model: WD.catalog.filter(function (t) { return t.cat === modelData[0] })
+                                            model: catGroup.kinds
                                             delegate: Rectangle {
                                                 required property var modelData
                                                 width: 150; height: 64; radius: 14
@@ -401,7 +428,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
-                            Text { Layout.fillWidth: true; text: "Show this widget on the desktop"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; elide: Text.ElideRight }
+                            Text { Layout.fillWidth: true; text: root.lockT ? "Show this widget on the lock screen" : "Show this widget on the desktop"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; elide: Text.ElideRight }
                             Toggle { pal: root.pal; on: root.cur !== null && root.cur.off !== true; onToggled: root.edit(WD.setOff(root.layout, root.sel, root.cur !== null && root.cur.off !== true), false) }
                         }
 
@@ -505,7 +532,7 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "For an exact spot, use \"Place them on the desktop\": drag it there, the wheel resizes it."
+                            text: root.lockT ? "For an exact spot, use \"Place them on the lock screen\": drag it there, the wheel resizes it." : "For an exact spot, use \"Place them on the desktop\": drag it there, the wheel resizes it."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
                         }
 

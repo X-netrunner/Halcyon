@@ -6,6 +6,7 @@
 // DesktopBuilderWindow.qml (the overview) and WidgetBuilder.qml (the Settings entry).
 //
 // Saved in settings.json as opt.deskWidgets = { items: [ item, ... ] } and opt.deskStyles = [ { name, look }, ... ]
+// The lock screen has its own list in the same format: opt.lockDeskWidgets (switch: opt.lockDeskWidgetsOn). Saved looks (deskStyles) are shared.
 //   item = { uid, type, px, py, scale, style, opts: { key: value }, look: { ... } }
 //     px, py  0 .. 1: where the widget sits inside the free room of the screen (0 = against the left / top margin,
 //             1 = against the right / bottom margin, 0.5 = centred). So a widget can never fall off the screen and the
@@ -285,6 +286,7 @@ function optOf(item, k) {
 }
 function styleList(type) { var t = typeOf(type); return t ? t.styles : [] }
 function styleOf(item) {
+    if (!item || !item.type) return ""
     var l = styleList(item.type)
     for (var i = 0; i < l.length; i++) if (l[i][0] === item.style) return item.style
     return l.length ? l[0][0] : ""
@@ -292,6 +294,7 @@ function styleOf(item) {
 
 function nextUid(items) {
     var n = 1
+    if (!items || !items.length) return "w1"
     for (var i = 0; i < items.length; i++) {
         var m = /^w(\d+)$/.exec(String(items[i].uid))
         if (m) n = Math.max(n, Number(m[1]) + 1)
@@ -355,6 +358,7 @@ function normalize(d) {
 
 function copy(d) { return normalize(JSON.parse(JSON.stringify(d || { items: [] }))) }
 function find(d, uid) {
+    if (!d || !d.items) return null
     for (var i = 0; i < d.items.length; i++) if (d.items[i].uid === uid) return d.items[i]
     return null
 }
@@ -414,6 +418,7 @@ function linkRoot(d, uid) {
 }
 // every uid tied to this one by links, in either direction (the widget itself included)
 function linkGroup(d, uid) {
+    if (!d || !d.items) return [uid]
     var set = {}, queue = [uid], out = [uid]
     set[uid] = true
     while (queue.length) {
@@ -428,6 +433,7 @@ function linkGroup(d, uid) {
 }
 // the widgets that share one width with this one: those tied to it by "above" / "below" links only (side-by-side links share size, not width)
 function widthGroup(d, uid) {
+    if (!d || !d.items) return [uid]
     var set = {}, queue = [uid], out = [uid]
     set[uid] = true
     while (queue.length) {
@@ -445,6 +451,7 @@ function widthGroup(d, uid) {
 // each other. item.linkOrder says who is first; widgets with the same number keep the order they were added in.
 function siblings(d, leader, side) {
     var out = []
+    if (!d || !d.items) return out
     for (var i = 0; i < d.items.length; i++) {
         var c = d.items[i]
         if (c.link === leader && leaderOf(d, c.uid) === leader && sideOf(c.linkSide) === side) out.push({ uid: c.uid, o: num(c.linkOrder, 0), i: i })
@@ -486,6 +493,7 @@ var groupColors = ["#7ec8e3", "#f5a623", "#9be37d", "#e58a8a", "#c2add8", "#7ef2
 function groupColor(g) { return groupColors[((g % groupColors.length) + groupColors.length) % groupColors.length] }
 // rows: [{ it, g (group number, -1 = not linked), pos (solo | first | mid | last), n (members), label, rel ("below Clock") }]
 function listRows(d) {
+    if (!d || !d.items) return []
     var done = {}, rows = [], g = 0
     var sides = { below: "below", above: "above", right: "right of", left: "left of" }
     function kids(u) {
@@ -563,6 +571,60 @@ function bringFront(d, uid) {
     o.items = o.items.filter(function (i) { return i.uid !== uid })
     o.items.push(it)
     return o
+}
+
+// ------------------------------------------------------------------------------------------------ the lock screen
+// The same widgets can be put on the lock screen (opt.lockDeskWidgets, master switch opt.lockDeskWidgetsOn): built in the same Widget
+// builder, placed with the same desktop editor ("target" = "lock"). The lock screen is a session lock with your password box on it, so
+//   - only widgets that SHOW something harmless are offered there (lockBlocked is what is left out, and why), and
+//   - every widget is inert there: Lock.qml gives them an env whose actions do nothing and a click shield sits over each one.
+//     (lockButtons: types that keep their buttons; the music widget's previous / play / next are the same three the lock screen's own media card has.)
+var lockBlocked = { toggles: "it runs commands", shortcuts: "it runs commands", console: "it runs commands and shows what they print",
+                    notes: "it shows your private notes and calendar", utilbox: "it has power, Wi-Fi and other buttons", appsbox: "it lists your running apps",
+                    workspaces: "it shows which windows you have open", special: "it shows which windows you have open" }
+var lockButtons = { music: true }
+function lockOk(type) { return lockBlocked[type] === undefined }
+// the names of what is left out, for a line under the catalog: "Quick toggles, App shortcuts, ..."
+function lockBlockedNames() {
+    var n = []
+    for (var i = 0; i < catalog.length; i++) if (!lockOk(catalog[i].id)) n.push(catalog[i].name)
+    return n.join(", ")
+}
+// target: "desktop" (default) or "lock". Which settings key holds the list, and which holds its master switch.
+function keyOf(target) { return target === "lock" ? "lockDeskWidgets" : "deskWidgets" }
+function onKeyOf(target) { return target === "lock" ? "lockDeskWidgetsOn" : "deskWidgetsOn" }
+function isOn(opt, target) { return !opt || opt[onKeyOf(target)] !== false }
+// normalize() for a target: on the lock screen a type that is not allowed there is dropped (it could only get into settings.json by hand),
+// and links to a dropped widget are cut by the second pass
+function normalizeFor(d, target) {
+    var o = normalize(d)
+    if (target !== "lock") return o
+    var keep = o.items.filter(function (i) { return lockOk(i.type) })
+    if (keep.length === o.items.length) return o
+    return normalize({ items: keep })
+}
+// which types are on (and not switched off): { clock: true, ... }
+function typeSet(d) {
+    var m = {}
+    if (!d || !d.items) return m
+    for (var i = 0; i < d.items.length; i++) if (d.items[i].off !== true) m[d.items[i].type] = true
+    return m
+}
+// the feeds two layouts need together (the desktop's and the lock screen's)
+function mergeNeeds(a, b) {
+    var o = needs(null)
+    if (a) for (var k in a) o[k] = a[k] === true
+    if (b) for (var j in b) o[j] = o[j] === true || b[j] === true
+    return o
+}
+// linear luminance of a colour (0 .. 1): how bright the lock screen's background is, for the widgets' readability colours
+function relLum(c) {
+    if (!c) return 0
+    function l(x) { return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4) }
+    var r = (c.r !== undefined) ? c.r : 0
+    var g = (c.g !== undefined) ? c.g : 0
+    var b = (c.b !== undefined) ? c.b : 0
+    return 0.2126 * l(r) + 0.7152 * l(g) + 0.0722 * l(b)
 }
 
 // ------------------------------------------------------------------------------------------------ places

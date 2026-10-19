@@ -16,6 +16,8 @@ Item {
     property bool editing: false
     property bool selected: false
     property bool preview: false              // the Widget builder's big picture: no placement, sits at 0, 0
+    property bool inert: false                // the lock screen: a click shield sits over the body, so nothing in it can be clicked or scrolled (a type in WD.lockButtons keeps its buttons)
+    property real lockLum: -1                 // >= 0: this widget is on the lock screen, whose background is this bright (linear 0 .. 1): the blurred wallpaper under its tint sheet, or the plain theme colour
     property bool shown: true                 // the desktop can be seen (not covered by a full-screen app)
     property real screenW: 1920
     property real screenH: 1080
@@ -34,6 +36,12 @@ Item {
     property real extL: 0                     // room the widgets linked on this chain's LEFT need (DeskWidgets.chainExt): the chain root never sits closer to the edge
     property real extR: 0                     // ... and on its right
     function chainX(v) { return Math.max(margin + extL, Math.min(v, screenW - margin - vw - extR)) }
+    // The saved position (px) belongs to the WHOLE chain (followers on the left / right included), not to this widget alone:
+    // the chain's left edge sits at  margin + px * (free room left over by the chain).  So when a follower gets wider (uptime
+    // "9m" -> "2h 59m") the chain grows from its own edge and pushes this widget along, and when it gets narrower again
+    // (uptime back to "0m") everything returns to exactly where you left it. Before, px was relative to this widget only, so
+    // every width change of a follower slid the whole chain and it never came back.
+    readonly property real chainW: extL + vw + extR
     property var chainRoot: null              // the first widget of the chain this one belongs to (itself when it is not linked): dragging ANY widget of the chain drags that one, and the rest follow
 
     signal picked(string uid)
@@ -76,9 +84,11 @@ Item {
     readonly property real fY: preview ? 0 : y / Math.max(1, screenH)
     readonly property real fW: preview ? 1 : vw / Math.max(1, screenW)
     readonly property real fH: preview ? 1 : vh / Math.max(1, screenH)
-    readonly property real backLum: pal ? pal.lumAt(fX, fY, fW, fH) : 0.1
-    readonly property real backSpread: pal ? pal.lumSpreadAt(fX, fY, fW, fH) : 0
-    readonly property real backMax: pal ? pal.lumMaxAt(fX, fY, fW, fH) : 0.1
+    // on the lock screen the wallpaper is blurred (an even patch) and under a tint sheet, so the patch behind a widget is one even brightness (lockLum), not the desktop picture
+    readonly property bool onLockBg: lockLum >= 0
+    readonly property real backLum: onLockBg ? lockLum : (pal ? pal.lumAt(fX, fY, fW, fH) : 0.1)
+    readonly property real backSpread: onLockBg ? 0 : (pal ? pal.lumSpreadAt(fX, fY, fW, fH) : 0)
+    readonly property real backMax: onLockBg ? lockLum : (pal ? pal.lumMaxAt(fX, fY, fW, fH) : 0.1)
     readonly property real effLum: backLum * (1 - bodyOp) + 0.012 * bodyOp     // linear luminance seen through the box (a dark glass box is ~0.012)
     readonly property bool themed: textToneEff === "theme"
     // 1) an evenly BRIGHT patch: dark, accent-tinted text.   0.18 is where black text starts to beat white on contrast
@@ -100,7 +110,7 @@ Item {
     // ---- "Auto" text colour: of the wallpaper's own colours (accent, second colour, every swatch) plus white, take the one that stands out
     // best from what is right behind THIS widget: enough contrast against the brightest part of the patch, and a hue far from the
     // patch's own (pink text on a cyan corner, cyan on a pink one). [0] = the main colour, [1] = a second one for the quiet text.
-    readonly property var backRgb: pal ? pal.colorAt(fX, fY, fW, fH) : null
+    readonly property var backRgb: (pal && !onLockBg) ? pal.colorAt(fX, fY, fW, fH) : null
     function relLum(c) {
         function l(x) { return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4) }
         return 0.2126 * l(c.r) + 0.7152 * l(c.g) + 0.0722 * l(c.b)
@@ -180,7 +190,7 @@ Item {
     // (left / right, centred on it; its leader's width counts, so when the leader grows this one is pushed along, never overlapped)
     x: preview ? 0 : (linked ? (linkSide === "right" ? linkHost.x + linkHost.vw + linkGap
                                 : (linkSide === "left" ? linkHost.x - vw - linkGap : linkHost.x))
-                             : (dragging ? dragX : (resizing ? pinX : chainX(WD.posX(item || { px: 0 }, screenW, vw, margin)))))
+                             : (dragging ? dragX : (resizing ? pinX + extL : chainX(WD.posX(item || { px: 0 }, screenW, chainW, margin) + extL))))
     y: preview ? 0 : (linked ? (linkSide === "above" ? linkHost.y - vh - linkGap
                                 : (linkSide === "below" ? linkHost.y + linkHost.vh + linkGap
                                    : linkHost.y + (linkHost.vh - vh) / 2))
@@ -188,10 +198,10 @@ Item {
 
     // move by dx, dy pixels (arrow keys)
     function nudge(dx, dy) {
-        var lo = margin, hi = Math.max(lo, screenW - vw - margin)
+        var lo = margin + extL, hi = Math.max(lo, screenW - vw - margin - extR)
         var tlo = topInset, thi = Math.max(tlo, screenH - vh - bottomInset)
         var nx = Math.max(lo, Math.min(hi, x + dx)), ny = Math.max(tlo, Math.min(thi, y + dy))
-        dropped(uid, WD.fracX(nx, screenW, vw, margin), WD.fracY(ny, screenH, vh, topInset, bottomInset))
+        dropped(uid, WD.fracX(nx - extL, screenW, chainW, margin), WD.fracY(ny, screenH, vh, topInset, bottomInset))
     }
     visible: item !== null && (!bodyHidden || editing || preview)
     opacity: (bodyHidden && editing) ? 0.4 : 1
@@ -265,6 +275,15 @@ Item {
         Component.onCompleted: load()
         Connections { target: host; function onTypeChanged() { ld.load() } }
     }
+    // the click shield (lock screen): takes every press and scroll over the body, so no button, slider or wheel in it ever fires
+    MouseArea {
+        z: 40
+        anchors.fill: parent
+        enabled: host.inert && WD.lockButtons[host.type] !== true
+        visible: enabled
+        acceptedButtons: Qt.AllButtons
+        onWheel: w => { w.accepted = true }
+    }
 
     // ---- editing chrome
     Rectangle {
@@ -307,7 +326,7 @@ Item {
             var p = grab.mapToItem(host.parent, m.x, m.y)
             var nx = ox + p.x - pressX, ny = oy + p.y - pressY
             var gx = -1, gy = -1
-            var lo = t.margin, hi = t.screenW - t.vw - t.margin
+            var lo = t.margin + t.extL, hi = t.screenW - t.vw - t.margin - t.extR
             var tlo = t.topInset, thi = t.screenH - t.vh - t.bottomInset
             // Alt or Ctrl held = move freely, no snapping
             if ((m.modifiers & (Qt.AltModifier | Qt.ControlModifier)) === 0) {
@@ -337,7 +356,7 @@ Item {
             if (!t || !t.dragging) return
             t.dragging = false
             t.dragMoved(-1, -1)
-            t.dropped(t.uid, WD.fracX(t.dragX, t.screenW, t.vw, t.margin), WD.fracY(t.dragY, t.screenH, t.vh, t.topInset, t.bottomInset))
+            t.dropped(t.uid, WD.fracX(t.dragX - t.extL, t.screenW, t.chainW, t.margin), WD.fracY(t.dragY, t.screenH, t.vh, t.topInset, t.bottomInset))
         }
         onCanceled: {
             var t = tgt
@@ -367,7 +386,7 @@ Item {
             anchors.margins: -6
             cursorShape: Qt.SizeFDiagCursor
             property real baseW: 1
-            onPressed: { host.pinX = host.x; host.pinY = host.y; host.liveScale = host.k; host.resizing = true }
+            onPressed: { host.pinX = host.x - host.extL; host.pinY = host.y; host.liveScale = host.k; host.resizing = true }
             onPositionChanged: m => {
                 if (!pressed) return
                 var p = mapToItem(host.parent, m.x, m.y)

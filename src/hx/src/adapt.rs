@@ -132,7 +132,7 @@ pub fn sample() {
     std::fs::create_dir_all(state_dir()).ok();
 
     // Prune if too large
-    let mut rows = read_rows();
+    let rows = read_rows();
     if rows.len() > 4500 {
         let keep_from = rows.len().saturating_sub(4000);
         let trimmed = &rows[keep_from..];

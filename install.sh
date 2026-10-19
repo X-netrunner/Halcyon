@@ -53,6 +53,9 @@
 #                          (--no-safety-check: skip it; its entry in Settings > Backup is then greyed out and disabled)
 #   --llm[=MODEL]          install Ollama & local AI performance advisor (auto-detects hardware tier or specifies model)
 #   --no-llm               skip Ollama & local AI performance advisor
+#   --whisper[=MODEL]      install speech-to-text for voice notes: whisper.cpp + a model (tiny | base | small; default base). Without this option
+#                          you are ASKED in a terminal; with --yes and nothing saved, no model is downloaded
+#   --no-whisper           skip the speech-to-text model (voice notes are then saved as audio without a transcript)
 #   --resources MODE       how much of the machine Halcyon may use: low | medium | high | adaptive (Settings > Performance > Resource use).
 #                          The menu shows an estimate of the RAM / CPU each one needs; adaptive = medium now, limits learned from your use
 #   --resource-offset N    headroom in percent (0-100) above that estimate before Settings > Performance > Health warns (default 15)
@@ -92,6 +95,7 @@ PACKAGES=true; SKIP_DRIVERS=false; SKIP_AUR=false; UPGRADE=auto; SKIP_TUNE=false
 SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=false; SYSMODE_ASKED=true; }
 SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default (answer n, or --no-safety-check, to skip it)
 INSTALL_LLM=false; PICK_LLM_MODEL=""; LLM_ASKED=false # local AI performance advisor with Ollama
+INSTALL_WHISPER=false; PICK_WHISPER_MODEL=""; WHISPER_ASKED=false   # speech-to-text for voice notes (whisper.cpp + a ggml model)
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 PICK_PROMPT=""; FIRST_INSTALL=false        # your shell prompt: keep | colours | halcyon (see choose_prompt); FIRST_INSTALL: nothing was chosen on this machine yet
@@ -164,6 +168,10 @@ while [[ $# -gt 0 ]]; do
         --llm)              INSTALL_LLM=true; LLM_ASKED=true ;;
         --llm=*)            INSTALL_LLM=true; PICK_LLM_MODEL="${1#--llm=}"; LLM_ASKED=true ;;
         --no-llm)           INSTALL_LLM=false; LLM_ASKED=true ;;
+        --whisper)          INSTALL_WHISPER=true; WHISPER_ASKED=true ;;
+        --whisper=*)        INSTALL_WHISPER=true; PICK_WHISPER_MODEL="${1#--whisper=}"; WHISPER_ASKED=true
+                            [[ "$PICK_WHISPER_MODEL" =~ ^(tiny|base|small)$ ]] || die "--whisper=MODEL needs tiny, base or small (see --help)" ;;
+        --no-whisper)       INSTALL_WHISPER=false; WHISPER_ASKED=true ;;
         --browser)          shift; PICK_BROWSER="${1:-}"; [[ -n "$PICK_BROWSER" ]] || die "--browser needs a name (see --help)" ;;
         --browser=*)        PICK_BROWSER="${1#--browser=}" ;;
         --files|--file-manager) shift; PICK_FILES="${1:-}"; [[ -n "$PICK_FILES" ]] || die "--files needs a name (see --help)" ;;
@@ -1131,11 +1139,12 @@ detect_hardware_tier() {
 }
 
 choose_apps() {
-    local interactive=false have_b have_e s_b s_f s_e s_m s_s s_c s_l s_lm ask_b=false ask_f=false ask_e=false ask_m=false ask_s=false ask_c=false ask_l=false id kind
+    local interactive=false have_b have_e s_b s_f s_e s_m s_s s_c s_l s_lm s_w s_wm ask_b=false ask_f=false ask_e=false ask_m=false ask_s=false ask_c=false ask_l=false ask_w=false id kind
     local flag_b="$PICK_BROWSER" flag_f="$PICK_FILES" flag_e="$PICK_EDITOR" flag_m="$PICK_MUSIC"      # given on the command line
     [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
     s_b=$(saved_choice BROWSER); s_f=$(saved_choice FILES); s_e=$(saved_choice EDITOR); s_m=$(saved_choice MUSIC); s_s=$(saved_choice SYSMODE); s_c=$(saved_choice SAFETY_CHECK)
     s_l=$(saved_choice LLM); s_lm=$(saved_choice LLM_MODEL)
+    s_w=$(saved_choice WHISPER); s_wm=$(saved_choice WHISPER_MODEL)
     have_any firefox chromium google-chrome-stable brave vivaldi-stable zen-browser librewolf floorp qutebrowser && have_b=true || have_b=false
     have_any codium code code-oss cursor zeditor zed subl kate nvim && have_e=true || have_e=false
     # saved sysmode answer (only when nothing on the command line decided it)
@@ -1145,6 +1154,9 @@ choose_apps() {
     # saved LLM answer
     [[ "$LLM_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_l" ]] && { [[ "$s_l" == yes ]] && INSTALL_LLM=true || INSTALL_LLM=false; PICK_LLM_MODEL="${s_lm:-$(detect_hardware_tier | cut -d'|' -f6)}"; LLM_ASKED=true; }
 
+    # saved speech-to-text answer (the command line wins, --choose asks again)
+    [[ "$WHISPER_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_w" ]] && { [[ "$s_w" == yes ]] && INSTALL_WHISPER=true || INSTALL_WHISPER=false; PICK_WHISPER_MODEL="${s_wm:-base}"; WHISPER_ASKED=true; }
+
     if [[ "$interactive" == "true" ]]; then
         [[ -z "$PICK_BROWSER" && ( "$CHOOSE" == "true" || -z "$s_b" ) ]] && ask_b=true
         [[ -z "$PICK_FILES"   && ( "$CHOOSE" == "true" || -z "$s_f" ) && "$INSTALL_APPS" == "true" ]] && ask_f=true
@@ -1153,7 +1165,8 @@ choose_apps() {
         [[ "$SYSMODE_ASKED" != "true" ]] && ask_s=true
         [[ "$SAFETY_ASKED" != "true" ]] && ask_c=true
         [[ "$LLM_ASKED" != "true" ]] && ask_l=true
-        if [[ "$ask_b$ask_f$ask_e$ask_m$ask_s$ask_c$ask_l" == *true* ]]; then
+        [[ "$WHISPER_ASKED" != "true" ]] && ask_w=true
+        if [[ "$ask_b$ask_f$ask_e$ask_m$ask_s$ask_c$ask_l$ask_w" == *true* ]]; then
             echo -e "\n${BOLD}Make it yours${RESET} ${DIM}(Enter takes the marked choice; ./install.sh --choose asks again later)${RESET}"
         fi
     fi
@@ -1230,6 +1243,25 @@ choose_apps() {
         unset IFS
         PICK_LLM_MODEL="${hw_data[5]:-qwen2.5:1.5b}"
     fi
+    # ---- speech-to-text for voice notes (Whisper): ONLY installed when you say yes (nothing is downloaded on a bare Enter-less run)
+    if [[ "$ask_w" == "true" ]]; then
+        echo -e "\n  ${CYAN}${BOLD}Voice notes: speech-to-text (Whisper)${RESET}  ${DIM}turns a recorded voice note into text, fully offline${RESET}"
+        echo -e "   ${DIM}installs whisper.cpp (the engine) and downloads ONE model (75-470 MB) from huggingface.co into ~/.local/share/whisper.cpp/models.${RESET}"
+        echo -e "   ${DIM}Say no and voice notes are still recorded, just without a transcript. You can add it later: ./install.sh --whisper${RESET}"
+        if confirm "  Install speech-to-text for voice notes?"; then
+            INSTALL_WHISPER=true
+            menu_pick PICK_WHISPER_MODEL "Whisper model" "${s_wm:-base}" 0 \
+                "tiny|Tiny|~75 MB, fastest, fine for clear speech in a quiet room" \
+                "base|Base|~142 MB, a good balance on a laptop (recommended)" \
+                "small|Small|~466 MB, noticeably better with accents and noise, slower"
+        else
+            INSTALL_WHISPER=false
+            PICK_WHISPER_MODEL=""
+        fi
+        WHISPER_ASKED=true
+    fi
+    [[ "$INSTALL_WHISPER" == "true" && ! "$PICK_WHISPER_MODEL" =~ ^(tiny|base|small)$ ]] && PICK_WHISPER_MODEL=base
+
     # ---- check the names (a typo in --browser must not silently install nothing)
     local lst
     for kind in browser files editor music; do
@@ -1248,10 +1280,10 @@ choose_apps() {
     # SUPER+M opens the first music player you picked; spotify itself is left to the automatic choice (spotify or spotify-launcher, whichever got installed)
     [[ ( -n "$flag_m" || "$ask_m" == true ) && "${PICK_MUSIC%% *}" == spotify-player ]] && APPLY_PICKS+=("music=spotify-player")
     id="${PICK_EDITOR%% *}"; [[ ( -n "$flag_e" || "$ask_e" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("editor=$(apps_id editor "$id")")
-    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)  ai-advisor=$([[ "$INSTALL_LLM" == true ]] && echo "$PICK_LLM_MODEL" || echo no)"
+    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)  ai-advisor=$([[ "$INSTALL_LLM" == true ]] && echo "$PICK_LLM_MODEL" || echo no)  whisper=$([[ "$INSTALL_WHISPER" == true ]] && echo "$PICK_WHISPER_MODEL" || echo no)"
 }
 if [[ "$PACKAGES" == "true" && "$REMOVE_LOGIN" != "true" ]]; then choose_apps
-else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; INSTALL_LLM="${INSTALL_LLM:-false}"; PICK_LLM_MODEL="${PICK_LLM_MODEL:-none}"; fi
+else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; INSTALL_LLM="${INSTALL_LLM:-false}"; PICK_LLM_MODEL="${PICK_LLM_MODEL:-none}"; [[ "$INSTALL_WHISPER" == "true" && -z "$PICK_WHISPER_MODEL" ]] && PICK_WHISPER_MODEL=base; fi
 
 # ---- your shell prompt (Starship): keep yours, keep your layout with Halcyon's colours, or switch to Halcyon's
 # Asked once when ANOTHER prompt setup is found (your own starship.toml, a prompt started from your shell config, the CachyOS fish config,
@@ -1460,6 +1492,38 @@ EOF
             try run_as_user_cmd "Pulling Ollama model (${PICK_LLM_MODEL})" ollama pull "$PICK_LLM_MODEL"
         fi
         run_as_user bash -c "mkdir -p '$TARGET_RICE' && echo 'MODEL=\"$PICK_LLM_MODEL\"' > '$TARGET_RICE/ai-advisor.conf'" || true
+    fi
+    # ---- Speech-to-text for voice notes (Whisper): the engine, then ONE model, only because you said yes above
+    if [[ "$INSTALL_WHISPER" == "true" ]]; then
+        log_info "Voice notes: setting up whisper.cpp + the '${PICK_WHISPER_MODEL}' model"
+        if ! have_any whisper-cli whisper-cpp whisper.cpp; then
+            if [[ "$PKG_MGR" == "pacman" ]]; then
+                install_pkgs whisper.cpp            # official repo when it is there, otherwise the AUR (you are asked first)
+            else
+                warn_later "whisper.cpp has no apt package: build it from https://github.com/ggml-org/whisper.cpp (cmake) so that 'whisper-cli' is on your PATH, or pip install faster-whisper. The model below is downloaded anyway."
+            fi
+        fi
+        have_any whisper-cli whisper-cpp whisper.cpp || [[ "$DRY_RUN" == "true" ]] \
+            || warn_later "whisper.cpp is not installed (the AUR build may have failed): voice notes will not be transcribed until 'whisper-cli' is on your PATH."
+        WH_DIR="$TARGET_HOME/.local/share/whisper.cpp/models"
+        WH_FILE="$WH_DIR/ggml-${PICK_WHISPER_MODEL}.bin"
+        case "$PICK_WHISPER_MODEL" in tiny) WH_MIN=70000000 ;; small) WH_MIN=450000000 ;; *) WH_MIN=140000000 ;; esac   # a model is never smaller than this: a cut-off download is not kept
+        if [[ "$DRY_RUN" != "true" ]] && [[ -f "$WH_FILE" && "$(stat -c %s "$WH_FILE" 2>/dev/null || echo 0)" -ge "$WH_MIN" ]]; then
+            log_success "Whisper model already there: $WH_FILE"
+        elif command -v curl >/dev/null 2>&1 || [[ "$DRY_RUN" == "true" ]]; then
+            # downloaded next to its final name and renamed only when complete, so an interrupted download never leaves a half model behind
+            try run_as_user_cmd "Downloading the Whisper '${PICK_WHISPER_MODEL}' model (ggml-${PICK_WHISPER_MODEL}.bin)" bash -c '
+                set -e
+                mkdir -p "$1"
+                curl -fL --proto "=https" --tlsv1.2 --retry 3 --connect-timeout 20 -o "$2.part" \
+                    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$3.bin"
+                [ "$(stat -c %s "$2.part")" -ge "$4" ] || { echo "the download is too small, not keeping it"; rm -f "$2.part"; exit 1; }
+                mv -f "$2.part" "$2"' _ "$WH_DIR" "$WH_FILE" "$PICK_WHISPER_MODEL" "$WH_MIN"
+            [[ "$DRY_RUN" == "true" || -f "$WH_FILE" ]] && log_success "Whisper model installed: $WH_FILE" \
+                || warn_later "The Whisper model was not downloaded. Retry: ./install.sh --whisper=${PICK_WHISPER_MODEL}"
+        else
+            warn_later "curl is missing: the Whisper model was not downloaded."
+        fi
     fi
     try run_as_user_cmd "Creating the standard user folders" xdg-user-dirs-update
 else
@@ -2024,7 +2088,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "PROMPT=$PICK_PROMPT" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "PROMPT=$PICK_PROMPT" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
     user_setup save-choices "PROMPT=$PICK_PROMPT" || true     # --no-packages: the prompt choice is still remembered
 fi

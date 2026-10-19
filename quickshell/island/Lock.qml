@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
 import Quickshell.Services.Pam
+import "WidgetData.js" as WD
 
 // Halcyon's own lock screen (replaces hyprlock). A real Wayland session lock (ext-session-lock): the compositor itself
 // refuses to show or accept anything else until this unlocks, and if the island crashes the screen STAYS locked
@@ -27,23 +28,42 @@ Scope {
     property string avatarPath: ""
     property bool locked: false
     // ---- extras on the lock screen (all fed by shell.qml; "Lock screen widgets" / "Switch user button" in Settings > Power & lock)
-    property bool widgets: true           // battery / Wi-Fi / notification count (a COUNT only, never the text) and the media card
-    property bool allowSwitch: true       // the "Switch user" button
+    property bool widgets: false          // battery / Wi-Fi / notification count (a COUNT only, never the text) and the media card
+    property bool allowSwitch: false      // the "Switch user" button
     property var player: null             // the MPRIS player the island already follows (null = nothing playing)
     property bool hasBat: false
     property int batPct: 0
     property bool batCharging: false
     property string ssid: ""
     property int notifCount: 0
+    // ---- the widgets you built for this screen (Settings > Appearance > Widget builder > Lock screen; placed with the desktop editor)
+    // They only SHOW things: shell.qml hands over `lockEnv` (the same numbers, but every action does nothing), WidgetData.js leaves out the types
+    // that run commands or show private things, and each widget has a click shield (WidgetHost.inert).
+    property var deskOpt: ({})            // the shell's settings: opt.lockDeskWidgets (the list) and opt.lockDeskWidgetsOn (the switch)
+    property var deskEnv: null            // shell.qml lockEnv
+    property real deskLum: 0.05           // how bright this screen's background is (shell.qml lockBackLum), for the widgets' readability colours
+    readonly property var deskLayout: locked ? WD.normalizeFor(deskOpt ? deskOpt.lockDeskWidgets : null, "lock") : ({ items: [] })
+    readonly property bool deskShow: locked && deskEnv !== null && WD.isOn(deskOpt, "lock") && deskLayout.items.length > 0
+    // what you placed: the lock screen's own battery / Wi-Fi line and media card step aside for a widget of the same kind
+    readonly property var deskTypes: deskShow ? WD.typeSet(deskLayout) : ({})
     property var sessions: []             // other sessions on this seat: [{ id, user, tty }] (scripts/switch-user.sh list)
     property bool switchOpen: false
     readonly property string switchScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/switch-user.sh"
     function mediaAct(a) {
         var p = player
         if (!p) return
-        if (a === "prev") { if (p.canGoPrevious) p.previous() }
-        else if (a === "next") { if (p.canGoNext) p.next() }
-        else if (p.canTogglePlaying) p.togglePlaying()
+        if (a === "prev") {
+            if (p.canGoPrevious && typeof p.previous === "function") p.previous()
+            else if (typeof p.previous === "function") p.previous()
+        } else if (a === "next") {
+            if (p.canGoNext && typeof p.next === "function") p.next()
+            else if (typeof p.next === "function") p.next()
+        } else {
+            if (p.canTogglePlaying && typeof p.togglePlaying === "function") p.togglePlaying()
+            else if (typeof p.togglePlaying === "function") p.togglePlaying()
+            else if (p.isPlaying && typeof p.pause === "function") p.pause()
+            else if (!p.isPlaying && typeof p.play === "function") p.play()
+        }
     }
     Process {
         id: sessList
@@ -66,7 +86,7 @@ Scope {
     }
     function switchTo(id) {       // id "" = a login screen for someone else
         switchOpen = false
-        swRun.args = id === "" ? ["greeter"] : ["to", id]
+        swRun.command = [root.switchScript].concat(id === "" ? ["greeter"] : ["to", id])
         swRun.running = true
     }
 
@@ -116,7 +136,18 @@ Scope {
         cooldownT.restart()
     }
 
-    function lock() { buffer = ""; failure = ""; busy = false; locked = true; if (Date.now() < waitUntil) cooldownT.restart() }
+    function lock() {
+        buffer = ""
+        busy = false
+        locked = true
+        if (Date.now() < waitUntil) {
+            waitLeft = Math.ceil((waitUntil - Date.now()) / 1000)
+            failure = cooldownText()
+            cooldownT.restart()
+        } else {
+            failure = ""
+        }
+    }
     function tryUnlock() {
         if (busy || buffer === "") return
         if (Date.now() < waitUntil) { buffer = ""; shakeTick++; return }      // still cooling down: do not even ask PAM
@@ -241,7 +272,24 @@ Scope {
                 hoverEnabled: true
                 acceptedButtons: Qt.AllButtons
                 onPositionChanged: input.forceActiveFocus()
-                onPressed: input.forceActiveFocus()
+                onPressed: { root.switchOpen = false; input.forceActiveFocus() }
+            }
+
+            // ---- your widgets (above the focus catcher, so the music buttons can be clicked; below the clock and the password, which always win)
+            Loader {
+                anchors.fill: parent
+                active: root.deskShow
+                opacity: surf.appear
+                sourceComponent: DeskWidgets {
+                    anchors.fill: parent
+                    pal: root.pal
+                    env: root.deskEnv
+                    opt: root.deskOpt
+                    target: "lock"
+                    inert: true
+                    lockLum: root.deskLum
+                    topInset: 24
+                }
             }
 
             // ---- clock
@@ -440,6 +488,12 @@ Scope {
                         onAccepted: root.tryUnlock()
                         Component.onCompleted: forceActiveFocus()
                         Connections { target: root; function onLockedChanged() { if (root.locked) input.forceActiveFocus() } }
+                        Connections {
+                            target: root
+                            function onBufferChanged() {
+                                if (input.text !== root.buffer) input.text = root.buffer
+                            }
+                        }
                         // the lock surface only receives keyboard focus after the compositor maps it, which is later than
                         // Component.onCompleted: retry until the box really has focus, and re-take it whenever it is lost
                         Timer {
@@ -478,14 +532,14 @@ Scope {
                 spacing: 20
                 opacity: surf.appear
                 Text {
-                    visible: root.hasBat
+                    visible: root.hasBat && root.deskTypes.battery !== true
                     text: root.batPct + "%" + (root.batCharging ? " · charging" : "")
                     color: root.batPct <= 15 && !root.batCharging ? root.pal.bad : root.pal.muted
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tCap + 2
                 }
                 Text {
-                    visible: root.ssid !== ""
+                    visible: root.ssid !== "" && root.deskTypes.net !== true
                     text: root.ssid
                     color: root.pal.muted
                     font.family: root.pal.uiFont
@@ -503,7 +557,7 @@ Scope {
             // ---- media card, bottom centre: what is playing + previous / play-pause / next
             Rectangle {
                 id: mediaCard
-                visible: root.widgets && root.player !== null && root.player !== undefined && (root.player.trackTitle || "") !== ""
+                visible: root.widgets && root.deskTypes.music !== true && root.player !== null && root.player !== undefined && (root.player.trackTitle || "") !== ""
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 64

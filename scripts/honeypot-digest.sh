@@ -30,7 +30,9 @@ PRINT=0; HOURS=24
 while [ $# -gt 0 ]; do
   case "$1" in
     --print) PRINT=1 ;;
-    --hours) shift; HOURS="${1:-24}" ;;
+    --hours)
+      [ $# -ge 2 ] || { echo "honeypot-digest: --hours needs a number" >&2; exit 2; }
+      shift; HOURS="$1" ;;
     -h|--help) sed -n 2,10p "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "honeypot-digest: unknown option $1" >&2; exit 2 ;;
   esac

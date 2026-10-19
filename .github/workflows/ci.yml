@@ -41,6 +41,8 @@ jobs:
           exit $fail
       - name: counter-scan rules (ON only in stealth, OFF always, saved choice survives a mode change)
         run: bash tests/counterscan.sh
+      - name: lock screen widget rules (which widgets may be on the lock screen, the two lists stay apart, feeds merge)
+        run: node tests/widgetdata-lock.test.js
       - name: shellcheck (errors only, so old scripts do not block a push)
         run: sudo apt-get install -y shellcheck && shellcheck -S error $(git ls-files '*.sh') install.sh update.sh get.sh sysmode/sysmode scripts/halcyon-tune
 

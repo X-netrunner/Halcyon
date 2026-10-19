@@ -1,9 +1,10 @@
 # Halcyon — Engineering Fixes & Optimization Report (`fixes.md`)
 
-This document details every fix and optimization applied in-place across the **Halcyon** desktop environment, organized by the three core areas requested:
+This document details every fix and optimization applied in-place across the **Halcyon** desktop environment, organized by key areas:
 1. **Frictionless Google Calendar & Google Contacts Birthdays Integration**
 2. **High-Degree Memory & CPU Optimization (Quickshell 504 MB Creep & Hyprland 204 MB Footprint)**
 3. **Smooth 1:1 Finger-Following 3-Finger & 4-Finger Touchpad Gestures**
+4. **Lock-Screen Desktop Widgets, Session Switching & System Hardening**
 
 For every change, you will find **What** was fixed, **Why** the issue existed, **How** it was engineered, and **Where** (exact file paths, functions, and line ranges).
 
@@ -30,6 +31,13 @@ For every change, you will find **What** was fixed, **Why** the issue existed, *
 | **3. Smooth Gestures** | `src/touchpad-gestures/src/main.rs` | Added real-time 3-finger and 4-finger multitouch centroid `(dx, dy)` and radial pinch `scale` tracking via `evdev` on every `SYN_REPORT`, streaming live state to `$XDG_RUNTIME_DIR/halcyon-gesture.json` at 60fps. |
 | **3. Smooth Gestures** | `hyprland/gestures.lua` | Enabled Hyprland's native continuous 1:1 finger-following `workspace_swipe` and horizontal `workspace` gesture binding when `g3-left/right` or `g4-left/right` are set to `ws-next`/`ws-prev`. |
 | **3. Smooth Gestures** | `quickshell/island/shell.qml` & `Overview.qml` | Added `FileView` watcher on `$XDG_RUNTIME_DIR/halcyon-gesture.json` driving live 1:1 finger-following opacity, scale, and translation on `Overview` and island bar pages during 3-finger and 4-finger gestures. |
+| **4. Lock Widgets & System** | `quickshell/island/Lock.qml` | Fixed password buffer desync via `onBufferChanged`, eliminated cooldown visual flash, added outside-click menu dismissal, direct `switchTo()` command dispatch, and MPRIS player fallback. |
+| **4. Lock Widgets & System** | `quickshell/island/shell.qml` | Activated live feeds (`cavaDesk`, sensors) in Widget Builder for lock target (`wbTarget === "lock"`), and added startup null guard for `lockBackLum`. |
+| **4. Lock Widgets & System** | `quickshell/island/WidgetData.js` | Added null/empty safety to `find`, `linkGroup`, `widthGroup`, `siblings`, `listRows`, `nextUid`, `styleOf`, `relLum`, and strict boolean normalization in `mergeNeeds`. |
+| **4. Lock Widgets & System** | `scripts/switch-user.sh` | Added fallback session ID resolution via `loginctl session-status` when `XDG_SESSION_ID` is unset. |
+| **4. Lock Widgets & System** | `scripts/halcyon-settings-io.sh` | Stripped leading `./` in `validate()` and relaxed regex for `MANIFEST` in tar imports. |
+| **4. Lock Widgets & System** | `scripts/honeypot-digest.sh` | Validated argument presence for `--hours` before shifting under `set -u`. |
+| **4. Lock Widgets & System** | `src/power-manager/src/main.rs` & `src/hx/src/adapt.rs` | Added `#[cfg(test)]` to `parse_monitor_config` and removed unused `mut` from `rows` to achieve 0 compiler warnings. |
 
 ---
 
@@ -200,3 +208,31 @@ Checked and left alone (already gated or already fine): `power-manager` (event d
 | `systemd/touchpad-gestures.service`, `src/touchpad-gestures/src/main.rs` | `Restart=on-failure` (was `always`), at most 5 starts per minute, and exit status 78 ("not in the `input` group") is in `RestartPreventExitStatus` so a missing group no longer loops forever. |
 
 Not changed: the ~20 s window before the lock appears, and the nmap target rules (gateway, DNS servers, this machine and `/etc/recon-deceiver.allow` are still never scanned).
+
+---
+
+## 5. Lock-Screen Desktop Widgets, Session Switching & System Hardening Fixes
+
+| File | What changed |
+| :--- | :--- |
+| `quickshell/island/Lock.qml` | **Password buffer desync**: Added explicit `Connections` on `root.bufferChanged` inside `TextInput` to ensure `input.text` synchronizes immediately when `root.buffer = ""` is executed on PAM failure/abort (user typing previously broke QtQuick's declarative binding).<br>**Cooldown visual flicker**: In `lock()`, immediately computed `root.waitLeft` and `root.failure = root.cooldownText()` when locked during an active backoff, eliminating the 250 ms blank flash before `cooldownT` fired.<br>**Outside-click dismissal**: Added `root.switchOpen = false` to the background `MouseArea.onPressed` so clicking anywhere outside the "Switch user" menu closes it.<br>**Session switch dispatch**: Directly set `swRun.command = [root.switchScript].concat(...)` before `swRun.running = true` in `switchTo(id)` to avoid declarative binding lag.<br>**MPRIS fallback**: Expanded `mediaAct(a)` to check for function presence and fallback to `isPlaying ? pause() : play()` when `canTogglePlaying` is undefined. |
+| `quickshell/island/shell.qml` | **Live feeds for lock widget preview**: Updated `lockWidgetsLive` to include `|| (settingsWin.wbOpen && settingsWin.wbTarget === "lock")` so that the 48-bar visualizer (`cavaDesk`), disk/GPU sensors, and volume/brightness pollers remain active while previewing and shaping lock widgets in Widget Builder.<br>**Luminance startup guard**: Protected `lockBackLum` against uninitialized `palObj` / missing `lumAt`, falling back safely to default background luminance (`0.05`). |
+| `quickshell/island/WidgetData.js` | **Null & undefined safety**: Added null guards to `find()`, `linkGroup()`, `widthGroup()`, `siblings()`, and `listRows()`.<br>**Safe lookups**: Hardened `nextUid()` (defaults to `"w1"`) and `styleOf()` (returns `""` for null/missing types).<br>**Luminance**: Protected `relLum(c)` against null/undefined colors or missing RGB channels.<br>**Strict boolean merge in `mergeNeeds()`**: Initialized merged needs from `needs(null)` so all 7 keys (`viz`, `ctl`, `disk`, `gpu`, `numlock`, `weather`, `focusLog`) are guaranteed booleans for QML `running:` bindings. |
+| `scripts/switch-user.sh` | **Session ID fallback**: Added fallback `me="$(loginctl session-status 2>/dev/null \| awk 'NR==1{print $1}')"` when `XDG_SESSION_ID` is unset, preventing the current user's own session from being listed as a switch target and fixing seat discovery. |
+| `scripts/halcyon-settings-io.sh` | **Archive path validation**: Stripped leading `./` in `validate()` (`name="${name#./}"`) and updated `MANIFEST` pattern to accept valid archives created with `./` path prefixes. |
+| `scripts/honeypot-digest.sh` | **Parameter safety**: Added `[ $# -ge 2 ]` validation before `shift` for `--hours`, preventing bash `set -u` unbound variable errors when called without an argument. |
+| `scripts/start-shell.sh` | **Process cleanup**: Added `INT` and `TERM` signals to `trap 'kill "$trim_pid" 2>/dev/null' EXIT INT TERM` to ensure background log trim workers are terminated on compositor exit. |
+| `src/power-manager/src/main.rs` | **Warning elimination**: Added `#[cfg(test)]` to `parse_monitor_config` to eliminate dead code compiler warning while preserving unit test coverage. |
+| `src/hx/src/adapt.rs` | **Warning elimination**: Removed unused `mut` from `let rows = read_rows();` to achieve a zero-warning workspace build. |
+| `tests/widgetdata-lock.test.js` | **Automated regression testing**: Added tests covering null/undefined inputs for `find`, `linkGroup`, `widthGroup`, `siblings`, `listRows`, `nextUid`, `styleOf`, `relLum`, and `mergeNeeds` (all 16 tests passing). |
+
+
+## Round 15 (lock screen, linked widgets, notes overview)
+
+| File | Change |
+| --- | --- |
+| `quickshell/island/shell.qml`, `Settings.qml`, `Lock.qml` | **Clean lock screen by default**: battery / Wi-Fi / notification count / media card (`lockWidgets`) and the Switch user button (`lockSwitch`) are now OFF by default and only drawn when switched on in Settings > Power & lock. A one-time migration (`lockCleanV2`) turns them off for existing configs. |
+| `quickshell/island/WidgetHost.qml`, `DeskWidgets.qml` | **Linked widgets no longer drift**: the saved position now belongs to the whole chain (`chainW` = left followers + this widget + right followers), so when a follower's text gets wider (uptime) the chain grows from its own edge and returns to exactly the same place when it gets narrower again. Dragging, arrow-key nudging and resizing save the chain's left edge. |
+| `scripts/halcyon-notes.py` | The AI fallback line no longer says `Note about: ...` with a trailing `...`; it is the note tidied and cut at a word boundary. The AI line now also stores a one-line `title` (the overview's first line). Multimedia notes support: added `clip-image`, `image`, `record` (voice notes), `play`, and automatic image / audio file detection. |
+| `quickshell/island/NotesMenu.qml`, `WNotes.qml` | Notes with an AI overview show the overview as the title (list and desktop notes widget) instead of the typed text; the list's AI line only shows the extra lines under it. Notes saved before this have no `title` until you press Think on them. Multimedia notes support: quick-panel clipboard image paste (`Clip img`) and microphone voice recording (`Voice`), inline image thumbnail previews (clickable to view in full size), voice note audio players with play/stop toggle, and desktop widget media badges (`📷`, `🎙`). Fixed `copiedT` ReferenceError on copy button. |
+| `quickshell/island/Settings.qml`, `SetAiModel.qml` | Fixed scope self-shadowing (`root: root`) across all 18 custom leaf components by exposing `readonly property var settingsScope: root` and binding `root: settingsScope`. Hardened `SetAiModel.qml` with null guards and responsive anchor layouts to prevent model name / metadata overlap. |

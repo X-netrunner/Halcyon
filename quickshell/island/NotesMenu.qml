@@ -102,9 +102,16 @@ Scope {
     // what the AI says under a note (the script writes think = {state, why, at}); "thinking" counts only while it is fresh,
     // so a crashed helper can never leave "thinking ..." on a note for ever
     function aiThinking(n) { return !!n.think && n.think.state === "thinking" && (Date.now() / 1000 - (n.think.at || 0)) < 120 }
+    // the title of a note in the list: the AI's overview when it wrote one (think.title), else what you typed
+    function titleOf(n) {
+        var t = (n.think && n.think.state === "done" && n.think.title) ? n.think.title : (n.text || "")
+        return t !== "" ? t : (n.image ? "Image note" : (n.audio ? "Voice note" : ""))
+    }
+    function hasTitle(n) { return !!(n.think && n.think.state === "done" && n.think.title) }
     function aiLine(n) {
         if (!n.think) return ""
         if (n.think.state === "thinking") return aiThinking(n) ? "AI is thinking ..." : ""
+        if (hasTitle(n)) return (n.think.why || "").split("\n").slice(1).join("\n")   // the first line is the title now: only the rest (bullets) goes under it
         return n.think.why || ""
     }
     function delNote(id) { act(["del", String(id)]) }
@@ -164,6 +171,219 @@ Scope {
         var day = Math.floor((t0.getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 86400000)
         var hm = Qt.formatTime(d, "hh:mm")
         return day <= 0 ? "Today " + hm : day === 1 ? "Yesterday " + hm : Qt.formatDate(d, "d MMM") + " " + hm
+    }
+
+    // Multimedia notes support (Audio playback, voice recording, image clip)
+    property string playingAudioId: ""
+    Process {
+        id: audioPlayProc
+        onExited: root.playingAudioId = ""
+    }
+    function togglePlayAudio(id, path) {
+        if (playingAudioId === id) {
+            audioPlayProc.running = false
+            playingAudioId = ""
+        } else {
+            audioPlayProc.running = false
+            playingAudioId = id
+            audioPlayProc.command = ["pw-play", path]
+            audioPlayProc.running = true
+        }
+    }
+
+    // ---- voice notes: record (stays on while you work elsewhere) -> speech to text -> the AI
+    readonly property string notesPy: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py"
+    property bool isRecording: false
+    property bool stopping: false            // the recorder is being closed: a status read in that moment must not switch the card back on
+    property real recStart: 0                // when it began (ms)
+    property real nowMs: Date.now()
+    property string notice: ""               // a short message in the panel header ("No microphone ...")
+    function say(t) { notice = t; noticeT.restart() }
+    Timer { id: noticeT; interval: 4500; onTriggered: root.notice = "" }
+    Timer { id: stopT; interval: 4000; onTriggered: root.stopping = false }
+    Timer { interval: 1000; repeat: true; running: root.isRecording; triggeredOnStart: true; onTriggered: root.nowMs = Date.now() }
+
+    Process {
+        id: recStartProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (text.indexOf("REC_STARTED") < 0) {
+                    root.isRecording = false
+                    var m = text.match(/REC_FAILED:(.*)/)
+                    root.say(m ? m[1] : "The recording could not start")
+                }
+            }
+        }
+    }
+    // is a recording really running? (asked when the shell starts, e.g. after a reload, and every 3 s while one is on:
+    // a recorder that died - no microphone, sound server restarted - must not leave the card up for ever)
+    Process {
+        id: recStatProc
+        command: ["python3", root.notesPy, "rec-status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (root.stopping) return
+                try {
+                    var st = JSON.parse(text.trim().split("\n").pop())
+                    if (st.recording) { if (!root.isRecording) root.recStart = (st.started || 0) * 1000; root.isRecording = true }
+                    else if (root.isRecording) root.isRecording = false
+                } catch (e) { /* keep what is shown */ }
+            }
+        }
+    }
+    Timer { interval: 3000; repeat: true; running: root.isRecording; onTriggered: if (!recStatProc.running) recStatProc.running = true }
+    Component.onCompleted: recStatProc.running = true
+
+    // the dots: start -> the panel leaves and a small card stays on every workspace until Stop; Stop -> saved, written down, sorted by the AI
+    function toggleRecord(text) {
+        if (isRecording) {
+            isRecording = false
+            stopping = true; stopT.restart()
+            Quickshell.execDetached(["python3", notesPy, "rec-stop"])
+            recStopTimer.restart()
+        } else {
+            stopping = false
+            isRecording = true
+            recStart = Date.now(); nowMs = recStart
+            recStartProc.command = ["python3", notesPy, "rec-start", text || ""]
+            recStartProc.running = true
+            hide()
+        }
+    }
+    function cancelRecord() {                // throw the recording away
+        isRecording = false
+        stopping = true; stopT.restart()
+        Quickshell.execDetached(["python3", notesPy, "rec-cancel"])
+    }
+    Timer {
+        id: recStopTimer
+        interval: 900
+        onTriggered: root.loadNotes()
+    }
+    function transcribeNote(id) { Quickshell.execDetached(["python3", notesPy, "transcribe", String(id)]) }
+    // what the speech-to-text says under a voice note
+    function sttBusy(n) { return !!n.stt && n.stt.state === "working" && (Date.now() / 1000 - (n.stt.at || 0)) < 900 }
+    function sttLine(n) {
+        if (!n.stt) return ""
+        if (n.stt.state === "working") return sttBusy(n) ? "Writing it down ..." : ""
+        if (n.stt.state === "done") return ""
+        return n.stt.msg || ""
+    }
+
+    // Ctrl + V in the quick panel: a picture on the clipboard becomes a note (what is typed so far is its caption); anything else
+    // on the clipboard is pasted as text like normal. The panel stays until it says "Saved", then leaves like after Enter.
+    Process {
+        id: pasteProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (text.indexOf("CLIP_OK") >= 0) {
+                    root.pasteDone = true
+                    root.flash = true
+                    saveT.restart()
+                    root.loadNotes()
+                } else {
+                    root.pasteDone = false
+                    root.pasteText = true            // no picture there: the field pastes the text
+                }
+            }
+        }
+    }
+    property bool pasteDone: false
+    property bool pasteText: false
+    function pasteClipboard(caption) {
+        if (pasteProc.running) return
+        pasteDone = false; pasteText = false
+        pasteProc.command = ["python3", notesPy, "clip-paste", caption || ""]
+        pasteProc.running = true
+    }
+
+    // the recording card: where the panel opens, on every workspace, until the recording is stopped. It takes no keyboard focus
+    // and covers only itself, so you can keep working underneath
+    LazyLoader {
+        active: root.isRecording && !(root.open && root.mode === "quick")
+        PanelWindow {
+            id: recWin
+            visible: true
+            anchors { top: !root.panelBottom; bottom: root.panelBottom; left: !root.panelRight; right: root.panelRight }
+            margins {
+                top: Math.max(0, root.pal.boxTop - 24)
+                bottom: Math.max(0, root.pal.boxEdge - 24)
+                left: Math.max(0, 22 - 24)
+                right: Math.max(0, 22 - 24)
+            }
+            implicitWidth: 384
+            implicitHeight: 100
+            color: "transparent"
+            exclusionMode: ExclusionMode.Ignore
+            WlrLayershell.namespace: "island-notes"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+            Glass {
+                pal: root.pal
+                anchors.centerIn: parent
+                width: 336
+                height: 68
+                radius: root.pal.rXl
+                opacityBody: root.pal.solid ? 1 : 0.92
+                border.color: Qt.alpha(root.pal.bad, 0.55)
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 18
+                    anchors.rightMargin: 12
+                    spacing: 12
+                    Rectangle {
+                        Layout.preferredWidth: 12
+                        Layout.preferredHeight: 12
+                        radius: 6
+                        color: root.pal.bad
+                        SequentialAnimation on opacity {
+                            running: true
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.25; duration: 650; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1.0; duration: 650; easing.type: Easing.InOutSine }
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        spacing: 2
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Recording voice note"
+                            elide: Text.ElideRight
+                            color: root.pal.text
+                            font.family: root.pal.uiFont
+                            font.pixelSize: root.pal.tBody
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            readonly property int secs: Math.max(0, Math.floor((root.nowMs - root.recStart) / 1000))
+                            text: Math.floor(secs / 60) + ":" + (secs % 60 < 10 ? "0" : "") + (secs % 60) + "   \u00b7   becomes a note when you stop"
+                            elide: Text.ElideRight
+                            color: root.pal.muted
+                            font.family: root.pal.uiFont
+                            font.pixelSize: root.pal.tCap
+                        }
+                    }
+                    ActionChip {
+                        pal: root.pal
+                        label: "Stop"
+                        on: true
+                        implicitHeight: 32
+                        onClicked: root.toggleRecord("")
+                    }
+                    RoundBtn {
+                        pal: root.pal
+                        size: 30
+                        glyph: String.fromCodePoint(0xF01B4)
+                        onClicked: root.cancelRecord()
+                    }
+                }
+            }
+        }
     }
 
     LazyLoader {
@@ -258,13 +478,16 @@ Scope {
                             font.pixelSize: root.pal.tTitle
                             font.weight: Font.DemiBold
                         }
-                        Item { Layout.fillWidth: true }
                         Text {
-                            text: root.flash ? "Saved" : (root.notes.length + (root.notes.length === 1 ? " note" : " notes"))
-                            color: root.flash ? root.pal.good : root.pal.muted
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            horizontalAlignment: Text.AlignRight
+                            elide: Text.ElideRight
+                            text: root.notice !== "" ? root.notice : (root.flash ? "Saved" : (root.notes.length + (root.notes.length === 1 ? " note" : " notes")))
+                            color: root.notice !== "" ? root.pal.bad : (root.flash ? root.pal.good : root.pal.muted)
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tCap
-                            font.weight: root.flash ? Font.Medium : Font.Normal
+                            font.weight: (root.flash || root.notice !== "") ? Font.Medium : Font.Normal
                         }
                         RoundBtn {
                             pal: root.pal
@@ -299,15 +522,25 @@ Scope {
                             TextEdit {
                                 id: qin
                                 width: fl.width
-                                wrapMode: TextEdit.Wrap
+                                wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
                                 color: root.pal.text
                                 selectionColor: Qt.alpha(root.pal.accent, 0.45)
                                 selectedTextColor: root.pal.text
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tBody + 1
                                 onCursorRectangleChanged: fl.ensureVisible(cursorRectangle)
+                                Connections {
+                                    target: root
+                                    function onPasteTextChanged() { if (root.pasteText) { qin.paste(); root.pasteText = false } }
+                                    function onPasteDoneChanged() { if (root.pasteDone) { qin.text = ""; root.pasteDone = false } }
+                                }
                                 Keys.onPressed: e => {
                                     if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true }
+                                    else if ((e.matches(StandardKey.Paste) || ((e.modifiers & Qt.ControlModifier) && e.key === Qt.Key_V))) {
+                                        // a picture on the clipboard is saved as a note; otherwise the text is pasted when the check answers
+                                        root.pasteClipboard(qin.text)
+                                        e.accepted = true
+                                    }
                                     else if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && !(e.modifiers & Qt.ShiftModifier)) {
                                         if (root.saveQuick(qin.text)) qin.text = ""
                                         e.accepted = true
@@ -349,7 +582,8 @@ Scope {
                                 }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: (modelData.text || "").replace(/\s*\n\s*/g, "  ")
+                                    Layout.minimumWidth: 0
+                                    text: root.titleOf(modelData).replace(/\s*\n\s*/g, "  ")
                                     elide: Text.ElideRight
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
@@ -366,16 +600,27 @@ Scope {
                         }
                     }
 
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Enter saves   \u00b7   Ctrl + V pastes an image   \u00b7   Shift + Enter new line   \u00b7   Esc closes"
+                        elide: Text.ElideRight
+                        color: Qt.alpha(root.pal.muted, 0.85)
+                        font.family: root.pal.uiFont
+                        font.pixelSize: 10
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        Text {
-                            text: "Enter saves   \u00b7   Shift + Enter new line   \u00b7   Esc closes"
-                            color: Qt.alpha(root.pal.muted, 0.85)
-                            font.family: root.pal.uiFont
-                            font.pixelSize: 10
-                        }
                         Item { Layout.fillWidth: true }
+                        ActionChip {
+                            pal: root.pal
+                            glyph: String.fromCodePoint(0xF036D)
+                            label: root.isRecording ? "Stop rec" : "Voice"
+                            on: root.isRecording
+                            implicitHeight: 30
+                            onClicked: { root.toggleRecord(qin.text); if (root.isRecording) qin.text = "" }
+                        }
                         ActionChip {
                             pal: root.pal
                             label: "All notes"
@@ -557,12 +802,14 @@ Scope {
                             required property var modelData
                             property bool copied: false
                             property bool picking: false               // the Remind choices are open
+                            function markCopied() { copied = true; copiedT.restart() }
                             width: listView.width
                             height: Math.max(58, noteCol.implicitHeight + 24)
                             radius: root.pal.rMd
                             color: modelData.pinned ? Qt.alpha(root.pal.accent, 0.11) : Qt.alpha(root.pal.bg, 0.5)
                             border.width: 1
                             border.color: modelData.pinned ? Qt.alpha(root.pal.accent, 0.40) : root.pal.lineSoft
+                            clip: true
                             HoverHandler { id: rowHover }
                             Timer { id: copiedT; interval: 1300; onTriggered: noteRow.copied = false }
 
@@ -620,18 +867,21 @@ Scope {
                                 ColumnLayout {
                                     id: noteCol
                                     Layout.fillWidth: true
+                                    Layout.preferredWidth: 0
+                                    Layout.minimumWidth: 0
                                     Layout.alignment: Qt.AlignVCenter
                                     spacing: 3
                                     Text {
                                         Layout.fillWidth: true
-                                        text: noteRow.modelData.text || ""
+                                        text: root.titleOf(noteRow.modelData)
                                         color: noteRow.modelData.done ? root.pal.muted : root.pal.text
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tBody
                                         font.strikeout: !!noteRow.modelData.done
-                                        wrapMode: Text.Wrap
+                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                                     }
-                                    Row {
+                                    Flow {
+                                        Layout.fillWidth: true
                                         spacing: 10
                                         Text {
                                             visible: !!noteRow.modelData.task
@@ -671,12 +921,12 @@ Scope {
                                         id: aiText
                                         visible: root.aiLine(noteRow.modelData) !== ""
                                         Layout.fillWidth: true
-                                        text: (root.aiThinking(noteRow.modelData) ? "" : "AI  \u00b7  ") + root.aiLine(noteRow.modelData)
+                                        text: (root.aiThinking(noteRow.modelData) || root.hasTitle(noteRow.modelData) ? "" : "AI  \u00b7  ") + root.aiLine(noteRow.modelData)
                                         color: Qt.alpha(root.pal.muted, 0.95)
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tCap
                                         font.italic: true
-                                        wrapMode: Text.Wrap
+                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                                         SequentialAnimation on opacity {
                                             running: root.aiThinking(noteRow.modelData) && root.open
                                             loops: Animation.Infinite
@@ -686,13 +936,98 @@ Scope {
                                         }
                                     }
 
+                                    // image preview
+                                    Rectangle {
+                                        visible: !!noteRow.modelData.image
+                                        Layout.fillWidth: true
+                                        Layout.preferredWidth: 0
+                                        Layout.maximumWidth: 360
+                                        Layout.preferredHeight: 140
+                                        radius: root.pal.rSm
+                                        clip: true
+                                        color: Qt.alpha(root.pal.bg, 0.45)
+                                        border.width: 1
+                                        border.color: imgMa.containsMouse ? root.pal.accent : root.pal.lineSoft
+                                        Image {
+                                            anchors.fill: parent
+                                            source: noteRow.modelData.image ? (noteRow.modelData.image.indexOf("://") >= 0 ? noteRow.modelData.image : "file://" + noteRow.modelData.image) : ""
+                                            fillMode: Image.PreserveAspectCrop
+                                            asynchronous: true
+                                            sourceSize.width: 500
+                                        }
+                                        MouseArea {
+                                            id: imgMa
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (noteRow.modelData.image) Quickshell.execDetached(["xdg-open", noteRow.modelData.image])
+                                            }
+                                        }
+                                    }
+
+                                    // audio player
+                                    Rectangle {
+                                        visible: !!noteRow.modelData.audio
+                                        Layout.fillWidth: true
+                                        Layout.preferredWidth: 0
+                                        Layout.preferredHeight: 34
+                                        clip: true
+                                        radius: 17
+                                        color: Qt.alpha(root.pal.surface, 0.75)
+                                        border.width: 1
+                                        border.color: (root.playingAudioId === noteRow.modelData.id) ? root.pal.accent : root.pal.lineSoft
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 10
+                                            anchors.rightMargin: 12
+                                            spacing: 8
+                                            RoundBtn {
+                                                pal: root.pal
+                                                size: 24
+                                                glyph: (root.playingAudioId === noteRow.modelData.id) ? String.fromCodePoint(0xF04DB) : String.fromCodePoint(0xF040A)
+                                                onClicked: root.togglePlayAudio(noteRow.modelData.id, noteRow.modelData.audio)
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                elide: Text.ElideRight
+                                                text: (root.playingAudioId === noteRow.modelData.id) ? "Playing voice note..." : "Voice note"
+                                                color: (root.playingAudioId === noteRow.modelData.id) ? root.pal.accent : root.pal.text
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap
+                                                font.weight: (root.playingAudioId === noteRow.modelData.id) ? Font.Medium : Font.Normal
+                                            }
+                                            Text {
+                                                text: String.fromCodePoint(0xF036D)
+                                                color: (root.playingAudioId === noteRow.modelData.id) ? root.pal.accent : root.pal.muted
+                                                font.family: root.pal.font
+                                                font.pixelSize: 13
+                                            }
+                                        }
+                                    }
+
+                                    // speech to text: while it writes, or why it could not
+                                    Text {
+                                        visible: !!noteRow.modelData.audio && root.sttLine(noteRow.modelData) !== ""
+                                        Layout.fillWidth: true
+                                        Layout.preferredWidth: 0
+                                        text: root.sttLine(noteRow.modelData)
+                                        color: root.sttBusy(noteRow.modelData) ? Qt.alpha(root.pal.muted, 0.95) : root.pal.bad
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tCap
+                                        font.italic: true
+                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                    }
+
                                     // the model thinks this is a task (Settings > Notes > ask first)
-                                    Row {
+                                    Flow {
                                         visible: !!noteRow.modelData.suggest
+                                        Layout.fillWidth: true
                                         spacing: 8
                                         topPadding: 4
                                         Text {
-                                            anchors.verticalCenter: parent.verticalCenter
+                                            height: 26
+                                            verticalAlignment: Text.AlignVCenter
                                             text: "Looks like a task" + (noteRow.modelData.suggest && noteRow.modelData.suggest.due ? ", due " + root.dueText(noteRow.modelData.suggest.due) : "")
                                             color: root.pal.muted
                                             font.family: root.pal.uiFont
@@ -719,61 +1054,63 @@ Scope {
                                             }
                                         }
                                     }
-                                }
 
-                                // actions: faint until the pointer is over the note
-                                Row {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    spacing: 4
-                                    opacity: rowHover.hovered ? 1 : 0.4
-                                    Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
-                                    Repeater {
-                                        model: [
-                                            { k: "pin", t: noteRow.modelData.pinned ? "Unpin" : "Pin" },
-                                            { k: "task", t: noteRow.modelData.task ? "Note" : "Task" },
-                                            { k: "think", t: root.aiThinking(noteRow.modelData) ? "Thinking" : "Think", hide: false },
-                                            { k: "remind", t: noteRow.picking ? "Close" : "Remind", hide: !noteRow.modelData.task },
-                                            { k: "copy", t: noteRow.copied ? "Copied" : "Copy" },
-                                            { k: "del", t: "Delete" }
-                                        ]
-                                        delegate: Rectangle {
-                                            required property var modelData
-                                            visible: !modelData.hide
-                                            width: visible ? at.implicitWidth + 16 : 0
-                                            height: 26
-                                            radius: 13
-                                            color: ama.containsMouse ? Qt.alpha(modelData.k === "del" ? root.pal.bad : root.pal.accent, 0.16) : "transparent"
-                                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                                            Text {
-                                                id: at
-                                                anchors.centerIn: parent
-                                                text: modelData.t
-                                                color: ama.containsMouse ? (modelData.k === "del" ? root.pal.bad : root.pal.accent) : root.pal.muted
-                                                font.family: root.pal.uiFont
-                                                font.pixelSize: 10
-                                                font.weight: Font.Medium
-                                            }
-                                            MouseArea {
-                                                id: ama
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    if (modelData.k === "pin") root.pinNote(noteRow.modelData.id)
-                                                    else if (modelData.k === "del") root.delNote(noteRow.modelData.id)
-                                                    else if (modelData.k === "task") root.toggleTask(noteRow.modelData.id)
+                                    // actions: faint until the pointer is over the note; they wrap under the text instead of squeezing it
+                                    Flow {
+                                        Layout.fillWidth: true
+                                        spacing: 4
+                                        opacity: rowHover.hovered ? 1 : 0.4
+                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                                        Repeater {
+                                            model: [
+                                                { k: "pin", t: noteRow.modelData.pinned ? "Unpin" : "Pin" },
+                                                { k: "task", t: noteRow.modelData.task ? "Note" : "Task" },
+                                                { k: "stt", t: root.sttBusy(noteRow.modelData) ? "Writing" : "To text", hide: !noteRow.modelData.audio },
+                                                { k: "think", t: root.aiThinking(noteRow.modelData) ? "Thinking" : "Think", hide: false },
+                                                { k: "remind", t: noteRow.picking ? "Close" : "Remind", hide: !noteRow.modelData.task },
+                                                { k: "copy", t: noteRow.copied ? "Copied" : "Copy" },
+                                                { k: "del", t: "Delete" }
+                                            ]
+                                            delegate: Rectangle {
+                                                required property var modelData
+                                                visible: !modelData.hide
+                                                width: visible ? at.implicitWidth + 16 : 0
+                                                height: 26
+                                                radius: 13
+                                                color: ama.containsMouse ? Qt.alpha(modelData.k === "del" ? root.pal.bad : root.pal.accent, 0.16) : "transparent"
+                                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                Text {
+                                                    id: at
+                                                    anchors.centerIn: parent
+                                                    text: modelData.t
+                                                    color: ama.containsMouse ? (modelData.k === "del" ? root.pal.bad : root.pal.accent) : root.pal.muted
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: 10
+                                                    font.weight: Font.Medium
+                                                }
+                                                MouseArea {
+                                                    id: ama
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        if (modelData.k === "pin") root.pinNote(noteRow.modelData.id)
+                                                        else if (modelData.k === "del") root.delNote(noteRow.modelData.id)
+                                                        else if (modelData.k === "task") root.toggleTask(noteRow.modelData.id)
+                                                        else if (modelData.k === "stt") { if (!root.sttBusy(noteRow.modelData)) root.transcribeNote(noteRow.modelData.id) }
                                                     else if (modelData.k === "think") { if (!root.aiThinking(noteRow.modelData)) root.thinkNote(noteRow.modelData.id) }
-                                                    else if (modelData.k === "remind") noteRow.picking = !noteRow.picking
-                                                    else {
-                                                        Quickshell.execDetached(["wl-copy", noteRow.modelData.text || ""])
-                                                        noteRow.copied = true
-                                                        copiedT.restart()
+                                                        else if (modelData.k === "remind") noteRow.picking = !noteRow.picking
+                                                        else {
+                                                            Quickshell.execDetached(["wl-copy", noteRow.modelData.text || ""])
+                                                            noteRow.markCopied()
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     }
                                 }
+
                             }
                         }
 
