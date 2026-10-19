@@ -87,7 +87,9 @@ When you install a tagged release (`git checkout v1.2.3`, or `HALCYON_REF=v1.2.3
 
 ## More
 - [Features and settings](docs/features.md): island, widgets, lock screen, gestures, sysmode, clipboard, constellations
+- [How it fits together, and why](docs/architecture.md)
 - [Notes from past passes](docs/changes.md)
+- Move your setup to another computer: `scripts/halcyon-settings.sh export` / `import`
 - [Full changelog](changelog.md)
 - Something not working? Run `scripts/halcyon-doctor.sh`
 

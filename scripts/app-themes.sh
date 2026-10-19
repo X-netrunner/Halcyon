@@ -33,7 +33,7 @@ log "$mode start"
 bash "$here/term-colors.sh" --export >/dev/null 2>&1
 env="$HOME/.cache/island/ansi.env"
 [ -f "$env" ] || { log "no $env (term-colors.sh --export wrote nothing): stop"; exit 0; }
-while IFS== read -r k v; do
+while IFS='=' read -r k v; do
   case "$k" in A_*) [[ "$v" =~ ^#[0-9a-fA-F]{6}$ ]] && declare "$k=$v" ;; esac
 done < "$env"
 [ -n "${A_BG:-}" ] && [ -n "${A_FG:-}" ] && [ -n "${A_ACC:-}" ] && [ -n "${A_C1:-}" ] || { log "ansi.env incomplete: stop"; exit 0; }

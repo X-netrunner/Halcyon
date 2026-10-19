@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# halcyon-doctor.sh: why does Halcyon not look / work right?  Read-only: it changes nothing.
+# halcyon-doctor.sh: why does Halcyon not look / work right?  Read-only: it changes nothing,
+#   except with --fix, which offers to install the optional tools it found missing (it asks first, and uses your package manager).
 #   - are Hyprland, Quickshell and their Qt modules installed, and is the Hyprland new enough (Lua config: 0.55+)?
 #   - does Hyprland accept the Halcyon config, and is it the config that is really loaded?
 #   - is the island (Quickshell) running? if not: the last lines of its log, and how to start it by hand
 #   - drivers: GPU (NVIDIA / Intel / AMD), keyboard light, gaming mode
 # Run it from a terminal (SUPER+T) or from a text console (Ctrl+Alt+F3).
 RICE="${HALCYON_DIR:-$HOME/.config/Halcyon}"
+FIX=0; for a in "$@"; do case "$a" in --fix) FIX=1 ;; -h|--help) sed -n 2,9p "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac; done
 G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'
 ok()   { printf '  %s✔%s %s\n' "$G" "$N" "$*"; }
 warn() { printf '  %s!%s %s\n' "$Y" "$N" "$*"; }
@@ -184,11 +186,21 @@ tcpdump|sysmode packet capture|tcpdump
 ufw|sysmode firewall and honeypot bans|ufw
 docker|sysmode honeypot runtime|docker
 python3|Notes, local AI, calendar import, lyrics, Focus mode|python'
-missing=0
+missing=0; miss_pkgs=()
 while IFS='|' read -r cmd what pkg; do
   [ -n "$cmd" ] || continue
   if have "$cmd"; then ok "$cmd"
-  else warn "$cmd not found: $what ($PKG_INSTALL $pkg)"; missing=$((missing+1)); fi
+  else warn "$cmd not found: $what ($PKG_INSTALL $pkg)"; missing=$((missing+1)); miss_pkgs+=("$pkg"); fi
 done <<<"$opt_tools"
 [ "$missing" -eq 0 ] && ok "every optional tool is installed"
+if [ "$missing" -gt 0 ]; then
+  if [ "$FIX" = 1 ]; then
+    case "$PKG_INSTALL" in *apt*) miss_pkgs=("${miss_pkgs[@]/#python/python3}") ;; esac   # apt calls it python3
+    printf '\nInstall %s missing package(s)?  %s %s\n' "$missing" "$PKG_INSTALL" "${miss_pkgs[*]}"
+    printf 'Install now? [y/N] '; read -r ans
+    case "$ans" in y|Y|yes|Yes) $PKG_INSTALL "${miss_pkgs[@]}" ;; *) echo "skipped" ;; esac
+  else
+    printf '  %sTip:%s run  halcyon-doctor.sh --fix  to install the missing optional tools in one go.\n' "$D" "$N"
+  fi
+fi
 echo

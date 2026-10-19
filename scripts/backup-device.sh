@@ -9,6 +9,9 @@
 #   backup-device.sh --home     only your home folder (no root needed)
 #   backup-device.sh --dry-run  show what would be copied, copy nothing
 #   backup-device.sh --everything  turn the smart skip list off (normally caches, trash, game files, node_modules ... are left out)
+#   backup-device.sh --verify   after copying, compare the backup with the original by checksum and report what differs
+#   backup-device.sh --no-xattrs   do not copy extended attributes (rsync -X): for an rsync that errors on them; ACLs, owners, permissions are still kept
+#   backup-device.sh --keep N   afterwards delete the oldest Halcyon backups on this disk, keeping the newest N (N >= 1)
 #   Your own skip list: ~/.config/Halcyon/backup-exclude.conf   (a folder with a .nobackup file inside is skipped too)
 G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -24,8 +27,14 @@ parse_pairs() {
   done
   LABEL=${LABEL//|/_}; MOUNTPOINT=${MOUNTPOINT//|/_}      # "|" separates the fields below
 }
-HOME_ONLY=0; DRY=0; SMART=1
-for a in "$@"; do case "$a" in --home) HOME_ONLY=1 ;; --everything) SMART=0 ;; --dry-run) DRY=1 ;; -h|--help) sed -n 2,12p "$0"; exit 0 ;; esac; done
+HOME_ONLY=0; DRY=0; SMART=1; VERIFY=0; KEEP=0; NOX=0
+while [ $# -gt 0 ]; do case "$1" in
+  --home) HOME_ONLY=1 ;; --everything) SMART=0 ;; --dry-run) DRY=1 ;; --verify) VERIFY=1 ;;
+  --keep) shift; KEEP="${1:-}"; [[ "$KEEP" =~ ^[0-9]+$ ]] && [ "$KEEP" -ge 1 ] || { echo "--keep needs a whole number of 1 or more" >&2; exit 2; } ;;
+  --keep=*) KEEP="${1#--keep=}"; [[ "$KEEP" =~ ^[0-9]+$ ]] && [ "$KEEP" -ge 1 ] || { echo "--keep needs a whole number of 1 or more" >&2; exit 2; } ;;
+  --no-xattrs) NOX=1 ;;
+  -h|--help) sed -n 2,15p "$0"; exit 0 ;;
+esac; shift; done
 have rsync  || die "rsync is not installed (sudo pacman -S rsync)"
 have lsblk  || die "lsblk is missing (util-linux)"
 [ "$HOME_ONLY" = 1 ] || have sudo || die "sudo is needed to back up the whole system (or use --home)"
@@ -74,6 +83,7 @@ case "$fs" in
   vfat|exfat|ntfs|ntfs3|fuseblk) flags=(-rltD --modify-window=2 --no-perms --no-owner --no-group); link=0
     printf '%s!%s %s cannot store Linux permissions or links: files are copied, but owners / permissions are not kept.\n  For a full system backup format the disk as ext4 or btrfs yourself first.\n' "$Y" "$N" "$fs" ;;
 esac
+[ "$NOX" = 1 ] && flags=("${flags[@]//X/}")        # -aAXH -> -aAH
 
 host=$(hostname 2>/dev/null || echo pc); stamp=$(date +%Y-%m-%d_%H-%M-%S)
 root="$mnt/Halcyon-backup/$host"; dest="$root/$stamp"
@@ -162,12 +172,35 @@ if [ "$SMART" = 1 ]; then
   fi
 fi
 
-opts=("${flags[@]}" --info=progress2 --human-readable --numeric-ids "${excl[@]}")
-[ "$link" = 1 ] && [ -e "$root/latest" ] && opts+=("--link-dest=$(readlink -f "$root/latest")")
-[ "$DRY" = 1 ] && opts+=(--dry-run)
+build_opts() {
+  opts=("${flags[@]}" --info=progress2 --human-readable --numeric-ids "${excl[@]}")
+  [ "$link" = 1 ] && [ -e "$root/latest" ] && opts+=("--link-dest=$(readlink -f "$root/latest")")
+  [ "$DRY" = 1 ] && opts+=(--dry-run)
+  return 0
+}
+# rsync's own error lines go to a log file instead of flooding the screen (the progress still shows); a summary is printed afterwards.
+rlog="${XDG_STATE_HOME:-$HOME/.local/state}/halcyon/backup-last.log"; mkdir -p "$(dirname "$rlog")" 2>/dev/null; : > "$rlog" 2>/dev/null || rlog=/dev/null
+run_rsync() {
+  : > "$rlog" 2>/dev/null
+  if [ "$HOME_ONLY" = 1 ]; then rsync "${opts[@]}" "$src" "$dest/" 2>>"$rlog"; else sudo rsync "${opts[@]}" "$src" "$dest/" 2>>"$rlog"; fi
+}
+build_opts
 mkdir -p "$dest" || die "cannot create $dest"
-if [ "$HOME_ONLY" = 1 ]; then rsync "${opts[@]}" "$src" "$dest/"; rc=$?
-else sudo rsync "${opts[@]}" "$src" "$dest/"; rc=$?; fi
+if printf '%s\n' "${opts[@]}" | grep -q '^--link-dest='; then printf '%sComparing with the previous backup (unchanged files are hard-linked): %s%s\n' "$D" "$(readlink -f "$root/latest")" "$N"
+else printf '%sNo earlier backup on this disk: this is a full copy.%s\n' "$D" "$N"; fi
+run_rsync; rc=$?
+
+# Some rsync builds fail on extended attributes (-X) with "gen_entry_copy_xattrs ... secure open ... failed". Offer to go on without them.
+if [ "$rc" != 0 ] && [ "$rc" != 24 ] && [ "$NOX" = 0 ] && grep -qiE 'xattr' "$rlog" 2>/dev/null; then
+  printf '\n%s!%s rsync %s failed while handling extended attributes (-X). First lines:\n' "$Y" "$N" "$(rsync --version 2>/dev/null | head -n1 | awk '{print $3}')"
+  head -n 3 "$rlog" | cut -c1-200 | sed 's/^/    /'
+  printf 'Try again without extended attributes? ACLs, owners and permissions are still kept; file capabilities (e.g. ping) and SELinux labels are not. [Y/n] '
+  read -r ans
+  case "$ans" in n|N|no|No|NO) ;; *) NOX=1; flags=("${flags[@]//X/}"); build_opts; run_rsync; rc=$? ;; esac
+fi
+if [ -s "$rlog" ]; then
+  n=$(wc -l < "$rlog"); printf '\n%srsync printed %s message(s); the first ones:%s\n' "$Y" "$n" "$N"; head -n 5 "$rlog" | cut -c1-220 | sed 's/^/    /'; printf '    full list: %s\n' "$rlog"
+fi
 
 # 0 = ok, 24 = some files vanished while copying (normal on a running system)
 if [ "$rc" = 0 ] || [ "$rc" = 24 ]; then
@@ -175,6 +208,30 @@ if [ "$rc" = 0 ] || [ "$rc" = 24 ]; then
   else
     printf 'scope=%s\nuser=%s\nhome=%s\nhost=%s\ndate=%s\nfs=%s\n' "$([ "$HOME_ONLY" = 1 ] && echo home || echo system)" "$(id -un)" "$HOME" "$host" "$stamp" "$fs" > "$dest/.halcyon-backup"
     ln -sfn "$stamp" "$root/latest"; sync; printf '\n%s✔ Backup finished:%s %s\n' "$G" "$N" "$dest"
+    # ---- --verify: compare by checksum, same skip list. A running system changes while it is copied, so a few differences are normal.
+    if [ "$VERIFY" = 1 ]; then
+      printf '%sVerifying (reads every file again, this takes a while) ...%s\n' "$D" "$N"
+      vopts=(-rn --checksum --itemize-changes "${excl[@]}")
+      if [ "$HOME_ONLY" = 1 ]; then vout=$(rsync "${vopts[@]}" "$src" "$dest/" 2>&1); else vout=$(sudo rsync "${vopts[@]}" "$src" "$dest/" 2>&1); fi
+      vdiff=$(printf '%s\n' "$vout" | grep -cE '^[<>c][fdLDS]')
+      if [ "$vdiff" = 0 ]; then printf '%s✔ Verified:%s every copied file matches the original.\n' "$G" "$N"
+      else printf '%s!%s %s file(s) differ from the original (normal for files that changed during the backup). First ones:\n' "$Y" "$N" "$vdiff"
+           printf '%s\n' "$vout" | grep -E '^[<>c][fdLDS]' | head -n 10 | sed 's/^/    /'; fi
+    fi
+    # ---- --keep N: delete the oldest Halcyon backups. Only dated folders that hold our .halcyon-backup marker are ever touched.
+    if [ "$KEEP" -ge 1 ]; then
+      mapfile -t all < <(find "$root" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}' -printf '%f\n' 2>/dev/null | sort)
+      drop=$(( ${#all[@]} - KEEP )); removed=0
+      if [ "$drop" -gt 0 ]; then
+        for old in "${all[@]:0:drop}"; do
+          [ "$old" != "$stamp" ] && [ -f "$root/$old/.halcyon-backup" ] || continue       # never the new one, never a folder that is not ours
+          printf '  removing old backup %s\n' "$old"
+          if grep -q '^scope=system' "$root/$old/.halcyon-backup" 2>/dev/null; then sudo rm -rf --one-file-system -- "${root:?}/$old"; else rm -rf --one-file-system -- "${root:?}/$old"; fi
+          removed=$((removed+1))
+        done
+      fi
+      printf '%s✔%s kept the newest %s backup(s)%s\n' "$G" "$N" "$KEEP" "$([ "$removed" -gt 0 ] && echo ", removed $removed older one(s)")"
+    fi
     bash "${HALCYON_DIR:-$HOME/.config/Halcyon}/scripts/remind.sh" done backup 2>/dev/null   # for Settings > Backup > Remind me
     have udisksctl && { printf 'Safely eject the disk now? [Y/n] '; read -r e; case "$e" in n|N|no|No|NO) ;; *) udisksctl unmount -b "$dev" >/dev/null 2>&1 && udisksctl power-off -b "${dev%%[0-9]*}" >/dev/null 2>&1; echo "You can unplug it." ;; esac; }
   fi

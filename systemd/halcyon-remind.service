@@ -4,3 +4,8 @@ Description=Halcyon: reminders to back up / run the safety check (only started w
 [Service]
 Type=oneshot
 ExecStart=%h/.config/Halcyon/scripts/remind.sh check
+# Hardening that cannot change what this job does (no namespaces needed, so it works in the user manager everywhere):
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
