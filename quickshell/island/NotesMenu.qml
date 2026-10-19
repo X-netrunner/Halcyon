@@ -36,7 +36,7 @@ Scope {
     function show() { mode = "quick"; flash = false; open = true; loadNotes() }
     function showAll() { mode = "all"; search = ""; filter = "all"; open = true; loadNotes() }
     function openAll() { mode = "all"; search = ""; filter = "all"; loadNotes() }      // from the panel: stays open, becomes the list
-    function hide() { open = false; flash = false }
+    function hide() { dropStaged(); open = false; flash = false }
     function close() { hide() }
     function toggle() { if (open) hide(); else show() }
     function toggleAll() { if (open && mode === "all") hide(); else showAll() }
@@ -88,6 +88,15 @@ Scope {
     }
     // the quick panel: save, say so, leave
     function saveQuick(t) {
+        if (stagedImage !== "") {
+            // a pasted picture is waiting: it becomes the note, what is typed is its caption (may be empty)
+            var cap = (t || "").trim()
+            act(["image", stagedImage, cap || "Clipboard image"])
+            stagedImage = ""
+            flash = true
+            saveT.restart()
+            return true
+        }
         if (!addNote(t)) return false
         flash = true
         saveT.restart()
@@ -270,13 +279,19 @@ Scope {
         return n.stt.msg || ""
     }
 
-    // Ctrl + V in the quick panel: a picture on the clipboard becomes a note (what is typed so far is its caption); anything else
-    // on the clipboard is pasted as text like normal. The panel stays until it says "Saved", then leaves like after Enter.
+    // Ctrl + V in the quick panel: a picture on the clipboard is shown in the panel and waits for a caption; Enter then saves it
+    // as a note (the picture alone is fine too), the x or Esc throws it away. Anything else on the clipboard is pasted as text.
     Process {
         id: pasteProc
         stdout: StdioCollector {
             onStreamFinished: {
-                if (text.indexOf("CLIP_OK") >= 0) {
+                var m = text.match(/CLIP_STAGED:(.+)/)
+                if (m) {
+                    root.dropStaged()                // a second picture replaces the first
+                    root.stagedImage = m[1].trim()
+                    root.pasteDone = false
+                    root.pasteText = false
+                } else if (text.indexOf("CLIP_OK") >= 0) {
                     root.pasteDone = true
                     root.flash = true
                     saveT.restart()
@@ -290,10 +305,15 @@ Scope {
     }
     property bool pasteDone: false
     property bool pasteText: false
+    property string stagedImage: ""          // a pasted picture that is waiting for its caption (not a note until Enter)
+    function dropStaged() {
+        if (stagedImage !== "") Quickshell.execDetached(["python3", notesPy, "clip-drop", stagedImage])
+        stagedImage = ""
+    }
     function pasteClipboard(caption) {
         if (pasteProc.running) return
         pasteDone = false; pasteText = false
-        pasteProc.command = ["python3", notesPy, "clip-paste", caption || ""]
+        pasteProc.command = ["python3", notesPy, "clip-stage"]
         pasteProc.running = true
     }
 
@@ -497,6 +517,35 @@ Scope {
                         }
                     }
 
+                    // a pasted picture, waiting for its caption
+                    Rectangle {
+                        visible: root.stagedImage !== ""
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: visible ? 120 : 0
+                        radius: root.pal.rMd
+                        color: Qt.alpha(root.pal.bg, 0.55)
+                        border.width: 1
+                        border.color: root.pal.lineSoft
+                        clip: true
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            source: root.stagedImage !== "" ? "file://" + root.stagedImage : ""
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            cache: false
+                        }
+                        RoundBtn {
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.margins: 6
+                            pal: root.pal
+                            size: 24
+                            glyph: String.fromCodePoint(0xF0156)
+                            onClicked: root.dropStaged()
+                        }
+                    }
+
                     // the text of the note
                     Rectangle {
                         Layout.fillWidth: true
@@ -548,7 +597,7 @@ Scope {
                                 }
                                 Text {
                                     visible: qin.text.length === 0
-                                    text: "Type a note, then press Enter"
+                                    text: root.stagedImage !== "" ? "Add a note for this picture, then press Enter" : "Type a note, then press Enter"
                                     color: root.pal.muted
                                     font: qin.font
                                 }
@@ -602,7 +651,7 @@ Scope {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Enter saves   \u00b7   Ctrl + V pastes an image   \u00b7   Shift + Enter new line   \u00b7   Esc closes"
+                        text: "Enter saves   \u00b7   Ctrl + V adds an image, then type its note   \u00b7   Shift + Enter new line   \u00b7   Esc closes"
                         elide: Text.ElideRight
                         color: Qt.alpha(root.pal.muted, 0.85)
                         font.family: root.pal.uiFont

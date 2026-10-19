@@ -1498,7 +1498,8 @@ EOF
         log_info "Voice notes: setting up whisper.cpp + the '${PICK_WHISPER_MODEL}' model"
         if ! have_any whisper-cli whisper-cpp whisper.cpp; then
             if [[ "$PKG_MGR" == "pacman" ]]; then
-                install_pkgs whisper.cpp            # official repo when it is there, otherwise the AUR (you are asked first)
+                install_pkgs whisper-cpp            # Arch's own package (extra repo, provides whisper-cli)
+                have_any whisper-cli whisper-cpp whisper.cpp || install_pkgs whisper.cpp    # older name, AUR
             else
                 warn_later "whisper.cpp has no apt package: build it from https://github.com/ggml-org/whisper.cpp (cmake) so that 'whisper-cli' is on your PATH, or pip install faster-whisper. The model below is downloaded anyway."
             fi
