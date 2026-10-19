@@ -8,6 +8,8 @@ import "WidgetData.js" as WD
 // The screen dims a little and every widget gets a handle: drag = move (it snaps to the middle and the edges), the dot in the corner
 // or the mouse wheel = resize, a click picks it, "Style and look" opens it in the Widget builder, ✕ takes it away. "Add" puts a new one on.
 // Esc or Done leaves. Everything is saved as you go.
+// The switch in the toolbar picks WHICH screen you place them on: the desktop, or the lock screen (its own list of widgets, opt.lockDeskWidgets). On the
+// lock screen the clock and the password box are drawn as outlines, so you leave room for them, and only the widgets that may be there are offered.
 // The "view bar" above the toolbar draws helpers like a design tool: a grid (size 20 / 40 / 80 / 120 px, optionally snapping to it), the
 // screen's centre lines (they light up when the picked widget is centred), rule-of-thirds lines, the safe area, and the measuring: the gap
 // in px to the screen edge or the next widget on every side of the picked widget, plus its size and place. Your choices are remembered.
@@ -18,8 +20,11 @@ PanelWindow {
     property var opt: ({})
     property bool open: false
     property real topInset: 24
+    property string target: "desktop"          // "desktop" or "lock": which list you are placing (shell.qml deskEditTarget)
+    readonly property bool lockT: target === "lock"
     signal commit(var data)
     signal done()
+    signal targetPicked(string t)
     signal optToggled(string key, var value)       // a helper switch (grid, centre ...) changed: shell.qml saves it
     signal openWidget(string uid)
 
@@ -33,7 +38,7 @@ PanelWindow {
 
     property bool adding: false
     property string sel: ""
-    readonly property var layout: WD.normalize(opt ? opt.deskWidgets : null)
+    readonly property var layout: WD.normalizeFor(opt ? opt[WD.keyOf(target)] : null, target)
     // the helpers (saved as opt.deskGrid ...); the defaults show the grid, the centre and the measuring
     function flag(k, d) { return opt && opt[k] !== undefined ? opt[k] === true : d }
     readonly property bool gridOn: flag("deskGrid", true)
@@ -63,8 +68,27 @@ PanelWindow {
             }
         }
 
-        Rectangle { anchors.fill: parent; color: Qt.alpha(win.pal.bg, 0.38) }
+        // (on the lock screen the real desktop widgets are hidden and the dim is heavier: you are placing widgets on a different screen)
+        Rectangle { anchors.fill: parent; color: Qt.alpha(win.pal.bg, win.lockT ? 0.9 : 0.38) }
         MouseArea { anchors.fill: parent; onClicked: { win.sel = ""; win.adding = false } }
+
+        // the lock screen's own furniture (Lock.qml: the clock and date at 16 % of the height, your picture and the password box from 52 %)
+        Item {
+            visible: win.lockT
+            anchors.fill: parent
+            Rectangle {
+                x: (parent.width - width) / 2; y: parent.height * 0.16
+                width: 360; height: 170; radius: 16
+                color: "transparent"; border.width: 1; border.color: Qt.alpha(win.pal.text, 0.25)
+                Text { anchors.centerIn: parent; text: "clock and date"; color: Qt.alpha(win.pal.text, 0.4); font.family: win.pal.uiFont; font.pixelSize: 12 }
+            }
+            Rectangle {
+                x: (parent.width - width) / 2; y: parent.height * 0.52
+                width: 340; height: 210; radius: 16
+                color: "transparent"; border.width: 1; border.color: Qt.alpha(win.pal.text, 0.25)
+                Text { anchors.centerIn: parent; text: "your picture and the password box"; color: Qt.alpha(win.pal.text, 0.4); font.family: win.pal.uiFont; font.pixelSize: 12 }
+            }
+        }
 
         DeskWidgets {
             id: dw
@@ -72,6 +96,7 @@ PanelWindow {
             pal: win.pal
             env: win.env
             opt: win.opt
+            target: win.target
             editing: true
             selected: win.sel
             topInset: win.topInset
@@ -103,10 +128,20 @@ PanelWindow {
                     id: shelf
                     width: parent.width
                     spacing: 12
+                    Text {
+                        visible: win.lockT
+                        width: shelf.width
+                        wrapMode: Text.WordWrap
+                        text: "Not offered on the lock screen (they run commands or show private things): " + WD.lockBlockedNames() + "."
+                        color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 10
+                    }
                     Repeater {
                         model: WD.cats
                         delegate: Column {
+                            id: shelfCat
                             required property var modelData
+                            readonly property var kinds: WD.catalog.filter(function (t) { return t.cat === modelData[0] && (!win.lockT || WD.lockOk(t.id)) })
+                            visible: kinds.length > 0
                             width: shelf.width
                             spacing: 6
                             NbCap { pal: win.pal; text: modelData[1].toUpperCase() }
@@ -114,7 +149,7 @@ PanelWindow {
                                 width: parent.width
                                 spacing: 8
                                 Repeater {
-                                    model: WD.catalog.filter(function (t) { return t.cat === modelData[0] })
+                                    model: shelfCat.kinds
                                     delegate: Chip {
                                         required property var modelData
                                         pal: win.pal; implicitHeight: 32
@@ -201,7 +236,7 @@ PanelWindow {
                         "Linked widgets move and resize together: drag any of them. Set links in the Widget builder > Link.",
                         "Switch off hides a widget without deleting it.",
                         "H or ? shows / hides this card, Esc leaves."
-                    ]
+                    ].concat(win.lockT ? ["Lock screen: the outlines are the clock and the password box, keep widgets off them. Widgets there only show things, nothing on them can be clicked while it is locked (the music buttons stay)."] : [])
                     delegate: Text {
                         required property string modelData
                         width: helpCol.width
@@ -229,7 +264,14 @@ PanelWindow {
                 id: tb
                 anchors.centerIn: parent
                 spacing: 12
-                Text { Layout.alignment: Qt.AlignVCenter; text: "Place your widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
+                Text { Layout.alignment: Qt.AlignVCenter; text: win.lockT ? "Place your lock screen widgets" : "Place your widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
+                SegSwitch {
+                    Layout.alignment: Qt.AlignVCenter
+                    pal: win.pal
+                    options: [{ k: "desktop", t: "Desktop" }, { k: "lock", t: "Lock screen" }]
+                    current: win.target
+                    onPicked: k => { win.sel = ""; win.adding = false; win.targetPicked(k) }
+                }
                 Rectangle {                                   // the ? that opens / closes the how-to card
                     Layout.alignment: Qt.AlignVCenter
                     Layout.preferredWidth: 26; Layout.preferredHeight: 26; radius: 13

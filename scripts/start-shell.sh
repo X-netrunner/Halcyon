@@ -92,7 +92,7 @@ say "using $qs ($("$qs" --version 2>&1 | head -n1)) on $WAYLAND_DISPLAY, QT_QPA_
 # Check every 10 minutes (the shell appends with >>, so truncating in place is safe). The lock fd is closed for this helper.
 ( while sleep 600; do [ "$(stat -c %s "$log" 2>/dev/null || echo 0)" -gt 4194304 ] && : > "$log"; done ) 9>&- &
 trim_pid=$!
-trap 'kill "$trim_pid" 2>/dev/null' EXIT
+trap 'kill "$trim_pid" 2>/dev/null' EXIT INT TERM
 
 fails=0
 while :; do

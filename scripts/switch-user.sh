@@ -9,8 +9,9 @@
 # Switching users never unlocks THIS session: the lock screen stays up here, and you come back to it with the same password.
 set -u
 
-me="${XDG_SESSION_ID:-}"
 have() { command -v "$1" >/dev/null 2>&1; }
+me="${XDG_SESSION_ID:-}"
+[ -z "$me" ] && have loginctl && me="$(loginctl session-status 2>/dev/null | awk 'NR==1{print $1}')"
 say()  { have notify-send && notify-send -a Halcyon "Switch user" "$1" 2>/dev/null; printf '%s\n' "$1" >&2; }
 prop() { loginctl show-session "$1" -p "$2" --value 2>/dev/null; }     # prop SESSION NAME
 

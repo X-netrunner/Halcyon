@@ -1150,6 +1150,14 @@ def leaks_command(args, assume_yes=False):
     if ollama_generate(prompt, num_predict=380, temperature=0.2, stream=True, timeout=120) is None and LAST_LLM_ERROR:
         print(LAST_LLM_ERROR + " (the report above stands on its own)")
 
+# Master AI switch (Settings > Performance > AI features): while ~/.local/state/island/ai-off exists no model is asked anything.
+AI_OFF_FLAG = os.path.join(os.path.expanduser("~"), ".local", "state", "island", "ai-off")
+AI_OFF_MSG = "The AI is switched off. Turn it back on in Settings > Performance > AI features (or: python3 ~/.config/Halcyon/scripts/ai-models.py master on)."
+
+def ai_enabled():
+    return not os.path.exists(AI_OFF_FLAG)
+
+
 def main():
     args = sys.argv[1:]
 
@@ -1189,6 +1197,13 @@ def main():
             custom_question = a
             use_llm = True
             break
+
+    if use_llm and not ai_enabled():
+        print(AI_OFF_MSG)
+        if custom_question:
+            return                  # a question needs the model: there is nothing else to show for it
+        print()
+        use_llm = False             # `advisor --llm`: the normal (rule-based) dashboard below still works
 
     analysis = analyze_system()
 

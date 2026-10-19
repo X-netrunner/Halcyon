@@ -10,6 +10,7 @@ import "DeskSpots.js" as DS
 //   Esc or a click outside closes it.   Open: gear in the utilities panel, `>settings`, SUPER+I.
 Scope {
     id: root
+    readonly property var settingsScope: root
     property var pal
     property string sysmode: ""
     property bool open: false
@@ -54,7 +55,7 @@ Scope {
     property string barPadding: "normal"   // low | normal | high (bar height, distance from the top, side padding)
     property string powerMgr: "halcyon"    // halcyon | power-profiles-daemon | tlp | auto-cpufreq | tuned
     property var env: null                 // the shell (shell.qml): the Widget builder previews the widgets with its live feeds
-    signal editOnDesktop()
+    signal editOnDesktop(string which)        // "desktop" or "lock": place the widgets of that screen (shell.qml opens the desktop editor on it)
     property string wallpaperPath: ""      // the wallpaper in use (shell.qml): the Desktop builder's little preview shows it
     property var opt: ({})                 // the extra settings (shell.qml "opt"): colour cycling, workspaces, clock, popups ...
     property var hyCur: ({})               // Hyprland values as they are now (shell.qml): where the sliders start
@@ -131,6 +132,15 @@ Scope {
                 setting("fxProfile", v)
                 fxAgain.restart()
             }
+            return
+        }
+        if (key === "ai:enabled") {                      // the master AI switch (scripts/ai-models.py master on|off)
+            var aiNow = JSON.parse(JSON.stringify(ai))
+            aiNow.enabled = (v === true)
+            ai = aiNow                                   // show it at once; the real state is read again below
+            Quickshell.execDetached(["python3", aiScript, "master", v === true ? "on" : "off"])
+            aiAgain.restart()
+            notesAgain.restart()
             return
         }
         if (typeof key === "string" && key.indexOf("nt:") === 0) {
@@ -265,7 +275,7 @@ Scope {
     }
 
     // ---- AI advisor model (scripts/ai-models.py): what is installed, the online catalog, the download in progress
-    property var ai: ({ installed: [], catalog: [], current: "", pull: null, running: true, ollama: true, source: "", hw: ({}), envOverride: false })
+    property var ai: ({ enabled: true, installed: [], catalog: [], current: "", pull: null, running: true, ollama: true, source: "", hw: ({}), envOverride: false })
     readonly property string aiScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/ai-models.py"
     function aiLoad(refresh) {
         aiProc.command = ["python3", aiScript, "list"].concat(refresh ? ["--refresh"] : [])
@@ -523,7 +533,8 @@ Scope {
     property string wbPick: ""
     Timer { id: wbUnload; interval: 320; onTriggered: { root.wbLoaded = false; settingsGc.restart() } }
     onWbOpenChanged: { if (wbOpen) { wbUnload.stop(); wbLoaded = true } else wbUnload.restart() }
-    function openWidgetBuilder(uid) { wbPick = uid; wbOpen = true }
+    property string wbTarget: "desktop"        // which screen's widgets the builder shapes: "desktop" or "lock"
+    function openWidgetBuilder(uid, target) { wbPick = uid; wbTarget = (target === "lock") ? "lock" : "desktop"; wbOpen = true }
     property bool dbOpen: false
     property bool dbLoaded: false
     Timer { id: dbUnload; interval: 320; onTriggered: { root.dbLoaded = false; settingsGc.restart() } }
@@ -731,9 +742,9 @@ Scope {
             { type: "seg", key: "opt:calNagGiveUp", label: "Give up", desc: "How long after the task has ended it still nags.", opts: [o(60, "After 1 h"), o(180, "After 3 h"), o(720, "After 12 h"), o(4320, "After 3 days")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" }
         ] },
         { id: "notes", title: "Notes", section: "Desktop", items: [
-            { type: "toggle", key: "nt:NOTES_OVERVIEW", label: "AI overview under every note", desc: "In the background your local Ollama model writes a short overview under each note you save, task or not: one sentence for a short note, a short intro and a few bullet points for a longer one (a pasted article, say). The Think button on a note writes it again. Nothing is sent anywhere (the model runs on this PC); if Ollama is not running the note is simply saved. Off by default." },
-            { type: "toggle", key: "nt:NOTES_AI", label: "Sort new notes into tasks", desc: "Super + N saves a note at once, as always. In the background your local Ollama model then decides whether it is a task: \"call mom at 6\" becomes a task due 18:00, \"idea: dark theme for the lock screen\" stays a plain note. The model's short comment (what it decided and why) shows right under the note in the All notes window, and Think on a note asks it again. Tasks show under Tasks, and a task with a time sends a notification when it is due. Off by default; nothing is sent anywhere (the model runs on this PC) and if Ollama is not running the note is simply saved." },
-            { type: "seg", key: "nt:NOTES_AI_MODE", label: "When the model thinks it is a task", desc: "Ask me: the note shows \"Make task / Keep as note\" in the All notes window. Automatically: it just becomes a task (you can turn it back with Note on its row).", opts: [o("ask", "Ask me first"), o("auto", "Do it automatically")], when: "nt:NOTES_AI=true" },
+            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_OVERVIEW", label: "AI overview under every note", desc: "In the background your local Ollama model writes a short overview under each note you save, task or not: one sentence for a short note, a short intro and a few bullet points for a longer one (a pasted article, say). The Think button on a note writes it again. Nothing is sent anywhere (the model runs on this PC); if Ollama is not running the note is simply saved. Off by default." },
+            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_AI", label: "Sort new notes into tasks", desc: "Super + N saves a note at once, as always. In the background your local Ollama model then decides whether it is a task: \"call mom at 6\" becomes a task due 18:00, \"idea: dark theme for the lock screen\" stays a plain note. The model's short comment (what it decided and why) shows right under the note in the All notes window, and Think on a note asks it again. Tasks show under Tasks, and a task with a time sends a notification when it is due. Off by default; nothing is sent anywhere (the model runs on this PC) and if Ollama is not running the note is simply saved." },
+            { type: "seg", key: "nt:NOTES_AI_MODE", label: "When the model thinks it is a task", desc: "Ask me: the note shows \"Make task / Keep as note\" in the All notes window. Automatically: it just becomes a task (you can turn it back with Note on its row).", opts: [o("ask", "Ask me first"), o("auto", "Do it automatically")], when: "ai:enabled=true&nt:NOTES_AI=true" },
             { type: "seg", key: "nt:NOTES_NUDGE_HOURS", label: "Later today: nudge every", desc: "Press Remind > Later today on a task (or the AI sees \"later\" in a note) and Halcyon sends a quiet notification every few hours during the rest of that day, until you tick the task off, it has nudged the most times below, or the day ends. Nothing at night (09:00 to 21:00 by default; change it with: notes set NOTES_NUDGE_FROM / NOTES_NUDGE_TO). It never nags: a task that is done or deleted is left alone.", opts: [o("1", "1 h"), o("2", "2 h"), o("3", "3 h"), o("4", "4 h"), o("6", "6 h")] },
             { type: "seg", key: "nt:NOTES_NUDGE_MAX", label: "Later today: at most", desc: "The most nudges one task gets in a day.", opts: [o("2", "2"), o("3", "3"), o("4", "4"), o("6", "6")] }
         ] },
@@ -772,8 +783,8 @@ Scope {
             { type: "seg", key: "opt:lockBg", label: "Lock screen background", desc: "Solid: the plain colour of your theme. Blurred wallpaper: your current wallpaper, blurred, behind the clock and the password box. The wallpaper is only loaded while the screen is locked and let go when you unlock. If the picture cannot be read, the plain colour stays; the password box is never affected.", opts: [o("solid", "Solid colour"), o("wallpaper", "Blurred wallpaper")] },
             { type: "slider", key: "opt:lockBlur", def: 40, label: "Lock screen blur", desc: "How strongly the wallpaper is blurred.", min: 4, max: 64, step: 2, unit: "", when: "opt:lockBg=wallpaper" },
             { type: "slider", key: "opt:lockTint", def: 0.55, label: "Lock screen tint", desc: "How much of the theme colour covers the wallpaper. 0 % = the wallpaper as it is, 100 % = no wallpaper visible.", min: 0, max: 0.95, step: 0.05, scale: 100, unit: " %", when: "opt:lockBg=wallpaper" },
-            { type: "toggle", key: "opt:lockWidgets", def: true, label: "Lock screen widgets", desc: "Show the battery, the Wi-Fi name, how many notifications are waiting (only the number, never what they say) and a media card with previous / play / next on the lock screen. Off: just the clock and the password." },
-            { type: "toggle", key: "opt:lockSwitch", def: true, label: "Switch user button", desc: "A Switch user button on the lock screen: jump to another user who is already logged in, or open a login screen for someone else. This screen stays locked while you are away, and needs your password when you come back." },
+            { type: "toggle", key: "opt:lockWidgets", def: false, label: "Lock screen widgets", desc: "Show the battery, the Wi-Fi name, how many notifications are waiting (only the number, never what they say) and a media card with previous / play / next on the lock screen. Off: just the clock and the password. Your own widgets for this screen (clock styles, system usage, weather ...): Widget builder > Lock screen." },
+            { type: "toggle", key: "opt:lockSwitch", def: false, label: "Switch user button", desc: "A Switch user button on the lock screen: jump to another user who is already logged in, or open a login screen for someone else. This screen stays locked while you are away, and needs your password when you come back." },
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] },
             { type: "tool", adv: true, key: "wifips", label: "Wi-Fi power saving", desc: "On saves battery. Off gives the lowest latency (Gaming mode switches it off by itself)." }
         ] },
@@ -802,12 +813,13 @@ Scope {
             { type: "acts", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading...", when: "fx:safe=false" }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring...", when: "fx:safe=true" }] }
         ] },
         { id: "suggestions", title: "Optimization & Suggestions", section: "Performance", items: [
+            { type: "toggle", key: "ai:enabled", def: true, label: "AI features", desc: "The master switch for everything that asks a local AI model: the notes overview and task sorting, the `ai` chat, the AI / LLM advisor and the model list below. Off: none of it runs and nothing asks Ollama anything; your notes, settings and downloaded models stay as they are. Ollama itself is not stopped (other programs may use it)." },
             { type: "acts", label: "Recommended Sweet Spot (Aesthetic + Speed)", desc: "Optimizes performance without compromising visual fidelity: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied!" }] },
             { type: "acts", label: "Adaptive System Advisor", desc: "Analyzes your actual battery status, memory pressure, active workloads, and application launch habits to generate personalized tuning advice in the console (scripts/adaptive-advisor.py).", btns: [
                 { id: "opt-adaptive-advisor", btn: "Analyze My Setup", done: "Opening…" },
                 { id: "opt-llm-advisor", btn: "AI / LLM Advisor (Experimental)", done: "Analyzing…" }
             ] },
-            { type: "custom", name: "aiModel" },
+            { type: "custom", name: "aiModel", when: "ai:enabled=true", label: "AI advisor model" },
             { type: "toggle", key: "opt:lazyLoad", def: true, label: "Aggressive Memory Freeing & Lazy Loading", desc: "Unloads heavy background dialogs (Settings, Cheatsheet, Calendar) when closed and triggers garbage collection to keep Quickshell's resident RAM low. Enabled automatically in Low and Medium resource modes." },
             { type: "acts", label: "Live Memory Trimming", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] }
         ] },
@@ -856,6 +868,7 @@ Scope {
         if (key.indexOf("hy:") === 0) return hyCur ? hyCur[key.substring(3)] : undefined
         if (key.indexOf("st:") === 0) return startup ? startup[key.substring(3)] : undefined
         if (key.indexOf("gr:") === 0) return greeting ? greeting[key.substring(3)] : undefined
+        if (key === "ai:enabled") return !(ai && ai.enabled === false)
         if (key.indexOf("nt:") === 0) return notesConf ? notesConf[key.substring(3)] : undefined
         if (key.indexOf("fx:") === 0) return fxConf ? fxConf[key.substring(3)] : undefined
         if (key.indexOf("fc:") === 0) return focusConf ? focusConf[key.substring(3)] : undefined
@@ -1093,50 +1106,50 @@ Scope {
     }
 
     // ======================================================================== custom leaves
-    Component { id: cSwatches; SetSwatches { root: root } }
+    Component { id: cSwatches; SetSwatches { root: settingsScope } }
 
-    Component { id: cWallpaper; SetWallpaper { root: root } }
+    Component { id: cWallpaper; SetWallpaper { root: settingsScope } }
 
-    Component { id: cApps; SetApps { root: root } }
+    Component { id: cApps; SetApps { root: settingsScope } }
 
     // Special workspace commands: your own command per special workspace, started whenever it opens with no window in it
-    Component { id: cSpecialCmds; SetSpecialCmds { root: root } }
+    Component { id: cSpecialCmds; SetSpecialCmds { root: settingsScope } }
 
     // Touchpad gestures: pick 3 or 4 fingers, then what each swipe / pinch does (ActionPick.qml). Saved by scripts/input-conf.sh.
-    Component { id: cGestures; SetGestures { root: root } }
+    Component { id: cGestures; SetGestures { root: settingsScope } }
 
     // Mouse buttons: shown for the mice that are connected right now (looked for every few seconds while this is on screen)
-    Component { id: cMouseButtons; SetMouseButtons { root: root } }
+    Component { id: cMouseButtons; SetMouseButtons { root: settingsScope } }
 
     // Wallpaper timeline (top of Settings > Wallpaper): when the picture last changed. wallpaper.sh saves the time when it really
     // changes (wallpaper-changed); an install from before that has no file yet, and then the date of the wallpaper state file is used.
-    Component { id: cWallClock; SetWallClock { root: root } }
+    Component { id: cWallClock; SetWallClock { root: settingsScope } }
 
     // Focus streak timeline (top of Settings > Focus mode): days in a row you reached the goal, against your best streak. The goal is
     // the Focus widget's "Minutes that count as a focus day" (25 when there is no Focus widget), the same rule the widget uses.
-    Component { id: cFocusClock; SetFocusClock { root: root } }
+    Component { id: cFocusClock; SetFocusClock { root: settingsScope } }
 
     // Backup and safety-check clocks: two timelines (last time, today, due day) in place of the old pair of rings
-    Component { id: cDayClock; SetDayClock { root: root } }
+    Component { id: cDayClock; SetDayClock { root: settingsScope } }
 
     // Safety check, automatic run: root, so every change (on, how often, off) asks for the sudo password. The password goes to
     // `sudo -k -S` once (-k = a password you typed a minute ago in a terminal does not count) and is never stored or logged.
-    Component { id: cSafetyAuto; SetSafetyAuto { root: root } }
-    Component { id: cCounterScan; SetCounterScan { root: root } }
+    Component { id: cSafetyAuto; SetSafetyAuto { root: settingsScope } }
+    Component { id: cCounterScan; SetCounterScan { root: settingsScope } }
 
-    Component { id: cAiModel; SetAiModel { root: root } }
+    Component { id: cAiModel; SetAiModel { root: settingsScope } }
 
-    Component { id: cFocusApps; SetFocusApps { root: root } }
+    Component { id: cFocusApps; SetFocusApps { root: settingsScope } }
 
-    Component { id: cNotifBuilder; SetNotifBuilder { root: root } }
+    Component { id: cNotifBuilder; SetNotifBuilder { root: settingsScope } }
 
-    Component { id: cDesktopBuilder; SetDesktopBuilder { root: root } }
+    Component { id: cDesktopBuilder; SetDesktopBuilder { root: settingsScope } }
 
-    Component { id: cWidgetBuilder; SetWidgetBuilder { root: root } }
+    Component { id: cWidgetBuilder; SetWidgetBuilder { root: settingsScope } }
 
-    Component { id: cBarBuilder; SetBarBuilder { root: root } }
+    Component { id: cBarBuilder; SetBarBuilder { root: settingsScope } }
 
-    Component { id: cGrowth; SetGrowth { root: root } }
+    Component { id: cGrowth; SetGrowth { root: settingsScope } }
 
     // ======================================================================== the window
     LazyLoader {
@@ -2097,7 +2110,7 @@ Scope {
                 wallpaperPath: root.wallpaperPath
                 onClosed: root.dbOpen = false
                 onOpenWidgets: { root.dbOpen = false; root.openWidgetBuilder("") }
-                onEditDesktop: { root.dbOpen = false; root.editOnDesktop() }
+                onEditDesktop: { root.dbOpen = false; root.editOnDesktop("desktop") }
                 onChanged: (k, v) => root.setting("opt:" + k, v)
             }
         }
@@ -2127,8 +2140,10 @@ Scope {
                 env: root.env
                 opt: root.opt
                 pick: root.wbPick
+                target: root.wbTarget
+                onTargetPicked: t => root.wbTarget = t
                 onClosed: { root.wbOpen = false; root.wbPick = "" }
-                onEditOnDesktop: { root.wbOpen = false; root.editOnDesktop() }
+                onEditOnDesktop: t => { root.wbOpen = false; root.editOnDesktop(t) }
                 onChanged: (k, v) => root.setting("opt:" + k, v)
             }
         }

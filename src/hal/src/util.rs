@@ -54,6 +54,27 @@ pub fn command_exists(name: &str) -> bool {
     }
 }
 
+/// Sends a desktop notification asynchronously with notify-send if installed.
+pub fn notify(summary: &str, body: &str, icon: Option<&str>, timeout_ms: u32) {
+    if !command_exists("notify-send") {
+        return;
+    }
+    let timeout_str = timeout_ms.to_string();
+    let mut args = vec!["-a", "Halcyon", "-t", &timeout_str];
+    if let Some(ic) = icon {
+        args.push("-i");
+        args.push(ic);
+    }
+    args.push(summary);
+    args.push(body);
+    let _ = Command::new("notify-send")
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+}
+
 /// Appends "HH:MM:SS text" to ~/.cache/island/<name> and keeps the file to about 200 lines.
 pub fn trace(name: &str, text: &str) {
     let cache = PathBuf::from(home()).join(".cache/island");

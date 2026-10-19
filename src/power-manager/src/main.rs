@@ -275,6 +275,7 @@ fn any_solitary(json: &str) -> bool {
 }
 
 /// `j/monitors` -> (name, "WxH@maxHz", "WxH@60") for the internal panel (or the first monitor).
+#[cfg(test)]
 fn parse_monitor_config(json: &str) -> Option<(String, String, String)> {
     let (name, high, low, _, _) = parse_monitor_detail(json)?;
     Some((name, high, low))

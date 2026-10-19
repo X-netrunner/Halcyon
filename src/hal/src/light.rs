@@ -204,3 +204,31 @@ fn backlight_set(args: &[String]) -> i32 {
     eprintln!("hal backlight: cannot write {}/{}. Run: scripts/kbd-backlight.sh doctor   (groups input + video, udev rule)", class, dev);
     1
 }
+
+pub fn best_screen_info() -> Option<(String, i64, i64)> {
+    best_screen()
+}
+
+pub fn kbd_list_info() -> Vec<(String, i64, i64)> {
+    let mut list = Vec::new();
+    for line in kbd_list() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 3 {
+            let dev = parts[0].to_string();
+            let cur = parts[1].parse::<i64>().unwrap_or(0);
+            let max = parts[2].parse::<i64>().unwrap_or(0);
+            list.push((dev, cur, max));
+        }
+    }
+    list
+}
+
+pub fn backlight_set_direct(class: &str, dev: &str, val: &str) {
+    if util::command_exists("brightnessctl") && util::ok("brightnessctl", &["-q", "-c", class, "-d", dev, "set", val]) {
+        return;
+    }
+    if write_sysfs(&format!("/sys/class/{}/{}/brightness", class, dev), val) {
+        return;
+    }
+    let _ = logind_set(class, dev, val);
+}

@@ -1,11 +1,10 @@
 #!/bin/sh
-# Tap Super alone -> open / close the launcher. Called by the release binds in hyprland/keybinds.lua.
-# 1) fast path: write the trigger file the island watches with inotify (takes a few ms, 0 child processes)
-# 2) fallback: ask the island over IPC only if the trigger file is absent
-# (plain sh, not bash: it starts a few ms faster, and this runs on every tap)
-f="${XDG_RUNTIME_DIR:-/tmp}/halcyon-super-tap"
-if [ -e "$f" ] && printf '%s\n' "$$" > "$f" 2>/dev/null; then
-    exit 0
+# Tap Super alone -> open / close the launcher.
+# Controlled via native helper `hal supertap` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" supertap "$@"
 fi
-printf '%s\n' "$$" > "$f" 2>/dev/null
+f="${XDG_RUNTIME_DIR:-/tmp}/halcyon-super-tap"
+printf '%s\n' "$$" > "$f" 2>/dev/null && exit 0
 exec quickshell ipc -p "$HOME/.config/Halcyon/quickshell/island" call island supertap >/dev/null 2>&1

@@ -63,12 +63,12 @@ validate() {
     case "${line:0:1}" in d|-) ;; *) printf 'refused (links and special files are not allowed): %s\n' "$line" >&2; bad=1 ;; esac
   done < <(tar -tvzf "$file" 2>/dev/null)
   while IFS= read -r name; do
-    name="${name%/}"; [ -n "$name" ] || continue
+    name="${name%/}"; name="${name#./}"; [ -n "$name" ] || continue
     case "$name" in /*|*..*) printf 'refused (unsafe path): %s\n' "$name" >&2; bad=1; continue ;; esac
     case "$name" in state|rice|rice/scheme) continue ;; esac
     allowed "$name" || { printf 'refused (not a Halcyon settings file): %s\n' "$name" >&2; bad=1; }
   done <<<"$names"
-  grep -qx 'MANIFEST' <<<"$names" || { echo "refused: MANIFEST missing (not a Halcyon settings export)" >&2; bad=1; }
+  grep -E -q '^(\./)?MANIFEST$' <<<"$names" || { echo "refused: MANIFEST missing (not a Halcyon settings export)" >&2; bad=1; }
   return "$bad"
 }
 

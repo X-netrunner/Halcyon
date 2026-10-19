@@ -86,8 +86,8 @@ ShellRoot {
         lockBg: "solid",           // solid | wallpaper : the lock screen's background is the plain theme colour, or the current wallpaper blurred (Lock.qml)
         lockBlur: 40,              // blur radius of that wallpaper (4 .. 64)
         lockTint: 0.55,            // how opaque the theme-colour sheet over the blurred wallpaper is (0 = wallpaper as it is .. 0.95); yours to set
-        lockWidgets: true,         // the lock screen shows battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
-        lockSwitch: true,          // the lock screen has a "Switch user" button (other logged-in users, or a login screen for someone else)
+        lockWidgets: false,        // OFF by default: the lock screen is just the clock + password. On = battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
+        lockSwitch: false,         // OFF by default. On = the lock screen has a "Switch user" button (other logged-in users, or a login screen for someone else)
         limMode: "manual",         // manual | auto : Settings > Performance > Limits. auto = the RAM / CPU limits are learned from your own use (startup-view.py adapt-sample, every 5 min)
         resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
         autoLowBat: false,         // true = switch to the Low resource preset when the charger is unplugged, and back when it is plugged in again (batCheck below)
@@ -111,6 +111,8 @@ ShellRoot {
         deskWidgets: null,         // the desktop widgets { items: [...] } (WidgetData.js; Widget builder + Desktop builder)
         deskStyles: [],            // looks you saved in the Widget builder [{ name, look }]
         deskWidgetsOn: true,       // master switch: false = no desktop widgets are drawn and none of their readers run (each widget also has its own Switch off)
+        lockDeskWidgets: null,     // the widgets on the LOCK screen { items: [...] }, same format as deskWidgets (Widget builder > Lock screen; placed with the desktop editor; Lock.qml draws them)
+        lockDeskWidgetsOn: true,   // false = none of them are drawn on the lock screen
         deskGrid: true, deskGridSize: 40, deskGridSnap: false, deskCenter: true, deskThirds: false, deskSafe: true, deskMeasure: true,   // the desktop editor's helpers (grid, centre, thirds, safe area, measuring)
         barLayout: null,           // the bar builder's layout { left, center, right } (BarLayout.js); null = the default one
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
@@ -528,7 +530,7 @@ ShellRoot {
         pal: pal
         wallpaperPath: wallpaperLayer.lastPath
         env: root
-        onEditOnDesktop: root.deskEditing = true
+        onEditOnDesktop: t => { root.deskEditTarget = (t === "lock") ? "lock" : "desktop"; root.deskEditing = true }
         sysmode: root.sysmode
         autoHide: root.autoHide
         clickMode: root.clickMode
@@ -710,14 +712,17 @@ ShellRoot {
         wallpaper: wallpaperLayer.currentPath
         blurRadius: root.opt.lockBlur !== undefined ? root.opt.lockBlur : 40
         tint: root.opt.lockTint !== undefined ? root.opt.lockTint : 0.55
-        widgets: root.opt.lockWidgets !== false
-        allowSwitch: root.opt.lockSwitch !== false
+        widgets: root.opt.lockWidgets === true
+        allowSwitch: root.opt.lockSwitch === true
         player: root.player
         hasBat: root.stats.hasBat === true
         batPct: Math.round(root.stats.bat || 0)
         batCharging: root.stats.charging === true
         ssid: root.net.ssid || ""
         notifCount: notifs.history.length
+        deskOpt: root.opt
+        deskEnv: lockEnv
+        deskLum: root.lockBackLum
     }
     // Login-screen mode (install.sh > "lock screen as login"): launch/halcyon-login.sh leaves a flag file before it starts
     // Hyprland, and the first thing the island does is take it and lock. So after boot the Halcyon lock screen IS the login
@@ -1597,8 +1602,10 @@ ShellRoot {
         case "barbuilder": settingsWin.openBuilder(); break
         case "notifbuilder": settingsWin.openNotifBuilder(); break
         case "desktopbuilder": settingsWin.openDesktopBuilder(); break
-        case "widgetbuilder": settingsWin.openWidgetBuilder(""); break
-        case "desktopedit": deskEditing = !deskEditing; break
+        case "widgetbuilder": settingsWin.openWidgetBuilder("", "desktop"); break
+        case "lockwidgetbuilder": settingsWin.openWidgetBuilder("", "lock"); break
+        case "desktopedit": deskEditTarget = "desktop"; deskEditing = !deskEditing; break
+        case "lockdesktopedit": deskEditTarget = "lock"; deskEditing = !deskEditing; break
         case "bartoggle": setOpt("barStyle", opt.barStyle === "off" ? "island" : "off"); break
         case "startupview": settingsWin.openStartup(); break
         case "tour": tourReplay(); break
@@ -1676,6 +1683,9 @@ ShellRoot {
                         var oo = {}
                         for (var ox in root.opt) oo[ox] = root.opt[ox]
                         for (var oy in s.opt) if (oy !== "notchCenter") oo[oy] = s.opt[oy]      // notchCenter is gone: the notch clock is always centred
+                        if (oo.lockCleanV2 !== true) {   // one-time: the lock screen is clean by default now (battery / Wi-Fi / media / Switch user are opt-in in Settings > Power & lock)
+                            oo.lockWidgets = false; oo.lockSwitch = false; oo.lockCleanV2 = true
+                        }
                         var mg = WD.migrate(oo)          // the old notes / calendar choice becomes one Notes widget, once
                         if (mg) oo.deskWidgets = mg
                         root.opt = oo
@@ -1934,8 +1944,12 @@ ShellRoot {
 
     // ================= desktop widgets (WidgetData.js, DeskWidgets.qml, WidgetBuilderWindow.qml, DesktopEditor.qml) =================
     // `deskNeeds`: which readers the placed widgets need, so nothing runs for a widget that is not there.
-    readonly property var deskNeeds: opt.deskWidgetsOn === false ? WD.needs(null) : WD.needs(WD.normalize(opt.deskWidgets))
+    // The lock screen's widgets need their feeds only while the lock screen is up (or while you place them): lockNeeds is empty otherwise.
+    readonly property bool lockWidgetsLive: WD.isOn(opt, "lock") && (lockScreen.locked || (deskEditing && deskEditTarget === "lock") || (settingsWin.wbOpen && settingsWin.wbTarget === "lock"))
+    readonly property var lockNeeds: lockWidgetsLive ? WD.needs(WD.normalizeFor(opt.lockDeskWidgets, "lock")) : WD.needs(null)
+    readonly property var deskNeeds: WD.mergeNeeds(opt.deskWidgetsOn === false ? WD.needs(null) : WD.needs(WD.normalize(opt.deskWidgets)), lockNeeds)
     property bool deskEditing: false                     // "place them on the desktop" is open (DesktopEditor.qml)
+    property string deskEditTarget: "desktop"            // ... and it works on this list: "desktop" or "lock" (the lock screen's widgets)
     readonly property real deskTop: opt.barStyle === "off" ? 24 : 70
     function deskSetVol(f) { pendVol = f; vol = f * 100; if (!sliderT.running) sliderT.start() }
     function deskSetBright(f) { pendBright = f; bright = f * 100; if (!sliderT.running) sliderT.start() }
@@ -1960,6 +1974,48 @@ ShellRoot {
         case "ws-down": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", "wheel-down"]); break
         }
     }
+    // What the widgets on the LOCK screen get as `env` instead of the shell itself (Lock.qml deskEnv). The values are the real ones, so the widgets
+    // show the real numbers; every action is empty, so even if a widget body asked for one, nothing could be run, switched or opened from a locked
+    // screen. (WidgetData.js also leaves out of the lock screen every type that runs commands or shows private things.)
+    QtObject {
+        id: lockEnv
+        readonly property var opt: root.opt
+        readonly property var stats: root.stats
+        readonly property var net: root.net
+        readonly property real vol: root.vol
+        readonly property bool muted: root.muted
+        readonly property real bright: root.bright
+        readonly property var gpu: root.gpu
+        readonly property var disks: root.disks
+        readonly property bool clock24: root.clock24
+        readonly property string starName: root.starName
+        readonly property var player: root.player
+        readonly property bool playing: root.playing
+        readonly property var cavaDesk: root.cavaDesk
+        readonly property var focusState: root.focusState
+        readonly property var focusDays: root.focusDays
+        readonly property int focusLeft: root.focusLeft
+        readonly property string focusText: root.focusText
+        readonly property real lockBackLum: root.lockBackLum
+        function deskAct(a) { }
+        function deskRun(c) { }
+        function deskSetVol(f) { }
+        function deskSetBright(f) { }
+        function focusRun(args) { }
+        function focusToggle() { }
+        function toggleSpecial(n) { }
+    }
+    // How bright the lock screen's background is (linear 0 .. 1): the plain theme colour, or the whole wallpaper (it is blurred, so only its average
+    // counts) mixed with the theme colour by the tint sheet. The widgets pick readable colours from it (WidgetHost.lockLum); the Widget builder's
+    // lock-screen preview reads it too.
+    readonly property real lockBackLum: {
+        var bg = (palObj && palObj.bg) ? WD.relLum(palObj.bg) : 0.05
+        if (opt.lockBg !== "wallpaper" || wallpaperLayer.currentPath === "") return bg
+        var t = Math.max(0, Math.min(0.95, opt.lockTint !== undefined ? opt.lockTint : 0.55))
+        var wallLum = (palObj && typeof palObj.lumAt === "function") ? palObj.lumAt(0, 0, 1, 1) : 0.15
+        return wallLum * (1 - t) + bg * t
+    }
+
     // Focus streak: the minutes of every work phase are counted here, one a minute, into focus-days.json (scripts/focus-log.sh)
     property var focusDays: ({})
     readonly property string focusLogScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/focus-log.sh"
@@ -2069,8 +2125,10 @@ ShellRoot {
         function barbuilder(): void { settingsWin.openBuilder() }
         function notifbuilder(): void { settingsWin.openNotifBuilder() }
         function desktopbuilder(): void { settingsWin.openDesktopBuilder() }
-        function widgetbuilder(): void { settingsWin.openWidgetBuilder("") }
-        function desktopedit(): void { root.deskEditing = !root.deskEditing }
+        function widgetbuilder(): void { settingsWin.openWidgetBuilder("", "desktop") }
+        function lockwidgetbuilder(): void { settingsWin.openWidgetBuilder("", "lock") }
+        function desktopedit(): void { root.deskEditTarget = "desktop"; root.deskEditing = !root.deskEditing }
+        function lockdesktopedit(): void { root.deskEditTarget = "lock"; root.deskEditing = !root.deskEditing }
         function bar(): void { root.setOpt("barStyle", root.opt.barStyle === "off" ? "island" : "off") }      // the top bar on / off
         function gallery(): void { settingsWin.openGallery() }
         function startup(): void { settingsWin.openStartup() }
@@ -2877,11 +2935,13 @@ ShellRoot {
             env: root
             opt: root.opt
             open: root.deskEditing
-            topInset: root.deskTop
-            onCommit: d => root.setOpt("deskWidgets", d)
+            target: root.deskEditTarget
+            topInset: root.deskEditTarget === "lock" ? 24 : root.deskTop
+            onTargetPicked: t => root.deskEditTarget = (t === "lock") ? "lock" : "desktop"
+            onCommit: d => root.setOpt(WD.keyOf(root.deskEditTarget), d)
             onOptToggled: (k, v) => root.setOpt(k, v)
             onDone: root.deskEditing = false
-            onOpenWidget: uid => { root.deskEditing = false; settingsWin.openWidgetBuilder(uid) }
+            onOpenWidget: uid => { root.deskEditing = false; settingsWin.openWidgetBuilder(uid, root.deskEditTarget) }
         }
     }
 

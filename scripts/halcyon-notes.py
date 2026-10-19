@@ -18,6 +18,14 @@ Tasks (a note with a job and, optionally, a time to be reminded at):
   notes due <idx_or_id> later     -> "later today": a few gentle nudges during the rest of today (every NOTES_NUDGE_HOURS hours,
                                      only between NOTES_NUDGE_FROM and NOTES_NUDGE_TO o'clock, at most NOTES_NUDGE_MAX times, then it stops)
   notes think <idx_or_id>         -> run the AI over this note again (it shows its short comment under the note)
+Pictures and voice:
+  notes clip-image [text]         -> the image on the clipboard becomes a note; with no image there, drag a screen region instead
+  notes clip-paste [text]         -> Ctrl+V in the notes panel: the image on the clipboard becomes a note (prints CLIP_NONE and does nothing
+                                     when there is no image, so the panel can paste the text instead)
+  notes rec-start [text] | rec-stop | rec-cancel | rec-status   -> a voice note: stop saves it, turns it into text and hands that to the AI
+  notes transcribe <idx_or_id>    -> (re)do the speech-to-text of a voice note. Engines: whisper.cpp (whisper-cli + a ggml model),
+                                     faster-whisper (pip) or openai-whisper. NOTES_STT_MODEL / NOTES_STT_LANG in notes.conf (or
+                                     HALCYON_STT_MODEL / HALCYON_STT_LANG) pick the model file or name and the language (empty = auto)
   notes accept / dismiss <id>     -> answer "Make this a task?" (ask mode)
   notes remind-check              -> what the timer runs: one notification for every task whose time has come
   notes conf | set KEY VALUE      -> NOTES_AI 0|1 , NOTES_OVERVIEW 0|1 , NOTES_AI_MODE ask|auto , NOTES_NUDGE_HOURS 1..12 , NOTES_NUDGE_MAX 1..12 ,
@@ -29,15 +37,19 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import time
+import importlib.util
 
 HOME = os.path.expanduser("~")
 RICE = os.environ.get("HALCYON_DIR", os.path.join(HOME, ".config", "Halcyon"))
 STATE_DIR = os.path.join(HOME, ".local", "state", "island")
 NOTES_FILE = os.path.join(STATE_DIR, "notes.json")
+MEDIA_DIR = os.path.join(STATE_DIR, "notes_media")
+REC_PID_FILE = os.path.join(STATE_DIR, "notes_recording.json")
 CONF_FILE = os.path.join(RICE, "notes.conf")
 UNIT_DIR = os.path.join(HOME, ".config", "systemd", "user")
 DUE_TIMER = "halcyon-notes-due.timer"
@@ -82,13 +94,40 @@ def save_notes(notes):
             os.unlink(temp_file)
         raise
 
-def add_note(text):
+def add_note(text, image=None, audio=None, stt=False):
     text = text.strip()
     if text.startswith(":"):
         text = text[1:].strip()
-    if not text:
+    typed = text
+    if not text and not image and not audio:
         print("[!] Note cannot be empty.")
         return False
+    if not text:
+        if image:
+            text = "Image Note"
+        elif audio:
+            text = "Voice Note"
+
+    # Auto-detect image file path in text if not explicitly set
+    if not image:
+        clean = text[7:] if text.startswith("file://") else text
+        if os.path.isfile(clean) and clean.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.bmp')):
+            image = os.path.abspath(clean)
+        else:
+            m = re.search(r'!\[.*?\]\((.*?)\)', text)
+            if m:
+                cand = m.group(1).strip()
+                if cand.startswith("file://"):
+                    cand = cand[7:]
+                if os.path.isfile(cand):
+                    image = os.path.abspath(cand)
+
+    # Auto-detect audio file path in text if not explicitly set
+    if not audio:
+        clean = text[7:] if text.startswith("file://") else text
+        if os.path.isfile(clean) and clean.lower().endswith(('.wav', '.mp3', '.ogg', '.opus', '.m4a', '.flac')):
+            audio = os.path.abspath(clean)
+
     notes = load_notes()
     now = time.time()
     dt = time.strftime("%Y-%m-%d %H:%M", time.localtime(now))
@@ -105,17 +144,438 @@ def add_note(text):
         "pinned": False,
         "done": False
     }
+    if image:
+        item["image"] = image
+    if audio:
+        item["audio"] = audio
+        if stt:
+            item["stt"] = {"state": "working", "at": now}      # the words are being written down; the list says so
+            if typed:
+                item["typed"] = typed                          # what was typed before recording stays in front of the transcript
     notes.insert(0, item)
     save_notes(notes)
-    print(f"\033[1;32m✓\033[0m Note added: \033[1m{text}\033[0m")
+    extra = (" \033[38;5;111m[📷 Image]\033[0m" if image else "") + (" \033[38;5;178m[🎙 Audio]\033[0m" if audio else "")
+    print(f"\033[1;32m✓\033[0m Note added: \033[1m{text}\033[0m{extra}")
     refresh_ui()
     # sorting is a separate background process: saving is already done and never waits for the model
+    if stt and audio:
+        # a voice note is sorted by the AI only once it has words: the transcript step does that when it is done
+        with contextlib.suppress(Exception):
+            subprocess.Popen([sys.executable, os.path.abspath(__file__), "transcribe", item["id"]], start_new_session=True,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
     cf = read_conf()
-    if (cf["NOTES_AI"] == "1" or cf["NOTES_OVERVIEW"] == "1") and len(text) <= 6000:
+    if ai_enabled() and (cf["NOTES_AI"] == "1" or cf["NOTES_OVERVIEW"] == "1") and len(text) <= 6000:
         with contextlib.suppress(Exception):
             subprocess.Popen([sys.executable, os.path.abspath(__file__), "sort", item["id"]], start_new_session=True,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return True
+
+def add_note_locked(*a, **kw):
+    """The picture and voice commands run without the big lock (a screen drag or a recording can take a long time and must not
+    freeze every other note action): they take it only for the moment of writing."""
+    with locked():
+        ok = add_note(*a, **kw)
+        sync_timer()
+    return ok
+
+IMG_TYPES = [("image/png", "png"), ("image/jpeg", "jpg"), ("image/webp", "webp"), ("image/gif", "gif"), ("image/bmp", "bmp")]
+IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp")
+
+def _wlpaste(args, timeout=5):
+    try:
+        return subprocess.run(["wl-paste"] + args, capture_output=True, timeout=timeout)
+    except Exception:
+        return None
+
+def _keep_image_file(src):
+    """A picture somebody copied as a file: keep our own copy so the note survives the original being moved or deleted."""
+    ext = os.path.splitext(src)[1].lower() or ".png"
+    dst = os.path.join(MEDIA_DIR, f"img_{int(time.time() * 1000)}{ext}")
+    shutil.copyfile(src, dst)
+    return dst
+
+def clipboard_image():
+    """(path, None) with the picture on the clipboard saved in the media folder, or (None, why not)."""
+    if not shutil.which("wl-paste"):
+        return None, "wl-clipboard is not installed (pacman -S wl-clipboard)"
+    r = _wlpaste(["--list-types"], 3)
+    if r is None or r.returncode != 0:
+        return None, "The clipboard is empty"
+    types = r.stdout.decode("utf-8", "replace").split()
+    for mime, ext in IMG_TYPES:
+        if mime in types:
+            path = os.path.join(MEDIA_DIR, f"img_{int(time.time() * 1000)}.{ext}")
+            got = _wlpaste(["--no-newline", "-t", mime], 10)
+            if got is not None and got.returncode == 0 and len(got.stdout) > 64:
+                with open(path, "wb") as f:
+                    f.write(got.stdout)
+                return path, None
+    # an image file copied in a file manager (a list of file:// links) or a path copied as text
+    from urllib.parse import unquote, urlparse
+    for mime in ("text/uri-list", "text/plain;charset=utf-8", "text/plain"):
+        if mime in types:
+            got = _wlpaste(["--no-newline", "-t", mime], 3)
+            if got is None or got.returncode != 0:
+                continue
+            for line in got.stdout.decode("utf-8", "replace").splitlines():
+                line = line.strip()
+                cand = unquote(urlparse(line).path) if line.startswith("file://") else os.path.expanduser(line)
+                if cand.lower().endswith(IMG_EXT) and os.path.isfile(cand):
+                    return _keep_image_file(cand), None
+    return None, "There is no picture on the clipboard"
+
+def snip_region():
+    """Drag a region of the screen (slurp + grim). (path, None) | (None, 'cancelled') | (None, why)."""
+    if not (shutil.which("slurp") and shutil.which("grim")):
+        return None, "There is no picture on the clipboard (and slurp + grim are needed to grab one from the screen)"
+    time.sleep(0.6)                                    # the notes panel is sliding away: keep it out of the picture
+    try:
+        g = subprocess.run(["slurp", "-d"], capture_output=True, text=True, timeout=120)
+    except Exception:
+        return None, "cancelled"
+    geom = g.stdout.strip()
+    if g.returncode != 0 or not geom:
+        return None, "cancelled"
+    path = os.path.join(MEDIA_DIR, f"shot_{int(time.time() * 1000)}.png")
+    r = subprocess.run(["grim", "-g", geom, path], capture_output=True)
+    if r.returncode != 0 or not os.path.isfile(path) or os.path.getsize(path) < 64:
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+        return None, "grim could not take the picture"
+    return path, None
+
+def clip_image(text=""):
+    """Clip img: the picture on the clipboard (a screenshot, a copied image, a copied image file) becomes a note.
+    Nothing on the clipboard -> drag a region of the screen instead. Every outcome shows up as a notification, because the
+    panel that asked has already slid away."""
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    path, why = clipboard_image()
+    label = "Clipboard image"
+    if not path:
+        path, why = snip_region()
+        label = "Screenshot"
+        if not path and why == "cancelled":
+            print("CLIP_CANCEL")
+            return False
+    if not path:
+        print("CLIP_FAIL:" + (why or "no picture"))
+        notify("Image note", why or "No picture to save", "dialog-warning")
+        return False
+    if add_note_locked(text or label, image=path):
+        notify("Image added to notes", text or label, path)
+        return True
+    return False
+
+def clip_paste(text=""):
+    """Ctrl+V in the quick panel: only a picture that is really on the clipboard becomes a note (no screen-region fallback,
+    no notification: the panel says "Saved" itself). Anything else prints CLIP_NONE and the panel pastes the text as usual."""
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    r = _wlpaste(["--list-types"], 3)
+    types = r.stdout.decode("utf-8", "replace").split() if (r is not None and r.returncode == 0) else []
+    if not any(m in types for m, _ in IMG_TYPES):
+        # a copied image *file* (file:// link) counts too, but a plain path typed as text must stay text
+        if "text/uri-list" not in types:
+            print("CLIP_NONE")
+            return False
+    path, _why = clipboard_image()
+    if not path:
+        print("CLIP_NONE")
+        return False
+    if add_note_locked(text or "Clipboard image", image=path):
+        print("CLIP_OK")
+        return True
+    print("CLIP_NONE")
+    return False
+
+def shot_image(text=""):
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    now = time.time()
+    nid = int(now * 1000)
+    img_path = os.path.join(MEDIA_DIR, f"shot_{nid}.png")
+    try:
+        res = subprocess.run(["grim", img_path])
+        if res.returncode == 0 and os.path.isfile(img_path):
+            return add_note_locked(text or "Screenshot Note", image=img_path)
+    except Exception as e:
+        print(f"[!] Failed to grab screenshot: {e}")
+    return False
+
+# ---- voice notes: record -> text -> AI
+def rec_command(path):
+    """The recorder: 16 kHz mono is what the speech engines want, and keeps the file small."""
+    if shutil.which("pw-record"):
+        return ["pw-record", "--rate", "16000", "--channels", "1", path]
+    if shutil.which("parecord"):
+        return ["parecord", "--rate=16000", "--channels=1", "--file-format=wav", path]
+    if shutil.which("arecord"):
+        return ["arecord", "-q", "-f", "S16_LE", "-r", "16000", "-c", "1", path]
+    return None
+
+def _rec_info():
+    try:
+        with open(REC_PID_FILE, "r", encoding="utf-8") as f:
+            info = json.load(f)
+        pid = int(info.get("pid") or 0)
+        os.kill(pid, 0)
+        with open(f"/proc/{pid}/cmdline", "rb") as f:         # a pid that was reused by something else is not our recorder
+            if b"record" not in f.read() and b"arecord" not in f.read():
+                raise OSError
+        return info
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.unlink(REC_PID_FILE)
+        return None
+
+def _stop_recorder(pid):
+    with contextlib.suppress(OSError):
+        os.kill(pid, signal.SIGINT)                          # SIGINT: the recorder finishes the file properly
+    for _ in range(40):                                      # wait until it has really gone (the header is written at the end)
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return
+        time.sleep(0.1)
+    with contextlib.suppress(OSError):
+        os.kill(pid, signal.SIGKILL)
+
+def record_audio(text=""):
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    wav_path = os.path.join(MEDIA_DIR, f"rec_{int(time.time() * 1000)}.wav")
+    cmd = rec_command(wav_path)
+    if not cmd:
+        print("[!] No recorder found (pipewire: pw-record)")
+        return False
+    print("\033[1;31m🎙 Recording voice note...\033[0m Press Enter or Ctrl+C to stop.")
+    try:
+        proc = subprocess.Popen(cmd)
+        try:
+            input()
+        except (KeyboardInterrupt, EOFError):
+            pass
+        _stop_recorder(proc.pid)
+        if os.path.isfile(wav_path) and os.path.getsize(wav_path) > 1000:
+            print("\033[1;32m✓\033[0m Voice note saved.")
+            return add_note_locked(text, audio=wav_path, stt=True)
+        print("[!] Recording was empty or cancelled.")
+        with contextlib.suppress(OSError):
+            os.unlink(wav_path)
+    except Exception as e:
+        print(f"[!] Recording error: {e}")
+    return False
+
+def rec_start(text=""):
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    if _rec_info():
+        print("REC_STARTED:already")
+        return True
+    now = time.time()
+    wav_path = os.path.join(MEDIA_DIR, f"rec_{int(now * 1000)}.wav")
+    cmd = rec_command(wav_path)
+    if not cmd:
+        print("REC_FAILED:No recorder found. Install pipewire (pw-record).")
+        notify("Voice note", "No recorder found. Install pipewire (pw-record).", "dialog-warning")
+        return False
+    try:
+        # its own session and no pipes: it must outlive this command (and the panel) and must not keep the caller's pipe open
+        proc = subprocess.Popen(cmd, start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as e:
+        print(f"REC_FAILED:{e}")
+        return False
+    time.sleep(0.4)
+    if proc.poll() is not None:                              # it died at once: no microphone, no sound server ...
+        print("REC_FAILED:The recorder stopped at once (is a microphone connected and unmuted?)")
+        notify("Voice note", "The recorder stopped at once. Is a microphone connected and unmuted?", "dialog-warning")
+        return False
+    with open(REC_PID_FILE, "w", encoding="utf-8") as f:
+        json.dump({"pid": proc.pid, "file": wav_path, "text": text, "start": now}, f)
+    print(f"REC_STARTED:{proc.pid}")
+    return True
+
+def rec_stop():
+    info = _rec_info()
+    if not info:
+        print("[!] No recording active.")
+        return False
+    wav_path = info.get("file")
+    text = info.get("text") or ""
+    _stop_recorder(int(info.get("pid") or 0))
+    with contextlib.suppress(OSError):
+        os.unlink(REC_PID_FILE)
+    if wav_path and os.path.isfile(wav_path) and os.path.getsize(wav_path) > 1000:
+        notify("Voice note saved", "Writing it down ...", "audio-input-microphone")
+        return add_note_locked(text, audio=wav_path, stt=True)
+    notify("Voice note", "The recording was empty.", "dialog-warning")
+    return False
+
+def rec_cancel():
+    info = _rec_info()
+    if not info:
+        return False
+    _stop_recorder(int(info.get("pid") or 0))
+    with contextlib.suppress(OSError):
+        os.unlink(REC_PID_FILE)
+    with contextlib.suppress(OSError):
+        os.unlink(info.get("file") or "")
+    return True
+
+def rec_status():
+    info = _rec_info()
+    if info:
+        print(json.dumps({"recording": True, "file": info.get("file"), "started": info.get("start")}))
+        return True
+    print(json.dumps({"recording": False}))
+    return False
+
+# ---- speech to text. Offline engines only; the first one that is installed is used.
+STT_MISSING = ("No speech-to-text engine found. Install one: whisper.cpp (yay -S whisper.cpp whisper.cpp-model-base), "
+               "or pip install faster-whisper")
+
+def stt_setting(key):
+    return (os.environ.get("HALCYON_" + key[len("NOTES_"):]) or read_conf().get(key, "") or "").strip()
+
+def stt_model_file():
+    """A whisper.cpp model (ggml-*.bin): the one set in NOTES_STT_MODEL, else the best one found in the usual places."""
+    own = os.path.expanduser(stt_setting("NOTES_STT_MODEL"))
+    if own and os.path.isfile(own):
+        return own
+    import glob
+    dirs = [os.path.join(HOME, ".local", "share", "whisper.cpp", "models"), os.path.join(HOME, ".local", "share", "whisper.cpp"),
+            os.path.join(HOME, ".cache", "whisper.cpp"), os.path.join(HOME, ".local", "share", "whisper"),
+            "/usr/share/whisper.cpp/models", "/usr/share/whisper.cpp", "/usr/local/share/whisper.cpp/models",
+            "/usr/share/whisper.cpp-model-*", "/opt/whisper.cpp/models"]
+    found = []
+    for d in dirs:
+        for dd in glob.glob(d):
+            found += glob.glob(os.path.join(dd, "ggml-*.bin"))
+    if not found:
+        return None
+    def rank(f):
+        b = os.path.basename(f)
+        for i, k in enumerate(("base", "small", "tiny", "medium")):          # fast enough on a laptop first
+            if k in b:
+                return i
+        return 9
+    return sorted(found, key=rank)[0]
+
+def _clean_words(t):
+    t = re.sub(r"\[[A-Za-z_ ]+\]|\((?:music|silence|noise)[^)]*\)", " ", t or "", flags=re.I)    # [BLANK_AUDIO], (music) ...
+    return re.sub(r"\s+", " ", t).strip()
+
+FW_SCRIPT = ("import sys\nfrom faster_whisper import WhisperModel\n"
+             "m = WhisperModel(sys.argv[2], device='cpu', compute_type='int8')\n"
+             "segs, _ = m.transcribe(sys.argv[1], language=(sys.argv[3] or None), vad_filter=True)\n"
+             "print(' '.join(s.text.strip() for s in segs))\n")
+
+def run_stt(wav):
+    """(text, None) | (None, why). An empty text means nothing was said."""
+    lang = stt_setting("NOTES_STT_LANG")
+    last = None
+    cli = next((c for c in ("whisper-cli", "whisper-cpp", "whisper.cpp") if shutil.which(c)), None)
+    model = stt_model_file()
+    if cli and model:
+        cmd = [cli, "-m", model, "-f", wav, "-nt", "-np", "-t", str(min(8, os.cpu_count() or 4))]
+        if ".en" not in os.path.basename(model):
+            cmd += ["-l", lang or "auto"]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+            if r.returncode == 0:
+                return _clean_words(r.stdout), None
+            last = "whisper.cpp failed: " + (r.stderr or "").strip()[-160:]
+        except Exception as e:
+            last = f"whisper.cpp failed ({type(e).__name__})"
+    if importlib.util.find_spec("faster_whisper"):
+        name = stt_setting("NOTES_STT_MODEL")
+        name = name if name and not os.path.isfile(os.path.expanduser(name)) else "base"
+        try:
+            r = subprocess.run([sys.executable, "-c", FW_SCRIPT, wav, name, lang], capture_output=True, text=True, timeout=1800)
+            if r.returncode == 0:
+                return _clean_words(r.stdout), None
+            last = "faster-whisper failed: " + (r.stderr or "").strip()[-160:]
+        except Exception as e:
+            last = f"faster-whisper failed ({type(e).__name__})"
+    if shutil.which("whisper"):
+        with tempfile.TemporaryDirectory() as td:
+            cmd = ["whisper", wav, "--model", "base", "--output_format", "txt", "--output_dir", td, "--fp16", "False"]
+            if lang:
+                cmd += ["--language", lang]
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+                out = os.path.join(td, os.path.splitext(os.path.basename(wav))[0] + ".txt")
+                if r.returncode == 0 and os.path.isfile(out):
+                    with open(out, "r", encoding="utf-8") as f:
+                        return _clean_words(f.read()), None
+                last = "whisper failed: " + (r.stderr or "").strip()[-160:]
+            except Exception as e:
+                last = f"whisper failed ({type(e).__name__})"
+    if last:
+        return None, last
+    if cli and not model:
+        return None, "whisper.cpp is installed but no model was found. Install one (yay -S whisper.cpp-model-base) or set NOTES_STT_MODEL"
+    return None, STT_MISSING
+
+def _patch_note(nid, fn):
+    with locked():
+        notes = load_notes()
+        n = next((x for x in notes if x.get("id") == nid), None)
+        if n is None:
+            return False
+        fn(n)
+        save_notes(notes)
+    refresh_ui()
+    return True
+
+def transcribe_note(arg):
+    """Voice note -> words -> the AI. Runs in the background after a recording; the model and the engine are used WITHOUT the lock."""
+    t = find_note(load_notes(), arg)
+    if not t or not t.get("audio"):
+        print("[!] That note has no voice recording.")
+        return False
+    nid, wav, typed = t.get("id"), t["audio"], (t.get("typed") or "")
+    if not os.path.isfile(wav):
+        _patch_note(nid, lambda n: n.__setitem__("stt", {"state": "fail", "at": time.time(), "msg": "The recording file is gone."}))
+        return False
+    _patch_note(nid, lambda n: n.__setitem__("stt", {"state": "working", "at": time.time()}))
+    text, err = run_stt(wav)
+    if text is None:
+        state = "none" if err == STT_MISSING else "fail"
+        _patch_note(nid, lambda n: n.__setitem__("stt", {"state": state, "at": time.time(), "msg": err}))
+        notify("Voice note", err, "dialog-warning")
+        return False
+    if not text:
+        _patch_note(nid, lambda n: n.__setitem__("stt", {"state": "empty", "at": time.time(), "msg": "No words were heard in this recording."}))
+        notify("Voice note", "No words were heard in the recording.", "dialog-information")
+        return False
+    def apply(n):
+        n["transcript"] = text
+        n["text"] = (typed + "\n" if typed else "") + text
+        n["stt"] = {"state": "done", "at": time.time()}
+        n.pop("think", None)                              # so the AI reads the new words (also after a second transcribe)
+        n.pop("sorted", None)
+    if not _patch_note(nid, apply):
+        return False
+    notify("Voice note written down", text[:160], "audio-input-microphone")
+    cf = read_conf()
+    if ai_enabled() and (cf["NOTES_AI"] == "1" or cf["NOTES_OVERVIEW"] == "1"):
+        sort_note(nid)                                    # the same AI step every typed note gets
+    return True
+
+def play_audio(arg):
+    n = find_note(load_notes(), arg)
+    if not n or not n.get("audio"):
+        print("[!] Note does not have audio.")
+        return False
+    audio_path = n["audio"]
+    if not os.path.isfile(audio_path):
+        print(f"[!] Audio file not found: {audio_path}")
+        return False
+    print(f"Playing: {audio_path}")
+    player = next((p for p in ("pw-play", "paplay", "aplay") if shutil.which(p)), None)
+    if player:
+        subprocess.run([player, audio_path])
+        return True
+    print("[!] No audio player found (pw-play, paplay, aplay)")
+    return False
 
 def list_notes():
     notes = load_notes()
@@ -131,7 +591,9 @@ def list_notes():
         date = n.get("date", "")
         task = "\033[38;5;214m☑ \033[0m" if n.get("task") else ""
         due = f" \033[38;5;214m⏰ {due_text(n['due'])}\033[0m" if n.get("due") else (" \033[38;5;214m⏰ later today\033[0m" if n.get("later") else "")
-        print(f"{i:2d}. {pin}{task}{status}{n.get('text', '')}{reset}{due} \033[38;5;240m({date})\033[0m")
+        img_badge = " \033[38;5;111m📷\033[0m" if n.get("image") else ""
+        aud_badge = " \033[38;5;178m🎙\033[0m" if n.get("audio") else ""
+        print(f"{i:2d}. {pin}{task}{status}{n.get('text', '')}{reset}{img_badge}{aud_badge}{due} \033[38;5;240m({date})\033[0m")
     print("──────────────────────────────────────────────────")
     print("\033[38;5;244mCommands: notes del <num> | notes pin <num> | notes done <num>\033[0m")
 
@@ -143,7 +605,15 @@ def del_note(arg):
         if 0 <= idx < len(notes):
             removed = notes.pop(idx)
             save_notes(notes)
+            if removed.get("image") and str(removed["image"]).startswith(MEDIA_DIR):
+                with contextlib.suppress(OSError):
+                    os.unlink(removed["image"])
+            if removed.get("audio") and str(removed["audio"]).startswith(MEDIA_DIR):
+                with contextlib.suppress(OSError):
+                    os.unlink(removed["audio"])
             print(f"\033[1;31m✗\033[0m Deleted: \"{removed.get('text')}\"")
+            refresh_ui()
+            sync_timer(notes)
             return
     except ValueError:
         pass
@@ -151,7 +621,15 @@ def del_note(arg):
         if n.get("id") == arg:
             removed = notes.pop(i)
             save_notes(notes)
+            if removed.get("image") and str(removed["image"]).startswith(MEDIA_DIR):
+                with contextlib.suppress(OSError):
+                    os.unlink(removed["image"])
+            if removed.get("audio") and str(removed["audio"]).startswith(MEDIA_DIR):
+                with contextlib.suppress(OSError):
+                    os.unlink(removed["audio"])
             print(f"\033[1;31m✗\033[0m Deleted: \"{removed.get('text')}\"")
+            refresh_ui()
+            sync_timer(notes)
             return
     print(f"[!] Note not found: {arg}")
 
@@ -207,8 +685,15 @@ def clear_done():
 # =====================================================================================================================
 #  Tasks: "call mom at 6" -> a task with a time, and a notification when the time comes
 # =====================================================================================================================
+# Master AI switch: Settings > Performance > "AI features" (or: python3 ai-models.py master on|off). Off = this file exists.
+# Nothing local is deleted and Ollama itself is left running; Halcyon just stops asking any model anything.
+AI_OFF_FLAG = os.path.join(os.path.expanduser("~"), ".local", "state", "island", "ai-off")
+
+def ai_enabled():
+    return not os.path.exists(AI_OFF_FLAG)
+
 CONF_DEFAULTS = {"NOTES_AI": "0", "NOTES_OVERVIEW": "0", "NOTES_AI_MODE": "ask", "NOTES_NUDGE_HOURS": "3", "NOTES_NUDGE_MAX": "4",
-                 "NOTES_NUDGE_FROM": "9", "NOTES_NUDGE_TO": "21", "NOTES_MODEL": ""}
+                 "NOTES_NUDGE_FROM": "9", "NOTES_NUDGE_TO": "21", "NOTES_MODEL": "", "NOTES_STT_MODEL": "", "NOTES_STT_LANG": ""}
 DEFAULT_MODEL = "qwen2.5:3b-instruct"      # what the notes AI was tested and tuned on (fast, keeps facts and tenses straight)
 CONF_RANGE = {"NOTES_NUDGE_HOURS": (1, 12), "NOTES_NUDGE_MAX": (1, 12), "NOTES_NUDGE_FROM": (0, 23), "NOTES_NUDGE_TO": (1, 24)}
 
@@ -243,7 +728,7 @@ def write_conf(c):
     keep = []
     try:                       # lines that are not ours stay as they are
         with open(CONF_FILE, "r", encoding="utf-8") as f:
-            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*(NOTES_AI(_MODE)?|NOTES_OVERVIEW|NOTES_MODEL|NOTES_NUDGE_(HOURS|MAX|FROM|TO))=", l)]
+            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*(NOTES_AI(_MODE)?|NOTES_OVERVIEW|NOTES_MODEL|NOTES_STT_(MODEL|LANG)|NOTES_NUDGE_(HOURS|MAX|FROM|TO))=", l)]
     except OSError:
         pass
     fd, tmp = tempfile.mkstemp(prefix="notes.conf.", dir=os.path.dirname(CONF_FILE))
@@ -774,9 +1259,24 @@ def parrots_example(text, summary):
     return any(w in sm and w not in t for w in EXAMPLE_WORDS)
 
 def plain_summary(text):
-    """What the AI line says when the model's own sentence was unusable: the note itself, shortened."""
+    """What the AI line says when the model's own sentence was unusable: the note itself, tidied and shortened at a word
+    boundary. No "Note about:" prefix and never a trailing "..." (it looked like a bug in the list)."""
     t = re.sub(r"\s+", " ", text).strip()
-    return ("Note about: " + (t[:90] + ("..." if len(t) > 90 else ""))) if t else ""
+    if not t:
+        return ""
+    if len(t) > 110:
+        cut = t[:110]
+        stop = max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! "))
+        cut = cut[:stop + 1] if stop >= 40 else cut[:cut.rfind(" ")] if " " in cut else cut
+        t = cut
+    t = t.rstrip(" ,;:-\u2013\u2014.\u2026")
+    return t[:1].upper() + t[1:]
+
+def title_of(why):
+    """The first line of an overview as a one-line title for the list: no bullet, no trailing dots."""
+    first = (why or "").split("\n")[0].strip()
+    first = re.sub(r"^[-*\u2022]\s*", "", first).rstrip(" .\u2026")
+    return first[:160]
 
 def make_why(task, due, later, conf):
     """What the AI line says when the model gave no sentence of its own (small models often skip it)."""
@@ -847,6 +1347,9 @@ def sort_note(arg, force=False):
     force (notes think): ask again about a note that was sorted before; a note that already is a task stays as it is, only the
     AI line is renewed."""
     conf = read_conf()
+    if not ai_enabled():
+        print("[!] The AI is switched off (Settings > Performance > AI features)")
+        return
     sort_on, ov_on = conf["NOTES_AI"] == "1", conf["NOTES_OVERVIEW"] == "1"
     if not (sort_on or ov_on):
         print("[!] The notes AI is off (Settings > Notes, or: notes set NOTES_AI 1 / notes set NOTES_OVERVIEW 1)")
@@ -874,7 +1377,7 @@ def sort_note(arg, force=False):
                 if n is None:
                     return
                 n["sorted"] = True
-                n["think"] = {"state": "done", "at": time.time(), "why": ov, "task": bool(n.get("task"))}
+                n["think"] = {"state": "done", "at": time.time(), "why": ov, "task": bool(n.get("task")), "title": title_of(ov)}
                 save_notes(notes)
             refresh_ui()
             return
@@ -887,9 +1390,13 @@ def sort_note(arg, force=False):
         later = bool(ans["task"] and ans["later"] and not due)
         tiny = _word_count(text) < 8
         say = ans["why"] if (ans["why"] and not tiny and _grounded(ans["why"], _stems(text), _numbers(text), text)) else ""
+        real = bool(say) or (not tiny and bool(plain_summary(text)))     # False = a status message (make_why), not an overview of the note
         why = say or (make_why(ans["task"], due, later, conf) if tiny else (plain_summary(text) or make_why(ans["task"], due, later, conf)))
         if ov_on and (len(text) > 140 or checklist_of(text)):
-            why = overview_of(text) or why
+            ov2 = overview_of(text)
+            if ov2:
+                why, real = ov2, True
+        title = title_of(why) if real else ""
         if due and say and not (ov_on and (len(text) > 140 or checklist_of(text))):
             why = (why.rstrip(".") + f"  ·  reminder {due_text(due).lower()}")[:200]
         with locked():
@@ -898,6 +1405,8 @@ def sort_note(arg, force=False):
             if n is None:                                              # deleted in the meantime
                 return
             think = {"state": "done", "at": time.time(), "why": why, "task": bool(ans["task"])}
+            if title:
+                think["title"] = title                 # the list shows this instead of the note's own words
             if n.get("done") or (not force and "task" in n):            # done or set by hand in the meantime: only the AI line
                 n["think"] = think
             else:
@@ -1047,7 +1556,8 @@ def conf_json():
     print(json.dumps({"NOTES_AI": c["NOTES_AI"] == "1", "NOTES_OVERVIEW": c["NOTES_OVERVIEW"] == "1", "NOTES_AI_MODE": c["NOTES_AI_MODE"],
                       "NOTES_NUDGE_HOURS": c["NOTES_NUDGE_HOURS"], "NOTES_NUDGE_MAX": c["NOTES_NUDGE_MAX"],
                       "NOTES_NUDGE_FROM": c["NOTES_NUDGE_FROM"], "NOTES_NUDGE_TO": c["NOTES_NUDGE_TO"], "NOTES_MODEL": c["NOTES_MODEL"],
-                      "ollama": ollama_up() if "1" in (c["NOTES_AI"], c["NOTES_OVERVIEW"]) else None, "model": model_name()}))
+                      "NOTES_STT_MODEL": c.get("NOTES_STT_MODEL", ""), "NOTES_STT_LANG": c.get("NOTES_STT_LANG", ""),
+                      "aiEnabled": ai_enabled(), "ollama": ollama_up() if (ai_enabled() and "1" in (c["NOTES_AI"], c["NOTES_OVERVIEW"])) else None, "model": model_name()}))
 
 def set_conf(k, v):
     c = read_conf()
@@ -1055,8 +1565,10 @@ def set_conf(k, v):
         c[k] = "1" if str(v).lower() in ("1", "true", "on", "yes") else "0"
     elif k == "NOTES_AI_MODE" and v in ("ask", "auto"):
         c[k] = v
-    elif k == "NOTES_MODEL" and re.fullmatch(r"[A-Za-z0-9._:/@+-]{0,100}", str(v)):
-        c[k] = "" if str(v).lower() in ("default", "none", "-") else str(v)      # "default" = use the advisor's model again
+    elif k in ("NOTES_MODEL", "NOTES_STT_MODEL") and re.fullmatch(r"[A-Za-z0-9._:/@+-]{0,100}", str(v)):
+        c[k] = "" if str(v).lower() in ("default", "none", "-") else str(v)      # "default" = use default again
+    elif k == "NOTES_STT_LANG" and re.fullmatch(r"[A-Za-z_-]{0,20}", str(v)):
+        c[k] = "" if str(v).lower() in ("default", "auto", "none", "-") else str(v)
     elif k in CONF_RANGE and str(v).isdigit() and CONF_RANGE[k][0] <= int(v) <= CONF_RANGE[k][1]:
         c[k] = str(int(v))
     else:
@@ -1075,14 +1587,17 @@ def main():
         run(cmd, args)
     elif cmd in NO_LOCK and len(args) == 2 and is_ref(args[1]):
         run(cmd, args)          # these take the lock themselves, only for the part that writes
+    elif cmd in UNLOCKED:
+        run(cmd, args)          # a screen drag / a recording can take minutes: they take the lock only to write the note
     else:
         with locked():
             run(cmd, args)
             if cmd not in ("conf", "set"):
                 sync_timer()        # the minute timer only runs while a task with a time is waiting
 
-READ_ONLY = ("list", "ls", "json")
-NO_LOCK = ("sort", "think")
+READ_ONLY = ("list", "ls", "json", "tasks", "conf", "rec-status")
+NO_LOCK = ("sort", "think", "transcribe")
+UNLOCKED = ("clip-image", "clip-img", "paste-image", "clip-paste", "shot-image", "screenshot", "record", "voice", "rec-start", "rec-stop", "rec-cancel", "play")
 
 def is_ref(a):
     return a.isdigit() or a.startswith("n_")
@@ -1090,7 +1605,7 @@ def is_ref(a):
 def run(cmd, args):
     # the new words only count as commands when they are used like commands, so "notes set the table" is still a note
     if (cmd in ("tasks", "conf", "remind-check") and len(args) > 1) \
-            or (cmd in ("task", "sort", "think", "accept", "dismiss") and not (len(args) == 2 and is_ref(args[1]))) \
+            or (cmd in ("task", "sort", "think", "transcribe", "accept", "dismiss") and not (len(args) == 2 and is_ref(args[1]))) \
             or (cmd == "due" and not (len(args) > 2 and is_ref(args[1]))) \
             or (cmd == "set" and not (len(args) == 3 and args[1] in CONF_DEFAULTS)):
         add_note(" ".join(args))
@@ -1107,7 +1622,7 @@ def run(cmd, args):
         if len(args) > 2:
             set_conf(args[1], args[2])
         else:
-            print("usage: notes set NOTES_AI 0|1  |  NOTES_OVERVIEW 0|1  |  NOTES_AI_MODE ask|auto  |  NOTES_MODEL <ollama name>|default  |  NOTES_NUDGE_HOURS 1..12  |  NOTES_NUDGE_MAX 1..12  |  NOTES_NUDGE_FROM 0..23  |  NOTES_NUDGE_TO 1..24")
+            print("usage: notes set NOTES_AI 0|1  |  NOTES_OVERVIEW 0|1  |  NOTES_AI_MODE ask|auto  |  NOTES_MODEL <name>|default  |  NOTES_STT_MODEL <model>|default  |  NOTES_STT_LANG <lang>|default  |  NOTES_NUDGE_HOURS 1..12  |  NOTES_NUDGE_MAX 1..12  |  NOTES_NUDGE_FROM 0..23  |  NOTES_NUDGE_TO 1..24")
     elif cmd == "sort":
         if len(args) > 1:
             sort_note(args[1])
@@ -1156,10 +1671,59 @@ def run(cmd, args):
             done_note(args[1])
         else:
             print("usage: notes done <number>")
-    elif cmd == "clear":
-        clear_done()
+    elif cmd in ("clip-image", "clip-img", "paste-image"):
+        clip_image(" ".join(args[1:]))
+    elif cmd == "clip-paste":
+        clip_paste(" ".join(args[1:]))
+    elif cmd in ("shot-image", "screenshot"):
+        shot_image(" ".join(args[1:]))
+    elif cmd in ("image", "img"):
+        if len(args) > 1:
+            img_path = os.path.abspath(args[1])
+            text = " ".join(args[2:]) if len(args) > 2 else ""
+            if os.path.isfile(img_path):
+                add_note(text or os.path.basename(img_path), image=img_path)
+            else:
+                print(f"[!] Image not found: {img_path}")
+        else:
+            print("usage: notes image <path> [text]")
+    elif cmd in ("record", "voice"):
+        record_audio(" ".join(args[1:]))
+    elif cmd == "rec-start":
+        rec_start(" ".join(args[1:]))
+    elif cmd == "rec-stop":
+        rec_stop()
+    elif cmd == "rec-cancel":
+        rec_cancel()
+    elif cmd == "transcribe":
+        if len(args) > 1:
+            transcribe_note(args[1])
+        else:
+            print("usage: notes transcribe <number or id>")
+    elif cmd == "rec-status":
+        rec_status()
+    elif cmd == "play":
+        if len(args) > 1:
+            play_audio(args[1])
+        else:
+            print("usage: notes play <idx_or_id>")
     elif cmd in ("add", "new"):
-        add_note(" ".join(args[1:]))
+        raw_args = args[1:]
+        img = None
+        aud = None
+        txt_parts = []
+        i = 0
+        while i < len(raw_args):
+            if raw_args[i] in ("--image", "-i") and i + 1 < len(raw_args):
+                img = raw_args[i+1]
+                i += 2
+            elif raw_args[i] in ("--audio", "-a") and i + 1 < len(raw_args):
+                aud = raw_args[i+1]
+                i += 2
+            else:
+                txt_parts.append(raw_args[i])
+                i += 1
+        add_note(" ".join(txt_parts), image=img, audio=aud)
     else:
         # Any string like "notes : hi i am srijan" or "notes buy milk"
         add_note(" ".join(args))

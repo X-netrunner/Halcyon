@@ -1,41 +1,9 @@
 #!/usr/bin/env bash
-# Wi-Fi power saving:  toggle_wifi_powersave.sh [on | off | toggle | status | apply]     (default: toggle)
-# The choice is remembered (and written for NetworkManager by halcyon-tune), so it survives a reconnect and a reboot.
-# apply = put the remembered choice back (runs at login from autostart-extras.sh; does nothing before you ever chose).
-# on = saves battery, off = lowest latency. Run from Settings > Tools. The change itself is made by the root helper
-# halcyon-tune through sudo, which install.sh sets up without a password prompt (nothing can be typed here: the island has
-# no terminal), so run install.sh again if this says it could not change it.
-HELPER=/usr/local/bin/halcyon-tune
-SAVED="$HOME/.local/state/island/wifi-powersave"
-note() { command -v notify-send >/dev/null && notify-send -a Halcyon -i network-wireless -h string:x-canonical-private-synchronous:wifips "Wi-Fi power saving" "$1"; }
-
-is_on() {   # 0 = at least one wireless interface has power saving on
-  command -v iw >/dev/null 2>&1 || return 1
-  local d
-  for d in $(iw dev 2>/dev/null | awk '$1 == "Interface" { print $2 }'); do
-    iw dev "$d" get power_save 2>/dev/null | grep -qi 'power save: *on' && return 0
-  done
-  return 1
-}
-
-case "${1:-toggle}" in
-  status) is_on && echo on || echo off; exit 0 ;;
-  apply)
-    want=$(head -n1 "$SAVED" 2>/dev/null)
-    case "$want" in on|off) ;; *) exit 0 ;; esac
-    [ -e /run/halcyon-tune.saved ] && exit 0            # Gaming mode is on: it switches power saving off itself and puts it back
-    command -v iw >/dev/null 2>&1 && timeout 6 sudo -n "$HELPER" wifi-ps "$want" >/dev/null 2>&1
-    exit 0 ;;
-  on|off) want=$1 ;;
-  toggle) if is_on; then want=off; else want=on; fi ;;
-  *) echo "usage: toggle_wifi_powersave.sh [on|off|toggle|status|apply]" >&2; exit 2 ;;
-esac
-
-command -v iw >/dev/null 2>&1 || { note "iw is not installed (pacman -S iw)"; exit 1; }
-if timeout 6 sudo -n "$HELPER" wifi-ps "$want" 2>/dev/null; then
-  mkdir -p "$(dirname "$SAVED")" && echo "$want" > "$SAVED"
-  if [ "$want" = on ]; then note "On: saves battery"; else note "Off: lowest latency"; fi
-else
-  note "Could not change it: run install.sh again (it sets up the helper that is allowed to do this)"
-  exit 1
+# toggle_wifi_powersave.sh [on | off | toggle | status | apply]
+# Controlled via native helper `hal wifips` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" wifips "$@"
 fi
+echo "toggle_wifi_powersave.sh: hal binary not found at $hal" >&2
+exit 1

@@ -11,6 +11,9 @@ Item {
     property var env
     property var opt: ({})
     property bool editing: false
+    property string target: "desktop"      // "desktop" or "lock": which list is drawn (opt.deskWidgets / opt.lockDeskWidgets; the lock list never holds the types WD.lockBlocked names)
+    property bool inert: false              // the lock screen: nothing can be clicked (WidgetHost's click shield)
+    property real lockLum: -1               // the lock screen's background brightness, for the readability colours (WidgetHost.lockLum)
     property string selected: ""
     property bool shown: true
     property real topInset: 24
@@ -35,13 +38,14 @@ Item {
     property var layout: ({ items: [] })
     property string layoutKey: "\u0000"
     function refreshLayout() {
-        var raw = opt ? opt.deskWidgets : null
+        var raw = opt ? opt[WD.keyOf(target)] : null
         var key = raw ? JSON.stringify(raw) : ""
         if (key === layoutKey) return
         layoutKey = key
-        layout = WD.normalize(raw)
+        layout = WD.normalizeFor(raw, target)
     }
     onOptChanged: refreshLayout()
+    onTargetChanged: { layoutKey = "\u0000"; refreshLayout() }
     readonly property bool anyLinks: { for (var i = 0; i < layout.items.length; i++) if (layout.items[i].link) return true; return false }
     property var uids: []
     function syncUids() {
@@ -154,6 +158,8 @@ Item {
             editing: root.editing
             selected: root.editing && root.selected === modelData
             shown: root.shown
+            inert: root.inert
+            lockLum: root.lockLum
             screenW: root.width
             screenH: root.height
             margin: root.margin
@@ -176,8 +182,10 @@ Item {
             // (a linked widget resizes through the first widget of its chain: they all share one size)
             onRescaled: (uid, s) => {
                 var ru = WD.linkRoot(root.layout, uid), rh = root.hostOf(ru) || dw
+                // the position belongs to the whole chain (WidgetHost.chainW): keep its left edge where it is
+                var f = s / Math.max(0.01, rh.k)
                 root.commit(WD.setScalePos(root.layout, ru, s,
-                    WD.fracX(rh.x, root.width, rh.width * s, root.margin),
+                    WD.fracX(rh.x - rh.extL, root.width, rh.chainW * f, root.margin),
                     WD.fracY(rh.y, root.height, rh.height * s, root.topInset, root.bottomInset)))
             }
             onRemoveRequested: uid => root.commit(WD.remove(root.layout, uid))
