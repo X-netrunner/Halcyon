@@ -136,4 +136,14 @@ fn detect_user() -> String {
 
 pub fn sys_user() -> String { sys_conf("SYS_USER", &detect_user()) }
 pub fn sys_home() -> String { sys_conf("SYS_HOME", &format!("/home/{}", sys_user())) }
-pub fn logs_dir() -> String { format!("{}/logs", sys_home()) }
+/// /var/log/halcyon is where the root daemons write (root-owned, ~/logs is a symlink to it). As root (hx ids) it is used and created
+/// always; as the user it is used when it exists, else the old ~/logs.
+pub fn logs_dir() -> String {
+    const D: &str = "/var/log/halcyon";
+    if unsafe { libc::geteuid() } == 0 {
+        let _ = std::fs::create_dir_all(D);
+        return D.to_string();
+    }
+    if std::path::Path::new(D).is_dir() { return D.to_string(); }
+    format!("{}/logs", sys_home())
+}

@@ -25,6 +25,7 @@ const MAX_ACTIVE_BANS: usize = 256;          // ufw rules this daemon may have o
 const MAX_CONNECTIONS: usize = 256;          // decoy connections handled at once (one thread each)
 const MAX_COUNTER_SCANS: usize = 3;          // nmap counter-scans running at once
 const MAX_DNS_REPLIES_PER_SEC: u32 = 50;     // decoy DNS answers per second, all sources together
+const LOGS_DIR: &str = "/var/log/halcyon";   // root-owned (see sysmode init_logs_dir)
 const MAX_TRACKED_HOSTS: usize = 4096;       // size cap of every per-address map
 // Addresses that are never banned or counter-scanned, besides the default gateway, the DNS servers and this machine's own
 // addresses (read from the system, refreshed every minute). One address per line, '#' starts a comment.
@@ -155,6 +156,7 @@ fn sys_user() -> String {
     std::env::var("LOGNAME").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| "root".to_string())
 }
 
+#[allow(dead_code)] // the logs moved to /var/log/halcyon; kept for the SYS_HOME setting
 fn sys_home() -> String {
     if let Ok(content) = fs::read_to_string("/etc/sysmode.conf") {
         for line in content.lines() {
@@ -2268,7 +2270,10 @@ fn main() {
         std::process::exit(1);
     }
 
-    let logs_dir = format!("{}/logs", sys_home());
+    // Root writes here, so the folder must be root-owned: it used to be ~/logs (owned by the user), where a symlink planted by any
+    // program of that user made root write, truncate or create files anywhere. sysmode creates it (and points ~/logs at it).
+    let logs_dir = LOGS_DIR.to_string();
+    let _ = fs::create_dir_all(&logs_dir);
     let hostname = get_hostname();
     let (telnet_user, telnet_pass) = generate_telnet_credentials();
 

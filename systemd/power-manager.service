@@ -7,6 +7,10 @@ Restart=on-failure
 RestartSec=5
 # The daemon is background housekeeping: never compete with the desktop for CPU.
 Nice=10
+# Hardening (same set the Halcyon timer units already use). NoNewPrivileges is left off on purpose: helper scripts may need sudo/setuid tools.
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
 
 # No [Install] section on purpose: the island starts it at login when Auto was left on,
 # and stops it when you pick Saver / Balanced / Perf by hand (SUPER+ALT+P toggles it too).

@@ -110,6 +110,9 @@ fn ts(t: &str) -> String {
 }
 
 fn logs_dir() -> String {
+    if std::path::Path::new("/var/log/halcyon").is_dir() {
+        return "/var/log/halcyon".to_string();
+    }
     if let Ok(content) = fs::read_to_string("/etc/sysmode.conf") {
         for line in content.lines() {
             if let Some(rest) = line.trim().strip_prefix("SYS_HOME=") {

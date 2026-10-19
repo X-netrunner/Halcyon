@@ -244,8 +244,12 @@ function countAll(customs, hasSysmode) {
 }
 
 // ---------------------------------------------------------------- export for Hyprland (binds.lua)
+// every control character is dealt with: a raw CR (or any other one) inside a Lua string made binds.lua unparseable, and then ALL the
+// custom shortcuts silently vanished. Line breaks and tabs become a space, anything else becomes a Lua decimal escape (\ddd).
 function luaStr(s) {
-    return '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ") + '"'
+    return '"' + String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+        .replace(/[\r\n\t]+/g, " ")
+        .replace(/[\u0000-\u001f\u007f]/g, function (c) { return "\\" + ("000" + c.charCodeAt(0)).slice(-3) }) + '"'
 }
 function toLua(keyMap, customs) {
     var out = ["-- written by the island (Cheatsheet): do not edit, change shortcuts there", "return {", "  keys = {"]

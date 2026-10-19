@@ -1,0 +1,10 @@
+[Unit]
+Description=Halcyon: daily honeypot digest (switch on with: honeypot-digest.sh enable)
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+AccuracySec=5min
+
+[Install]
+WantedBy=timers.target

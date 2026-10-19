@@ -5,11 +5,23 @@ use chrono::Local;
 use colored::*;
 use std::path::Path;
 
+/// Where the safety check keeps its logs. It runs as root, so this must be a root-owned folder: it used to be ~/logs of the user,
+/// and a symlink planted there by any program of that user made root write (or create files) anywhere. /var/log/halcyon is made
+/// by sysmode, or here; ~/logs points at it. Without root (nothing can be created in /var/log) it falls back to the user's own state folder.
+fn log_dir_path() -> String {
+    let sys = "/var/log/halcyon/safety_check";
+    if fs::create_dir_all(sys).is_ok() {
+        return sys.to_string();
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let own = format!("{}/.local/state/halcyon/safety_check", home);
+    fs::create_dir_all(&own).ok();
+    own
+}
+
 fn get_log_file_path() -> String {
-    let real_user = std::env::var("SUDO_USER").unwrap_or_else(|_| std::env::var("USER").unwrap_or_else(|_| "root".to_string()));
-    let real_home = if real_user == "root" { "/root".to_string() } else { format!("/home/{}", real_user) };
     let today = Local::now().format("%Y-%m-%d").to_string();
-    format!("{}/logs/safety_check/safety_check_{}.log", real_home, today)
+    format!("{}/safety_check_{}.log", log_dir_path(), today)
 }
 
 fn strip_ansi(s: &str) -> String {
@@ -85,7 +97,7 @@ fn main() {
 
     let real_user = std::env::var("SUDO_USER").unwrap_or_else(|_| std::env::var("USER").unwrap_or_else(|_| "root".to_string()));
     let real_home = if real_user == "root" { "/root".to_string() } else { format!("/home/{}", real_user) };
-    let log_dir = format!("{}/logs/safety_check", real_home);
+    let log_dir = log_dir_path();
 
     let start_time = Local::now();
     let header = format!("═══════════════════════════════════════════════\n Safety Check started — {}\n Running as: {}\n═══════════════════════════════════════════════", start_time.format("%Y-%m-%d %H:%M:%S"), real_user);

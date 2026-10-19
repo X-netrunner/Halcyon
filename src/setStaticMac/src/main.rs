@@ -32,6 +32,19 @@ fn run_cmd(cmd: &str) -> (String, String, i32) {
     (stdout, stderr, code)
 }
 
+fn run_args(prog: &str, args: &[&str]) -> (String, String, i32) {
+    // No shell: device names, UUIDs and SSID-derived values are passed as plain arguments, so a quote or `;` in one of them
+    // cannot become a command.
+    let output = match Command::new(prog).args(args).output() {
+        Ok(o) => o,
+        Err(e) => return ("".to_string(), e.to_string(), -1),
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let code = output.status.code().unwrap_or(-1);
+    (stdout, stderr, code)
+}
+
 struct WifiInfo {
     name: String,
     uuid: String,
@@ -85,7 +98,7 @@ fn get_active_wifi_info() -> Option<WifiInfo> {
     }
 
     let (stdout_ssid, _, code_ssid) =
-        run_cmd(&format!("nmcli -g 802-11-wireless.ssid connection show '{}'", active_uuid));
+        run_args("nmcli", &["-g", "802-11-wireless.ssid", "connection", "show", &active_uuid]);
     let ssid = if code_ssid == 0 && !stdout_ssid.is_empty() {
         stdout_ssid
     } else {
@@ -115,7 +128,7 @@ fn resolve_connection(conn_identifier: &str) -> Option<(String, String, String)>
                 && (name == conn_identifier || uuid == conn_identifier)
             {
                 let (stdout_ssid, _, code_ssid) =
-                    run_cmd(&format!("nmcli -g 802-11-wireless.ssid connection show '{}'", uuid));
+                    run_args("nmcli", &["-g", "802-11-wireless.ssid", "connection", "show", uuid]);
                 let ssid = if code_ssid == 0 && !stdout_ssid.is_empty() {
                     stdout_ssid
                 } else {
@@ -129,7 +142,7 @@ fn resolve_connection(conn_identifier: &str) -> Option<(String, String, String)>
 }
 
 fn get_permanent_mac(device: &str) -> Option<String> {
-    let (stdout, _, code) = run_cmd(&format!("ip link show {}", device));
+    let (stdout, _, code) = run_args("ip", &["link", "show", device]);
     if code != 0 {
         return None;
     }
@@ -145,7 +158,7 @@ fn get_permanent_mac(device: &str) -> Option<String> {
 }
 
 fn get_current_mac(device: &str) -> Option<String> {
-    let (stdout, _, code) = run_cmd(&format!("ip link show {}", device));
+    let (stdout, _, code) = run_args("ip", &["link", "show", device]);
     if code != 0 {
         return None;
     }
@@ -246,7 +259,7 @@ fn show_status() {
     let filepath = match find_iwd_config_file(ssid) {
         Some(p) => p,
         None => {
-            let (nm_mac, _, _) = run_cmd(&format!("nmcli -g 802-11-wireless.cloned-mac-address connection show '{}'", wifi_info.uuid));
+            let (nm_mac, _, _) = run_args("nmcli", &["-g", "802-11-wireless.cloned-mac-address", "connection", "show", &wifi_info.uuid]);
             let current_mac = get_current_mac(device).unwrap_or_else(|| "Unknown".to_string());
             let perm_mac = get_permanent_mac(device).unwrap_or_else(|| "Unknown".to_string());
             println!("{BOLD}Active Wi-Fi SSID:    {RESET} {GREEN}{}{RESET}", ssid);
@@ -532,9 +545,9 @@ fn main() {
                 "\nReconnecting to {GREEN}'{}'{RESET} to apply the MAC changes...",
                 target_ssid
             );
-            let _ = run_cmd(&format!("nmcli connection down '{}'", reconnect_uuid));
+            let _ = run_args("nmcli", &["connection", "down", &reconnect_uuid]);
             thread::sleep(Duration::from_secs(1));
-            let (_, err, code) = run_cmd(&format!("nmcli connection up '{}'", reconnect_uuid));
+            let (_, err, code) = run_args("nmcli", &["connection", "up", &reconnect_uuid]);
             if code != 0 {
                 println!("{RED}Error reconnecting to '{}': {}{RESET}", target_ssid, err);
                 println!("{YELLOW}Please reconnect manually using your network manager.{RESET}");

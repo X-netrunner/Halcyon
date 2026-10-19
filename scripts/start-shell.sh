@@ -88,6 +88,12 @@ export QSG_ATLAS_HEIGHT=1024
 say "using $qs ($("$qs" --version 2>&1 | head -n1)) on $WAYLAND_DISPLAY, QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}"
 [ "$name" = island ] && bash "$RICE/scripts/notif-guard.sh" 2>/dev/null
 
+# the log was only trimmed when the shell (re)started: a QML warning loop in a long session could grow it without limit.
+# Check every 10 minutes (the shell appends with >>, so truncating in place is safe). The lock fd is closed for this helper.
+( while sleep 600; do [ "$(stat -c %s "$log" 2>/dev/null || echo 0)" -gt 4194304 ] && : > "$log"; done ) 9>&- &
+trim_pid=$!
+trap 'kill "$trim_pid" 2>/dev/null' EXIT
+
 fails=0
 while :; do
   t0=$(date +%s)
