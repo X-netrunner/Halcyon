@@ -13,6 +13,10 @@ RestartSec=3
 RestartPreventExitStatus=78
 # gestures run brightnessctl / wpctl / playerctl, so PATH must include them (pipewire user session needs XDG_RUNTIME_DIR)
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Hardening (same set the Halcyon timer units already use). NoNewPrivileges is left off on purpose: helper scripts may need sudo/setuid tools.
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
 
 # Started from hyprland/execs.lua. Needs read access to /dev/input (be in the `input` group, then log in again).
 

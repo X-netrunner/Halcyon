@@ -86,8 +86,13 @@ ShellRoot {
         lockBg: "solid",           // solid | wallpaper : the lock screen's background is the plain theme colour, or the current wallpaper blurred (Lock.qml)
         lockBlur: 40,              // blur radius of that wallpaper (4 .. 64)
         lockTint: 0.55,            // how opaque the theme-colour sheet over the blurred wallpaper is (0 = wallpaper as it is .. 0.95); yours to set
+        lockWidgets: true,         // the lock screen shows battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
+        lockSwitch: true,          // the lock screen has a "Switch user" button (other logged-in users, or a login screen for someone else)
         limMode: "manual",         // manual | auto : Settings > Performance > Limits. auto = the RAM / CPU limits are learned from your own use (startup-view.py adapt-sample, every 5 min)
         resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
+        autoLowBat: false,         // true = switch to the Low resource preset when the charger is unplugged, and back when it is plugged in again (batCheck below)
+        preBatMode: "",            // the preset to go back to when the charger returns (set by batCheck; empty = nothing to restore)
+        focusQuiet: true,          // true = while a Focus work phase runs, the music bars (cava) stop and a video wallpaper (gslapper) is frozen
         perf: "high",              // low | medium | high : how much the tree view and constellations animate (and how many stars the picture gets)
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
         scrollLinger: 3000,        // ms a performance / media page opened by scrolling / swiping the bar stays after the pointer leaves (never shorter than pageClose)
@@ -230,6 +235,22 @@ ShellRoot {
         hy = h; hyCur = c
         hyprKick.restart()
     }
+    // Settings > Performance > Resource use > "Low preset on battery" (off by default): unplugging the charger switches to Low, plugging
+    // it in puts the preset you had back, but only if you did not pick another one in between. preBatMode is saved, so a restart
+    // while on battery still knows where to return to.
+    readonly property bool onBattery: stats.hasBat === true && stats.ac !== true && stats.charging !== true
+    function batCheck() {
+        if (!opt.autoLowBat || !statsSeen) return
+        if (onBattery) {
+            if (opt.resMode !== "low") { var prev = opt.resMode; applyResMode("low"); setOpt("preBatMode", prev) }
+        } else if (opt.preBatMode) {
+            var back = opt.preBatMode
+            if (opt.resMode === "low") applyResMode(back)
+            setOpt("preBatMode", "")
+        }
+    }
+    onOnBatteryChanged: batCheck()
+    onStatsSeenChanged: batCheck()
     function setHy(k, v) {
         var h = {}, c = {}
         for (var x in hy) h[x] = hy[x]
@@ -671,7 +692,7 @@ ShellRoot {
             }
         }
     }
-    Component.onCompleted: { volRead.running = true; startTapWatch() }
+    Component.onCompleted: { volRead.running = true; startTapWatch(); fxPause.running = true }     // fxPause: a crash during Focus must not leave the video wallpaper frozen
 
     // our own lock screen (replaces hyprlock): SUPER+L, power menu > Lock, `>lock`, scripts/lock.sh
     Lock {
@@ -689,6 +710,14 @@ ShellRoot {
         wallpaper: wallpaperLayer.currentPath
         blurRadius: root.opt.lockBlur !== undefined ? root.opt.lockBlur : 40
         tint: root.opt.lockTint !== undefined ? root.opt.lockTint : 0.55
+        widgets: root.opt.lockWidgets !== false
+        allowSwitch: root.opt.lockSwitch !== false
+        player: root.player
+        hasBat: root.stats.hasBat === true
+        batPct: Math.round(root.stats.bat || 0)
+        batCharging: root.stats.charging === true
+        ssid: root.net.ssid || ""
+        notifCount: notifs.history.length
     }
     // Login-screen mode (install.sh > "lock screen as login"): launch/halcyon-login.sh leaves a flag file before it starts
     // Hyprland, and the first thing the island does is take it and lock. So after boot the Halcyon lock screen IS the login
@@ -1099,7 +1128,7 @@ ShellRoot {
         saveT.restart()
     }
     Timer { id: saveT; interval: 300; onTriggered: root.writeSettings() }
-    Component.onDestruction: if (saveT.running) { saveT.stop(); writeSettings() }      // never lose a pending save when the island reloads
+    Component.onDestruction: { if (saveT.running) { saveT.stop(); writeSettings() }; Quickshell.execDetached(["pkill", "-CONT", "-x", "gslapper"]) }      // never lose a pending save when the island reloads
     function writeSettings() {
         if (!settingsLoaded) return
         Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && printf '%s\\n' \"$2\" > \"$1/settings.json\"", "sh", stateDir,
@@ -1406,6 +1435,10 @@ ShellRoot {
     property var focusState: ({ on: false })
     property double focusNow: Date.now() / 1000
     readonly property int focusLeft: !focusState.on ? 0 : (focusState.paused ? focusState.left : Math.max(0, Math.round(focusState.end - focusNow)))
+    // Focus work phase (not a Pomodoro break, not paused) with "Quiet visuals during Focus" on: the visualizer feeds and a video wallpaper rest
+    readonly property bool focusQuiet: opt.focusQuiet === true && focusState.on === true && focusState.paused !== true && focusState.phase !== "break"
+    Process { id: fxPause; property string sig: "-CONT"; command: ["pkill", sig, "-x", "gslapper"] }
+    onFocusQuietChanged: { fxPause.sig = focusQuiet ? "-STOP" : "-CONT"; fxPause.running = true }
     readonly property string focusText: {
         var s = focusLeft, m = Math.floor(s / 60), r = s % 60
         return (m < 10 ? "0" : "") + m + ":" + (r < 10 ? "0" : "") + r
@@ -1873,7 +1906,7 @@ ShellRoot {
     // visualizer feed, only runs while something is playing AND a surface showing it is visible (bar style Off has no bar: the
     // media page and the desktop widget are the only readers, and the widget has its own cava below)
     Process {
-        running: root.playing && !root.gaming && root.opt.viz !== "off" && !root.vizHold && (root.page === "media" || (root.page === "home" && root.opt.barStyle !== "off" && (win.shown || root.notchStyle || root.opt.barStyle === "custom")))
+        running: root.playing && !root.gaming && !root.focusQuiet && root.opt.viz !== "off" && !root.vizHold && (root.page === "media" || (root.page === "home" && root.opt.barStyle !== "off" && (win.shown || root.notchStyle || root.opt.barStyle === "custom")))
         command: ["cava", "-p", Quickshell.shellPath(root.opt.viz === "light" ? "cava-light.conf" : "cava.conf")]
         stdout: SplitParser {
             onRead: d => {
@@ -1887,7 +1920,7 @@ ShellRoot {
     // the desktop's audio visualizer widget has its own, finer cava (48 bars): started only while that widget exists and music plays
     property var cavaDesk: []
     Process {
-        running: root.playing && !root.gaming && root.opt.viz !== "off" && root.deskNeeds.viz
+        running: root.playing && !root.gaming && !root.focusQuiet && root.opt.viz !== "off" && root.deskNeeds.viz
         command: ["cava", "-p", Quickshell.shellPath(root.opt.viz === "light" ? "cava-desk-light.conf" : "cava-desk.conf")]
         stdout: SplitParser {
             onRead: d => {

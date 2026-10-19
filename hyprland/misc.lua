@@ -5,7 +5,7 @@ hl.config({
         font_family               = "Inter",
         force_default_wallpaper   = 0,
         disable_autoreload        = false,
-        vrr                       = 1,
+        vrr                       = 2,    -- 2 = only for fullscreen apps (1 = always: flicker on some laptop panels)
         mouse_move_enables_dpms   = true,
         key_press_enables_dpms    = true,
         always_follow_on_dnd      = true,

@@ -1,0 +1,11 @@
+[Unit]
+Description=Halcyon: one summary notification of what the honeypot saw in the last day
+
+[Service]
+Type=oneshot
+Nice=10
+ExecStart=%h/.config/Halcyon/scripts/honeypot-digest.sh
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes

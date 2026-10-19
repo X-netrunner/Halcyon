@@ -49,7 +49,11 @@ run_dossier() {
     else echo "  Dossier helper missing (install attacker-dossier or hx: ./install.sh)."; fi
 }
 SCRIPTS_DIR="${SCRIPTS_DIR:-$SYS_HOME/.config/Halcyon/sysmode}"
-LOGS_DIR="$SYS_HOME/logs"
+# Everything root writes (honeypot, IDS, sudo log, cowrie, tcpdump) goes to a ROOT-OWNED folder. It used to be ~/logs, a folder your
+# own account owns: any program running as you could replace it (or a file in it) with a symlink and make root append to, truncate
+# or create files anywhere (/etc/profile.d, /etc/udev/rules.d ...). /var/log/halcyon sits under root-owned folders only, so nobody
+# can swap a path component. ~/logs stays as a symlink to it, so the island, hx and your own habits still find the files.
+LOGS_DIR="/var/log/halcyon"
 AUDIT_LOG_DIR="$LOGS_DIR/audit"
 STEALTH_WORKSPACE="$SYS_HOME/Workspace/Stealth"
 SYSMODE_SYSCTL="/etc/sysctl.d/99-sysmode.conf"
@@ -124,6 +128,24 @@ on_ac_power() {
     return 0
 }
 
+# Create /var/log/halcyon (root-owned, readable by your group) and point ~/logs at it. Safe to run again.
+# An old real ~/logs folder is only RENAMED (to ~/logs.old-<date>): root never copies or moves files out of a folder you control.
+init_logs_dir() {
+    local grp legacy="$SYS_HOME/logs"
+    grp="$(id -gn "$SYS_USER" 2>/dev/null || echo root)"
+    if [[ -L "$LOGS_DIR" || ( -e "$LOGS_DIR" && ! -d "$LOGS_DIR" ) ]]; then rm -f -- "$LOGS_DIR"; fi
+    install -d -m 750 -o root -g "$grp" "$LOGS_DIR" || return 1
+    [[ -d "$SYS_HOME" ]] || return 0
+    if [[ -d "$legacy" && ! -L "$legacy" ]]; then
+        mv -T -- "$legacy" "$legacy.old-$(date +%Y%m%d-%H%M%S)" 2>/dev/null \
+            && echo "[*] Your old ~/logs folder was renamed (it is still yours); new logs go to $LOGS_DIR (~/logs points there)."
+    fi
+    if [[ ! -e "$legacy" || -L "$legacy" ]]; then
+        ln -sfn -- "$LOGS_DIR" "$legacy" 2>/dev/null && chown -h "$SYS_USER:$grp" "$legacy" 2>/dev/null || true
+    fi
+    return 0
+}
+
 # Start a daemon detached from this shell (it must outlive the console / terminal that ran sysmode), keep its output in
 # $LOGS_DIR/<name>.out instead of /dev/null, and say plainly if it died on start.
 #   start_bg <name> <pidfile> <command...>
@@ -135,7 +157,7 @@ daemon_running() { pgrep -x "$1" >/dev/null 2>&1 || pgrep -f "^python3? .*/$1\\.
 start_bg() {
     local name="$1" pidfile="$2"; shift 2
     local logf="$LOGS_DIR/$name.out" pid
-    mkdir -p "$LOGS_DIR"
+    init_logs_dir || true
     setsid nohup "$@" >>"$logf" 2>&1 </dev/null &
     pid=$!
     echo "$pid" > "$pidfile"
@@ -293,9 +315,8 @@ stop_tcpdump() {
 }
 
 ensure_logs() {
+    init_logs_dir
     mkdir -p "$AUDIT_LOG_DIR"
-    chown "$SYS_USER:$SYS_USER" "$LOGS_DIR"
-    chmod 700 "$LOGS_DIR"
     chown root:root "$AUDIT_LOG_DIR"
     chmod 700 "$AUDIT_LOG_DIR"
 
@@ -1687,10 +1708,20 @@ EOF
 
     # 3. RAM-backed Workspace (tmpfs)
     echo "[*] Setting up RAM-backed workspace at $STEALTH_WORKSPACE..."
-    mkdir -p "$STEALTH_WORKSPACE"
-    chown "$SYS_USER:$SYS_USER" "$STEALTH_WORKSPACE"
-    if ! mountpoint -q "$STEALTH_WORKSPACE"; then
-        mount -t tmpfs -o "size=2G,uid=${USER_UID},gid=${USER_GID}" tmpfs "$STEALTH_WORKSPACE"
+    # ~/Workspace is a folder you own: a symlink there (planted by any program of yours) must never lead root's chown or mount
+    # somewhere else (chown of /etc, a tmpfs over /usr/local/bin ...). Refuse unless the real path is exactly where it should be.
+    if [[ -L "$SYS_HOME/Workspace" || -L "$STEALTH_WORKSPACE" ]]; then
+        echo "[!] $SYS_HOME/Workspace or $STEALTH_WORKSPACE is a symbolic link: the RAM workspace is skipped (remove the link to get it)."
+    else
+        mkdir -p "$STEALTH_WORKSPACE"
+        if [[ "$(readlink -f -- "$STEALTH_WORKSPACE")" == "$SYS_HOME/Workspace/Stealth" ]]; then
+            chown -h "$SYS_USER:$SYS_USER" "$STEALTH_WORKSPACE"
+            if ! mountpoint -q "$STEALTH_WORKSPACE"; then
+                mount -t tmpfs -o "size=2G,uid=${USER_UID},gid=${USER_GID}" tmpfs "$STEALTH_WORKSPACE"
+            fi
+        else
+            echo "[!] $STEALTH_WORKSPACE does not resolve to itself: the RAM workspace is skipped."
+        fi
     fi
 
     # 4. Trigger High Performance Profile (battery-aware; on battery leave
@@ -1970,10 +2001,9 @@ start_stealth_daemons() {
         fi
         echo "[*] Starting tcpdump MAC scanner logging on interface $dump_iface..."
         stop_tcpdump
-        mkdir -p "$LOGS_DIR"
+        init_logs_dir
         /usr/bin/tcpdump -i "$dump_iface" -e -n -l 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0 and (port 21 or port 22 or port 23 or port 25 or port 80 or port 3306 or port 3389 or port 445 or port 8080)' >> "$LOGS_DIR/attacker-mac-scans.log" 2>&1 &
         echo $! > /var/run/sysmode-tcpdump.pid
-        chown "$SYS_USER:$SYS_USER" "$LOGS_DIR/attacker-mac-scans.log" || true
     else
         echo "[!] WARNING: tcpdump is not installed! Cannot start MAC scan logging."
     fi

@@ -8,13 +8,23 @@ local ipc = "quickshell ipc -p " .. home .. "/.config/Halcyon/quickshell/island 
 -- quickshell/island/Binds.js (that is what the cheatsheet draws).
 local user = { keys = {}, custom = {} }
 do
-    local f = loadfile(home .. "/.local/state/island/binds.lua")
+    local path = home .. "/.local/state/island/binds.lua"
+    local f = loadfile(path)
+    local bad = false
     if f then
         local ok, t = pcall(f)
         if ok and type(t) == "table" then
             user.keys = type(t.keys) == "table" and t.keys or {}
             user.custom = type(t.custom) == "table" and t.custom or {}
+        else
+            bad = true
         end
+    else
+        local h = io.open(path, "r")      -- the file is there but does not parse (no file = nothing to load, not an error)
+        if h then h:close(); bad = true end
+    end
+    if bad then    -- do not lose the shortcuts silently: say so (fix them in the cheatsheet, SUPER + /)
+        pcall(hl.exec_cmd, "hyprctl notify 3 12000 'rgb(ff6b6b)' 'Halcyon: your shortcuts file could not be read, the default shortcuts are used. Open the cheatsheet (SUPER + /) and save them again.' >/dev/null 2>&1")
     end
 end
 local function bind(id, default, action, opts)

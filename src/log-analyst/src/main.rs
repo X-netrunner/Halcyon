@@ -52,6 +52,7 @@ fn sys_user() -> String {
     std::env::var("LOGNAME").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| "root".to_string())
 }
 
+#[allow(dead_code)] // the logs moved to /var/log/halcyon; kept for the SYS_HOME setting
 fn sys_home() -> String {
     if let Ok(content) = fs::read_to_string("/etc/sysmode.conf") {
         for line in content.lines() {
@@ -193,13 +194,15 @@ fn log_alert(alert_log: &str, signature_name: &str, raw_log: &str) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "-h" || a == "--help") {
-        println!("log-analyst - Lightweight Signature-Matching IDS Daemon\n\nTails ~/logs/recon-attempts.log and outputs matching alerts to ~/logs/ids-alerts.log.\n\nUsage: log-analyst [OPTIONS]\n\nOptions:\n  -h, --help    Show this help message and exit");
+        println!("log-analyst - Lightweight Signature-Matching IDS Daemon\n\nTails /var/log/halcyon/recon-attempts.log and outputs matching alerts to /var/log/halcyon/ids-alerts.log (~/logs points there).\n\nUsage: log-analyst [OPTIONS]\n\nOptions:\n  -h, --help    Show this help message and exit");
         return;
     }
 
-    let home = sys_home();
-    let log_file_path = format!("{}/logs/recon-attempts.log", home);
-    let alert_log_path = format!("{}/logs/ids-alerts.log", home);
+    // root-owned folder made by sysmode (it used to be ~/logs, which the user controls: a symlink there made root write anywhere)
+    let logs = "/var/log/halcyon";
+    let _ = fs::create_dir_all(logs);
+    let log_file_path = format!("{}/recon-attempts.log", logs);
+    let alert_log_path = format!("{}/ids-alerts.log", logs);
 
     let signatures = [
         (

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Io
 import Quickshell.Services.Pam
 
 // Halcyon's own lock screen (replaces hyprlock). A real Wayland session lock (ext-session-lock): the compositor itself
@@ -25,6 +26,49 @@ Scope {
     property string name: ""            // display name (profile name or login)
     property string avatarPath: ""
     property bool locked: false
+    // ---- extras on the lock screen (all fed by shell.qml; "Lock screen widgets" / "Switch user button" in Settings > Power & lock)
+    property bool widgets: true           // battery / Wi-Fi / notification count (a COUNT only, never the text) and the media card
+    property bool allowSwitch: true       // the "Switch user" button
+    property var player: null             // the MPRIS player the island already follows (null = nothing playing)
+    property bool hasBat: false
+    property int batPct: 0
+    property bool batCharging: false
+    property string ssid: ""
+    property int notifCount: 0
+    property var sessions: []             // other sessions on this seat: [{ id, user, tty }] (scripts/switch-user.sh list)
+    property bool switchOpen: false
+    readonly property string switchScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/switch-user.sh"
+    function mediaAct(a) {
+        var p = player
+        if (!p) return
+        if (a === "prev") { if (p.canGoPrevious) p.previous() }
+        else if (a === "next") { if (p.canGoNext) p.next() }
+        else if (p.canTogglePlaying) p.togglePlaying()
+    }
+    Process {
+        id: sessList
+        command: [root.switchScript, "list"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var out = [], L = text.split("\n")
+                for (var i = 0; i < L.length; i++) {
+                    var f = L[i].split("\t")
+                    if (f.length >= 2 && f[0] !== "") out.push({ id: f[0], user: f[1], tty: f.length > 2 ? f[2] : "" })
+                }
+                root.sessions = out
+            }
+        }
+    }
+    Process {
+        id: swRun
+        property var args: ["greeter"]
+        command: [root.switchScript].concat(args)
+    }
+    function switchTo(id) {       // id "" = a login screen for someone else
+        switchOpen = false
+        swRun.args = id === "" ? ["greeter"] : ["to", id]
+        swRun.running = true
+    }
 
     // background: "solid" = the theme colour (pal.bg); "wallpaper" = the current wallpaper, blurred, with a sheet of the
     // theme colour over it. The sheet's opacity (tint) is the user's: 0 shows the wallpaper as it is.
@@ -106,7 +150,7 @@ Scope {
         // a PAM error is not a guess, so it does not count as a miss
         onError: err => { root.busy = false; root.buffer = ""; root.failure = "Could not check the password"; root.shakeTick++ }
     }
-    onLockedChanged: if (!locked) { buffer = ""; failure = ""; busy = false; pam.abort() }
+    onLockedChanged: { switchOpen = false; if (!locked) { buffer = ""; failure = ""; busy = false; pam.abort() } }
 
     SystemClock { id: clock; precision: SystemClock.Seconds }
 
@@ -421,6 +465,177 @@ Scope {
                     color: root.failure !== "" && !root.busy ? root.pal.bad : root.pal.muted
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tCap + 1
+                }
+            }
+
+            // ---- status row, top right: battery, Wi-Fi, how many notifications (never what they say)
+            Row {
+                visible: root.widgets
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.topMargin: 28
+                anchors.rightMargin: 32
+                spacing: 20
+                opacity: surf.appear
+                Text {
+                    visible: root.hasBat
+                    text: root.batPct + "%" + (root.batCharging ? " · charging" : "")
+                    color: root.batPct <= 15 && !root.batCharging ? root.pal.bad : root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tCap + 2
+                }
+                Text {
+                    visible: root.ssid !== ""
+                    text: root.ssid
+                    color: root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tCap + 2
+                }
+                Text {
+                    visible: root.notifCount > 0
+                    text: root.notifCount + (root.notifCount === 1 ? " notification" : " notifications")
+                    color: root.pal.accent
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tCap + 2
+                }
+            }
+
+            // ---- media card, bottom centre: what is playing + previous / play-pause / next
+            Rectangle {
+                id: mediaCard
+                visible: root.widgets && root.player !== null && root.player !== undefined && (root.player.trackTitle || "") !== ""
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 64
+                width: 380; height: 64; radius: 18
+                color: Qt.alpha(root.pal.surface, 0.8)
+                border.width: 1
+                border.color: root.pal.line
+                opacity: surf.appear
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 18
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 160
+                    spacing: 2
+                    Text {
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: root.player ? (root.player.trackTitle || "") : ""
+                        color: root.pal.text
+                        font.family: root.pal.uiFont
+                        font.pixelSize: root.pal.tBody
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: root.player ? (root.player.trackArtist || "") : ""
+                        color: root.pal.muted
+                        font.family: root.pal.uiFont
+                        font.pixelSize: root.pal.tCap + 1
+                    }
+                }
+                Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Repeater {
+                        model: [ { t: "‹", a: "prev" }, { t: (root.player && root.player.isPlaying) ? "II" : "▶", a: "toggle" }, { t: "›", a: "next" } ]
+                        delegate: Rectangle {
+                            width: 38; height: 38; radius: 19
+                            color: mediaMa.containsMouse ? Qt.alpha(root.pal.accent, 0.25) : "transparent"
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.t
+                                color: root.pal.text
+                                font.family: root.pal.uiFont
+                                font.pixelSize: modelData.a === "toggle" ? root.pal.tBody : root.pal.tTitle + 4
+                            }
+                            MouseArea { id: mediaMa; anchors.fill: parent; hoverEnabled: true; onClicked: root.mediaAct(modelData.a) }
+                        }
+                    }
+                }
+            }
+
+            // ---- Switch user, bottom left: other logged-in users (scripts/switch-user.sh) and a login screen for someone else.
+            // This screen stays locked while you are away; coming back to it needs this account's password again.
+            Item {
+                visible: root.allowSwitch
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: 32
+                anchors.bottomMargin: 30
+                width: swCol.width
+                height: swCol.height
+                opacity: surf.appear
+                Column {
+                    id: swCol
+                    spacing: 8
+                    Rectangle {
+                        visible: root.switchOpen
+                        width: 230
+                        height: swList.height + 16
+                        radius: 14
+                        color: Qt.alpha(root.pal.surface, 0.92)
+                        border.width: 1
+                        border.color: root.pal.line
+                        Column {
+                            id: swList
+                            x: 8; y: 8
+                            width: parent.width - 16
+                            spacing: 2
+                            Repeater {
+                                model: root.sessions
+                                delegate: Rectangle {
+                                    width: swList.width; height: 34; radius: 10
+                                    color: swMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : "transparent"
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        x: 10
+                                        text: modelData.user + (modelData.tty !== "" ? "  ·  " + modelData.tty : "")
+                                        color: root.pal.text
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                    }
+                                    MouseArea { id: swMa; anchors.fill: parent; hoverEnabled: true; onClicked: root.switchTo(modelData.id) }
+                                }
+                            }
+                            Rectangle {
+                                width: swList.width; height: 34; radius: 10
+                                color: swNewMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : "transparent"
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: 10
+                                    text: "Log in as someone else"
+                                    color: root.pal.muted
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tBody
+                                }
+                                MouseArea { id: swNewMa; anchors.fill: parent; hoverEnabled: true; onClicked: root.switchTo("") }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        width: 124; height: 34; radius: 17
+                        color: swChipMa.containsMouse || root.switchOpen ? Qt.alpha(root.pal.accent, 0.22) : Qt.alpha(root.pal.surface, 0.7)
+                        border.width: 1
+                        border.color: root.pal.line
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Switch user"
+                            color: root.pal.text
+                            font.family: root.pal.uiFont
+                            font.pixelSize: root.pal.tCap + 1
+                        }
+                        MouseArea {
+                            id: swChipMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: { root.switchOpen = !root.switchOpen; if (root.switchOpen) sessList.running = true }
+                        }
+                    }
                 }
             }
 

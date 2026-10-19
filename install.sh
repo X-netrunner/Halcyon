@@ -1426,7 +1426,9 @@ if [[ "$PACKAGES" == "true" ]]; then
             if [[ "$DISTRO_FAMILY" == "arch" ]]; then
                 install_pkgs ollama
             else
-                try run_cmd "Installing Ollama via official installer" sh -c "curl -fsSL https://ollama.com/install.sh | sh"
+                # (downloaded to a file first and run from there: a connection that drops half way never runs half a script as root.
+                # Read it first if you like: https://ollama.com/install.sh)
+                try run_cmd "Installing Ollama via official installer" sh -c 'f=$(mktemp) && curl -fsSL -o "$f" https://ollama.com/install.sh && sh "$f"; rc=$?; rm -f "$f"; exit $rc'
             fi
             ollama_bin="$(run_as_user which ollama 2>/dev/null || which ollama 2>/dev/null || echo "")"
         fi
@@ -1511,7 +1513,7 @@ log_step "Step 7: Copying Halcyon to ~/.config/Halcyon"
 
 run_as_user_cmd "Creating the config, state and cache folders" mkdir -p \
     "$TARGET_HOME/.config" "$TARGET_HOME/.config/systemd/user" "$TARGET_HOME/.local/state/island" \
-    "$TARGET_HOME/.cache/island" "$TARGET_HOME/Pictures/Wallpapers" "$TARGET_HOME/Pictures/Screenshots" "$TARGET_HOME/logs" \
+    "$TARGET_HOME/.cache/island" "$TARGET_HOME/Pictures/Wallpapers" "$TARGET_HOME/Pictures/Screenshots" \
     || die "Could not create folders in $TARGET_HOME"
 
 KEEP_FILES=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf notes.conf backup-exclude.conf birthdays.txt holidays.txt)     # yours: never overwritten by the copy
@@ -1997,7 +1999,7 @@ if [[ "$SAFETY" == "true" ]]; then
     fi
     if [[ "$DRY_RUN" == "true" ]] || [[ -f "$BIN_DIR/safety-check" ]]; then
         try run_cmd "Installing /usr/local/bin/safety-check (root-owned)" as_root install -Dm755 -o root -g root "$BIN_DIR/safety-check" /usr/local/bin/safety-check
-        log_info "Run it from Settings > Backup > Safety check, or in a terminal:  sudo safety-check   (logs: ~/logs/safety_check/)"
+        log_info "Run it from Settings > Backup > Safety check, or in a terminal:  sudo safety-check   (logs: /var/log/halcyon/safety_check/)"
     else
         warn_later "safety-check was not built, so it is not installed (its Settings entry stays greyed out). Retry: ./install.sh --safety-check"
     fi

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # halcyon-doctor.sh: why does Halcyon not look / work right?  Read-only: it changes nothing,
-#   except with --fix, which offers to install the optional tools it found missing (it asks first, and uses your package manager).
+#   except with --fix, which offers to repair what it found (missing optional tools, a runaway gvfsd-metadata, scripts that lost their
+#   executable bit). It asks before every change.
 #   - are Hyprland, Quickshell and their Qt modules installed, and is the Hyprland new enough (Lua config: 0.55+)?
 #   - does Hyprland accept the Halcyon config, and is it the config that is really loaded?
 #   - is the island (Quickshell) running? if not: the last lines of its log, and how to start it by hand
@@ -14,6 +15,7 @@ warn() { printf '  %s!%s %s\n' "$Y" "$N" "$*"; }
 bad()  { printf '  %s✘%s %s\n' "$R" "$N" "$*"; }
 hdr()  { printf '\n%s%s%s\n' "$B" "$*" "$N"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+ask()  { printf '    Fix it now? [y/N] '; read -r _ans; case "$_ans" in y|Y|yes|Yes) return 0 ;; *) echo "    skipped"; return 1 ;; esac; }
 
 if command -v apt-get >/dev/null 2>&1 && ! command -v pacman >/dev/null 2>&1; then
   PKG_INSTALL="sudo apt install"
@@ -149,6 +151,9 @@ if [ -n "$gvfs_pid" ]; then
   gvfs_cpu=$(ps -p "$gvfs_pid" -o %cpu= 2>/dev/null | tr -d ' ' | cut -d. -f1)
   if [ -n "$gvfs_cpu" ] && [ "$gvfs_cpu" -gt 50 ]; then
     bad "gvfsd-metadata (PID $gvfs_pid) is consuming ${gvfs_cpu}% CPU! Corrupted GVFS metadata loop (fix: pkill -x gvfsd-metadata; rm -f ~/.local/share/gvfs-metadata/home*)"
+    if [ "$FIX" = 1 ] && ask; then
+      pkill -x gvfsd-metadata; rm -f "$HOME"/.local/share/gvfs-metadata/home* && ok "gvfs metadata reset (folder views / emblems you set in the file manager are forgotten)"
+    fi
   else
     ok "gvfsd-metadata healthy"
   fi
@@ -168,6 +173,21 @@ if [ "$avail_mb" -gt 0 ] && [ "$avail_mb" -lt 1024 ]; then
 else
   ok "available RAM: ${avail_mb} MB"
 fi
+echo
+
+hdr "Files & permissions"
+nonexec=()
+for f in "$RICE"/scripts/*.sh "$RICE"/launch/*.sh "$RICE/sysmode/sysmode" "$RICE/scripts/halcyon-tune"; do
+  [ -f "$f" ] && [ ! -x "$f" ] && nonexec+=("$f")
+done
+if [ "${#nonexec[@]}" -eq 0 ]; then ok "scripts are executable"
+else
+  warn "${#nonexec[@]} script(s) are not executable (key bindings and the island run them directly): ${nonexec[*]##*/}"
+  if [ "$FIX" = 1 ] && ask; then chmod +x "${nonexec[@]}" && ok "made them executable"; fi
+fi
+for b in hx hal power-manager touchpad-gestures; do
+  [ -x "$RICE/bin/$b" ] || warn "bin/$b is not built (./install.sh builds it; some features fall back to slower shell / Python code or stay off until then)"
+done
 echo
 
 hdr "Optional tools (a missing one only switches its own feature off)"
