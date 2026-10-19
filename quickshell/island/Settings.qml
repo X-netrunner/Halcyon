@@ -597,6 +597,8 @@ Scope {
         { id: "wallpaper", title: "Wallpaper", section: "Appearance", items: [
             { type: "custom", name: "wallClock" },
             { type: "custom", name: "wallpaper" },
+            { type: "seg", key: "opt:wpSource", label: "Source", desc: "Local: only your folder. Online: a fresh picture from Wallhaven (safe-for-work) in the category below, cached on disk. Mixed: either one. No network = your folder.", opts: [o("local", "Local"), o("online", "Online"), o("mixed", "Mixed")] },
+            { type: "seg", key: "opt:wpCat", label: "Online category", desc: "What \"Next wallpaper\" and the timer fetch. Anime = characters, Anime art = anime-style scenery. Random picks a category each time.", opts: [o("nature", "Nature"), o("movies", "Movies"), o("anime", "Anime"), o("anime-art", "Anime art"), o("space", "Space"), o("city", "City"), o("minimal", "Minimal"), o("cars", "Cars"), o("random", "Random")], when: "opt:wpSource=online|mixed" },
             { type: "seg", key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] }
         ] },
         { id: "desktop", title: "Desktop builder", section: "Appearance", items: [
@@ -613,6 +615,7 @@ Scope {
             { type: "toggle", key: "blur", label: "Blur" },
             { type: "slider", key: "hy:blurSize", def: 8, label: "Blur strength", min: 1, max: 16, step: 1, when: "blur=true" },
             { type: "slider", adv: true, key: "hy:blurPasses", def: 2, label: "Blur quality", desc: "More passes look smoother and cost more GPU", min: 1, max: 5, step: 1, when: "blur=true" },
+            { type: "toggle", adv: true, key: "hy:resizeAnim", label: "Animate window resizing", desc: "Off: a window follows the pointer at once while you drag its edge (lighter with blur on). The Low resource preset turns it off" },
             { type: "toggle", key: "hy:dimInactive", label: "Dim unfocused windows" },
             { type: "slider", key: "hy:dimStrength", def: 0.3, label: "Dim amount", min: 0, max: 0.8, step: 0.05, scale: 100, unit: " %", when: "hy:dimInactive=true|1" },
             { type: "toggle", key: "shadows", label: "Shadows" },
@@ -1093,10 +1096,13 @@ Scope {
     Component {
         id: cWallpaper
         ColumnLayout {
+            id: wpCol
             width: parent ? parent.width : 0
             spacing: 12
+            readonly property bool onlineOnly: root.opt.wpSource === "online"      // Online: the folder tools step out of the way
             RowLayout {
                 Layout.fillWidth: true
+                visible: !wpCol.onlineOnly
                 spacing: 14
                 Text { text: String.fromCodePoint(0xF024B); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 16 }
                 Text {
@@ -1112,15 +1118,15 @@ Scope {
                 spacing: 12
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF03E); label: "Gallery (Cascade, Carousel & Grid)"; onClicked: root.galleryOpen = true }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0976); label: "Next wallpaper"; onClicked: root.action("wallpaper") }
-                ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0770); label: "Open folder"; onClicked: root.wpAct("open") }
-                ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0415); label: "Add wallpapers…"; onClicked: root.wpAct("add") }
-                ActionChip { pal: root.pal; label: "Change folder…"; onClicked: root.wpAct("choose-dir") }
-                ActionChip { pal: root.pal; label: "Default folder"; doneLabel: "Done"; onClicked: root.wpAct("reset-dir") }
+                ActionChip { visible: !wpCol.onlineOnly; pal: root.pal; glyph: String.fromCodePoint(0xF0770); label: "Open folder"; onClicked: root.wpAct("open") }
+                ActionChip { visible: !wpCol.onlineOnly; pal: root.pal; glyph: String.fromCodePoint(0xF0415); label: "Add wallpapers…"; onClicked: root.wpAct("add") }
+                ActionChip { visible: !wpCol.onlineOnly; pal: root.pal; label: "Change folder…"; onClicked: root.wpAct("choose-dir") }
+                ActionChip { visible: !wpCol.onlineOnly; pal: root.pal; label: "Default folder"; doneLabel: "Done"; onClicked: root.wpAct("reset-dir") }
             }
             Flickable {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 92
-                visible: root.wp.files && root.wp.files.length > 0
+                visible: !wpCol.onlineOnly && root.wp.files && root.wp.files.length > 0
                 contentWidth: thumbRow.width
                 contentHeight: height
                 clip: true
@@ -1161,7 +1167,14 @@ Scope {
             }
             Text {
                 Layout.fillWidth: true
+                visible: !wpCol.onlineOnly
                 text: root.wp.files && root.wp.files.length > 0 ? "Click one to use it. Drop more images into the folder (or Add wallpapers) and they show up here." : "No images in that folder yet. Use Add wallpapers, or open the folder and drop .jpg / .png / .webp files in."
+                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: wpCol.onlineOnly
+                text: "Online: Next wallpaper fetches a new " + (root.opt.wpCat || "nature") + " picture. Switch Source to Local or Mixed to use your own folder again."
                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
             }
         }

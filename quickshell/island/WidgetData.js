@@ -216,14 +216,15 @@ function fileOf(type) { return files[type] || "WText.qml" }
 //   pad      room between the surface and the content in px, -1 = automatic
 //   tone     theme | second | custom : the colour of lit parts (accent)
 //   color    #rrggbb for tone = custom
-//   textTone theme | light | dark | custom   ;  textColor  #rrggbb
+//   textTone theme | accent | second | split | light | dark | custom   ;  (accent / second = the wallpaper colour as text, split = values in the accent, labels in the second colour)  textColor  #rrggbb
 //   depth    0 .. 1 : Colour depth. How much of the wallpaper accent goes into the box, the quiet text, the bars and the hairline
 //   contrast 0 .. 1 : Readability. Lifts the lit colour a little, brightens quiet text and outlines every letter (never a box: "No box" stays see-through)
 //   match    true: everything (lit colour, text, box tint) follows the wallpaper accent, whatever tone / textTone say
 //   font     ui | mono | serif
 //   fs       0.7 .. 1.6 : text size
+//   halo     a soft dark glow behind the words of box-less widgets (readability on a busy wallpaper)
 //   border   a hairline around it     shadow  a soft shadow
-var lookDefaults = { surface: "glass", op: 0.65, radius: -1, pad: -1, tone: "theme", color: "#9aa9d4", textTone: "theme", textColor: "#ffffff", font: "ui", fs: 1, border: true, shadow: true, contrast: 0.6, depth: 0.5, match: false }
+var lookDefaults = { surface: "glass", op: 0.65, radius: -1, pad: -1, tone: "theme", color: "#9aa9d4", textTone: "theme", textColor: "#ffffff", font: "ui", fs: 1, border: true, shadow: true, contrast: 0.6, depth: 0.5, match: false, halo: true }
 var surfaces = [["glass", "Frosted glass"], ["solid", "Solid"], ["clear", "No box"], ["outline", "Outline"], ["pill", "Pill"]]
 var tones = [["theme", "Wallpaper accent"], ["second", "Second colour"], ["custom", "My colour"]]
 var swatches = ["#ffffff", "#e6e8ee", "#b9bdc8", "#9aa9d4", "#7ec8e3", "#c2add8", "#e58a8a", "#f5a623"]
@@ -254,7 +255,7 @@ function look(l) {
     if (l && typeof l === "object") for (var x in l) if (x in lookDefaults) o[x] = l[x]
     if (["glass", "solid", "clear", "outline", "pill"].indexOf(o.surface) < 0) o.surface = "glass"
     if (["theme", "second", "custom"].indexOf(o.tone) < 0) o.tone = "theme"
-    if (["theme", "light", "dark", "custom"].indexOf(o.textTone) < 0) o.textTone = "theme"
+    if (["theme", "light", "dark", "custom", "accent", "second", "split"].indexOf(o.textTone) < 0) o.textTone = "theme"
     o.contrast = clamp(num(o.contrast, 0.6), 0, 1)
     o.depth = clamp(num(o.depth, 0.5), 0, 1)
     if (o.font !== "mono" && o.font !== "serif") o.font = "ui"
@@ -265,6 +266,7 @@ function look(l) {
     o.match = o.match === true
     o.border = o.border !== false
     o.shadow = o.shadow !== false
+    o.halo = o.halo !== false
     if (!/^#[0-9a-fA-F]{6}$/.test(String(o.color))) o.color = lookDefaults.color
     if (!/^#[0-9a-fA-F]{6}$/.test(String(o.textColor))) o.textColor = lookDefaults.textColor
     return o

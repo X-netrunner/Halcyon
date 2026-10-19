@@ -74,12 +74,14 @@ fi
 
 # Quickshell links jemalloc. Without tuning, jemalloc retains hundreds of megabytes across multi-core arenas.
 # Restrict to 2 arenas and immediately purge dirty/muzzy pages back to the kernel.
-export MALLOC_CONF="narenas:2,dirty_decay_ms:0,muzzy_decay_ms:0,background_thread:true"
+# (decay of 0 returned pages on every free = constant madvise calls and page faults; a short delay keeps most of the RAM saving
+#  for far less CPU. Override from the environment to A/B test:  HALCYON_JE_DIRTY_MS / HALCYON_JE_MUZZY_MS)
+export MALLOC_CONF="narenas:2,dirty_decay_ms:${HALCYON_JE_DIRTY_MS:-1000},muzzy_decay_ms:${HALCYON_JE_MUZZY_MS:-3000},background_thread:true"
 # Also tune glibc malloc (for Qt/driver allocations), QML V4 JS GC threshold, and QtQuick RHI atlas size:
-export MALLOC_TRIM_THRESHOLD_=65536
-export MALLOC_MMAP_THRESHOLD_=65536
+export MALLOC_TRIM_THRESHOLD_=131072       # same value as hyprland/execs.lua (they used to disagree)
+# (no MALLOC_MMAP_THRESHOLD_: forcing 64 KB allocations into their own mmap costs a syscall + page faults each time;
+#  QV4_GC_MAX_ALLOC is not a Qt variable and did nothing)
 export MALLOC_ARENA_MAX=2
-export QV4_GC_MAX_ALLOC=16777216
 export QSG_ATLAS_WIDTH=1024
 export QSG_ATLAS_HEIGHT=1024
 

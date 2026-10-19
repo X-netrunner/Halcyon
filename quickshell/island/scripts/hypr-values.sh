@@ -39,4 +39,5 @@ get naturalScroll    input:touchpad:natural_scroll
 get tapToClick       input:touchpad:tap_to_click
 get disableTyping    input:touchpad:disable_while_typing
 get focusOnActivate  misc:focus_on_activate
+get resizeAnim       misc:animate_manual_resizes
 ( IFS=,; printf '{%s}\n' "${out[*]}" )

@@ -132,6 +132,20 @@ fn gesture_state_path() -> PathBuf {
     PathBuf::from(dir).join("halcyon-gesture.json")
 }
 
+/// JSON string escape: the action name comes from gestures.conf, so a quote or backslash must not break the file.
+fn json_esc(s: &str) -> String {
+    let mut o = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            c if (c as u32) < 0x20 => o.push(' '),
+            c => o.push(c),
+        }
+    }
+    o
+}
+
 /// Streams live 3-finger / 4-finger normalized displacement & pinch scale to $XDG_RUNTIME_DIR/halcyon-gesture.json
 /// so Quickshell overlays (Overview tree, Launcher, Calendar, Notifications) follow the user's fingers 1:1 in real time.
 fn write_gesture_state(phase: &str, fingers: usize, dx: f32, dy: f32, scale: f32, dir: &str, action: &str) {
@@ -144,8 +158,8 @@ fn write_gesture_state(phase: &str, fingers: usize, dx: f32, dy: f32, scale: f32
         dx.clamp(-1.5, 1.5),
         dy.clamp(-1.5, 1.5),
         scale.clamp(0.25, 2.5),
-        dir,
-        action
+        json_esc(dir),
+        json_esc(action)
     );
     if fs::write(&tmp, payload).is_ok() {
         let _ = fs::rename(&tmp, &p);

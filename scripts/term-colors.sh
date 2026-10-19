@@ -21,6 +21,13 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -f "$pal" ] || exit 0
+# the accent drift runs every few seconds: with no terminal open there is nothing to repaint, so stop before doing any work
+# (no forks: a glob and a test)
+if [ "$drift" = 1 ]; then
+  open=0
+  for t in /dev/pts/[0-9]*; do [ -O "$t" ] && { open=1; break; }; done
+  [ "$open" = 1 ] || exit 0
+fi
 # GTK apps (Thunar ...) and the app themes (Starship, btop, yazi, Spotify, Discord) follow the same palette
 # (scripts/gtk-theme.sh, scripts/app-themes.sh); not on every accent-drift tick
 if [ "$drift" = 0 ] && [ "$exp_only" = 0 ]; then
@@ -126,6 +133,9 @@ fi
 [ "$exp_only" = 1 ] && exit 0
 
 # ---- 1. colour files (each terminal's main config includes its file; install.sh adds the include once)
+# (not on an accent-drift tick: the files keep the wallpaper's colours, new terminals start with those and the next drift tick
+#  repaints them, and five files are not rewritten every few seconds)
+if [ "$drift" = 0 ]; then
 mkdir -p "$HOME/.config/foot" "$HOME/.config/kitty" "$HOME/.config/alacritty" "$HOME/.config/ghostty" "$HOME/.config/wezterm"
 # foot >= 1.24 renamed [colors] to [colors-dark] (and newer builds reject [colors]); older foot only knows [colors]
 foot_sec="colors"
@@ -174,6 +184,8 @@ fi
   printf "  brights = {"; for i in 0 1 2 3 4 5 6 7; do printf "'%s'," "${colors[$((i+8))]}"; done; echo "},"
   echo "}"
 } > "$HOME/.config/wezterm/halcyon-colors.lua"
+
+fi
 
 # ---- 2. repaint the terminals that are open now: OSC 10 fg, 11 bg, 12 cursor, 4;n palette entries
 seq_osc() {

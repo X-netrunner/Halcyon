@@ -724,6 +724,19 @@ impl Input {
 // The daemon
 // ---------------------------------------------------------------------------------------------
 
+/// The integer of a Hyprland `j/getoption` reply, e.g. `{"option": "animations:enabled", "int": 1, ...}`.
+/// Newer Hyprland builds answer on / off options with `"bool": true|false` instead of `"int": 1|0`; both give 1 / 0.
+fn json_int(j: &str) -> Option<i64> {
+    if let Some(i) = j.find("\"int\"") {
+        let r = j[i + 5..].trim_start().strip_prefix(':')?.trim_start();
+        let end = r.find(|c: char| !(c.is_ascii_digit() || c == '-')).unwrap_or(r.len());
+        return r[..end].parse().ok();
+    }
+    let i = j.find("\"bool\"")?;
+    let r = j[i + 6..].trim_start().strip_prefix(':')?.trim_start();
+    if r.starts_with("true") { Some(1) } else if r.starts_with("false") { Some(0) } else { None }
+}
+
 struct Daemon {
     mode: Option<PowerMode>,
     idle_streak: u32,
@@ -893,13 +906,59 @@ impl Daemon {
         }
     }
 
+    /// Where the effect settings from BEFORE gaming mode are kept (in the runtime dir, so they survive a daemon crash).
+    fn gaming_saved_path(&self) -> String {
+        format!("{}.gaming", self.state_path)
+    }
+
+    fn option_int(&mut self, name: &str) -> i64 {
+        self.hypr.query(&format!("j/getoption {name}")).and_then(|j| json_int(&j)).unwrap_or(-1)
+    }
+
     fn gaming_tweaks(&mut self, on: bool) {
+        let saved = self.gaming_saved_path();
         if on {
+            // remember what the user actually had (animations / blur / shadow can be off in their preset); never overwrite
+            // an existing snapshot, it holds the real values if we were restarted while gaming
+            if !Path::new(&saved).exists() {
+                let a = self.option_int("animations:enabled");
+                let b = self.option_int("decoration:blur:enabled");
+                let s = self.option_int("decoration:shadow:enabled");
+                let _ = fs::write(&saved, format!("{a} {b} {s}\n"));
+            }
             let _ = self.hypr.query("eval hl.config({ animations = { enabled = false }, decoration = { blur = { enabled = false }, shadow = { enabled = false } }, misc = { vrr = 1 }, render = { direct_scanout = true } })");
             signal_apps(libc::SIGSTOP);
         } else {
-            let _ = self.hypr.query("eval hl.config({ animations = { enabled = true }, decoration = { blur = { enabled = true }, shadow = { enabled = true } } })");
+            self.restore_effects();
             signal_apps(libc::SIGCONT);
+        }
+    }
+
+    /// Put animations / blur / shadow back the way they were before gaming mode (not simply "on").
+    fn restore_effects(&mut self) {
+        let saved = self.gaming_saved_path();
+        let Ok(raw) = fs::read_to_string(&saved) else { return };
+        let v: Vec<i64> = raw.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+        if v.len() == 3 && v.iter().all(|&x| x == 0 || x == 1) {
+            let b = |x: i64| if x == 1 { "true" } else { "false" };
+            let cmd = format!(
+                "eval hl.config({{ animations = {{ enabled = {} }}, decoration = {{ blur = {{ enabled = {} }}, shadow = {{ enabled = {} }} }} }})",
+                b(v[0]), b(v[1]), b(v[2])
+            );
+            let _ = self.hypr.query(&cmd);
+        } else {
+            // a value could not be read earlier: let Hyprland re-apply the config files instead of guessing
+            let _ = self.hypr.query("reload");
+        }
+        let _ = fs::remove_file(&saved);
+    }
+
+    /// After a crash / SIGKILL while gaming: apps may still be stopped and effects off. Undo that once at startup
+    /// (the first tick puts gaming mode back right away if it is still wanted).
+    fn recover(&mut self) {
+        signal_apps(libc::SIGCONT);
+        if Path::new(&self.gaming_saved_path()).exists() && !self.gaming_active() {
+            self.restore_effects();
         }
     }
 
@@ -1001,6 +1060,7 @@ fn main() {
 
     println!("Power Manager Daemon started...");
     let mut daemon = Daemon::new(&runtime);
+    daemon.recover();
     daemon.write_state("starting", "-");
 
     loop {
@@ -1078,6 +1138,15 @@ mod tests {
         assert!(heavy_class_present(r#"[{"class": "zen"},{"class": "steam_app_1245620"}]"#));
         assert!(!heavy_class_present(r#"[{"class": "zen","initialClass": "Blender"}]"#));
         assert!(!heavy_class_present("[]"));
+    }
+
+    #[test]
+    fn getoption_int_parses() {
+        assert_eq!(json_int(r#"{"option": "animations:enabled", "int": 1, "set": true}"#), Some(1));
+        assert_eq!(json_int(r#"{"option":"x","int":0}"#), Some(0));
+        assert_eq!(json_int(r#"{"option": "x", "float": 1.0}"#), None);
+        assert_eq!(json_int(r#"{"option": "animations:enabled", "bool": true, "set": true}"#), Some(1));
+        assert_eq!(json_int(r#"{"option":"x","bool":false}"#), Some(0));
     }
 
     #[test]

@@ -156,3 +156,22 @@ Each script runs `hal` when `bin/hal` exists and otherwise carries on with its o
 
 ### 4.3 Is Hyprland firing the pinch at all?
 `tail -f ~/.cache/island/gesture-run.log` while you pinch (written by `input-conf.sh run`, shell or `hal`). A line means Hyprland fired it; no line means only the live tracker handled it (or nothing did: check `journalctl --user -u touchpad-gestures -e`; the daemon needs the `input` group).
+
+## Review round: bugs and CPU/RAM fixes
+
+| File | What changed |
+| :--- | :--- |
+| `quickshell/island/Calendar.qml` | `auto-grab` only starts Python when `~/Downloads` changed since the last scan (stamp file `~/.cache/island/.grabstamp`); the watcher ticks every 5 s instead of 1.5 s when only the setup / Birthdays window is open (1.5 s stays while waiting for the copied calendar address). |
+| `src/power-manager/src/main.rs` | Gaming mode saves the animation / blur / shadow settings you had and restores exactly those (it used to force all three on). On startup the daemon resumes any apps a crashed run left stopped (SIGCONT) and restores the saved effects. New test `getoption_int_parses`. |
+| `quickshell/island/shell.qml` | Gesture watchdog: if no gesture update arrives for 600 ms the gesture ends, so a dead gesture daemon or a lost `end` cannot leave the bar or tree view stuck on stale finger positions. |
+| `src/touchpad-gestures/src/main.rs` | `dir` / `action` are JSON-escaped in `halcyon-gesture.json`, so a quote or backslash in `gestures.conf` no longer produces unreadable state. |
+| `scripts/start-shell.sh` | jemalloc decay 0 ms -> 1000 ms (dirty) / 3000 ms (muzzy), overridable with `HALCYON_JE_DIRTY_MS` / `HALCYON_JE_MUZZY_MS`; removed `MALLOC_MMAP_THRESHOLD_` (forced an mmap for every allocation over 64 KB) and `QV4_GC_MAX_ALLOC` (not a Qt variable); `MALLOC_TRIM_THRESHOLD_` now matches `hyprland/execs.lua`. |
+
+### Review round, part 2
+
+| File | What changed |
+| :--- | :--- |
+| `quickshell/island/scripts/gcal.py`, `quickshell/island/Calendar.qml` | Reminders are scheduled instead of polled: `gcal.py notify --next` prints when it next has anything to do (reminder, nag, auto Focus start / end) and the island sleeps until then. The 60 s tick only compares two numbers. A change to events, done / task marks or the reminder settings runs the worker again at the next tick, and a 15 minute ceiling covers everything else (also a clock that jumped after suspend). Without `--next` the script behaves as before (the systemd timers are unaffected). |
+| `scripts/term-colors.sh` | Accent-drift ticks stop at once when no terminal is open (no forks), and no longer rewrite the five terminal colour files every few seconds. The normal run still writes them. |
+| `quickshell/island/shell.qml`, `quickshell/island/Settings.qml`, `quickshell/island/scripts/hypr-values.sh` | New Settings > Look option "Animate window resizing" (Hyprland `misc:animate_manual_resizes`). The Low resource preset turns it off, Medium and High turn it on. Default is unchanged. |
+| `src/power-manager/src/main.rs` | The gaming-mode snapshot also understands Hyprland builds that report on / off options as `"bool"`. |
