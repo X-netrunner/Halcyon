@@ -22,10 +22,12 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           export CARGO_TARGET_DIR="$PWD/target"
+          cargo build --release --locked --workspace
           for c in attacker-dossier birthday-sync hal hx log-analyst power-manager recon-deceiver safety-check setStaticMac touchpad-gestures; do
-            cargo build --release --locked --manifest-path "src/$c/Cargo.toml"
             cp "target/release/$c" "dist/$c-x86_64-linux"
           done
+          # the installers too, so get.sh / install.sh can be checked against the same SHA256SUMS list
+          cp get.sh install.sh update.sh dist/
           (cd dist && sha256sum ./* | sed 's#  \./#  #' > SHA256SUMS && cat SHA256SUMS)
       - name: attach to the release
         uses: softprops/action-gh-release@v2

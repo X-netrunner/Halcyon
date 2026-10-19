@@ -693,10 +693,18 @@ ShellRoot {
     // Login-screen mode (install.sh > "lock screen as login"): launch/halcyon-login.sh leaves a flag file before it starts
     // Hyprland, and the first thing the island does is take it and lock. So after boot the Halcyon lock screen IS the login
     // screen (your password is checked by PAM exactly like a normal login). No flag file = nothing happens.
+    // The flag is only READ here. It is removed further down, once the session lock really is up (lockScreen.locked):
+    // login-watchdog.sh keeps waiting for the flag to disappear, so if the lock never engages it still ends the session
+    // instead of leaving an auto-logged-in desktop open.
     Process {
         running: true
-        command: ["sh", "-c", "f=\"$HOME/.cache/island/lock-on-start\"; if [ -f \"$f\" ]; then rm -f \"$f\"; echo yes; fi"]
+        command: ["sh", "-c", "[ -f \"$HOME/.cache/island/lock-on-start\" ] && echo yes"]
         stdout: StdioCollector { onStreamFinished: { if (text.trim() === "yes") lockScreen.lock() } }
+    }
+    Process { id: lockFlagClear; command: ["rm", "-f", Quickshell.env("HOME") + "/.cache/island/lock-on-start"] }
+    Connections {
+        target: lockScreen
+        function onLockedChanged() { if (lockScreen.locked) lockFlagClear.running = true }
     }
     PowerMenu {
         id: powerMenu

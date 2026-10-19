@@ -6,10 +6,3 @@ edition = "2021"
 [dependencies]
 regex = "1.11"
 libc = "0.2"
-
-[profile.release]
-opt-level = "s"
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"

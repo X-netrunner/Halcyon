@@ -29,6 +29,38 @@ const MAX_TRACKED_HOSTS: usize = 4096;       // size cap of every per-address ma
 // Addresses that are never banned or counter-scanned, besides the default gateway, the DNS servers and this machine's own
 // addresses (read from the system, refreshed every minute). One address per line, '#' starts a comment.
 const ALLOW_FILE: &str = "/etc/recon-deceiver.allow";
+// Active counter-scanning (nmap against whoever probed the decoys) is OFF unless asked for. It touches hosts that are not yours:
+// an attacker's address is often a hacked machine, a proxy or a VPN exit, and unauthorised scanning is illegal in many places.
+// Turn it on with `sudo sysmode counterscan on` (writes COUNTER_SCAN=on here) or by starting the daemon with RECON_COUNTER_SCAN=1.
+const CONF_FILE: &str = "/etc/recon-deceiver.conf";
+
+/// Counter-scanning belongs to stealth mode only (the mode that runs the decoys). `sysmode` refuses to switch it on anywhere else, and
+/// this makes the daemon agree if the mode was changed afterwards while COUNTER_SCAN=on stays saved. No mode file at all (the daemon
+/// was started by hand) means the config decides alone.
+fn in_stealth_mode() -> bool {
+    match fs::read_to_string("/etc/sysmode.mode") {
+        Ok(m) => matches!(m.trim(), "stealth" | "hacking"),
+        Err(_) => true,
+    }
+}
+
+/// Read on every use (it is only asked when an attacker shows up), so switching it needs no restart.
+fn counter_scan_enabled() -> bool {
+    let on = |v: &str| matches!(v.trim().trim_matches('"').trim_matches('\'').to_lowercase().as_str(), "1" | "on" | "yes" | "true");
+    if let Ok(v) = std::env::var("RECON_COUNTER_SCAN") {
+        if on(&v) {
+            return true;
+        }
+    }
+    if let Ok(conf) = fs::read_to_string(CONF_FILE) {
+        for line in conf.lines() {
+            if let Some(v) = line.trim().strip_prefix("COUNTER_SCAN=") {
+                return on(v) && in_stealth_mode();
+            }
+        }
+    }
+    false
+}
 
 static ACTIVE_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
 static ACTIVE_SCANS: AtomicUsize = AtomicUsize::new(0);
@@ -513,6 +545,9 @@ impl AppState {
     }
 
     fn scan_attacker(&self, ip: &str) {
+        if !counter_scan_enabled() {
+            return;
+        }
         if is_protected_ip(ip) || skip_scan_target(ip) {
             return;
         }
@@ -2223,7 +2258,7 @@ fn start_listener(port: u16, state: AppState) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "-h" || a == "--help") {
-        println!("recon-deceiver - Multi-port honeypot and active defense daemon\n\nUsage: sudo recon-deceiver [COUNTER_ATTACK_THRESHOLD]\n\nOptions:\n  -h, --help    Show this help message and exit");
+        println!("recon-deceiver - Multi-port honeypot and active defense daemon\n\nUsage: sudo recon-deceiver [COUNTER_ATTACK_THRESHOLD]\n\nOptions:\n  -h, --help    Show this help message and exit\n\nnmap counter-scan of attackers is OFF by default. Enable: COUNTER_SCAN=on in /etc/recon-deceiver.conf (or RECON_COUNTER_SCAN=1).");
         return;
     }
 
@@ -2278,6 +2313,11 @@ fn main() {
     // A crash or kill leaves this daemon's ufw bans behind for good (the timer died with it): lift them, then keep the books
     ufw_unban(None);
     state.log_event("[*] Lifted any ufw bans left by an earlier run");
+    state.log_event(if counter_scan_enabled() {
+        "[*] nmap counter-scan: ON (you enabled it; targets are never your gateway, DNS servers, this machine or the allow list)"
+    } else {
+        "[*] nmap counter-scan: OFF (opt-in: sudo sysmode counterscan on)"
+    });
     start_unban_reaper(state.clone());
 
     // Spawn DNS listener

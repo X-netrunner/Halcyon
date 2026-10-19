@@ -185,3 +185,18 @@ Each script runs `hal` when `bin/hal` exists and otherwise carries on with its o
 | `src/hx/src/sysfeeds.rs` | The battery reader no longer falls back to `upower -i` when the kernel status is "Not charging" (plugged in at a charge limit). That state never has an estimate, so the call only started a process every 15 s. |
 | `install.sh`, `update.sh` | `holidays.txt` is added to the list of files that are never overwritten (`KEEP_FILES` / `KEEP`). Before, only `birthdays.txt` was kept, so every install or update replaced your own holidays with the stock template. `update.sh` also keeps `notes.conf` now (`install.sh` already did). |
 Checked and left alone (already gated or already fine): `power-manager` (event driven: one `poll(2)`, cached sensors; no leak found), the `hx` stats / net / states feeds, every infinite animation in the island, the always-on timers and processes in `shell.qml` (all one-shot or event driven), image decoding (every `Image` has a `sourceSize`), the touchpad daemon loop (blocking reads, 16 ms write throttle), `osd-watch.sh` (timed reads, backs off to 1 s), and the systemd units. `bash -n` on every shell script, `py_compile` on every Python file and `node --check` on every `.js` pass.
+
+---
+
+## Security & reliability pass (login path, honeypot, gestures)
+
+| File | What changed |
+| :--- | :--- |
+| `quickshell/island/shell.qml` | `lock-on-start` is only *read* at startup; it is removed once `lockScreen.locked` is true. Before, the island deleted it first, so if the lock never engaged `login-watchdog.sh` saw the flag gone, stopped watching, and the auto-logged-in desktop stayed open. Now an unlocked session is still ended after ~20 s. |
+| `quickshell/island/Lock.qml` | Wrong-password backoff: 3 misses free of delay, then 2 s, 4 s, 8 s ... capped at 60 s ("Too many attempts. Wait N s"). The counter survives lock/unlock cycles and resets only on a correct password. PAM errors do not count as misses. |
+| `sysmode/sysmode` | `write_deceiver_unit` generates a sandboxed `recon-deceiver.service` (ProtectSystem=strict, write access only to ufw state, `/run`, `/var/log` and your logs folder, capability bounding set, syscall deny-list, address-family limit). If it does not stay up, sysmode stops it and falls back to the old direct start. Opt out: `DECEIVER_SANDBOX=0` in `/etc/sysmode.conf`. |
+| `sysmode/sysmode`, `.8`, bash-completion | New `sysmode counterscan [on\|off\|status] [--yes]`. |
+| `src/recon-deceiver/src/main.rs` | nmap counter-scan is **off by default**; enabled by `COUNTER_SCAN=on` in `/etc/recon-deceiver.conf` (or `RECON_COUNTER_SCAN=1`). Read on every attacker, so no restart is needed. State is logged at daemon start. |
+| `systemd/touchpad-gestures.service`, `src/touchpad-gestures/src/main.rs` | `Restart=on-failure` (was `always`), at most 5 starts per minute, and exit status 78 ("not in the `input` group") is in `RestartPreventExitStatus` so a missing group no longer loops forever. |
+
+Not changed: the ~20 s window before the lock appears, and the nmap target rules (gateway, DNS servers, this machine and `/etc/recon-deceiver.allow` are still never scanned).

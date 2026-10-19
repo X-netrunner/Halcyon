@@ -48,9 +48,34 @@ Scope {
     function kick(strong) { energy = strong ? 1.0 : 0.65; kickTick++; energyDecay.restart() }
     NumberAnimation { id: energyDecay; target: root; property: "energy"; to: 0; duration: 1100; easing.type: Easing.OutCubic }
 
-    function lock() { buffer = ""; failure = ""; busy = false; locked = true }
+    // Wrong-password backoff: the first two misses cost nothing, then 2 s, 4 s, 8 s ... capped at 60 s. It is kept across
+    // lock/unlock cycles (re-locking must not reset it) and cleared only by a correct password.
+    property int fails: 0
+    property real waitUntil: 0            // Date.now() (ms) before which no new attempt is checked
+    property int waitLeft: 0              // seconds shown to the person
+    function cooldownText() { return "Too many attempts. Wait " + waitLeft + " s" }
+    Timer {
+        id: cooldownT
+        interval: 250; repeat: true
+        onTriggered: {
+            var left = Math.ceil((root.waitUntil - Date.now()) / 1000)
+            if (left <= 0) { root.waitLeft = 0; root.failure = ""; stop() }
+            else { root.waitLeft = left; root.failure = root.cooldownText() }
+        }
+    }
+    function startCooldown() {
+        if (fails < 3) return
+        var secs = Math.min(60, Math.pow(2, fails - 2))      // 3 misses -> 2 s, 4 -> 4 s, 5 -> 8 s ...
+        waitUntil = Date.now() + secs * 1000
+        waitLeft = secs
+        failure = cooldownText()
+        cooldownT.restart()
+    }
+
+    function lock() { buffer = ""; failure = ""; busy = false; locked = true; if (Date.now() < waitUntil) cooldownT.restart() }
     function tryUnlock() {
         if (busy || buffer === "") return
+        if (Date.now() < waitUntil) { buffer = ""; shakeTick++; return }      // still cooling down: do not even ask PAM
         busy = true
         failure = ""
         pam.start()
@@ -66,13 +91,19 @@ Scope {
             root.buffer = ""
             if (result === PamResult.Success) {
                 root.failure = ""
+                root.fails = 0
+                root.waitUntil = 0
+                cooldownT.stop()
                 root.locked = false
             } else {
+                root.fails++
                 root.failure = "Wrong password"
                 root.shakeTick++
                 root.kick(true)
+                root.startCooldown()
             }
         }
+        // a PAM error is not a guess, so it does not count as a miss
         onError: err => { root.busy = false; root.buffer = ""; root.failure = "Could not check the password"; root.shakeTick++ }
     }
     onLockedChanged: if (!locked) { buffer = ""; failure = ""; busy = false; pam.abort() }

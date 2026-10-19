@@ -1,0 +1,39 @@
+# One workspace for the ten helpers: a single Cargo.lock and a single target/ directory, so shared dependencies (regex, chrono,
+# libc ...) are compiled once, and CI is one `cargo build --workspace`. Each crate can still be built alone:
+#   cargo build --release -p hx          or          cargo build --release --manifest-path src/hx/Cargo.toml
+[workspace]
+resolver = "2"
+members = [
+    "src/attacker-dossier",
+    "src/birthday-sync",
+    "src/hal",
+    "src/hx",
+    "src/log-analyst",
+    "src/power-manager",
+    "src/recon-deceiver",
+    "src/safety-check",
+    "src/setStaticMac",
+    "src/touchpad-gestures",
+]
+
+# Profiles only count at the workspace root (they used to sit in every crate's own Cargo.toml). Same settings as before:
+# speed (3) for the big or hot helpers, size ("s") for the small ones.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.release.package.attacker-dossier]
+opt-level = "s"
+[profile.release.package.birthday-sync]
+opt-level = "s"
+[profile.release.package.log-analyst]
+opt-level = "s"
+[profile.release.package.power-manager]
+opt-level = "s"
+[profile.release.package.safety-check]
+opt-level = "s"
+[profile.release.package.setStaticMac]
+opt-level = "s"

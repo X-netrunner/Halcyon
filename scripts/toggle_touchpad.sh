@@ -7,6 +7,15 @@ if [ -z "$DEVICE" ]; then
     notify-send "Touchpad" "No touchpad found" -i input-touchpad 2>/dev/null
     exit 1
 fi
+# The name goes into Lua code that hyprctl evals inside the compositor. A name with a quote, a backslash or a control character
+# would break that code (or inject some), so only a plain set of characters is accepted; anything else is refused, not cleaned
+# (a cleaned name would not match the device any more).
+case "$DEVICE" in
+    *[!A-Za-z0-9\ _:./+@\(\)-]*)
+        notify-send "Touchpad" "The touchpad name has characters that are not safe to pass on, so nothing was changed" -i input-touchpad 2>/dev/null
+        echo "toggle_touchpad: refusing unsafe device name: $DEVICE" >&2
+        exit 1 ;;
+esac
 STATUS_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/touchpad.status"
 
 # Default state if file doesn't exist

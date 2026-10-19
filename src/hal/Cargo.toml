@@ -5,10 +5,3 @@ edition = "2021"
 description = "Halcyon helpers: Rust ports of input-conf.sh, ws-nav.sh, brightness.sh and backlight.sh (no dependencies)"
 
 [dependencies]
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"
