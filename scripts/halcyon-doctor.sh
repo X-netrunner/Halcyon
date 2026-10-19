@@ -198,7 +198,7 @@ brightnessctl|brightness keys and the top-edge gesture|brightnessctl
 playerctl|media keys, now playing|playerctl
 wl-copy|clipboard history|wl-clipboard
 pw-record|voice notes (recording)|pipewire
-whisper-cli|voice notes to text (or: pip install faster-whisper)|whisper.cpp
+whisper-cli|voice notes to text (or: pip install faster-whisper)|whisper-cpp
 grim|screenshots|grim
 slurp|area screenshots|slurp
 clamscan|leak and malware checks (halcyon-leaks)|clamav

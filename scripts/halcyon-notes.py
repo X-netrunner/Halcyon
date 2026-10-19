@@ -20,7 +20,9 @@ Tasks (a note with a job and, optionally, a time to be reminded at):
   notes think <idx_or_id>         -> run the AI over this note again (it shows its short comment under the note)
 Pictures and voice:
   notes clip-image [text]         -> the image on the clipboard becomes a note; with no image there, drag a screen region instead
-  notes clip-paste [text]         -> Ctrl+V in the notes panel: the image on the clipboard becomes a note (prints CLIP_NONE and does nothing
+  notes clip-stage                -> Ctrl+V in the notes panel: keeps the clipboard image (CLIP_STAGED:<path>) so a caption can be typed,
+                                     then `notes image <path> <caption>` saves it. `notes clip-drop <path>` discards a staged image
+  notes clip-paste [text]         -> (older, saves at once) Ctrl+V in the notes panel: the image on the clipboard becomes a note (prints CLIP_NONE and does nothing
                                      when there is no image, so the panel can paste the text instead)
   notes rec-start [text] | rec-stop | rec-cancel | rec-status   -> a voice note: stop saves it, turns it into text and hands that to the AI
   notes transcribe <idx_or_id>    -> (re)do the speech-to-text of a voice note. Engines: whisper.cpp (whisper-cli + a ggml model),
@@ -288,6 +290,36 @@ def clip_paste(text=""):
     print("CLIP_NONE")
     return False
 
+def clip_stage():
+    """Ctrl+V in the quick panel: the picture on the clipboard is KEPT but not saved as a note yet, so the panel can stay open
+    and take a caption. Prints CLIP_STAGED:<path> (the panel shows the picture, Enter then saves it with `notes image`), or
+    CLIP_NONE when there is no picture and the panel should paste the text instead."""
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    r = _wlpaste(["--list-types"], 3)
+    types = r.stdout.decode("utf-8", "replace").split() if (r is not None and r.returncode == 0) else []
+    if not any(m in types for m, _ in IMG_TYPES) and "text/uri-list" not in types:
+        print("CLIP_NONE")
+        return False
+    path, _why = clipboard_image()
+    if not path:
+        print("CLIP_NONE")
+        return False
+    print("CLIP_STAGED:" + path)
+    return True
+
+def clip_drop(path=""):
+    """Throw away a picture that was staged but never saved (the panel was closed or the picture was removed).
+    Only files inside the notes media folder are ever deleted."""
+    try:
+        real = os.path.realpath(path)
+        media = os.path.realpath(MEDIA_DIR) + os.sep
+        if path and real.startswith(media) and os.path.basename(real).startswith("img_") and os.path.isfile(real):
+            os.unlink(real)
+            return True
+    except OSError:
+        pass
+    return False
+
 def shot_image(text=""):
     os.makedirs(MEDIA_DIR, exist_ok=True)
     now = time.time()
@@ -428,7 +460,7 @@ def rec_status():
     return False
 
 # ---- speech to text. Offline engines only; the first one that is installed is used.
-STT_MISSING = ("No speech-to-text engine found. Install one: whisper.cpp (yay -S whisper.cpp whisper.cpp-model-base), "
+STT_MISSING = ("No speech-to-text engine found. Install one: whisper.cpp (sudo pacman -S whisper-cpp, plus yay -S whisper.cpp-model-base), "
                "or pip install faster-whisper")
 
 def stt_setting(key):
@@ -467,11 +499,22 @@ FW_SCRIPT = ("import sys\nfrom faster_whisper import WhisperModel\n"
              "segs, _ = m.transcribe(sys.argv[1], language=(sys.argv[3] or None), vad_filter=True)\n"
              "print(' '.join(s.text.strip() for s in segs))\n")
 
+def _which(*names):
+    """First of `names` found on PATH, or in the places a package or a pip/cargo install puts a program that the desktop
+    session's own PATH (it is shorter than a terminal's) may not list. Returns the full path or None."""
+    extra = os.pathsep.join([os.path.join(HOME, ".local", "bin"), os.path.join(HOME, ".cargo", "bin"), "/usr/local/bin",
+                             "/usr/bin", "/opt/whisper.cpp/bin", "/opt/whisper.cpp/build/bin", "/opt/whisper/bin"])
+    for n in names:
+        hit = shutil.which(n) or shutil.which(n, path=extra)
+        if hit:
+            return hit
+    return None
+
 def run_stt(wav):
     """(text, None) | (None, why). An empty text means nothing was said."""
     lang = stt_setting("NOTES_STT_LANG")
     last = None
-    cli = next((c for c in ("whisper-cli", "whisper-cpp", "whisper.cpp") if shutil.which(c)), None)
+    cli = _which("whisper-cli", "whisper-cpp", "whisper.cpp")
     model = stt_model_file()
     if cli and model:
         cmd = [cli, "-m", model, "-f", wav, "-nt", "-np", "-t", str(min(8, os.cpu_count() or 4))]
@@ -494,9 +537,10 @@ def run_stt(wav):
             last = "faster-whisper failed: " + (r.stderr or "").strip()[-160:]
         except Exception as e:
             last = f"faster-whisper failed ({type(e).__name__})"
-    if shutil.which("whisper"):
+    oai = _which("whisper")
+    if oai:
         with tempfile.TemporaryDirectory() as td:
-            cmd = ["whisper", wav, "--model", "base", "--output_format", "txt", "--output_dir", td, "--fp16", "False"]
+            cmd = [oai, wav, "--model", "base", "--output_format", "txt", "--output_dir", td, "--fp16", "False"]
             if lang:
                 cmd += ["--language", lang]
             try:
@@ -1597,7 +1641,7 @@ def main():
 
 READ_ONLY = ("list", "ls", "json", "tasks", "conf", "rec-status")
 NO_LOCK = ("sort", "think", "transcribe")
-UNLOCKED = ("clip-image", "clip-img", "paste-image", "clip-paste", "shot-image", "screenshot", "record", "voice", "rec-start", "rec-stop", "rec-cancel", "play")
+UNLOCKED = ("clip-image", "clip-img", "paste-image", "clip-paste", "clip-stage", "clip-drop", "shot-image", "screenshot", "record", "voice", "rec-start", "rec-stop", "rec-cancel", "play")
 
 def is_ref(a):
     return a.isdigit() or a.startswith("n_")
@@ -1675,6 +1719,10 @@ def run(cmd, args):
         clip_image(" ".join(args[1:]))
     elif cmd == "clip-paste":
         clip_paste(" ".join(args[1:]))
+    elif cmd == "clip-stage":
+        clip_stage()
+    elif cmd == "clip-drop":
+        clip_drop(args[1] if len(args) > 1 else "")
     elif cmd in ("shot-image", "screenshot"):
         shot_image(" ".join(args[1:]))
     elif cmd in ("image", "img"):
