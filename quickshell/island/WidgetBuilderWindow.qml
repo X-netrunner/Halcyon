@@ -665,7 +665,7 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: 8
                                 Repeater {
-                                    model: WD.swatches
+                                    model: (root.pal.swatches || []).slice(0, 8).map(function (c) { return String(c).toLowerCase() }).concat(WD.swatches)
                                     delegate: Rectangle {
                                         required property string modelData
                                         width: 26; height: 26; radius: 13; color: modelData
@@ -685,15 +685,36 @@ Item {
                             Layout.fillWidth: true
                             visible: !root.curLook.match
                             pal: root.pal; label: "Text colour"; labelWidth: 90
-                            options: [["theme", "Theme"], ["light", "White"], ["dark", "Dark"], ["custom", "My colour"]]
+                            options: [["theme", "Theme"], ["accent", "Accent"], ["second", "Second"], ["split", "Split"], ["light", "White"], ["dark", "Dark"], ["custom", "My colour"]]
                             current: root.curLook.textTone
                             onPicked: id => root.setLookV("textTone", id)
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            visible: root.curLook.textTone === "custom" && !root.curLook.match
+                            spacing: 8
+                            Repeater {
+                                model: (root.pal.swatches || []).slice(0, 8).map(function (c) { return String(c).toLowerCase() }).concat(WD.swatches)
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    width: 26; height: 26; radius: 13; color: modelData
+                                    border.width: root.curLook.textColor.toLowerCase() === modelData ? 3 : 1
+                                    border.color: root.curLook.textColor.toLowerCase() === modelData ? root.pal.text : root.pal.line
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setLookV("textColor", parent.modelData) }
+                                }
+                            }
                         }
                         WbText {
                             Layout.fillWidth: true
                             visible: root.curLook.textTone === "custom" && !root.curLook.match
                             pal: root.pal; text: root.curLook.textColor; hintText: "#rrggbb"
                             onCommitted: t => { if (/^#[0-9a-fA-F]{6}$/.test(t)) root.setLookV("textColor", t.toLowerCase()) }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Text { Layout.fillWidth: true; text: "Soft dark halo behind the words"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                            Toggle { pal: root.pal; on: root.curLook.halo !== false; onToggled: root.setLookV("halo", root.curLook.halo === false) }
                         }
                         RowLayout {
                             Layout.fillWidth: true

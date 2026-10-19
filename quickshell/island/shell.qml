@@ -47,6 +47,8 @@ ShellRoot {
         wsStart: "wrap",           // wrap | stay : "previous workspace" on the first one
         wsMax: 9,                  // "next workspace" never opens a workspace above this number
         wpEvery: 0,                // minutes between automatic wallpaper changes (0 = off)
+        wpSource: "local",         // local | online | mixed : where "next wallpaper" takes pictures from (scripts/wallpaper.sh)
+        wpCat: "nature",           // online category: nature movies anime anime-art space city minimal cars random
         clockSeconds: false,       // show seconds in the bar clock
         clockDate: true,           // show the weekday and date next to the clock
         calOn: true,               // Calendar master switch (Super + R, >calendar, the clock click, reminders, auto Focus)
@@ -132,7 +134,8 @@ ShellRoot {
         followMouse: ["input", "follow_mouse"], repeatDelay: ["input", "repeat_delay"], repeatRate: ["input", "repeat_rate"],
         sensitivity: ["input", "sensitivity"], accelProfile: ["input", "accel_profile"], leftHanded: ["input", "left_handed"],
         naturalScroll: ["input", "touchpad", "natural_scroll"], tapToClick: ["input", "touchpad", "tap_to_click"],
-        disableTyping: ["input", "touchpad", "disable_while_typing"], focusOnActivate: ["misc", "focus_on_activate"]
+        disableTyping: ["input", "touchpad", "disable_while_typing"], focusOnActivate: ["misc", "focus_on_activate"],
+        resizeAnim: ["misc", "animate_manual_resizes"]
     })
     function setOpt(k, v) {
         var o = {}
@@ -140,6 +143,8 @@ ShellRoot {
         o[k] = v
         opt = o
         switch (k) {
+        case "wpSource": writeFlag("wallpaper-source", v); break    // scripts/wallpaper.sh reads these two on every change
+        case "wpCat": writeFlag("wallpaper-cat", v); break
         case "wsEnd": writeFlag("ws-end", v); break
         case "wsStart": writeFlag("ws-start", v); break
         case "wsMax": writeFlag("ws-max", v); break
@@ -194,13 +199,13 @@ ShellRoot {
     readonly property var resPresets: ({
         low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, starsBar: false, dialogStarStyle: "moving", accentMode: "fixed", termDrift: false, clockSeconds: false, viz: "light", lazyLoad: true },
                   blur: false, shadows: false, hyprAnim: false, motion: 0.5, profileStars: false, notifHistoryMax: 10, notifMax: 3,
-                  hy: { blurSize: 4, blurPasses: 1 } },
+                  hy: { blurSize: 4, blurPasses: 1, resizeAnim: false } },
         medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true, starsBar: false, dialogStarStyle: "both", viz: "full", lazyLoad: true },
                   blur: true,  shadows: false, hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 20, notifMax: 5,
-                  hy: { blurSize: 5, blurPasses: 2 } },
+                  hy: { blurSize: 5, blurPasses: 2, resizeAnim: true } },
         high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true, starsBar: true, dialogStarStyle: "both", viz: "full", lazyLoad: false },
                   blur: true,  shadows: true,  hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 30, notifMax: 5,
-                  hy: { blurSize: 7, blurPasses: 3 } }
+                  hy: { blurSize: 7, blurPasses: 3, resizeAnim: true } }
     })
     function applyResMode(m) {
         var p = resPresets[m]
@@ -2089,6 +2094,21 @@ ShellRoot {
         }
     }
 
+    // If the gesture daemon dies mid-gesture (or the last "end" is lost) the bar and the tree view would keep following stale
+    // finger positions. No update for 600 ms while a gesture is active = the gesture is over.
+    Timer {
+        id: gestureWatchdog
+        interval: 600
+        onTriggered: {
+            root.gestureActive = false
+            root.gestureTarget = ""
+            root.gestureProgress = 1.0
+            root.gestureScale = 1.0
+            island.dragX = 0
+            island.dragY = 0
+        }
+    }
+
     FileView {
         id: liveGestureView
         path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/halcyon-gesture.json"
@@ -2104,6 +2124,8 @@ ShellRoot {
                 var dx = Number(g.dx || 0)
                 var dy = Number(g.dy || 0)
                 var sc = Number(g.scale || 1)
+                if (ph === "begin" || ph === "update") gestureWatchdog.restart()
+                else gestureWatchdog.stop()
                 if (ph === "begin") {
                     root.gestureActive = true
                     root.gestureTarget = ""

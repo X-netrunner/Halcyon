@@ -111,7 +111,7 @@ Scope {
             m[key].sort(function (a, b) { return (b.allDay ? 1 : 0) - (a.allDay ? 1 : 0) || a.start - b.start })
         dayMap = m
     }
-    onEventsChanged: rebuild()
+    onEventsChanged: { rebuild(); nextWake = 0 }
     readonly property var selEvents: dayMap[keyOf(sel)] || []
 
     function gotoDay(d) {
@@ -332,7 +332,12 @@ Scope {
     }
     Process {
         id: autoGrabProc
-        command: ["python3", root.script, "auto-grab"]
+        // Only start Python when ~/Downloads changed since the last scan (a finished download is renamed into place, which
+        // updates the folder's time). Without this the interpreter started every tick just to find nothing new.
+        command: ["sh", "-c",
+            "d=\"$HOME/Downloads\"; s=\"$HOME/.cache/island/.grabstamp\"; mkdir -p \"$HOME/.cache/island\"; " +
+            "if [ ! -e \"$s\" ] || [ \"$d\" -nt \"$s\" ]; then touch \"$s\"; exec python3 \"$1\" auto-grab; fi",
+            "sh", root.script]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -421,9 +426,32 @@ Scope {
     }
     // reminders: the script sends a notification for each one that is due and remembers which it sent
     Process { id: markProc }
-    Process { id: notifyProc }
+    // The worker says when it next has something to do ({"next": unix seconds}); until then the 60 s tick below only compares two
+    // numbers instead of starting Python. Anything that can change the answer (events, done / task marks, the reminder settings)
+    // sets nextWake back to 0, and a 15 minute ceiling covers everything else (and a clock that jumped after a suspend).
+    property double nextWake: 0
+    onDoneMapChanged: nextWake = 0
+    onTaskMapChanged: nextWake = 0
+    onNotifyOnChanged: nextWake = 0
+    onNagOnChanged: nextWake = 0
+    onNagEveryChanged: nextWake = 0
+    onNagGiveUpChanged: nextWake = 0
+    onFocusOnChanged: nextWake = 0
+    onTasksAllChanged: nextWake = 0
+    Process {
+        id: notifyProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var cap = Date.now() + 900000
+                try {
+                    var r = JSON.parse(text.split("\n").filter(function(l){ return l.trim() !== "" }).pop())
+                    root.nextWake = r.next > 0 ? Math.min(r.next * 1000, cap) : cap
+                } catch (e) { root.nextWake = 0 }      // no answer: run again on the next tick, as before
+            }
+        }
+    }
     function runWorker() {
-        var cmd = ["python3", script, "notify"]
+        var cmd = ["python3", script, "notify", "--next"]
         if (!notifyOn) cmd.push("--no-remind")
         if (nagOn && notifyOn) cmd.push("--nag", String(nagEvery), "--giveup", String(nagGiveUp))
         if (focusOn) cmd.push("--focus")
@@ -470,7 +498,8 @@ Scope {
     }
     property bool fromWatcher: false
     Timer {
-        interval: 1500; repeat: true; running: root.watching || (root.open && (root.setupOpen || root.bdayModalOpen))
+        // 1.5 s only while waiting for the copied calendar address; with just the setup / Birthdays window open 5 s is plenty
+        interval: root.watching ? 1500 : 5000; repeat: true; running: root.watching || (root.open && (root.setupOpen || root.bdayModalOpen))
         onTriggered: {
             if (root.watching && ++root.watchTicks > 240) { root.watching = false; return }
             if (!clipProc.running) clipProc.running = true
@@ -479,7 +508,7 @@ Scope {
     }
 
     Component.onCompleted: { if (enabled) { loadConf(); loadEvents() } }
-    onCfgChanged: { if (cfg.configured && events.length === 0 && !syncing && cfg.synced === 0) sync() }
+    onCfgChanged: { nextWake = 0; if (cfg.configured && events.length === 0 && !syncing && cfg.synced === 0) sync() }
     onOpenChanged: {
         if (open) {
             today = midnight(new Date()); gotoDay(new Date()); now = Date.now()
@@ -495,7 +524,7 @@ Scope {
         interval: 60000; repeat: true; triggeredOnStart: true
         running: root.enabled && root.cfg.configured
             && ((root.notifyOn && root.cfg.remind && root.cfg.remind.length > 0) || root.nagOn || root.focusOn)
-        onTriggered: { if (!notifyProc.running) root.runWorker(); root.now = Date.now() }
+        onTriggered: { if (!notifyProc.running && Date.now() >= root.nextWake) root.runWorker(); root.now = Date.now() }
     }
     Timer { interval: 30000; repeat: true; running: root.open; onTriggered: { root.now = Date.now(); root.today = root.midnight(new Date()) } }
 

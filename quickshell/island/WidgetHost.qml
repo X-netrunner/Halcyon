@@ -80,29 +80,36 @@ Item {
     readonly property real effLum: backLum * (1 - bodyOp) + 0.012 * bodyOp     // linear luminance seen through the box (a dark glass box is ~0.012)
     readonly property bool themed: textToneEff === "theme"
     // 1) an evenly BRIGHT patch: dark, accent-tinted text.   0.18 is where black text starts to beat white on contrast
-    readonly property bool onBright: themed && effLum > 0.2 && backSpread < 0.15
+    readonly property bool onBright: themed && effLum > 0.45 && backSpread < 0.1
     // 2) a MIXED patch (pink next to black ...): neither colour reads on all of it, so light text with a strong dark outline, like subtitles
-    readonly property bool onMixed: themed && !onBright && bodyOp < 0.5 && backSpread >= 0.15 && backMax > 0.2
+    readonly property bool onMixed: themed && !onBright && bodyOp < 0.5 && backMax > 0.2 && (backSpread >= 0.15 || effLum > 0.2)
     readonly property color accentRaw: toneEff === "custom" ? look.color : (toneEff === "second" ? pal.accent2 : pal.accent)
     readonly property color accentInk: Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(1, Math.max(0.55, accentRaw.hslSaturation)), 0.22, 1)   // the accent, darkened to read on light
-    readonly property color accentSoft: Qt.tint("#ffffff", Qt.alpha(accentRaw, 0.25))      // the accent, washed towards white: bars / dots on a mixed patch
+    readonly property color accentSoft: Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(1, Math.max(0.65, accentRaw.hslSaturation)), Math.max(0.6, accentRaw.hslLightness), 1)      // the accent, light but still coloured: bars / dots on a mixed patch
     readonly property color accent: onBright && toneEff !== "custom" ? accentInk
                                     : (onMixed && toneEff !== "custom" ? accentSoft
                                        : (boost > 0 ? Qt.tint(accentRaw, Qt.rgba(1, 1, 1, 0.2 * boost)) : accentRaw))
+    // the accent as readable LIGHT text that keeps its hue (the old "washed towards white" turned every colour into white on a busy wallpaper)
+    readonly property color accentRawB: pal.accent2
+    // (the same colour the terminal prompt gets: the accent's own hue and saturation, lifted to at least 62 % lightness so it reads)
+    readonly property color vividA: Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(1, Math.max(0.65, accentRaw.hslSaturation)), Math.max(0.62, accentRaw.hslLightness), 1)
+    readonly property color vividB: Qt.hsla(Math.max(0, accentRawB.hslHue), Math.min(1, Math.max(0.65, accentRawB.hslSaturation)), Math.max(0.62, accentRawB.hslLightness), 1)
     readonly property color boxTint: Qt.alpha(accentRaw, 0.7 * depth)       // laid over the surface colour
     readonly property color fg: textToneEff === "custom" ? look.textColor
                                 : (textToneEff === "light" ? "#ffffff" : (textToneEff === "dark" ? "#14151c"
+                                   : (textToneEff === "accent" || textToneEff === "split" ? vividA : (textToneEff === "second" ? vividB
                                    : (onBright ? Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(0.7, accentRaw.hslSaturation), 0.10, 1)
-                                      : (onMixed ? Qt.tint("#ffffff", Qt.alpha(accentRaw, 0.10))
-                                                 : Qt.tint(pal.text, Qt.alpha(accentRaw, match ? 0.42 : 0.16 * depth))))))
-    readonly property color dim: (textToneEff === "custom" || textToneEff === "light" || textToneEff === "dark")
+                                      : (onMixed ? vividA
+                                                 : Qt.tint(pal.text, Qt.alpha(accentRaw, match ? 0.55 : 0.4 * depth))))))))
+    readonly property color dim: (textToneEff === "split") ? Qt.alpha(vividB, 0.9)
+                                 : ((textToneEff === "custom" || textToneEff === "light" || textToneEff === "dark" || textToneEff === "accent" || textToneEff === "second")
                                  ? Qt.alpha(fg, 0.62 + 0.26 * boost)
                                  : (onBright ? Qt.alpha(accentInk, 0.82 + 0.16 * boost)
-                                    : (onMixed ? Qt.alpha("#ffffff", 0.9)
-                                               : Qt.tint(Qt.tint(pal.muted, Qt.alpha(accentRaw, 0.5 * depth)), Qt.rgba(1, 1, 1, 0.3 * boost))))
+                                    : (onMixed ? Qt.alpha(vividB, 0.92)
+                                               : Qt.tint(Qt.tint(pal.muted, Qt.alpha(accentRaw, 0.5 * depth)), Qt.rgba(1, 1, 1, 0.3 * boost)))))
     readonly property color outlineColor: onMixed ? Qt.rgba(0, 0, 0, 0.9)
                                           : ((textToneEff === "dark" || onBright) ? Qt.rgba(1, 1, 1, 0.45 * Math.max(boost, onBright ? 0.7 : 0)) : Qt.rgba(0, 0, 0, 0.55 * boost))
-    readonly property color track: onMixed ? Qt.rgba(1, 1, 1, 0.4) : Qt.alpha(onBright ? accentInk : accentRaw, 0.14 + 0.2 * depth)
+    readonly property color track: onMixed ? Qt.alpha(accentSoft, 0.4) : Qt.alpha(onBright ? accentInk : accentRaw, 0.14 + 0.2 * depth)
     readonly property string face: look.font === "mono" ? pal.mono : (look.font === "serif" ? pal.serifFont : pal.uiFont)
     readonly property string iconFont: pal.font
     readonly property real fs: look.fs
@@ -187,6 +194,26 @@ Item {
     }
     // "No box" (surface "clear") draws nothing at all: the words sit straight on the wallpaper. Readability only lifts the colours
     // a little and outlines the letters; it never puts a dark box behind them.
+
+    // Soft halo: a faint, feathered dark glow behind the words, only where the wallpaper is BUSY behind them (high contrast spread).
+    // On flat or even patches (a plain pink sky, a dark area) it fades out completely, so it is never seen as a blob.
+    Item {
+        id: halo
+        readonly property real busy: Math.max(0, Math.min(1, (host.backSpread - 0.22) / 0.3))     // 0 = even patch, 1 = very busy
+        readonly property real strength: busy * (0.45 + 0.55 * host.boost)
+        visible: host.look.halo !== false && host.bodyOp < 0.5 && !host.preview && strength > 0.02
+        anchors.fill: parent
+        Repeater {
+            model: 12
+            delegate: Rectangle {
+                required property int index
+                anchors.fill: parent
+                anchors.margins: -(index * 3 - 2)
+                radius: Math.max(host.corner, 8) + index * 3
+                color: Qt.rgba(0, 0, 0, 0.026 * halo.strength)
+            }
+        }
+    }
 
     // ---- the body
     Loader {

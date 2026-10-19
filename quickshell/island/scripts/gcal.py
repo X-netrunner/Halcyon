@@ -817,11 +817,19 @@ def focus_status():
         return {}
 
 
+def emit_next(flags, nxt):
+    """--next: print when this worker next has anything to do ({"next": unix seconds, 0 = nothing planned), so the island can
+    sleep until then instead of starting Python every minute."""
+    if "--next" in flags:
+        print(json.dumps({"ok": True, "next": min(nxt) if nxt else 0}))
+
+
 def cmd_notify(flags):
     c = conf()
     cache = load(CACHE, {})
     events = cache.get("events") or []
     if not events:
+        emit_next(flags, [])
         return 0
     remind_on = "--no-remind" not in flags
     nag_every = int(flags[flags.index("--nag") + 1]) * 60 if "--nag" in flags else 0
@@ -908,6 +916,34 @@ def cmd_notify(flags):
             break
     if dirty:
         save(AUTOFOCUS, af)
+
+    # ---- the next moment anything above can fire (reminder, nag, auto Focus start / end)
+    if "--next" in flags:
+        nxt = []
+        for ev in events:
+            if ev["id"] in done:
+                continue
+            task = is_task(ev)
+            if offsets:
+                times = [(ev["start"] + 8 * 3600, -1)] if ev["allDay"] else [(ev["start"] - m * 60, m) for m in offsets]
+                nxt.extend(due for due, _m in times if due > now)
+            if nag_every and task and not ev["allDay"]:
+                end = max(ev["end"], ev["start"])
+                if now < end + giveup:
+                    t = ev["start"] + nag_every
+                    if ev["id"] in nagged:
+                        t = max(t, nagged[ev["id"]] + nag_every)
+                    nxt.append(max(t, now + 1))
+        if af.get("active"):
+            nxt.append(af.get("end", 0))
+        elif auto_focus:
+            for ev in events:
+                if ev["allDay"] or ev["id"] in done or not is_task(ev) or ev["id"] in af["fired"]:
+                    continue
+                if ev["end"] - ev["start"] < 600 or ev["end"] <= now:
+                    continue
+                nxt.append(ev["start"] if ev["start"] > now else now + 60)    # running now but a session is on: look again soon
+        emit_next(flags, [t for t in nxt if t > now])
     return 0
 
 
