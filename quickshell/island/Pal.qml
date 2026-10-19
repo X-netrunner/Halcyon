@@ -170,6 +170,20 @@ Scope {
     // 12 x 8 grid of the wallpaper's real luminance (0 black .. 1 white, linear), row by row: palette.sh. The desktop widgets ask
     // lumAt() what is right behind them and switch to dark, accent-tinted text on a bright patch (WidgetHost.qml)
     property var wallGrid: []
+    // the same 12 x 8 grid in colour ("#rrggbb" per cell, palette.sh "cgrid"): colorAt() is what the widgets' Auto text colour looks at
+    property var wallColors: []
+    function colorAt(fx, fy, fw, fh) {
+        var cg = wallColors
+        if (!cg || cg.length !== 96) return null
+        var x0 = Math.max(0, Math.min(11, Math.floor(fx * 12))), x1 = Math.max(x0, Math.min(11, Math.floor((fx + fw) * 12)))
+        var y0 = Math.max(0, Math.min(7, Math.floor(fy * 8))), y1 = Math.max(y0, Math.min(7, Math.floor((fy + fh) * 8)))
+        var r = 0, g = 0, b = 0, n = 0
+        for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) {
+            var h = String(cg[y * 12 + x])
+            r += parseInt(h.substr(1, 2), 16); g += parseInt(h.substr(3, 2), 16); b += parseInt(h.substr(5, 2), 16); n++
+        }
+        return n ? [r / n / 255, g / n / 255, b / n / 255] : null
+    }
     function lumAt(fx, fy, fw, fh): real {
         var g = wallGrid
         if (!g || g.length !== 96) return wallLum
@@ -317,6 +331,7 @@ Scope {
             if (p.muted) pal.rawMuted = p.muted
             if (p.lum !== undefined) pal.wallLum = p.lum
             if (p.grid && p.grid.length === 96) pal.wallGrid = p.grid
+            if (p.cgrid && p.cgrid.length === 96) pal.wallColors = p.cgrid
             var sw = p.swatches || []
             if (JSON.stringify(sw) !== JSON.stringify(pal.swatches)) pal.swatches = sw     // rebuilds the ring, then syncs the accent
             else pal.syncAccent()

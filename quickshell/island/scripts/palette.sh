@@ -63,6 +63,7 @@ NF >= 3 {
     # coarse 12 x 8 grid of the picture (linear luminance): the desktop widgets look up what is right behind them
     gi = n - 1; gc = int(((gi % 64) * 12) / 64) + 12 * int((int(gi / 64) * 8) / 64)
     GS[gc] += 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b); GN[gc]++
+    CRS[gc] += r; CGS[gc] += g; CBS[gc] += b          # the same grid in colour: widgets pick a text colour that stands out from what is behind them
     mx = max3(r, g, b); mn = min3(r, g, b); v = mx; d = mx - mn
     if (mx <= 0) next
     s = d / mx
@@ -111,9 +112,10 @@ END {
         for (i = 0; i < nsw; i++) sws = sws (i ? "," : "") "\"" SW[i] "\""
     }
     for (gc = 0; gc < 96; gc++) grid = grid (gc ? "," : "") sprintf("%.3f", GN[gc] ? GS[gc] / GN[gc] : 0)
-    printf "{\"bg\":\"%s\",\"surface\":\"%s\",\"surfaceHi\":\"%s\",\"accent\":\"%s\",\"accent2\":\"%s\",\"text\":\"%s\",\"muted\":\"%s\",\"dominant\":\"%s\",\"lum\":%.3f,\"grid\":[%s],\"swatches\":[%s]}\n", \
+    for (gc = 0; gc < 96; gc++) cgrid = cgrid (gc ? "," : "") "\"#" (GN[gc] ? hex2(CRS[gc] / GN[gc]) hex2(CGS[gc] / GN[gc]) hex2(CBS[gc] / GN[gc]) : "000000") "\""
+    printf "{\"bg\":\"%s\",\"surface\":\"%s\",\"surfaceHi\":\"%s\",\"accent\":\"%s\",\"accent2\":\"%s\",\"text\":\"%s\",\"muted\":\"%s\",\"dominant\":\"%s\",\"lum\":%.3f,\"grid\":[%s],\"cgrid\":[%s],\"swatches\":[%s]}\n", \
         hsl(h1, sbg, 0.095), hsl(h1, sbg - 0.04, 0.155), hsl(h1, sbg - 0.04, 0.205), \
-        hsl(h1, sa, 0.70), hsl(h2, sa2, 0.72), hsl(h1, 0.20, 0.89), hsl(h1, 0.10, 0.64), dom, lsum / n, grid, sws
+        hsl(h1, sa, 0.70), hsl(h2, sa2, 0.72), hsl(h1, 0.20, 0.89), hsl(h1, 0.10, 0.64), dom, lsum / n, grid, cgrid, sws
 }')
 [ -n "$json" ] || exit 1
 # palette.sh <image> --print: just print the json (scripts/wallpapers.sh colors uses it to read every wallpaper's colours)

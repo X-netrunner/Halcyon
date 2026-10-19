@@ -270,7 +270,7 @@ update_copy() {
   ok "downloaded"
 
   # your own files survive the copy
-  local KEEP=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf backup-exclude.conf birthdays.txt)
+  local KEEP=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf notes.conf backup-exclude.conf birthdays.txt holidays.txt)
   local keep f; keep="$(mktemp -d)"
   for f in "${KEEP[@]}"; do
     [ -f "$RICE/$f" ] && { mkdir -p "$keep/$(dirname "$f")"; cp -a "$RICE/$f" "$keep/$f"; }

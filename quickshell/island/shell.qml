@@ -48,7 +48,10 @@ ShellRoot {
         wsMax: 9,                  // "next workspace" never opens a workspace above this number
         wpEvery: 0,                // minutes between automatic wallpaper changes (0 = off)
         wpSource: "local",         // local | online | mixed : where "next wallpaper" takes pictures from (scripts/wallpaper.sh)
-        wpCat: "nature",           // online category: nature movies anime anime-art space city minimal cars random
+        wpCat: "nature",           // online category: nature movies anime anime-art space city minimal cars random custom
+        wpQuery: "",               // the search word used when wpCat is "custom"
+        widgetHalo: true,          // desktop widgets: the faint dark glow behind the words on a busy wallpaper (WidgetHost.qml)
+        widgetReadability: 0,      // desktop widgets: percent added to every widget's own Readability (-30 .. 40)
         clockSeconds: false,       // show seconds in the bar clock
         clockDate: true,           // show the weekday and date next to the clock
         calOn: true,               // Calendar master switch (Super + R, >calendar, the clock click, reminders, auto Focus)
@@ -145,6 +148,7 @@ ShellRoot {
         switch (k) {
         case "wpSource": writeFlag("wallpaper-source", v); break    // scripts/wallpaper.sh reads these two on every change
         case "wpCat": writeFlag("wallpaper-cat", v); break
+        case "wpQuery": writeFlag("wallpaper-query", String(v || "").replace(/[\r\n]+/g, " ").trim()); break
         case "wsEnd": writeFlag("ws-end", v); break
         case "wsStart": writeFlag("ws-start", v); break
         case "wsMax": writeFlag("ws-max", v); break
@@ -549,6 +553,8 @@ ShellRoot {
         onWallpaperSet: path => root.setWallpaper(path)
         onAction: id => {
             if (id === "wallpaper") root.randomWallpaper()
+            else if (id === "wallpaper-back") wallpaperLayer.back()
+            else if (id === "wallpaper-keep") wallpaperLayer.keep()
             else if (id === "config") root.editConfig()
             else if (id === "cheatsheet") root.runCommand("cheatsheet")
             else if (id === "reload") fullReloadProc.running = true
@@ -1544,6 +1550,8 @@ ShellRoot {
         }
         switch (id) {
         case "wallpaper": randomWallpaper(); break
+        case "wallpaper-back": wallpaperLayer.back(); break
+        case "wallpaper-keep": wallpaperLayer.keep(); break
         case "wallgallery": settingsWin.openGallery(); break
         case "barbuilder": settingsWin.openBuilder(); break
         case "notifbuilder": settingsWin.openNotifBuilder(); break
@@ -1854,9 +1862,10 @@ ShellRoot {
         }
     }
 
-    // visualizer feed, only runs while something is playing AND a surface showing it is visible
+    // visualizer feed, only runs while something is playing AND a surface showing it is visible (bar style Off has no bar: the
+    // media page and the desktop widget are the only readers, and the widget has its own cava below)
     Process {
-        running: root.playing && !root.gaming && root.opt.viz !== "off" && !root.vizHold && (win.shown || root.notchStyle || root.opt.barStyle === "custom") && (root.page === "home" || root.page === "media")
+        running: root.playing && !root.gaming && root.opt.viz !== "off" && !root.vizHold && (root.page === "media" || (root.page === "home" && root.opt.barStyle !== "off" && (win.shown || root.notchStyle || root.opt.barStyle === "custom")))
         command: ["cava", "-p", Quickshell.shellPath(root.opt.viz === "light" ? "cava-light.conf" : "cava.conf")]
         stdout: SplitParser {
             onRead: d => {

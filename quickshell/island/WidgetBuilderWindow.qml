@@ -685,7 +685,7 @@ Item {
                             Layout.fillWidth: true
                             visible: !root.curLook.match
                             pal: root.pal; label: "Text colour"; labelWidth: 90
-                            options: [["theme", "Theme"], ["accent", "Accent"], ["second", "Second"], ["split", "Split"], ["light", "White"], ["dark", "Dark"], ["custom", "My colour"]]
+                            options: [["theme", "Theme"], ["auto", "Auto"], ["accent", "Accent"], ["second", "Second"], ["split", "Split"], ["light", "White"], ["dark", "Dark"], ["custom", "My colour"]]
                             current: root.curLook.textTone
                             onPicked: id => root.setLookV("textTone", id)
                         }

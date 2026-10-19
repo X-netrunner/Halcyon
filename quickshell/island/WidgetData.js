@@ -255,7 +255,7 @@ function look(l) {
     if (l && typeof l === "object") for (var x in l) if (x in lookDefaults) o[x] = l[x]
     if (["glass", "solid", "clear", "outline", "pill"].indexOf(o.surface) < 0) o.surface = "glass"
     if (["theme", "second", "custom"].indexOf(o.tone) < 0) o.tone = "theme"
-    if (["theme", "light", "dark", "custom", "accent", "second", "split"].indexOf(o.textTone) < 0) o.textTone = "theme"
+    if (["theme", "auto", "light", "dark", "custom", "accent", "second", "split"].indexOf(o.textTone) < 0) o.textTone = "theme"
     o.contrast = clamp(num(o.contrast, 0.6), 0, 1)
     o.depth = clamp(num(o.depth, 0.5), 0, 1)
     if (o.font !== "mono" && o.font !== "serif") o.font = "ui"

@@ -175,3 +175,13 @@ Each script runs `hal` when `bin/hal` exists and otherwise carries on with its o
 | `scripts/term-colors.sh` | Accent-drift ticks stop at once when no terminal is open (no forks), and no longer rewrite the five terminal colour files every few seconds. The normal run still writes them. |
 | `quickshell/island/shell.qml`, `quickshell/island/Settings.qml`, `quickshell/island/scripts/hypr-values.sh` | New Settings > Look option "Animate window resizing" (Hyprland `misc:animate_manual_resizes`). The Low resource preset turns it off, Medium and High turn it on. Default is unchanged. |
 | `src/power-manager/src/main.rs` | The gaming-mode snapshot also understands Hyprland builds that report on / off options as `"bool"`. |
+
+### Review round, part 3 (bar Off)
+
+| File | What changed |
+| :--- | :--- |
+| `quickshell/island/shell.qml` | The `cava` visualizer feed (line ~1868) no longer runs on the home page when `barStyle` is `off`. `notchStyle` is also true for Off and `win.shown` is true whenever auto-hide is off, so the feed ran for a bar that does not exist. With Off it now runs only on the media page; Island, Notch and Custom use the same condition as before. |
+| `src/recon-deceiver/src/main.rs` | New `prune_dir()`: before an FTP-decoy upload is saved, `attacker-uploads/` is trimmed to at most 99 files / 190 MB (oldest first), so with the new file it stays under 100 captures / about 200 MB. Before, every capture (up to 10 MB) was kept forever. Log files are left alone: `log-analyst` and `hx ids` tail `recon-attempts.log`. |
+| `src/hx/src/sysfeeds.rs` | The battery reader no longer falls back to `upower -i` when the kernel status is "Not charging" (plugged in at a charge limit). That state never has an estimate, so the call only started a process every 15 s. |
+| `install.sh`, `update.sh` | `holidays.txt` is added to the list of files that are never overwritten (`KEEP_FILES` / `KEEP`). Before, only `birthdays.txt` was kept, so every install or update replaced your own holidays with the stock template. `update.sh` also keeps `notes.conf` now (`install.sh` already did). |
+Checked and left alone (already gated or already fine): `power-manager` (event driven: one `poll(2)`, cached sensors; no leak found), the `hx` stats / net / states feeds, every infinite animation in the island, the always-on timers and processes in `shell.qml` (all one-shot or event driven), image decoding (every `Image` has a `sourceSize`), the touchpad daemon loop (blocking reads, 16 ms write throttle), `osd-watch.sh` (timed reads, backs off to 1 s), and the systemd units. `bash -n` on every shell script, `py_compile` on every Python file and `node --check` on every `.js` pass.

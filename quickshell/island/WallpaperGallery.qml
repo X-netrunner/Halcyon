@@ -856,6 +856,54 @@ Item {
 
                     Rectangle {
                         height: 30
+                        width: wpBackRow.implicitWidth + 20
+                        radius: 10
+                        color: wpBackMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.7)
+                        border.width: 1
+                        border.color: root.pal ? root.pal.line : "#22ffffff"
+
+                        Row {
+                            id: wpBackRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text { text: "\uf0e2"; font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"; font.pixelSize: 11; color: root.pal.accent }
+                            Text { text: "Back"; font.family: root.pal.uiFont; font.pixelSize: 11; color: root.pal.text }
+                        }
+                        MouseArea {
+                            id: wpBackMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.action("wallpaper-back")
+                        }
+                    }
+
+                    Rectangle {
+                        height: 30
+                        width: wpKeepRow.implicitWidth + 20
+                        radius: 10
+                        color: wpKeepMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.7)
+                        border.width: 1
+                        border.color: root.pal ? root.pal.line : "#22ffffff"
+
+                        Row {
+                            id: wpKeepRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text { text: "\uf0c7"; font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"; font.pixelSize: 11; color: root.pal.accent }
+                            Text { text: "Keep"; font.family: root.pal.uiFont; font.pixelSize: 11; color: root.pal.text }
+                        }
+                        MouseArea {
+                            id: wpKeepMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.action("wallpaper-keep")
+                        }
+                    }
+
+                    Rectangle {
+                        height: 30
                         width: addRow.implicitWidth + 20
                         radius: 10
                         color: addMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.7)
