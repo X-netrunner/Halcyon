@@ -251,6 +251,18 @@ PanelWindow {
         wpProc.running = true
     }
 
+    // the previous wallpaper (scripts/wallpaper.sh remembers the last 30)
+    function back() {
+        wpProc.mode = "back"
+        wpProc.arg = ""
+        wpProc.running = true
+    }
+
+    // copy the current ONLINE wallpaper into your wallpaper folder (a notification says where it went)
+    function keep() {
+        Quickshell.execDetached(["bash", wallpaper.island + "/scripts/wallpaper.sh", "keep"])
+    }
+
     // a specific file (Settings > Wallpaper thumbnails)
     function useFile(path) {
         if (!path) return
@@ -277,6 +289,8 @@ PanelWindow {
     IpcHandler {
         target: "wallpaper"
         function next(): void { wallpaper.next() }
+        function back(): void { wallpaper.back() }
+        function keep(): void { wallpaper.keep() }
         function set(path: string): void { wallpaper.useFile(path) }
     }
 }

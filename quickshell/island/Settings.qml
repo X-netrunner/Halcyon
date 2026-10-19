@@ -341,6 +341,7 @@ Scope {
     property string wpText: ""
     readonly property string wpScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/wallpapers.sh"
     function wpAct(a) {
+        if (a === "wallpaper" || a === "wallpaper-back" || a === "wallpaper-keep") { action(a); return }     // handled by the shell (Wallpaper.qml)
         // the file manager / picker window opens below this overlay, so get out of its way first
         if (a === "open" || a === "add" || a === "choose-dir") hide()
         Quickshell.execDetached(["bash", wpScript, a])
@@ -598,13 +599,15 @@ Scope {
             { type: "custom", name: "wallClock" },
             { type: "custom", name: "wallpaper" },
             { type: "seg", key: "opt:wpSource", label: "Source", desc: "Local: only your folder. Online: a fresh picture from Wallhaven (safe-for-work) in the category below, cached on disk. Mixed: either one. No network = your folder.", opts: [o("local", "Local"), o("online", "Online"), o("mixed", "Mixed")] },
-            { type: "seg", key: "opt:wpCat", label: "Online category", desc: "What \"Next wallpaper\" and the timer fetch. Anime = characters, Anime art = anime-style scenery. Random picks a category each time.", opts: [o("nature", "Nature"), o("movies", "Movies"), o("anime", "Anime"), o("anime-art", "Anime art"), o("space", "Space"), o("city", "City"), o("minimal", "Minimal"), o("cars", "Cars"), o("random", "Random")], when: "opt:wpSource=online|mixed" },
+            { type: "seg", key: "opt:wpCat", label: "Online category", desc: "What \"Next wallpaper\" and the timer fetch. Anime = characters, Anime art = anime-style scenery. Random picks a category each time. Search… uses your own word (the box below).", opts: [o("nature", "Nature"), o("movies", "Movies"), o("anime", "Anime"), o("anime-art", "Anime art"), o("space", "Space"), o("city", "City"), o("minimal", "Minimal"), o("cars", "Cars"), o("random", "Random"), o("custom", "Search…")], when: "opt:wpSource=online|mixed" },
             { type: "seg", key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] }
         ] },
         { id: "desktop", title: "Desktop builder", section: "Appearance", items: [
             { type: "custom", name: "desktopBuilder" }
         ] },
         { id: "widgets", title: "Widget builder", section: "Appearance", items: [
+            { type: "toggle", key: "opt:widgetHalo", label: "Soft halo behind widget text", desc: "A faint dark glow behind the words of box-less desktop widgets, only where the wallpaper behind them is busy. Off = never, for every widget." },
+            { type: "slider", key: "opt:widgetReadability", label: "Widget text readability", desc: "Added to every widget's own Readability setting: a stronger outline and a lighter text colour. 0 = each widget as you set it.", min: -30, max: 40, step: 5, def: 0, unit: " %", glyph: 0xF0A39 },
             { type: "custom", name: "widgetBuilder" }
         ] },
         { id: "glass", title: "Effects: transparency, blur & motion", section: "Appearance", items: [
@@ -1100,6 +1103,29 @@ Scope {
             width: parent ? parent.width : 0
             spacing: 12
             readonly property bool onlineOnly: root.opt.wpSource === "online"      // Online: the folder tools step out of the way
+            // the search word for Online category "Search…"
+            RowLayout {
+                Layout.fillWidth: true
+                visible: root.opt.wpSource !== "local" && root.opt.wpCat === "custom"
+                spacing: 10
+                Timer { id: wpFetchSoon; interval: 450; onTriggered: root.action("wallpaper") }       // the flag file is written first
+                Rectangle {
+                    Layout.fillWidth: true; Layout.preferredHeight: 36; radius: 18
+                    color: Qt.alpha(root.pal.bg, 0.5); border.width: 1; border.color: wpQueryIn.activeFocus ? root.pal.accent : root.pal.lineSoft
+                    TextInput {
+                        id: wpQueryIn
+                        anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                        clip: true; selectByMouse: true
+                        text: root.opt.wpQuery || ""
+                        onEditingFinished: root.change("opt:wpQuery", text.trim())
+                        onAccepted: { root.change("opt:wpQuery", text.trim()); wpFetchSoon.restart() }
+                        Text { visible: !parent.text && !parent.activeFocus; anchors.verticalCenter: parent.verticalCenter; text: "Search word, e.g. cyberpunk, mountains, gengar"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                    }
+                }
+                ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0976); label: "Fetch"; onClicked: { root.change("opt:wpQuery", wpQueryIn.text.trim()); wpFetchSoon.restart() } }
+            }
             RowLayout {
                 Layout.fillWidth: true
                 visible: !wpCol.onlineOnly
@@ -1118,6 +1144,8 @@ Scope {
                 spacing: 12
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF03E); label: "Gallery (Cascade, Carousel & Grid)"; onClicked: root.galleryOpen = true }
                 ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0976); label: "Next wallpaper"; onClicked: root.action("wallpaper") }
+                ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0E2); label: "Back"; onClicked: root.action("wallpaper-back") }
+                ActionChip { visible: root.opt.wpSource !== "local"; pal: root.pal; glyph: String.fromCodePoint(0xF0C7); label: "Keep this one"; onClicked: root.action("wallpaper-keep") }
                 ActionChip { visible: !wpCol.onlineOnly; pal: root.pal; glyph: String.fromCodePoint(0xF0770); label: "Open folder"; onClicked: root.wpAct("open") }
                 ActionChip { visible: !wpCol.onlineOnly; pal: root.pal; glyph: String.fromCodePoint(0xF0415); label: "Add wallpapers…"; onClicked: root.wpAct("add") }
                 ActionChip { visible: !wpCol.onlineOnly; pal: root.pal; label: "Change folder…"; onClicked: root.wpAct("choose-dir") }
@@ -1174,7 +1202,7 @@ Scope {
             Text {
                 Layout.fillWidth: true
                 visible: wpCol.onlineOnly
-                text: "Online: Next wallpaper fetches a new " + (root.opt.wpCat || "nature") + " picture. Switch Source to Local or Mixed to use your own folder again."
+                text: "Online: Next wallpaper fetches a new " + (root.opt.wpCat || "nature") + " picture. The next one is downloaded in the background, so it is instant. Keep this one saves the current picture into your folder. Switch Source to Local or Mixed to use your own folder again."
                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
             }
         }

@@ -385,7 +385,8 @@ impl Bat {
                 }
             }
         }
-        if est.is_empty() && st != "Full" {
+        // "Not charging" (plugged in at a charge limit) has no estimate either: do not start upower every 15 s for nothing
+        if est.is_empty() && st != "Full" && st != "Not charging" {
             self.up.read();
             est = self.up.est.clone();
         }

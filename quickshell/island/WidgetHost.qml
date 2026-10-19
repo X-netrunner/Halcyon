@@ -59,7 +59,9 @@ Item {
     // look.contrast (0 .. 1, "Readability" in the Widget builder) lifts the lit colour toward white, brightens the quiet text,
     // and draws a soft outline round every letter, so it reads on a busy wallpaper (no box is ever drawn for "No box").
     // look.depth ("Colour depth") pours the accent into the box, the quiet text, the bars and the hairline.
-    readonly property real boost: look.contrast
+    // Settings > Widget builder: one halo switch and one readability offset for every widget (the shell's opt)
+    readonly property var gOpt: (env && env.opt) ? env.opt : ({})
+    readonly property real boost: Math.max(0, Math.min(1, look.contrast + Number(gOpt.widgetReadability || 0) / 100))
     // look.match ("Match wallpaper accent"): the lit colour, the text and the box all follow the wallpaper accent, whatever the colour pickers say
     readonly property bool match: look.match === true
     readonly property string toneEff: match ? "theme" : look.tone
@@ -80,34 +82,69 @@ Item {
     readonly property real effLum: backLum * (1 - bodyOp) + 0.012 * bodyOp     // linear luminance seen through the box (a dark glass box is ~0.012)
     readonly property bool themed: textToneEff === "theme"
     // 1) an evenly BRIGHT patch: dark, accent-tinted text.   0.18 is where black text starts to beat white on contrast
-    readonly property bool onBright: themed && effLum > 0.45 && backSpread < 0.1
+    readonly property bool autoTone: textToneEff === "auto"
+    readonly property bool onBright: (themed || autoTone) && effLum > 0.45 && backSpread < 0.1
     // 2) a MIXED patch (pink next to black ...): neither colour reads on all of it, so light text with a strong dark outline, like subtitles
     readonly property bool onMixed: themed && !onBright && bodyOp < 0.5 && backMax > 0.2 && (backSpread >= 0.15 || effLum > 0.2)
     readonly property color accentRaw: toneEff === "custom" ? look.color : (toneEff === "second" ? pal.accent2 : pal.accent)
     readonly property color accentInk: Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(1, Math.max(0.55, accentRaw.hslSaturation)), 0.22, 1)   // the accent, darkened to read on light
-    readonly property color accentSoft: Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(1, Math.max(0.65, accentRaw.hslSaturation)), Math.max(0.6, accentRaw.hslLightness), 1)      // the accent, light but still coloured: bars / dots on a mixed patch
+    readonly property color accentSoft: autoPair[0]      // light, coloured, and different from what is behind it: bars / dots on a busy patch
     readonly property color accent: onBright && toneEff !== "custom" ? accentInk
-                                    : (onMixed && toneEff !== "custom" ? accentSoft
+                                    : ((onMixed || autoTone) && toneEff !== "custom" ? accentSoft
                                        : (boost > 0 ? Qt.tint(accentRaw, Qt.rgba(1, 1, 1, 0.2 * boost)) : accentRaw))
     // the accent as readable LIGHT text that keeps its hue (the old "washed towards white" turned every colour into white on a busy wallpaper)
     readonly property color accentRawB: pal.accent2
     // (the same colour the terminal prompt gets: the accent's own hue and saturation, lifted to at least 62 % lightness so it reads)
     readonly property color vividA: Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(1, Math.max(0.65, accentRaw.hslSaturation)), Math.max(0.62, accentRaw.hslLightness), 1)
     readonly property color vividB: Qt.hsla(Math.max(0, accentRawB.hslHue), Math.min(1, Math.max(0.65, accentRawB.hslSaturation)), Math.max(0.62, accentRawB.hslLightness), 1)
+    // ---- "Auto" text colour: of the wallpaper's own colours (accent, second colour, every swatch) plus white, take the one that stands out
+    // best from what is right behind THIS widget: enough contrast against the brightest part of the patch, and a hue far from the
+    // patch's own (pink text on a cyan corner, cyan on a pink one). [0] = the main colour, [1] = a second one for the quiet text.
+    readonly property var backRgb: pal ? pal.colorAt(fX, fY, fW, fH) : null
+    function relLum(c) {
+        function l(x) { return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4) }
+        return 0.2126 * l(c.r) + 0.7152 * l(c.g) + 0.0722 * l(c.b)
+    }
+    readonly property var autoPair: {
+        var cands = [vividA, vividB]
+        var sw = (pal && pal.swatches) ? pal.swatches : []
+        for (var i = 0; i < sw.length && i < 6; i++) {
+            var q = Qt.color(sw[i])
+            cands.push(Qt.hsla(Math.max(0, q.hslHue), Math.min(1, Math.max(0.65, q.hslSaturation)), Math.max(0.62, q.hslLightness), 1))
+        }
+        cands.push(Qt.color("#ffffff"))
+        var rgb = backRgb, bHue = -1, bSat = 0
+        if (rgb) { var bc = Qt.rgba(rgb[0], rgb[1], rgb[2], 1); bHue = bc.hslHue; bSat = bc.hslSaturation }
+        var sc = []
+        for (var j = 0; j < cands.length; j++) {
+            var c = cands[j]
+            var contrast = (relLum(c) + 0.05) / (backMax + 0.05)
+            var sep = 0
+            if (bHue >= 0 && c.hslHue >= 0) { var d = Math.abs(c.hslHue - bHue); if (d > 0.5) d = 1 - d; sep = Math.min(1, d * 2.2) * Math.min(1, bSat * 1.8) }
+            sc.push({ c: c, h: c.hslHue, s: Math.min(contrast, 6) / 6 + 0.9 * sep + (j < 2 ? 0.1 : 0) - (contrast < 2.2 ? 1 : 0) })
+        }
+        sc.sort(function (a, b) { return b.s - a.s })
+        var first = sc[0], second = sc.length > 1 ? sc[1] : sc[0]
+        for (var m = 1; m < sc.length; m++) {
+            var dh = Math.abs(sc[m].h - first.h); if (dh > 0.5) dh = 1 - dh
+            if (dh >= 0.07) { second = sc[m]; break }
+        }
+        return [first.c, second.c]
+    }
     readonly property color boxTint: Qt.alpha(accentRaw, 0.7 * depth)       // laid over the surface colour
     readonly property color fg: textToneEff === "custom" ? look.textColor
                                 : (textToneEff === "light" ? "#ffffff" : (textToneEff === "dark" ? "#14151c"
                                    : (textToneEff === "accent" || textToneEff === "split" ? vividA : (textToneEff === "second" ? vividB
                                    : (onBright ? Qt.hsla(Math.max(0, accentRaw.hslHue), Math.min(0.7, accentRaw.hslSaturation), 0.10, 1)
-                                      : (onMixed ? vividA
+                                      : ((onMixed || autoTone) ? autoPair[0]
                                                  : Qt.tint(pal.text, Qt.alpha(accentRaw, match ? 0.55 : 0.4 * depth))))))))
     readonly property color dim: (textToneEff === "split") ? Qt.alpha(vividB, 0.9)
                                  : ((textToneEff === "custom" || textToneEff === "light" || textToneEff === "dark" || textToneEff === "accent" || textToneEff === "second")
                                  ? Qt.alpha(fg, 0.62 + 0.26 * boost)
                                  : (onBright ? Qt.alpha(accentInk, 0.82 + 0.16 * boost)
-                                    : (onMixed ? Qt.alpha(vividB, 0.92)
+                                    : ((onMixed || autoTone) ? Qt.alpha(autoPair[1], 0.92)
                                                : Qt.tint(Qt.tint(pal.muted, Qt.alpha(accentRaw, 0.5 * depth)), Qt.rgba(1, 1, 1, 0.3 * boost)))))
-    readonly property color outlineColor: onMixed ? Qt.rgba(0, 0, 0, 0.9)
+    readonly property color outlineColor: (onMixed || (autoTone && !onBright)) ? Qt.rgba(0, 0, 0, 0.9)
                                           : ((textToneEff === "dark" || onBright) ? Qt.rgba(1, 1, 1, 0.45 * Math.max(boost, onBright ? 0.7 : 0)) : Qt.rgba(0, 0, 0, 0.55 * boost))
     readonly property color track: onMixed ? Qt.alpha(accentSoft, 0.4) : Qt.alpha(onBright ? accentInk : accentRaw, 0.14 + 0.2 * depth)
     readonly property string face: look.font === "mono" ? pal.mono : (look.font === "serif" ? pal.serifFont : pal.uiFont)
@@ -201,7 +238,7 @@ Item {
         id: halo
         readonly property real busy: Math.max(0, Math.min(1, (host.backSpread - 0.22) / 0.3))     // 0 = even patch, 1 = very busy
         readonly property real strength: busy * (0.45 + 0.55 * host.boost)
-        visible: host.look.halo !== false && host.bodyOp < 0.5 && !host.preview && strength > 0.02
+        visible: host.look.halo !== false && host.gOpt.widgetHalo !== false && host.bodyOp < 0.5 && !host.preview && strength > 0.02
         anchors.fill: parent
         Repeater {
             model: 12

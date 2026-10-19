@@ -1237,6 +1237,35 @@ fn telnet_negotiate(stream: &mut TcpStream) {
     }
 }
 
+/// Keeps a folder from growing without limit: when it holds more than `max_files` files or `max_bytes` bytes the oldest
+/// files are removed first. Used for the FTP decoy's capture folder (every upload can be 10 MB and any scanner may send them).
+fn prune_dir(dir: &str, max_files: usize, max_bytes: u64) {
+    let rd = match fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_) => return,
+    };
+    let mut files: Vec<(std::time::SystemTime, u64, std::path::PathBuf)> = Vec::new();
+    for e in rd.flatten() {
+        if let Ok(m) = e.metadata() {
+            if m.is_file() {
+                files.push((m.modified().unwrap_or(std::time::UNIX_EPOCH), m.len(), e.path()));
+            }
+        }
+    }
+    files.sort_by_key(|f| f.0); // oldest first
+    let mut count = files.len();
+    let mut total: u64 = files.iter().map(|f| f.1).sum();
+    for (_, len, path) in files {
+        if count <= max_files && total <= max_bytes {
+            break;
+        }
+        if fs::remove_file(&path).is_ok() {
+            count -= 1;
+            total = total.saturating_sub(len);
+        }
+    }
+}
+
 fn telnet_readline(stream: &mut TcpStream) -> String {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(60)));
     let mut buf = Vec::new();
@@ -1541,6 +1570,7 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                     if !payload.is_empty() {
                         let upload_dir = format!("{}/attacker-uploads", state.logs_dir);
                         let _ = fs::create_dir_all(&upload_dir);
+                        prune_dir(&upload_dir, 99, 190 * 1024 * 1024); // at most 100 captures / about 200 MB: the oldest go first
                         let fname = Path::new(&args).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_else(|| "unknown".to_string());
                         let save_path = format!("{}/{}_{}_{}", upload_dir, Local::now().format("%Y%m%d_%H%M%S"), ip, fname);
                         let _ = fs::write(&save_path, &payload);
