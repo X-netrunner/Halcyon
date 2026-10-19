@@ -6,22 +6,27 @@ on:
 jobs:
   rust:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        crate: [attacker-dossier, birthday-sync, hal, hx, log-analyst, power-manager, recon-deceiver, safety-check, setStaticMac, touchpad-gestures]
     steps:
       - uses: actions/checkout@v4
       - name: libraries some crates need (evdev)
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - uses: dtolnay/rust-toolchain@stable
-      - name: build
-        run: cargo build --release --manifest-path src/${{ matrix.crate }}/Cargo.toml
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-${{ hashFiles('Cargo.lock') }}
+      - name: 'Cargo.lock matches the crates (warning only; if it fires, run cargo build locally and commit the lock)'
+        continue-on-error: true
+        run: cargo metadata --locked --format-version 1 >/dev/null
+      - name: build every helper (one workspace, one target directory)
+        run: cargo build --workspace --release
       - name: test
-        run: cargo test --manifest-path src/${{ matrix.crate }}/Cargo.toml
+        run: cargo test --workspace
       - name: clippy (warnings reported, not blocking yet)
         continue-on-error: true
-        run: cargo clippy --manifest-path src/${{ matrix.crate }}/Cargo.toml -- -W clippy::unwrap_used
+        run: cargo clippy --workspace -- -W clippy::unwrap_used
 
   shell:
     runs-on: ubuntu-latest
@@ -34,6 +39,8 @@ jobs:
             bash -n "$f" || fail=1
           done
           exit $fail
+      - name: counter-scan rules (ON only in stealth, OFF always, saved choice survives a mode change)
+        run: bash tests/counterscan.sh
       - name: shellcheck (errors only, so old scripts do not block a push)
         run: sudo apt-get install -y shellcheck && shellcheck -S error $(git ls-files '*.sh') install.sh update.sh get.sh sysmode/sysmode scripts/halcyon-tune
 
@@ -48,11 +55,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: qmllint the island (catches "X is not a type" before you hit it at login)
-        continue-on-error: true
+      - name: 'qmllint the island (fails on "X is not a type", unresolved imports and syntax errors, the ones that break the shell at login)'
         run: |
           sudo apt-get update && sudo apt-get install -y qt6-declarative-dev-tools
-          qmllint6 -I quickshell/island quickshell/island/*.qml 2>&1 | grep -iE "is not a type|unqualified|syntax" | head -50 || true
+          # --max-warnings is not used: unqualified-access style warnings stay informational, only the breaking classes fail the job
+          qmllint6 -I quickshell/island quickshell/island/*.qml > qmllint.txt 2>&1 || true
+          cat qmllint.txt
+          if grep -iE "is not a type|failed to import|could not resolve|syntax error|unexpected token|expected token" qmllint.txt; then
+            echo "::error::qmllint found an error that would break the shell on startup (listed above)"
+            exit 1
+          fi
+
+  lua:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 'every Hyprland Lua file parses (a typo here leaves you with a broken session on reload)'
+        run: |
+          sudo apt-get update && sudo apt-get install -y lua5.4
+          fail=0
+          for f in hyprland.lua hypr-user.lua variables.lua hyprland/*.lua scheme/*.lua; do
+            [ -f "$f" ] || continue
+            luac5.4 -p "$f" || fail=1
+          done
+          exit $fail
+
+  systemd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: systemd-analyze verify the units in systemd/
+        run: |
+          fail=0
+          for f in systemd/*.service systemd/*.timer systemd/*.target; do
+            [ -f "$f" ] || continue
+            # the units are installed with their full path in ExecStart; a missing binary on the runner is not a unit mistake
+            out=$(systemd-analyze verify "$f" 2>&1 | grep -v "Command .* is not executable\|No such file or directory\|Failed to create .*/dev" || true)
+            [ -n "$out" ] && { echo "== $f"; echo "$out"; fail=1; }
+          done
+          exit $fail
 
   install-smoke:
     # install.sh --dry-run on a clean Arch and a clean Debian: catches syntax slips, bad flags and steps that die before they start.

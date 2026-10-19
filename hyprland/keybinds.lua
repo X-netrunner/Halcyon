@@ -192,3 +192,8 @@ for _, c in ipairs(user.custom) do
         pcall(hl.bind, c.keys, hl.dsp.exec_cmd(c.cmd))
     end
 end
+
+-- An empty submap: no binds at all. scripts/login-watchdog.sh switches to it while the lock screen is still coming up at login
+-- (up to ~20 s on a slow start), so no shortcut can open anything on the unlocked desktop, and switches back to "reset" once the
+-- lock is up. pcall: a Hyprland build without hl.define_submap just loses this extra guard, the config still loads.
+pcall(hl.define_submap, "halcyon-locking", function() end)

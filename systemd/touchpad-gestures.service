@@ -1,11 +1,16 @@
 [Unit]
 Description=Halcyon touchpad edge gestures (volume / brightness / track skip)
 After=graphical-session.target
+# never a restart storm: at most 5 starts per minute, then the unit stays failed (see: systemctl --user status touchpad-gestures)
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 ExecStart=%h/.config/Halcyon/bin/touchpad-gestures
-Restart=always
+# on-failure, not always: a clean exit stays stopped. Exit 78 = "you are not in the input group": restarting cannot fix that.
+Restart=on-failure
 RestartSec=3
+RestartPreventExitStatus=78
 # gestures run brightnessctl / wpctl / playerctl, so PATH must include them (pipewire user session needs XDG_RUNTIME_DIR)
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 

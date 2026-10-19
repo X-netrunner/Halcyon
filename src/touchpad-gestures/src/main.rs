@@ -48,6 +48,12 @@ fn brightness(dir: &str) {
     );
 }
 
+/// How many /dev/input devices could not be opened for lack of permission (set by find_touchpad).
+static DENIED_DEVICES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Exit status for "this cannot work until the user fixes their setup" (EX_CONFIG). touchpad-gestures.service lists it in
+/// RestartPreventExitStatus, so a missing `input` group stops the service instead of restarting it forever.
+const EXIT_NEEDS_SETUP: i32 = 78;
+
 /// A touchpad is a device that reports multitouch X/Y and is named like one.
 fn find_touchpad() -> Option<Device> {
     let entries = match fs::read_dir("/dev/input") {
@@ -80,6 +86,7 @@ fn find_touchpad() -> Option<Device> {
         }
     }
     if denied > 0 {
+        DENIED_DEVICES.store(denied, std::sync::atomic::Ordering::Relaxed);
         eprintln!("{} input devices are not readable: add yourself to the input group (sudo usermod -aG input $USER) and log in again", denied);
     }
     None
@@ -177,6 +184,10 @@ fn main() {
         Some(d) => d,
         None => {
             eprintln!("Error: Touchpad device not found.");
+            // devices exist but none could be opened: restarting cannot help, only the input group can
+            if DENIED_DEVICES.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+                std::process::exit(EXIT_NEEDS_SETUP);
+            }
             std::process::exit(1);
         }
     };

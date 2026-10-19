@@ -5,7 +5,7 @@ _sysmode_completions() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    subcommands="secure relaxed cyber stealth hacking lockdown boot-late status verify check doctor reapply logs dossier daemons help"
+    subcommands="secure relaxed cyber stealth hacking lockdown boot-late status verify check doctor counterscan reapply logs dossier daemons help"
     options="--hotspot --no-hotspot --persona --help -h"
 
     if [[ ${COMP_CWORD} -eq 1 ]]; then

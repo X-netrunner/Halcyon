@@ -19,7 +19,7 @@ The island polls system state (CPU, RAM, network, battery) through `hx`, which r
 ## Install, update, roll back
 - `install.sh` sets everything up. For the Rust helpers it first tries the prebuilt binaries of the release tag you are on (checksum-verified), and compiles only what it could not download, into one shared `CARGO_TARGET_DIR`. `--build-from-source` always compiles.
 - `update.sh` pulls (or clones) the newest version, runs `install.sh`, reloads the island, reads its log for QML errors, and offers `update.sh --rollback`.
-- `.github/workflows/ci.yml` runs `bash -n`, shellcheck, `cargo build` / `test` / `clippy` per crate, qmllint and an `install.sh --dry-run` on Arch and Debian containers. `release.yml` builds the binaries when a `v*` tag is pushed.
+- `.github/workflows/ci.yml` runs `bash -n`, shellcheck, `cargo build` / `test` / `clippy` on the whole workspace, qmllint (fails on "X is not a type"), `luac -p` on the Hyprland Lua, `systemd-analyze verify` and an `install.sh --dry-run` on Arch and Debian containers. `release.yml` builds the binaries when a `v*` tag is pushed.
 
 ## Backups
 `scripts/backup-device.sh` writes `<disk>/Halcyon-backup/<host>/<date-time>/`, hard-linking unchanged files to the previous run, with `latest` pointing at the newest. It never formats a disk. `--verify` re-compares by checksum, `--keep N` removes older dated folders (only ones carrying our `.halcyon-backup` marker).
@@ -32,3 +32,7 @@ The island polls system state (CPU, RAM, network, battery) through `hx`, which r
 - **Python stays for on-demand features.** Rewriting code that only runs when you open a feature saves almost nothing; the always-running parts are the ones that moved to Rust.
 - **Settings are lazy.** The Settings window and the heavy pages are created when needed (`LazyLoader`, `Loader`); every repeating timer in `Settings.qml` is gated on the window being open.
 - **rsync errors go to a log, and `-X` can be dropped.** Some rsync builds fail on extended attributes with `gen_entry_copy_xattrs ... secure open ... failed`. The backup keeps rsync's error lines in `~/.local/state/halcyon/backup-last.log`, prints a short summary, and offers to retry without `-X` (or run with `--no-xattrs`).
+
+## If the keys do nothing after a login
+
+While the lock screen is coming up at login, `scripts/login-watchdog.sh` switches Hyprland to an empty submap (`halcyon-locking`) so no shortcut works on the unlocked desktop. It puts the keys back by itself. If that process is ever killed hard and they stay dead, press Ctrl+Alt+F2, log in, and run `hyprctl dispatch 'hl.dsp.submap("reset")'` (or just log out and in again).

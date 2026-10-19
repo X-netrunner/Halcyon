@@ -7,10 +7,3 @@ edition = "2021"
 regex = "1.11"
 chrono = "0.4"
 libc = "0.2"
-
-[profile.release]
-opt-level = "s"
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"

@@ -66,6 +66,9 @@ Perform an automated audit verifying active profile settings against live kernel
 .BR doctor
 Check system package dependencies and report missing requirements with pacman installation hints.
 .TP
+.BR counterscan " [ " on " | " off " | " status " ]"
+Switch the nmap counter-scan of attackers (recon-deceiver). It is OFF by default because the address that probed you may belong to an innocent third party. Writes COUNTER_SCAN to /etc/recon-deceiver.conf; no restart needed.
+.TP
 .BR dossier " [ " IP " ]"
 Display deep per-attacker threat intelligence (SSH sessions, logins, fake shell commands, decoy hits, counter-scan intel).
 .TP

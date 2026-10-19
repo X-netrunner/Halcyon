@@ -21,8 +21,13 @@
 #                                  (install.sh saves the old copy in ~/.config/Halcyon-backups and keeps hypr-user.lua,
 #                                  scheme/current.lua and the other files of yours).
 #
+# Checking what you run: every release also publishes get.sh and a SHA256SUMS list next to the binaries
+#   (https://github.com/X-netrunner/Halcyon/releases/latest). Download get.sh from there and check it with  sha256sum -c SHA256SUMS --ignore-missing
+#   before running it, if you do not want to pipe the raw file from the branch.
+#
 # Environment: HALCYON_REPO (another repository / fork)   HALCYON_DIR (another folder than ~/.config/Halcyon)
-#               HALCYON_REF (a tag, branch or commit to install instead of the newest HEAD, e.g. HALCYON_REF=v1.2.3)
+#               HALCYON_REF (a tag, branch or commit to install, e.g. HALCYON_REF=v1.2.3; HEAD = the unreleased newest.
+#                            Without it the newest tagged release is installed)
 #
 # You are piping a script into bash: read it first if you like (curl -fsSL <the url above> | less). It only runs git and
 # install.sh from the repository above, never as root, and asks for sudo only where install.sh needs it.
@@ -115,13 +120,31 @@ main() {
     [ "$kind" = fresh ] && rm -rf "$SRC"
     die "git clone failed"
   fi
-  # HALCYON_REF=v1.2.3 (a tag, a branch or a full commit hash) installs exactly that, instead of whatever HEAD is today
-  if [ -n "${HALCYON_REF:-}" ]; then
-    if ! git -C "$SRC" -c advice.detachedHead=false checkout --quiet "$HALCYON_REF" 2>/dev/null; then
-      [ "$kind" = fresh ] && rm -rf "$SRC"
-      die "HALCYON_REF '$HALCYON_REF' does not exist in $REPO_URL"
+  # Which version: HALCYON_REF=v1.2.3 (a tag, a branch or a full commit hash) installs exactly that. Without it the newest tagged
+  # release is installed, not whatever HEAD is today (HALCYON_REF=HEAD asks for the unreleased newest on purpose). With no release
+  # tag in the repository yet, HEAD is used and you are told.
+  local REF="${HALCYON_REF:-}"
+  if [ -z "$REF" ]; then
+    REF=$(git -C "$SRC" tag --list 'v[0-9]*' --sort=-v:refname 2>/dev/null | head -n 1)
+    if [ -n "$REF" ]; then
+      # on the normal branch (moved to the tag), not a detached HEAD: update.sh refuses a detached one, and it then moves on from here
+      local BR; BR=$(git -C "$SRC" symbolic-ref -q --short HEAD 2>/dev/null || true)
+      if [ -n "$BR" ] && git -C "$SRC" checkout --quiet -B "$BR" "$REF" 2>/dev/null; then
+        ok "installing the newest release, $REF  (HALCYON_REF=HEAD gets the unreleased newest instead)"
+      else
+        warn "could not switch to the release $REF: using HEAD"
+      fi
+    else
+      warn "this repository has no release tag yet: using HEAD (the newest, unreleased)"
     fi
-    ok "using $HALCYON_REF (pinned: to move to another version run get.sh again with a new HALCYON_REF)"
+  elif [ "$REF" = HEAD ]; then
+    warn "HALCYON_REF=HEAD: installing the newest, unreleased version"
+  else
+    if ! git -C "$SRC" -c advice.detachedHead=false checkout --quiet "$REF" 2>/dev/null; then
+      [ "$kind" = fresh ] && rm -rf "$SRC"
+      die "HALCYON_REF '$REF' does not exist in $REPO_URL"
+    fi
+    ok "using $REF (pinned: to move to another version run get.sh again with a new HALCYON_REF)"
   fi
   [ -f "$SRC/install.sh" ] || { [ "$kind" = fresh ] && rm -rf "$SRC"; die "the download has no install.sh"; }
   local COMMIT; COMMIT=$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)
