@@ -24,16 +24,23 @@ Pictures and voice:
                                      then `notes image <path> <caption>` saves it. `notes clip-drop <path>` discards a staged image
   notes clip-paste [text]         -> (older, saves at once) Ctrl+V in the notes panel: the image on the clipboard becomes a note (prints CLIP_NONE and does nothing
                                      when there is no image, so the panel can paste the text instead)
+  notes rec-toggle                -> one key for voice notes: starts a recording, the same key again saves it (Super + Shift + V)
+  notes ocr <idx_or_id>           -> read the text in a picture note (tesseract, offline, nothing invented) and keep it with the note
+  notes describe <idx_or_id>      -> a short description of a picture note from a local vision model (only when NOTES_VLM is on)
+  notes search <words>            -> find notes by what they say, what was said, the text in their pictures and their descriptions
+  notes selftest                  -> checks Ollama, the models, Whisper, the recorder and tesseract and says what is missing
   notes rec-start [text] | rec-stop | rec-cancel | rec-status   -> a voice note: stop saves it, turns it into text and hands that to the AI
   notes transcribe <idx_or_id>    -> (re)do the speech-to-text of a voice note. Engines: whisper.cpp (whisper-cli + a ggml model),
                                      faster-whisper (pip) or openai-whisper. NOTES_STT_MODEL / NOTES_STT_LANG in notes.conf (or
                                      HALCYON_STT_MODEL / HALCYON_STT_LANG) pick the model file or name and the language (empty = auto)
   notes accept / dismiss <id>     -> answer "Make this a task?" (ask mode)
   notes remind-check              -> what the timer runs: one notification for every task whose time has come
-  notes conf | set KEY VALUE      -> NOTES_AI 0|1 , NOTES_OVERVIEW 0|1 , NOTES_AI_MODE ask|auto , NOTES_NUDGE_HOURS 1..12 , NOTES_NUDGE_MAX 1..12 ,
+  notes conf | set KEY VALUE      -> NOTES_OCR 0|1 , NOTES_VLM 0|1 , NOTES_VLM_MODEL <name>|default , NOTES_AI 0|1 , NOTES_OVERVIEW 0|1 , NOTES_AI_MODE ask|auto , NOTES_NUDGE_HOURS 1..12 , NOTES_NUDGE_MAX 1..12 ,
                                      NOTES_NUDGE_FROM 0..23 , NOTES_NUDGE_TO 1..24   (~/.config/Halcyon/notes.conf)
 """
+import base64
 import contextlib
+import difflib
 import fcntl
 import json
 import os
@@ -156,7 +163,7 @@ def add_note(text, image=None, audio=None, stt=False):
                 item["typed"] = typed                          # what was typed before recording stays in front of the transcript
     notes.insert(0, item)
     save_notes(notes)
-    extra = (" \033[38;5;111m[📷 Image]\033[0m" if image else "") + (" \033[38;5;178m[🎙 Audio]\033[0m" if audio else "")
+    extra = (" \033[38;5;111m[Image]\033[0m" if image else "") + (" \033[38;5;178m[Audio]\033[0m" if audio else "")
     print(f"\033[1;32m✓\033[0m Note added: \033[1m{text}\033[0m{extra}")
     refresh_ui()
     # sorting is a separate background process: saving is already done and never waits for the model
@@ -167,6 +174,11 @@ def add_note(text, image=None, audio=None, stt=False):
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
     cf = read_conf()
+    if image and cf["NOTES_OCR"] == "1" and _which("tesseract"):
+        # the text in the picture is read in the background; saving never waits for it
+        with contextlib.suppress(Exception):
+            subprocess.Popen([sys.executable, os.path.abspath(__file__), "ocr", item["id"]], start_new_session=True,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ai_enabled() and (cf["NOTES_AI"] == "1" or cf["NOTES_OVERVIEW"] == "1") and len(text) <= 6000:
         with contextlib.suppress(Exception):
             subprocess.Popen([sys.executable, os.path.abspath(__file__), "sort", item["id"]], start_new_session=True,
@@ -378,7 +390,7 @@ def record_audio(text=""):
     if not cmd:
         print("[!] No recorder found (pipewire: pw-record)")
         return False
-    print("\033[1;31m🎙 Recording voice note...\033[0m Press Enter or Ctrl+C to stop.")
+    print("\033[1;31mRecording voice note...\033[0m Press Enter or Ctrl+C to stop.")
     try:
         proc = subprocess.Popen(cmd)
         try:
@@ -458,6 +470,260 @@ def rec_status():
         return True
     print(json.dumps({"recording": False}))
     return False
+
+def rec_toggle():
+    """One key for voice notes: recording -> save it; not recording -> start. Meant for a Hyprland bind (it prints nothing the
+    key press needs, and every state is said in a notification)."""
+    if _rec_info():
+        return rec_stop()
+    ok = rec_start()
+    if ok:
+        notify("Voice note", "Recording. Press the same keys again to save it.", "audio-input-microphone")
+    return ok
+
+# ---- the text in a picture: tesseract (offline, copies what is there, cannot invent anything)
+OCR_MISSING = "Reading the text in pictures needs tesseract: sudo pacman -S tesseract tesseract-data-eng"
+
+def _clean_ocr(raw):
+    """Lines that look like words stay; specks, borders and icons that tesseract turned into symbols go."""
+    keep = []
+    for line in raw.splitlines():
+        line = re.sub(r"\s+", " ", line).strip()
+        alnum = sum(ch.isalnum() for ch in line)
+        if alnum >= 3 and alnum / len(line) >= 0.4:
+            keep.append(line)
+    text = "\n".join(keep).strip()
+    if sum(ch.isalnum() for ch in text) < 8:
+        return ""
+    return text[:4000]
+
+def run_ocr(path):
+    """-> (text, None) ('' when the picture has no text), or (None, why not)."""
+    exe = _which("tesseract")
+    if not exe:
+        return None, OCR_MISSING
+    try:
+        r = subprocess.run([exe, path, "stdout", "-l", "eng", "--psm", "3"], capture_output=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        return None, "Reading the picture took too long."
+    except OSError as e:
+        return None, f"tesseract could not start: {e}"
+    if r.returncode != 0:
+        err = r.stderr.decode("utf-8", "replace")
+        if "traineddata" in err or "eng" in err and "data" in err:
+            return None, "tesseract has no English data: sudo pacman -S tesseract-data-eng"
+        last = err.strip().splitlines()[-1] if err.strip() else ""
+        return None, "tesseract could not read this picture" + (f": {last}" if last else "")
+    return _clean_ocr(r.stdout.decode("utf-8", "replace")), None
+
+def ocr_note(arg):
+    t = find_note(load_notes(), arg)
+    if not t or not t.get("image"):
+        print("[!] That note has no picture.")
+        return False
+    nid, img = t.get("id"), t["image"]
+    if not os.path.isfile(img):
+        _patch_note(nid, lambda n: n.__setitem__("ocr", {"state": "fail", "at": time.time(), "msg": "The picture file is gone."}))
+        return False
+    _patch_note(nid, lambda n: n.__setitem__("ocr", {"state": "working", "at": time.time()}))
+    text, err = run_ocr(img)
+    if text is None:
+        state = "none" if err == OCR_MISSING else "fail"
+        _patch_note(nid, lambda n: n.__setitem__("ocr", {"state": state, "at": time.time(), "msg": err}))
+        if sys.stdout.isatty():
+            print("[!] " + err)
+        return False
+    _patch_note(nid, lambda n: n.__setitem__("ocr", {"state": "done" if text else "empty", "at": time.time(), "text": text}))
+    if sys.stdout.isatty():
+        print(text or "(no text found in the picture)")
+    return True
+
+# ---- a description of a picture from a local vision model (Ollama). Only when you ask: never automatically.
+VLM_DEFAULT = "qwen2.5vl:3b"
+
+def vlm_model():
+    return (os.environ.get("HALCYON_VLM_MODEL") or read_conf().get("NOTES_VLM_MODEL", "") or VLM_DEFAULT).strip()
+
+def _ground_description(text, ocr_text):
+    """A small vision model likes to invent figures. A sentence that holds a number (2+ digits) which is not in the text read from
+    the picture is dropped, the same rule the note overview follows. At most three sentences, no markdown."""
+    text = re.sub(r"[*_`#>]+", "", text or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    out = []
+    for sent in re.split(r"(?<=[.!?])\s+", text):
+        nums = re.findall(r"\d{2,}", sent)
+        if nums and any(n not in (ocr_text or "") for n in nums):
+            continue
+        if sent.strip():
+            out.append(sent.strip())
+    return " ".join(out[:3])[:420]
+
+def run_vlm(path, ocr_text=""):
+    """-> (description, None) ('' when nothing usable came back), or (None, why not)."""
+    model = vlm_model()
+    if not ollama_up():
+        return None, "Ollama is not running. Start it (systemctl start ollama) and use Describe again."
+    try:
+        if os.path.getsize(path) > 12 * 1024 * 1024:
+            return None, "The picture is too big to describe (over 12 MB)."
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+    except OSError as e:
+        return None, f"The picture could not be read: {e}"
+    prompt = ("Describe this picture for a note in at most two short sentences. Say only what is clearly visible. "
+              "If something is unclear, say it is unclear. Do not guess names, places or numbers. ")
+    if ocr_text:
+        prompt += "Do not repeat the text in the picture; it was already read as: " + re.sub(r"\s+", " ", ocr_text)[:600]
+    body = json.dumps({"model": model, "prompt": prompt, "images": [b64], "stream": False, "keep_alive": 0,
+                       "options": {"temperature": 0, "num_predict": 160}}).encode()
+    try:
+        import urllib.request, urllib.error
+        req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=300) as resp:           # the first answer also loads the model
+            out = json.loads(resp.read().decode("utf-8", "replace")).get("response", "")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None, f"The picture model {model} is not installed. Run: ollama pull {model}"
+        return None, f"Ollama answered with an error ({e.code})."
+    except Exception:
+        return None, "Ollama did not answer in time."
+    return _ground_description(out, ocr_text), None
+
+def describe_note(arg):
+    cf = read_conf()
+    if not ai_enabled():
+        print("[!] AI features are switched off (Settings > AI).")
+        return False
+    if cf["NOTES_VLM"] != "1":
+        print("[!] Picture descriptions are off (Settings > Notes, or: notes set NOTES_VLM 1)")
+        return False
+    t = find_note(load_notes(), arg)
+    if not t or not t.get("image"):
+        print("[!] That note has no picture.")
+        return False
+    nid, img = t.get("id"), t["image"]
+    if not os.path.isfile(img):
+        _patch_note(nid, lambda n: n.__setitem__("describe", {"state": "fail", "at": time.time(), "msg": "The picture file is gone."}))
+        return False
+    ocr_text = ((t.get("ocr") or {}).get("text") or "")
+    _patch_note(nid, lambda n: n.__setitem__("describe", {"state": "working", "at": time.time()}))
+    text, err = run_vlm(img, ocr_text)
+    if text is None:
+        _patch_note(nid, lambda n: n.__setitem__("describe", {"state": "fail", "at": time.time(), "msg": err}))
+        notify("Picture description", err, "dialog-warning")
+        if sys.stdout.isatty():
+            print("[!] " + err)
+        return False
+    if not text:
+        msg = "The model's description did not match the picture's text, so it was left out rather than guess. Describe tries again."
+        _patch_note(nid, lambda n: n.__setitem__("describe", {"state": "empty", "at": time.time(), "msg": msg}))
+        if sys.stdout.isatty():
+            print(msg)
+        return False
+    model = vlm_model()
+    _patch_note(nid, lambda n: n.__setitem__("describe", {"state": "done", "at": time.time(), "text": text, "model": model}))
+    if sys.stdout.isatty():
+        print(f"[{model}]  {text}")
+    return True
+
+# ---- search: what the note says, what was said, the text in its picture, its description, the AI line. Typos of one letter are fine.
+def _note_fields(n):
+    """(field name, weight, text) for every place a word can be found in a note."""
+    return [("note", 3, n.get("text") or ""), ("transcript", 3, n.get("transcript") or ""),
+            ("picture text", 2, (n.get("ocr") or {}).get("text") or ""), ("picture description", 2, (n.get("describe") or {}).get("text") or ""),
+            ("overview", 1, (n.get("think") or {}).get("why") or "")]
+
+def search_notes(query, notes=None):
+    """-> [(index in the full list, note, [where the words were found]), ...] best first. Every word must be found somewhere."""
+    terms = re.findall(r"\w+", (query or "").lower())
+    if not terms:
+        return []
+    notes = load_notes() if notes is None else notes
+    hits = []
+    for i, n in enumerate(notes):
+        if not isinstance(n, dict):
+            continue
+        fields = [(name, w, txt.lower()) for name, w, txt in _note_fields(n)]
+        words = set()
+        for _, _, txt in fields:
+            words.update(re.findall(r"\w{4,}", txt))
+        score, where, ok = 0, [], True
+        for term in terms:
+            found = [(name, w) for name, w, txt in fields if term in txt]
+            if found:
+                score += sum(w for _, w in found)
+                where += [name for name, _ in found]
+            elif len(term) >= 5 and difflib.get_close_matches(term, words, n=1, cutoff=0.8):
+                score += 1
+                where.append("note")
+            else:
+                ok = False
+                break
+        if ok:
+            hits.append((score, i, n, sorted(set(where))))
+    hits.sort(key=lambda h: (-h[0], h[1]))
+    return [(i, n, where) for _, i, n, where in hits]
+
+def search_cli(query):
+    hits = search_notes(query)
+    if not hits:
+        print("Nothing found.")
+        return
+    for i, n, where in hits[:30]:
+        first = (n.get("text") or "").strip().splitlines()[0] if (n.get("text") or "").strip() else "(no text)"
+        extra = "" if where == ["note"] else "  \033[38;5;242m[found in: " + ", ".join(w for w in where) + "]\033[0m"
+        print(f"{i + 1:>3}. {first[:90]}{extra}")
+
+# ---- self-test: the things that were set up wrong so far, checked in one go
+def selftest():
+    cf = read_conf()
+    bad = 0
+    def line(ok, what, fix=""):
+        nonlocal bad
+        if not ok:
+            bad += 1
+        print(("  [ok] " if ok else "  [!!] ") + what + ("" if ok or not fix else f"\n         {fix}"))
+    print("Notes: voice, AI and pictures")
+    line(ai_enabled(), "AI features are switched on" if ai_enabled() else "AI features are switched off", "Settings > AI turns them on again")
+    up = ollama_up()
+    line(up, "Ollama is running" if up else "Ollama is not running", "systemctl start ollama   (pacman -S ollama if it is not installed)")
+    installed = []
+    if up:
+        with contextlib.suppress(Exception):
+            import urllib.request
+            with urllib.request.urlopen(ollama_host() + "/api/tags", timeout=3) as resp:
+                installed = [m.get("name", "") for m in json.loads(resp.read().decode("utf-8", "replace")).get("models", [])]
+    def have_model(name):
+        return any(m == name or m == name + ":latest" or (":" not in name and m.startswith(name + ":")) for m in installed)
+    if up:
+        line(have_model(model_name()), f"text model {model_name()} is installed" if have_model(model_name()) else f"text model {model_name()} is not installed",
+             f"ollama pull {model_name()}")
+        if cf["NOTES_VLM"] == "1":
+            line(have_model(vlm_model()), f"picture model {vlm_model()} is installed" if have_model(vlm_model()) else f"picture model {vlm_model()} is not installed",
+                 f"ollama pull {vlm_model()}")
+    cli = _which("whisper-cli", "whisper-cpp", "whisper.cpp")
+    py = False
+    with contextlib.suppress(Exception):
+        py = importlib.util.find_spec("faster_whisper") is not None
+    oai = _which("whisper")
+    line(bool(cli or py or oai), f"speech-to-text engine found ({cli or oai or 'faster-whisper'})" if (cli or py or oai) else "no speech-to-text engine", STT_MISSING)
+    if cli:
+        mf = stt_model_file()
+        line(bool(mf), f"Whisper model found ({mf})" if mf else "whisper.cpp has no model", "yay -S whisper.cpp-model-base   (or set NOTES_STT_MODEL)")
+    rc = rec_command("/tmp/halcyon-selftest.wav")
+    line(bool(rc), "a recorder is available" if rc else "no recorder found", "sudo pacman -S pipewire")
+    line(bool(shutil.which("wl-paste")), "wl-clipboard is installed (pasting pictures)" if shutil.which("wl-paste") else "wl-clipboard is missing",
+         "sudo pacman -S wl-clipboard")
+    tess = _which("tesseract")
+    eng = False
+    if tess:
+        with contextlib.suppress(Exception):
+            eng = "eng" in subprocess.run([tess, "--list-langs"], capture_output=True, timeout=10).stdout.decode("utf-8", "replace").split()
+    line(bool(tess and eng), "tesseract is installed with English data (text in pictures)" if (tess and eng) else
+         ("tesseract has no English data" if tess else "tesseract is not installed (text in pictures)"),
+         "sudo pacman -S tesseract tesseract-data-eng")
+    print("Everything is ready." if not bad else f"{bad} thing(s) to fix.")
+    return bad == 0
 
 # ---- speech to text. Offline engines only; the first one that is installed is used.
 STT_MISSING = ("No speech-to-text engine found. Install one: whisper.cpp (sudo pacman -S whisper-cpp, plus yay -S whisper.cpp-model-base), "
@@ -626,7 +892,7 @@ def list_notes():
     if not notes:
         print("\033[38;5;244mNo notes yet. Add one with: notes : <your text>\033[0m")
         return
-    print("\033[1;35m📝 Halcyon Notes\033[0m")
+    print("\033[1;35mHalcyon Notes\033[0m")
     print("──────────────────────────────────────────────────")
     for i, n in enumerate(notes, 1):
         pin = "\033[1;33m★ \033[0m" if n.get("pinned") else "  "
@@ -634,9 +900,9 @@ def list_notes():
         reset = "\033[0m"
         date = n.get("date", "")
         task = "\033[38;5;214m☑ \033[0m" if n.get("task") else ""
-        due = f" \033[38;5;214m⏰ {due_text(n['due'])}\033[0m" if n.get("due") else (" \033[38;5;214m⏰ later today\033[0m" if n.get("later") else "")
-        img_badge = " \033[38;5;111m📷\033[0m" if n.get("image") else ""
-        aud_badge = " \033[38;5;178m🎙\033[0m" if n.get("audio") else ""
+        due = f" \033[38;5;214mdue {due_text(n['due'])}\033[0m" if n.get("due") else (" \033[38;5;214mlater today\033[0m" if n.get("later") else "")
+        img_badge = " \033[38;5;111mimg\033[0m" if n.get("image") else ""
+        aud_badge = " \033[38;5;178mvoice\033[0m" if n.get("audio") else ""
         print(f"{i:2d}. {pin}{task}{status}{n.get('text', '')}{reset}{img_badge}{aud_badge}{due} \033[38;5;240m({date})\033[0m")
     print("──────────────────────────────────────────────────")
     print("\033[38;5;244mCommands: notes del <num> | notes pin <num> | notes done <num>\033[0m")
@@ -736,7 +1002,7 @@ AI_OFF_FLAG = os.path.join(os.path.expanduser("~"), ".local", "state", "island",
 def ai_enabled():
     return not os.path.exists(AI_OFF_FLAG)
 
-CONF_DEFAULTS = {"NOTES_AI": "0", "NOTES_OVERVIEW": "0", "NOTES_AI_MODE": "ask", "NOTES_NUDGE_HOURS": "3", "NOTES_NUDGE_MAX": "4",
+CONF_DEFAULTS = {"NOTES_OCR": "1", "NOTES_VLM": "0", "NOTES_VLM_MODEL": "", "NOTES_AI": "0", "NOTES_OVERVIEW": "0", "NOTES_AI_MODE": "ask", "NOTES_NUDGE_HOURS": "3", "NOTES_NUDGE_MAX": "4",
                  "NOTES_NUDGE_FROM": "9", "NOTES_NUDGE_TO": "21", "NOTES_MODEL": "", "NOTES_STT_MODEL": "", "NOTES_STT_LANG": ""}
 DEFAULT_MODEL = "qwen2.5:3b-instruct"      # what the notes AI was tested and tuned on (fast, keeps facts and tenses straight)
 CONF_RANGE = {"NOTES_NUDGE_HOURS": (1, 12), "NOTES_NUDGE_MAX": (1, 12), "NOTES_NUDGE_FROM": (0, 23), "NOTES_NUDGE_TO": (1, 24)}
@@ -756,6 +1022,8 @@ def read_conf():
         c["NOTES_AI"] = "0"
     if c["NOTES_OVERVIEW"] != "1":
         c["NOTES_OVERVIEW"] = "0"
+    c["NOTES_OCR"] = "0" if c["NOTES_OCR"] == "0" else "1"       # reading the text in pictures is on unless switched off
+    c["NOTES_VLM"] = "1" if c["NOTES_VLM"] == "1" else "0"       # describing pictures with a model is off unless switched on
     if c["NOTES_AI_MODE"] not in ("ask", "auto"):
         c["NOTES_AI_MODE"] = "ask"
     for k, (lo, hi) in CONF_RANGE.items():
@@ -772,7 +1040,7 @@ def write_conf(c):
     keep = []
     try:                       # lines that are not ours stay as they are
         with open(CONF_FILE, "r", encoding="utf-8") as f:
-            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*(NOTES_AI(_MODE)?|NOTES_OVERVIEW|NOTES_MODEL|NOTES_STT_(MODEL|LANG)|NOTES_NUDGE_(HOURS|MAX|FROM|TO))=", l)]
+            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*(NOTES_AI(_MODE)?|NOTES_OVERVIEW|NOTES_OCR|NOTES_VLM(_MODEL)?|NOTES_MODEL|NOTES_STT_(MODEL|LANG)|NOTES_NUDGE_(HOURS|MAX|FROM|TO))=", l)]
     except OSError:
         pass
     fd, tmp = tempfile.mkstemp(prefix="notes.conf.", dir=os.path.dirname(CONF_FILE))
@@ -1148,9 +1416,15 @@ def checklist_of(text):
     items = [x for x in items if x]
     if len(items) < 3:
         return ""
-    lines = [f"Checklist, {len(items)} items"] + ["- " + (x if len(x) <= 70 else x[:67].rstrip() + "...") for x in items[:6]]
-    if len(items) > 6:
-        lines.append(f"- and {len(items) - 6} more")
+    # every item in full (the list wraps); only an absurdly long item is cut, at a word boundary
+    def _full(x):
+        if len(x) <= 300:
+            return x
+        cut = x[:300]
+        return (cut[:cut.rfind(" ")] if " " in cut else cut).rstrip(" ,;:") + "..."
+    lines = [f"Checklist, {len(items)} items"] + ["- " + _full(x) for x in items[:12]]
+    if len(items) > 12:
+        lines.append(f"- and {len(items) - 12} more")
     return "\n".join(lines)
 
 NEG_RE = re.compile(r"\b(fell|fall|falls|fallen|dip|dipped|drop|dropped|decline|declined|down|loss|losses|lower|slump|slumped|cut|cuts|worse|reduced|shrank)\b", re.I)
@@ -1421,7 +1695,13 @@ def sort_note(arg, force=False):
                 if n is None:
                     return
                 n["sorted"] = True
-                n["think"] = {"state": "done", "at": time.time(), "why": ov, "task": bool(n.get("task")), "title": title_of(ov)}
+                if ov:
+                    n["think"] = {"state": "done", "at": time.time(), "why": ov, "task": bool(n.get("task")), "title": title_of(ov), "real": True}
+                else:
+                    # nothing usable came back: say so instead of showing an empty line (it looked like the AI did not run at all)
+                    miss = ("Too short to write an overview of (needs about 8 words)." if _word_count(text) < 8 else
+                            "The AI's summary did not match what the note says, so it was left out rather than guess. Think tries again.")
+                    n["think"] = {"state": "done", "at": time.time(), "why": miss, "task": bool(n.get("task")), "real": False}
                 save_notes(notes)
             refresh_ui()
             return
@@ -1448,7 +1728,7 @@ def sort_note(arg, force=False):
             n = next((x for x in notes if x.get("id") == nid), None)
             if n is None:                                              # deleted in the meantime
                 return
-            think = {"state": "done", "at": time.time(), "why": why, "task": bool(ans["task"])}
+            think = {"state": "done", "at": time.time(), "why": why, "task": bool(ans["task"]), "real": bool(real)}
             if title:
                 think["title"] = title                 # the list shows this instead of the note's own words
             if n.get("done") or (not force and "task" in n):            # done or set by hand in the meantime: only the AI line
@@ -1502,9 +1782,9 @@ def set_due(arg, spec):
         first = start_later(n, conf)
         save_notes(notes)
         if first:
-            print(f"⏰ Later today: a nudge about every {conf['NOTES_NUDGE_HOURS']} h from {time.strftime('%H:%M', time.localtime(first))}: \"{n.get('text')}\"")
+            print(f"Later today: a nudge about every {conf['NOTES_NUDGE_HOURS']} h from {time.strftime('%H:%M', time.localtime(first))}: \"{n.get('text')}\"")
         else:
-            print(f"⏰ Later today: it is too late in the day for a nudge; it stays in your tasks: \"{n.get('text')}\"")
+            print(f"Later today: it is too late in the day for a nudge; it stays in your tasks: \"{n.get('text')}\"")
         return
     try:
         ts = parse_when(spec)
@@ -1524,7 +1804,7 @@ def set_due(arg, spec):
     n["due"] = ts
     n["reminded"] = False
     save_notes(notes)
-    print(f"⏰ Reminder {due_text(ts)}: \"{n.get('text')}\"")
+    print(f"Reminder {due_text(ts)}: \"{n.get('text')}\"")
 
 def answer_suggestion(arg, yes):
     notes = load_notes()
@@ -1591,13 +1871,15 @@ def list_tasks():
         return
     print("\033[1;35m☑ Halcyon Tasks\033[0m")
     for n in notes:
-        due = f"  \033[38;5;214m⏰ {due_text(n['due'])}\033[0m" if n.get("due") else ""
+        due = f"  \033[38;5;214mdue {due_text(n['due'])}\033[0m" if n.get("due") else ""
         box = "\033[38;5;242m[✓] \033[9m" if n.get("done") else "[ ] \033[1m"
         print(f"{box}{n.get('text', '')}\033[0m{due}")
 
 def conf_json():
     c = read_conf()
-    print(json.dumps({"NOTES_AI": c["NOTES_AI"] == "1", "NOTES_OVERVIEW": c["NOTES_OVERVIEW"] == "1", "NOTES_AI_MODE": c["NOTES_AI_MODE"],
+    print(json.dumps({"NOTES_OCR": c["NOTES_OCR"] == "1", "NOTES_VLM": c["NOTES_VLM"] == "1", "NOTES_VLM_MODEL": c["NOTES_VLM_MODEL"],
+                      "tesseract": bool(_which("tesseract")), "vlmModel": vlm_model(),
+                      "NOTES_AI": c["NOTES_AI"] == "1", "NOTES_OVERVIEW": c["NOTES_OVERVIEW"] == "1", "NOTES_AI_MODE": c["NOTES_AI_MODE"],
                       "NOTES_NUDGE_HOURS": c["NOTES_NUDGE_HOURS"], "NOTES_NUDGE_MAX": c["NOTES_NUDGE_MAX"],
                       "NOTES_NUDGE_FROM": c["NOTES_NUDGE_FROM"], "NOTES_NUDGE_TO": c["NOTES_NUDGE_TO"], "NOTES_MODEL": c["NOTES_MODEL"],
                       "NOTES_STT_MODEL": c.get("NOTES_STT_MODEL", ""), "NOTES_STT_LANG": c.get("NOTES_STT_LANG", ""),
@@ -1605,11 +1887,11 @@ def conf_json():
 
 def set_conf(k, v):
     c = read_conf()
-    if k in ("NOTES_AI", "NOTES_OVERVIEW"):
+    if k in ("NOTES_AI", "NOTES_OVERVIEW", "NOTES_OCR", "NOTES_VLM"):
         c[k] = "1" if str(v).lower() in ("1", "true", "on", "yes") else "0"
     elif k == "NOTES_AI_MODE" and v in ("ask", "auto"):
         c[k] = v
-    elif k in ("NOTES_MODEL", "NOTES_STT_MODEL") and re.fullmatch(r"[A-Za-z0-9._:/@+-]{0,100}", str(v)):
+    elif k in ("NOTES_MODEL", "NOTES_STT_MODEL", "NOTES_VLM_MODEL") and re.fullmatch(r"[A-Za-z0-9._:/@+-]{0,100}", str(v)):
         c[k] = "" if str(v).lower() in ("default", "none", "-") else str(v)      # "default" = use default again
     elif k == "NOTES_STT_LANG" and re.fullmatch(r"[A-Za-z_-]{0,20}", str(v)):
         c[k] = "" if str(v).lower() in ("default", "auto", "none", "-") else str(v)
@@ -1641,7 +1923,7 @@ def main():
 
 READ_ONLY = ("list", "ls", "json", "tasks", "conf", "rec-status")
 NO_LOCK = ("sort", "think", "transcribe")
-UNLOCKED = ("clip-image", "clip-img", "paste-image", "clip-paste", "clip-stage", "clip-drop", "shot-image", "screenshot", "record", "voice", "rec-start", "rec-stop", "rec-cancel", "play")
+UNLOCKED = ("clip-image", "clip-img", "paste-image", "clip-paste", "clip-stage", "clip-drop", "shot-image", "screenshot", "record", "voice", "rec-start", "rec-stop", "rec-cancel", "rec-toggle", "ocr", "describe", "selftest", "search", "play")
 
 def is_ref(a):
     return a.isdigit() or a.startswith("n_")
@@ -1649,7 +1931,8 @@ def is_ref(a):
 def run(cmd, args):
     # the new words only count as commands when they are used like commands, so "notes set the table" is still a note
     if (cmd in ("tasks", "conf", "remind-check") and len(args) > 1) \
-            or (cmd in ("task", "sort", "think", "transcribe", "accept", "dismiss") and not (len(args) == 2 and is_ref(args[1]))) \
+            or (cmd in ("task", "sort", "think", "transcribe", "accept", "dismiss", "ocr", "describe") and not (len(args) == 2 and is_ref(args[1]))) \
+            or (cmd in ("selftest", "rec-toggle") and len(args) > 1) \
             or (cmd == "due" and not (len(args) > 2 and is_ref(args[1]))) \
             or (cmd == "set" and not (len(args) == 3 and args[1] in CONF_DEFAULTS)):
         add_note(" ".join(args))
@@ -1666,7 +1949,7 @@ def run(cmd, args):
         if len(args) > 2:
             set_conf(args[1], args[2])
         else:
-            print("usage: notes set NOTES_AI 0|1  |  NOTES_OVERVIEW 0|1  |  NOTES_AI_MODE ask|auto  |  NOTES_MODEL <name>|default  |  NOTES_STT_MODEL <model>|default  |  NOTES_STT_LANG <lang>|default  |  NOTES_NUDGE_HOURS 1..12  |  NOTES_NUDGE_MAX 1..12  |  NOTES_NUDGE_FROM 0..23  |  NOTES_NUDGE_TO 1..24")
+            print("usage: notes set NOTES_OCR 0|1  |  NOTES_VLM 0|1  |  NOTES_VLM_MODEL <name>|default  |  NOTES_AI 0|1  |  NOTES_OVERVIEW 0|1  |  NOTES_AI_MODE ask|auto  |  NOTES_MODEL <name>|default  |  NOTES_STT_MODEL <model>|default  |  NOTES_STT_LANG <lang>|default  |  NOTES_NUDGE_HOURS 1..12  |  NOTES_NUDGE_MAX 1..12  |  NOTES_NUDGE_FROM 0..23  |  NOTES_NUDGE_TO 1..24")
     elif cmd == "sort":
         if len(args) > 1:
             sort_note(args[1])
@@ -1737,6 +2020,22 @@ def run(cmd, args):
             print("usage: notes image <path> [text]")
     elif cmd in ("record", "voice"):
         record_audio(" ".join(args[1:]))
+    elif cmd == "rec-toggle":
+        rec_toggle()
+    elif cmd == "ocr":
+        if len(args) > 1:
+            ocr_note(args[1])
+        else:
+            print("usage: notes ocr <number or id>")
+    elif cmd == "describe":
+        if len(args) > 1:
+            describe_note(args[1])
+        else:
+            print("usage: notes describe <number or id>")
+    elif cmd == "search":
+        search_cli(" ".join(args[1:]))
+    elif cmd == "selftest":
+        sys.exit(0 if selftest() else 1)
     elif cmd == "rec-start":
         rec_start(" ".join(args[1:]))
     elif cmd == "rec-stop":

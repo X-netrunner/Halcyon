@@ -548,6 +548,8 @@ map_pkg_for_apt() {
         grim)                   echo "grim" ;;
         slurp)                  echo "slurp" ;;
         wl-clipboard)           echo "wl-clipboard" ;;
+        tesseract)              echo "tesseract-ocr" ;;
+        tesseract-data-eng)     echo "tesseract-ocr-eng" ;;
         cliphist)               echo "cliphist" ;;
         fuzzel)                 echo "fuzzel" ;;
         util-linux)             echo "util-linux" ;;
@@ -1410,7 +1412,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     CORE=(xdg-desktop-portal-hyprland xdg-desktop-portal-gtk polkit-kde-agent
           hypridle hyprlock hyprsunset hyprutils
           qt6-base qt6-declarative qt6-svg qt6-shadertools qt6-wayland qt6-5compat qt6-multimedia qt5-wayland qt6ct kvantum kservice
-          imagemagick cava btop fish starship poppler fd ripgrep fzf grim slurp wl-clipboard cliphist fuzzel
+          imagemagick cava btop fish starship poppler fd ripgrep fzf grim slurp wl-clipboard cliphist fuzzel tesseract tesseract-data-eng
           dmidecode util-linux lsof jq zenity gamemode python libnotify
           inter-font ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji adwaita-icon-theme)
     # (the browser, file manager and editor you chose are installed below)

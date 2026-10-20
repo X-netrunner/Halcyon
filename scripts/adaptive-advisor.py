@@ -582,7 +582,7 @@ def ask_and_execute(title, command, reason, assume_yes=False):
 def run_doctor(assume_yes=False):
     """Full autonomous diagnostic battery with confirmed fixes."""
     print("━" * 68)
-    print("🩺 Halcyon Autonomous System Doctor & Diagnostician")
+    print("Halcyon Autonomous System Doctor & Diagnostician")
     print("━" * 68)
     a = analyze_system()
 
@@ -599,7 +599,7 @@ def run_doctor(assume_yes=False):
     print(f"• Shell Heaps: Quickshell {a['quickshell_mb']} MB  |  Hyprland {a['hyprland_mb']} MB")
 
     # 2. Issues report
-    print("\n🔍 Diagnostic Findings:")
+    print("\nDiagnostic Findings:")
     if not a["suggestions"]:
         print("  \033[32m✔ No system anomalies, failed services, or severe bottlenecks found.\033[0m")
         return
@@ -617,7 +617,7 @@ def run_doctor(assume_yes=False):
 
     # 3. Remediation execution
     if a["remediations"]:
-        print("\n🔧 Available Remediations (each change requires your explicit confirmation):")
+        print("\nAvailable Remediations (each change requires your explicit confirmation):")
         applied = 0
         for title, cmd, why in a["remediations"]:
             if ask_and_execute(title, cmd, why, assume_yes=assume_yes):
@@ -629,7 +629,7 @@ def run_doctor(assume_yes=False):
 def apply_fixes(assume_yes=False):
     """Trims quickshell and flushes buffers with confirmation."""
     print("━" * 60)
-    print("🔧 Halcyon System Optimizations")
+    print("Halcyon System Optimizations")
     print("━" * 60)
     trim_cmd = f"quickshell ipc -p {os.path.join(RICE, 'quickshell/island')} call island trim"
     ask_and_execute("Trim Quickshell Heap Caches", trim_cmd, "Releases unused dialog textures and caches back to the operating system.", assume_yes=assume_yes)
@@ -692,7 +692,7 @@ def recommend_models():
     ram_gb = round(mem["total_mb"] / 1024, 1)
 
     print("━" * 68)
-    print("🤖 Halcyon AI Hardware-Aware Model Advisor")
+    print("Halcyon AI Hardware-Aware Model Advisor")
     print("━" * 68)
     print(f"Detected Hardware:")
     print(f"  • System RAM : {ram_gb} GB ({round(mem['avail_mb']/1024, 1)} GB available)")
@@ -798,40 +798,40 @@ def _script(name, *a):
     subprocess.run(["bash", os.path.join(RICE, "scripts", name), *a])
 
 ACTIONS = {
-    "mirror":        ("📽️ Executing Projector Mirror Mode...", lambda: _script("display-manager.sh", "mirror"),
+    "mirror":        ("Executing Projector Mirror Mode...", lambda: _script("display-manager.sh", "mirror"),
                       "mirror laptop screen to a projector / TV / external display",
                       ["projector", "mirror", "clone screen", "presentation"], False),
-    "extend-right":  ("🖥️ Extending display to the right...", lambda: _script("display-manager.sh", "extend-right"),
+    "extend-right":  ("Extending display to the right...", lambda: _script("display-manager.sh", "extend-right"),
                       "use external monitor as second screen to the right",
                       ["extend right", "dual screen", "second monitor", "extend display"], False),
-    "extend-left":   ("🖥️ Extending display to the left...", lambda: _script("display-manager.sh", "extend-left"),
+    "extend-left":   ("Extending display to the left...", lambda: _script("display-manager.sh", "extend-left"),
                       "use external monitor as second screen to the left",
                       ["extend left"], False),
-    "internal-only": ("💻 Switching to internal laptop screen only...", lambda: _script("display-manager.sh", "internal-only"),
+    "internal-only": ("Switching to internal laptop screen only...", lambda: _script("display-manager.sh", "internal-only"),
                       "turn off external displays and use only laptop screen",
                       ["laptop screen only", "single screen", "disconnect display"], True),
-    "gaming":        ("🎮 Toggling Gaming Mode via Quickshell...", lambda: _qs("island", "gaming"),
+    "gaming":        ("Toggling Gaming Mode via Quickshell...", lambda: _qs("island", "gaming"),
                       "toggle gaming mode (max performance, uncap refresh, suspend animations)",
                       ["game mode", "gaming mode", "gaming on", "gaming off"], False),
-    "trim-memory":   ("🧹 Trimming Quickshell RAM and cleaning system caches...", lambda: apply_fixes(),
+    "trim-memory":   ("Trimming Quickshell RAM and cleaning system caches...", lambda: apply_fixes(),
                       "free up RAM: trim Quickshell memory and sync caches",
                       ["trim memory", "clean ram", "free memory", "free ram", "flush cache"], True),
-    "caffeine":      ("☕ Toggling Caffeine mode...", lambda: _qs("island", "caffeine"),
+    "caffeine":      ("Toggling Caffeine mode...", lambda: _qs("island", "caffeine"),
                       "keep the screen awake and prevent sleep/lock",
                       ["caffeine", "stay awake", "keep awake"], False),
-    "dnd":           ("🔕 Toggling Do Not Disturb...", lambda: _qs("island", "dnd"),
+    "dnd":           ("Toggling Do Not Disturb...", lambda: _qs("island", "dnd"),
                       "silence desktop notifications",
                       ["do not disturb", "dnd", "mute notifications", "silence"], False),
-    "wallpaper":     ("🖼️ Cycling wallpaper...", lambda: _qs("wallpaper", "next"),
+    "wallpaper":     ("Cycling wallpaper...", lambda: _qs("wallpaper", "next"),
                       "switch to the next wallpaper",
                       ["next wallpaper", "change wallpaper", "random wallpaper"], False),
-    "nightlight":    ("🌙 Toggling night light...", lambda: _script("toggle_nightlight.sh"),
+    "nightlight":    ("Toggling night light...", lambda: _script("toggle_nightlight.sh"),
                       "warmer screen colour / reduce blue light",
                       ["night light", "nightlight", "blue light", "warm screen"], False),
-    "doctor":        ("🩺 Running system diagnostics doctor...", lambda: run_doctor(),
+    "doctor":        ("Running system diagnostics doctor...", lambda: run_doctor(),
                       "run deep system diagnostics check and diagnose bottlenecks",
                       ["diagnose", "system check", "doctor", "health check", "scan system"], False),
-    "recommend-model":("🤖 Opening Model Recommendations...", lambda: recommend_models(),
+    "recommend-model":("Opening Model Recommendations...", lambda: recommend_models(),
                       "recommend best local AI models for this hardware",
                       ["recommend model", "bigger model", "models", "what model"], False),
 }
@@ -1001,7 +1001,7 @@ def run_llm_query(analysis, custom_prompt="", assume_yes=False):
 
     if custom_prompt:
         print("━" * 68)
-        print("🤖 Halcyon AI Agent (Ollama)  ·  inspects and manages this machine; every change asks you first")
+        print("Halcyon AI Agent (Ollama)  ·  inspects and manages this machine; every change asks you first")
         print("━" * 68)
         print(f"[*] Model: {get_advisor_model()}\n")
         r = run_agent_query(custom_prompt, assume_yes)
@@ -1010,7 +1010,7 @@ def run_llm_query(analysis, custom_prompt="", assume_yes=False):
 
     if not custom_prompt:
         print("━" * 68)
-        print("🤖 Local AI Advisor (Ollama)")
+        print("Local AI Advisor (Ollama)")
         print("━" * 68)
         print(f"[*] Model: {get_advisor_model()}\n")
 
@@ -1040,7 +1040,7 @@ def triage_notification(text):
     if not res:
         print(f"[!] {LAST_LLM_ERROR or 'No usable answer from the model.'}")
         return
-    icon = {"urgent": "🚨", "chat": "💬", "system": "⚙️", "promo": "🏷️"}.get(res.get("category"), "•")
+    icon = {"urgent": "", "chat": "", "system": "", "promo": ""}.get(res.get("category"), "•")
     print(f"{icon} [{res.get('category')}] {res.get('one_line')}")
 
 def write_short(request):
@@ -1231,7 +1231,7 @@ def main():
     print("─" * 68)
 
     if analysis["suggestions"]:
-        print("💡 Tailored Recommendations:")
+        print("Tailored Recommendations:")
         for idx, s in enumerate(analysis["suggestions"], 1):
             prio_color = {
                 "HIGH": "\033[1;31m[HIGH]\033[0m",

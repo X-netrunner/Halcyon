@@ -199,6 +199,7 @@ playerctl|media keys, now playing|playerctl
 wl-copy|clipboard history|wl-clipboard
 pw-record|voice notes (recording)|pipewire
 whisper-cli|voice notes to text (or: pip install faster-whisper)|whisper-cpp
+tesseract|text in pictures pasted into notes|tesseract tesseract-data-eng
 grim|screenshots|grim
 slurp|area screenshots|slurp
 clamscan|leak and malware checks (halcyon-leaks)|clamav
@@ -224,5 +225,13 @@ if [ "$missing" -gt 0 ]; then
   else
     printf '  %sTip:%s run  halcyon-doctor.sh --fix  to install the missing optional tools in one go.\n' "$D" "$N"
   fi
+fi
+echo
+
+hdr "Notes: voice, AI and pictures"
+if have python3 && [ -f "$HOME/.config/Halcyon/scripts/halcyon-notes.py" ]; then
+  python3 "$HOME/.config/Halcyon/scripts/halcyon-notes.py" selftest 2>&1 | sed 1d
+else
+  warn "halcyon-notes.py not found (is Halcyon installed in ~/.config/Halcyon?)"
 fi
 echo

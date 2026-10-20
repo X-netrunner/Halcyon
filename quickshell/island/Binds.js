@@ -56,6 +56,7 @@ var groups = [
         { id: "theme", label: "Light / dark theme", keys: "SUPER + SHIFT + T" },
         { id: "notifcenter", label: "Notification centre", keys: "SUPER + SHIFT + N" },
         { id: "notes", label: "Quick notes", keys: "SUPER + N" },
+        { id: "voicenote", label: "Voice note: start / stop and save", keys: "SUPER + SHIFT + V" },
         { id: "extradim", label: "Extra dim mode", keys: "SUPER + ALT + D" },
         { id: "record", label: "Screen recorder", keys: "SUPER + ALT + R" },
         { id: "dnd", label: "Do not disturb", keys: "SUPER + SHIFT + D" },

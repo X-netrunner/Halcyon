@@ -253,7 +253,7 @@ function fish_greeting
     set -l chosen (random choice $tips)
     echo
     set_color cyan
-    printf "      💡 Tip: "
+    printf "      Tip: "
     set_color yellow
     echo "$chosen"
     set_color normal

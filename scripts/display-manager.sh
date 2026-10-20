@@ -63,7 +63,7 @@ apply_mirror() {
     echo "INTERNAL=$internal" >> "$STATE_FILE"
     echo "EXTERNAL=$external" >> "$STATE_FILE"
 
-    notify "📽️ Projector Mirror Mode Active" "Cloning $internal onto $external (Both screens show identical content)." "video-display"
+    notify "Projector Mirror Mode Active" "Cloning $internal onto $external (Both screens show identical content)." "video-display"
 }
 
 apply_extend_right() {
@@ -81,7 +81,7 @@ apply_extend_right() {
     hyprctl keyword monitor "$external,preferred,auto-right,1" >/dev/null
 
     echo "MODE=extend-right" > "$STATE_FILE"
-    notify "🖥️ Extended Display (Right)" "Extended workspace with $external on the right." "video-display"
+    notify "Extended Display (Right)" "Extended workspace with $external on the right." "video-display"
 }
 
 apply_extend_left() {
@@ -99,7 +99,7 @@ apply_extend_left() {
     hyprctl keyword monitor "$internal,preferred,auto-right,1" >/dev/null
 
     echo "MODE=extend-left" > "$STATE_FILE"
-    notify "🖥️ Extended Display (Left)" "Extended workspace with $external on the left." "video-display"
+    notify "Extended Display (Left)" "Extended workspace with $external on the left." "video-display"
 }
 
 apply_external_only() {
@@ -117,7 +117,7 @@ apply_external_only() {
     hyprctl keyword monitor "$external,preferred,0x0,1" >/dev/null
 
     echo "MODE=external-only" > "$STATE_FILE"
-    notify "📽️ Presentation Only (External)" "Laptop screen disabled. Displaying exclusively on $external." "video-display"
+    notify "Presentation Only (External)" "Laptop screen disabled. Displaying exclusively on $external." "video-display"
 }
 
 apply_internal_only() {
@@ -132,13 +132,13 @@ apply_internal_only() {
     fi
 
     echo "MODE=internal-only" > "$STATE_FILE"
-    notify "💻 Laptop Screen Only" "External display $external disabled. Output on $internal." "video-display"
+    notify "Laptop Screen Only" "External display $external disabled. Output on $internal." "video-display"
 }
 
 apply_auto() {
     hyprctl keyword monitor ",preferred,auto,1" >/dev/null
     echo "MODE=auto" > "$STATE_FILE"
-    notify "🔄 Displays Reset" "All connected displays set to auto-detect preferred layout." "video-display"
+    notify "Displays Reset" "All connected displays set to auto-detect preferred layout." "video-display"
 }
 
 show_status() {
@@ -173,9 +173,9 @@ show_menu() {
     external="${mons[1]:-}"
 
     if [[ -z "$external" ]]; then
-        choices="💻 Laptop Only (No external monitor detected)\n🔄 Reset / Auto-Detect Displays"
+        choices="Laptop Only (No external monitor detected)\nReset / Auto-Detect Displays"
     else
-        choices="📽️  Mirror Screen (Clone to Projector/TV: $external)\n🖥️➡️ Extend Right ($external on Right)\n⬅️🖥️ Extend Left ($external on Left)\n📽️  Projector Only ($external Main, Laptop Off)\n💻  Laptop Screen Only (Turn Off $external)\n🔄  Reset to Auto Defaults"
+        choices="Mirror Screen (Clone to Projector/TV: $external)\nExtend Right ($external on Right)\nExtend Left ($external on Left)\nProjector Only ($external Main, Laptop Off)\nLaptop Screen Only (Turn Off $external)\nReset to Auto Defaults"
     fi
 
     if command -v fuzzel >/dev/null 2>&1; then

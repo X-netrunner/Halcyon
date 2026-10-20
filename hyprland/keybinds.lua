@@ -177,6 +177,8 @@ bind("clearnotifs", vars.kbClearNotifs, hl.dsp.exec_cmd(ipc .. "clearnotifs"))
 bind("apps", "SUPER + SHIFT + A", hl.dsp.exec_cmd(ipc .. "apps"))              -- background apps box (bottom-left)
 bind("notifcenter", "SUPER + SHIFT + N", hl.dsp.exec_cmd(ipc .. "notifcenter"))   -- notification centre
 bind("notes", "SUPER + N", hl.dsp.exec_cmd(ipc .. "notes"))                     -- quick notes menu (SUPER + N)
+-- voice note with one key: first press starts recording, the same keys again save it and write it down (straight to the script, so it works without the panel)
+bind("voicenote", "SUPER + SHIFT + V", hl.dsp.exec_cmd("python3 " .. home .. "/.config/Halcyon/scripts/halcyon-notes.py rec-toggle"))
 bind("extradim", "SUPER + ALT + D", hl.dsp.exec_cmd(ipc .. "extradim"))         -- extra dim mode (SUPER + ALT + D)
 bind("record", "SUPER + ALT + R", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/screen-record.sh toggle")) -- screen recorder
 bind("dnd", "SUPER + SHIFT + D", hl.dsp.exec_cmd(ipc .. "dnd"))

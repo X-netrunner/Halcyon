@@ -180,7 +180,7 @@ Scope {
     }
 
     // ---- Notes (scripts/halcyon-notes.py): should the local Ollama model sort new notes into tasks? Keys "nt:NAME" in the tree below.
-    property var notesConf: ({ NOTES_AI: false, NOTES_OVERVIEW: false, NOTES_AI_MODE: "ask", NOTES_NUDGE_HOURS: "3", NOTES_NUDGE_MAX: "4", ollama: null, model: "" })
+    property var notesConf: ({ NOTES_OCR: true, NOTES_VLM: false, tesseract: null, vlmModel: "", NOTES_AI: false, NOTES_OVERVIEW: false, NOTES_AI_MODE: "ask", NOTES_NUDGE_HOURS: "3", NOTES_NUDGE_MAX: "4", ollama: null, model: "" })
     readonly property string notesScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py"
     Timer { id: notesAgain; interval: 900; onTriggered: if (!notesProc.running) notesProc.running = true }
     Process {
@@ -742,6 +742,8 @@ Scope {
             { type: "seg", key: "opt:calNagGiveUp", label: "Give up", desc: "How long after the task has ended it still nags.", opts: [o(60, "After 1 h"), o(180, "After 3 h"), o(720, "After 12 h"), o(4320, "After 3 days")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" }
         ] },
         { id: "notes", title: "Notes", section: "Desktop", items: [
+            { type: "toggle", soft: true, key: "nt:NOTES_OCR", label: "Read the text in pictures", desc: "A picture you paste into a note is read in the background with tesseract (offline, on this computer): the text in it shows under the picture, can be copied, and is found by the search box. It only copies what is there, it cannot invent anything. Needs: sudo pacman -S tesseract tesseract-data-eng" },
+            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_VLM", label: "Describe pictures (vision model)", desc: "Adds a Describe button to picture notes: a local vision model in Ollama writes one or two sentences about the picture. Only when you press it, never by itself; the model is unloaded right after. Small models can be wrong, so a sentence with a number that is not in the picture's own text is dropped. Install it once with: ollama pull qwen2.5vl:3b (another one: notes set NOTES_VLM_MODEL name)." },
             { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_OVERVIEW", label: "AI overview under every note", desc: "In the background your local Ollama model writes a short overview under each note you save, task or not: one sentence for a short note, a short intro and a few bullet points for a longer one (a pasted article, say). The Think button on a note writes it again. Nothing is sent anywhere (the model runs on this PC); if Ollama is not running the note is simply saved. Off by default." },
             { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_AI", label: "Sort new notes into tasks", desc: "Super + N saves a note at once, as always. In the background your local Ollama model then decides whether it is a task: \"call mom at 6\" becomes a task due 18:00, \"idea: dark theme for the lock screen\" stays a plain note. The model's short comment (what it decided and why) shows right under the note in the All notes window, and Think on a note asks it again. Tasks show under Tasks, and a task with a time sends a notification when it is due. Off by default; nothing is sent anywhere (the model runs on this PC) and if Ollama is not running the note is simply saved." },
             { type: "seg", key: "nt:NOTES_AI_MODE", label: "When the model thinks it is a task", desc: "Ask me: the note shows \"Make task / Keep as note\" in the All notes window. Automatically: it just becomes a task (you can turn it back with Note on its row).", opts: [o("ask", "Ask me first"), o("auto", "Do it automatically")], when: "ai:enabled=true&nt:NOTES_AI=true" },
@@ -914,6 +916,8 @@ Scope {
             : ((m.key === "st:POLKIT" || m.key === "st:GPU" || m.key === "st:PORTAL") && root.startupNote !== "") ? (m.desc || "") + "  \u2192 " + root.startupNote
             : (m.key === "fx:profile" && root.fxConf.safe) ? (m.desc || "") + "  Safe mode is on, so profiles are paused: turn safe mode off first."
             : (m.label === "Safe mode" && root.fxConf.safe) ? "Safe mode is ON: blur, shadows, window animations, stars and motion are off. Back to normal puts your earlier values back."
+            : (m.key === "nt:NOTES_OCR" && root.notesConf.NOTES_OCR && root.notesConf.tesseract === false) ? (m.desc || "") + "  tesseract is not installed right now, so nothing is read until it is."
+            : (m.key === "nt:NOTES_VLM" && root.notesConf.NOTES_VLM && root.notesConf.vlmModel) ? (m.desc || "") + "  Picture model in use: " + root.notesConf.vlmModel + "."
             : (m.key === "nt:NOTES_OVERVIEW" && root.notesConf.NOTES_OVERVIEW && root.notesConf.ollama === false) ? (m.desc || "") + "  Ollama is not running right now, so new notes get no overview until it is."
             : (m.key === "nt:NOTES_OVERVIEW" && root.notesConf.NOTES_OVERVIEW && root.notesConf.model) ? (m.desc || "") + "  Model in use: " + root.notesConf.model + " (the same one `ai` uses; change it under Performance)."
             : (m.key === "nt:NOTES_AI" && root.notesConf.NOTES_AI && root.notesConf.ollama === false) ? (m.desc || "") + "  Ollama is not running right now, so new notes are saved as plain notes until it is."
