@@ -25,6 +25,7 @@ Pictures and voice:
   notes clip-paste [text]         -> (older, saves at once) Ctrl+V in the notes panel: the image on the clipboard becomes a note (prints CLIP_NONE and does nothing
                                      when there is no image, so the panel can paste the text instead)
   notes rec-toggle                -> one key for voice notes: starts a recording, the same key again saves it (Super + Shift + V)
+  notes summary <idx_or_id>       -> a full summary of a note of any length (the short overview stays short; this one has no limit)
   notes ocr <idx_or_id>           -> read the text in a picture note (tesseract, offline, nothing invented) and keep it with the note
   notes describe <idx_or_id>      -> a short description of a picture note from a local vision model (only when NOTES_VLM is on)
   notes search <words>            -> find notes by what they say, what was said, the text in their pictures and their descriptions
@@ -178,6 +179,10 @@ def add_note(text, image=None, audio=None, stt=False):
         # the text in the picture is read in the background; saving never waits for it
         with contextlib.suppress(Exception):
             subprocess.Popen([sys.executable, os.path.abspath(__file__), "ocr", item["id"]], start_new_session=True,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if ai_enabled() and cf["NOTES_SUMMARY"] == "1" and _word_count(text) >= 150:
+        with contextlib.suppress(Exception):
+            subprocess.Popen([sys.executable, os.path.abspath(__file__), "summary", item["id"]], start_new_session=True,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ai_enabled() and (cf["NOTES_AI"] == "1" or cf["NOTES_OVERVIEW"] == "1") and len(text) <= 6000:
         with contextlib.suppress(Exception):
@@ -626,12 +631,140 @@ def describe_note(arg):
         print(f"[{model}]  {text}")
     return True
 
+# ---- a full summary of a note of ANY length. The overview under a note is short on purpose; this one is not cut off anywhere:
+# a long text is read in pieces, every piece gets its own gist and bullets, and all of them are kept. Every sentence is checked against
+# the text it came from (the same rule as the overview): a sentence that says something the text does not is dropped, not shown.
+SUMMARY_PIECE = 3200            # characters of the note one model call reads
+
+def summary_source(n):
+    """The words to summarise: the note itself, or for a picture note with no real words of its own what was read from / said about it."""
+    t = (n.get("text") or "").strip()
+    if n.get("image") and _word_count(t) < 8:
+        return "\n".join(x for x in (((n.get("describe") or {}).get("text") or ""), ((n.get("ocr") or {}).get("text") or "")) if x).strip()
+    return t
+
+def _pieces(text, limit=SUMMARY_PIECE):
+    units = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if len(line) <= limit:
+            units.append(line)
+        else:                                            # one very long paragraph: by sentence, and by length when there is no sentence end
+            for sent in re.split(r"(?<=[.!?])\s+", line):
+                while len(sent) > limit:
+                    units.append(sent[:limit])
+                    sent = sent[limit:]
+                if sent:
+                    units.append(sent)
+    out, cur = [], ""
+    for u in units:
+        if cur and len(cur) + len(u) + 1 > limit:
+            out.append(cur)
+            cur = ""
+        cur = (cur + "\n" + u) if cur else u
+    if cur:
+        out.append(cur)
+    return out
+
+def _summary_call(text, gist_only=False):
+    """-> (gist, [bullets]) from the model for one piece of text, or None when Ollama does not answer. Not yet checked."""
+    import urllib.request
+    if gist_only:
+        ask = ("Write ONE sentence that gives the main point of these notes together. Use ONLY facts written in them. Plain text.")
+    else:
+        ask = ("Summarise the text below for the person who saved it. Use ONLY facts that are written in it: no new numbers, causes or opinions. "
+               "Keep its tenses: things still to do stay things to do and are never described as done. Write ONE sentence with the main point, "
+               "then a list with one line per other important point, each line starting with '- '. Use as many lines as the text needs "
+               "so that nothing important is missing. Plain text only: no headings, no bold.")
+    prompt = ask + "\n\nText:\n" + text + "\n"
+    body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "think": False, "keep_alive": keep_alive(),
+                       "options": {"temperature": 0, "num_predict": 700}}).encode()
+    try:
+        req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=240) as r:
+            raw = json.loads(r.read().decode("utf-8", "replace")).get("response", "")
+    except Exception:
+        return None
+    raw = re.sub(r"\*\*|__|`|^#+\s*", "", raw, flags=re.M)
+    gist, bullets = "", []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if re.match(r"^[-*\u2022]\s+", line):
+            bullets.append(re.sub(r"^[-*\u2022]\s+", "", line).strip())
+        elif not gist:
+            gist = re.sub(r"\s+", " ", line)
+        else:
+            bullets.append(re.sub(r"\s+", " ", line))
+    return gist, bullets
+
+def summarise_text(text):
+    """-> (summary text, None) or (None, why not). The gist first, then every checked bullet; nothing is cut off."""
+    cl = checklist_of(text)
+    if cl:
+        return cl, None                                  # a list is already complete: shown as written
+    gists, bullets = [], []
+    for piece in _pieces(text):
+        res = _summary_call(piece)
+        if res is None:
+            return None, "Ollama is not running (or did not answer), so there is no summary yet. Start it and use Summarise again."
+        ns, nn = _stems(piece), _numbers(piece)
+        g, bl = res
+        if g and _grounded(g, ns, nn, piece):
+            gists.append(g)
+        for b in bl:
+            if b and _grounded(b, ns, nn, piece) and all(_overlap(b, x) < 0.6 for x in bullets):
+                bullets.append(b)
+    if not gists and not bullets:
+        return "", None
+    if len(gists) > 1:                                   # one sentence for the whole note, made from the pieces' own gists
+        joined = "\n".join(gists)
+        res = _summary_call(joined, gist_only=True)
+        top = res[0] if res and res[0] and _grounded(res[0], _stems(joined), _numbers(joined), joined) else gists[0]
+    else:
+        top = gists[0] if gists else ""
+    lines = ([top] if top else []) + ["- " + b for b in bullets]
+    return "\n".join(lines), None
+
+def summary_note(arg):
+    if not ai_enabled():
+        print("[!] AI features are switched off (Settings > AI).")
+        return False
+    t = find_note(load_notes(), arg)
+    if not t:
+        print("[!] No such note.")
+        return False
+    nid, src = t.get("id"), summary_source(t)
+    if _word_count(src) < 8:
+        _patch_note(nid, lambda n: n.__setitem__("summary", {"state": "empty", "at": time.time(), "msg": "Too short to summarise (needs about 8 words)."}))
+        return False
+    _patch_note(nid, lambda n: n.__setitem__("summary", {"state": "working", "at": time.time()}))
+    text, err = summarise_text(src)
+    if text is None:
+        _patch_note(nid, lambda n: n.__setitem__("summary", {"state": "fail", "at": time.time(), "msg": err}))
+        if sys.stdout.isatty():
+            print("[!] " + err)
+        return False
+    if not text:
+        msg = "The model's summary did not match what the note says, so it was left out rather than guess. Summarise tries again."
+        _patch_note(nid, lambda n: n.__setitem__("summary", {"state": "empty", "at": time.time(), "msg": msg}))
+        if sys.stdout.isatty():
+            print(msg)
+        return False
+    _patch_note(nid, lambda n: n.__setitem__("summary", {"state": "done", "at": time.time(), "text": text}))
+    if sys.stdout.isatty():
+        print(text)
+    return True
+
 # ---- search: what the note says, what was said, the text in its picture, its description, the AI line. Typos of one letter are fine.
 def _note_fields(n):
     """(field name, weight, text) for every place a word can be found in a note."""
     return [("note", 3, n.get("text") or ""), ("transcript", 3, n.get("transcript") or ""),
             ("picture text", 2, (n.get("ocr") or {}).get("text") or ""), ("picture description", 2, (n.get("describe") or {}).get("text") or ""),
-            ("overview", 1, (n.get("think") or {}).get("why") or "")]
+            ("overview", 1, (n.get("think") or {}).get("why") or ""), ("summary", 1, (n.get("summary") or {}).get("text") or "")]
 
 def search_notes(query, notes=None):
     """-> [(index in the full list, note, [where the words were found]), ...] best first. Every word must be found somewhere."""
@@ -1002,7 +1135,7 @@ AI_OFF_FLAG = os.path.join(os.path.expanduser("~"), ".local", "state", "island",
 def ai_enabled():
     return not os.path.exists(AI_OFF_FLAG)
 
-CONF_DEFAULTS = {"NOTES_OCR": "1", "NOTES_VLM": "0", "NOTES_VLM_MODEL": "", "NOTES_AI": "0", "NOTES_OVERVIEW": "0", "NOTES_AI_MODE": "ask", "NOTES_NUDGE_HOURS": "3", "NOTES_NUDGE_MAX": "4",
+CONF_DEFAULTS = {"NOTES_SUMMARY": "0", "NOTES_OCR": "1", "NOTES_VLM": "0", "NOTES_VLM_MODEL": "", "NOTES_AI": "0", "NOTES_OVERVIEW": "0", "NOTES_AI_MODE": "ask", "NOTES_NUDGE_HOURS": "3", "NOTES_NUDGE_MAX": "4",
                  "NOTES_NUDGE_FROM": "9", "NOTES_NUDGE_TO": "21", "NOTES_MODEL": "", "NOTES_STT_MODEL": "", "NOTES_STT_LANG": ""}
 DEFAULT_MODEL = "qwen2.5:3b-instruct"      # what the notes AI was tested and tuned on (fast, keeps facts and tenses straight)
 CONF_RANGE = {"NOTES_NUDGE_HOURS": (1, 12), "NOTES_NUDGE_MAX": (1, 12), "NOTES_NUDGE_FROM": (0, 23), "NOTES_NUDGE_TO": (1, 24)}
@@ -1022,6 +1155,7 @@ def read_conf():
         c["NOTES_AI"] = "0"
     if c["NOTES_OVERVIEW"] != "1":
         c["NOTES_OVERVIEW"] = "0"
+    c["NOTES_SUMMARY"] = "1" if c["NOTES_SUMMARY"] == "1" else "0"   # a full summary of every long note by itself: off unless switched on
     c["NOTES_OCR"] = "0" if c["NOTES_OCR"] == "0" else "1"       # reading the text in pictures is on unless switched off
     c["NOTES_VLM"] = "1" if c["NOTES_VLM"] == "1" else "0"       # describing pictures with a model is off unless switched on
     if c["NOTES_AI_MODE"] not in ("ask", "auto"):
@@ -1040,7 +1174,7 @@ def write_conf(c):
     keep = []
     try:                       # lines that are not ours stay as they are
         with open(CONF_FILE, "r", encoding="utf-8") as f:
-            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*(NOTES_AI(_MODE)?|NOTES_OVERVIEW|NOTES_OCR|NOTES_VLM(_MODEL)?|NOTES_MODEL|NOTES_STT_(MODEL|LANG)|NOTES_NUDGE_(HOURS|MAX|FROM|TO))=", l)]
+            keep = [l.rstrip("\n") for l in f if not re.match(r"\s*(NOTES_AI(_MODE)?|NOTES_OVERVIEW|NOTES_SUMMARY|NOTES_OCR|NOTES_VLM(_MODEL)?|NOTES_MODEL|NOTES_STT_(MODEL|LANG)|NOTES_NUDGE_(HOURS|MAX|FROM|TO))=", l)]
     except OSError:
         pass
     fd, tmp = tempfile.mkstemp(prefix="notes.conf.", dir=os.path.dirname(CONF_FILE))
@@ -1416,15 +1550,8 @@ def checklist_of(text):
     items = [x for x in items if x]
     if len(items) < 3:
         return ""
-    # every item in full (the list wraps); only an absurdly long item is cut, at a word boundary
-    def _full(x):
-        if len(x) <= 300:
-            return x
-        cut = x[:300]
-        return (cut[:cut.rfind(" ")] if " " in cut else cut).rstrip(" ,;:") + "..."
-    lines = [f"Checklist, {len(items)} items"] + ["- " + _full(x) for x in items[:12]]
-    if len(items) > 12:
-        lines.append(f"- and {len(items) - 12} more")
+    # every item in full and every item listed: an overview that cuts things off hides exactly what was written down
+    lines = [f"Checklist, {len(items)} items"] + ["- " + x for x in items]
     return "\n".join(lines)
 
 NEG_RE = re.compile(r"\b(fell|fall|falls|fallen|dip|dipped|drop|dropped|decline|declined|down|loss|losses|lower|slump|slumped|cut|cuts|worse|reduced|shrank)\b", re.I)
@@ -1596,10 +1723,12 @@ def title_of(why):
     first = re.sub(r"^[-*\u2022]\s*", "", first).rstrip(" .\u2026")
     return first[:160]
 
+PLAIN_WHY = "Looks like a plain note: nothing you have to do."      # the list does not show this one (it says nothing)
+
 def make_why(task, due, later, conf):
     """What the AI line says when the model gave no sentence of its own (small models often skip it)."""
     if not task:
-        return "Looks like a plain note: nothing you have to do."
+        return PLAIN_WHY
     if due:
         return f"Reminder set for {due_text(due).lower()}."
     if later:
@@ -1696,7 +1825,7 @@ def sort_note(arg, force=False):
                     return
                 n["sorted"] = True
                 if ov:
-                    n["think"] = {"state": "done", "at": time.time(), "why": ov, "task": bool(n.get("task")), "title": title_of(ov), "real": True}
+                    n["think"] = {"state": "done", "at": time.time(), "why": ov, "task": bool(n.get("task")), "real": True}
                 else:
                     # nothing usable came back: say so instead of showing an empty line (it looked like the AI did not run at all)
                     miss = ("Too short to write an overview of (needs about 8 words)." if _word_count(text) < 8 else
@@ -1720,7 +1849,6 @@ def sort_note(arg, force=False):
             ov2 = overview_of(text)
             if ov2:
                 why, real = ov2, True
-        title = title_of(why) if real else ""
         if due and say and not (ov_on and (len(text) > 140 or checklist_of(text))):
             why = (why.rstrip(".") + f"  ·  reminder {due_text(due).lower()}")[:200]
         with locked():
@@ -1729,8 +1857,6 @@ def sort_note(arg, force=False):
             if n is None:                                              # deleted in the meantime
                 return
             think = {"state": "done", "at": time.time(), "why": why, "task": bool(ans["task"]), "real": bool(real)}
-            if title:
-                think["title"] = title                 # the list shows this instead of the note's own words
             if n.get("done") or (not force and "task" in n):            # done or set by hand in the meantime: only the AI line
                 n["think"] = think
             else:
@@ -1877,7 +2003,7 @@ def list_tasks():
 
 def conf_json():
     c = read_conf()
-    print(json.dumps({"NOTES_OCR": c["NOTES_OCR"] == "1", "NOTES_VLM": c["NOTES_VLM"] == "1", "NOTES_VLM_MODEL": c["NOTES_VLM_MODEL"],
+    print(json.dumps({"NOTES_SUMMARY": c["NOTES_SUMMARY"] == "1", "NOTES_OCR": c["NOTES_OCR"] == "1", "NOTES_VLM": c["NOTES_VLM"] == "1", "NOTES_VLM_MODEL": c["NOTES_VLM_MODEL"],
                       "tesseract": bool(_which("tesseract")), "vlmModel": vlm_model(),
                       "NOTES_AI": c["NOTES_AI"] == "1", "NOTES_OVERVIEW": c["NOTES_OVERVIEW"] == "1", "NOTES_AI_MODE": c["NOTES_AI_MODE"],
                       "NOTES_NUDGE_HOURS": c["NOTES_NUDGE_HOURS"], "NOTES_NUDGE_MAX": c["NOTES_NUDGE_MAX"],
@@ -1887,7 +2013,7 @@ def conf_json():
 
 def set_conf(k, v):
     c = read_conf()
-    if k in ("NOTES_AI", "NOTES_OVERVIEW", "NOTES_OCR", "NOTES_VLM"):
+    if k in ("NOTES_AI", "NOTES_OVERVIEW", "NOTES_SUMMARY", "NOTES_OCR", "NOTES_VLM"):
         c[k] = "1" if str(v).lower() in ("1", "true", "on", "yes") else "0"
     elif k == "NOTES_AI_MODE" and v in ("ask", "auto"):
         c[k] = v
@@ -1923,7 +2049,7 @@ def main():
 
 READ_ONLY = ("list", "ls", "json", "tasks", "conf", "rec-status")
 NO_LOCK = ("sort", "think", "transcribe")
-UNLOCKED = ("clip-image", "clip-img", "paste-image", "clip-paste", "clip-stage", "clip-drop", "shot-image", "screenshot", "record", "voice", "rec-start", "rec-stop", "rec-cancel", "rec-toggle", "ocr", "describe", "selftest", "search", "play")
+UNLOCKED = ("clip-image", "clip-img", "paste-image", "clip-paste", "clip-stage", "clip-drop", "shot-image", "screenshot", "record", "voice", "rec-start", "rec-stop", "rec-cancel", "rec-toggle", "ocr", "describe", "summary", "selftest", "search", "play")
 
 def is_ref(a):
     return a.isdigit() or a.startswith("n_")
@@ -1931,7 +2057,7 @@ def is_ref(a):
 def run(cmd, args):
     # the new words only count as commands when they are used like commands, so "notes set the table" is still a note
     if (cmd in ("tasks", "conf", "remind-check") and len(args) > 1) \
-            or (cmd in ("task", "sort", "think", "transcribe", "accept", "dismiss", "ocr", "describe") and not (len(args) == 2 and is_ref(args[1]))) \
+            or (cmd in ("task", "sort", "think", "transcribe", "accept", "dismiss", "ocr", "describe", "summary") and not (len(args) == 2 and is_ref(args[1]))) \
             or (cmd in ("selftest", "rec-toggle") and len(args) > 1) \
             or (cmd == "due" and not (len(args) > 2 and is_ref(args[1]))) \
             or (cmd == "set" and not (len(args) == 3 and args[1] in CONF_DEFAULTS)):
@@ -1949,7 +2075,7 @@ def run(cmd, args):
         if len(args) > 2:
             set_conf(args[1], args[2])
         else:
-            print("usage: notes set NOTES_OCR 0|1  |  NOTES_VLM 0|1  |  NOTES_VLM_MODEL <name>|default  |  NOTES_AI 0|1  |  NOTES_OVERVIEW 0|1  |  NOTES_AI_MODE ask|auto  |  NOTES_MODEL <name>|default  |  NOTES_STT_MODEL <model>|default  |  NOTES_STT_LANG <lang>|default  |  NOTES_NUDGE_HOURS 1..12  |  NOTES_NUDGE_MAX 1..12  |  NOTES_NUDGE_FROM 0..23  |  NOTES_NUDGE_TO 1..24")
+            print("usage: notes set NOTES_SUMMARY 0|1  |  NOTES_OCR 0|1  |  NOTES_VLM 0|1  |  NOTES_VLM_MODEL <name>|default  |  NOTES_AI 0|1  |  NOTES_OVERVIEW 0|1  |  NOTES_AI_MODE ask|auto  |  NOTES_MODEL <name>|default  |  NOTES_STT_MODEL <model>|default  |  NOTES_STT_LANG <lang>|default  |  NOTES_NUDGE_HOURS 1..12  |  NOTES_NUDGE_MAX 1..12  |  NOTES_NUDGE_FROM 0..23  |  NOTES_NUDGE_TO 1..24")
     elif cmd == "sort":
         if len(args) > 1:
             sort_note(args[1])
@@ -2022,6 +2148,11 @@ def run(cmd, args):
         record_audio(" ".join(args[1:]))
     elif cmd == "rec-toggle":
         rec_toggle()
+    elif cmd == "summary":
+        if len(args) > 1:
+            summary_note(args[1])
+        else:
+            print("usage: notes summary <number or id>")
     elif cmd == "ocr":
         if len(args) > 1:
             ocr_note(args[1])
