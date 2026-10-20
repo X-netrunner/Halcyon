@@ -1076,6 +1076,11 @@ IMPORT_BEGIN = "# >>> imported from contacts (managed by Halcyon: importing agai
 IMPORT_END = "# <<< end of imported contacts <<<"
 
 
+def _valid_md(mo, da):
+    """A real calendar day: 02-30 and 04-31 are rejected (they used to be saved and then never shown), 02-29 is kept."""
+    return 1 <= mo <= 12 and 1 <= da <= _cal.monthrange(2024, mo)[1]
+
+
 def parse_bday_date_any(raw):
     """Parses any date format from Google Contacts CSV, Outlook CSV, Apple/Android vCard:
     YYYY-MM-DD, --MM-DD, MM/DD/YYYY, DD/MM/YYYY, MM-DD, 'Oct 14, 1998', '14 October' -> (year|None, month, day) or None."""
@@ -1087,19 +1092,19 @@ def parse_bday_date_any(raw):
         yr, mo, da = int(m.group(1)), int(m.group(2)), int(m.group(3))
         if yr < 1900 or yr > 2100:
             yr = None
-        if 1 <= mo <= 12 and 1 <= da <= 31:
+        if _valid_md(mo, da):
             return yr, mo, da
     m = re.search(r"--(\d{2})-?(\d{2})", s)
     if m:
         mo, da = int(m.group(1)), int(m.group(2))
-        if 1 <= mo <= 12 and 1 <= da <= 31:
+        if _valid_md(mo, da):
             return None, mo, da
     m = re.match(r"^(\d{4})(\d{2})(\d{2})$", s)
     if m:
         yr, mo, da = int(m.group(1)), int(m.group(2)), int(m.group(3))
         if yr < 1900 or yr > 2100:
             yr = None
-        if 1 <= mo <= 12 and 1 <= da <= 31:
+        if _valid_md(mo, da):
             return yr, mo, da
     m = re.match(r"^(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?$", s)
     if m:
@@ -1112,7 +1117,7 @@ def parse_bday_date_any(raw):
             if yr < 1900 or yr > 2100:
                 yr = None
         mo, da = (b, a) if (a > 12 and b <= 12) else (a, b)
-        if 1 <= mo <= 12 and 1 <= da <= 31:
+        if _valid_md(mo, da):
             return yr, mo, da
     months = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
               "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
@@ -1120,13 +1125,13 @@ def parse_bday_date_any(raw):
     if m and m.group(1)[:3].lower() in months:
         mo, da = months[m.group(1)[:3].lower()], int(m.group(2))
         yr = int(m.group(3)) if m.group(3) else None
-        if 1 <= mo <= 12 and 1 <= da <= 31:
+        if _valid_md(mo, da):
             return yr, mo, da
     m = re.search(r"(\d{1,2})\s+([A-Za-z]{3,9})\.?(?:,?\s*(\d{4}))?", s)
     if m and m.group(2)[:3].lower() in months:
         mo, da = months[m.group(2)[:3].lower()], int(m.group(1))
         yr = int(m.group(3)) if m.group(3) else None
-        if 1 <= mo <= 12 and 1 <= da <= 31:
+        if _valid_md(mo, da):
             return yr, mo, da
     return None
 

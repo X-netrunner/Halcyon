@@ -3,6 +3,12 @@
 # Only runs while the performance page is open.
 #   NVIDIA dGPU: "off" when it is runtime-suspended (we never poke nvidia-smi then, so this can't wake it)
 #   AMD: /sys/class/drm/card*/device/gpu_busy_percent      none: no discrete GPU found
+
+hx="$(dirname "$(readlink -f "$0")")/../../../bin/hx"; [ -x "$hx" ] || hx="$HOME/.config/Halcyon/bin/hx"
+if [ -x "$hx" ]; then
+  exec "$hx" gpu "$@"
+fi
+
 iv=${1:-2}
 # wait without starting a `sleep` process: a timed read on a pipe nobody writes to
 exec {nap}<> <(:)

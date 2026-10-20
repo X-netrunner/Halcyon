@@ -601,8 +601,10 @@ Scope {
         ]
     }
 
-    // Groups were merged on purpose (24 -> 16): Mouse + Touchpad + Keyboard, Power + Sleep, Bar style + Bar, Motion + Shadows + Blur,
-    // Night light into Colours, Panels into Notifications, Rice into Apps. Items marked adv: true sit behind each group's "Advanced" row
+    // Sections (the tabs) and groups: six sections, 33 groups, none longer than ~10 visible rows. A group that grew past that was split
+    // by topic (Bar -> Bar + Bar behaviour, Effects -> Transparency & blur + Motion & dimming, Notifications -> Notifications + Edge boxes,
+    // Mouse -> Mouse & touchpad + Keyboard & launcher, Performance -> Performance & memory + Tree view). Night light lives in Colours,
+    // Rice in Apps. Items marked adv: true sit behind each group's "Advanced" row
     // (a search or the header switch shows them all). The two reminder blocks of Backup / Safety come from remind() below.
     readonly property var groups: [
         { id: "look", title: "Look", section: "Appearance", items: [
@@ -613,6 +615,7 @@ Scope {
             { type: "slider", key: "rounding", label: "Corner rounding", desc: "Window corners", min: 0, max: 28, step: 1, unit: " px", glyph: 0xF0A39 },
             { type: "slider", key: "gaps", label: "Gaps", desc: "Between windows (the outer gap is double)", min: 0, max: 20, step: 1, unit: " px", glyph: 0xF0B36 },
             { type: "slider", adv: true, key: "hy:borderSize", def: 2, label: "Border width", min: 0, max: 6, step: 1, unit: " px" },
+            { type: "toggle", key: "opt:accentBorder", label: "Accent colour on the focused window", desc: "A thin border in the wallpaper's accent colour around the window you are using. Off = the neutral white hairline." },
             { type: "action", adv: true, id: "reset-look", label: "Look values", btn: "Back to the config files", done: "Reset", desc: "Forgets every window / look value changed here; hyprland/*.lua rules again." }
         ] },
         { id: "colours", title: "Colours & night light", section: "Appearance", items: [
@@ -638,28 +641,22 @@ Scope {
             { type: "seg", key: "opt:wpCat", label: "Online category", desc: "What \"Next wallpaper\" and the timer fetch. Anime = characters, Anime art = anime-style scenery. Random picks a category each time. Search… uses your own word (the box below).", opts: [o("nature", "Nature"), o("movies", "Movies"), o("anime", "Anime"), o("anime-art", "Anime art"), o("space", "Space"), o("city", "City"), o("minimal", "Minimal"), o("cars", "Cars"), o("random", "Random"), o("custom", "Search…")], when: "opt:wpSource=online|mixed" },
             { type: "seg", key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] }
         ] },
-        { id: "desktop", title: "Desktop builder", section: "Appearance", items: [
-            { type: "custom", name: "desktopBuilder" }
-        ] },
-        { id: "widgets", title: "Widget builder", section: "Appearance", items: [
-            { type: "toggle", key: "opt:widgetHalo", label: "Soft halo behind widget text", desc: "A faint dark glow behind the words of box-less desktop widgets, only where the wallpaper behind them is busy. Off = never, for every widget." },
-            { type: "slider", key: "opt:widgetReadability", label: "Widget text readability", desc: "Added to every widget's own Readability setting: a stronger outline and a lighter text colour. 0 = each widget as you set it.", min: -30, max: 40, step: 5, def: 0, unit: " %", glyph: 0xF0A39 },
-            { type: "custom", name: "widgetBuilder" }
-        ] },
-        { id: "glass", title: "Effects: transparency, blur & motion", section: "Appearance", items: [
-            { type: "toggle", key: "opt:accentBorder", label: "Accent colour on the focused window", desc: "A thin border in the wallpaper's accent colour around the window you are using. Off = the neutral white hairline." },
+        { id: "glass", title: "Transparency & blur", section: "Appearance", items: [
             { type: "slider", key: "glassShift", label: "Transparency", desc: "Of the island, panels and overlays", min: -0.15, max: 0.05, step: 0.01, scale: 100, signed: true, glyph: 0xF0335 },
             { type: "slider", adv: true, key: "opt:settingsGlass", def: 0.72, label: "Settings window opacity", desc: "Lower = more see-through: the blurred wallpaper and windows show through the Settings window.", min: 0.35, max: 1, step: 0.01, scale: 100, unit: " %", glyph: 0xF0335 },
             { type: "slider", adv: true, key: "hy:inactiveOpacity", def: 1, label: "Unfocused window opacity", desc: "Below 100 % windows you are not using turn see-through", min: 0.5, max: 1, step: 0.05, scale: 100, unit: " %" },
             { type: "toggle", key: "blur", label: "Blur" },
             { type: "slider", key: "hy:blurSize", def: 8, label: "Blur strength", min: 1, max: 16, step: 1, when: "blur=true" },
             { type: "slider", adv: true, key: "hy:blurPasses", def: 2, label: "Blur quality", desc: "More passes look smoother and cost more GPU", min: 1, max: 5, step: 1, when: "blur=true" },
+            { type: "toggle", key: "shadows", label: "Shadows" },
+        ] },
+        { id: "motion", title: "Motion & dimming", section: "Appearance", items: [
+            { type: "seg", key: "motion", label: "Island animations", opts: [o(0, "Off"), o(0.5, "Fast"), o(1, "Normal")] },
+            { type: "toggle", key: "hyprAnim", label: "Window animations" },
             { type: "toggle", adv: true, key: "hy:resizeAnim", label: "Animate window resizing", desc: "Off: a window follows the pointer at once while you drag its edge (lighter with blur on). The Low resource preset turns it off" },
             { type: "toggle", key: "hy:dimInactive", label: "Dim unfocused windows" },
             { type: "slider", key: "hy:dimStrength", def: 0.3, label: "Dim amount", min: 0, max: 0.8, step: 0.05, scale: 100, unit: " %", when: "hy:dimInactive=true|1" },
-            { type: "toggle", key: "shadows", label: "Shadows" },
-            { type: "seg", key: "motion", label: "Island animations", opts: [o(0, "Off"), o(0.5, "Fast"), o(1, "Normal")] },
-            { type: "toggle", key: "hyprAnim", label: "Window animations" }
+            { type: "toggle", key: "opt:extraDim", label: "Extra dim mode", desc: "Drops the display brightness to minimum (1%) for nighttime comfort without losing color fidelity. You can also toggle it from the utilities panel or with Super + Alt + D." }
         ] },
         { id: "growth", title: "Constellations & Stars", section: "Appearance", items: [
             { type: "seg", key: "opt:dialogStarStyle", label: "Dialog stars effect (Battery saver)", desc: "Choose whether Settings, Display Switcher, Cheatsheet and dialogs use lightweight Moving Stars (drifting particles with tails, saving significant CPU/GPU and battery), Constellations (connected geometric nodes), Both, or Off.", opts: [o("moving", "Moving Stars (Lightweight)"), o("constellations", "Constellations"), o("both", "Both"), o("none", "Off")] },
@@ -669,16 +666,23 @@ Scope {
             { type: "toggle", adv: true, key: "profileStars", label: "Profile picture constellation", when: "opt:stars=true||opt:treeConst=full|corner", soft: true, why: "Turn on \u201cConstellations in the boxes\u201d (or show the tree view constellation) to change this." },
             { type: "custom", adv: true, name: "growth" }
         ] },
-        { id: "bar", title: "Bar", section: "Desktop", items: [
+        { id: "signature", title: "Splash, sky & time of day", section: "Appearance", items: [
+            { type: "toggle", key: "opt:splashUnlock", def: true, label: "Splash when you unlock", desc: "The stars rush out again for about 2 seconds over your desktop right after you unlock the screen (the lock screen that is also your login does not repeat it). It never takes a click or a key. Needs the Login splash switch (Power & lock). Not shown in Gaming mode or when motion is off.", when: "opt:splash=true" },
+            { type: "toggle", key: "opt:splashShutdown", def: true, label: "Goodbye splash when you shut down", desc: "Shut down or Restart (power menu, launcher) first draws the stars back into the centre while the sparkle folds shut, about 2.4 seconds, and then goes. A click or a key skips straight to the end; the machine always goes down within about 5 seconds even if the animation fails. Needs the Login splash switch. Not shown in Gaming mode or when motion is off.", when: "opt:splash=true" },
+            { type: "toggle", key: "opt:splashSound", def: false, label: "Soft sounds with the splash", desc: "A quiet chime on login and unlock that rises, and one that falls on shutdown. The three short sounds are made once by Halcyon itself (no files to install) and played with pw-play, paplay, aplay or ffplay, whichever you have. Off by default." },
+            { type: "action", id: "splash-unlock-preview", label: "Unlock splash", btn: "Play it now", done: "", desc: "Plays the unlock animation once over what is on screen. It does not lock anything." },
+            { type: "action", id: "splash-shutdown-preview", label: "Goodbye splash", btn: "Play it now", done: "", desc: "Plays the shutdown animation once. It does NOT shut the computer down: a click, a key or a few seconds gives the screen back." },
+            { type: "toggle", key: "opt:todOn", def: false, label: "Time-of-day wallpaper", desc: "A soft colour wash over the wallpaper that follows the sun: blue at night, rose at dawn, clear around noon, amber in the golden hour, magenta at dusk. Your picture and the colours taken from it are not changed; switching this off gives the plain wallpaper back at once. It updates once a minute while it is on." },
+            { type: "slider", key: "opt:todStrength", def: 60, label: "Time-of-day strength", desc: "How strong the wash and the night dimming are. 100 % is full dusk orange and deep night blue.", min: 0, max: 100, step: 5, unit: " %", when: "opt:todOn=true" },
+            { type: "action", id: "sky-open", label: "Weekly sky", btn: "Open it", done: "", desc: "Your week as stars: one for every focus session, every note you ticked off and every calendar event that has happened. Stars of one day are joined into a constellation. Save picture writes a PNG (or SVG) to ~/Pictures/Halcyon to share. Also `>weekly sky` and `halcyon weekly-sky`." }
+        ] },
+        { id: "bar", title: "Bar", section: "Bar & panels", items: [
             { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Custom: you choose the shape (Notch or Island), what is on the bar, where it goes and how much padding it has (Bar builder below). Off: no bar at all, put clock, workspaces, stats and the rest on the desktop as widgets (Widget builder); the launcher and the pages still open from the top edge. Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("custom", "Custom"), o("off", "Off")] },
             { type: "custom", name: "barBuilder", when: "opt:barStyle=custom" },
             { type: "chips", label: "Show in the bar", desc: "Special icons: scratch, music, monitor ... (only the ones that exist). Music bars: only while something plays. Battery % needs the battery or the combined icon.", opts: [ch("pair:ws", "Workspaces", "opt:barStyle=island|notch"), ch("pair:specials", "Special icons", "opt:barStyle=island|notch"), ch("pair:viz", "Music bars", "opt:barStyle=island|notch"), ch("pair:wifi", "Wi-Fi", "opt:barStyle=island|notch"), ch("pair:bat", "Battery", "opt:barStyle=island|notch"), ch("pair:batPct", "Battery %"), ch("pair:caffeine", "Caffeine icon", "opt:barStyle=island|notch")] },
             { type: "seg", key: "barPadding", label: "Bar size and padding", desc: "How tall the bar is. Island: also how far it floats from the top edge and the space at its sides.", opts: [o("low", "Low"), o("normal", "Normal"), o("high", "High")] },
-            { type: "seg", key: "opt:dropDown", label: "Drag the bar down", desc: "Pull the bar down (or use the little handle under the open page) to get the utilities box inside the bar. Swipe pages: the notifications are the next page to the right. Swipe sideways, tap the arrows or the tabs, or press Left / Right (click the box once first). Side by side: the notifications sit next to the utilities box. Drag up, or tap the handle, to go back. While this is on, the corner utilities box and the right-edge notification box are switched off. Off: the boxes stay in their corners.", opts: [o("off", "Off"), o("stack", "Swipe pages"), o("side", "Side by side")] },
             { type: "seg", key: "opt:islWsLook", label: "Workspace look", desc: "Numbers: the island's own 1 2 3 ... with a sliding pill. Capsules: the notch look, small vertical capsules, the current one big and vivid.", opts: [o("numbers", "Numbers"), o("capsules", "Capsules")], when: "opt:barStyle=island" },
             { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island|notch" },
-            { type: "toggle", key: "autoHide", label: "Auto-hide the bar" },
-            { type: "seg", key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
             { type: "seg", adv: true, key: "pair:wsMin", label: "Capsules always shown", desc: "Workspaces 1 to N are always drawn as capsules (empty ones dim, ones with windows faded, the current one big and vivid). More show up when you use them. The notch always draws capsules; the island only with the capsule look.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")] },
             { type: "seg", adv: true, key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&pair:specials=true" },
             { type: "seg", adv: true, key: "opt:viz", label: "Music bars quality", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
@@ -686,16 +690,49 @@ Scope {
             { type: "seg", adv: true, key: "pair:bt", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")] },
             { type: "seg", adv: true, key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch|custom" },
             { type: "seg", adv: true, key: "pair:spacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the time always dead centre. (Bar size and padding above is the bar's height and its distance from the edge.)", opts: [o("compact", "Compact"), o("spacious", "Spacious")] },
-            { type: "seg", adv: true, key: "opt:scrollLinger", label: "Page stays after scrolling", desc: "When you open the performance / media page by scrolling or two-finger swiping the bar, how long it stays after the pointer leaves the bar.", opts: [o(1500, "Short"), o(3000, "Normal"), o(6000, "Long"), o(12000, "Very long")] },
-            { type: "seg", adv: true, key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")], when: "hoverAction=perf|media" },
-            { type: "seg", adv: true, key: "barScroll", label: "Scroll / swipe on the bar to change page", opts: [o("low", "Long swipe"), o("medium", "Medium"), o("high", "Sensitive")] },
             { type: "seg", adv: true, key: "opt:bgWhere", label: "Background apps dot", desc: "Where the dot that says apps are running in the background is shown. The box with the apps always opens bottom-left (on the bar, click the icon to open it).", opts: [o("corner", "Corner"), o("bar", "Bar")] }
         ] },
-        { id: "clock", title: "Clock", section: "Desktop", items: [
+        { id: "barbehave", title: "Bar behaviour", section: "Bar & panels", items: [
+            { type: "seg", key: "opt:dropDown", label: "Drag the bar down", desc: "Pull the bar down (or use the little handle under the open page) to get the utilities box inside the bar. Swipe pages: the notifications are the next page to the right. Swipe sideways, tap the arrows or the tabs, or press Left / Right (click the box once first). Side by side: the notifications sit next to the utilities box. Drag up, or tap the handle, to go back. While this is on, the corner utilities box and the right-edge notification box are switched off. Off: the boxes stay in their corners.", opts: [o("off", "Off"), o("stack", "Swipe pages"), o("side", "Side by side")] },
+            { type: "toggle", key: "autoHide", label: "Auto-hide the bar" },
+            { type: "seg", key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
+            { type: "seg", adv: true, key: "barScroll", label: "Scroll / swipe on the bar to change page", opts: [o("low", "Long swipe"), o("medium", "Medium"), o("high", "Sensitive")] },
+            { type: "seg", adv: true, key: "opt:scrollLinger", label: "Page stays after scrolling", desc: "When you open the performance / media page by scrolling or two-finger swiping the bar, how long it stays after the pointer leaves the bar.", opts: [o(1500, "Short"), o(3000, "Normal"), o(6000, "Long"), o(12000, "Very long")] },
+            { type: "seg", adv: true, key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")], when: "hoverAction=perf|media" },
+        ] },
+        { id: "clock", title: "Clock", section: "Bar & panels", items: [
             { type: "seg", key: "clock24", label: "Time format", opts: [o(false, "12 hour"), o(true, "24 hour")] },
             { type: "chips", label: "Show in the clock", desc: "Time and date are separate: show either, both or neither. Seconds: middle-click the time in the bar. Right-click it to switch 12 / 24 hour.", opts: [ch("pair:time", "Time"), ch("pair:date", "Day and date"), ch("opt:clockSeconds", "Seconds")] },
             { type: "seg", adv: true, key: "opt:clockAlign", label: "Centre the", desc: "Colon: the \":\" sits exactly on the screen's centre line (over a centre webcam). Whole text: the time including AM / PM is centred.", opts: [o("colon", "Colon"), o("text", "Whole text")] },
             { type: "seg", adv: true, key: "opt:clockNudge", label: "Nudge the clock", desc: "Extra pixels to the right (or left) on top of the above, for a screen or webcam that sits a little off.", opts: [o(-4, "4 left"), o(-2, "2 left"), o(0, "None"), o(2, "2 right"), o(4, "4 right"), o(6, "6 right")] }
+        ] },
+        { id: "notifications", title: "Notifications", section: "Bar & panels", items: [
+            { type: "chips", label: "Quiet", desc: "Do not disturb: no popups, everything is still kept in the centre. Errors only: Wi-Fi and Bluetooth only tell you when connecting fails (wrong password, device out of range ...).", opts: [ch("dnd", "Do not disturb"), ch("opt:connErrOnly", "Wi-Fi & Bluetooth: errors only")] },
+            { type: "seg", adv: true, key: "opt:notifSpot", label: "Notification trigger spot", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Edge boxes below.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
+            { type: "seg", key: "opt:notifStyle", label: "Notification style", desc: "How the notification centre lists what you got. Stack: one card each. Timeline: a thin rail with a dot per notification, under Just now / Earlier today / Yesterday. Grouped by app: one card per app with its notifications inside.", opts: [o("stack", "Stack"), o("timeline", "Timeline"), o("grouped", "Grouped by app")] },
+            { type: "custom", name: "notifBuilder" },
+            { type: "seg", adv: true, key: "opt:notifIcon", label: "Notification picture", desc: "Profile picture: your picture, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
+            { type: "seg", adv: true, key: "notifMax", label: "Popups on screen at once", desc: "When it is full the oldest goes.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },
+            { type: "seg", adv: true, key: "opt:toastSecs", label: "How long a popup stays", desc: "Urgent ones follow their own setting below.", opts: [o(0, "App decides"), o(3, "3 s"), o(5, "5 s"), o(8, "8 s"), o(12, "12 s")] },
+            { type: "seg", adv: true, key: "opt:critSecs", label: "Urgent popups", desc: "Browsers and some apps mark a notification urgent so it would stay for ever. It now hides after this long; it always stays in the notification centre until you remove it.", opts: [o(15, "15 s"), o(30, "30 s"), o(60, "1 min"), o(0, "Wait for a click")] },
+            { type: "toggle", key: "opt:dndFullscreen", label: "Quiet while a window is fullscreen", desc: "Popups stay away while a video, game or presentation is fullscreen; they are still kept in the notification centre. Halcyon's own timers and reminders still show, and so do urgent ones. Do not disturb itself is not touched." },
+            { type: "seg", adv: true, key: "notifHistoryMax", label: "Notifications the centre keeps", opts: [o(10, "10"), o(20, "20"), o(30, "30"), o(50, "50"), o(100, "100")] },
+        ] },
+        { id: "osd", title: "Edge boxes & volume bar", section: "Bar & panels", items: [
+            { type: "seg", key: "clickMode", label: "Edge boxes (notifications, console, utilities)", opts: [o(false, "Hover"), o(true, "Click")] },
+            { type: "toggle", key: "osdOn", label: "Volume / brightness bar", desc: "Slides up from the bottom whenever volume, brightness or the keyboard light changes." },
+            { type: "seg", key: "opt:osdHold", label: "How long that bar stays", opts: [o(1000, "Short"), o(1700, "Normal"), o(3000, "Long")], when: "osdOn=true" },
+        ] },
+        { id: "utilbox", title: "Utilities box", section: "Bar & panels", items: [
+            { type: "chips", label: "Take out of the box", desc: "Switch a thing ON to remove it from the utilities box (bottom-right corner, and the box that drops out of the bar). Switch it OFF to bring it back. Nothing is switched off, only hidden: Wi-Fi, Bluetooth, caffeine, recording and the rest still work from their shortcuts and the Settings. The Settings button and the power button stay, so you can always get back here.", opts: [ch("opt:uHideWifi", "Wi-Fi"), ch("opt:uHideBt", "Bluetooth"), ch("opt:uHideAudio", "Sound output"), ch("opt:uHideHotspot", "Hotspot"), ch("opt:uHideAirplane", "Airplane"), ch("opt:uHideCharge", "Charge limit (laptops)"), ch("opt:uHideMic", "Microphone"), ch("opt:uHideVolume", "Volume slider"), ch("opt:uHideBright", "Brightness slider"), ch("opt:uHideExtraDim", "Extra dim"), ch("opt:uHidePower", "Power mode"), ch("opt:uHideCaffeine", "Caffeine"), ch("opt:uHideRecord", "Record"), ch("opt:uHideApps", "Apps"), ch("opt:uHideFocus", "Focus")] }
+        ] },
+        { id: "desktop", title: "Desktop builder", section: "Desktop", items: [
+            { type: "custom", name: "desktopBuilder" }
+        ] },
+        { id: "widgets", title: "Widget builder", section: "Desktop", items: [
+            { type: "toggle", key: "opt:widgetHalo", label: "Soft halo behind widget text", desc: "A faint dark glow behind the words of box-less desktop widgets, only where the wallpaper behind them is busy. Off = never, for every widget." },
+            { type: "slider", key: "opt:widgetReadability", label: "Widget text readability", desc: "Added to every widget's own Readability setting: a stronger outline and a lighter text colour. 0 = each widget as you set it.", min: -30, max: 40, step: 5, def: 0, unit: " %", glyph: 0xF0A39 },
+            { type: "custom", name: "widgetBuilder" }
         ] },
         { id: "workspaces", title: "Workspaces & windows", section: "Desktop", items: [
             { type: "action", id: "layout", label: "Tiling layout", btn: "Switch dwindle / scrolling", done: "Switched" },
@@ -705,21 +742,6 @@ Scope {
             { type: "seg", adv: true, key: "opt:wsMax", label: "Never open more than", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(9, "9"), o(10, "10")] },
             { type: "toggle", adv: true, key: "opt:wsInvert", label: "Invert workspace scrolling", desc: "Flips the direction when you scroll through workspaces with the mouse wheel / two-finger scroll over the workspace numbers in the bar (the 4 finger swipe has its own option above). Off: scroll down / swipe right = next workspace.", },
             { type: "custom", adv: true, name: "specialCmds" }
-        ] },
-        { id: "notifications", title: "Notifications & panels", section: "Desktop", items: [
-            { type: "chips", label: "Quiet", desc: "Do not disturb: no popups, everything is still kept in the centre. Errors only: Wi-Fi and Bluetooth only tell you when connecting fails (wrong password, device out of range ...).", opts: [ch("dnd", "Do not disturb"), ch("opt:connErrOnly", "Wi-Fi & Bluetooth: errors only")] },
-            { type: "seg", adv: true, key: "opt:notifSpot", label: "Notification trigger spot", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Edge boxes below.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
-            { type: "seg", key: "opt:notifStyle", label: "Notification style", desc: "How the notification centre lists what you got. Stack: one card each. Timeline: a thin rail with a dot per notification, under Just now / Earlier today / Yesterday. Grouped by app: one card per app with its notifications inside.", opts: [o("stack", "Stack"), o("timeline", "Timeline"), o("grouped", "Grouped by app")] },
-            { type: "custom", name: "notifBuilder" },
-            { type: "seg", adv: true, key: "opt:notifIcon", label: "Notification picture", desc: "Profile picture: your picture, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
-            { type: "seg", adv: true, key: "notifMax", label: "Popups on screen at once", desc: "When it is full the oldest goes.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },
-            { type: "seg", adv: true, key: "opt:toastSecs", label: "How long a popup stays", desc: "Urgent ones follow their own setting below.", opts: [o(0, "App decides"), o(3, "3 s"), o(5, "5 s"), o(8, "8 s"), o(12, "12 s")] },
-            { type: "seg", adv: true, key: "opt:critSecs", label: "Urgent popups", desc: "Browsers and some apps mark a notification urgent so it would stay for ever. It now hides after this long; it always stays in the notification centre until you remove it.", opts: [o(15, "15 s"), o(30, "30 s"), o(60, "1 min"), o(0, "Wait for a click")] },
-            { type: "seg", adv: true, key: "notifHistoryMax", label: "Notifications the centre keeps", opts: [o(10, "10"), o(20, "20"), o(30, "30"), o(50, "50"), o(100, "100")] },
-            { type: "seg", key: "clickMode", label: "Edge boxes (notifications, console, utilities)", opts: [o(false, "Hover"), o(true, "Click")] },
-            { type: "toggle", key: "osdOn", label: "Volume / brightness bar", desc: "Slides up from the bottom whenever volume, brightness or the keyboard light changes." },
-            { type: "seg", key: "opt:osdHold", label: "How long that bar stays", opts: [o(1000, "Short"), o(1700, "Normal"), o(3000, "Long")], when: "osdOn=true" },
-            { type: "toggle", key: "opt:extraDim", label: "Extra dim mode", desc: "Drops the display brightness to minimum (1%) for nighttime comfort without losing color fidelity. You can also toggle it from the utilities panel or with Super + Alt + D." }
         ] },
         { id: "focus", title: "Focus mode", section: "Desktop", items: [
             { type: "custom", name: "focusClock" },
@@ -759,18 +781,20 @@ Scope {
             { type: "seg", key: "opt:recAudio", label: "Sound source", desc: "Desktop sound is whatever you hear (music, calls, videos). Microphone is the default microphone. Both mixes the two into one track. Needs ffmpeg and PipeWire (or PulseAudio).", opts: [o("system", "Desktop sound"), o("mic", "Microphone"), o("both", "Both")], when: "opt:recKind=audio" },
             { type: "acts", label: "Recordings", desc: "Everything is saved in ~/Videos/Recordings (video as recording_<date>.mp4, sound as audio_<date>.m4a). A different folder: write its path in ~/.local/state/island/rec-dir. A change here applies from the next recording; one that is running is not touched.", btns: [{ id: "rec-toggle", btn: "Start / stop", done: "" }, { id: "rec-last", btn: "Play the latest", done: "" }, { id: "rec-open", btn: "Open the folder", done: "" }] }
         ] },
-        { id: "mouse", title: "Mouse, touchpad & keyboard", section: "Input & power", items: [
+        { id: "mouse", title: "Mouse & touchpad", section: "Input & power", items: [
             { type: "slider", key: "scrollMouse", label: "Mouse wheel scroll speed", desc: "In every app. Higher is faster.", min: 0.25, max: 3, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
             { type: "slider", key: "hy:sensitivity", def: 0, label: "Pointer speed", min: -1, max: 1, step: 0.1, dec: 1, signed: true },
             { type: "tool", key: "touchpad", label: "Touchpad" },
             { type: "chips", label: "Touchpad behaviour", desc: "", opts: [ch("hy:naturalScroll", "Natural scrolling"), ch("hy:tapToClick", "Tap to click"), ch("hy:disableTyping", "Pause while typing")] },
             { type: "slider", key: "scrollTouch", label: "Touchpad scroll speed", min: 0.1, max: 1.5, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
-            { type: "toggle", key: "superTap", label: "Tap Super to open the launcher" },
-            { type: "seg", key: "opt:launchSpeed", label: "Launcher speed", desc: "How fast the launcher grows out of the bar. Tapping Super opens it when the key comes UP: the desktop cannot tell a lone tap from the start of Super+T until then, so opening on the press would make every Super shortcut flash the launcher. What can be cut is the animation after that: Quick is about half the time, Instant is a short snap.", opts: [o("normal", "Normal"), o("quick", "Quick"), o("instant", "Instant")], when: "superTap=true" },
             { type: "seg", adv: true, key: "hy:accelProfile", label: "Pointer acceleration", desc: "Flat = the pointer moves exactly as far as your hand does.", opts: [o("adaptive", "Adaptive"), o("flat", "Flat")] },
             { type: "toggle", adv: true, key: "hy:leftHanded", label: "Left-handed buttons" },
             { type: "seg", adv: true, key: "hy:followMouse", label: "Focus follows the pointer", opts: [o(0, "Click to focus"), o(1, "Hover"), o(2, "Hover, no raise")] },
             { type: "toggle", adv: true, key: "st:GESTURES", label: "Edge gestures", desc: "Slide along a touchpad edge: right = volume, top = brightness, left = previous / next track. Off stops the helper at once (and it stays off after login); the normal touchpad keeps working. SUPER+ALT+G only mutes them for a moment." },
+        ] },
+        { id: "keyboard", title: "Keyboard & launcher", section: "Input & power", items: [
+            { type: "toggle", key: "superTap", label: "Tap Super to open the launcher" },
+            { type: "seg", key: "opt:launchSpeed", label: "Launcher speed", desc: "How fast the launcher grows out of the bar. Tapping Super opens it when the key comes UP: the desktop cannot tell a lone tap from the start of Super+T until then, so opening on the press would make every Super shortcut flash the launcher. What can be cut is the animation after that: Quick is about half the time, Instant is a short snap.", opts: [o("normal", "Normal"), o("quick", "Quick"), o("instant", "Instant")], when: "superTap=true" },
             { type: "slider", adv: true, key: "hy:repeatDelay", def: 600, label: "Key repeat delay", min: 150, max: 800, step: 10, unit: " ms" },
             { type: "slider", adv: true, key: "hy:repeatRate", def: 25, label: "Key repeat speed", min: 5, max: 70, step: 1, unit: "/s" }
         ] },
@@ -789,6 +813,9 @@ Scope {
             { type: "slider", key: "opt:lockBlur", def: 40, label: "Lock screen blur", desc: "How strongly the wallpaper is blurred.", min: 4, max: 64, step: 2, unit: "", when: "opt:lockBg=wallpaper" },
             { type: "slider", key: "opt:lockTint", def: 0.55, label: "Lock screen tint", desc: "How much of the theme colour covers the wallpaper. 0 % = the wallpaper as it is, 100 % = no wallpaper visible.", min: 0, max: 0.95, step: 0.05, scale: 100, unit: " %", when: "opt:lockBg=wallpaper" },
             { type: "toggle", key: "opt:lockWidgets", def: false, label: "Lock screen widgets", desc: "Show the battery, the Wi-Fi name, how many notifications are waiting (only the number, never what they say) and a media card with previous / play / next on the lock screen. Off: just the clock and the password. Your own widgets for this screen (clock styles, system usage, weather ...): Widget builder > Lock screen." },
+            { type: "toggle", key: "opt:splash", def: true, label: "Login splash", desc: "A short animation (moving stars and the Halcyon sparkle, about 3.5 seconds) on the lock screen when it is also your login screen (Power & lock > lock screen as login). The screen is already locked while it plays, and a click or any key skips it. It is not shown when motion is switched off (Gaming mode)." },
+            { type: "toggle", key: "opt:splashStart", def: true, label: "Splash at login (no lock-screen login)", desc: "For people who log in through a login manager (sddm, gdm ...): play the splash once when the desktop starts, not again when the island is restarted. Not played in Gaming mode or when motion is off.", when: "opt:splash=true" },
+            { type: "action", id: "splash-preview", label: "Splash", btn: "Play it now", done: "", desc: "Plays the splash once, full screen. A click, Esc or any key ends it. Also `halcyon splash`." },
             { type: "toggle", key: "opt:lockSwitch", def: false, label: "Switch user button", desc: "A Switch user button on the lock screen: jump to another user who is already logged in, or open a login screen for someone else. This screen stays locked while you are away, and needs your password when you come back." },
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] },
             { type: "tool", adv: true, key: "wifips", label: "Wi-Fi power saving", desc: "On saves battery. Off gives the lowest latency (Gaming mode switches it off by itself)." }
@@ -802,16 +829,18 @@ Scope {
             { type: "slider", key: "opt:limRam", def: 600, when: "opt:limMode=manual", label: "Halcyon RAM limit", desc: "How much memory all of Halcyon together (Hyprland, the island with its helpers, the daemons) should stay under. Above it, Startup & processes > Health shows the likely causes and what to do. It only measures and advises: nothing is changed or stopped by itself.", min: 300, max: 1500, step: 50, unit: " MB" },
             { type: "slider", key: "opt:limCpu", def: 10, when: "opt:limMode=manual", label: "Halcyon CPU limit", desc: "The share of the whole processor all of Halcyon together should stay under. Flagged in Startup & processes > Health after two readings in a row over it (5 s apart), so a short burst does not count.", min: 3, max: 30, step: 1, unit: " %" },
             { type: "toggle", key: "gaming", label: "Gaming mode", desc: "CPU / GPU at full speed, turbo on, Wi-Fi power saving off, effects off, Caffeine and Do not disturb on, background helpers stopped. SUPER+F10." },
-            { type: "seg", adv: true, key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
-            { type: "seg", adv: true, key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
-            { type: "seg", adv: true, key: "opt:treeConst", label: "Tree view constellation", desc: "Full: the big constellation behind the tree. Corner: the same constellation made small and tucked into a screen corner, out of the way of the tree. Off: no constellation in the tree at all (the lightest).", opts: [o("full", "Full"), o("corner", "Small, in a corner"), o("off", "Off")] },
-            { type: "seg", adv: true, key: "opt:treeConstCorner", when: "opt:treeConst=corner", soft: true, label: "Constellation corner", desc: "Which corner the small constellation sits in.", opts: [o("tl", "Top-left"), o("tr", "Top-right"), o("bl", "Bottom-left"), o("br", "Bottom-right")] },
-            { type: "slider", adv: true, key: "opt:treeConstSize", def: 30, when: "opt:treeConst=corner", soft: true, label: "Small constellation size", desc: "How much of the screen the small constellation takes (a share of the tree's width and height).", min: 15, max: 50, step: 5, unit: " %" },
-            { type: "seg", adv: true, key: "opt:treeDots", label: "Floating dots in the tree", desc: "Where the drifting dots gather. By load: more dots circle the workspaces and windows that use the most CPU and memory, and they glide over as the load changes. Even: spread over the whole screen. Off: none. (Quality Low shows none either way.)", opts: [o("load", "By load"), o("even", "Even"), o("off", "Off")] },
-            { type: "seg", adv: true, key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
             { type: "seg", key: "opt:bgRefresh", label: "Update speed", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. It is its own choice, the Resource use presets do not touch it, so you can have low RAM and CPU use and still live numbers. High: every 2 s / 4 s (live). Medium: 5 s / 10 s. Low: 10 s / 20 s (fewest wake-ups). Adaptive: live on the mains, slower on battery, slowest while the machine is busy (a game, a build) or the battery is nearly empty. It also learns from you: if your Wi-Fi and Bluetooth hardly ever change (after 3 days of use), their background look is stretched up to 4 times more, and it is live again for 5 minutes after any change. The performance page and the bar's CPU / RAM / TEMP row always stay at the live pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "High"), o("relaxed", "Medium"), o("slow", "Low"), o("auto", "Adaptive")] },
             { type: "acts", label: "Update speed, learned habits", desc: "Adaptive keeps a small count of how often your Wi-Fi / Bluetooth state really changed in the last 14 days (a file of day and time numbers, nothing else: no network names). Forget it to start learning again.", btns: [{ id: "netlearn-reset", btn: "Forget what it learned", done: "Learning again" }], when: "opt:bgRefresh=auto" },
             { type: "acts", adv: true, label: "Memory", desc: "Show what uses my RAM: opens the console with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
+        ] },
+        { id: "treeview", title: "Tree view & constellations", section: "Performance", items: [
+            { type: "seg", key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
+            { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
+            { type: "seg", key: "opt:treeConst", label: "Tree view constellation", desc: "Full: the big constellation behind the tree. Corner: the same constellation made small and tucked into a screen corner, out of the way of the tree. Off: no constellation in the tree at all (the lightest).", opts: [o("full", "Full"), o("corner", "Small, in a corner"), o("off", "Off")] },
+            { type: "seg", key: "opt:treeConstCorner", when: "opt:treeConst=corner", soft: true, label: "Constellation corner", desc: "Which corner the small constellation sits in.", opts: [o("tl", "Top-left"), o("tr", "Top-right"), o("bl", "Bottom-left"), o("br", "Bottom-right")] },
+            { type: "slider", key: "opt:treeConstSize", def: 30, when: "opt:treeConst=corner", soft: true, label: "Small constellation size", desc: "How much of the screen the small constellation takes (a share of the tree's width and height).", min: 15, max: 50, step: 5, unit: " %" },
+            { type: "seg", key: "opt:treeDots", label: "Floating dots in the tree", desc: "Where the drifting dots gather. By load: more dots circle the workspaces and windows that use the most CPU and memory, and they glide over as the load changes. Even: spread over the whole screen. Off: none. (Quality Low shows none either way.)", opts: [o("load", "By load"), o("even", "Even"), o("off", "Off")] },
+            { type: "seg", key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
         ] },
         { id: "profiles", title: "Profiles & safe mode", section: "Performance", items: [
             { type: "seg", key: "fx:profile", label: "Profile", desc: "One switch for stars, blur, island motion, screen brightness and the top bar. Work: no stars, blur on, fast motion. Gaming: no stars, no blur, no motion, top bar off. Battery: no stars, no blur, fast motion, brightness 40 %. Night: stars on, brightness 15 %. Custom is your own setup: it is saved when you leave it and comes back when you pick Custom again. Terminal: halcyon profile <name>. To change what a profile does, edit ~/.local/state/island/profiles.json (halcyon profile --help).", opts: [o("custom", "Custom"), o("work", "Work"), o("gaming", "Gaming"), o("battery", "Battery"), o("night", "Night")] },
@@ -962,20 +991,21 @@ Scope {
     // ---- search + collapsing
     property string query: ""
     property bool scrolling: false          // true while the list is moving: the starfield / pulses pause so scrolling gets the whole frame
-    property string section: ""             // "" = every section; else Appearance | Desktop | Input & power | Performance | System
-    readonly property var sections: ["Appearance", "Desktop", "Input & power", "Performance", "System"]
-    property var collapsed: ({ apps: true, growth: true, gestures: true, mousebtn: true })
+    property string section: ""             // "" = every section; else Appearance | Bar & panels | Desktop | Input & power | Performance | System
+    readonly property var sections: ["Appearance", "Bar & panels", "Desktop", "Input & power", "Performance", "System"]
+    property var collapsed: ({ apps: true, growth: true, gestures: true, mousebtn: true, treeview: true })
 
     // ---- two layouts: "tree" (the branching view, the default) and "pages" (a menu on the left, one page at a time).
     // Both read the same groups / items and write through the same change(), so nothing is lost by switching.
     readonly property bool pagesMode: opt && opt.settingsStyle === "pages"
+    // every group sits on exactly ONE page (tests/settings-groups.test.js checks it); the pages follow the section tabs of the tree
     readonly property var pages: [
-        { id: "Appearance", sub: "Look, colours, wallpaper and effects.", groups: ["look", "colours", "greeting", "wallpaper", "desktop", "glass", "growth"] },
-        { id: "Bar", sub: "The bar and the clock.", groups: ["bar", "clock"] },
-        { id: "Desktop", sub: "Workspaces, notifications, focus mode, the calendar and notes.", groups: ["workspaces", "notifications", "focus", "calendar", "notes"] },
-        { id: "Input", sub: "Mouse, touchpad, gestures, mouse buttons and keyboard.", groups: ["mouse", "gestures", "mousebtn"] },
-        { id: "Power & lock", sub: "Power manager, dimming, lock screen and sleep.", groups: ["power"] },
-        { id: "Performance", sub: "Profiles, safe mode, speed, sweet spot, memory limits and suggestions.", groups: ["profiles", "suggestions", "performance"] },
+        { id: "Appearance", sub: "Look, colours, wallpaper, transparency, motion, the stars, the splash and the weekly sky.", groups: ["look", "colours", "greeting", "wallpaper", "glass", "motion", "growth", "signature"] },
+        { id: "Bar", sub: "The bar, how it behaves, and the clock.", groups: ["bar", "barbehave", "clock"] },
+        { id: "Panels", sub: "Notifications, the edge boxes, the volume bar and the utilities box.", groups: ["notifications", "osd", "utilbox"] },
+        { id: "Desktop", sub: "The desktop and widget builders, workspaces, focus mode, the calendar, notes and recording.", groups: ["desktop", "widgets", "workspaces", "focus", "calendar", "notes", "recording"] },
+        { id: "Input & power", sub: "Mouse, touchpad, gestures, mouse buttons, keyboard, power and the lock screen.", groups: ["mouse", "keyboard", "gestures", "mousebtn", "power"] },
+        { id: "Performance", sub: "Profiles, safe mode, speed, memory limits, the tree view and suggestions.", groups: ["profiles", "suggestions", "performance", "treeview"] },
         { id: "System", sub: "Preferences, timeouts, login manager, startup and apps.", groups: ["sysoptions", "startup", "apps"] },
         { id: "Backup", sub: "Backups, restore and the safety check.", groups: ["backup"] }
     ]
@@ -1268,7 +1298,7 @@ Scope {
                     RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
                 }
 
-                // ---------------- section tabs: All / Appearance / Desktop / Input & power / System
+                // ---------------- section tabs: All / Appearance / Bar & panels / Desktop / Input & power / Performance / System
                 Flow {
                     id: sectionRow
                     visible: !root.pagesMode

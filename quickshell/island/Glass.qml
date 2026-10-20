@@ -10,6 +10,12 @@ Rectangle {
     property color tint: "transparent"   // a colour laid over the body (a widget uses the wallpaper accent here); transparent = none
     property bool flat: false       // no body, no hairline, no sheen: something else draws the surface (the notch shape)
 
+    // the light of the pane: on the dark theme it is the text colour (a soft light edge); on the light theme a dark edge would look like
+    // a bruise, so the sheen and the top line are white there and a little stronger (white on pale needs more to show)
+    readonly property color sheenCol: pal.light ? "#ffffff" : pal.text
+    readonly property real sheenA: pal.light ? 0.50 : 0.055
+    readonly property real edgeA: pal.light ? 0.90 : 0.20
+
     color: flat ? "transparent" : Qt.alpha(Qt.tint(pal.bg, tint), opacityBody)
     border.width: flat ? 0 : 1
     border.color: pal.lineTint
@@ -21,8 +27,8 @@ Rectangle {
         anchors.margins: 1
         radius: Math.max(0, root.radius - 1)
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.alpha(root.pal.text, 0.055) }
-            GradientStop { position: 0.45; color: Qt.alpha(root.pal.text, 0.0) }
+            GradientStop { position: 0.0; color: Qt.alpha(root.sheenCol, root.sheenA) }
+            GradientStop { position: 0.45; color: Qt.alpha(root.sheenCol, 0.0) }
         }
     }
 
@@ -38,9 +44,9 @@ Rectangle {
         height: 1
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: Qt.alpha(root.pal.text, 0.0) }
-            GradientStop { position: 0.5; color: Qt.alpha(root.pal.text, 0.20) }
-            GradientStop { position: 1.0; color: Qt.alpha(root.pal.text, 0.0) }
+            GradientStop { position: 0.0; color: Qt.alpha(root.sheenCol, 0.0) }
+            GradientStop { position: 0.5; color: Qt.alpha(root.sheenCol, root.edgeA) }
+            GradientStop { position: 1.0; color: Qt.alpha(root.sheenCol, 0.0) }
         }
     }
 

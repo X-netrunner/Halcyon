@@ -24,6 +24,10 @@ Scope {
     property string sysmode: ""
     property var starData: null
     property bool profileStars: true
+    property bool splash: true            // Settings > Power & lock > Login splash: play Splash.qml first when this lock screen is the login screen
+    property bool splashSound: false      // Settings > Splash, sky & time of day > Soft sounds: a quiet chime goes with the login splash
+    property bool splashArm: false        // set by shell.qml for the lock that starts the session (lock-on-start); cleared when it unlocks
+    readonly property bool splashWanted: splash && splashArm && pal && pal.motion > 0.3
     property string name: ""            // display name (profile name or login)
     property string avatarPath: ""
     property bool locked: false
@@ -181,7 +185,7 @@ Scope {
         // a PAM error is not a guess, so it does not count as a miss
         onError: err => { root.busy = false; root.buffer = ""; root.failure = "Could not check the password"; root.shakeTick++ }
     }
-    onLockedChanged: { switchOpen = false; if (!locked) { buffer = ""; failure = ""; busy = false; pam.abort() } }
+    onLockedChanged: { switchOpen = false; if (!locked) { buffer = ""; failure = ""; busy = false; splashArm = false; pam.abort() } }
 
     SystemClock { id: clock; precision: SystemClock.Seconds }
 
@@ -195,8 +199,15 @@ Scope {
             color: root.pal.bg
 
             // the whole screen eases in when it locks
+            // (with the login splash on, it starts when the splash hands over, so the splash plays on the bare, already locked surface)
             property real appear: 0
-            NumberAnimation on appear { from: 0; to: 1; duration: 1100; easing.type: Easing.OutCubic }
+            NumberAnimation { id: appearAnim; target: surf; property: "appear"; from: 0; to: 1; duration: 1100; easing.type: Easing.OutCubic }
+            Component.onCompleted: {
+                if (root.splashWanted) {
+                    splashItem.start()
+                    if (root.splashSound) Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/splash-sound.sh", "login"])
+                } else appearAnim.start()
+            }
 
             // ---- blurred wallpaper (only exists while locked and only when chosen in Settings > Power & lock)
             // The blur sits in its own layer, so it is drawn once and kept as a texture, not redone every frame the stars move.
@@ -706,6 +717,16 @@ Scope {
                 font.weight: Font.DemiBold
                 font.letterSpacing: 2
             }
+
+            // ---- the login splash: above everything, on this locked surface; typing or a click skips it
+            Splash {
+                id: splashItem
+                anchors.fill: parent
+                z: 100
+                pal: root.pal
+                onHandoff: appearAnim.restart()
+            }
+            Connections { target: root; function onBufferChanged() { if (root.buffer !== "") splashItem.skip() } }
         }
     }
 }

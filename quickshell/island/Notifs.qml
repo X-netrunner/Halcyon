@@ -34,6 +34,7 @@ Scope {
     property int toastSecs: 0               // Settings > Notifications > "How long a popup stays": 0 = what the app asks for (else this many seconds)
     property int critSecs: 30               // Settings > Notifications > "Urgent popups": seconds before an urgent popup hides itself (0 = waits for a click)
     property bool dnd: false
+    property bool fsQuiet: false            // a window is fullscreen (shell.qml): popups stay quiet like Do not disturb, but Halcyon's own and urgent ones show
     property var layout: null               // opt.notifLayout: the notification box builder's layout (NotifLayout.js)
     readonly property var cfg: NL.normalize(layout)
     property string look: "stack"           // Settings > Panels & notifications > Notification style: stack | timeline | grouped
@@ -174,11 +175,13 @@ Scope {
 
     onCenterOpenChanged: { if (centerOpen) { unread = 0; hideToasts() } else { openT.stop(); lockT.restart() } }
     onDndChanged: if (dnd) hideToasts()
+    onFsQuietChanged: if (fsQuiet) hideToasts()
 
     // ---------- a new notification ----------
     function add(n) {
         var critical = n.urgency === NotificationUrgency.Critical
-        var toast = !centerOpen && (!dnd || critical)
+        var quiet = dnd || (fsQuiet && n.appName !== "Halcyon")
+        var toast = !centerOpen && (!quiet || critical)
         var keep = true                          // transient ones are stored too
 
         if (!keep && !toast) { n.dismiss(); return }

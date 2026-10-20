@@ -144,9 +144,10 @@ pub fn wsres(interval: f64) {
             if let Some(o) = owner {
                 let d = prev.get(pid).map(|b| ticks.saturating_sub(b.1)).unwrap_or(0) as f64;
                 let rss = mem_mb(*pid, &mut sbuf, page_mb);
-                let e = per_owner.get_mut(&o).unwrap();
-                e.0 += d / hz / dt * 100.0 / ncpu;
-                e.1 += rss;
+                if let Some(e) = per_owner.get_mut(&o) {
+                    e.0 += d / hz / dt * 100.0 / ncpu;
+                    e.1 += rss;
+                }
             }
         }
         let mut ws: Map<String, Value> = Map::new();

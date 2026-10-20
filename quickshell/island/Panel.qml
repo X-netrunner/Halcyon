@@ -4,8 +4,11 @@ import Quickshell
 import Quickshell.Io
 
 // Bottom-right utilities panel (wifi, bluetooth, audio, volume, mic, brightness, power mode; gear = Settings, gaming toggle, power button = PowerMenu).
-// Wi-Fi / Bluetooth / Audio chips: click opens a drawn list to pick from, right-click is the quick action
-// (radio on/off, mute). The lists come from `hx wifi`, `hx bt` and `hx audio`.
+// Wi-Fi / Bluetooth chips: click = radio on / off, right-click = the drawn list (scan, pick a network / device).
+// Audio chip: click opens the list to pick from, right-click mutes. The lists come from `hx wifi`, `hx bt` and `hx audio`.
+// Second row: Hotspot (scripts/hotspot.sh), Airplane (Wi-Fi and Bluetooth both off), Charge limit (scripts/charge-limit.sh, only on laptops
+// that have one). The Bluetooth chip also shows the battery of the connected device when it reports one (scripts/bt-battery.sh).
+// These small reads run only while the box is open.
 Glass {
     id: root
     property var stats
@@ -34,6 +37,12 @@ Glass {
     property var wifi: ({ on: false, nets: [] })
     property var bt: ({ on: false, devs: [] })
     property var audio: ({ sinks: [], sources: [] })
+    property int btBattery: -1              // battery % of the connected Bluetooth device, -1 = unknown
+    property bool hotspotOn: false
+    property var cfg: ({})                  // shell.qml opt: the uHide* switches (Settings > Behaviour > Utilities box: what to leave out of this box)
+    function shown(id) { return !(cfg && cfg["uHide" + id] === true) }
+    property int chargeLimit: 0             // 0 = this laptop has no charge limit, else the limit now (100 = full charge)
+    readonly property bool airplaneOn: net.wifi !== "on" && net.bt !== "on"
 
     function toggleMenu(name) {
         wifiMenu.askFor = ""
@@ -49,8 +58,50 @@ Glass {
         }
     }
     onActiveChanged: {
-        if (active) audioProc.running = true      // fills the Audio chip
+        if (active) { audioProc.running = true; refreshExtras() }      // fills the Audio chip and the second row
         else { menu = ""; wifiMenu.askFor = "" }
+    }
+    function refreshExtras() {
+        batProc.running = true
+        hotProc.running = true
+        chargeProc.running = true
+    }
+    readonly property string btDevKey: net.btdev || ""
+    onBtDevKeyChanged: { btBattery = -1; if (active) batProc.running = true }
+    Process {
+        id: batProc
+        command: ["bash", Quickshell.shellPath("scripts/bt-battery.sh")]
+        stdout: StdioCollector { onStreamFinished: { var n = parseInt(text); root.btBattery = (isNaN(n) || n < 0 || n > 100) ? -1 : n } }
+    }
+    Timer { interval: 30000; repeat: true; running: root.active && root.net.bt === "on"; onTriggered: batProc.running = true }
+    Process {
+        id: hotProc
+        command: ["bash", "-c", "nmcli -t -f NAME connection show --active 2>/dev/null | grep -qxF Halcyon-Hotspot && echo 1 || echo 0"]
+        stdout: StdioCollector { onStreamFinished: root.hotspotOn = text.trim() === "1" }
+    }
+    Timer { id: hotAgain; interval: 4000; onTriggered: hotProc.running = true }
+    Process {
+        id: chargeProc
+        command: ["bash", Quickshell.shellPath("scripts/charge-limit.sh"), "status"]
+        stdout: StdioCollector { onStreamFinished: { var n = parseInt(text); root.chargeLimit = isNaN(n) ? 0 : n } }
+    }
+    Timer { id: chargeAgain; interval: 900; onTriggered: chargeProc.running = true }
+
+    function toggleHotspot() {
+        // a failure (no adapter, Wi-Fi switched off ...) is told in a notification; the chip only lights up when it really is on
+        Quickshell.execDetached(["bash", "-c", 'out=$(bash "$1" "$2" 2>&1) || notify-send -a Halcyon -i network-wireless "Hotspot" "$out"',
+                                 "sh", Quickshell.env("HOME") + "/.config/Halcyon/scripts/hotspot.sh", hotspotOn ? "off" : "on"])
+        hotAgain.interval = hotspotOn ? 4000 : 6000
+        hotAgain.restart()
+    }
+    // Airplane: everything off, or (when both are already off) both back on
+    function toggleAirplane() {
+        if (airplaneOn) { toggleWifi(); toggleBt() }
+        else { if (net.wifi === "on") toggleWifi(); if (net.bt === "on") toggleBt() }
+    }
+    function toggleChargeLimit() {
+        Quickshell.execDetached(["bash", Quickshell.shellPath("scripts/charge-limit.sh"), "toggle"])
+        chargeAgain.restart()
     }
 
     Process {
@@ -121,7 +172,7 @@ Glass {
             else hasDiscovered = true
         }
 
-        var pairedHeaderAdded = false, nearbyHeaderAdded = false
+        var pairedHeaderAdded = false, nearbyHeaderAdded = false, batShown = false    // the battery belongs to the first connected device
         for (var i = 0; i < d.length; i++) {
             var item = d[i]
             if (hasDiscovered && item.paired && !pairedHeaderAdded) {
@@ -134,7 +185,8 @@ Glass {
             var ic = String(item.icon || "")
             var g = 0xF00AF
             for (var key in glyphs) if (ic.indexOf(key) === 0) g = glyphs[key]
-            var subText = item.connected ? "Connected" : (item.paired ? "Paired" : "Ready to pair")
+            var subText = item.connected ? "Connected" + ((!batShown && root.btBattery >= 0) ? "  \u00b7  " + root.btBattery + "%" : "") : (item.paired ? "Paired" : "Ready to pair")
+            if (item.connected) batShown = true
             out.push({
                 title: item.name,
                 sub: subText,
@@ -223,32 +275,36 @@ Glass {
         anchors.margins: root.pad
         spacing: 12
 
-        // connectivity: click = pick from a list, right-click = quick on/off
+        // connectivity: Wi-Fi / Bluetooth click = on / off, right-click = the list (scan and pick); Audio click = the list, right-click = mute
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
+            visible: root.shown("Wifi") || root.shown("Bt") || root.shown("Audio")
             Chip {
                 Layout.fillWidth: true
+                visible: root.shown("Wifi")
                 pal: root.pal
                 maxLabel: 52
                 glyph: String.fromCodePoint(root.net.eth ? 0xF0200 : 0xF0928)
                 label: root.net.wifi === "on" ? (root.net.ssid || (root.net.eth ? "Ethernet" : "On")) : "Wi-Fi off"
                 on: root.net.wifi === "on" || root.menu === "wifi"
-                onClicked: root.toggleMenu("wifi")
-                onRightClicked: root.toggleWifi()
+                onClicked: { root.toggleWifi(); if (root.menu === "wifi") root.later("wifi", 1500) }
+                onRightClicked: root.toggleMenu("wifi")
             }
             Chip {
                 Layout.fillWidth: true
+                visible: root.shown("Bt")
                 pal: root.pal
                 maxLabel: 52
                 glyph: String.fromCodePoint(0xF00AF)
-                label: root.net.bt === "on" ? (root.net.btdev || "On") : "BT off"
+                label: root.net.bt === "on" ? (root.net.btdev ? (root.btBattery >= 0 ? root.btBattery + "%  " : "") + root.net.btdev : "On") : "BT off"
                 on: root.net.bt === "on" || root.menu === "bt"
-                onClicked: root.toggleMenu("bt")
-                onRightClicked: root.toggleBt()
+                onClicked: { root.toggleBt(); if (root.menu === "bt") root.later("bt", 1500) }
+                onRightClicked: root.toggleMenu("bt")
             }
             Chip {
                 Layout.fillWidth: true
+                visible: root.shown("Audio")
                 pal: root.pal
                 maxLabel: 52
                 glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker")
@@ -256,6 +312,43 @@ Glass {
                 on: root.menu === "audio"
                 onClicked: root.toggleMenu("audio")
                 onRightClicked: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+            }
+        }
+
+        // hotspot, airplane mode, charge limit (the last only on laptops that have one)
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            visible: root.shown("Hotspot") || root.shown("Airplane") || (root.chargeLimit > 0 && root.shown("Charge"))
+            Chip {
+                Layout.fillWidth: true
+                visible: root.shown("Hotspot")
+                pal: root.pal
+                maxLabel: 62
+                glyph: String.fromCodePoint(0xF0003)
+                label: "Hotspot"
+                on: root.hotspotOn
+                onClicked: root.toggleHotspot()
+            }
+            Chip {
+                Layout.fillWidth: true
+                visible: root.shown("Airplane")
+                pal: root.pal
+                maxLabel: 62
+                glyph: String.fromCodePoint(0xF001D)
+                label: "Airplane"
+                on: root.airplaneOn
+                onClicked: root.toggleAirplane()
+            }
+            Chip {
+                Layout.fillWidth: true
+                visible: root.chargeLimit > 0 && root.shown("Charge")
+                pal: root.pal
+                maxLabel: 62
+                glyph: String.fromCodePoint(0xF0079)
+                label: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Limit " + root.chargeLimit + "%" : "Charge"
+                on: root.chargeLimit > 0 && root.chargeLimit < 100
+                onClicked: root.toggleChargeLimit()
             }
         }
 
@@ -332,6 +425,7 @@ Glass {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
+            visible: root.shown("Mic")
             RoundBtn {
                 pal: root.pal
                 size: 36
@@ -369,6 +463,7 @@ Glass {
         // volume + brightness
         Slider {
             Layout.fillWidth: true
+            visible: root.shown("Volume")
             pal: root.pal
             glyph: String.fromCodePoint(root.muted ? 0xF0581 : 0xF057E)
             value: root.vol / 100
@@ -379,8 +474,10 @@ Glass {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
+            visible: root.shown("Bright") || root.shown("ExtraDim")
             Slider {
                 Layout.fillWidth: true
+                visible: root.shown("Bright")
                 pal: root.pal
                 glyph: String.fromCodePoint(root.extraDim ? 0xF058F : 0xF00DF)
                 value: root.bright / 100
@@ -390,6 +487,8 @@ Glass {
             }
             Chip {
                 Layout.preferredHeight: 30
+                Layout.fillWidth: !root.shown("Bright")
+                visible: root.shown("ExtraDim")
                 pal: root.pal
                 label: "Extra dim"
                 glyph: String.fromCodePoint(0xF058F)
@@ -399,10 +498,11 @@ Glass {
         }
 
         // power mode
-        Text { text: "POWER MODE"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4; Layout.topMargin: 10 }
+        Text { text: "POWER MODE"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4; Layout.topMargin: 10; visible: root.shown("Power") }
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
+            visible: root.shown("Power")
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Auto"; on: root.autoPower; onClicked: root.setAuto() }
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Saver"; on: root.profile === "power-saver"; onClicked: root.setProfile("power-saver") }
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Balanced"; on: root.profile === "balanced"; onClicked: root.setProfile("balanced") }
@@ -414,8 +514,10 @@ Glass {
             Layout.fillWidth: true
             Layout.topMargin: 10
             spacing: 8
+            visible: root.shown("Caffeine") || root.shown("Record") || root.shown("Apps")
             Chip {
                 Layout.fillWidth: true; pal: root.pal
+                visible: root.shown("Caffeine")
                 glyph: String.fromCodePoint(0xF0176)
                 label: root.caffeine ? "Caffeine on" : "Caffeine"
                 on: root.caffeine
@@ -424,12 +526,13 @@ Glass {
             }
             Chip {
                 Layout.fillWidth: true; pal: root.pal
+                visible: root.shown("Record")
                 glyph: String.fromCodePoint(0xF0481)
                 label: root.isRecording ? "Recording..." : "Record"
                 on: root.isRecording
                 onClicked: root.toggleRecord()
             }
-            Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF003B); label: "Apps"; onClicked: root.openApps() }
+            Chip { Layout.fillWidth: true; visible: root.shown("Apps"); pal: root.pal; glyph: String.fromCodePoint(0xF003B); label: "Apps"; onClicked: root.openApps() }
         }
 
         // focus mode: a timer + do-not-disturb + closing the apps on the block list (scripts/focus.sh)
@@ -437,6 +540,7 @@ Glass {
         Chip {
             Layout.fillWidth: true
             Layout.topMargin: 10
+            visible: root.shown("Focus")
             pal: root.pal
             glyph: String.fromCodePoint(0xF051B)
             label: (root.focusInfo.on
@@ -450,7 +554,7 @@ Glass {
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 8
-            visible: !root.focusInfo.on && root.focusOpen
+            visible: root.shown("Focus") && !root.focusInfo.on && root.focusOpen
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
@@ -492,7 +596,7 @@ Glass {
         // running: a countdown card with the phase, a progress line and the controls
         Rectangle {
             Layout.fillWidth: true
-            visible: root.focusInfo.on && root.focusOpen
+            visible: root.shown("Focus") && root.focusInfo.on && root.focusOpen
             implicitHeight: runCol.implicitHeight + 24
             radius: root.pal.rLg
             color: Qt.alpha(root.pal.accent, 0.10)

@@ -2110,6 +2110,14 @@ if [[ -f "$TARGET_RICE/udev/90-halcyon-backlight.rules" ]]; then
         try run_cmd "Applying the rule to the backlight devices" as_root udevadm trigger -s leds -s backlight
     fi
 fi
+# the same for the battery charge limit (the 80 % / full charge chip in the utilities box); only batteries that have a limit are touched
+if [[ -f "$TARGET_RICE/udev/90-halcyon-battery.rules" ]]; then
+    if run_cmd "Installing the battery charge-limit udev rule (group video)" \
+         as_root install -Dm644 "$TARGET_RICE/udev/90-halcyon-battery.rules" /etc/udev/rules.d/90-halcyon-battery.rules; then
+        try run_cmd "Reloading udev" as_root udevadm control --reload
+        try run_cmd "Applying the rule to the battery" as_root udevadm trigger -s power_supply
+    fi
+fi
 if [[ "$DRY_RUN" != "true" ]] && ! kbd_led_present && is_laptop; then
     run_as_user bash "$TARGET_RICE/scripts/kbd-backlight.sh" doctor 2>&1 | sed 's/^/   /' | head -n 8 || true
 fi

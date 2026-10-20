@@ -2,6 +2,13 @@
 # The Hyprland values Settings can change, as they are right now (one line of JSON). Settings shows them as the starting
 # position of its sliders, so nothing jumps and nothing is pushed until you actually change it.
 #   {"borderSize":2,"activeOpacity":1,"inactiveOpacity":1, ... "accelProfile":"adaptive","layout":"dwindle"}
+
+hal="$(dirname "$(readlink -f "$0")")/../../../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  "$hal" hyprvalues "$@"; rc=$?
+  [ "$rc" -ne 2 ] && exit "$rc"
+fi
+
 declare -a out=()
 get() {   # get <json key> <hyprland option>
   local raw

@@ -188,6 +188,11 @@ fi
 for b in hx hal power-manager touchpad-gestures; do
   [ -x "$RICE/bin/$b" ] || warn "bin/$b is not built (./install.sh builds it; some features fall back to slower shell / Python code or stay off until then)"
 done
+# an old hal (built before the newest scripts) answers an unknown command with its usage text and exit code 2: caffeine, extra dim, night light ... then do nothing
+if [ -x "$RICE/bin/hal" ]; then
+  "$RICE/bin/hal" ping >/dev/null 2>&1 && ok "bin/hal is up to date" \
+    || warn "bin/hal is older than the scripts that call it (Tap Super, Caffeine, Extra dim, Night light ... may do nothing): run ./install.sh again, it rebuilds the helpers (needs rust: sudo pacman -S rust)"
+fi
 echo
 
 hdr "Optional tools (a missing one only switches its own feature off)"
