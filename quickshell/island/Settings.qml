@@ -180,7 +180,7 @@ Scope {
     }
 
     // ---- Notes (scripts/halcyon-notes.py): should the local Ollama model sort new notes into tasks? Keys "nt:NAME" in the tree below.
-    property var notesConf: ({ NOTES_OCR: true, NOTES_VLM: false, tesseract: null, vlmModel: "", NOTES_AI: false, NOTES_OVERVIEW: false, NOTES_AI_MODE: "ask", NOTES_NUDGE_HOURS: "3", NOTES_NUDGE_MAX: "4", ollama: null, model: "" })
+    property var notesConf: ({ NOTES_SUMMARY: false, NOTES_OCR: true, NOTES_VLM: false, tesseract: null, vlmModel: "", NOTES_AI: false, NOTES_OVERVIEW: false, NOTES_AI_MODE: "ask", NOTES_NUDGE_HOURS: "3", NOTES_NUDGE_MAX: "4", ollama: null, model: "" })
     readonly property string notesScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py"
     Timer { id: notesAgain; interval: 900; onTriggered: if (!notesProc.running) notesProc.running = true }
     Process {
@@ -586,6 +586,7 @@ Scope {
         case "notifBuilder": return cNotifBuilder
         case "barBuilder": return cBarBuilder
         case "aiModel": return cAiModel
+        case "voiceKey": return cVoiceKey
         case "growth": return cGrowth
         default: return cSwatches
         }
@@ -742,6 +743,8 @@ Scope {
             { type: "seg", key: "opt:calNagGiveUp", label: "Give up", desc: "How long after the task has ended it still nags.", opts: [o(60, "After 1 h"), o(180, "After 3 h"), o(720, "After 12 h"), o(4320, "After 3 days")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" }
         ] },
         { id: "notes", title: "Notes", section: "Desktop", items: [
+            { type: "custom", name: "voiceKey", label: "Voice note hotkey" },
+            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_SUMMARY", label: "Full summary of long notes", desc: "A note of 150 words or more gets a full summary under it by itself: one sentence with the main point and then every important point as its own line. It has no length limit (a very long note is read in pieces and nothing is cut off), and every line is checked against the note, so a line the note does not support is left out. The short Overview is separate. For any note, press Summarise on its row." },
             { type: "toggle", soft: true, key: "nt:NOTES_OCR", label: "Read the text in pictures", desc: "A picture you paste into a note is read in the background with tesseract (offline, on this computer): the text in it shows under the picture, can be copied, and is found by the search box. It only copies what is there, it cannot invent anything. Needs: sudo pacman -S tesseract tesseract-data-eng" },
             { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_VLM", label: "Describe pictures (vision model)", desc: "Adds a Describe button to picture notes: a local vision model in Ollama writes one or two sentences about the picture. Only when you press it, never by itself; the model is unloaded right after. Small models can be wrong, so a sentence with a number that is not in the picture's own text is dropped. Install it once with: ollama pull qwen2.5vl:3b (another one: notes set NOTES_VLM_MODEL name)." },
             { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_OVERVIEW", label: "AI overview under every note", desc: "In the background your local Ollama model writes a short overview under each note you save, task or not: one sentence for a short note, a short intro and a few bullet points for a longer one (a pasted article, say). The Think button on a note writes it again. Nothing is sent anywhere (the model runs on this PC); if Ollama is not running the note is simply saved. Off by default." },
@@ -1142,6 +1145,7 @@ Scope {
     Component { id: cCounterScan; SetCounterScan { root: settingsScope } }
 
     Component { id: cAiModel; SetAiModel { root: settingsScope } }
+    Component { id: cVoiceKey; SetVoiceKey { root: settingsScope } }
 
     Component { id: cFocusApps; SetFocusApps { root: settingsScope } }
 

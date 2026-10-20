@@ -56,6 +56,10 @@
 #   --whisper[=MODEL]      install speech-to-text for voice notes: whisper.cpp + a model (tiny | base | small; default base). Without this option
 #                          you are ASKED in a terminal; with --yes and nothing saved, no model is downloaded
 #   --no-whisper           skip the speech-to-text model (voice notes are then saved as audio without a transcript)
+#   --vlm[=MODEL]          install the picture-describing vision model for Notes (Ollama; default qwen2.5vl:3b, a download of about 3 GB) and switch
+#                          Settings > Notes > "Describe pictures" on. Without this option you are ASKED in a terminal; with --yes and nothing saved,
+#                          nothing is downloaded
+#   --no-vlm               skip the vision model (the Describe button stays off; you can add it later: ./install.sh --vlm)
 #   --resources MODE       how much of the machine Halcyon may use: low | medium | high | adaptive (Settings > Performance > Resource use).
 #                          The menu shows an estimate of the RAM / CPU each one needs; adaptive = medium now, limits learned from your use
 #   --resource-offset N    headroom in percent (0-100) above that estimate before Settings > Performance > Health warns (default 15)
@@ -96,6 +100,8 @@ SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=f
 SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default (answer n, or --no-safety-check, to skip it)
 INSTALL_LLM=false; PICK_LLM_MODEL=""; LLM_ASKED=false # local AI performance advisor with Ollama
 INSTALL_WHISPER=false; PICK_WHISPER_MODEL=""; WHISPER_ASKED=false   # speech-to-text for voice notes (whisper.cpp + a ggml model)
+INSTALL_VLM=false; PICK_VLM_MODEL=""; VLM_ASKED=false                # picture descriptions for Notes (a vision model in Ollama)
+VLM_DEFAULT_MODEL="qwen2.5vl:3b"                                       # the model Notes was tested with (scripts/halcyon-notes.py VLM_DEFAULT)
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 PICK_PROMPT=""; FIRST_INSTALL=false        # your shell prompt: keep | colours | halcyon (see choose_prompt); FIRST_INSTALL: nothing was chosen on this machine yet
@@ -172,6 +178,10 @@ while [[ $# -gt 0 ]]; do
         --whisper=*)        INSTALL_WHISPER=true; PICK_WHISPER_MODEL="${1#--whisper=}"; WHISPER_ASKED=true
                             [[ "$PICK_WHISPER_MODEL" =~ ^(tiny|base|small)$ ]] || die "--whisper=MODEL needs tiny, base or small (see --help)" ;;
         --no-whisper)       INSTALL_WHISPER=false; WHISPER_ASKED=true ;;
+        --vlm)              INSTALL_VLM=true; VLM_ASKED=true ;;
+        --vlm=*)            INSTALL_VLM=true; PICK_VLM_MODEL="${1#--vlm=}"; VLM_ASKED=true
+                            [[ "$PICK_VLM_MODEL" =~ ^[A-Za-z0-9._:/@+-]{1,100}$ ]] || die "--vlm=MODEL needs an Ollama model name such as qwen2.5vl:3b (see --help)" ;;
+        --no-vlm)           INSTALL_VLM=false; VLM_ASKED=true ;;
         --browser)          shift; PICK_BROWSER="${1:-}"; [[ -n "$PICK_BROWSER" ]] || die "--browser needs a name (see --help)" ;;
         --browser=*)        PICK_BROWSER="${1#--browser=}" ;;
         --files|--file-manager) shift; PICK_FILES="${1:-}"; [[ -n "$PICK_FILES" ]] || die "--files needs a name (see --help)" ;;
@@ -1141,12 +1151,13 @@ detect_hardware_tier() {
 }
 
 choose_apps() {
-    local interactive=false have_b have_e s_b s_f s_e s_m s_s s_c s_l s_lm s_w s_wm ask_b=false ask_f=false ask_e=false ask_m=false ask_s=false ask_c=false ask_l=false ask_w=false id kind
+    local interactive=false have_b have_e s_b s_f s_e s_m s_s s_c s_l s_lm s_w s_wm s_v s_vm ask_b=false ask_f=false ask_e=false ask_m=false ask_s=false ask_c=false ask_l=false ask_w=false ask_v=false id kind
     local flag_b="$PICK_BROWSER" flag_f="$PICK_FILES" flag_e="$PICK_EDITOR" flag_m="$PICK_MUSIC"      # given on the command line
     [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
     s_b=$(saved_choice BROWSER); s_f=$(saved_choice FILES); s_e=$(saved_choice EDITOR); s_m=$(saved_choice MUSIC); s_s=$(saved_choice SYSMODE); s_c=$(saved_choice SAFETY_CHECK)
     s_l=$(saved_choice LLM); s_lm=$(saved_choice LLM_MODEL)
     s_w=$(saved_choice WHISPER); s_wm=$(saved_choice WHISPER_MODEL)
+    s_v=$(saved_choice VLM); s_vm=$(saved_choice VLM_MODEL)
     have_any firefox chromium google-chrome-stable brave vivaldi-stable zen-browser librewolf floorp qutebrowser && have_b=true || have_b=false
     have_any codium code code-oss cursor zeditor zed subl kate nvim && have_e=true || have_e=false
     # saved sysmode answer (only when nothing on the command line decided it)
@@ -1158,6 +1169,8 @@ choose_apps() {
 
     # saved speech-to-text answer (the command line wins, --choose asks again)
     [[ "$WHISPER_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_w" ]] && { [[ "$s_w" == yes ]] && INSTALL_WHISPER=true || INSTALL_WHISPER=false; PICK_WHISPER_MODEL="${s_wm:-base}"; WHISPER_ASKED=true; }
+    # saved picture-model answer (same rule)
+    [[ "$VLM_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_v" ]] && { [[ "$s_v" == yes ]] && INSTALL_VLM=true || INSTALL_VLM=false; PICK_VLM_MODEL="${s_vm:-$VLM_DEFAULT_MODEL}"; VLM_ASKED=true; }
 
     if [[ "$interactive" == "true" ]]; then
         [[ -z "$PICK_BROWSER" && ( "$CHOOSE" == "true" || -z "$s_b" ) ]] && ask_b=true
@@ -1168,7 +1181,8 @@ choose_apps() {
         [[ "$SAFETY_ASKED" != "true" ]] && ask_c=true
         [[ "$LLM_ASKED" != "true" ]] && ask_l=true
         [[ "$WHISPER_ASKED" != "true" ]] && ask_w=true
-        if [[ "$ask_b$ask_f$ask_e$ask_m$ask_s$ask_c$ask_l$ask_w" == *true* ]]; then
+        [[ "$VLM_ASKED" != "true" ]] && ask_v=true
+        if [[ "$ask_b$ask_f$ask_e$ask_m$ask_s$ask_c$ask_l$ask_w$ask_v" == *true* ]]; then
             echo -e "\n${BOLD}Make it yours${RESET} ${DIM}(Enter takes the marked choice; ./install.sh --choose asks again later)${RESET}"
         fi
     fi
@@ -1264,6 +1278,21 @@ choose_apps() {
     fi
     [[ "$INSTALL_WHISPER" == "true" && ! "$PICK_WHISPER_MODEL" =~ ^(tiny|base|small)$ ]] && PICK_WHISPER_MODEL=base
 
+    # ---- picture descriptions for Notes (a vision model in Ollama): ONLY installed when you say yes (it is a download of about 3 GB)
+    if [[ "$ask_v" == "true" ]]; then
+        echo -e "\n  ${CYAN}${BOLD}Notes: describe pictures (vision model)${RESET}  ${DIM}adds a Describe button to picture notes; a local model writes one or two sentences about the picture${RESET}"
+        echo -e "   ${DIM}installs Ollama (if it is not there yet) and downloads the vision model ${VLM_DEFAULT_MODEL} (about 3 GB, needs roughly 4 GB of free RAM while it runs),${RESET}"
+        echo -e "   ${DIM}then switches Settings > Notes > \"Describe pictures\" on. It only runs when you press Describe and is unloaded right after.${RESET}"
+        echo -e "   ${DIM}Say no and nothing is downloaded. You can add it later: ./install.sh --vlm${RESET}"
+        if confirm "  Install the vision model for picture notes?"; then
+            INSTALL_VLM=true; PICK_VLM_MODEL="$VLM_DEFAULT_MODEL"
+        else
+            INSTALL_VLM=false; PICK_VLM_MODEL=""
+        fi
+        VLM_ASKED=true
+    fi
+    [[ "$INSTALL_VLM" == "true" && -z "$PICK_VLM_MODEL" ]] && PICK_VLM_MODEL="$VLM_DEFAULT_MODEL"
+
     # ---- check the names (a typo in --browser must not silently install nothing)
     local lst
     for kind in browser files editor music; do
@@ -1282,10 +1311,10 @@ choose_apps() {
     # SUPER+M opens the first music player you picked; spotify itself is left to the automatic choice (spotify or spotify-launcher, whichever got installed)
     [[ ( -n "$flag_m" || "$ask_m" == true ) && "${PICK_MUSIC%% *}" == spotify-player ]] && APPLY_PICKS+=("music=spotify-player")
     id="${PICK_EDITOR%% *}"; [[ ( -n "$flag_e" || "$ask_e" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("editor=$(apps_id editor "$id")")
-    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)  ai-advisor=$([[ "$INSTALL_LLM" == true ]] && echo "$PICK_LLM_MODEL" || echo no)  whisper=$([[ "$INSTALL_WHISPER" == true ]] && echo "$PICK_WHISPER_MODEL" || echo no)"
+    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)  ai-advisor=$([[ "$INSTALL_LLM" == true ]] && echo "$PICK_LLM_MODEL" || echo no)  whisper=$([[ "$INSTALL_WHISPER" == true ]] && echo "$PICK_WHISPER_MODEL" || echo no)  vision-model=$([[ "$INSTALL_VLM" == true ]] && echo "$PICK_VLM_MODEL" || echo no)"
 }
 if [[ "$PACKAGES" == "true" && "$REMOVE_LOGIN" != "true" ]]; then choose_apps
-else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; INSTALL_LLM="${INSTALL_LLM:-false}"; PICK_LLM_MODEL="${PICK_LLM_MODEL:-none}"; [[ "$INSTALL_WHISPER" == "true" && -z "$PICK_WHISPER_MODEL" ]] && PICK_WHISPER_MODEL=base; fi
+else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; INSTALL_LLM="${INSTALL_LLM:-false}"; PICK_LLM_MODEL="${PICK_LLM_MODEL:-none}"; [[ "$INSTALL_WHISPER" == "true" && -z "$PICK_WHISPER_MODEL" ]] && PICK_WHISPER_MODEL=base; [[ "$INSTALL_VLM" == "true" && -z "$PICK_VLM_MODEL" ]] && PICK_VLM_MODEL="$VLM_DEFAULT_MODEL"; fi
 
 # ---- your shell prompt (Starship): keep yours, keep your layout with Halcyon's colours, or switch to Halcyon's
 # Asked once when ANOTHER prompt setup is found (your own starship.toml, a prompt started from your shell config, the CachyOS fish config,
@@ -1452,9 +1481,10 @@ if [[ "$PACKAGES" == "true" ]]; then
     else
         log_info "Apps skipped (--no-apps): foot, Discord."
     fi
-    # ---- Local AI Advisor (Ollama)
-    if [[ "$INSTALL_LLM" == "true" && -n "$PICK_LLM_MODEL" && "$PICK_LLM_MODEL" != "none" ]]; then
-        log_info "Local AI Advisor: setting up Ollama + model ${PICK_LLM_MODEL}"
+    # ---- Ollama itself (used by the Local AI Advisor and by the picture model for Notes): installed and started once per run
+    OLLAMA_READY=false
+    setup_ollama() {
+        [[ "$OLLAMA_READY" == "true" ]] && return 0
         ollama_bin="$(run_as_user which ollama 2>/dev/null || which ollama 2>/dev/null || echo "")"
         if [[ -z "$ollama_bin" ]]; then
             if [[ "$DISTRO_FAMILY" == "arch" ]]; then
@@ -1489,11 +1519,39 @@ EOF
                 user_systemctl enable --now ollama.service 2>/dev/null || true
             fi
         fi
+        OLLAMA_READY=true
+    }
+    # ---- Local AI Advisor (Ollama)
+    if [[ "$INSTALL_LLM" == "true" && -n "$PICK_LLM_MODEL" && "$PICK_LLM_MODEL" != "none" ]]; then
+        log_info "Local AI Advisor: setting up Ollama + model ${PICK_LLM_MODEL}"
+        setup_ollama
         if [[ "$DRY_RUN" != "true" ]]; then
             sleep 2
             try run_as_user_cmd "Pulling Ollama model (${PICK_LLM_MODEL})" ollama pull "$PICK_LLM_MODEL"
         fi
         run_as_user bash -c "mkdir -p '$TARGET_RICE' && echo 'MODEL=\"$PICK_LLM_MODEL\"' > '$TARGET_RICE/ai-advisor.conf'" || true
+    fi
+    # ---- Notes: the picture-describing vision model, only because you said yes above. The model is downloaded here; Settings >
+    # Notes > "Describe pictures" is switched on in step 12 (once the Halcyon files are in place), and only when the download worked.
+    VLM_PULLED=false
+    if [[ "$INSTALL_VLM" == "true" && -n "$PICK_VLM_MODEL" ]]; then
+        log_info "Notes: setting up Ollama + the picture model ${PICK_VLM_MODEL}"
+        setup_ollama
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_task "[DRY-RUN] ollama pull ${PICK_VLM_MODEL}, then notes set NOTES_VLM 1"
+        else
+            # the service needs a moment before it answers: wait up to 20 s
+            for _i in $(seq 1 20); do
+                curl -fsS --max-time 2 -o /dev/null http://127.0.0.1:11434/api/tags 2>/dev/null && break
+                sleep 1
+            done
+            if run_as_user_cmd "Pulling the picture model (${PICK_VLM_MODEL}, about 3 GB)" ollama pull "$PICK_VLM_MODEL"; then
+                VLM_PULLED=true
+                log_success "Picture model installed: ${PICK_VLM_MODEL}"
+            else
+                warn_later "The picture model ${PICK_VLM_MODEL} was not downloaded (is Ollama running?). Retry: ./install.sh --vlm   or:  ollama pull ${PICK_VLM_MODEL}"
+            fi
+        fi
     fi
     # ---- Speech-to-text for voice notes (Whisper): the engine, then ONE model, only because you said yes above
     if [[ "$INSTALL_WHISPER" == "true" ]]; then
@@ -2082,6 +2140,16 @@ user_setup wallpaper  || warn_later "Wallpaper / colours: something did not work
 user_setup terminals  || warn_later "Terminal colour files could not be written."
 user_setup app-themes || warn_later "App themes (Starship, fish, btop, yazi, Spotify, spotify-player, Discord, Thunar) could not all be set up: run ~/.config/Halcyon/scripts/user-setup.sh app-themes"
 user_setup fish-commands || warn_later "The fish commands (halcyon, bar-builder, notification-builder ...) could not be installed: run ~/.config/Halcyon/scripts/user-setup.sh fish-commands"
+if [[ "${VLM_PULLED:-false}" == "true" ]]; then
+    # notes.conf is one of the files an update never overwrites; `notes set` validates the value and keeps the other lines
+    run_as_user python3 "$TARGET_RICE/scripts/halcyon-notes.py" set NOTES_VLM 1 >>"$LOG_FILE" 2>&1 \
+        && log_success "Settings > Notes > Describe pictures is on" \
+        || warn_later "Could not switch on Settings > Notes > Describe pictures: do it by hand in Settings."
+    if [[ "$PICK_VLM_MODEL" != "$VLM_DEFAULT_MODEL" ]]; then
+        run_as_user python3 "$TARGET_RICE/scripts/halcyon-notes.py" set NOTES_VLM_MODEL "$PICK_VLM_MODEL" >>"$LOG_FILE" 2>&1 \
+            || warn_later "Could not set the picture model name: run  notes set NOTES_VLM_MODEL $PICK_VLM_MODEL"
+    fi
+fi
 if [[ -f "$TARGET_RICE/scripts/install-ai.sh" ]]; then
     run_as_user bash "$TARGET_RICE/scripts/install-ai.sh" || true
 elif [[ -f "$RICE_SOURCE/scripts/install-ai.sh" ]]; then
@@ -2091,7 +2159,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "PROMPT=$PICK_PROMPT" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
     user_setup save-choices "PROMPT=$PICK_PROMPT" || true     # --no-packages: the prompt choice is still remembered
 fi
