@@ -43,6 +43,8 @@ jobs:
         run: bash tests/counterscan.sh
       - name: lock screen widget rules (which widgets may be on the lock screen, the two lists stay apart, feeds merge)
         run: node tests/widgetdata-lock.test.js
+      - name: settings groups (every group on exactly one page, known sections, section order)
+        run: node tests/settings-groups.test.js
       - name: shellcheck (errors only, so old scripts do not block a push)
         run: sudo apt-get install -y shellcheck && shellcheck -S error $(git ls-files '*.sh') install.sh update.sh get.sh sysmode/sysmode scripts/halcyon-tune
 
@@ -52,6 +54,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: every Python file compiles
         run: python3 -m compileall -q scripts quickshell/island/scripts
+      - name: task detection (reminder cues, times like tonight at 11 / at 9, several times in one note)
+        run: python3 tests/test_task_detect.py
+      - name: birthday import (date formats, invalid days like 02-30 are rejected, vCard and CSV)
+        run: python3 tests/test_birthdays.py
 
   qml:
     runs-on: ubuntu-latest

@@ -35,11 +35,14 @@ Pictures and voice:
                                      faster-whisper (pip) or openai-whisper. NOTES_STT_MODEL / NOTES_STT_LANG in notes.conf (or
                                      HALCYON_STT_MODEL / HALCYON_STT_LANG) pick the model file or name and the language (empty = auto)
   notes accept / dismiss <id>     -> answer "Make this a task?" (ask mode)
+  notes repeat <idx_or_id> <daily|weekdays|weekly|monthly|none>   -> a task with a time that comes back ("every Monday 9am" in the note does it by itself)
+  notes snooze <idx_or_id> <+10m|+1h|18:00>   -> put a reminder back (the Snooze buttons of the reminder notification run this)
   notes remind-check              -> what the timer runs: one notification for every task whose time has come
   notes conf | set KEY VALUE      -> NOTES_OCR 0|1 , NOTES_VLM 0|1 , NOTES_VLM_MODEL <name>|default , NOTES_AI 0|1 , NOTES_OVERVIEW 0|1 , NOTES_AI_MODE ask|auto , NOTES_NUDGE_HOURS 1..12 , NOTES_NUDGE_MAX 1..12 ,
                                      NOTES_NUDGE_FROM 0..23 , NOTES_NUDGE_TO 1..24   (~/.config/Halcyon/notes.conf)
 """
 import base64
+import calendar
 import contextlib
 import difflib
 import fcntl
@@ -75,6 +78,10 @@ def load_notes():
                 return data
     except Exception:
         pass
+    # A file that cannot be read is NOT the same as no notes: the next save would overwrite it with only the new note. Keep a copy first.
+    with contextlib.suppress(OSError):
+        if os.path.getsize(NOTES_FILE) > 2:
+            shutil.copy2(NOTES_FILE, NOTES_FILE + ".corrupt-" + time.strftime("%Y%m%d-%H%M%S"))
     return []
 
 @contextlib.contextmanager
@@ -1110,6 +1117,16 @@ def done_note(arg):
             if n.get("id") == arg:
                 target = n
                 break
+    if target and target.get("repeat") in REPEATS and not target.get("done"):
+        # a repeating task is never finished by a tick: ticking before today's time skips today's, after it nothing changes
+        due, now = target.get("due"), time.time()
+        if due and due > now and due_text(due).startswith("Today"):
+            target["due"] = next_due(due, target["repeat"], due)
+            target.pop("anchor", None)
+            target["reminded"] = False
+            save_notes(notes)
+        print(f"✓ Done for now, next {due_text(target['due']) if target.get('due') else 'time not set'}: \"{target.get('text')}\" (notes repeat <n> none stops it)")
+        return
     if target:
         target["done"] = not target.get("done", False)
         save_notes(notes)
@@ -1232,6 +1249,7 @@ def parse_when(spec, now=None):
         return now + n * {"m": 60, "min": 60, "h": 3600, "hr": 3600, "d": 86400}[m.group(2)]
     lt = time.localtime(now)
     day = None                                     # (y, m, d) when the text names a day
+    same_wd = False                                # the named weekday is today: today if the time is still ahead, else next week
     rest = s
     m = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})\s*(.*)", rest)
     if m:
@@ -1247,7 +1265,9 @@ def parse_when(spec, now=None):
     else:
         for i, name in enumerate(DAYS):
             if rest.startswith(name[:3]):
-                ahead = (i - lt.tm_wday) % 7 or 7
+                ahead = (i - lt.tm_wday) % 7
+                if ahead == 0:
+                    ahead, same_wd = 7, True
                 t = time.localtime(now + ahead * 86400)
                 day = (t.tm_year, t.tm_mon, t.tm_mday)
                 rest = rest.split(None, 1)[1] if " " in rest else ""
@@ -1269,6 +1289,10 @@ def parse_when(spec, now=None):
         timed = True
     elif day is None:
         raise ValueError(f"cannot read a time from: {spec}")
+    if same_wd:
+        t = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, hh, mm, 0, 0, 0, -1))
+        if t > now + 5:
+            return t
     if day is None:                                 # only a time: today if it is still ahead, else tomorrow
         t = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, hh, mm, 0, 0, 0, -1))
         return t if t > now + 5 else t + 86400
@@ -1735,18 +1759,63 @@ def make_why(task, due, later, conf):
         return f"A task for later today: I will nudge you every {conf['NOTES_NUDGE_HOURS']} h, at most {conf['NOTES_NUDGE_MAX']} times."
     return "A task with no time named, so no reminder."
 
-CLOCK_RE = re.compile(r"\b(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\\.m\\.|p\\.m\\.)|(?:[01]?\d|2[0-3]):[0-5]\d|(?<=\bat )\d{1,2})(?![\d:%])", re.I)
+CLOCK_RE = re.compile(r"\b(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\\.m\\.|p\\.m\\.)|(?:[01]?\d|2[0-3]):[0-5]\d|(?<=\bat )\d{1,2}(?!\s*(?:items?|people|persons?|times?|pieces?|things?|kg|km|years?|days?|hours?|minutes?|mins?|dollars|rs|inr)\b))(?![\d:%])", re.I)
 
 def note_time(text):
     """A clock time the note itself writes ('9:30 AM', 'at 6', '19:45'), as a spec parse_when understands, with the day word in front when
     the note names one. None when the note has none. A small model gets times wrong ('9:30 AM' became 'tomorrow 19:58'), so when the
-    note says a time, that time wins."""
-    m = CLOCK_RE.search(text)
-    if not m:
+    note says a time, that time wins. With several times ('at 8 and 20:00') the next one still to come is taken."""
+    ms = list(CLOCK_RE.finditer(text))
+    if not ms:
         return None
-    clock = re.sub(r"\s+", "", m.group(1).lower())
     day = re.search(r"\b(tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", text, re.I)
-    return (day.group(1).lower() + " " if day else "") + clock
+    specs = [(day.group(1).lower() + " " if day else "") + re.sub(r"\s+", "", m.group(1).lower()) for m in ms]
+    now = time.time()
+    best = None
+    for sp in specs:
+        try:
+            ts = parse_when(sp, now)
+        except ValueError:
+            continue
+        if ts and (best is None or ts < best[0]):
+            best = (ts, sp)
+    return best[1] if best else specs[0]
+
+# ---- repeating tasks: "every Monday 9am", "daily at 8", "every weekday", "monthly"
+REPEATS = ("daily", "weekdays", "weekly", "monthly")
+_DAYNAMES = "monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+REPEAT_RES = (
+    ("weekdays", re.compile(r"\bevery ?week ?days?\b|\bon week ?days\b|\bweek ?days\b|\bmon(?:day)? ?(?:to|-|through) ?fri(?:day)?\b", re.I)),
+    ("daily", re.compile(r"\bevery ?day\b|\bdaily\b|\beach day\b", re.I)),
+    ("monthly", re.compile(r"\bevery month\b|\bmonthly\b|\beach month\b", re.I)),
+    ("weekly", re.compile(r"\bevery week\b|\bweekly\b|\beach week\b|\b(?:every|each) (?:" + _DAYNAMES + r")s?\b", re.I)),
+)
+
+def parse_repeat(text):
+    """'daily' | 'weekdays' | 'weekly' | 'monthly' when the note says it repeats ('every Monday', 'daily', 'every weekday'), else None."""
+    for kind, rx in REPEAT_RES:
+        if rx.search(text or ""):
+            return kind
+    return None
+
+def next_due(ts, repeat, after):
+    """The first time of a repeating task that is later than `after`, stepping from ts at the same clock time (day, weekdays, week or
+    month at a time, so a computer that was off for days does not fire once per missed day, and the time never drifts)."""
+    lt = time.localtime(ts)
+    y, mo, d, hh, mi = lt.tm_year, lt.tm_mon, lt.tm_mday, lt.tm_hour, lt.tm_min
+    for _ in range(4000):
+        if repeat == "monthly":
+            mo += 1
+            y, mo = y + (mo - 1) // 12, (mo - 1) % 12 + 1
+            cand = time.mktime((y, mo, min(lt.tm_mday, calendar.monthrange(y, mo)[1]), hh, mi, 0, 0, 0, -1))
+        else:
+            d += 7 if repeat == "weekly" else 1
+            cand = time.mktime((y, mo, d, hh, mi, 0, 0, 0, -1))
+            if repeat == "weekdays" and time.localtime(cand).tm_wday >= 5:
+                continue
+        if cand > after:
+            return cand
+    return ts + 86400
 
 def resolve_due(text, when):
     """The model's guess -> an epoch, or None. Small models invent times, so a time is only taken when the note has a digit
@@ -1765,6 +1834,18 @@ def resolve_due(text, when):
     h = time.localtime(ts).tm_hour
     if 1 <= h <= 6 and not re.search(r"\b(am|a\.m\.|morning|night)\b", text, re.I) and time.localtime(ts).tm_min == 0:
         ts += 12 * 3600
+    elif 7 <= h <= 11 and re.search(r"\b(tonight|evening|afternoon)\b", text, re.I) and not re.search(r"\b\d{1,2}(:\d{2})?\s*(am|a\.m\.)|\bmorning\b", text, re.I):
+        ts += 12 * 3600                    # "tonight at 11" is 23:00, never 11:00 in the morning
+    hasday = re.search(r"\b(tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\d{4}-\d{1,2}-\d{1,2}", text, re.I)
+    h = time.localtime(ts).tm_hour
+    if (not hasday and 7 <= h <= 11 and ts - 12 * 3600 > now
+            and not re.search(r"\b(morning|am|a\.m\.)\b|\d\s*(am|a\.m\.)", text, re.I)):
+        ts -= 12 * 3600                    # "at 9" said at 10:11: parse_when already rolled to tomorrow 09:00, but 21:00 today is sooner
+    elif ts - 86400 > now and not hasday:
+        ts -= 86400                        # the +12 h above landed on tomorrow although the same time today is still to come
+    if ts <= now and 7 <= time.localtime(ts).tm_hour <= 11 and ts + 12 * 3600 > now \
+            and not re.search(r"\b(am|a\.m\.|morning)\b", text, re.I) and not re.search(r"\b\d{1,2}(:\d{2})?\s*(am|a\.m\.)", text, re.I):
+        ts += 12 * 3600                    # "at 9" said at 10:11, no am / morning: the evening 9 (21:00) is still to come today
     if ts <= now:
         lt = time.localtime(now)
         if ts >= time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1)):
@@ -1772,6 +1853,45 @@ def resolve_due(text, when):
         else:
             return None                    # a day that is already over
     return ts
+
+# Words that make a note a task on their own: the person asked for a reminder or named a job. A small model (or the overview-only
+# mode, where no task sorting runs at all) must not be what decides "give me a reminder to call my mom at 9" is just a note.
+TASK_CUE_RE = re.compile(
+    r"\bremind (?:me|us)\b"
+    r"|\b(?:give|set|make|add|create|put)\b[^.\n]{0,25}\breminder\b"
+    r"|^\s*reminder\b"
+    r"|\bremember to\b|\bdon'?t forget\b|\bdo not forget\b|\bto-?do\b"
+    r"|\b(?:i|we) (?:need|have|got) to\b(?!\s+(?:say|admit|confess|tell you|mention|point out)\b)"
+    r"|\b(?:i|we) must\b(?!\s+(?:say|admit|confess|be|have|mention|add|note)\b)", re.I | re.M)
+
+def explicit_task(text):
+    """True when the note itself asks for a reminder or names a job to do (short notes only: an article is never a task)."""
+    t = (text or "").strip()
+    return 0 < len(t) <= 280 and t.count("\n") <= 3 and bool(TASK_CUE_RE.search(t)) and not code_label(t)
+
+def apply_rule_task(nid, text, conf):
+    """Make the note a task now (with its reminder time when it names one). Never touches a note that already has a task
+    answer (a task, or one you turned back into a plain note by hand) or one that is done."""
+    due = resolve_due(text, None)
+    with locked():
+        notes = load_notes()
+        n = next((x for x in notes if x.get("id") == nid), None)
+        if n is None or "task" in n or n.get("done"):
+            return
+        n["task"] = True
+        n["ai"] = True
+        n["sorted"] = True
+        n.pop("suggest", None)
+        if due:
+            n["due"] = due
+            n["reminded"] = False
+            rep = parse_repeat(text)
+            if rep:
+                n["repeat"] = rep
+        elif re.search(r"\blater\b", text, re.I):
+            start_later(n, conf)
+        save_notes(notes)
+        sync_timer(notes)
 
 def finish_think(nid, think):
     """Write the AI line of one note (the notes window shows it under the text) and nothing else."""
@@ -1811,6 +1931,8 @@ def sort_note(arg, force=False):
         return
     finish_think(nid, {"state": "thinking", "at": time.time()})
     try:
+        if explicit_task(text):
+            apply_rule_task(nid, text, conf)
         if not sort_on or len(text) > 280 or text.count("\n") > 3 or code_label(text):
             # no task sorting (it is off, or the note is long: an article is never a task): only the overview of what it says
             ov = overview_of(text)
@@ -1869,10 +1991,12 @@ def sort_note(arg, force=False):
                         if due:
                             n["due"] = due
                             n["reminded"] = False
+                            if parse_repeat(text):
+                                n["repeat"] = parse_repeat(text)
                         elif later:
                             start_later(n, conf)
                     else:
-                        n["suggest"] = {"due": due, "later": later}
+                        n["suggest"] = {"due": due, "later": later, "repeat": parse_repeat(text) if due else None}
             save_notes(notes)
             sync_timer(notes)
         refresh_ui()
@@ -1891,6 +2015,8 @@ def toggle_task(arg):
     if not n["task"]:
         n.pop("due", None)
         n.pop("reminded", None)
+        n.pop("repeat", None)
+        n.pop("anchor", None)
         clear_later(n)
     save_notes(notes)
     print(("✓ Task: " if n["task"] else "✓ Plain note: ") + f"\"{n.get('text')}\"")
@@ -1920,9 +2046,11 @@ def set_due(arg, spec):
     n.pop("suggest", None)
     n["sorted"] = True
     clear_later(n)
+    n.pop("anchor", None)
     if ts is None:
         n.pop("due", None)
         n.pop("reminded", None)
+        n.pop("repeat", None)
         save_notes(notes)
         print(f"✓ No reminder: \"{n.get('text')}\"")
         return
@@ -1945,10 +2073,115 @@ def answer_suggestion(arg, yes):
         if sg.get("due"):
             n["due"] = sg["due"]
             n["reminded"] = False
+            if sg.get("repeat") in REPEATS:
+                n["repeat"] = sg["repeat"]
         elif sg.get("later"):
             start_later(n, read_conf())
     save_notes(notes)
     print("✓ Task" if yes else "✓ Stays a note")
+
+SNOOZE_CHOICES = (("snooze", "Snooze 10 min", "+10m"), ("hour", "Snooze 1 h", "+1h"))
+
+def _has_actions():
+    """notify-send 0.7.10+ can show buttons (--action) and wait for the click (--wait)."""
+    exe = shutil.which("notify-send")
+    if not exe:
+        return False
+    try:
+        out = subprocess.run([exe, "--help"], capture_output=True, text=True, timeout=3)
+        return "--action" in (out.stdout + out.stderr)
+    except Exception:
+        return False
+
+def remind_with_buttons(n, late):
+    """Show the reminder with Snooze / Done buttons. The waiting for a click runs on its own (systemd-run, so the minute timer's service
+    ending does not kill it); False = buttons are not possible here and the caller shows the plain notification."""
+    if not (_has_actions() and n.get("id")):
+        return False
+    cmd = [sys.executable, os.path.abspath(__file__), "remind-act", n["id"]] + (["late"] if late else [])
+    try:
+        if shutil.which("systemd-run"):
+            cmd = ["systemd-run", "--user", "--quiet", "--collect", "--no-block"] + cmd
+        subprocess.Popen(cmd, start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
+def remind_act(ref, late=False):
+    """Shows one reminder with buttons and waits up to 10 minutes for a click: Snooze 10 min / Snooze 1 h put the reminder back
+    (a repeating task keeps its schedule), Done completes a one-time task. Never holds the notes lock while it waits."""
+    n = find_note(load_notes(), ref)
+    if not n:
+        return
+    nid = n.get("id")
+    repeating = n.get("repeat") in REPEATS
+    cmd = ["notify-send", "--wait", "-a", "Halcyon", "-i", "appointment-soon", "-u", "normal"]
+    for key, label, _ in SNOOZE_CHOICES:
+        cmd += ["-A", f"{key}={label}"]
+    if not repeating:
+        cmd += ["-A", "done=Done"]
+    cmd += ["Reminder (a little late)" if late else "Reminder", (n.get("text") or "").strip()[:200]]
+    try:
+        act = subprocess.run(cmd, capture_output=True, text=True, timeout=600).stdout.strip()
+    except Exception:
+        return
+    me = [sys.executable, os.path.abspath(__file__)]
+    for key, _, spec in SNOOZE_CHOICES:
+        if act == key:
+            subprocess.run(me + ["snooze", nid, spec], timeout=20)
+    if act == "done" and not repeating:
+        cur = find_note(load_notes(), nid)
+        if cur and not cur.get("done"):                  # never un-complete a note that was ticked in the meantime
+            subprocess.run(me + ["done", nid], timeout=20)
+
+def snooze_note(arg, spec):
+    """Put a reminder back to <spec> (+10m ...) without touching a repeating task's schedule (its next time stays in `anchor`)."""
+    notes = load_notes()
+    n = find_note(notes, arg)
+    if not n:
+        print(f"[!] Note not found: {arg}")
+        return
+    try:
+        ts = parse_when(spec)
+    except ValueError as e:
+        print(f"[!] {e}")
+        return
+    if ts is None:
+        print("[!] snooze needs a time like +10m")
+        return
+    if n.get("repeat") in REPEATS and not n.get("anchor") and n.get("due") and n["due"] > time.time():
+        n["anchor"] = n["due"]                           # keep the real schedule while this one fires early/late
+    n["task"] = True
+    n["due"] = ts
+    n["reminded"] = False
+    save_notes(notes)
+    print(f"Snoozed to {due_text(ts)}: \"{n.get('text')}\"")
+
+def set_repeat(arg, kind):
+    notes = load_notes()
+    n = find_note(notes, arg)
+    if not n:
+        print(f"[!] Note not found: {arg}")
+        return
+    kind = (kind or "").strip().lower()
+    if kind in ("none", "off", "no", "stop", "-"):
+        n.pop("repeat", None)
+        n.pop("anchor", None)
+        save_notes(notes)
+        print(f"✓ No repeat: \"{n.get('text')}\"")
+        return
+    kind = {"day": "daily", "everyday": "daily", "weekday": "weekdays", "week": "weekly", "month": "monthly"}.get(kind, kind)
+    if kind not in REPEATS:
+        print("usage: notes repeat <number> <daily | weekdays | weekly | monthly | none>")
+        return
+    if not n.get("due"):
+        print(f"[!] Give it a time first: notes due {arg} 9am")
+        return
+    n["task"] = True
+    n["repeat"] = kind
+    n.pop("anchor", None)
+    save_notes(notes)
+    print(f"Repeats {kind}, next {due_text(n['due'])}: \"{n.get('text')}\"")
 
 def remind_check():
     """What the timer runs every minute: one notification for each task whose time has come (once), and a gentle nudge for each
@@ -1961,8 +2194,20 @@ def remind_check():
     for n in pending_due(notes):
         if n["due"] <= now:
             late = now - n["due"] > 600
-            notify("Reminder" if not late else "Reminder (a little late)", (n.get("text") or "").strip()[:200])
-            n["reminded"] = True
+            if not remind_with_buttons(n, late):
+                notify("Reminder" if not late else "Reminder (a little late)", (n.get("text") or "").strip()[:200])
+            rep = n.get("repeat")
+            if rep in REPEATS:
+                a = n.get("anchor")
+                if a and a > now:                    # a snooze came back: the next scheduled time is unchanged
+                    nxt = a
+                else:
+                    nxt = next_due(a or n["due"], rep, now)
+                n["anchor"] = nxt
+                n["due"] = nxt
+                n["reminded"] = False
+            else:
+                n["reminded"] = True
             changed = True
     for n in notes:
         if not isinstance(n, dict) or not n.get("later"):
@@ -2049,7 +2294,7 @@ def main():
 
 READ_ONLY = ("list", "ls", "json", "tasks", "conf", "rec-status")
 NO_LOCK = ("sort", "think", "transcribe")
-UNLOCKED = ("clip-image", "clip-img", "paste-image", "clip-paste", "clip-stage", "clip-drop", "shot-image", "screenshot", "record", "voice", "rec-start", "rec-stop", "rec-cancel", "rec-toggle", "ocr", "describe", "summary", "selftest", "search", "play")
+UNLOCKED = ("remind-act", "clip-image", "clip-img", "paste-image", "clip-paste", "clip-stage", "clip-drop", "shot-image", "screenshot", "record", "voice", "rec-start", "rec-stop", "rec-cancel", "rec-toggle", "ocr", "describe", "summary", "selftest", "search", "play")
 
 def is_ref(a):
     return a.isdigit() or a.startswith("n_")
@@ -2060,6 +2305,8 @@ def run(cmd, args):
             or (cmd in ("task", "sort", "think", "transcribe", "accept", "dismiss", "ocr", "describe", "summary") and not (len(args) == 2 and is_ref(args[1]))) \
             or (cmd in ("selftest", "rec-toggle") and len(args) > 1) \
             or (cmd == "due" and not (len(args) > 2 and is_ref(args[1]))) \
+            or (cmd in ("snooze", "repeat") and not (len(args) > 2 and is_ref(args[1]))) \
+            or (cmd == "remind-act" and not (len(args) in (2, 3) and is_ref(args[1]))) \
             or (cmd == "set" and not (len(args) == 3 and args[1] in CONF_DEFAULTS)):
         add_note(" ".join(args))
         return
@@ -2109,6 +2356,18 @@ def run(cmd, args):
             print(f"usage: notes {cmd} <id>")
     elif cmd == "remind-check":
         remind_check()
+    elif cmd == "remind-act":
+        remind_act(args[1], len(args) > 2 and args[2] == "late")
+    elif cmd == "snooze":
+        if len(args) > 2:
+            snooze_note(args[1], " ".join(args[2:]))
+        else:
+            print("usage: notes snooze <number or id> <+10m | +1h | 18:00 ...>")
+    elif cmd == "repeat":
+        if len(args) > 2:
+            set_repeat(args[1], args[2])
+        else:
+            print("usage: notes repeat <number or id> <daily | weekdays | weekly | monthly | none>")
     elif cmd in ("del", "rm", "delete"):
         if len(args) > 1:
             del_note(args[1])

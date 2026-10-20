@@ -88,6 +88,12 @@
     { "id": "musicpanel", "target": "media", "demo": "media", "title": "Lyrics and queue",
       "body": "On the music page (hover the music in the bar) there are two new chips next to the artist: Lyrics and Queue. They open a panel with the lyrics of what plays and what plays next. Lyrics need nothing installed: Halcyon asks a free lyrics site (lrclib.net, then lyrics.ovh) or reads a .lrc file next to a local song, and uses spotify_player too when you have it (choose the source with halcyon-music.py source). The queue is Spotify's and needs spotify_player. Also >lyrics and >queue. The queue is read-only." },
 
+    { "id": "splash", "title": "Login splash",
+      "body": "A short animation of moving stars and the Halcyon sparkle now plays when you log in (about 3.5 seconds; a click or any key skips it). See it any time with >splash, or turn it off in Settings > Power & lock." },
+
+    { "id": "signature", "title": "Splash everywhere, weekly sky, time of day",
+      "body": "The splash now also plays when you unlock (the stars rush out again) and when you shut down or restart (they are drawn back in). >weekly sky draws your week as stars: one for every focus session, task you ticked off and calendar event, with a Save picture button to share it. Settings > Splash, sky & time of day also has a wallpaper wash that follows the sun, and optional soft sounds." },
+
     { "id": "done", "core": true, "title": "That's it",
       "body": "Everything follows your wallpaper colours, so try >wallpaper gallery next. Replay this tour any time with >tour." }
   ]

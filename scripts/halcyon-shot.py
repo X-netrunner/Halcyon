@@ -7,7 +7,8 @@
   halcyon-shot.py conf                one line of JSON for the panel: {"action", "dir", "has": {...}}
   halcyon-shot.py set action ACTION   remember the choice the panel opens with
 
-ACTION is  copy  (clipboard only, no file)  |  save  (file only)  |  both  (file and clipboard, what Super + Shift + S does).
+ACTION is  copy  (clipboard only, no file)  |  save  (file only)  |  both  (file and clipboard, what Super + Shift + S does)
+        |  text  (read the words in the picture with tesseract, offline, and put the TEXT on the clipboard; no picture is kept).
 Without one, the remembered choice is used (state/shot.json, "both" at first).
 
 Files go to ~/Pictures/Screenshots/<seconds>.png, the same place and name as the existing shortcuts. This is a one-shot command:
@@ -26,7 +27,7 @@ HOME = os.path.expanduser("~")
 STATE = os.environ.get("HALCYON_STATE") or os.path.join(HOME, ".local", "state", "island")
 CONF = os.path.join(STATE, "shot.json")
 OUT_DIR = os.environ.get("HALCYON_SHOT_DIR") or os.path.join(HOME, "Pictures", "Screenshots")
-ACTIONS = ("copy", "save", "both")
+ACTIONS = ("copy", "save", "both", "text")
 MODES = ("region", "window", "full")
 HINT = "string:x-canonical-private-synchronous:screenshot"
 
@@ -180,11 +181,34 @@ def to_clipboard(data):
     return p.wait(timeout=10) == 0
 
 
+def ocr_to_clipboard(png):
+    """Action "text": the words in the picture go on the clipboard (tesseract, offline; it copies what is there, nothing is invented)."""
+    lang = os.environ.get("HALCYON_OCR_LANG") or "eng"
+    try:
+        t = subprocess.run(["tesseract", "stdin", "stdout", "-l", lang], input=png, capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        notify("Reading the text failed")
+        return 1
+    text = t.stdout.decode("utf-8", "replace").strip()
+    if not text:
+        if t.returncode != 0:
+            notify("Reading the text failed (is the language data installed? tesseract-data-" + lang + ")")
+            return 1
+        notify("No text found in the picture")
+        return 0
+    try:
+        ok = subprocess.run(["wl-copy"], input=text.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        ok = False
+    notify(("Text copied (%d characters)" % len(text)) if ok else "Could not copy the text")
+    return 0 if ok else 1
+
+
 def shoot(mode, action):
     if action not in ACTIONS:
-        print("halcyon-shot: action must be copy, save or both", file=sys.stderr)
+        print("halcyon-shot: action must be copy, save, both or text", file=sys.stderr)
         return 2
-    missing = [c for c in (["grim"] + (["slurp"] if mode != "full" else []) + (["wl-copy"] if action != "save" else [])) if not have(c)]
+    missing = [c for c in (["grim"] + (["slurp"] if mode != "full" else []) + (["wl-copy"] if action != "save" else []) + (["tesseract"] if action == "text" else [])) if not have(c)]
     if missing:
         msg = "needs " + ", ".join(missing)
         print("halcyon-shot: " + msg, file=sys.stderr)
@@ -235,6 +259,9 @@ def shoot(mode, action):
         stop_freeze(freeze)
         freeze = None
 
+        if action == "text":
+            return ocr_to_clipboard(r.stdout)
+
         if path:
             try:
                 with open(path, "rb") as f:
@@ -270,7 +297,7 @@ def main(argv):
         print(json.dumps({
             "action": saved_action(),
             "dir": OUT_DIR,
-            "has": {t: have(t) for t in ("grim", "slurp", "wl-copy", "wayfreeze", "hyprctl")},
+            "has": {t: have(t) for t in ("grim", "slurp", "wl-copy", "wayfreeze", "hyprctl", "tesseract")},
         }))
         return 0
     if c == "set":
@@ -278,11 +305,11 @@ def main(argv):
             d = read_conf()
             d["action"] = a[2]
             return 0 if write_conf(d) else 1
-        print("usage: halcyon-shot.py set action copy|save|both", file=sys.stderr)
+        print("usage: halcyon-shot.py set action copy|save|both|text", file=sys.stderr)
         return 2
     if c in MODES:
         return shoot(c, a[1] if len(a) > 1 else saved_action())
-    print("usage: halcyon-shot.py region|window|full [copy|save|both] | conf | set action copy|save|both", file=sys.stderr)
+    print("usage: halcyon-shot.py region|window|full [copy|save|both|text] | conf | set action copy|save|both|text", file=sys.stderr)
     return 2
 
 

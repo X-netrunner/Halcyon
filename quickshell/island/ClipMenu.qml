@@ -8,6 +8,8 @@ import Quickshell.Wayland
 // A panel on the side of the screen (same place and look as the new-note panel) that lists what you copied lately. Type to search,
 // Up / Down and Enter, or click a row: it goes back on the clipboard with wl-copy and the panel leaves, ready to paste.
 //
+// Pin (the little pin on a row) keeps a text entry on top of the list; pins survive Clear history (scripts/halcyon-clip.py keeps their text
+// in ~/.local/state/island/clip-pins.json, readable only by you; do not pin a password).
 // There is NO watcher in here and none was added for it. The history is cliphist's, filled by the two small `wl-paste --watch`
 // processes that Settings > Startup & background > Clipboard history already starts. scripts/clip-store.sh (what they run) keeps
 // a copy out of the history when the app marks it as a secret (password managers do). This file only runs the one-shot
@@ -95,10 +97,11 @@ Scope {
     Timer { id: leaveT; interval: 380; onTriggered: root.hide() }
 
     function deleteItem(it) { if (it) act(["python3", root.script, "delete", String(it.id)]) }
+    function pinItem(it) { if (it && !it.image) act(["python3", root.script, it.pin === true ? "unpin" : "pin", String(it.id)]) }
     function clearAll() {
         if (!confirmClear) { confirmClear = true; confirmT.restart(); return }
         confirmClear = false
-        items = []; total = 0
+        items = items.filter(function (e) { return e.pin === true }); total = 0     // pins stay
         note = "Cleared"
         act(["python3", root.script, "clear"])
     }
@@ -311,7 +314,14 @@ Scope {
                                         Layout.preferredWidth: 3
                                         Layout.preferredHeight: 14
                                         radius: 1.5
-                                        color: row.modelData.image ? root.pal.accent2 : Qt.alpha(root.pal.muted, 0.5)
+                                        color: row.modelData.pin === true ? root.pal.accent : (row.modelData.image ? root.pal.accent2 : Qt.alpha(root.pal.muted, 0.5))
+                                    }
+                                    Text {
+                                        visible: row.modelData.pin === true
+                                        text: String.fromCodePoint(0xF0403)
+                                        color: root.pal.accent
+                                        font.family: root.pal.font
+                                        font.pixelSize: 14
                                     }
                                     Text {
                                         Layout.fillWidth: true
@@ -321,6 +331,13 @@ Scope {
                                         color: row.modelData.image ? root.pal.accent2 : root.pal.text
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tBody
+                                    }
+                                    RoundBtn {
+                                        visible: !row.modelData.image && (rowMa.containsMouse || row.cur)
+                                        pal: root.pal
+                                        size: 24
+                                        glyph: String.fromCodePoint(row.modelData.pin === true ? 0xF0404 : 0xF0403)
+                                        onClicked: root.pinItem(row.modelData)
                                     }
                                     RoundBtn {
                                         visible: rowMa.containsMouse || row.cur
@@ -333,7 +350,7 @@ Scope {
                                 MouseArea {
                                     id: rowMa
                                     anchors.fill: parent
-                                    anchors.rightMargin: 40            // the delete button keeps its own clicks
+                                    anchors.rightMargin: 68            // the pin and delete buttons keep their own clicks
                                     hoverEnabled: true
                                     onEntered: list.currentIndex = row.index
                                     onClicked: root.copyItem(row.modelData)
@@ -360,7 +377,7 @@ Scope {
                             spacing: 8
                             Text {
                                 Layout.fillWidth: true
-                                text: "Enter copies   \u00b7   Esc closes   \u00b7   Password-manager copies are not kept"
+                                text: "Enter copies   \u00b7   Pin keeps it on top   \u00b7   Esc closes   \u00b7   Password-manager copies are not kept"
                                 elide: Text.ElideRight
                                 color: Qt.alpha(root.pal.muted, 0.85)
                                 font.family: root.pal.uiFont

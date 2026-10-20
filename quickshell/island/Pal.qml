@@ -52,7 +52,9 @@ Scope {
         var l = []
         for (var i = 0; i < swatches.length; i++) {
             probe = swatches[i]
-            l.push({ h: hueOf(probe, 0), s: probe.hslSaturation, l: probe.hslLightness })
+            // Every colour is pulled into the band the fixed accent lives in (pastel: lightness ~0.74, saturation 0.30 .. 0.55), so a
+            // dark navy or a neon swatch still gives a readable accent with the same calm look while cycling. The hue is untouched.
+            l.push({ h: hueOf(probe, 0), s: Math.max(0.30, Math.min(0.58, probe.hslSaturation)), l: Math.max(0.66, Math.min(0.78, probe.hslLightness)) })
         }
         l.sort(function (a, b) { return a.h - b.h })
         ring = l
@@ -126,6 +128,25 @@ Scope {
         "lockdown": light ? "#c2303c" : "#e06c75"
     })
 
+    // WCAG relative luminance of a colour (0 black .. 1 white)
+    function relLum(c) {
+        function f(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+    }
+    // The light theme's accents: HSL "lightness" over-reports how light yellow, green and cyan look, so the same 0.40 that reads well
+    // for blue or purple is too pale for a yellow wallpaper. This keeps the hue and saturation and only lowers the lightness until
+    // the colour reaches 4.5 : 1 on the pale boxes (relative luminance <= 0.105); blue / purple accents are left exactly as they were.
+    function readableOnLight(h, s, l) {
+        var c = Qt.hsla(h, s, l, 1)
+        if (relLum(c) <= 0.105) return c
+        var lo = 0.15, hi = l
+        for (var i = 0; i < 8; i++) {
+            var mid = (lo + hi) / 2
+            if (relLum(Qt.hsla(h, s, mid, 1)) <= 0.105) lo = mid; else hi = mid
+        }
+        return Qt.hsla(h, s, lo, 1)
+    }
+
     function hueOf(c, fallback) { var h = c.hslHue; return (h === undefined || h < 0 || isNaN(h)) ? fallback : h }
 
     function refresh() {
@@ -154,10 +175,10 @@ Scope {
         bg = Qt.hsla(h, s, 0.955, 1)
         surface = Qt.hsla(h, s, 0.905, 1)
         surfaceHi = Qt.hsla(h, s, 0.86, 1)
-        accent = Qt.hsla(ha, sa, 0.40, 1)
-        accent2 = Qt.hsla(ha2, sa2, 0.44, 1)
+        accent = readableOnLight(ha, sa, 0.40)
+        accent2 = readableOnLight(ha2, sa2, 0.41)    // was 0.44, which gave a yellow or green second accent only ~3 : 1
         text = Qt.hsla(h, 0.20, 0.13, 1)
-        muted = Qt.hsla(h, 0.10, 0.38, 1)
+        muted = Qt.hsla(h, 0.10, 0.35, 1)            // 0.38 dropped to ~4.5 : 1 on surfaceHi
     }
 
     // how see-through the glass is (the compositor blurs what is behind it)

@@ -3,6 +3,7 @@ import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import "TimeOfDay.js" as TOD
 
 PanelWindow {
     id: wallpaper
@@ -125,6 +126,37 @@ PanelWindow {
         border.color: "#ffffff"
         visible: wallpaper.revealing
         opacity: 0.4 * (1 - Math.min(1, wallpaper.maskSize / wallpaper.diag))
+    }
+
+    // ---- time-of-day grade (Settings > Splash, sky & time of day): a soft colour wash and a little dimming over the picture that follow
+    // the sun (TimeOfDay.js: blue night, rose dawn, clear noon, amber golden hour, magenta dusk). It is only a rectangle: the picture and
+    // its colours (palette, terminals, app themes) are untouched, so switching it off gives the plain wallpaper back at once. The clock
+    // ticks once a minute, and only while the grade is on.
+    readonly property bool todOn: !!opt && opt.todOn === true
+    readonly property real todStrength: Math.max(0, Math.min(1, (opt && opt.todStrength !== undefined ? Number(opt.todStrength) : 60) / 100))
+    property real todHour: TOD.hourOf(new Date())          // refreshed by todClock while the grade is on
+    readonly property var todNow: TOD.at(todHour, todStrength)
+    readonly property string todPhase: todNow.name
+    SystemClock {
+        id: todClock
+        enabled: wallpaper.todOn
+        precision: SystemClock.Minutes
+        onDateChanged: wallpaper.todHour = TOD.hourOf(todClock.date)
+    }
+    onTodOnChanged: if (todOn) todHour = TOD.hourOf(new Date())
+    Item {
+        anchors.fill: parent
+        opacity: wallpaper.todOn ? 1 : 0
+        visible: opacity > 0.001
+        Behavior on opacity { NumberAnimation { duration: 900; easing.type: Easing.OutCubic } }
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(wallpaper.todNow.r, wallpaper.todNow.g, wallpaper.todNow.b, wallpaper.todNow.tint)
+        }
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(0, 0, 0, wallpaper.todNow.dim)
+        }
     }
 
     // moving stars (Desktop builder): above the picture, so they work on a wallpaper and on the plain background alike

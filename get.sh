@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Halcyon, one line: downloads Halcyon from GitHub and runs its installer. Nothing else is needed first except git.
 #
-#   curl -fsSL https://raw.githubusercontent.com/X-netrunner/Halcyon/HEAD/get.sh | bash
+#   curl -fsSL https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh | bash
 #
 # Options go after  -s --  (they are handed to install.sh, or to update.sh when Halcyon is already there):
 #
-#   curl -fsSL https://raw.githubusercontent.com/X-netrunner/Halcyon/HEAD/get.sh | bash -s -- --yes --no-sysmode
+#   curl -fsSL https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh | bash -s -- --yes --no-sysmode
 #
 #   --yes / -y         no questions (the saved answers, or the defaults, are used)
 #   --dry-run          download to a cache folder and only SHOW what install.sh would do; nothing is installed

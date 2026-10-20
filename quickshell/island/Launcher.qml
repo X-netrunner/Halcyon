@@ -7,7 +7,8 @@ import Quickshell.Io
 //   <text>   search apps (clutter like qv4l2 / avahi / Qt tools is hidden)
 //   .        every installed app, A-Z  (".fire" filters that list)
 //   >        list of commands (random wallpaper, calculator, settings, power options, ...)
-//   =        calculator, e.g.  =2*(3+4)   (Enter copies the result)
+//   =        calculator, e.g.  =2*(3+4)   (Enter copies the result); also unit conversion  =5 km in miles  =72 f to c
+//   timer    a countdown that notifies when it ends, e.g.  timer 10m   timer 1h30m tea   timer 25  (minutes)   (Enter starts it)
 Item {
     id: root
     property var pal
@@ -134,7 +135,7 @@ Item {
         { id: "notifbuilder", name: "Notification box builder", desc: "Arrange the notification box: its parts, constellations, flying stars, padding, width and place on the screen", glyph: 0xF009A, kw: "notifications notification box builder layout design style timeline grouped stars constellation padding edit customise", cat: "desktop" },
         { id: "reload", name: "Reload", desc: "Reload Hyprland, the terminal colours and the island", glyph: 0xF0450, kw: "restart refresh apply config hyprland island quickshell", cat: "system" },
         { id: "wallpaper", name: "Random wallpaper", desc: "Switch to a new wallpaper now", glyph: 0xF02E9, kw: "background change image", cat: "desktop" },
-        { id: "calc", name: "Calculator", desc: "Type = then an expression", glyph: 0xF00EB, kw: "math calculate", cat: "tools" },
+        { id: "calc", name: "Calculator", desc: "Type = then an expression or a conversion (=5 km in miles); \"timer 10m\" starts a countdown", glyph: 0xF00EB, kw: "math calculate convert units timer countdown", cat: "tools" },
         { id: "theme", name: "Light / dark theme", desc: "Switch the whole desktop between the dark and the light theme (toggle)", glyph: 0xF0594, kw: "dark light mode appearance colours day night", cat: "desktop" },
         { id: "settings", name: "Settings", desc: "Theme, wallpaper, scrolling, default apps, transparency, motion, gaming", glyph: 0xF0493, kw: "rice options look theme gear config", cat: "system" },
         { id: "extradim", name: "Extra dim display", desc: "Dim screen backlight to minimum (Super + Alt + D)", glyph: 0xF058F, kw: "dim brightness backlight dark night minimum screen", cat: "tools" },
@@ -167,10 +168,10 @@ Item {
     // ---- mode
     readonly property string q0: query.replace(/^\s+/, "")
     readonly property string mode: q0.charAt(0) === ">" ? "cmd"
-                                 : (q0.charAt(0) === "=" ? "calc"
+                                 : ((q0.charAt(0) === "=" || /^timer\s/i.test(q0)) ? "calc"
                                  : (q0.charAt(0) === "." ? "all" : "apps"))
     readonly property bool gridMode: mode === "apps" || mode === "all"
-    readonly property var calcOut: evalCalc(q0.substring(1))
+    readonly property var calcOut: evalCalc(q0.charAt(0) === "=" ? q0.substring(1) : q0)
 
     // ---- size the bar should grow to (the island follows these)
     readonly property int rows: mode === "all" ? Math.max(1, Math.min(4, Math.ceil(results.length / 6)))
@@ -201,9 +202,77 @@ Item {
         return j === q.length
     }
 
+    // ---- unit conversion and timers (calc mode). Offline: no rates, nothing downloaded.
+    readonly property var unitGroups: ({
+        len:   { m: 1, meter: 1, meters: 1, km: 1000, kilometer: 1000, kilometers: 1000, cm: 0.01, mm: 0.001, mi: 1609.344, mile: 1609.344, miles: 1609.344,
+                 ft: 0.3048, foot: 0.3048, feet: 0.3048, "in": 0.0254, inch: 0.0254, inches: 0.0254, yd: 0.9144, yard: 0.9144, yards: 0.9144 },
+        mass:  { kg: 1, g: 0.001, mg: 0.000001, lb: 0.45359237, lbs: 0.45359237, pound: 0.45359237, pounds: 0.45359237, oz: 0.028349523125, ounce: 0.028349523125, ounces: 0.028349523125 },
+        vol:   { l: 1, liter: 1, liters: 1, litre: 1, litres: 1, ml: 0.001, gal: 3.785411784, gallon: 3.785411784, gallons: 3.785411784, cup: 0.2365882365, cups: 0.2365882365,
+                 floz: 0.0295735295625, tbsp: 0.01478676478125, tsp: 0.00492892159375 },
+        speed: { "m/s": 1, ms: 1, "km/h": 0.2777777778, kmh: 0.2777777778, kph: 0.2777777778, mph: 0.44704, knot: 0.5144444444, knots: 0.5144444444 },
+        data:  { b: 1, kb: 1000, mb: 1000000, gb: 1000000000, tb: 1000000000000, kib: 1024, mib: 1048576, gib: 1073741824, tib: 1099511627776 },
+        time:  { s: 1, sec: 1, secs: 1, min: 60, mins: 60, minute: 60, minutes: 60, h: 3600, hr: 3600, hrs: 3600, hour: 3600, hours: 3600, d: 86400, day: 86400, days: 86400, week: 604800, weeks: 604800 }
+    })
+    function unitOf(name) {
+        for (var g in unitGroups) if (unitGroups[g].hasOwnProperty(name)) return g
+        return ""
+    }
+    function tempToC(v, u) { return u === "f" ? (v - 32) * 5 / 9 : (u === "k" ? v - 273.15 : v) }
+    function tempFromC(c, u) { return u === "f" ? c * 9 / 5 + 32 : (u === "k" ? c + 273.15 : c) }
+    function tempName(u) {
+        u = u.replace(/^°/, "").replace(/^deg(rees?)?/, "").replace(/^\s+/, "")
+        if (u === "c" || u === "celsius") return "c"
+        if (u === "f" || u === "fahrenheit") return "f"
+        if (u === "k" || u === "kelvin") return "k"
+        return ""
+    }
+    function fmtNum(v) { return String(parseFloat(v.toPrecision(7))) }
+    function convertUnits(e) {
+        var m = /^(-?[0-9]*\.?[0-9]+)\s*([a-z°\/]+)\s+(?:in|to|as|into)\s+([a-z°\/]+)$/.exec(e)
+        if (!m) return null
+        var v = parseFloat(m[1]), a = m[2], b = m[3]
+        var ta = tempName(a), tb = tempName(b)
+        if (ta !== "" && tb !== "") {
+            var r = fmtNum(tempFromC(tempToC(v, ta), tb))
+            return { ok: true, kind: "unit", text: r + " °" + tb.toUpperCase(), copy: r }
+        }
+        var ga = unitOf(a), gb = unitOf(b)
+        if (ga === "" || ga !== gb) return null
+        var out = fmtNum(v * unitGroups[ga][a] / unitGroups[gb][b])
+        return { ok: true, kind: "unit", text: out + " " + b, copy: out }
+    }
+    function fmtDur(s) {
+        var h = Math.floor(s / 3600), mi = Math.floor((s % 3600) / 60), se = Math.round(s % 60), p = []
+        if (h) p.push(h + " h")
+        if (mi) p.push(mi + " min")
+        if (se) p.push(se + " s")
+        return p.join(" ")
+    }
+    // "timer 10m", "timer 1h30m tea", "timer 90s", "timer 25" (minutes)
+    function parseTimer(e) {
+        var rest = e.replace(/^timer\s*/, "").trim()
+        var hint = { ok: false, bare: true, kind: "hint", text: "timer: say how long, e.g. timer 10m  ·  timer 1h30m tea  ·  timer 25 (minutes)" }
+        if (rest === "") return hint
+        var m = /^((?:[0-9]+(?:\.[0-9]+)?\s*(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])\s*)+|[0-9]+(?:\.[0-9]+)?)\s*(.*)$/.exec(rest)
+        if (!m) return hint
+        var re = /([0-9]+(?:\.[0-9]+)?)\s*([a-z]*)/g, t, total = 0
+        while ((t = re.exec(m[1])) !== null) {
+            var n = parseFloat(t[1]), u = t[2].charAt(0)
+            total += n * (u === "h" ? 3600 : (u === "s" ? 1 : 60))
+        }
+        total = Math.round(total)
+        if (total < 1) return hint
+        if (total > 7 * 86400) return { ok: false, bare: true, kind: "hint", text: "timer: 7 days at most" }
+        var label = m[2].trim().substring(0, 80)
+        return { ok: true, bare: true, kind: "timer", secs: total, label: label, text: "Timer  ·  " + fmtDur(total) + (label !== "" ? "  ·  " + label : "") }
+    }
+
     function evalCalc(expr) {
         var e = expr.trim().toLowerCase()
         if (e === "") return { ok: false, text: "" }
+        if (/^timer(\s|$)/.test(e)) return parseTimer(e)
+        var cv = convertUnits(e)
+        if (cv) return cv
         var s = e.replace(/\^/g, "**")
                  .replace(/\b(sqrt|sin|cos|tan|abs|floor|ceil|round|pow)\b/g, "Math.$1")
                  .replace(/\b(ln|log)\b/g, "Math.log")
@@ -328,7 +397,15 @@ Item {
     function copyCalc() {
         if (!calcOut.ok) return
         saveHistory(query)
-        Quickshell.execDetached(["wl-copy", calcOut.text])
+        if (calcOut.kind === "timer") {
+            // a transient user timer unit: it keeps counting if the shell restarts and uses no memory while it waits
+            var what = calcOut.label !== "" ? calcOut.label : fmtDur(calcOut.secs)
+            Quickshell.execDetached(["systemd-run", "--user", "--quiet", "--unit=halcyon-timer-" + Date.now(), "--on-active=" + calcOut.secs + "s",
+                                     "notify-send", "-a", "Halcyon", "-i", "alarm-symbolic", "Timer done", what])
+            Quickshell.execDetached(["notify-send", "-a", "Halcyon", "-i", "alarm-symbolic", "Timer set", fmtDur(calcOut.secs) + (calcOut.label !== "" ? "  ·  " + calcOut.label : "")])
+        } else {
+            Quickshell.execDetached(["wl-copy", calcOut.copy !== undefined ? calcOut.copy : calcOut.text])
+        }
         closeRequested()
     }
 
@@ -881,7 +958,7 @@ Item {
                 anchors.left: parent.left
                 anchors.leftMargin: 20
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.calcOut.text === "" ? "type an expression" : "= " + root.calcOut.text
+                text: root.calcOut.text === "" ? "type an expression, a conversion (5 km in miles) or timer 10m" : ((root.calcOut.bare === true ? "" : "= ") + root.calcOut.text)
                 color: root.calcOut.ok ? root.pal.text : root.pal.muted
                 font.family: root.pal.uiFont
                 font.pixelSize: 22
@@ -892,7 +969,7 @@ Item {
                 anchors.rightMargin: 20
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.calcOut.ok
-                text: "Enter to copy"
+                text: root.calcOut.kind === "timer" ? "Enter to start" : "Enter to copy"
                 color: root.pal.muted
                 font.family: root.pal.uiFont
                 font.pixelSize: 11

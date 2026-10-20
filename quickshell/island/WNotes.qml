@@ -14,9 +14,11 @@ WBase {
     function dueOf(ts) {                       // "18:00" today, "Tomorrow 09:00", "20 Oct 14:30"
         var d = new Date(ts * 1000), t0 = new Date(); t0.setHours(0, 0, 0, 0)
         var day = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - t0.getTime()) / 86400000)
-        var hm = Qt.formatTime(d, "hh:mm")
+        var hm = Qt.formatTime(d, Qt.locale().timeFormat(Locale.ShortFormat))
         return day === 0 ? hm : day === 1 ? "Tomorrow " + hm : Qt.formatDate(d, "d MMM") + " " + hm
     }
+    readonly property color taskColor: accent             // tasks (notes with a job / a reminder) are drawn with a small ring in the accent colour, so they match any wallpaper
+    property real nowMs: Date.now()                       // moves on every refresh, so "overdue" turns red by itself
     readonly property int most: Math.round(opt("max", 4))
     readonly property real wide: opt("width", 290)
     property var notes: []
@@ -27,6 +29,7 @@ WBase {
     property string lastCal: ""
     property int beat: 0
     function refresh() {
+        nowMs = Date.now()
         today = Qt.formatDate(new Date(), "dddd, MMM d")
         if (!notesProc.running) notesProc.running = true
         // the calendar file only changes when it syncs: read it every minute, not every 15 seconds
@@ -69,16 +72,29 @@ WBase {
     }
 
     // what is shown: events first, then notes, up to `most` lines
+    readonly property int hiddenCount: Math.max(0, notes.length + (events ? calEvents.length : 0) - lines.length)
     readonly property var lines: {
         var out = []
         if (events) for (var i = 0; i < calEvents.length && out.length < most; i++) {
             var e = calEvents[i]
             out.push({ kind: "event", t: (e.allDay ? "" : Qt.formatTime(new Date(e.start * 1000), "hh:mm") + "  ") + (e.title || ""), pinned: false })
         }
-        for (var j = 0; j < notes.length && out.length < most; j++) {
-            var badge = (notes[j].image ? " img" : "") + (notes[j].audio ? " voice" : "")
-            var noteTitle = ((!notes[j].audio && notes[j].think && notes[j].think.state === "done" && notes[j].think.title) ? notes[j].think.title : (notes[j].text || "")) + badge + (notes[j].task && notes[j].due ? "  \u00b7  " + dueOf(notes[j].due) : "")
-            out.push({ kind: "note", t: noteTitle, pinned: !!notes[j].pinned })
+        var rank = function (n) {
+            if (!n.task) return n.pinned ? 2 : 3
+            return (n.due && !n.reminded && n.due * 1000 < nowMs) ? 0 : 1
+        }
+        var sorted = notes.slice().sort(function (a, b) {
+            var d = rank(a) - rank(b)
+            if (d !== 0) return d
+            if (a.task && b.task) return (a.due || 9e12) - (b.due || 9e12)
+            return 0
+        })
+        for (var j = 0; j < sorted.length && out.length < most; j++) {
+            var n = sorted[j]
+            var badge = (n.image ? " img" : "") + (n.audio ? " voice" : "")
+            var noteTitle = (n.text || "") + badge + (n.task && n.due ? "  \u00b7  " + dueOf(n.due) + (n.repeat ? " \u21bb" : "") : "")
+            out.push({ kind: n.task ? "task" : "note", t: noteTitle, pinned: !!n.pinned, id: n.id || "",
+                       overdue: !!(n.task && n.due && !n.reminded && n.due * 1000 < nowMs) })
         }
         return out
     }
@@ -109,8 +125,30 @@ WBase {
                     anchors.leftMargin: root.style === "cards" ? root.sz(10) : 0
                     anchors.rightMargin: root.style === "cards" ? root.sz(10) : 0
                     spacing: root.sz(8)
-                    WLbl { b: root; text: modelData.kind === "event" ? "•" : (modelData.pinned ? "★" : "›"); color: modelData.pinned ? "#f5a623" : root.accent; font.pixelSize: root.sz(12); anchors.verticalCenter: parent.verticalCenter }
-                    WLbl { id: ln; b: root; width: parent.width - root.sz(20); text: modelData.t; elide: Text.ElideRight; font.pixelSize: root.sz(12); anchors.verticalCenter: parent.verticalCenter }
+                    Item {          // task: a small ring (click = done); event / note / pinned: the usual glyph
+                        width: root.sz(12); height: root.sz(14); anchors.verticalCenter: parent.verticalCenter
+                        Rectangle {
+                            visible: modelData.kind === "task"
+                            anchors.centerIn: parent
+                            width: root.sz(8); height: width; radius: width / 2
+                            color: ringMa.containsMouse ? Qt.alpha(ringCol, 0.55) : "transparent"
+                            border.width: 1.5
+                            border.color: ringCol
+                            readonly property color ringCol: modelData.overdue ? "#ff6b6b" : root.taskColor
+                        }
+                        WLbl { b: root; visible: modelData.kind !== "task"; anchors.centerIn: parent
+                               text: modelData.kind === "event" ? "\u2022" : (modelData.pinned ? "\u2605" : "\u203a")
+                               color: modelData.pinned && modelData.kind !== "event" ? "#f5a623" : root.accent; font.pixelSize: root.sz(12) }
+                        MouseArea {
+                            id: ringMa
+                            anchors.fill: parent; anchors.margins: -root.sz(3)
+                            hoverEnabled: true
+                            enabled: modelData.kind === "task" && modelData.id !== "" && !root.editing && !!root.env
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: { Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "done", modelData.id]); root.lastNotes = ""; root.refresh() }
+                        }
+                    }
+                    WLbl { id: ln; b: root; width: parent.width - root.sz(20); color: modelData.kind === "task" ? (modelData.overdue ? Qt.tint(root.fg, Qt.alpha("#ff6b6b", 0.35)) : root.fg) : root.fg; text: modelData.t; elide: Text.ElideRight; font.pixelSize: root.sz(12); anchors.verticalCenter: parent.verticalCenter }
                 }
             }
         }
@@ -132,6 +170,7 @@ WBase {
                 onClicked: root.env.deskAct("notes")
             }
         }
+        WLbl { b: root; visible: root.hiddenCount > 0; text: "+" + root.hiddenCount + " more"; color: root.dim; font.pixelSize: root.sz(10) }
         WLbl { b: root; visible: root.lines.length === 0; width: parent.width; text: "Nothing to show. Super + N adds a note."; color: root.dim; font.pixelSize: root.sz(11); wrapMode: Text.WordWrap }
     }
 }

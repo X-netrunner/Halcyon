@@ -236,3 +236,27 @@ Not changed: the ~20 s window before the lock appears, and the nmap target rules
 | `scripts/halcyon-notes.py` | The AI fallback line no longer says `Note about: ...` with a trailing `...`; it is the note tidied and cut at a word boundary. The AI line now also stores a one-line `title` (the overview's first line). Multimedia notes support: added `clip-image`, `image`, `record` (voice notes), `play`, and automatic image / audio file detection. |
 | `quickshell/island/NotesMenu.qml`, `WNotes.qml` | Notes with an AI overview show the overview as the title (list and desktop notes widget) instead of the typed text; the list's AI line only shows the extra lines under it. Notes saved before this have no `title` until you press Think on them. Multimedia notes support: quick-panel clipboard image paste (`Clip img`) and microphone voice recording (`Voice`), inline image thumbnail previews (clickable to view in full size), voice note audio players with play/stop toggle, and desktop widget media badges (`📷`, `🎙`). Fixed `copiedT` ReferenceError on copy button. |
 | `quickshell/island/Settings.qml`, `SetAiModel.qml` | Fixed scope self-shadowing (`root: root`) across all 18 custom leaf components by exposing `readonly property var settingsScope: root` and binding `root: settingsScope`. Hardened `SetAiModel.qml` with null guards and responsive anchor layouts to prevent model name / metadata overlap. |
+
+
+## Round 16 (Super tap, utilities box, Spotify / Discord themes)
+
+| File | Change |
+| --- | --- |
+| `scripts/super_tap.sh`, `quickshell/island/shell.qml` | Tap Super no longer depends on the `hal` binary: plain shell writes the trigger file, the island touches `halcyon-super-ack`, and a missing answer within ~150 ms falls back to `quickshell ipc` (ignored for 900 ms after a tap that worked). `~/.cache/island/super-debug` turns on a log. |
+| `scripts/close.sh`, `scripts/halcyon-doctor.sh` | `close.sh` uses its plain fallback when `hal` exits with 2 (older binary). The doctor warns when `bin/hal` is out of date. |
+| `quickshell/island/Panel.qml`, `Settings.qml`, `shell.qml` | New Settings > Utilities box > "Take out of the box" (`opt:uHide*`). |
+| `scripts/app-themes.sh` | Spotify (spicetify) and Discord (Vesktop / Vencord) themes rewritten: tonal layers, hairlines, contrast-safe accent icons, no reshaped icons / avatars. |
+
+
+## Round 31 (Settings partition, light-theme polish)
+
+| File | Change |
+| --- | --- |
+| `quickshell/island/Settings.qml` | **Sections and groups re-partitioned.** Six section tabs (Appearance / Bar & panels / Desktop / Input & power / Performance / System; was five) and 33 groups (was 28). The five groups that had grown past ~13 rows were split by topic: Bar -> **Bar** + **Bar behaviour**; Effects -> **Transparency & blur** + **Motion & dimming** (Extra dim moved here, "Accent colour on the focused window" moved to Look next to Border width); Notifications & panels -> **Notifications** + **Edge boxes & volume bar**; Mouse, touchpad & keyboard -> **Mouse & touchpad** + **Keyboard & launcher**; Performance & memory -> **Performance & memory** + **Tree view & constellations**. Desktop builder and Widget builder moved from Appearance to Desktop. Every item, key and description is unchanged (checked: the same 1249 item lines before and after). |
+| `quickshell/island/Settings.qml` | **Fixed: three groups were missing from the Pages layout.** Widget builder, Utilities box and Screen & audio recording were on no page (only a search found them). The pages are now Appearance, Bar, Panels, Desktop, Input & power, Performance, System, Backup, and every group is on exactly one. The seven tree-view options (quality, frame rate, constellation, corner, size, dots, line drawing) are no longer hidden behind Advanced; the new group is folded by default instead. |
+| `tests/settings-groups.test.js`, `.github/workflows/ci.yml` | New CI check: every group on exactly one page, known sections, every tab non-empty, groups in section order, no group over 14 items. It fails on the previous Settings.qml (`widgets is on []`). |
+| `quickshell/island/Glass.qml` | **Light theme:** the top sheen and the 1 px top edge were drawn in the (dark) text colour, so a pale box got a dark smudge along its top. They are white on the light theme now (a little stronger, since white on pale needs more to show). Dark theme unchanged. |
+| `quickshell/island/Pal.qml` | **Light theme contrast:** muted text 0.38 -> 0.35 lightness (4.4-4.65 : 1 -> about 5 : 1 on the hovered surface). Accents are capped at relative luminance 0.105 (new `readableOnLight()`), which only darkens yellow / green / cyan wallpapers (they were about 2-3 : 1); blue and purple accents are unchanged. Worst case over all hues is now 4.6 : 1. |
+| `quickshell/island/Pal.qml` | **Accent cycling:** every wallpaper colour in the cycle is pulled into the same pastel band as the fixed accent (lightness 0.66-0.78, saturation 0.30-0.58). A dark navy or neon swatch no longer gives a dim or harsh accent while cycling; hues are untouched. |
+
+Not run here: there is no Quickshell in the sandbox, so none of the QML was drawn. `node tests/settings-groups.test.js` passes; the contrast figures were computed with the same formulas.

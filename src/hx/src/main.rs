@@ -20,7 +20,7 @@ fn num(a: &[String], i: usize, d: f64) -> f64 {
 fn usage() {
     eprintln!(
         "hx: Halcyon helper multitool\n\
-         island feeds : audio | bt | wifi | disk [secs] | specs | wsres [secs] | stats [secs] | net [secs] | states | palette <image> | portrait <image> [grid] [max] | status | ctl | stars <image> [n]\n\
+         island feeds : audio | bt | wifi | disk [secs] | gpu [secs] | specs | wsres [secs] | stats [secs] | net [secs] | states | palette <image> | portrait <image> [grid] [max] | status | ctl | stars <image> [n]\n\
          focus mode   : focus start|stop|toggle|pause|resume|add|skip|status|conf|set|apps|block|unblock (see scripts/focus.sh)\n\
          sysmode      : ids (IDS daemon) | dossier [ip]"
     );
@@ -34,6 +34,7 @@ fn main() {
         Some("bt") => feeds::bt(),
         Some("wifi") => feeds::wifi(),
         Some("disk") => feeds::disk(num(rest, 0, 10.0)),
+        Some("gpu") => feeds::gpu(num(rest, 0, 2.0)),
         Some("specs") => specs::run_specs(),
         Some("wsres") => wsres::wsres(num(rest, 0, 2.0)),
         Some("ctl") => ctl::run(),

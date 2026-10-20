@@ -22,8 +22,8 @@ Scope {
     property string spot: "tl"
     property bool open: false
 
-    property string action: "both"                // copy | save | both: what the panel opens with (remembered by the script)
-    property var has: ({ grim: true, slurp: true, "wl-copy": true, wayfreeze: true, hyprctl: true })
+    property string action: "both"                // copy | save | both | text: what the panel opens with (remembered by the script)
+    property var has: ({ grim: true, slurp: true, "wl-copy": true, wayfreeze: true, hyprctl: true, tesseract: true })
     property string dir: ""
 
     readonly property bool panelRight: spot.charAt(1) !== "r"
@@ -46,7 +46,7 @@ Scope {
             onStreamFinished: {
                 try {
                     var d = JSON.parse(text)
-                    if (d.action === "copy" || d.action === "save" || d.action === "both") root.action = d.action
+                    if (d.action === "copy" || d.action === "save" || d.action === "both" || d.action === "text") root.action = d.action
                     if (d.has) root.has = d.has
                     root.dir = d.dir || ""
                 } catch (e) { /* keeps what it had */ }
@@ -65,6 +65,7 @@ Scope {
         if (!has.grim) return false
         if (mode !== "full" && !has.slurp) return false
         if (action !== "save" && !has["wl-copy"]) return false
+        if (action === "text" && !has.tesseract) return false
         return true
     }
     readonly property string missingText: {
@@ -72,6 +73,7 @@ Scope {
         if (!has.grim) m.push("grim")
         if (!has.slurp) m.push("slurp")
         if (!has["wl-copy"]) m.push("wl-clipboard")
+        if (action === "text" && !has.tesseract) m.push("tesseract (and tesseract-data-eng)")
         return m.length ? "Missing: " + m.join(", ") : ""
     }
 
@@ -159,6 +161,7 @@ Scope {
                             else if (e.key === Qt.Key_C) { root.setAction("copy"); e.accepted = true }
                             else if (e.key === Qt.Key_S) { root.setAction("save"); e.accepted = true }
                             else if (e.key === Qt.Key_B) { root.setAction("both"); e.accepted = true }
+                            else if (e.key === Qt.Key_T) { root.setAction("text"); e.accepted = true }
                         }
                     }
 
@@ -304,7 +307,7 @@ Scope {
                             SegSwitch {
                                 pal: root.pal
                                 current: root.action
-                                options: [{ k: "copy", t: "Copy" }, { k: "save", t: "Save" }, { k: "both", t: "Both" }]
+                                options: [{ k: "copy", t: "Copy" }, { k: "save", t: "Save" }, { k: "both", t: "Both" }, { k: "text", t: "Text" }]
                                 onPicked: k => root.setAction(k)
                             }
                             Item { Layout.fillWidth: true }
@@ -315,15 +318,16 @@ Scope {
                             wrapMode: Text.Wrap
                             text: root.missingText !== "" ? root.missingText + " (install it and this lights up)"
                                 : (root.action === "copy" ? "Goes on the clipboard only. No file is made."
+                                : (root.action === "text" ? "Reads the words in the picture and copies the text. No picture is kept."
                                 : (root.action === "save" ? "Saved to " + root.dir.replace(Quickshell.env("HOME"), "~") + ". The clipboard is not touched."
-                                : "Saved to " + root.dir.replace(Quickshell.env("HOME"), "~") + " and copied."))
+                                : "Saved to " + root.dir.replace(Quickshell.env("HOME"), "~") + " and copied.")))
                             color: root.missingText !== "" ? root.pal.warn : Qt.alpha(root.pal.muted, 0.9)
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tCap
                         }
 
                         Text {
-                            text: "R  W  F  pick   \u00b7   C  S  B  copy / save / both   \u00b7   Esc closes   \u00b7   Super + Shift + S still drags a region at once"
+                            text: "R  W  F  pick   \u00b7   C  S  B  T  copy / save / both / text   \u00b7   Esc closes   \u00b7   Super + Shift + S still drags a region at once"
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                             color: Qt.alpha(root.pal.muted, 0.85)

@@ -16,9 +16,13 @@
 //!   hal idle-dim ...       <- scripts/idle-dim.sh            (idle dim / undim)
 //!   hal numlock ...        <- scripts/numlock.sh             (numlock status / toggle)
 //!   hal notif-guard        <- scripts/notif-guard.sh         (kill conflicting notification daemons)
+//!   hal charge-limit ...   <- quickshell/island/scripts/charge-limit.sh
+//!   hal bt-battery         <- quickshell/island/scripts/bt-battery.sh
 //!   hal ping
 
+mod btbattery;
 mod caffeine;
+mod chargelimit;
 mod close;
 mod extradim;
 mod gestures;
@@ -54,6 +58,8 @@ fn usage() {
          \x20 idle-dim dim | undim\n\
          \x20 numlock status | toggle | on | off\n\
          \x20 notif-guard\n\
+         \x20 charge-limit status | toggle | on | off\n\
+         \x20 bt-battery\n\
          \x20 ping"
     );
 }
@@ -78,6 +84,8 @@ fn main() {
         Some("idle-dim") | Some("idledim") => idledim::run(rest),
         Some("numlock") => numlock::run(rest),
         Some("notif-guard") | Some("notifguard") => notifguard::run(),
+        Some("charge-limit") | Some("chargelimit") => chargelimit::run(rest),
+        Some("bt-battery") | Some("btbattery") => btbattery::run(),
         Some("ping") => 0,
         _ => {
             usage();

@@ -3,6 +3,7 @@ use crate::util::{run, spawn_quiet};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
+use std::io::Write;
 use std::time::Duration;
 
 fn emit(v: Value) {
@@ -276,6 +277,89 @@ fn disks_once() -> Value {
 pub fn disk(iv: f64) {
     loop {
         emit(disks_once());
+        std::thread::sleep(Duration::from_secs_f64(iv.max(0.5)));
+    }
+}
+
+/// One JSON line every `iv` seconds (default 2), only while the performance page is open:
+/// {"gpu":<percent>,"state":"on|off|none"}
+pub fn gpu(iv: f64) {
+    let pci_root = std::env::var("PCI_ROOT").unwrap_or_else(|_| "/sys/bus/pci/devices".to_string());
+    // Find NVIDIA device
+    let mut nv_dir: Option<std::path::PathBuf> = None;
+    if let Ok(entries) = std::fs::read_dir(&pci_root) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if let Ok(vendor) = std::fs::read_to_string(path.join("vendor")) {
+                if vendor.trim() == "0x10de" {
+                    if let Ok(class) = std::fs::read_to_string(path.join("class")) {
+                        if class.trim().starts_with("0x03") {
+                            nv_dir = Some(path);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Find AMD device if no NVIDIA
+    let mut amd_file: Option<std::path::PathBuf> = None;
+    if nv_dir.is_none() {
+        if let Ok(entries) = std::fs::read_dir("/sys/class/drm") {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with("card") {
+                    let busy = entry.path().join("device/gpu_busy_percent");
+                    if busy.exists() {
+                        amd_file = Some(busy);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    loop {
+        let mut state = "none";
+        let mut gpu_pct: u32 = 0;
+
+        if let Some(ref nv) = nv_dir {
+            let rs = std::fs::read_to_string(nv.join("power/runtime_status"))
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            match rs.as_str() {
+                "suspended" | "suspending" => {
+                    state = "off";
+                }
+                _ => {
+                    let out = run("nvidia-smi", &["--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], 2);
+                    let line = out.lines().next().unwrap_or("").trim();
+                    let digits: String = line.chars().filter(|c| c.is_ascii_digit()).collect();
+                    if let Ok(n) = digits.parse::<u32>() {
+                        state = "on";
+                        gpu_pct = n;
+                    } else if !line.is_empty() {
+                        state = "on";
+                    } else {
+                        state = "off";
+                    }
+                }
+            }
+        } else if let Some(ref amd) = amd_file {
+            state = "on";
+            if let Ok(raw) = std::fs::read_to_string(amd) {
+                gpu_pct = raw.trim().parse::<u32>().unwrap_or(0);
+            }
+        }
+
+        let line = format!("{{\"gpu\":{},\"state\":\"{}\"}}", gpu_pct, state);
+        println!("{}", line);
+        if std::io::stdout().flush().is_err() {
+            break;
+        }
+
         std::thread::sleep(Duration::from_secs_f64(iv.max(0.5)));
     }
 }

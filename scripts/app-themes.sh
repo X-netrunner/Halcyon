@@ -433,66 +433,94 @@ spotify_player_theme() {
 
 # ================================================================== Spotify (spicetify)
 SP_LAUNCHER="$HOME/.local/share/spotify-launcher/install/usr/share/spotify"
+# Shared by the Spotify and Discord themes: the same few steps of depth, so both apps look like part of the island.
+#   T_BASE  the deepest layer (window background, rails)     T_SIDE  side panels      bg  the main surface      surf  cards, inputs, menus
+#   T_LINE  a hairline outline (fg at a few %, never a solid border)      T_HOVER  hover wash      ON_ACC  the colour of an icon / text ON the accent
+lum() { local c=${1#\#}; echo $(( (299 * 16#${c:0:2} + 587 * 16#${c:2:2} + 114 * 16#${c:4:2}) / 1000 )); }
+rgba_of() { printf 'rgba(%s, %s)' "$(rgb "$1")" "$2"; }      # rgba_of #rrggbb 0.08
+app_tones() {
+  mixv "$bg" "#000000" 32; T_BASE=$MIX
+  mixv "$bg" "#000000" 14; T_SIDE=$MIX
+  T_LINE=$(rgba_of "$fg" 0.08); T_LINE2=$(rgba_of "$fg" 0.14); T_HOVER=$(rgba_of "$fg" 0.07)
+  T_SEL=$(rgba_of "$acc" 0.16); T_SEL2=$(rgba_of "$acc" 0.26)
+  # an accent that is light needs dark icons on it, a dark one needs light icons (before, the icon colour was always the background colour: invisible on a dark accent)
+  if [ "$(lum "$acc")" -gt 150 ]; then mixv "$bg" "#000000" 55; ON_ACC=$MIX; else ON_ACC=$fg; fi
+}
 spotify_theme() {
   have spicetify || return 0
   local d="$HOME/.config/spicetify/Themes/halcyon"
   mkdir -p "$d"
-  mixv "$bg" "$fg" 8; local card=$MIX
+  app_tones
+  mixv "$bg" "$fg" 8; local hov=$MIX
+  mixv "$bg" "$fg" 13; local hov2=$MIX
+  mixv "$bg" "$fg" 20; local rail=$MIX
   {
     echo "; Halcyon: written by scripts/app-themes.sh from the wallpaper colours (do not edit: it is rewritten)"
     echo "[base]"
     echo "text               = $(nh "$fg")";       echo "subtext            = $(nh "$mut")";     echo "sidebar-text       = $(nh "$fg")"
     echo "main               = $(nh "$bg")";       echo "main-elevated      = $(nh "$surf")";    echo "sidebar            = $(nh "$bg")"
-    echo "player             = $(nh "$bg")";       echo "card               = $(nh "$card")";    echo "shadow             = $(nh "$bg")"
-    echo "highlight          = $(nh "$hi")";       echo "highlight-elevated = $(nh "$hi")";     echo "selected-row       = $(nh "$fg")"
+    echo "player             = $(nh "$bg")";       echo "card               = $(nh "$surf")";    echo "shadow             = $(nh "$T_BASE")"
+    echo "highlight          = $(nh "$hov")";      echo "highlight-elevated = $(nh "$hov2")";    echo "selected-row       = $(nh "$fg")"
     echo "button             = $(nh "$acc")";      echo "button-active      = $(nh "$acc")";     echo "button-disabled    = $(nh "$mut")"
-    echo "tab-active         = $(nh "$hi")";       echo "notification       = $(nh "$hi")";      echo "notification-error = $(nh "$red")"
-    echo "equalizer          = $(nh "$acc")";      echo "misc               = $(nh "$hi")"
+    echo "tab-active         = $(nh "$hov2")";     echo "notification       = $(nh "$surf")";    echo "notification-error = $(nh "$red")"
+    echo "equalizer          = $(nh "$acc")";      echo "misc               = $(nh "$rail")"
     echo "play-button        = $(nh "$acc")";      echo "play-button-active = $(nh "$acc")";     echo "progress-fg        = $(nh "$acc")"
-    echo "progress-bg        = $(nh "$hi")";       echo "heart              = $(nh "$red")";     echo "pagelink-active    = $(nh "$acc")"
+    echo "progress-bg        = $(nh "$rail")";     echo "heart              = $(nh "$acc")";     echo "pagelink-active    = $(nh "$acc")"
     echo "radio-btn-active   = $(nh "$acc")"
   } > "$d/color.ini.tmp" && mv "$d/color.ini.tmp" "$d/color.ini"
-  # user.css: the Halcyon shape (floating rounded panels, soft cards, pill buttons). Only the marked block is rewritten: your own CSS below it stays.
+  # user.css: the Halcyon shape. Only the marked block is rewritten: your own CSS below it stays.
+  # Design rules: depth comes from tone (base < panel < card), outlines are hairlines, the accent is only for what is selected / playing / primary,
+  # hover is a quiet wash, nothing jumps or lifts, and icons are never recoloured or reshaped (only their colour at rest / hover / active).
   local B="/* >>> halcyon >>> */" E="/* <<< halcyon <<< */" u="$d/user.css"
-  mixv "$bg" "$acc" 14; local sel=$MIX
+  mixv "$bg" "$acc" 12; local head=$MIX
   {
     strip_block "$u" "$B" "$E"
     cat <<CSS
 $B
 /* written by scripts/app-themes.sh: do not edit this block (Spotify renames classes now and then: a rule that stops matching is harmless) */
-.Root__top-container { gap: 8px !important; padding: 8px !important; background: $bg !important; }
+:root { --halcyon-line: $T_LINE; --halcyon-hover: $T_HOVER; --halcyon-sel: $T_SEL; --halcyon-on-accent: $ON_ACC; }
+/* window: the deepest tone, panels float on it */
+.Root__top-container { gap: 8px !important; padding: 8px !important; background: $T_BASE !important; }
 .Root__nav-bar, .Root__main-view, .Root__right-sidebar, .Root__now-playing-bar, .main-yourLibraryX-libraryContainer, .main-view-container {
-  border-radius: 16px !important; }
-.Root__nav-bar, .Root__right-sidebar { background: $surf !important; border: 1px solid $hi !important; }
-.Root__main-view { background: $bg !important; border: 1px solid $hi !important; overflow: hidden !important; }
-.main-nowPlayingBar-container, .Root__now-playing-bar { background: $surf !important; border: 1px solid $hi !important; border-radius: 16px !important; }
+  border-radius: 12px !important; }
+.Root__nav-bar, .Root__right-sidebar, .Root__main-view { background: $bg !important; box-shadow: inset 0 0 0 1px $T_LINE !important; border: 0 !important; overflow: hidden !important; }
+.Root__now-playing-bar, .main-nowPlayingBar-container { background: $bg !important; box-shadow: inset 0 0 0 1px $T_LINE !important; border: 0 !important; }
 .main-topBar-background, .main-topBar-container { background: transparent !important; }
-.main-entityHeader-background { background: linear-gradient(180deg, $sel, $bg) !important; }
+.main-entityHeader-background { background: linear-gradient(180deg, $head 0%, $bg 100%) !important; }
 .main-home-content, .main-entityHeader-container { background: transparent !important; }
-.main-card-card, .main-cardImage-imageWrapper { border-radius: 14px !important; }
-.main-card-card { background: $surf !important; border: 1px solid transparent !important; transition: background .15s ease, border-color .15s ease, transform .15s ease !important; }
-.main-card-card:hover { background: $hi !important; border-color: $acc !important; transform: translateY(-2px); }
-.main-trackList-trackListRow { border-radius: 10px !important; }
-.main-trackList-trackListRow:hover { background: rgba($(rgb "$acc"), 0.12) !important; }
-.main-trackList-selected, .main-trackList-active { background: rgba($(rgb "$acc"), 0.22) !important; }
-.main-trackList-playingIcon, .main-trackList-rowPlayPauseButton { color: $acc !important; }
-.main-playButton-PlayButton, .main-playPauseButton-button { background: $acc !important; color: $bg !important; border-radius: 50% !important; }
-.main-playButton-PlayButton:hover { filter: brightness(1.12); transform: scale(1.05) !important; }
+/* cards: flat, a wash on hover, no lift */
+.main-card-card, .main-cardImage-imageWrapper { border-radius: 10px !important; }
+.main-card-card { background: transparent !important; transition: background .15s ease !important; }
+.main-card-card:hover { background: $surf !important; }
+/* rows */
+.main-trackList-trackListRow { border-radius: 8px !important; }
+.main-trackList-trackListRow:hover { background: $T_HOVER !important; }
+.main-trackList-selected, .main-trackList-active { background: $T_SEL !important; }
+.main-trackList-playingIcon { filter: none !important; }
+.main-yourLibraryX-listItem a, .main-yourLibraryX-libraryItemContainer, .main-yourLibraryX-listRow { border-radius: 8px !important; }
+.main-yourLibraryX-listItem:hover, .main-yourLibraryX-libraryItemContainer:hover { background: $T_HOVER !important; }
+.main-yourLibraryX-listItemActive, .main-yourLibraryX-libraryItemContainer[aria-selected="true"] { background: $T_SEL !important; }
+/* primary buttons: the accent, with an icon colour that is readable on it */
+.main-playButton-PlayButton, .main-playPauseButton-button { background-color: $acc !important; color: $ON_ACC !important; }
+.main-playButton-PlayButton svg, .main-playPauseButton-button svg { fill: currentColor !important; color: $ON_ACC !important; }
+.main-playButton-PlayButton:hover, .main-playPauseButton-button:hover { filter: brightness(1.08); transform: none !important; }
 .main-shuffleButton-button.main-shuffleButton-enabled, .main-repeatButton-button.main-repeatButton-enabled { color: $acc !important; }
-.main-globalNav-searchContainer input, .x-searchInput-searchInputInput, .main-topBar-searchBar input { background: $surf !important; border: 1px solid $hi !important; border-radius: 12px !important; }
-.x-searchInput-searchInputInput:focus, .main-globalNav-searchContainer input:focus { border-color: $acc !important; }
-.main-yourLibraryX-listItem a, .main-yourLibraryX-libraryItemContainer, .main-yourLibraryX-listRow { border-radius: 10px !important; }
-.main-yourLibraryX-listItem:hover, .main-yourLibraryX-libraryItemContainer:hover { background: rgba($(rgb "$acc"), 0.10) !important; }
+/* search: a pill with a hairline, the accent only while typing */
+.main-globalNav-searchContainer input, .x-searchInput-searchInputInput, .main-topBar-searchBar input { background: $surf !important; box-shadow: inset 0 0 0 1px $T_LINE !important; border: 0 !important; border-radius: 999px !important; }
+.x-searchInput-searchInputInput:focus, .main-globalNav-searchContainer input:focus { box-shadow: inset 0 0 0 1px $acc !important; }
+/* progress: thin, the handle only on hover */
 .progress-bar__slider, .x-progressBar-fillColor { background: $acc !important; }
-.main-actionButtons button, .main-buttons-button { border-radius: 999px !important; }
-[role="menu"], .main-contextMenu-menu, .main-contextMenu-menuItem { background: $surf !important; border-radius: 12px !important; }
-.main-contextMenu-menu { border: 1px solid $hi !important; box-shadow: 0 10px 30px rgba(0,0,0,.4) !important; padding: 6px !important; }
-.main-contextMenu-menuItemButton:hover { background: rgba($(rgb "$acc"), 0.18) !important; border-radius: 8px !important; }
-::-webkit-scrollbar { width: 8px !important; }
-::-webkit-scrollbar-thumb { background: $hi !important; border-radius: 8px !important; }
-::-webkit-scrollbar-thumb:hover { background: $acc !important; }
+.x-progressBar-progressBarBg, .progress-bar { --progress-bar-height: 4px; }
+/* menus */
+[role="menu"], .main-contextMenu-menu { background: $surf !important; border-radius: 12px !important; border: 0 !important; box-shadow: inset 0 0 0 1px $T_LINE2, 0 12px 32px rgba(0,0,0,.45) !important; padding: 6px !important; }
+.main-contextMenu-menuItemButton { border-radius: 8px !important; }
+.main-contextMenu-menuItemButton:hover, .main-contextMenu-menuItemButton[aria-expanded="true"] { background: $T_HOVER !important; }
+/* scrollbars and selection */
+::-webkit-scrollbar { width: 6px !important; height: 6px !important; }
+::-webkit-scrollbar-thumb { background: $T_LINE2 !important; border-radius: 8px !important; }
+::-webkit-scrollbar-thumb:hover { background: $(rgba_of "$fg" 0.28) !important; }
 ::-webkit-scrollbar-track { background: transparent !important; }
-::selection { background: rgba($(rgb "$acc"), 0.35); }
+::selection { background: $T_SEL2; }
 $E
 CSS
   } > "$u.tmp" && mv "$u.tmp" "$u"
@@ -517,7 +545,9 @@ spotify_setup() {
 # ================================================================== Discord (Vesktop / Vencord)
 discord_theme() {
   local base
-  mixv "$bg" "$fg" 5; local hov=$MIX
+  app_tones
+  mixv "$bg" "$fg" 7; local hov=$MIX
+  mixv "$bg" "$fg" 12; local hov2=$MIX
   for base in "$HOME/.config/vesktop" "$HOME/.config/Vencord"; do
     [ -d "$base" ] || { [ "$base" = "$HOME/.config/vesktop" ] && have vesktop && mkdir -p "$base" || continue; }
     mkdir -p "$base/themes"
@@ -525,85 +555,89 @@ discord_theme() {
 /**
  * @name Halcyon
  * @description The Halcyon rice colours (follows the wallpaper). Written by scripts/app-themes.sh: it is rewritten, do not edit.
- * @version 1
+ * @version 2
  */
+/* Depth by tone: rail (darkest) < channel list < chat < cards / menus. Outlines are hairlines. The accent is only for what is selected, a link or a primary button.
+   Icons and avatars are left alone (only their colour changes at rest / hover / active), so nothing is squashed or clipped. */
 :root, .theme-dark, .theme-darker, .theme-light, .theme-midnight {
-  --h-bg: $bg; --h-surf: $surf; --h-hi: $hi; --h-fg: $fg; --h-mut: $mut; --h-acc: $acc; --h-acc2: $acc2; --h-red: $red; --h-green: $green; --h-yellow: $yellow;
-  /* surfaces (older + newer Discord variable names) */
+  --h-base: $T_BASE; --h-side: $T_SIDE; --h-bg: $bg; --h-surf: $surf; --h-hov: $hov; --h-hov2: $hov2; --h-fg: $fg; --h-mut: $mut; --h-acc: $acc; --h-on-acc: $ON_ACC;
+  --h-red: $red; --h-green: $green; --h-yellow: $yellow; --h-line: $T_LINE; --h-line2: $T_LINE2;
+  /* surfaces: older names (primary = chat, secondary = channel list / members, tertiary = server rail) and the newer base-* names */
   --background-primary: var(--h-bg) !important;
-  --background-secondary: var(--h-surf) !important;
-  --background-secondary-alt: var(--h-surf) !important;
-  --background-tertiary: var(--h-bg) !important;
+  --background-secondary: var(--h-side) !important;
+  --background-secondary-alt: var(--h-side) !important;
+  --background-tertiary: var(--h-base) !important;
   --background-floating: var(--h-surf) !important;
-  --background-accent: var(--h-hi) !important;
+  --background-accent: var(--h-hov2) !important;
   --background-base-low: var(--h-bg) !important;
-  --background-base-lower: var(--h-surf) !important;
-  --background-base-lowest: var(--h-bg) !important;
+  --background-base-lower: var(--h-side) !important;
+  --background-base-lowest: var(--h-base) !important;
   --background-surface-high: var(--h-surf) !important;
-  --background-surface-higher: var(--h-hi) !important;
-  --background-surface-highest: var(--h-hi) !important;
+  --background-surface-higher: var(--h-hov) !important;
+  --background-surface-highest: var(--h-hov2) !important;
   --chat-background-default: var(--h-bg) !important;
   --channeltextarea-background: var(--h-surf) !important;
   --input-background: var(--h-surf) !important;
   --modal-background: var(--h-surf) !important;
-  --modal-footer-background: var(--h-bg) !important;
-  --background-modifier-hover: rgba($(rgb "$hov"), 0.55) !important;
-  --background-modifier-selected: rgba($(rgb "$acc"), 0.20) !important;
-  --background-modifier-active: rgba($(rgb "$acc"), 0.28) !important;
-  --background-modifier-accent: rgba($(rgb "$mut"), 0.18) !important;
-  --bg-overlay-1: var(--h-bg) !important; --bg-overlay-2: var(--h-surf) !important; --bg-overlay-3: var(--h-surf) !important;
-  --bg-overlay-4: var(--h-bg) !important; --bg-overlay-5: var(--h-surf) !important; --bg-overlay-6: var(--h-bg) !important;
-  /* text */
+  --modal-footer-background: var(--h-side) !important;
+  --background-modifier-hover: $T_HOVER !important;
+  --background-modifier-selected: $T_SEL !important;
+  --background-modifier-active: $T_SEL2 !important;
+  --background-modifier-accent: $T_LINE !important;
+  --bg-overlay-1: var(--h-base) !important; --bg-overlay-2: var(--h-side) !important; --bg-overlay-3: var(--h-bg) !important;
+  --bg-overlay-4: var(--h-side) !important; --bg-overlay-5: var(--h-bg) !important; --bg-overlay-6: var(--h-base) !important;
+  /* text and icons */
   --text-normal: var(--h-fg) !important; --text-default: var(--h-fg) !important; --text-strong: var(--h-fg) !important;
   --text-muted: var(--h-mut) !important; --text-subtle: var(--h-mut) !important;
   --header-primary: var(--h-fg) !important; --header-secondary: var(--h-mut) !important;
-  --interactive-normal: var(--h-mut) !important; --interactive-hover: var(--h-fg) !important; --interactive-active: var(--h-acc) !important;
-  --interactive-muted: var(--h-hi) !important; --interactive-text-default: var(--h-mut) !important;
+  --interactive-normal: var(--h-mut) !important; --interactive-hover: var(--h-fg) !important; --interactive-active: var(--h-fg) !important;
+  --interactive-muted: var(--h-line2) !important; --interactive-text-default: var(--h-mut) !important;
   --channels-default: var(--h-mut) !important; --channel-icon: var(--h-mut) !important;
   --text-link: var(--h-acc) !important; --text-brand: var(--h-acc) !important;
   /* accent */
   --brand-experiment: var(--h-acc) !important; --brand-500: var(--h-acc) !important; --brand-360: var(--h-acc) !important;
   --brand-experiment-560: var(--h-acc) !important; --brand-experiment-600: var(--h-acc) !important;
   --background-brand: var(--h-acc) !important; --button-filled-brand-background: var(--h-acc) !important;
-  --button-filled-brand-text: var(--h-bg) !important; --mention-foreground: var(--h-acc) !important;
-  --mention-background: rgba($(rgb "$acc"), 0.18) !important;
+  --button-filled-brand-text: var(--h-on-acc) !important; --white-500: var(--h-on-acc);
+  --mention-foreground: var(--h-acc) !important; --mention-background: $T_SEL !important;
   --status-positive: var(--h-green) !important; --status-warning: var(--h-yellow) !important; --status-danger: var(--h-red) !important;
-  --scrollbar-thin-thumb: var(--h-hi) !important; --scrollbar-auto-thumb: var(--h-hi) !important; --scrollbar-auto-track: transparent !important;
-  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px;
-  --custom-guild-icon-border-radius: 14px;
-  --font-primary: "Inter", "gg sans", sans-serif;
+  --scrollbar-thin-thumb: var(--h-line2) !important; --scrollbar-auto-thumb: var(--h-line2) !important; --scrollbar-auto-track: transparent !important;
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
 }
-/* ---- shape: the same soft cards as the island (class names are matched by their stable prefix, Discord renames the suffix) ---- */
-[class*="guilds_"] { background: var(--h-bg) !important; }
-[class*="sidebar_"] { background: var(--h-surf) !important; border-radius: 16px 0 0 0; border-top: 1px solid var(--h-hi); border-left: 1px solid var(--h-hi); }
-[class*="chat_"] { background: var(--h-bg) !important; }
-[class*="chatContent_"] { background: var(--h-bg) !important; }
-[class*="title_"][class*="container_"], [class*="bar_"][class*="themed_"] { background: var(--h-bg) !important; box-shadow: none !important; border-bottom: 1px solid var(--h-hi) !important; }
-[class*="members_"], [class*="membersWrap_"] { background: var(--h-surf) !important; }
-[class*="panels_"] { background: var(--h-bg) !important; border-top: 1px solid var(--h-hi) !important; }
-[class*="channelTextArea_"], [class*="textArea_"] { background: var(--h-surf) !important; border-radius: 14px !important; border: 1px solid var(--h-hi) !important; }
-[class*="channelTextArea_"]:focus-within { border-color: var(--h-acc) !important; box-shadow: 0 0 0 1px var(--h-acc) !important; }
-[class*="searchBar_"] { background: var(--h-surf) !important; border-radius: 10px !important; }
-[class*="wrapper_"][class*="guildIcon"], [class*="icon_"][class*="guild"], [class*="listItem_"] [class*="wrapper_"] > svg { transition: border-radius .15s ease; }
-[class*="selected_"][class*="wrapper_"] > [class*="pill"], [class*="item_"][class*="selected"] { background: var(--h-acc) !important; }
-[class*="containerDefault_"] [class*="wrapper_"][class*="selected"], [class*="modeSelected"] { background: rgba($(rgb "$acc"), 0.18) !important; border-radius: 10px !important; }
-[class*="containerDefault_"] [class*="wrapper_"]:hover, [class*="modeUnread"]:hover { background: rgba($(rgb "$acc"), 0.10) !important; border-radius: 10px !important; }
-[class*="messageListItem_"] [class*="message_"]:hover, [class*="cozyMessage_"]:hover { background: rgba($(rgb "$hov"), 0.55) !important; border-radius: 10px; }
-[class*="mentioned_"] { background: rgba($(rgb "$acc"), 0.10) !important; box-shadow: inset 2px 0 0 var(--h-acc) !important; }
-[class*="mentioned_"]:hover { background: rgba($(rgb "$acc"), 0.16) !important; }
+/* ---- shape (class names are matched by their stable prefix; Discord renames the suffix; a rule that stops matching is harmless) ---- */
+[class*="guilds_"], [class*="sidebar_"], [class*="members_"], [class*="membersWrap_"], [class*="panels_"] { border: 0 !important; }
+[class*="chat_"]:not([class*="chatContent"]) { border-top-left-radius: 12px; box-shadow: inset 1px 1px 0 var(--h-line); }
+[class*="title_"][class*="container_"], [class*="bar_"][class*="themed_"] { box-shadow: 0 1px 0 var(--h-line) !important; background: transparent !important; }
+[class*="panels_"] { background: var(--h-base) !important; box-shadow: inset 0 1px 0 var(--h-line) !important; }
+/* the message box */
+[class*="channelTextArea_"] { background: var(--h-surf) !important; border-radius: 12px !important; box-shadow: inset 0 0 0 1px var(--h-line) !important; }
+[class*="channelTextArea_"]:focus-within { box-shadow: inset 0 0 0 1px var(--h-acc) !important; }
+[class*="searchBar_"] { background: var(--h-surf) !important; border-radius: 8px !important; }
+/* channel and DM rows: a quiet wash on hover, a soft accent tint when selected */
+[class*="containerDefault_"] [class*="wrapper_"]:hover, [class*="channel_"][class*="container_"]:hover { background: var(--h-hov) !important; border-radius: 8px !important; }
+[class*="containerDefault_"] [class*="selected_"], [class*="modeSelected"] { background: $T_SEL !important; border-radius: 8px !important; }
+[class*="containerDefault_"] [class*="selected_"] [class*="name_"], [class*="modeSelected"] [class*="name_"] { color: var(--h-fg) !important; }
+/* server rail: only the little bar at the side is the accent */
+[class*="selected_"][class*="wrapper_"] > [class*="pill"], [class*="pill_"] [class*="item_"] { background: var(--h-acc) !important; }
+/* messages */
+[class*="messageListItem_"] [class*="message_"]:hover, [class*="cozyMessage_"]:hover { background: var(--h-hov) !important; }
+[class*="mentioned_"] { background: $T_SEL !important; box-shadow: inset 2px 0 0 var(--h-acc) !important; }
+[class*="mentioned_"]:hover { background: $T_SEL2 !important; }
 [class*="newMessagesBar_"], [class*="divider_"][class*="isUnread"] { color: var(--h-acc) !important; border-color: var(--h-acc) !important; }
-[class*="layer_"] [class*="menu_"], [class*="popout_"], [class*="quickswitcher_"], [class*="container_"][class*="menu"] { background: var(--h-surf) !important; border: 1px solid var(--h-hi) !important; border-radius: 14px !important; box-shadow: 0 10px 30px rgba(0,0,0,.4) !important; }
-[class*="item_"][class*="focused"] { background: rgba($(rgb "$acc"), 0.22) !important; border-radius: 8px; }
-[class*="root_"][class*="modal"], [class*="modal_"] { border-radius: 18px !important; border: 1px solid var(--h-hi) !important; }
-[class*="markup_"] code, [class*="markup_"] pre, [class*="codeBlockText"] { background: var(--h-surf) !important; border: 1px solid var(--h-hi) !important; border-radius: 10px !important; }
-[class*="embedWrapper_"] { background: var(--h-surf) !important; border-color: var(--h-hi) !important; border-radius: 12px !important; }
-[class*="lookFilled_"][class*="colorBrand_"] { border-radius: 10px !important; font-weight: 600; }
-[class*="avatar_"] img, [class*="avatar_"] svg { border-radius: 50% !important; }
-[class*="scroller_"]::-webkit-scrollbar { width: 8px !important; height: 8px !important; }
-[class*="scroller_"]::-webkit-scrollbar-thumb { background: var(--h-hi) !important; border-radius: 8px !important; border: 2px solid transparent !important; background-clip: padding-box !important; }
-[class*="scroller_"]::-webkit-scrollbar-thumb:hover { background: var(--h-acc) !important; background-clip: padding-box !important; }
+[class*="markup_"] code, [class*="markup_"] pre, [class*="codeBlockText"] { background: var(--h-surf) !important; box-shadow: inset 0 0 0 1px var(--h-line) !important; border: 0 !important; border-radius: 8px !important; }
+[class*="embedWrapper_"] { background: var(--h-surf) !important; border-color: var(--h-line2) !important; border-radius: 10px !important; }
+/* menus, pop-outs, quick switcher, dialogs */
+[class*="layer_"] [class*="menu_"], [class*="popout_"], [class*="quickswitcher_"] { background: var(--h-surf) !important; border: 0 !important; border-radius: 12px !important; box-shadow: inset 0 0 0 1px var(--h-line2), 0 12px 32px rgba(0,0,0,.45) !important; }
+[class*="item_"][class*="focused"] { background: var(--h-hov2) !important; border-radius: 6px; }
+[class*="root_"][class*="modal"], [class*="modal_"] { border-radius: 14px !important; }
+/* the main button */
+[class*="lookFilled_"][class*="colorBrand_"] { border-radius: 8px !important; font-weight: 600; }
+/* scrollbars and selection */
+[class*="scroller_"]::-webkit-scrollbar { width: 6px !important; height: 6px !important; }
+[class*="scroller_"]::-webkit-scrollbar-thumb { background: var(--h-line2) !important; border-radius: 8px !important; border: 0 !important; }
+[class*="scroller_"]::-webkit-scrollbar-thumb:hover { background: $(rgba_of "$fg" 0.28) !important; }
 [class*="scroller_"]::-webkit-scrollbar-track { background: transparent !important; border: none !important; }
-::selection { background: rgba($(rgb "$acc"), 0.35); }
+::selection { background: $T_SEL2; }
 CSS
     mv "$base/themes/halcyon.theme.css.tmp" "$base/themes/halcyon.theme.css"
     # Vesktop's own settings: the loading splash wears the same colours

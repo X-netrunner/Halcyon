@@ -87,6 +87,13 @@ ShellRoot {
         lockBlur: 40,              // blur radius of that wallpaper (4 .. 64)
         lockTint: 0.55,            // how opaque the theme-colour sheet over the blurred wallpaper is (0 = wallpaper as it is .. 0.95); yours to set
         lockWidgets: false,        // OFF by default: the lock screen is just the clock + password. On = battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
+        splashStart: true,         // also play the splash once per login session when the lock screen is NOT the login screen (display-manager users); once per session, never on an island restart
+        splashUnlock: true,        // the stars rush out again for ~2 s right after you unlock the screen (SplashPreview.qml, mode "unlock"); needs the login splash switch on; not in Gaming mode or with motion off
+        splashShutdown: true,      // shut down / restart from the power menu: the stars are drawn back into the centre first (mode "shutdown"), then the machine goes down
+        splashSound: false,        // a quiet chime with the splash (scripts/splash-sound.sh); off by default
+        todOn: false,              // time-of-day wallpaper: a soft colour grade over the wallpaper that follows the sun (TimeOfDay.js, Wallpaper.qml); Settings > Splash, sky & time of day
+        todStrength: 60,           // 0 .. 100 : how strong that grade is (100 = full dusk orange / deep night blue)
+        splash: true,              // the login splash (Splash.qml: moving stars + the Halcyon sparkle) plays on the lock screen when it is also the login screen; Settings > Power & lock
         lockSwitch: false,         // OFF by default. On = the lock screen has a "Switch user" button (other logged-in users, or a login screen for someone else)
         limMode: "manual",         // manual | auto : Settings > Performance > Limits. auto = the RAM / CPU limits are learned from your own use (startup-view.py adapt-sample, every 5 min)
         resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
@@ -98,6 +105,7 @@ ShellRoot {
         scrollLinger: 3000,        // ms a performance / media page opened by scrolling / swiping the bar stays after the pointer leaves (never shorter than pageClose)
         pageClose: 600,            // ms the performance / media page waits after the pointer leaves the bar before it folds back (150 / 600 / 4000)
         cornerTimeout: 6000,       // ms the bottom-right corner pin / quick utilities overlay remains open
+        dndFullscreen: true,       // popups stay quiet while a window is fullscreen (Settings > Notifications); Halcyon's own and urgent ones still show
         treeConst: "full",         // full | corner | off : the constellation behind the tree view (corner = small, tucked into treeConstCorner)
         treeConstCorner: "br",     // tl | tr | bl | br
         treeConstSize: 30,         // % of the tree's width / height the small constellation takes
@@ -590,6 +598,10 @@ ShellRoot {
             else if (id === "layout") { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_layout.sh"]); hyReadAgain.restart() }
             else if (id === "reset-look") root.resetLook()
             else if (id === "startup-view") settingsWin.openStartup()
+            else if (id === "splash-preview") splashPreview.play()
+            else if (id === "splash-unlock-preview") splashPreview.playMode("unlock")
+            else if (id === "splash-shutdown-preview") splashPreview.playMode("shutdown")
+            else if (id === "sky-open") weeklySky.show()
             else if (id === "greeting-paste") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "paste"])
             else if (id === "greeting-edit") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "edit"])
             else if (id === "greeting-preview") quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh preview")
@@ -714,6 +726,8 @@ ShellRoot {
         tint: root.opt.lockTint !== undefined ? root.opt.lockTint : 0.55
         widgets: root.opt.lockWidgets === true
         allowSwitch: root.opt.lockSwitch === true
+        splash: root.opt.splash !== false
+        splashSound: root.opt.splashSound === true
         player: root.player
         hasBat: root.stats.hasBat === true
         batPct: Math.round(root.stats.bat || 0)
@@ -733,12 +747,69 @@ ShellRoot {
     Process {
         running: true
         command: ["sh", "-c", "[ -f \"$HOME/.cache/island/lock-on-start\" ] && echo yes"]
-        stdout: StdioCollector { onStreamFinished: { if (text.trim() === "yes") lockScreen.lock() } }
+        stdout: StdioCollector { onStreamFinished: { if (text.trim() === "yes") { lockScreen.splashArm = true; lockScreen.lock(); splashMark.running = true } } }
     }
+    // the splash on its own (Settings > Power & lock > Play the splash, `halcyon splash`, `>splash`); the real one is inside the lock screen
+    SplashPreview {
+        id: splashPreview
+        pal: pal
+        sound: root.opt.splashSound === true
+        // a preview (Settings > Play the goodbye) has nothing pending: just give the screen back; a real shutdown / restart goes on now
+        onDone: { if (root.powerPending === "") splashPreview.stop(); else root.powerNow() }
+    }
+    // the weekly sky: your week as stars (WeeklySky.qml; `>weekly sky`, `halcyon weekly-sky`, Settings > Splash, sky & time of day)
+    WeeklySky { id: weeklySky; pal: pal }
+    // a signature moment is allowed when the splash is on, motion is on and we are not gaming (same rule as the login splash)
+    function splashAllowed(key) { return settingsLoaded && opt.splash !== false && opt[key] !== false && !gaming && pal.motion > 0.3 }
+    // shut down / restart: draw the stars in first, then go. `powerFail` is the safety net: whatever happens to the animation
+    // the machine still does what you asked within ~5 s.
+    property string powerPending: ""
+    function goodbye(action) {
+        if (powerPending !== "") return                      // already on its way
+        powerPending = action
+        if (splashAllowed("splashShutdown")) { powerFail.restart(); splashPreview.playMode("shutdown") }
+        else powerNow()
+    }
+    function powerNow() {
+        var a = powerPending
+        powerPending = ""
+        powerFail.stop()
+        if (a === "shutdown") Quickshell.execDetached(["systemctl", "poweroff"])
+        else if (a === "reboot") Quickshell.execDetached(["systemctl", "reboot"])
+    }
+    Timer { id: powerFail; interval: 5000; onTriggered: root.powerNow() }
+    // the screen was just unlocked (and the lock was not the login lock, which already played the splash): the stars rush out again
+    property bool lockWasLogin: false
+    // Once per login session, for people who log in through a display manager (no lock-screen login, so Lock.qml never plays it):
+    // wait until the settings are read, skip it when the lock screen is up or about to be (that one plays the splash itself), in Gaming
+    // mode, or when motion is off. A marker in $XDG_RUNTIME_DIR (gone at logout / reboot) keeps an island restart from playing it again.
+    property bool splashStartDone: false
+    Timer {
+        interval: 1200; repeat: true; running: !root.splashStartDone
+        onTriggered: {
+            if (!root.settingsLoaded) return
+            root.splashStartDone = true
+            if (root.opt.splash === false || root.opt.splashStart === false) return
+            if (lockScreen.locked || lockScreen.splashArm || root.gaming || pal.motion <= 0.3) return
+            splashCheck.running = true
+        }
+    }
+    Process {
+        id: splashCheck
+        command: ["sh", "-c", "f=\"${XDG_RUNTIME_DIR:-/tmp}/halcyon-splash-done-$(id -u)\"; [ -e \"$f\" ] && exit 0; : > \"$f\" && echo yes"]
+        stdout: StdioCollector { onStreamFinished: { if (text.trim() === "yes" && !lockScreen.locked) splashPreview.play() } }
+    }
+    Process { id: splashMark; command: ["sh", "-c", ": > \"${XDG_RUNTIME_DIR:-/tmp}/halcyon-splash-done-$(id -u)\""] }
     Process { id: lockFlagClear; command: ["rm", "-f", Quickshell.env("HOME") + "/.cache/island/lock-on-start"] }
     Connections {
         target: lockScreen
-        function onLockedChanged() { if (lockScreen.locked) lockFlagClear.running = true }
+        function onLockedChanged() {
+            if (lockScreen.locked) { lockFlagClear.running = true; root.lockWasLogin = lockScreen.splashArm }
+            else {
+                if (!root.lockWasLogin && root.splashAllowed("splashUnlock")) splashPreview.playMode("unlock")
+                root.lockWasLogin = false
+            }
+        }
     }
     PowerMenu {
         id: powerMenu
@@ -774,6 +845,7 @@ ShellRoot {
         spot: root.opt.notifSpot === "corner" ? "corner" : "edge"
         cornerId: (root.boxSpots && root.boxSpots.notif) || "tr"
         dnd: root.dnd
+        fsQuiet: root.fsQuiet && root.opt.dndFullscreen !== false
         edgeOn: !root.dropOn
         clickMode: root.clickMode
         autoHide: root.autoHide
@@ -1047,10 +1119,14 @@ ShellRoot {
     // which corner each corner box opens from (Desktop builder; DeskSpots.js keeps it one box per corner): { util, apps, term } = tl | bl | br
     readonly property var boxSpots: DS.normalize(opt ? opt.boxSpots : null)
     property double lastSuperTap: 0
-    function superTapFired() {
+    // viaIpc: the fallback of scripts/super_tap.sh (it only runs when this island did not answer the trigger file in time).
+    // It is ignored for a while after a tap that did work, because it can arrive late.
+    readonly property string superAckFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/halcyon-super-ack"
+    function superTapFired(viaIpc) {
+        Quickshell.execDetached(["touch", superAckFile])       // tells super_tap.sh the tap arrived (also when Tap Super is off: nothing more to try then)
         if (!superTap) return
         var n = Date.now()
-        if (n - lastSuperTap < 350) return
+        if (n - lastSuperTap < (viaIpc === true ? 900 : 350)) return
         lastSuperTap = n
         toggleLauncher()
     }
@@ -1058,7 +1134,7 @@ ShellRoot {
     readonly property string superTapFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/halcyon-super-tap"
     function startTapWatch() { Quickshell.execDetached(["sh", "-c", "echo 0 > \"$1\"", "sh", superTapFile]); tapWatchT.start() }
     Timer { id: tapWatchT; interval: 600; onTriggered: tapWatch.path = root.superTapFile }
-    FileView { id: tapWatch; path: ""; watchChanges: true; onFileChanged: root.superTapFired() }
+    FileView { id: tapWatch; path: ""; watchChanges: true; onFileChanged: root.superTapFired(false) }
     // the top-most thing the island has on screen (power menu > settings > shortcuts > tree view > quick console >
     // notification centre > launcher / performance / media page). Returns false when there is nothing to close.
     // Super + R / >calendar: the full calendar. Master switch off: say so instead of doing nothing.
@@ -1581,8 +1657,8 @@ ShellRoot {
         case "lock": lockScreen.lock(); break
         case "suspend": Quickshell.execDetached(["systemctl", "suspend"]); break
         case "logout": hypr("hl.dsp.exit()"); break
-        case "reboot": Quickshell.execDetached(["systemctl", "reboot"]); break
-        case "shutdown": Quickshell.execDetached(["systemctl", "poweroff"]); break
+        case "reboot": goodbye("reboot"); break
+        case "shutdown": goodbye("shutdown"); break
         }
     }
     function randomWallpaper() {
@@ -1608,6 +1684,8 @@ ShellRoot {
         case "lockdesktopedit": deskEditTarget = "lock"; deskEditing = !deskEditing; break
         case "bartoggle": setOpt("barStyle", opt.barStyle === "off" ? "island" : "off"); break
         case "startupview": settingsWin.openStartup(); break
+        case "splash": splashPreview.play(); break
+        case "weeklysky": weeklySky.toggle(); break
         case "tour": tourReplay(); break
         case "calendar": calendarKey(); break
         case "reload": fullReloadProc.running = true; break
@@ -2038,6 +2116,30 @@ ShellRoot {
         }
     }
 
+    // ---- quiet while a window is fullscreen (a video, a game, a presentation): popups stay away but are still kept in the notification
+    // centre; Halcyon's own (timers, reminders) and urgent ones still show. Do not disturb itself is not touched. After a fullscreen /
+    // workspace / window-close event it asks Hyprland once what the active window is doing (one short hyprctl call, nothing runs in between).
+    property bool fsQuiet: false
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            var n = event.name
+            if (n === "fullscreen" || n === "workspacev2" || (n === "closewindow" && root.fsQuiet)) fsT.restart()
+        }
+    }
+    Timer { id: fsT; interval: 250; onTriggered: if (root.opt.dndFullscreen !== false && !fsProc.running) fsProc.running = true }
+    Process {
+        id: fsProc
+        command: ["hyprctl", "-j", "activewindow"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var q = false
+                try { var d = JSON.parse(text); q = (d.fullscreen === true || d.fullscreen === 2 || d.fullscreen === 3) } catch (e) {}
+                root.fsQuiet = q
+            }
+        }
+    }
+
     readonly property var compactEvents: ({ workspacev2: 1, focusedmonv2: 1, openwindow: 1, closewindow: 1, movewindowv2: 1, destroyworkspacev2: 1 })
     // which special workspace is open ("" = none)
     Connections {
@@ -2093,7 +2195,7 @@ ShellRoot {
     IpcHandler {
         target: "island"
         function launcher(): void { root.toggleLauncher() }
-        function supertap(): void { root.superTapFired() }
+        function supertap(): void { root.superTapFired(true) }
         // Hyprland also reports a pinch and runs this when the fingers lift. The live tracker (touchpad-gestures) has already opened or
         // closed the tree view by then, and this is a TOGGLE, so it used to undo it. Ignored while the tracker is on it and for a moment
         // after. With the tracker not running, nothing is ignored: this call is then the only thing that opens it.
@@ -2132,6 +2234,8 @@ ShellRoot {
         function bar(): void { root.setOpt("barStyle", root.opt.barStyle === "off" ? "island" : "off") }      // the top bar on / off
         function gallery(): void { settingsWin.openGallery() }
         function startup(): void { settingsWin.openStartup() }
+        function splash(): void { splashPreview.play() }
+        function weeklysky(): void { weeklySky.toggle() }
         function tour(): void { root.tourReplay() }
         function calendar(): void { root.runCommand("calendar") }
         function processes(): void { settingsWin.openStartup() }
@@ -2335,6 +2439,7 @@ ShellRoot {
                 onClicked: root.page = "home"
             }
         }
+
 
         // thin hot strip along the top edge that reveals a hidden bar
         Item {
@@ -2727,6 +2832,7 @@ ShellRoot {
                                     vol: root.vol
                                     muted: root.muted
                                     bright: root.bright
+                                    cfg: root.opt
 
                                     onToggleWifi: root.toggleWifi()
                                     onToggleBt: root.toggleBt()
@@ -3009,9 +3115,10 @@ ShellRoot {
         // re-pick the pointer focus, so a pointer parked in the corner got a leave + enter, which closed and re-opened the box
         // over and over. The input region (mask below) is what keeps the surface from catching clicks while it is closed.
         property bool cornerLinger: false
+        property bool pinnedOpen: false     // opened from a keybind / the launcher (pinFor), not by hovering the corner
         onOpenChanged: {
             if (open) { cornerLinger = true; cornerLingerT.stop() }
-            else cornerLingerT.restart()
+            else { pinnedOpen = false; cornerLingerT.restart() }
         }
         Timer { id: cornerLingerT; interval: 900; onTriggered: { corner.cornerLinger = false; gc() } }
         // fixed size (see the note above): never resized, so opening / closing never makes the compositor re-send enter / leave
@@ -3041,7 +3148,7 @@ ShellRoot {
             else if (!panel.wantsKeys && (!root.clickMode || root.autoHide)) { closeT.interval = 450; closeT.restart() }
         }
         // open it from the launcher / keybind; closes by itself if you don't touch it
-        function pinFor(ms) { hovering = true; closeT.interval = (ms < 60000 && root.opt && root.opt.cornerTimeout) ? root.opt.cornerTimeout : ms; closeT.restart() }
+        function pinFor(ms) { hovering = true; pinnedOpen = true; closeT.interval = (ms < 60000 && root.opt && root.opt.cornerTimeout) ? root.opt.cornerTimeout : ms; closeT.restart() }
         Timer { id: closeT; interval: 450; onTriggered: { corner.hovering = false; corner.blockUntil = Date.now() + 600 } }
 
         // one hover zone for corner + panel (see QuickTerm.qml): no flicker when the panel slides in under the pointer
@@ -3107,6 +3214,7 @@ ShellRoot {
             vol: root.vol
             muted: root.muted
             bright: root.bright
+            cfg: root.opt
 
             // hovering anything inside the panel keeps the whole box open (same idea as the notification centre)
             HoverHandler { onHoveredChanged: { corner.panelHover = hovered; corner.syncHover() } }
@@ -3183,9 +3291,10 @@ ShellRoot {
         anchors { top: !appsWin.atB; bottom: appsWin.atB; left: !appsWin.atR; right: appsWin.atR }
         // fixed size, see the utilities box (a surface that resizes under a parked pointer makes the box flicker)
         property bool appsLinger: false
+        property bool pinnedOpen: false     // opened by the Apps button / a command (pinFor), not by hovering the corner
         onOpenChanged: {
             if (open) { appsLinger = true; appsLingerT.stop() }
-            else appsLingerT.restart()
+            else { pinnedOpen = false; appsLingerT.restart() }
         }
         Timer { id: appsLingerT; interval: 900; onTriggered: { appsWin.appsLinger = false; gc() } }
         // fixed size: a resize re-sends enter / leave and made the box open and close by itself; the mask keeps it click-through
@@ -3210,7 +3319,7 @@ ShellRoot {
             if (on) { aClose.stop(); if (!root.clickMode && Date.now() >= blockUntil) hovering = true }
             else if (!root.clickMode || root.autoHide) { aClose.interval = 450; aClose.restart() }
         }
-        function pinFor(ms) { hovering = true; aClose.interval = ms; aClose.restart() }
+        function pinFor(ms) { hovering = true; pinnedOpen = true; aClose.interval = ms; aClose.restart() }
         Timer { id: aClose; interval: 450; onTriggered: { appsWin.hovering = false; appsWin.blockUntil = Date.now() + 600 } }
 
         mask: Region { item: aZone }
