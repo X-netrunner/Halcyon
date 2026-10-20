@@ -515,7 +515,7 @@ class Agent:
             except Exception: args = {}
         args = args if isinstance(args, dict) else {}
         shown = ", ".join(f"{k}={json.dumps(v, ensure_ascii=False)[:60]}" for k, v in args.items())
-        print(f"{DIM}  ⚙ {name}({shown}){RST}", flush=True)
+        print(f"{DIM}  * {name}({shown}){RST}", flush=True)
         try:
             allowed = set(inspect.signature(t["fn"]).parameters)
             res = t["fn"](**{k: v for k, v in args.items() if k in allowed})

@@ -76,8 +76,8 @@ WBase {
             out.push({ kind: "event", t: (e.allDay ? "" : Qt.formatTime(new Date(e.start * 1000), "hh:mm") + "  ") + (e.title || ""), pinned: false })
         }
         for (var j = 0; j < notes.length && out.length < most; j++) {
-            var badge = (notes[j].image ? " 📷" : "") + (notes[j].audio ? " 🎙" : "")
-            var noteTitle = ((notes[j].think && notes[j].think.state === "done" && notes[j].think.title) ? notes[j].think.title : (notes[j].text || "")) + badge + (notes[j].task && notes[j].due ? "  \u00b7  " + dueOf(notes[j].due) : "")
+            var badge = (notes[j].image ? " img" : "") + (notes[j].audio ? " voice" : "")
+            var noteTitle = ((!notes[j].audio && notes[j].think && notes[j].think.state === "done" && notes[j].think.title) ? notes[j].think.title : (notes[j].text || "")) + badge + (notes[j].task && notes[j].due ? "  \u00b7  " + dueOf(notes[j].due) : "")
             out.push({ kind: "note", t: noteTitle, pinned: !!notes[j].pinned })
         }
         return out

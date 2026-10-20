@@ -47,9 +47,19 @@ Scope {
     Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
 
     property bool reloadAgain: false
+    property bool vlmOn: false                  // Settings > Notes > Describe pictures: shows the Describe button
     function loadNotes() {
         if (fetchProc.running) { reloadAgain = true; return }      // a list asked for while one is being read was dropped, and the old one stayed
         fetchProc.running = true
+        if (!confProc.running) confProc.running = true
+    }
+
+    Process {
+        id: confProc
+        command: ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "conf"]
+        stdout: StdioCollector {
+            onStreamFinished: { try { root.vlmOn = !!JSON.parse(text).NOTES_VLM && !!JSON.parse(text).aiEnabled } catch (e) { } }
+        }
     }
 
     Process {
@@ -111,12 +121,14 @@ Scope {
     // what the AI says under a note (the script writes think = {state, why, at}); "thinking" counts only while it is fresh,
     // so a crashed helper can never leave "thinking ..." on a note for ever
     function aiThinking(n) { return !!n.think && n.think.state === "thinking" && (Date.now() / 1000 - (n.think.at || 0)) < 120 }
-    // the title of a note in the list: the AI's overview when it wrote one (think.title), else what you typed
+    // the title of a note in the list: the AI's overview when it wrote one (think.title), else what you typed.
+    // A voice note always shows what was said (the transcript); the AI overview goes under it, never in its place.
     function titleOf(n) {
-        var t = (n.think && n.think.state === "done" && n.think.title) ? n.think.title : (n.text || "")
+        var t = (!n.audio && n.think && n.think.state === "done" && n.think.title) ? n.think.title : (n.text || "")
         return t !== "" ? t : (n.image ? "Image note" : (n.audio ? "Voice note" : ""))
     }
-    function hasTitle(n) { return !!(n.think && n.think.state === "done" && n.think.title) }
+    function hasTitle(n) { return !n.audio && !!(n.think && n.think.state === "done" && n.think.title) }
+    function aiLabel(n) { return (n.think && n.think.real) ? "Overview" : "AI" }      // real = a summary of the note, not a status line
     function aiLine(n) {
         if (!n.think) return ""
         if (n.think.state === "thinking") return aiThinking(n) ? "AI is thinking ..." : ""
@@ -133,6 +145,51 @@ Scope {
     readonly property int taskCount: notes.filter(function (n) { return n.task && !n.done }).length
     readonly property int suggestCount: notes.filter(function (n) { return !!n.suggest }).length
 
+    // where the words of a search are found in a note: [] when some word is nowhere, else the places ("picture text", ...)
+    function editOne(a, b) {                  // true when a and b differ by at most one letter (typo, missing or extra letter)
+        if (a === b) return true
+        var la = a.length, lb = b.length
+        if (Math.abs(la - lb) > 1) return false
+        var i = 0
+        while (i < la && i < lb && a[i] === b[i]) i++
+        if (la === lb) return a.substring(i + 1) === b.substring(i + 1)
+        return la > lb ? a.substring(i + 1) === b.substring(i) : a.substring(i) === b.substring(i + 1)
+    }
+    function matchWhere(n, q) {
+        var terms = q.split(/\s+/).filter(function (t) { return t.length > 0 })
+        var fields = [
+            { name: "note", txt: ((n.text || "") + " " + (n.transcript || "")).toLowerCase() },
+            { name: "picture text", txt: ((n.ocr && n.ocr.text) || "").toLowerCase() },
+            { name: "picture description", txt: ((n.describe && n.describe.text) || "").toLowerCase() },
+            { name: "overview", txt: ((n.think && n.think.why) || "").toLowerCase() }
+        ]
+        var where = []
+        for (var t = 0; t < terms.length; t++) {
+            var hit = false
+            for (var f = 0; f < fields.length; f++) {
+                if (fields[f].txt.indexOf(terms[t]) >= 0) { hit = true; if (where.indexOf(fields[f].name) < 0) where.push(fields[f].name) }
+            }
+            if (!hit && terms[t].length >= 5) {
+                for (var g = 0; g < fields.length && !hit; g++) {
+                    var ws = fields[g].txt.split(/\W+/)
+                    for (var w = 0; w < ws.length; w++) {
+                        if (ws[w].length >= 4 && root.editOne(terms[t], ws[w])) { hit = true; if (where.indexOf(fields[g].name) < 0) where.push(fields[g].name); break }
+                    }
+                }
+            }
+            if (!hit) return []
+        }
+        return where
+    }
+    // under a row while searching: where the words were found when it is not in the note itself ("Found in: picture text")
+    function foundIn(n) {
+        var q = search.trim().toLowerCase()
+        if (!q) return ""
+        var w = root.matchWhere(n, q)
+        if (w.length === 0 || w.indexOf("note") >= 0) return ""
+        return "Found in: " + w.join(", ")
+    }
+
     readonly property var filteredNotes: {
         var q = search.trim().toLowerCase()
         var f = filter
@@ -141,7 +198,7 @@ Scope {
             if (f === "done" && !n.done) return false
             if (f === "pinned" && !n.pinned) return false
             if (f === "tasks" && (!n.task || n.done)) return false
-            return !q || (n.text || "").toLowerCase().indexOf(q) >= 0
+            return !q || root.matchWhere(n, q).length > 0
         })
         // pinned first, otherwise the order of the file (newest first)
         return out.map(function (n, i) { return { n: n, i: i } })
@@ -271,6 +328,24 @@ Scope {
     }
     function transcribeNote(id) { Quickshell.execDetached(["python3", notesPy, "transcribe", String(id)]) }
     // what the speech-to-text says under a voice note
+    function ocrNote(id) { Quickshell.execDetached(["python3", notesPy, "ocr", String(id)]) }
+    function describeNote(id) { Quickshell.execDetached(["python3", notesPy, "describe", String(id)]) }
+    function ocrBusy(n) { return !!n.ocr && n.ocr.state === "working" && (Date.now() / 1000 - (n.ocr.at || 0)) < 120 }
+    function descBusy(n) { return !!n.describe && n.describe.state === "working" && (Date.now() / 1000 - (n.describe.at || 0)) < 330 }
+    function ocrText(n) { return (n.ocr && n.ocr.state === "done" && n.ocr.text) ? n.ocr.text : "" }
+    function ocrLine(n) {                     // a status under a picture note: reading it, or why it could not be read
+        if (!n.ocr) return ""
+        if (n.ocr.state === "working") return ocrBusy(n) ? "Reading the text in the picture ..." : ""
+        if (n.ocr.state === "empty") return "No text found in the picture."
+        if (n.ocr.state === "done") return ""
+        return n.ocr.msg || ""
+    }
+    function descLine(n) {
+        if (!n.describe) return ""
+        if (n.describe.state === "working") return descBusy(n) ? "Looking at the picture ..." : ""
+        if (n.describe.state === "done") return ""
+        return n.describe.msg || ""
+    }
     function sttBusy(n) { return !!n.stt && n.stt.state === "working" && (Date.now() / 1000 - (n.stt.at || 0)) < 900 }
     function sttLine(n) {
         if (!n.stt) return ""
@@ -787,7 +862,7 @@ Scope {
                             Keys.onEscapePressed: root.hide()
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "Search your notes"
+                                text: "Search notes, voice, picture text"
                                 color: root.pal.muted
                                 font: sin.font
                                 visible: !sin.text
@@ -851,6 +926,9 @@ Scope {
                             required property var modelData
                             property bool copied: false
                             property bool picking: false               // the Remind choices are open
+                            property bool ocrOpen: false               // the whole text of the picture is shown, not the first lines
+                            property bool copiedOcr: false
+                            Timer { id: ocrCopyT; interval: 1400; onTriggered: noteRow.copiedOcr = false }
                             function markCopied() { copied = true; copiedT.restart() }
                             width: listView.width
                             height: Math.max(58, noteCol.implicitHeight + 24)
@@ -920,101 +998,6 @@ Scope {
                                     Layout.minimumWidth: 0
                                     Layout.alignment: Qt.AlignVCenter
                                     spacing: 3
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.titleOf(noteRow.modelData)
-                                        color: noteRow.modelData.done ? root.pal.muted : root.pal.text
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tBody
-                                        font.strikeout: !!noteRow.modelData.done
-                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                                    }
-                                    Flow {
-                                        Layout.fillWidth: true
-                                        spacing: 10
-                                        Text {
-                                            visible: !!noteRow.modelData.task
-                                            text: "Task"
-                                            color: root.pal.accent
-                                            font.family: root.pal.uiFont
-                                            font.pixelSize: 10
-                                            font.weight: Font.Medium
-                                        }
-                                        Text {
-                                            text: root.whenOf(noteRow.modelData)
-                                            color: Qt.alpha(root.pal.muted, 0.75)
-                                            font.family: root.pal.uiFont
-                                            font.pixelSize: 10
-                                        }
-                                        Text {
-                                            visible: !!noteRow.modelData.due
-                                            text: (root.isOverdue(noteRow.modelData) ? "Overdue  " : "Due  ") + root.dueText(noteRow.modelData.due)
-                                            color: noteRow.modelData.done ? Qt.alpha(root.pal.muted, 0.75)
-                                                 : root.isOverdue(noteRow.modelData) ? root.pal.bad : root.pal.accent
-                                            font.family: root.pal.uiFont
-                                            font.pixelSize: 10
-                                            font.weight: Font.Medium
-                                        }
-                                        Text {
-                                            visible: !!noteRow.modelData.later && !noteRow.modelData.done
-                                            text: "Later today" + (noteRow.modelData.nudges ? "  \u00b7  nudged " + noteRow.modelData.nudges + (noteRow.modelData.nudges === 1 ? " time" : " times") : "")
-                                            color: root.pal.accent
-                                            font.family: root.pal.uiFont
-                                            font.pixelSize: 10
-                                            font.weight: Font.Medium
-                                        }
-                                    }
-
-                                    // what the AI made of this note (Settings > Notes > Sort new notes into tasks): a short line right under it
-                                    Text {
-                                        id: aiText
-                                        visible: root.aiLine(noteRow.modelData) !== ""
-                                        Layout.fillWidth: true
-                                        text: (root.aiThinking(noteRow.modelData) || root.hasTitle(noteRow.modelData) ? "" : "AI  \u00b7  ") + root.aiLine(noteRow.modelData)
-                                        color: Qt.alpha(root.pal.muted, 0.95)
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tCap
-                                        font.italic: true
-                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                                        SequentialAnimation on opacity {
-                                            running: root.aiThinking(noteRow.modelData) && root.open
-                                            loops: Animation.Infinite
-                                            NumberAnimation { to: 0.45; duration: 700; easing.type: Easing.InOutSine }
-                                            NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
-                                            onStopped: aiText.opacity = 1
-                                        }
-                                    }
-
-                                    // image preview
-                                    Rectangle {
-                                        visible: !!noteRow.modelData.image
-                                        Layout.fillWidth: true
-                                        Layout.preferredWidth: 0
-                                        Layout.maximumWidth: 360
-                                        Layout.preferredHeight: 140
-                                        radius: root.pal.rSm
-                                        clip: true
-                                        color: Qt.alpha(root.pal.bg, 0.45)
-                                        border.width: 1
-                                        border.color: imgMa.containsMouse ? root.pal.accent : root.pal.lineSoft
-                                        Image {
-                                            anchors.fill: parent
-                                            source: noteRow.modelData.image ? (noteRow.modelData.image.indexOf("://") >= 0 ? noteRow.modelData.image : "file://" + noteRow.modelData.image) : ""
-                                            fillMode: Image.PreserveAspectCrop
-                                            asynchronous: true
-                                            sourceSize.width: 500
-                                        }
-                                        MouseArea {
-                                            id: imgMa
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                if (noteRow.modelData.image) Quickshell.execDetached(["xdg-open", noteRow.modelData.image])
-                                            }
-                                        }
-                                    }
-
                                     // audio player
                                     Rectangle {
                                         visible: !!noteRow.modelData.audio
@@ -1068,6 +1051,109 @@ Scope {
                                         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                                     }
 
+                                    Text {
+                                        visible: !!noteRow.modelData.audio && !!noteRow.modelData.transcript
+                                        text: "Transcript"
+                                        color: Qt.alpha(root.pal.muted, 0.8)
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: 9
+                                        font.letterSpacing: 1.2
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.titleOf(noteRow.modelData)
+                                        color: noteRow.modelData.done ? root.pal.muted : root.pal.text
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                        font.strikeout: !!noteRow.modelData.done
+                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                    }
+                                    Flow {
+                                        Layout.fillWidth: true
+                                        spacing: 10
+                                        Text {
+                                            visible: !!noteRow.modelData.task
+                                            text: "Task"
+                                            color: root.pal.accent
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 10
+                                            font.weight: Font.Medium
+                                        }
+                                        Text {
+                                            text: root.whenOf(noteRow.modelData)
+                                            color: Qt.alpha(root.pal.muted, 0.75)
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 10
+                                        }
+                                        Text {
+                                            visible: !!noteRow.modelData.due
+                                            text: (root.isOverdue(noteRow.modelData) ? "Overdue  " : "Due  ") + root.dueText(noteRow.modelData.due)
+                                            color: noteRow.modelData.done ? Qt.alpha(root.pal.muted, 0.75)
+                                                 : root.isOverdue(noteRow.modelData) ? root.pal.bad : root.pal.accent
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 10
+                                            font.weight: Font.Medium
+                                        }
+                                        Text {
+                                            visible: !!noteRow.modelData.later && !noteRow.modelData.done
+                                            text: "Later today" + (noteRow.modelData.nudges ? "  \u00b7  nudged " + noteRow.modelData.nudges + (noteRow.modelData.nudges === 1 ? " time" : " times") : "")
+                                            color: root.pal.accent
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 10
+                                            font.weight: Font.Medium
+                                        }
+                                    }
+
+                                    // what the AI made of this note (Settings > Notes > Sort new notes into tasks): a short line right under it
+                                    Text {
+                                        id: aiText
+                                        visible: root.aiLine(noteRow.modelData) !== ""
+                                        Layout.fillWidth: true
+                                        text: (root.aiThinking(noteRow.modelData) || root.hasTitle(noteRow.modelData) ? "" : root.aiLabel(noteRow.modelData) + "  \u00b7  ") + root.aiLine(noteRow.modelData)
+                                        color: Qt.alpha(root.pal.muted, 0.95)
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tCap
+                                        font.italic: true
+                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                        SequentialAnimation on opacity {
+                                            running: root.aiThinking(noteRow.modelData) && root.open
+                                            loops: Animation.Infinite
+                                            NumberAnimation { to: 0.45; duration: 700; easing.type: Easing.InOutSine }
+                                            NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
+                                            onStopped: aiText.opacity = 1
+                                        }
+                                    }
+
+                                    // image preview
+                                    Rectangle {
+                                        visible: !!noteRow.modelData.image
+                                        Layout.fillWidth: true
+                                        Layout.preferredWidth: 0
+                                        Layout.maximumWidth: 360
+                                        Layout.preferredHeight: 140
+                                        radius: root.pal.rSm
+                                        clip: true
+                                        color: Qt.alpha(root.pal.bg, 0.45)
+                                        border.width: 1
+                                        border.color: imgMa.containsMouse ? root.pal.accent : root.pal.lineSoft
+                                        Image {
+                                            anchors.fill: parent
+                                            source: noteRow.modelData.image ? (noteRow.modelData.image.indexOf("://") >= 0 ? noteRow.modelData.image : "file://" + noteRow.modelData.image) : ""
+                                            fillMode: Image.PreserveAspectCrop
+                                            asynchronous: true
+                                            sourceSize.width: 500
+                                        }
+                                        MouseArea {
+                                            id: imgMa
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (noteRow.modelData.image) Quickshell.execDetached(["xdg-open", noteRow.modelData.image])
+                                            }
+                                        }
+                                    }
+
                                     // the model thinks this is a task (Settings > Notes > ask first)
                                     Flow {
                                         visible: !!noteRow.modelData.suggest
@@ -1084,6 +1170,95 @@ Scope {
                                         }
                                         ActionChip { pal: root.pal; label: "Make task"; implicitHeight: 26; on: true; onClicked: root.answerTask(noteRow.modelData.id, true) }
                                         ActionChip { pal: root.pal; label: "Keep as note"; implicitHeight: 26; onClicked: root.answerTask(noteRow.modelData.id, false) }
+                                    }
+
+                                    // the text tesseract read in the picture (or why not), and the description a vision model wrote when asked
+                                    Text {
+                                        visible: !!noteRow.modelData.image && root.ocrLine(noteRow.modelData) !== ""
+                                        Layout.fillWidth: true
+                                        text: root.ocrLine(noteRow.modelData)
+                                        color: Qt.alpha(root.pal.muted, 0.9)
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tCap
+                                        font.italic: true
+                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                    }
+                                    ColumnLayout {
+                                        visible: !!noteRow.modelData.image && root.ocrText(noteRow.modelData) !== ""
+                                        Layout.fillWidth: true
+                                        spacing: 3
+                                        Text {
+                                            text: "Text in picture"
+                                            color: Qt.alpha(root.pal.muted, 0.8)
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 9
+                                            font.letterSpacing: 1.2
+                                        }
+                                        Text {
+                                            id: ocrTxt
+                                            Layout.fillWidth: true
+                                            text: root.ocrText(noteRow.modelData)
+                                            color: Qt.alpha(root.pal.text, 0.85)
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tCap
+                                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                            maximumLineCount: noteRow.ocrOpen ? 1000 : 8
+                                            elide: noteRow.ocrOpen ? Text.ElideNone : Text.ElideRight
+                                        }
+                                        Text {
+                                            visible: ocrTxt.truncated || noteRow.ocrOpen
+                                            text: noteRow.ocrOpen ? "Show less" : "Show all"
+                                            color: ocrMa.containsMouse ? root.pal.accent : root.pal.muted
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 10
+                                            font.weight: Font.Medium
+                                            MouseArea {
+                                                id: ocrMa
+                                                anchors.fill: parent
+                                                anchors.margins: -4
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: noteRow.ocrOpen = !noteRow.ocrOpen
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        visible: !!noteRow.modelData.image && root.descLine(noteRow.modelData) !== ""
+                                        Layout.fillWidth: true
+                                        text: root.descLine(noteRow.modelData)
+                                        color: Qt.alpha(root.pal.muted, 0.9)
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tCap
+                                        font.italic: true
+                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                    }
+                                    ColumnLayout {
+                                        visible: !!noteRow.modelData.image && !!noteRow.modelData.describe && noteRow.modelData.describe.state === "done"
+                                        Layout.fillWidth: true
+                                        spacing: 3
+                                        Text {
+                                            text: "Picture description"
+                                            color: Qt.alpha(root.pal.muted, 0.8)
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 9
+                                            font.letterSpacing: 1.2
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: (noteRow.modelData.describe && noteRow.modelData.describe.text) || ""
+                                            color: Qt.alpha(root.pal.text, 0.85)
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tCap
+                                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                        }
+                                    }
+                                    Text {
+                                        visible: root.foundIn(noteRow.modelData) !== ""
+                                        text: root.foundIn(noteRow.modelData)
+                                        color: root.pal.accent
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: 10
+                                        font.weight: Font.Medium
                                     }
 
                                     // Remind: when to send the notification
@@ -1115,6 +1290,9 @@ Scope {
                                                 { k: "pin", t: noteRow.modelData.pinned ? "Unpin" : "Pin" },
                                                 { k: "task", t: noteRow.modelData.task ? "Note" : "Task" },
                                                 { k: "stt", t: root.sttBusy(noteRow.modelData) ? "Writing" : "To text", hide: !noteRow.modelData.audio },
+                                                { k: "ocr", t: root.ocrBusy(noteRow.modelData) ? "Reading" : "Read text", hide: !noteRow.modelData.image || root.ocrText(noteRow.modelData) !== "" },
+                                                { k: "copyocr", t: noteRow.copiedOcr ? "Copied" : "Copy text", hide: root.ocrText(noteRow.modelData) === "" },
+                                                { k: "describe", t: root.descBusy(noteRow.modelData) ? "Looking" : (noteRow.modelData.describe && noteRow.modelData.describe.state === "done" ? "Describe again" : "Describe"), hide: !noteRow.modelData.image || !root.vlmOn },
                                                 { k: "think", t: root.aiThinking(noteRow.modelData) ? "Thinking" : "Think", hide: false },
                                                 { k: "remind", t: noteRow.picking ? "Close" : "Remind", hide: !noteRow.modelData.task },
                                                 { k: "copy", t: noteRow.copied ? "Copied" : "Copy" },
@@ -1147,6 +1325,9 @@ Scope {
                                                         else if (modelData.k === "del") root.delNote(noteRow.modelData.id)
                                                         else if (modelData.k === "task") root.toggleTask(noteRow.modelData.id)
                                                         else if (modelData.k === "stt") { if (!root.sttBusy(noteRow.modelData)) root.transcribeNote(noteRow.modelData.id) }
+                                                    else if (modelData.k === "ocr") { if (!root.ocrBusy(noteRow.modelData)) root.ocrNote(noteRow.modelData.id) }
+                                                    else if (modelData.k === "describe") { if (!root.descBusy(noteRow.modelData)) root.describeNote(noteRow.modelData.id) }
+                                                    else if (modelData.k === "copyocr") { Quickshell.execDetached(["wl-copy", root.ocrText(noteRow.modelData)]); noteRow.copiedOcr = true; ocrCopyT.restart() }
                                                     else if (modelData.k === "think") { if (!root.aiThinking(noteRow.modelData)) root.thinkNote(noteRow.modelData.id) }
                                                         else if (modelData.k === "remind") noteRow.picking = !noteRow.picking
                                                         else {

@@ -75,7 +75,7 @@ fn notify(msg: &str, urgency: &str, real_user: &str) {
                 &format!("DBUS_SESSION_BUS_ADDRESS={}", dbus_addr),
                 &format!("XDG_RUNTIME_DIR=/run/user/{}", uid_str),
                 "notify-send",
-                "🛡️ Safety Check",
+                "Safety Check",
                 msg,
                 "--urgency",
                 urgency,

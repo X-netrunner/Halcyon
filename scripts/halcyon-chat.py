@@ -232,7 +232,7 @@ def run_do(phrase):
         print("No matching action. Known: " + ", ".join(ADV.ACTIONS))
 
 def run_chat_diagnostics(history):
-    print("\n🔍 Running Halcyon Autonomous Diagnostic Check...")
+    print("\nRunning Halcyon Autonomous Diagnostic Check...")
     if ADV:
         a = ADV.analyze_system()
         findings = ADV.build_findings(a)
@@ -325,11 +325,11 @@ def repl():
             else: print("[!] Advisor not found.")
             continue
         if line == "/hypr":
-            print("\n🖥️ Hyprland State:")
+            print("\nHyprland State:")
             print(get_hypr_info())
             continue
         if line == "/logs":
-            print("\n📜 Quickshell Recent Logs:")
+            print("\nQuickshell Recent Logs:")
             print(get_recent_logs(20))
             continue
         if line.startswith("/do"):
