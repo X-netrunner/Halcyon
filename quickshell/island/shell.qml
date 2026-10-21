@@ -425,6 +425,11 @@ ShellRoot {
     property bool dnd: false            // do not disturb: no popups, everything is still stored
     property string edgeMode: "hover"   // hover | click: how the edge boxes (notifications, console, utilities) open and close
     readonly property bool clickMode: edgeMode === "click"
+    // each corner box may have its own hover / click (Desktop builder > Opens on); the rest follow clickMode
+    readonly property bool notifClick: DS.trig(opt, "notif", clickMode)
+    readonly property bool utilClick: DS.trig(opt, "util", clickMode)
+    readonly property bool appsClick: DS.trig(opt, "apps", clickMode)
+    readonly property bool termClick: DS.trig(opt, "term", clickMode)
     readonly property string sysmode: stats.sysmode || ""
     // Settings window (all remembered): look + motion + behaviour
     property real glassShift: 0
@@ -855,7 +860,7 @@ ShellRoot {
         dnd: root.dnd
         fsQuiet: root.fsQuiet && root.opt.dndFullscreen !== false
         edgeOn: !root.dropOn
-        clickMode: root.clickMode
+        clickMode: root.notifClick
         autoHide: root.autoHide
         sysmode: root.sysmode
         starData: root.starData
@@ -872,7 +877,7 @@ ShellRoot {
         flyCount: root.boxStarCount
         flyLoop: root.boxStarLoop
         sysmode: root.sysmode
-        clickMode: root.clickMode
+        clickMode: root.termClick
         autoHide: root.autoHide
         starData: root.starData
         profileStars: root.profileStars
@@ -3155,8 +3160,8 @@ ShellRoot {
         // the box shrinking back are ignored for a moment (move out and in again to open it)
         property double blockUntil: 0
         function setHover(on) {
-            if (on) { closeT.stop(); if (!root.clickMode && Date.now() >= blockUntil) hovering = true }
-            else if (!panel.wantsKeys && (!root.clickMode || root.autoHide)) { closeT.interval = 450; closeT.restart() }
+            if (on) { closeT.stop(); if (!root.utilClick && Date.now() >= blockUntil) hovering = true }
+            else if (!panel.wantsKeys && (!root.utilClick || root.autoHide)) { closeT.interval = 450; closeT.restart() }
         }
         // open it from the launcher / keybind; closes by itself if you don't touch it
         function pinFor(ms) { hovering = true; pinnedOpen = true; closeT.interval = (ms < 60000 && root.opt && root.opt.cornerTimeout) ? root.opt.cornerTimeout : ms; closeT.restart() }
@@ -3170,11 +3175,11 @@ ShellRoot {
             anchors.left: corner.atR ? undefined : parent.left
             anchors.bottom: corner.atB ? parent.bottom : undefined
             anchors.top: corner.atB ? undefined : parent.top
-            width: corner.open ? panel.width + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
-            height: corner.open ? panel.height + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
+            width: corner.open ? panel.width + pal.boxEdge + 30 : (root.utilClick ? 28 : 12)
+            height: corner.open ? panel.height + pal.boxEdge + 30 : (root.utilClick ? 28 : 12)
             HoverHandler { onHoveredChanged: { corner.zoneHover = hovered; corner.syncHover() } }
             Rectangle {
-                visible: root.clickMode && !corner.open
+                visible: root.utilClick && !corner.open
                 anchors.right: corner.atR ? parent.right : undefined
                 anchors.left: corner.atR ? undefined : parent.left
                 anchors.bottom: corner.atB ? parent.bottom : undefined
@@ -3190,7 +3195,7 @@ ShellRoot {
                 anchors.top: corner.atB ? undefined : parent.top
                 width: 20; height: 20
                 TapHandler {
-                    enabled: root.clickMode
+                    enabled: root.utilClick
                     gesturePolicy: TapHandler.ReleaseWithinBounds
                     onTapped: { if (corner.hovering) { closeT.stop(); corner.hovering = false } else { closeT.stop(); corner.hovering = true } }
                 }
@@ -3327,8 +3332,8 @@ ShellRoot {
         readonly property real reveal: hovering ? 1 : 0
         property double blockUntil: 0
         function setHover(on) {
-            if (on) { aClose.stop(); if (!root.clickMode && Date.now() >= blockUntil) hovering = true }
-            else if (!root.clickMode || root.autoHide) { aClose.interval = 450; aClose.restart() }
+            if (on) { aClose.stop(); if (!root.appsClick && Date.now() >= blockUntil) hovering = true }
+            else if (!root.appsClick || root.autoHide) { aClose.interval = 450; aClose.restart() }
         }
         function pinFor(ms) { hovering = true; pinnedOpen = true; aClose.interval = ms; aClose.restart() }
         Timer { id: aClose; interval: 450; onTriggered: { appsWin.hovering = false; appsWin.blockUntil = Date.now() + 600 } }
@@ -3340,11 +3345,11 @@ ShellRoot {
             anchors.left: appsWin.atR ? undefined : parent.left
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
-            width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
-            height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : (root.clickMode ? 28 : 12)
+            width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : (root.appsClick ? 28 : 12)
+            height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : (root.appsClick ? 28 : 12)
             HoverHandler { onHoveredChanged: { appsWin.zoneHover = hovered; appsWin.syncHover() } }
             Rectangle {
-                visible: root.clickMode && !appsWin.open
+                visible: root.appsClick && !appsWin.open
                 anchors.right: appsWin.atR ? parent.right : undefined
                 anchors.left: appsWin.atR ? undefined : parent.left
                 anchors.bottom: appsWin.atB ? parent.bottom : undefined
@@ -3360,7 +3365,7 @@ ShellRoot {
                 anchors.top: appsWin.atB ? undefined : parent.top
                 width: 20; height: 20
                 TapHandler {
-                    enabled: root.clickMode
+                    enabled: root.appsClick
                     gesturePolicy: TapHandler.ReleaseWithinBounds
                     onTapped: { aClose.stop(); appsWin.hovering = !appsWin.hovering }
                 }

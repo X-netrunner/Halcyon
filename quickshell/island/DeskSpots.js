@@ -12,6 +12,20 @@ var defaults = { notif: "tr", util: "br", apps: "bl", term: "tl" }
 var names = { notif: "Notifications", util: "Utilities", apps: "Background apps", term: "Console" }
 var cornerNames = { tl: "Top-left", tr: "Top-right", bl: "Bottom-left", br: "Bottom-right" }
 
+// How each box opens (Desktop builder > Opens on): opt.boxTrig = { notif: "hover" | "click", ... }. A box that is not in it
+// follows Settings > Edge boxes (the global hover / click). trig(opt, id, globalClick) -> true when that box opens on a click.
+function trig(opt, id, globalClick) {
+    var t = opt && opt.boxTrig ? opt.boxTrig[id] : undefined
+    return t === "click" ? true : (t === "hover" ? false : !!globalClick)
+}
+// a copy of opt.boxTrig with one box changed ("default" removes it, so it follows Edge boxes again)
+function setTrig(opt, id, v) {
+    var o = {}, cur = opt && opt.boxTrig ? opt.boxTrig : {}
+    for (var k in cur) if (order.indexOf(k) >= 0 && (cur[k] === "hover" || cur[k] === "click")) o[k] = cur[k]
+    if (v === "hover" || v === "click") o[id] = v; else delete o[id]
+    return o
+}
+
 // What "Reset the desktop" puts back (Settings > Desktop builder and the builder window use the same list; boxSpots is reset on its own)
 var resetValues = {
     deskWall: true, deskBlur: 0, deskBg: "theme",
@@ -25,6 +39,7 @@ function allDefault(opt) {
     // every value "Reset the desktop" puts back (it only looked at a few of them: changing the stars' speed, size, colour ... while the
     // stars were off left the Reset button greyed out, although there was something to reset)
     for (var k in resetValues) if (opt[k] !== undefined && opt[k] !== resetValues[k]) return false
+    if (opt.boxTrig && Object.keys(opt.boxTrig).length > 0) return false
     return isDefault(opt.boxSpots)
 }
 
