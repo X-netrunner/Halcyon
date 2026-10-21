@@ -83,12 +83,17 @@ looks_like_halcyon() {
     case "$d" in
         */.local/share/Trash/*|*/Trash/*|*/Trash-*/*|*-backups/*|*/.stversions/*) return 1 ;;
     esac
-    [ -d "$d/.git" ] || return 1
-    url="$(git -C "$d" remote get-url origin 2>/dev/null || true)"
-    case "$url" in *[Hh]alcyon*) return 0 ;; esac
     base="$(basename "$d")"
-    case "$base" in [Hh]alcyon*) ;; *) return 1 ;; esac
-    [ -f "$d/install.sh" ] && [ -d "$d/sysmode" ]
+    if [ -d "$d/.git" ]; then
+        url="$(git -C "$d" remote get-url origin 2>/dev/null || true)"
+        case "$url" in *[Hh]alcyon*) return 0 ;; esac
+        case "$base" in [Hh]alcyon*) ;; *) return 1 ;; esac
+        [ -f "$d/install.sh" ] && [ -d "$d/sysmode" ]
+    else
+        # Unversioned Halcyon folder (e.g. ~/Downloads/Halcyon without .git)
+        case "$base" in [Hh]alcyon*) ;; *) return 1 ;; esac
+        [ -f "$d/install.sh" ] && ([ -d "$d/sysmode" ] || [ -f "$d/hyprland.lua" ])
+    fi
 }
 
 scan_root() {
@@ -99,6 +104,12 @@ scan_root() {
         \( -name node_modules -o -name target -o -name .gradle -o -name .venv \
            -o -name venv -o -name dist -o -name build \) -prune -o \
         -type d -name .git -print 2>/dev/null
+    # Also discover unversioned Halcyon folders in ~/Downloads
+    if [ "$root" = "$HOME" ] && [ -d "$HOME/Downloads" ]; then
+        find "$HOME/Downloads" -maxdepth 2 -type d -name "[Hh]alcyon*" 2>/dev/null | while read -r d; do
+            [ ! -d "$d/.git" ] && printf '%s/.git\n' "$d"
+        done
+    fi
 }
 
 discover() {
@@ -124,17 +135,34 @@ git_remote_name() {
     git -C "$d" remote | head -n1
 }
 
-# counts as  "<behind> <ahead>"  relative to the branch's upstream (0 0 if none)
+# counts as  "<behind> <ahead>"  relative to the branch's upstream; with no upstream set (a fresh clone, a new branch) against
+# <remote>/<branch> when the remote has it, else every commit counts as ahead. (It used to say "0 0" there, so the push step
+# reported "already up to date" and never pushed.)
 ahead_behind() {
-    local d="$1" up
+    local d="$1" up br r
     up="$(git -C "$d" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
-    [ -n "$up" ] || { printf '0 0'; return; }
-    git -C "$d" rev-list --left-right --count "@{upstream}...HEAD" 2>/dev/null || printf '0 0'
+    if [ -z "$up" ]; then
+        br="$(git -C "$d" symbolic-ref --short -q HEAD 2>/dev/null || true)"
+        r="$(git_remote_name "$d")"
+        if [ -n "$br" ] && [ -n "$r" ] && git -C "$d" rev-parse --verify -q "refs/remotes/$r/$br" >/dev/null; then
+            up="$r/$br"
+        else
+            printf '0 %s' "$(git -C "$d" rev-list --count HEAD 2>/dev/null || echo 0)"; return
+        fi
+    fi
+    git -C "$d" rev-list --left-right --count "$up...HEAD" 2>/dev/null || printf '0 0'
 }
 
 # one menu line per checkout
 describe() {
     local d="$1" br dirty ab behind ahead tag color
+    if [ ! -d "$d/.git" ]; then
+        color="$W"
+        printf '  [%s%s%s] %-34s %s%-7s%s %s%2s files%s    %s(unversioned - will init & sync)%s\n' \
+            "$C" "$2" "$R" "$(short "$d")" "$color" "no-git" "$R" \
+            "$color" "$(find "$d" -maxdepth 2 -type f 2>/dev/null | wc -l | tr -d ' ')" "$R" "$DIM" "$R"
+        return
+    fi
     br="$(git -C "$d" symbolic-ref --short -q HEAD 2>/dev/null || printf 'detached@%s' "$(git -C "$d" rev-parse --short HEAD 2>/dev/null)")"
     dirty="$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
     read -r behind ahead < <(ahead_behind "$d")
@@ -204,6 +232,17 @@ sync_push() {
     step "$d"
     echo
 
+    if [ ! -d "$d/.git" ]; then
+        step "$label is not a git repository yet - initializing git and linking to remote..."
+        local default_remote="https://github.com/X-netrunner/Halcyon.git"
+        git -C "$d" init -b main --quiet
+        git -C "$d" remote add origin "$default_remote" 2>/dev/null || git -C "$d" remote set-url origin "$default_remote"
+        step "fetching origin/main..."
+        git -C "$d" fetch --quiet origin main 2>/dev/null || true
+        git -C "$d" reset origin/main --quiet 2>/dev/null || true
+        ok "git initialized tracking origin/main"
+    fi
+
     branch="$(git -C "$d" symbolic-ref --short -q HEAD 2>/dev/null || true)"
     if [ -z "$branch" ]; then
         warn "detached HEAD - check a branch out first (git -C $d switch main). skipped."
@@ -267,50 +306,35 @@ sync_push() {
                 else
                     step "remote is $behind commit(s) ahead - rebasing onto $ref..."
                     local pullrc=0
-                    git -C "$d" pull --rebase --quiet "$remote" "$branch" 2>&1 | sed 's/^/      /' || pullrc=1
+                    git -C "$d" pull --rebase -Xtheirs --quiet "$remote" "$branch" 2>&1 | sed 's/^/      /' || pullrc=1
                     if [ "$pullrc" = 0 ]; then
                         ok "rebased onto $ref"
-                    elif [ -n "$(git -C "$d" diff --name-only --diff-filter=U)" ]; then
-                        # a real conflict: your commit and the incoming one touch the same lines.
-                        # default: YOURS WINS (what you push is final). --ask to decide by hand.
-                        warn "your changes conflict with the incoming ones - keeping yours:"
-                        git -C "$d" diff --name-only --diff-filter=U | sed 's/^/        /'
-                        choice="k"
-                        if [ "$ASK" = 1 ] && [ -t 0 ] && [ "$YES" = 0 ]; then
-                            printf '   %s[k]eep mine (yours wins)  [a]bort [k/a] %s' "$B" "$R"
-                            read -r choice
-                        fi
-                        if [ "$choice" = k ] || [ "$choice" = K ]; then
-                            local guard=0
-                            while mapfile -t cf < <(git -C "$d" diff --name-only --diff-filter=U) && [ "${#cf[@]}" -gt 0 ]; do
+                    else
+                        # auto-settle any remaining conflict favoring local work
+                        warn "settling rebase conflicts (keeping your version)..."
+                        local guard=0
+                        while [ -d "$(git -C "$d" rev-parse --git-path rebase-merge 2>/dev/null)" ] || \
+                              [ -d "$(git -C "$d" rev-parse --git-path rebase-apply 2>/dev/null)" ]; do
+                            mapfile -t cf < <(git -C "$d" diff --name-only --diff-filter=U 2>/dev/null)
+                            if [ "${#cf[@]}" -gt 0 ]; then
                                 for f in "${cf[@]}"; do
-                                    # during a rebase "theirs" is the commit being replayed - i.e. yours
                                     git -C "$d" checkout --theirs -- "$f" 2>/dev/null || git -C "$d" rm -q -f -- "$f" 2>/dev/null || true
                                 done
-                                git -C "$d" add -A
-                                GIT_EDITOR=true git -C "$d" rebase --continue >/dev/null 2>&1 || break
-                                guard=$((guard + 1)); [ "$guard" -gt 20 ] && break
-                            done
-                            if [ -n "$(git -C "$d" diff --name-only --diff-filter=U)" ] || \
-                               [ -d "$(git -C "$d" rev-parse --git-path rebase-merge)" ] || \
-                               [ -d "$(git -C "$d" rev-parse --git-path rebase-apply)" ]; then
-                                git -C "$d" rebase --abort >/dev/null 2>&1
-                                warn "could not settle every conflict automatically - rebase aborted."
-                                warn "your work is safe in the commit. finish it yourself:  cd $d && git pull --rebase"
-                                return 1
+                                git -C "$d" add -A 2>/dev/null
                             fi
-                            ok "rebased onto $ref (kept your version of the conflicting files)"
-                        else
+                            GIT_EDITOR=true git -C "$d" rebase --continue >/dev/null 2>&1 || \
+                                git -C "$d" rebase --skip >/dev/null 2>&1 || true
+                            guard=$((guard + 1)); [ "$guard" -gt 100 ] && break
+                        done
+                        if [ -n "$(git -C "$d" diff --name-only --diff-filter=U 2>/dev/null)" ] || \
+                           [ -d "$(git -C "$d" rev-parse --git-path rebase-merge 2>/dev/null)" ] || \
+                           [ -d "$(git -C "$d" rev-parse --git-path rebase-apply 2>/dev/null)" ]; then
                             git -C "$d" rebase --abort >/dev/null 2>&1
-                            warn "rebase aborted - your commit is safe. resolve it yourself with:"
-                            warn "  cd $d && git pull --rebase"
+                            warn "could not settle every conflict automatically - rebase aborted."
+                            warn "your work is safe in the commit. finish it yourself:  cd $d && git pull --rebase"
                             return 1
                         fi
-                    else
-                        git -C "$d" rebase --abort >/dev/null 2>&1
-                        warn "could not rebase onto $ref - your commit is safe."
-                        warn "look at it yourself:  cd $d && git status"
-                        return 1
+                        ok "rebased onto $ref (kept your version of the conflicting files)"
                     fi
                 fi
             else
