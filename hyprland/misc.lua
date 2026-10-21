@@ -11,7 +11,7 @@ hl.config({
         always_follow_on_dnd      = true,
         animate_manual_resizes    = true,
         enable_swallow            = false,
-        focus_on_activate         = true,
+        focus_on_activate         = false,   -- true = an app can pull you to its window (a Vesktop / Spotify update); false = it is only marked urgent
         allow_session_lock_restore = true,
         background_color          = "rgb(14161f)",
     }

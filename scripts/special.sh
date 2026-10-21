@@ -68,10 +68,29 @@ else
   count=$(hyprctl clients 2>/dev/null | grep -c "workspace: .*(special:$name)")
 fi
 
+# Is the app already running somewhere else (another workspace, minimised to the tray)?  Then starting it again would only open a
+# second copy, so the empty workspace is shown and nothing is launched. Window classes (lower case, space separated) per workspace;
+# change them in special.conf with MUSIC_CLASSES / COMM_CLASSES.
+MUSIC_CLASSES="${MUSIC_CLASSES:-spotify com.spotify.client halcyon-music}"
+COMM_CLASSES="${COMM_CLASSES:-discord vesktop org.telegram.desktop telegramdesktop signal slack}"
+case "$name" in music) classes="$MUSIC_CLASSES" ;; communication) classes="$COMM_CLASSES" ;; *) classes="" ;; esac
+running_elsewhere() {
+  [ -n "$classes" ] || return 1
+  local c all
+  if command -v jq >/dev/null 2>&1; then
+    all=$(hyprctl clients -j 2>/dev/null | jq -r '.[].class | ascii_downcase' 2>/dev/null)
+  else
+    all=$(hyprctl clients 2>/dev/null | sed -n 's/^[[:space:]]*class: //p' | tr 'A-Z' 'a-z')
+  fi
+  for c in $classes; do printf '%s\n' "$all" | grep -qxF "$c" && return 0; done
+  return 1
+}
+
 # start the app, at most once every 8 seconds per workspace (two quick key presses, or a window that is still being moved in,
 # must not start a second copy)
 launch() {
   [ -n "$cmd" ] || return 0
+  [ -z "$SPECIAL_CMD" ] && running_elsewhere && return 0     # an explicit SPECIAL_CMD (background-apps "Open") always runs
   local stamp="${XDG_RUNTIME_DIR:-/tmp}/halcyon-special-$name.stamp" now last
   now=$(date +%s); last=$(cat "$stamp" 2>/dev/null); last=${last:-0}
   [ $((now - last)) -lt 8 ] && return 0

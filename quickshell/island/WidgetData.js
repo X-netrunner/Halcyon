@@ -114,6 +114,19 @@ var catalog = [
         { k: "buttons", kind: "toggle", label: "Start / stop button", def: true },
         { k: "week", kind: "toggle", label: "Last 7 days", def: true }
       ] },
+    { id: "focusgraph", cat: "focus", name: "Focus streak graph", icon: 0xF051B, size: [280, 110], hint: "Your streak, your best and the last 14 days; a click opens the full Focus streak view",
+      styles: [["rail", "Streak rail"], ["bars", "14-day bars"]],
+      opts: [
+        { k: "goal", kind: "slider", label: "Minutes that count as a focus day", def: 25, min: 5, max: 180, unit: " min" },
+        { k: "detail", kind: "toggle", label: "Show today's minutes", def: true }
+      ] },
+    { id: "weeklystars", cat: "focus", name: "Weekly stars", icon: 0xF04CE, size: [300, 150], hint: "Your week as stars: one for every focus session, ticked-off note and past calendar event",
+      styles: [["sky", "Sky"], ["count", "Numbers"]],
+      opts: [
+        { k: "width", kind: "slider", label: "Width", def: 300, min: 200, max: 600, unit: " px" },
+        { k: "lines", kind: "toggle", label: "Constellation lines", def: true },
+        { k: "summary", kind: "toggle", label: "Show the totals line", def: true }
+      ] },
     { id: "workspaces", cat: "desk", name: "Workspaces", icon: 0xF0208, size: [260, 50], hint: "Switch workspace (click, scroll)",
       styles: [["dots", "Dots"], ["numbers", "Numbers"], ["capsules", "Capsules"], ["pills", "Pills"], ["roman", "Roman"], ["lines", "Hairlines"], ["squares", "Squares"], ["outline", "Outline"]],
       opts: [{ k: "min", kind: "slider", label: "Always show at least", def: 5, min: 1, max: 10, unit: "" }] },
@@ -128,6 +141,12 @@ var catalog = [
     { id: "shortcuts", cat: "desk", name: "App shortcuts", icon: 0xF003B, size: [300, 70], hint: "Your own buttons that start apps or commands",
       styles: [["row", "Row"], ["grid", "Grid"], ["list", "List"], ["outline", "Outline"], ["glyphs", "Bare"]],
       opts: [{ k: "items", kind: "text", label: "Buttons", def: "Browser=xdg-open https://;Files=thunar;Terminal=kitty", hintText: "Name=command;Name=command" }] },
+    { id: "brief", cat: "desk", name: "Daily brief", icon: 0xF0674, size: [300, 120], hint: "Your day in a few lines: what is overdue and due today, and your Focus streak (worded by the local AI when it is on)",
+      styles: [["card", "Card"], ["line", "One line"]],
+      opts: [
+        { k: "facts", kind: "toggle", label: "Small facts under it (tasks, streak)", def: true },
+        { k: "width", kind: "slider", label: "Width", def: 300, min: 200, max: 520, unit: " px" }
+      ] },
     { id: "notes", cat: "desk", name: "Notes & agenda", icon: 0xF03EB, size: [290, 150], hint: "Your pinned notes and today's calendar",
       styles: [["glass", "List"], ["cards", "Cards"]],
       opts: [
@@ -210,8 +229,8 @@ var files = {
     clock: "WClock.qml", date: "WClock.qml", month: "WMonth.qml",
     cpu: "WMetric.qml", ram: "WMetric.qml", temp: "WMetric.qml", gpu: "WMetric.qml", disk: "WMetric.qml", battery: "WMetric.qml", battime: "WBatTime.qml", volume: "WMetric.qml", brightness: "WMetric.qml",
     sysmon: "WSysmon.qml", net: "WNet.qml", uptime: "WNet.qml",
-    music: "WMusic.qml", lyrics: "WLyrics.qml", viz: "WViz.qml", focus: "WFocus.qml", workspaces: "WWorkspaces.qml", special: "WSpecial.qml", toggles: "WToggles.qml", shortcuts: "WToggles.qml",
-    notes: "WNotes.qml", weather: "WWeather.qml", text: "WText.qml",
+    music: "WMusic.qml", lyrics: "WLyrics.qml", viz: "WViz.qml", focus: "WFocus.qml", focusgraph: "WFocusGraph.qml", weeklystars: "WWeeklyStars.qml", workspaces: "WWorkspaces.qml", special: "WSpecial.qml", toggles: "WToggles.qml", shortcuts: "WToggles.qml",
+    notes: "WNotes.qml", brief: "WBrief.qml", weather: "WWeather.qml", text: "WText.qml",
     console: "WConsole.qml", utilbox: "WBoxes.qml", appsbox: "WBoxes.qml",
     moon: "WMoon.qml", horizon: "WHorizon.qml", breathe: "WBreathe.qml"
 }
@@ -582,19 +601,21 @@ function bringFront(d, uid) {
 
 // ------------------------------------------------------------------------------------------------ the lock screen
 // The same widgets can be put on the lock screen (opt.lockDeskWidgets, master switch opt.lockDeskWidgetsOn): built in the same Widget
-// builder, placed with the same desktop editor ("target" = "lock"). The lock screen is a session lock with your password box on it, so
-//   - only widgets that SHOW something harmless are offered there (lockBlocked is what is left out, and why), and
-//   - every widget is inert there: Lock.qml gives them an env whose actions do nothing and a click shield sits over each one.
+// builder, placed with the same desktop editor ("target" = "lock"). Every widget is offered there, the same list as on the desktop, but
+//   - every widget is inert there: Lock.qml gives them an env (shell.qml lockEnv) whose actions do nothing and a click shield sits over
+//     each one, so toggles, shortcuts, the boxes and the workspaces only SHOW their state and nothing can be run from a locked screen, and
+//   - the ones that show private things anyone at the locked computer could read are marked (lockPrivate, and why) wherever you add them.
 //     (lockButtons: types that keep their buttons; the music widget's previous / play / next are the same three the lock screen's own media card has.)
-var lockBlocked = { toggles: "it runs commands", shortcuts: "it runs commands", console: "it runs commands and shows what they print",
-                    notes: "it shows your private notes and calendar", utilbox: "it has power, Wi-Fi and other buttons", appsbox: "it lists your running apps",
+var lockPrivate = { console: "it shows what its commands print", notes: "it shows your notes and calendar", brief: "it shows your tasks",
+                    appsbox: "it lists your running apps", weeklystars: "it shows your tasks and calendar as stars",
                     workspaces: "it shows which windows you have open", special: "it shows which windows you have open" }
 var lockButtons = { music: true }
-function lockOk(type) { return lockBlocked[type] === undefined }
-// the names of what is left out, for a line under the catalog: "Quick toggles, App shortcuts, ..."
-function lockBlockedNames() {
+function lockOk(type) { return typeOf(type) !== null }
+function lockPrivateOf(type) { return lockPrivate[type] || "" }
+// the names of the private ones, for a line under the catalog: "Console, Notes & agenda, ..."
+function lockPrivateNames() {
     var n = []
-    for (var i = 0; i < catalog.length; i++) if (!lockOk(catalog[i].id)) n.push(catalog[i].name)
+    for (var i = 0; i < catalog.length; i++) if (lockPrivate[catalog[i].id] !== undefined) n.push(catalog[i].name)
     return n.join(", ")
 }
 // target: "desktop" (default) or "lock". Which settings key holds the list, and which holds its master switch.
@@ -691,7 +712,7 @@ function needs(d) {
         if (t === "volume" || t === "brightness") n.ctl = true
         if (t === "disk") n.disk = true
         if (t === "gpu") n.gpu = true
-        if (t === "focus") n.focusLog = true
+        if (t === "focus" || t === "focusgraph") n.focusLog = true
         if (t === "weather") n.weather = true
         if (t === "toggles") {
             var s = optOf(d.items[i], "show") || []

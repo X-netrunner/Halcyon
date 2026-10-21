@@ -74,15 +74,17 @@ for c in /sys/class/drm/card[0-9]*; do
   [ "$v" = 0x1002 ] && amd_gpu=1
   [ "$v" = 0x8086 ] && intel_gpu=1
 done
-mesa_egl="$(ls /usr/share/glvnd/egl_vendor.d/50_mesa.json /etc/glvnd/egl_vendor.d/50_mesa.json 2>/dev/null | head -n1)"
+# first existing file of the given paths / globs, none of them an i686 or hasvk one unless asked: no `ls | grep` parsing
+first_file() { local skip="$1" f; shift; for f in "$@"; do [ -f "$f" ] || continue; case "$f" in *i686*) continue ;; esac; [ -n "$skip" ] && case "$f" in *"$skip"*) continue ;; esac; printf '%s\n' "$f"; return 0; done; return 1; }
+mesa_egl="$(first_file "" /usr/share/glvnd/egl_vendor.d/50_mesa.json /etc/glvnd/egl_vendor.d/50_mesa.json)"
 vk_icd=""
 if [ "$gpu_mode" != dgpu ] && [ "$other_gpu" = 1 ]; then
   # the Vulkan driver of the integrated GPU (never NVIDIA's): Intel ANV (hasvk for old Intel), AMD RADV
   if [ "$intel_gpu" = 1 ]; then
-    vk_icd="$(ls /usr/share/vulkan/icd.d/*intel*.json /etc/vulkan/icd.d/*intel*.json /usr/local/share/vulkan/icd.d/*intel*.json 2>/dev/null | grep -v hasvk | grep -v i686 | head -n1)"
-    [ -z "$vk_icd" ] && vk_icd="$(ls /usr/share/vulkan/icd.d/*hasvk*.json /etc/vulkan/icd.d/*hasvk*.json 2>/dev/null | grep -v i686 | head -n1)"
+    vk_icd="$(first_file hasvk /usr/share/vulkan/icd.d/*intel*.json /etc/vulkan/icd.d/*intel*.json /usr/local/share/vulkan/icd.d/*intel*.json)"
+    [ -z "$vk_icd" ] && vk_icd="$(first_file "" /usr/share/vulkan/icd.d/*hasvk*.json /etc/vulkan/icd.d/*hasvk*.json)"
   elif [ "$amd_gpu" = 1 ]; then
-    vk_icd="$(ls /usr/share/vulkan/icd.d/*radeon*.json /etc/vulkan/icd.d/*radeon*.json /usr/local/share/vulkan/icd.d/*radeon*.json 2>/dev/null | grep -v i686 | head -n1)"
+    vk_icd="$(first_file "" /usr/share/vulkan/icd.d/*radeon*.json /etc/vulkan/icd.d/*radeon*.json /usr/local/share/vulkan/icd.d/*radeon*.json)"
   fi
   # EGL stays on Mesa whichever renderer draws: anything in the process that still asks for OpenGL must not load NVIDIA's EGL
   # (that wakes the dGPU and maps its blob)
@@ -122,15 +124,33 @@ trim_pid=$!
 trap 'kill "$trim_pid" 2>/dev/null' EXIT INT TERM
 
 fails=0
+# Last-known-good settings: 60 s after a start that is still running, settings.json is copied to settings.json.good. If the shell then
+# crashes twice in a row right after a start (a setting it cannot load), that copy is put back once, the broken file is kept as
+# settings.json.crashed, and you get a notification. Nothing else is touched.
+sf="$HOME/.local/state/island/settings.json"
+restored=0
+snap_pid=""
 while :; do
   t0=$(date +%s)
   say "starting: $qs -p $dir"
+  [ -n "$snap_pid" ] && kill "$snap_pid" 2>/dev/null
+  ( sleep 60; pgrep -f -- "$qs -p $dir" >/dev/null 2>&1 && [ -s "$sf" ] && cp -f "$sf" "$sf.good" ) 9>&- >/dev/null 2>&1 &
+  snap_pid=$!
   "$qs" -p "$dir" >> "$log" 2>&1 9>&-
   rc=$?
   up=$(( $(date +%s) - t0 ))
   say "exited with code $rc after ${up}s"
   case "$rc" in 0|130|143) break ;; esac            # closed on purpose (quickshell kill, Ctrl+C, log out)
   if [ "$up" -lt 10 ]; then fails=$((fails + 1)); else fails=0; fi
+  if [ "$fails" -ge 2 ] && [ "$restored" = 0 ] && [ -s "$sf.good" ] && ! cmp -s "$sf" "$sf.good"; then
+    restored=1
+    cp -f "$sf" "$sf.crashed" 2>/dev/null
+    if cp -f "$sf.good" "$sf"; then
+      say "restored the last working settings (the broken file is $sf.crashed)"
+      alert "it crashed on start, so your last working settings were put back (the broken file is kept as settings.json.crashed)."
+      fails=0
+    fi
+  fi
   if [ "$fails" -ge 4 ]; then
     alert "it crashed $fails times in a row. Last lines: $(tail -n 3 "$log" | tr '\n' ' ' | cut -c1-300)  (full log: $log)"
     exit 1

@@ -41,6 +41,12 @@ jobs:
           exit $fail
       - name: counter-scan rules (ON only in stealth, OFF always, saved choice survives a mode change)
         run: bash tests/counterscan.sh
+      - name: special workspaces (special.sh starts the app only when its workspace is empty and it is not running elsewhere; jq and plain-text paths)
+        run: sudo apt-get install -y jq && bash tests/special.test.sh
+      - name: settings export / import (round trip, import preview new / changed / same, hostile archives refused)
+        run: bash tests/settings-io.test.sh
+      - name: commands and widgets (halcyon CLI lists line up, every IPC call and launcher entry exists, every widget type has its file)
+        run: node tests/commands-widgets.test.js
       - name: lock screen widget rules (which widgets may be on the lock screen, the two lists stay apart, feeds merge)
         run: node tests/widgetdata-lock.test.js
       - name: settings groups (every group on exactly one page, known sections, section order)

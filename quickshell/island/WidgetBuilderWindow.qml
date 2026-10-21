@@ -182,7 +182,7 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 2
                     Text { text: "Widget builder"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Text { text: root.lockT ? "The widgets of your lock screen. Only ones that show something are offered, and nothing on them can be clicked while it is locked." : "One widget at a time: pick it on the left, shape it on the right. Where they all sit is the Desktop builder's job."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    Text { text: root.lockT ? "The widgets of your lock screen: the same ones as the desktop, but nothing on them can be clicked while it is locked." : "One widget at a time: pick it on the left, shape it on the right. Where they all sit is the Desktop builder's job."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                 }
                 SegSwitch {
                     Layout.alignment: Qt.AlignVCenter
@@ -365,7 +365,7 @@ Item {
                                 visible: root.lockT
                                 width: cat.width
                                 wrapMode: Text.WordWrap
-                                text: "Not offered on the lock screen (they run commands or show private things): " + WD.lockBlockedNames() + "."
+                                text: "Every widget works here too, but nothing on them can be clicked or run while the screen is locked. Marked private (anyone at your locked computer can read them): " + WD.lockPrivateNames() + "."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
                             }
                             Repeater {
@@ -373,7 +373,7 @@ Item {
                                 delegate: Column {
                                     id: catGroup
                                     required property var modelData
-                                    readonly property var kinds: WD.catalog.filter(function (t) { return t.cat === modelData[0] && (!root.lockT || WD.lockOk(t.id)) })
+                                    readonly property var kinds: WD.catalog.filter(function (t) { return t.cat === modelData[0] })
                                     visible: kinds.length > 0
                                     width: cat.width
                                     spacing: 8
@@ -396,7 +396,13 @@ Item {
                                                         Text { text: String.fromCodePoint(modelData.icon); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 17 }
                                                         Text { text: modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; elide: Text.ElideRight; width: 106 }
                                                     }
-                                                    Text { width: parent.width; text: modelData.hint; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 9; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+                                                    Text {
+                                                        width: parent.width
+                                                        readonly property string priv: root.lockT ? WD.lockPrivateOf(modelData.id) : ""
+                                                        text: priv !== "" ? "Private: " + priv : modelData.hint
+                                                        color: priv !== "" ? root.pal.warn : root.pal.muted
+                                                        font.family: root.pal.uiFont; font.pixelSize: 9; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
+                                                    }
                                                 }
                                                 MouseArea { id: am; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.addWidget(modelData.id) }
                                             }

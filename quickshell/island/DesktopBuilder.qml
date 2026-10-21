@@ -4,12 +4,13 @@ import "DeskSpots.js" as DS
 import "WidgetData.js" as WD
 
 // Settings > Appearance > Desktop builder: a line about what the desktop is now and the button that opens the builder window
-// (DesktopBuilderWindow.qml: wallpaper on / off and blur, moving stars, and the corner each box opens from).
+// (DesktopBuilderWindow.qml: wallpaper on / off and blur, moving stars, and the corner each box opens from; its Lock screen side builds the
+// lock screen: background, blur and tint, stars and splash, its widgets).
 ColumnLayout {
     id: db
     property var pal
     property var opt: ({})
-    signal openRequested()
+    signal openRequested(string which)         // which = "desktop" or "lock"
     signal resetRequested()
 
     width: parent ? parent.width : 0
@@ -43,7 +44,8 @@ ColumnLayout {
     }
     RowLayout {
         spacing: 8
-        ActionChip { pal: db.pal; label: "Open the desktop builder"; on: true; onClicked: db.openRequested() }
+        ActionChip { pal: db.pal; label: "Open the desktop builder"; on: true; onClicked: db.openRequested("desktop") }
+        ActionChip { pal: db.pal; label: "Lock screen"; onClicked: db.openRequested("lock") }
         ActionChip { pal: db.pal; label: "Reset the desktop"; doneLabel: "Reset"; disabled: db.isDefault; onClicked: db.resetRequested() }
     }
 }

@@ -98,12 +98,18 @@ pm() {
                    [auto-cpufreq]=auto-cpufreq.service [tuned]=tuned.service )
   [ "$want" = halcyon ] && want=power-profiles-daemon             # Halcyon Auto is a daemon that drives power-profiles-daemon
   systemctl cat "${svc[$want]}" >/dev/null 2>&1 || { echo "$want is not installed" >&2; exit 3; }
+  local stopped=()
   for k in "${!svc[@]}"; do
     [ "$k" = "$want" ] && continue
-    u=${svc[$k]}; systemctl is-active --quiet "$u" && systemctl stop "$u"
+    u=${svc[$k]}; systemctl is-active --quiet "$u" && { systemctl stop "$u"; stopped+=("$u"); }
   done
   [ "$want" = tlp ] && systemctl unmask tlp.service >/dev/null 2>&1
-  systemctl start "${svc[$want]}"
+  if ! systemctl start "${svc[$want]}"; then
+    # the new one would not start: put back what was running, so the machine is never left with no power manager
+    for u in "${stopped[@]}"; do systemctl start "$u" >/dev/null 2>&1; done
+    echo "$want did not start; the previous power manager was restored" >&2
+    exit 4
+  fi
 }
 
 case "${1:-}" in
