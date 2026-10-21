@@ -603,7 +603,7 @@ Scope {
         ]
     }
 
-    // Sections (the tabs) and groups: six sections, 33 groups, none longer than ~10 visible rows. A group that grew past that was split
+    // Sections (the tabs) and groups: eight sections, 35 groups, none longer than ~10 visible rows. A group that grew past that was split
     // by topic (Bar -> Bar + Bar behaviour, Effects -> Transparency & blur + Motion & dimming, Notifications -> Notifications + Edge boxes,
     // Mouse -> Mouse & touchpad + Keyboard & launcher, Performance -> Performance & memory + Tree view). Night light lives in Colours,
     // Rice in Apps. Items marked adv: true sit behind each group's "Advanced" row
@@ -632,10 +632,6 @@ Scope {
             { type: "tool", key: "nightlight", label: "Night light", desc: "Warmer screen colours (hyprsunset)." },
             { type: "slider", adv: true, key: "opt:nightTemp", def: 4000, label: "Night light warmth", desc: "Lower is warmer", min: 2500, max: 6500, step: 100, unit: " K" }
         ] },
-        { id: "greeting", title: "Terminal greeting", section: "Appearance", items: [
-            { type: "seg", key: "gr:LOGO", label: "Logo in new terminals", desc: "Adaptive: the logo of the system you are on (Arch family, BlackArch or Kali; any other system gets a Linux penguin). Pick one to always show that logo instead. Custom: your own ASCII art (below). Info only: no logo, just the system lines. Off: no greeting. Applies to terminals you open from now on.", opts: [o("adaptive", "Adaptive"), o("arch", "Arch"), o("blackarch", "BlackArch"), o("kali", "Kali"), o("linux", "Linux"), o("custom", "Custom"), o("none", "Info only"), o("off", "Off")] },
-            { type: "acts", label: "Your own ASCII art", desc: "Copy some ASCII art, then Paste from clipboard: it is saved and the greeting switches to Custom. Edit file opens it in your editor. Write @C1@ (accent colour) or @C2@ (grey) in the text to colour parts of it; colour codes that are already in the text keep working. Up to 40 rows. Preview shows the greeting in a terminal.", btns: [{ id: "greeting-paste", btn: "Paste from clipboard", done: "Saved" }, { id: "greeting-edit", btn: "Edit file", done: "", close: true }, { id: "greeting-preview", btn: "Preview", done: "" }] }
-        ] },
         { id: "wallpaper", title: "Wallpaper", section: "Appearance", items: [
             { type: "custom", name: "wallClock" },
             { type: "custom", name: "wallpaper" },
@@ -660,7 +656,7 @@ Scope {
             { type: "slider", key: "hy:dimStrength", def: 0.3, label: "Dim amount", min: 0, max: 0.8, step: 0.05, scale: 100, unit: " %", when: "hy:dimInactive=true|1" },
             { type: "toggle", key: "opt:extraDim", label: "Extra dim mode", desc: "Drops the display brightness to minimum (1%) for nighttime comfort without losing color fidelity. You can also toggle it from the utilities panel or with Super + Alt + D." }
         ] },
-        { id: "growth", title: "Constellations & Stars", section: "Appearance", items: [
+        { id: "growth", title: "Constellations & Stars", section: "Stars & splash", items: [
             { type: "seg", key: "opt:dialogStarStyle", label: "Dialog stars effect (Battery saver)", desc: "Choose whether Settings, Display Switcher, Cheatsheet and dialogs use lightweight Moving Stars (drifting particles with tails, saving significant CPU/GPU and battery), Constellations (connected geometric nodes), Both, or Off.", opts: [o("moving", "Moving Stars (Lightweight)"), o("constellations", "Constellations"), o("both", "Both"), o("none", "Off")] },
             { type: "toggle", key: "opt:starsBar", label: "Moving stars in bars", desc: "A handful of tiny stars flying slowly across the bar (island, notch and custom bar), the bar builder and the wallpaper picker. Independent of the constellation switches below. Very light: they stand still while the bar is hidden or a page is open." },
             { type: "toggle", key: "opt:stars", label: "Constellations in the boxes", desc: "The drifting dots and lines behind the Settings, notification centre, cheat sheet, power menu, lock screen and console. Off = none anywhere, whatever the switches below say (the moving stars above are separate)." },
@@ -668,7 +664,7 @@ Scope {
             { type: "toggle", adv: true, key: "profileStars", label: "Profile picture constellation", when: "opt:stars=true||opt:treeConst=full|corner", soft: true, why: "Turn on \u201cConstellations in the boxes\u201d (or show the tree view constellation) to change this." },
             { type: "custom", adv: true, name: "growth" }
         ] },
-        { id: "signature", title: "Splash, sky & time of day", section: "Appearance", items: [
+        { id: "signature", title: "Splash, sky & time of day", section: "Stars & splash", items: [
             { type: "toggle", key: "opt:splashUnlock", def: true, label: "Splash when you unlock", desc: "The stars rush out again for about 2 seconds over your desktop right after you unlock the screen (the lock screen that is also your login does not repeat it). It never takes a click or a key. Needs the Splash animation switch (Power & lock). Not shown in Gaming mode or when motion is off.", when: "opt:splash=true" },
             { type: "toggle", key: "opt:splashShutdown", def: true, label: "Goodbye splash when you shut down", desc: "Shut down or Restart (power menu, launcher) first draws the stars back into the centre while the sparkle folds shut, about 2.4 seconds, and then goes. A click or a key skips straight to the end; the machine always goes down within about 5 seconds even if the animation fails. Needs the Splash animation switch (Power & lock). Not shown in Gaming mode or when motion is off.", when: "opt:splash=true" },
             { type: "slider", key: "opt:splashAwayMin", def: 60, label: "Only after being away", desc: "The login and unlock splashes play only when you were locked, logged out or powered off at least this long. Shorter breaks go straight to the password or the desktop. 0 = every time.", min: 0, max: 240, step: 5, unit: " min", glyph: 0xF0954 },
@@ -681,6 +677,10 @@ Scope {
             { type: "toggle", key: "opt:todOn", def: false, label: "Time-of-day wallpaper", desc: "A soft colour wash over the wallpaper that follows the sun: blue at night, rose at dawn, clear around noon, amber in the golden hour, magenta at dusk. Your picture and the colours taken from it are not changed; switching this off gives the plain wallpaper back at once. It updates once a minute while it is on." },
             { type: "slider", key: "opt:todStrength", def: 60, label: "Time-of-day strength", desc: "How strong the wash and the night dimming are. 100 % is full dusk orange and deep night blue.", min: 0, max: 100, step: 5, unit: " %", when: "opt:todOn=true" },
             { type: "action", id: "sky-open", label: "Weekly sky", btn: "Open it", done: "", desc: "Your week as stars: one for every focus session, every note you ticked off and every calendar event that has happened. Stars of one day are joined into a constellation. Save picture writes a PNG (or SVG) to ~/Pictures/Halcyon to share. Also `>weekly sky` and `halcyon weekly-sky`." }
+        ] },
+        { id: "greeting", title: "Terminal greeting", section: "Stars & splash", items: [
+            { type: "seg", key: "gr:LOGO", label: "Logo in new terminals", desc: "Adaptive: the logo of the system you are on (Arch family, BlackArch or Kali; any other system gets a Linux penguin). Pick one to always show that logo instead. Custom: your own ASCII art (below). Info only: no logo, just the system lines. Off: no greeting. Applies to terminals you open from now on.", opts: [o("adaptive", "Adaptive"), o("arch", "Arch"), o("blackarch", "BlackArch"), o("kali", "Kali"), o("linux", "Linux"), o("custom", "Custom"), o("none", "Info only"), o("off", "Off")] },
+            { type: "acts", label: "Your own ASCII art", desc: "Copy some ASCII art, then Paste from clipboard: it is saved and the greeting switches to Custom. Edit file opens it in your editor. Write @C1@ (accent colour) or @C2@ (grey) in the text to colour parts of it; colour codes that are already in the text keep working. Up to 40 rows. Preview shows the greeting in a terminal.", btns: [{ id: "greeting-paste", btn: "Paste from clipboard", done: "Saved" }, { id: "greeting-edit", btn: "Edit file", done: "", close: true }, { id: "greeting-preview", btn: "Preview", done: "" }] }
         ] },
         { id: "bar", title: "Bar", section: "Bar & panels", items: [
             { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Custom: you choose the shape (Notch or Island), what is on the bar, where it goes and how much padding it has (Bar builder below). Off: no bar at all, put clock, workspaces, stats and the rest on the desktop as widgets (Widget builder); the launcher and the pages still open from the top edge. Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("custom", "Custom"), o("off", "Off")] },
@@ -749,7 +749,7 @@ Scope {
             { type: "toggle", adv: true, key: "opt:wsInvert", label: "Invert workspace scrolling", desc: "Flips the direction when you scroll through workspaces with the mouse wheel / two-finger scroll over the workspace numbers in the bar (the 4 finger swipe has its own option above). Off: scroll down / swipe right = next workspace.", },
             { type: "custom", adv: true, name: "specialCmds" }
         ] },
-        { id: "focus", title: "Focus mode", section: "Desktop", items: [
+        { id: "focus", title: "Focus mode", section: "Productivity", items: [
             { type: "custom", name: "focusClock" },
             { type: "seg", key: "fc:LENGTH", label: "Session length", desc: "Start it from the utilities box (bottom-right corner, Focus) or SUPER+ALT+F. A timer runs, Do not disturb is on and the apps below are kept closed. When it ends everything goes back to how it was.", opts: [o(15, "15"), o(25, "25"), o(45, "45"), o(50, "50"), o(60, "60"), o(90, "90")] },
             { type: "chips", label: "While focusing", desc: "Pomodoro: work, a short break, work again ... with a long break after the last round (a reminder at every change, even with Do not disturb on). Do not disturb: popups muted, urgent ones get through. Awake: no dimming, lock or sleep. Close blocked apps: windows of the apps in the list below are closed the moment they open (a normal close request, never a kill).", opts: [ch("fc:POMODORO", "Pomodoro"), ch("fc:DND", "Do not disturb"), ch("fc:CAFFEINE", "Keep the screen awake"), ch("fc:BLOCK", "Close blocked apps")] },
@@ -760,7 +760,7 @@ Scope {
             { type: "toggle", adv: true, key: "fc:BREAK_FREE", label: "Allow blocked apps in breaks", desc: "Pomodoro breaks and Pause lift the block.", when: "fc:BLOCK=true&fc:POMODORO=true" },
             { type: "custom", name: "focusApps" }
         ] },
-        { id: "calendar", title: "Calendar", section: "Desktop", items: [
+        { id: "calendar", title: "Calendar", section: "Productivity", items: [
             { type: "toggle", key: "opt:calOn", label: "Calendar", desc: "Master switch. Off: Super + R, the clock click, the reminders, nagging and auto Focus mode are all off and nothing is synced. Connect your Google Calendar once from the calendar itself (Super + R)." },
             { type: "toggle", key: "opt:calClock", label: "Clock click", desc: "A left click on the time in the bar drops the calendar out of the bar (the pill in the island style, the notch in the notch style). Off: the click does what it did before. Click the time again to close it.", when: "opt:calOn=true" },
             { type: "toggle", key: "opt:calNotify", label: "Reminder notifications", desc: "A notification before an event starts and when it starts. When they come is set in the calendar itself (Super + R, the gear). Nagging below needs this on.", when: "opt:calOn=true" },
@@ -770,7 +770,7 @@ Scope {
             { type: "seg", key: "opt:calNagEvery", label: "Nag every", opts: [o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" },
             { type: "seg", key: "opt:calNagGiveUp", label: "Give up", desc: "How long after the task has ended it still nags.", opts: [o(60, "After 1 h"), o(180, "After 3 h"), o(720, "After 12 h"), o(4320, "After 3 days")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" }
         ] },
-        { id: "notes", title: "Notes", section: "Desktop", items: [
+        { id: "notes", title: "Notes", section: "Productivity", items: [
             { type: "custom", name: "voiceKey", label: "Voice note hotkey" },
             { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_SUMMARY", label: "Full summary of long notes", desc: "A note of 150 words or more gets a full summary under it by itself: one sentence with the main point and then every important point as its own line. It has no length limit (a very long note is read in pieces and nothing is cut off), and every line is checked against the note, so a line the note does not support is left out. The short Overview is separate. For any note, press Summarise on its row." },
             { type: "toggle", soft: true, key: "nt:NOTES_OCR", label: "Read the text in pictures", desc: "A picture you paste into a note is read in the background with tesseract (offline, on this computer): the text in it shows under the picture, can be copied, and is found by the search box. It only copies what is there, it cannot invent anything. Needs: sudo pacman -S tesseract tesseract-data-eng" },
@@ -781,11 +781,17 @@ Scope {
             { type: "seg", key: "nt:NOTES_NUDGE_HOURS", label: "Later today: nudge every", desc: "Press Remind > Later today on a task (or the AI sees \"later\" in a note) and Halcyon sends a quiet notification every few hours during the rest of that day, until you tick the task off, it has nudged the most times below, or the day ends. Nothing at night (09:00 to 21:00 by default; change it with: notes set NOTES_NUDGE_FROM / NOTES_NUDGE_TO). It never nags: a task that is done or deleted is left alone.", opts: [o("1", "1 h"), o("2", "2 h"), o("3", "3 h"), o("4", "4 h"), o("6", "6 h")] },
             { type: "seg", key: "nt:NOTES_NUDGE_MAX", label: "Later today: at most", desc: "The most nudges one task gets in a day.", opts: [o("2", "2"), o("3", "3"), o("4", "4"), o("6", "6")] }
         ] },
-        { id: "recording", title: "Screen & audio recording", section: "Desktop", items: [
+        { id: "recording", title: "Screen & audio recording", section: "Productivity", items: [
             { type: "seg", key: "opt:recKind", label: "What to record", desc: "Screen: a video of the whole screen. Audio only: just sound, saved as an .m4a file. Start and stop with Super + Alt + R, the Record button in the utilities box, or the button below.", opts: [o("screen", "Screen video"), o("audio", "Audio only")] },
             { type: "seg", key: "opt:recAudio", label: "Sound", desc: "Desktop sound is whatever you hear (music, calls, videos). Microphone is the default microphone. Both mixes the two into one track. Sound is recorded with ffmpeg and joined to the video when you stop, so it needs ffmpeg and PipeWire (or PulseAudio).", opts: [o("none", "None"), o("system", "Desktop sound"), o("mic", "Microphone"), o("both", "Both")], when: "opt:recKind=screen" },
             { type: "seg", key: "opt:recAudio", label: "Sound source", desc: "Desktop sound is whatever you hear (music, calls, videos). Microphone is the default microphone. Both mixes the two into one track. Needs ffmpeg and PipeWire (or PulseAudio).", opts: [o("system", "Desktop sound"), o("mic", "Microphone"), o("both", "Both")], when: "opt:recKind=audio" },
             { type: "acts", label: "Recordings", desc: "Everything is saved in ~/Videos/Recordings (video as recording_<date>.mp4, sound as audio_<date>.m4a). A different folder: write its path in ~/.local/state/island/rec-dir. A change here applies from the next recording; one that is running is not touched.", btns: [{ id: "rec-toggle", btn: "Start / stop", done: "" }, { id: "rec-last", btn: "Play the latest", done: "" }, { id: "rec-open", btn: "Open the folder", done: "" }] }
+        ] },
+        { id: "ai", title: "AI helpers", section: "Productivity", items: [
+            { type: "toggle", key: "ai:enabled", def: true, label: "AI features", desc: "The master switch for everything that asks a local AI model: the notes overview, task sorting and Organise, the `ai` chat, >ask and >do in the launcher, the clipboard and lyrics helpers, the error explainer, the AI / LLM advisor and the model list below. Off: none of it runs and nothing asks Ollama anything; your notes, settings and downloaded models stay as they are. Ollama itself is not stopped (other programs may use it)." },
+            { type: "custom", name: "aiModel", when: "ai:enabled=true", label: "AI advisor model" },
+            { type: "toggle", key: "opt:aiBriefCard", def: true, label: "Daily brief card", desc: "Once a day, the first time you use the desktop, a notification sums up your tasks (what is overdue and due today), your notes and your Focus streak. The local AI words it; with AI off it is written plainly from the same facts. The same brief is a desktop widget too (Widget builder > Daily brief). Terminal: halcyon ai brief." },
+            { type: "toggle", key: "opt:aiExplain", def: true, when: "ai:enabled=true", label: "Explain errors", desc: "When a Halcyon service fails, or the island logs a new QML error, the local AI reads the log (and the code at that line) and a notification says what went wrong and the likely fix. Each error is explained once. Nothing leaves this computer. Any time: halcyon ai explain last, and halcyon ai explain show for the full last answer." },
         ] },
         { id: "mouse", title: "Mouse & touchpad", section: "Input & power", items: [
             { type: "slider", key: "scrollMouse", label: "Mouse wheel scroll speed", desc: "In every app. Higher is faster.", min: 0.25, max: 3, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
@@ -804,7 +810,7 @@ Scope {
             { type: "slider", adv: true, key: "hy:repeatDelay", def: 600, label: "Key repeat delay", min: 150, max: 800, step: 10, unit: " ms" },
             { type: "slider", adv: true, key: "hy:repeatRate", def: 25, label: "Key repeat speed", min: 5, max: 70, step: 1, unit: "/s" }
         ] },
-        // btn = words the search should find (these two groups are one custom editor each)
+        // btn = words the search should find (these two groups are one custom editor each),
         { id: "gestures", title: "Touchpad gestures", section: "Input & power", items: [
             { type: "custom", name: "gestures", btn: "swipe pinch three four fingers 3 4 finger multitouch workspace" }
         ] },
@@ -854,15 +860,11 @@ Scope {
             { type: "acts", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading...", when: "fx:safe=false" }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring...", when: "fx:safe=true" }] }
         ] },
         { id: "suggestions", title: "Optimization & Suggestions", section: "Performance", items: [
-            { type: "toggle", key: "ai:enabled", def: true, label: "AI features", desc: "The master switch for everything that asks a local AI model: the notes overview, task sorting and Organise, the `ai` chat, >ask and >do in the launcher, the clipboard and lyrics helpers, the error explainer, the AI / LLM advisor and the model list below. Off: none of it runs and nothing asks Ollama anything; your notes, settings and downloaded models stay as they are. Ollama itself is not stopped (other programs may use it)." },
             { type: "acts", label: "Recommended Sweet Spot (Aesthetic + Speed)", desc: "Optimizes performance without compromising visual fidelity: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied!" }] },
             { type: "acts", label: "Adaptive System Advisor", desc: "Analyzes your actual battery status, memory pressure, active workloads, and application launch habits to generate personalized tuning advice in the console (scripts/adaptive-advisor.py).", btns: [
                 { id: "opt-adaptive-advisor", btn: "Analyze My Setup", done: "Opening…" },
                 { id: "opt-llm-advisor", btn: "AI / LLM Advisor (Experimental)", done: "Analyzing…" }
             ] },
-            { type: "custom", name: "aiModel", when: "ai:enabled=true", label: "AI advisor model" },
-            { type: "toggle", key: "opt:aiBriefCard", def: true, label: "Daily brief card", desc: "Once a day, the first time you use the desktop, a notification sums up your tasks (what is overdue and due today), your notes and your Focus streak. The local AI words it; with AI off it is written plainly from the same facts. The same brief is a desktop widget too (Widget builder > Daily brief). Terminal: halcyon ai brief." },
-            { type: "toggle", key: "opt:aiExplain", def: true, when: "ai:enabled=true", label: "Explain errors", desc: "When a Halcyon service fails, or the island logs a new QML error, the local AI reads the log (and the code at that line) and a notification says what went wrong and the likely fix. Each error is explained once. Nothing leaves this computer. Any time: halcyon ai explain last, and halcyon ai explain show for the full last answer." },
             { type: "toggle", key: "opt:lazyLoad", def: true, label: "Aggressive Memory Freeing & Lazy Loading", desc: "Unloads heavy background dialogs (Settings, Cheatsheet, Calendar) when closed and triggers garbage collection to keep Quickshell's resident RAM low. Enabled automatically in Low and Medium resource modes." },
             { type: "acts", label: "Live Memory Trimming", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] }
         ] },
@@ -1001,7 +1003,7 @@ Scope {
     property string query: ""
     property bool scrolling: false          // true while the list is moving: the starfield / pulses pause so scrolling gets the whole frame
     property string section: ""             // "" = every section; else Appearance | Bar & panels | Desktop | Input & power | Performance | System
-    readonly property var sections: ["Appearance", "Bar & panels", "Desktop", "Input & power", "Performance", "System"]
+    readonly property var sections: ["Appearance", "Stars & splash", "Bar & panels", "Desktop", "Productivity", "Input & power", "Performance", "System"]
     property var collapsed: ({ apps: true, growth: true, gestures: true, mousebtn: true, treeview: true })
 
     // ---- two layouts: "tree" (the branching view, the default) and "pages" (a menu on the left, one page at a time).
@@ -1009,12 +1011,15 @@ Scope {
     readonly property bool pagesMode: opt && opt.settingsStyle === "pages"
     // every group sits on exactly ONE page (tests/settings-groups.test.js checks it); the pages follow the section tabs of the tree
     readonly property var pages: [
-        { id: "Appearance", sub: "Look, colours, wallpaper, transparency, motion, the stars, the splash and the weekly sky.", groups: ["look", "colours", "greeting", "wallpaper", "glass", "motion", "growth", "signature"] },
+        { id: "Appearance", sub: "Look, colours, wallpaper, transparency and motion.", groups: ["look", "colours", "wallpaper", "glass", "motion"] },
+        { id: "Stars & splash", sub: "Constellations, the splash, the weekly sky, time of day and the terminal greeting.", groups: ["growth", "signature", "greeting"] },
         { id: "Bar", sub: "The bar, how it behaves, and the clock.", groups: ["bar", "barbehave", "clock"] },
         { id: "Panels", sub: "Notifications, the edge boxes, the volume bar and the utilities box.", groups: ["notifications", "osd", "utilbox"] },
-        { id: "Desktop", sub: "The desktop and widget builders, workspaces, focus mode, the calendar, notes and recording.", groups: ["desktop", "widgets", "workspaces", "focus", "calendar", "notes", "recording"] },
+        { id: "Desktop", sub: "The desktop and widget builders, workspaces and windows.", groups: ["desktop", "widgets", "workspaces"] },
+        { id: "Productivity", sub: "Focus mode, the calendar, notes and recording.", groups: ["focus", "calendar", "notes", "recording"] },
+        { id: "AI", sub: "The local AI helpers: the master switch, the model, the daily brief and the error explainer.", groups: ["ai"] },
         { id: "Input & power", sub: "Mouse, touchpad, gestures, mouse buttons, keyboard, power and the lock screen.", groups: ["mouse", "keyboard", "gestures", "mousebtn", "power"] },
-        { id: "Performance", sub: "Profiles, safe mode, speed, memory limits, the tree view and suggestions.", groups: ["profiles", "suggestions", "performance", "treeview"] },
+        { id: "Performance", sub: "Profiles, safe mode, speed, memory limits, the tree view and suggestions.", groups: ["performance", "treeview", "profiles", "suggestions"] },
         { id: "System", sub: "Preferences, timeouts, login manager, startup and apps.", groups: ["sysoptions", "startup", "apps"] },
         { id: "Backup", sub: "Backups, restore and the safety check.", groups: ["backup"] }
     ]
@@ -1307,7 +1312,7 @@ Scope {
                     RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
                 }
 
-                // ---------------- section tabs: All / Appearance / Bar & panels / Desktop / Input & power / Performance / System
+                // ---------------- section tabs: All / Appearance / Stars & splash / Bar & panels / Desktop / Productivity / Input & power / Performance / System
                 Flow {
                     id: sectionRow
                     visible: !root.pagesMode

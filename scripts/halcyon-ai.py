@@ -646,23 +646,54 @@ def note_facts():
     }
 
 
-def brief_plain(f, nf):
+def cal_facts():
+    """Today's calendar events (the gcal cache the Calendar uses), and the next one in the coming week when today is empty."""
+    cache = read_json(os.path.join(STATE, "calendar", "events.json"), {})
+    evs = [e for e in (cache.get("events") or []) if isinstance(e, dict)] if isinstance(cache, dict) else []
+    now = time.time()
+    sod = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1))
+    eod = sod + 86400
+    title = lambda e: " ".join(str(e.get("title") or "").split())[:70] or "(no title)"
+    hm = lambda e: "all day" if e.get("allDay") else time.strftime("%H:%M", time.localtime(float(e.get("start") or 0)))
+    start = lambda e: float(e.get("start") or 0)
+    today = sorted([e for e in evs if sod <= start(e) < eod and (e.get("allDay") or float(e.get("end") or start(e)) >= now)], key=start)
+    nxt = sorted([e for e in evs if eod <= start(e) < eod + 6 * 86400], key=start)[:1]
+    return {"today": [f"{hm(e)} {title(e)}" for e in today][:4],
+            "next": [f"{time.strftime('%A', time.localtime(start(e)))} {hm(e)} {title(e)}" for e in nxt]}
+
+
+MILESTONES = (3, 7, 14, 30, 60, 100, 200, 365)
+
+
+def brief_plain(f, nf, cf):
     parts = []
+    if cf["today"]:
+        parts.append("On the calendar today: " + "; ".join(cf["today"][:3]) + ".")
+    elif cf["next"]:
+        parts.append("Nothing on the calendar today; next up: " + cf["next"][0] + ".")
     if nf["overdue"]:
         parts.append(f"{len(nf['overdue'])} overdue: " + "; ".join(nf["overdue"][:2]) + ".")
     if nf["today"]:
-        parts.append("Today: " + "; ".join(nf["today"][:3]) + ".")
-    elif nf["open"]:
-        parts.append(f"{nf['open']} open task{'s' if nf['open'] != 1 else ''}, nothing with a time today.")
-    else:
+        parts.append("Tasks today: " + "; ".join(nf["today"][:3]) + ".")
+    elif nf["undated"] or nf["later"]:
+        names = (nf["later"] + nf["undated"])[:2]
+        parts.append(f"{nf['open']} open task{'s' if nf['open'] != 1 else ''}, none with a time today: " + "; ".join(names) + ".")
+    elif not nf["overdue"]:
         parts.append("No tasks waiting.")
+    if nf["pinned"]:
+        parts.append("Pinned: " + nf["pinned"][0] + ".")
     if f["tracked"]:
+        left = max(0, f["goal"] - f["today"])
         if f["streak"]:
-            left = max(0, f["goal"] - f["today"])
-            parts.append(f"Focus streak: {f['streak']} day{'s' if f['streak'] != 1 else ''}" +
-                         (f", {left} min today keeps it." if left else ", today is done."))
+            nxt = next((m for m in MILESTONES if m > f["streak"]), None)
+            s = f"Focus streak: {f['streak']} day{'s' if f['streak'] != 1 else ''} (best {f['best']})"
+            s += f", {left} more min today keeps it" if left else ", today's goal is done"
+            if nxt and nxt - f["streak"] <= 3:
+                s += f"; {nxt - f['streak']} day{'s' if nxt - f['streak'] != 1 else ''} to the {nxt}-day badge"
+            parts.append(s + ".")
         else:
-            parts.append(f"No focus streak right now: {f['goal']} min today starts one.")
+            parts.append(f"No focus streak right now: {f['goal']} min of Focus today starts one" +
+                         (f" (yesterday: {f['yesterday']} min)." if f["yesterday"] else "."))
     return " ".join(parts)
 
 
@@ -681,22 +712,30 @@ def grounded(out, facts_text):
 
 
 def make_brief():
-    f, nf = focus_facts(), note_facts()
-    text, ai = brief_plain(f, nf), False
+    f, nf, cf = focus_facts(), note_facts(), cal_facts()
+    text, ai = brief_plain(f, nf, cf), False
     if ai_enabled():
-        # the model only rephrases the plain brief (it is given nothing else to draw from), and its answer is checked against it
-        with contextlib.suppress(AiOff, Fail):
-            out = generate(
-                "Facts:\n" + text + "\n\nRewrite these facts as the brief.",
-                system=("You turn a few facts into a short, friendly daily brief for a desktop widget: at most three sentences, at "
-                        "most 50 words, plain text, no greeting, no lists, no emojis. Keep every task, time and number exactly as given "
-                        "and add none; do not add advice or anything that is not in the facts."),
-                num_predict=120, temperature=0.3, timeout=60)
-            out = " ".join(plain(out).split())
-            if 10 < len(out) < 500 and grounded(out, text):
-                text, ai = out, True
+        # the facts stay exactly as written (a small model reworded "next up: Thursday" into "today"); the model only adds one short,
+        # warm opening line on top, and that line may not hold a number, a day, a time or anything overdue the facts do not mention
+        system = ("You write ONE short, warm opening line (at most 12 words) for someone's daily brief. It sets the mood from the "
+                  "facts; the facts themselves are shown right after it, so never repeat them. Never use digits, days, dates or times.\n"
+                  "Examples of good lines:\n"
+                  "A calm day ahead, with room for whatever you choose.\n"
+                  "Your streak is alive, so keep the momentum going.\n"
+                  "A full plate today, so take it one thing at a time.\n"
+                  "A couple of things slipped, but they are quick to catch up on.\n"
+                  "Answer with the line only.")
+        for _ in range(2):
+            with contextlib.suppress(AiOff, Fail):
+                out = generate("Facts:\n" + text + "\n\nThe opening line:", system=system, num_predict=40, temperature=0.7, timeout=60)
+                line = " ".join(plain(out).split()).strip('"')
+                bad = re.search(r"\d|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|yesterday|morning|evening|"
+                                r"afternoon|hello|\bhi\b|good (day|night)|badge|overdue", line, re.I)
+                if 8 < len(line) < 110 and not bad and line.count(".") <= 1 and grounded(line, text):
+                    text, ai = line.rstrip(".!") + ". " + text, True
+                    break
     d = {"day": time.strftime("%Y-%m-%d"), "at": int(time.time()), "greeting": greeting(), "text": text, "ai": ai,
-         "focus": f, "tasks": nf}
+         "focus": f, "tasks": nf, "calendar": cf}
     write_json(BRIEF, d)
     return d
 

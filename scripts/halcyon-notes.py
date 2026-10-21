@@ -725,6 +725,11 @@ def summarise_text(text):
         for b in bl:
             if b and _grounded(b, ns, nn, piece) and all(_overlap(b, x) < 0.6 for x in bullets):
                 bullets.append(b)
+    # nothing written down may go missing: a point of the note that no kept line covers (its model line failed the check above,
+    # e.g. "1 hour" for "1 hr") comes back in the note's own words, shortened
+    for item in _points(text):
+        if all(_overlap(item, x) < 0.35 for x in bullets + gists):
+            bullets.append(_trim(item, 24))
     if not gists and not bullets:
         return "", None
     if len(gists) > 1:                                   # one sentence for the whole note, made from the pieces' own gists
@@ -1586,6 +1591,17 @@ def _grounded(piece, note_stems, note_nums, note=None):
         return True
     missing = [w for w in words if not _has_word(w, note_stems)]
     return len(missing) <= 0.3 * len(words)
+
+def _points(text):
+    """The separate points of a note: its numbered / bulleted items, else its lines, else its sentences (only ones with 4+ words)."""
+    t = text.strip()
+    parts = re.split(r"[\u2022\u25cf\u25aa\u25e6\u2023]|(?:^|\n)\s*(?:[-*]\s+|\d{1,2}[.)]\s+)", t)
+    parts = [re.sub(r"\s+", " ", x).strip(" -*") for x in parts]
+    if len([x for x in parts if x]) < 2:
+        parts = [x.strip() for x in t.splitlines()]
+    if len([x for x in parts if x]) < 2:
+        parts = re.split(r"(?<=[.!?])\s+", t)
+    return [x for x in parts if len(x.split()) >= 4]
 
 def checklist_of(text):
     """A note that is a list of 3+ bullets / dashes / numbers: shown as it is (no model, so nothing can be dropped, invented or put
