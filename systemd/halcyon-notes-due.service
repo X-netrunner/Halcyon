@@ -1,5 +1,7 @@
 [Unit]
 Description=Halcyon: notify about notes (tasks) whose time has come (started once a minute by halcyon-notes-due.timer)
+# a failure (after the restarts gave up) is explained by the local AI as a notification (halcyon-explain@.service)
+OnFailure=halcyon-explain@%n.service
 
 [Service]
 Type=oneshot

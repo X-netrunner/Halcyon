@@ -2,7 +2,8 @@
 # halcyon-settings-io.sh: move YOUR Halcyon settings to another machine (or back them up) as one file.
 #
 #   halcyon-settings-io.sh export [FILE]            write a .tar.gz (default: ~/Halcyon-settings-DATE.tar.gz)
-#   halcyon-settings-io.sh import FILE [--dry-run]  put the settings back (your current ones are saved first)
+#   halcyon-settings-io.sh import FILE [--dry-run]  put the settings back (your current ones are saved first);
+#                                                   --dry-run shows each file as new / changed (with the difference) / same
 #   halcyon-settings-io.sh list FILE                show what is inside
 #
 # What is included: the island settings (settings.json, palette, theme, gestures, default apps, display mode, focus history),
@@ -23,7 +24,7 @@ RICE_FILES=(hypr-user.lua scheme/current.lua gamemode.conf special.conf apps.cus
             birthdays.txt holidays.txt)
 
 die() { printf 'halcyon-settings-io: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n 2,9p "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n 2,10p "$0" | sed 's/^# \{0,1\}//'; }
 
 allowed() {   # allowed NAME: is "state/x" or "rice/y" on the list?
   local n="$1" f
@@ -74,6 +75,30 @@ validate() {
 
 do_list() { local f="${1:-}"; [ -n "$f" ] || die "list needs a file"; validate "$f" && tar -tzf "$f" | grep -v '/$'; }
 
+# preview DIR: what an import would do, file by file, against what is on this machine now. Nothing is written.
+#   new        the file does not exist here yet
+#   changed    it exists and differs (the first lines of the difference follow; "-" is yours now, "+" is the import)
+#   same       identical, nothing to do
+preview() {
+  local dir="$1" f dst kind n_new=0 n_chg=0 n_same=0 lines=40
+  echo "Import preview (nothing has been changed):"
+  for kind in state rice; do
+    local -n list=STATE_FILES; [ "$kind" = rice ] && local -n list=RICE_FILES
+    for f in "${list[@]}"; do
+      [ -f "$dir/$kind/$f" ] || continue
+      if [ "$kind" = state ]; then dst="$STATE/$f"; else dst="$RICE/$f"; fi
+      if [ ! -e "$dst" ]; then printf '  new      %s\n' "$kind/$f"; n_new=$((n_new+1))
+      elif cmp -s "$dst" "$dir/$kind/$f"; then printf '  same     %s\n' "$kind/$f"; n_same=$((n_same+1))
+      else
+        printf '  changed  %s\n' "$kind/$f"; n_chg=$((n_chg+1))
+        diff -u --label "now/$kind/$f" --label "import/$kind/$f" "$dst" "$dir/$kind/$f" 2>/dev/null | sed -n "3,${lines}p" | sed 's/^/             /'
+      fi
+    done
+    unset -n list
+  done
+  printf '%s new, %s changed, %s unchanged. Run again without --dry-run to apply (your current settings are saved first).\n' "$n_new" "$n_chg" "$n_same"
+}
+
 do_import() {
   local file="" dry=0 a tmp f n=0 stamp
   for a in "$@"; do case "$a" in --dry-run) dry=1 ;; *) file="$a" ;; esac; done
@@ -82,10 +107,7 @@ do_import() {
   tmp="$(mktemp -d)" || die "cannot make a temporary folder"
   trap 'rm -rf "$tmp"' RETURN
   tar -C "$tmp" -xzf "$file" --no-same-owner --no-same-permissions || die "extract failed"
-  if [ "$dry" = 1 ]; then
-    echo "Would restore:"; (cd "$tmp" && find state rice -type f 2>/dev/null | sort | sed 's/^/  /')
-    return 0
-  fi
+  if [ "$dry" = 1 ]; then preview "$tmp"; return 0; fi
   stamp="$(date +%Y%m%d-%H%M%S)"
   mkdir -p "$HOME/.cache/halcyon"
   do_export "$HOME/.cache/halcyon/settings-before-import-$stamp.tar.gz" >/dev/null 2>&1 \

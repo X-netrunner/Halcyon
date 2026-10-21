@@ -46,7 +46,7 @@ detect_monitors() {
 
 apply_mirror() {
     local mons internal external
-    mons=($(detect_monitors))
+    read -ra mons <<<"$(detect_monitors)"
     internal="${mons[0]:-}"
     external="${mons[1]:-}"
 
@@ -68,7 +68,7 @@ apply_mirror() {
 
 apply_extend_right() {
     local mons internal external
-    mons=($(detect_monitors))
+    read -ra mons <<<"$(detect_monitors)"
     internal="${mons[0]:-}"
     external="${mons[1]:-}"
 
@@ -86,7 +86,7 @@ apply_extend_right() {
 
 apply_extend_left() {
     local mons internal external
-    mons=($(detect_monitors))
+    read -ra mons <<<"$(detect_monitors)"
     internal="${mons[0]:-}"
     external="${mons[1]:-}"
 
@@ -104,7 +104,7 @@ apply_extend_left() {
 
 apply_external_only() {
     local mons internal external
-    mons=($(detect_monitors))
+    read -ra mons <<<"$(detect_monitors)"
     internal="${mons[0]:-}"
     external="${mons[1]:-}"
 
@@ -122,7 +122,7 @@ apply_external_only() {
 
 apply_internal_only() {
     local mons internal external
-    mons=($(detect_monitors))
+    read -ra mons <<<"$(detect_monitors)"
     internal="${mons[0]:-}"
     external="${mons[1]:-}"
 
@@ -144,7 +144,7 @@ apply_auto() {
 show_status() {
     local json mons internal external
     json="$(get_monitors_json)"
-    mons=($(detect_monitors))
+    read -ra mons <<<"$(detect_monitors)"
     internal="${mons[0]:-none}"
     external="${mons[1]:-none}"
 
@@ -168,7 +168,7 @@ show_menu() {
     fi
 
     local mons internal external choices choice
-    mons=($(detect_monitors))
+    read -ra mons <<<"$(detect_monitors)"
     internal="${mons[0]:-Laptop}"
     external="${mons[1]:-}"
 

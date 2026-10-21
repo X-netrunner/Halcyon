@@ -27,14 +27,14 @@ Scope {
 
     property var notes: []
     property string search: ""
-    property string filter: "all"           // all | open | tasks | pinned | done
+    property string filter: "all"           // all | open | tasks | pinned | done | g:<group> (a group Organise made)
     property bool flash: false              // "Saved", for a moment, before the quick panel leaves
 
     readonly property bool panelRight: spot.charAt(1) !== "r"      // the console is on the left -> the notes panel goes right
     readonly property bool panelBottom: spot.charAt(0) === "b"
 
     function show() { mode = "quick"; flash = false; open = true; loadNotes() }
-    function showAll() { mode = "all"; search = ""; filter = "all"; open = true; loadNotes() }
+    function showAll() { mode = "all"; search = ""; filter = "all"; orgOpen = false; open = true; loadNotes() }
     function openAll() { mode = "all"; search = ""; filter = "all"; loadNotes() }      // from the panel: stays open, becomes the list
     function hide() { dropStaged(); open = false; flash = false }
     function close() { hide() }
@@ -45,6 +45,46 @@ Scope {
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
     Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
+
+    // ---- Organise (scripts/halcyon-ai.py organise): tags, groups and duplicates. It first only PROPOSES; Apply carries the proposal out
+    // (the script keeps a copy of notes.json from before as notes.json.bak-organise). Duplicates are found without the AI too.
+    property bool orgOpen: false
+    property string orgText: ""
+    property bool orgChanges: false
+    property bool orgOk: true
+    property bool orgApplied: false
+    readonly property string aiScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-ai.py"
+    function organise() {
+        if (orgProc.running) return
+        orgOpen = true; orgText = ""; orgChanges = false; orgOk = true; orgApplied = false
+        orgProc.command = ["python3", aiScript, "organise", "--json"]
+        orgProc.running = true
+    }
+    function organiseApply() {
+        if (orgProc.running || !orgChanges) return
+        orgText = ""; orgApplied = true
+        orgProc.command = ["python3", aiScript, "organise", "--apply", "--json"]
+        orgProc.running = true
+    }
+    Process {
+        id: orgProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var d = null
+                try { d = JSON.parse(text) } catch (e) { d = null }
+                root.orgOk = !!d && d.ok === true
+                root.orgText = !d ? "No answer (is python3 there?)" : (d.ok ? d.text : d.error)
+                root.orgChanges = !!d && d.ok === true && d.changes === true && !root.orgApplied
+                if (root.orgApplied) root.loadNotes()
+            }
+        }
+    }
+    // the groups Organise gave the notes, for the filter row
+    readonly property var groups: {
+        var g = []
+        for (var i = 0; i < notes.length; i++) if (notes[i].group && g.indexOf(notes[i].group) < 0) g.push(notes[i].group)
+        return g.sort()
+    }
 
     property bool reloadAgain: false
     property bool vlmOn: false                  // Settings > Notes > Describe pictures: shows the Describe button
@@ -161,7 +201,8 @@ Scope {
             { name: "picture text", txt: ((n.ocr && n.ocr.text) || "").toLowerCase() },
             { name: "picture description", txt: ((n.describe && n.describe.text) || "").toLowerCase() },
             { name: "overview", txt: ((n.think && n.think.why) || "").toLowerCase() },
-            { name: "summary", txt: ((n.summary && n.summary.text) || "").toLowerCase() }
+            { name: "summary", txt: ((n.summary && n.summary.text) || "").toLowerCase() },
+            { name: "tags", txt: ((n.tags || []).join(" ") + " " + (n.group || "")).toLowerCase() }
         ]
         var where = []
         for (var t = 0; t < terms.length; t++) {
@@ -198,6 +239,7 @@ Scope {
             if (f === "done" && !n.done) return false
             if (f === "pinned" && !n.pinned) return false
             if (f === "tasks" && (!n.task || n.done)) return false
+            if (f.indexOf("g:") === 0 && n.group !== f.substring(2)) return false
             return !q || root.matchWhere(n, q).length > 0
         })
         // pinned first, otherwise the order of the file (newest first)
@@ -351,6 +393,7 @@ Scope {
     function ocrBusy(n) { return !!n.ocr && n.ocr.state === "working" && (Date.now() / 1000 - (n.ocr.at || 0)) < 120 }
     function descBusy(n) { return !!n.describe && n.describe.state === "working" && (Date.now() / 1000 - (n.describe.at || 0)) < 330 }
     function ocrText(n) { return (n.ocr && n.ocr.state === "done" && n.ocr.text) ? n.ocr.text : "" }
+    function descText(n) { return (n.describe && n.describe.state === "done" && n.describe.text) ? n.describe.text : "" }
     function ocrLine(n) {                     // a status under a picture note: reading it, or why it could not be read
         if (!n.ocr) return ""
         if (n.ocr.state === "working") return ocrBusy(n) ? "Reading the text in the picture ..." : ""
@@ -844,6 +887,14 @@ Scope {
                         Item { Layout.fillWidth: true }
                         ActionChip {
                             pal: root.pal
+                            label: "Organise"
+                            implicitHeight: 30
+                            visible: root.notes.length >= 2
+                            on: root.orgOpen
+                            onClicked: root.orgOpen ? (root.orgOpen = false) : root.organise()
+                        }
+                        ActionChip {
+                            pal: root.pal
                             label: "New note"
                             implicitHeight: 30
                             onClicked: root.show()
@@ -888,8 +939,47 @@ Scope {
                         }
                     }
 
-                    // filter
-                    Row {
+                    // Organise: what it proposes, and Apply
+                    Rectangle {
+                        Layout.fillWidth: true
+                        visible: root.orgOpen
+                        implicitHeight: orgCol.implicitHeight + 24
+                        radius: root.pal.rMd
+                        color: Qt.alpha(root.pal.accent, 0.08)
+                        border.width: 1
+                        border.color: root.orgOk ? Qt.alpha(root.pal.accent, 0.35) : Qt.alpha(root.pal.warn, 0.5)
+                        ColumnLayout {
+                            id: orgCol
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                            spacing: 8
+                            Text {
+                                Layout.fillWidth: true
+                                text: orgProc.running ? (root.orgApplied ? "Organising…" : "Looking through your notes for tags, groups and duplicates…") : root.orgText
+                                color: orgProc.running ? root.pal.muted : (root.orgOk ? root.pal.text : root.pal.warn)
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tCap + 1
+                                lineHeight: 1.25
+                                wrapMode: Text.Wrap
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: root.orgChanges
+                                    text: "Nothing changes until you press Apply. Duplicates are merged into one note (their extra lines are kept); a copy of your notes from before is kept."
+                                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.Wrap
+                                }
+                                Item { Layout.fillWidth: true; visible: !root.orgChanges }
+                                ActionChip { pal: root.pal; label: "Apply"; doneLabel: "Applied"; on: true; implicitHeight: 28; visible: root.orgChanges; disabled: orgProc.running; onClicked: root.organiseApply() }
+                                ActionChip { pal: root.pal; label: root.orgChanges ? "Not now" : "Close"; implicitHeight: 28; onClicked: root.orgOpen = false }
+                            }
+                        }
+                    }
+
+                    // filter (and the groups Organise made)
+                    Flow {
+                        Layout.fillWidth: true
                         spacing: 8
                         Repeater {
                             model: [
@@ -898,7 +988,9 @@ Scope {
                                 { id: "tasks", t: "Tasks", n: root.taskCount },
                                 { id: "pinned", t: "Pinned", n: root.pinnedCount },
                                 { id: "done", t: "Done", n: root.doneCount }
-                            ]
+                            ].concat(root.groups.map(function (g) {
+                                return { id: "g:" + g, t: "# " + g, n: root.notes.filter(function (n) { return n.group === g }).length }
+                            }))
                             delegate: Rectangle {
                                 required property var modelData
                                 readonly property bool on: root.filter === modelData.id
@@ -1105,6 +1197,15 @@ Scope {
                                                 font.pixelSize: 10
                                             }
                                             NotePill { visible: !!noteRow.modelData.task; pal: root.pal; text: "Task" }
+                                            Repeater {
+                                                model: noteRow.modelData.tags || []
+                                                delegate: NotePill {
+                                                    required property string modelData
+                                                    pal: root.pal
+                                                    tone: root.pal.accent2
+                                                    text: "#" + modelData
+                                                }
+                                            }
                                             NotePill {
                                                 visible: !!noteRow.modelData.due
                                                 pal: root.pal

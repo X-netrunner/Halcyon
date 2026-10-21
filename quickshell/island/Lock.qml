@@ -42,8 +42,8 @@ Scope {
     property string ssid: ""
     property int notifCount: 0
     // ---- the widgets you built for this screen (Settings > Appearance > Widget builder > Lock screen; placed with the desktop editor)
-    // They only SHOW things: shell.qml hands over `lockEnv` (the same numbers, but every action does nothing), WidgetData.js leaves out the types
-    // that run commands or show private things, and each widget has a click shield (WidgetHost.inert).
+    // They only SHOW things: shell.qml hands over `lockEnv` (the same numbers, but every action does nothing), and each widget has a click shield
+    // (WidgetHost.inert). Every widget type may be here; WidgetData.js marks the private ones where you add them.
     property var deskOpt: ({})            // the shell's settings: opt.lockDeskWidgets (the list) and opt.lockDeskWidgetsOn (the switch)
     property var deskEnv: null            // shell.qml lockEnv
     property real deskLum: 0.05           // how bright this screen's background is (shell.qml lockBackLum), for the widgets' readability colours

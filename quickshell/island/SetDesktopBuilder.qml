@@ -9,7 +9,7 @@ DesktopBuilder {
     property var root                  // the Settings scope (it hands itself in)
     pal: root.pal
     opt: root.opt
-    onOpenRequested: root.dbOpen = true
+    onOpenRequested: t => root.openDesktopBuilder(t)
     onResetRequested: {
         for (var k in DS.resetValues) root.setting("opt:" + k, DS.resetValues[k])      // the same list the builder window resets
         root.setting("opt:boxSpots", null)

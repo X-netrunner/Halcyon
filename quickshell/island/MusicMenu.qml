@@ -72,7 +72,7 @@ Scope {
     Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
 
     // ---- a new song while the panel is open: read again, after a moment (the player updates title and artist one after the other)
-    onTrackKeyChanged: { lyrStale = true; queStale = true; if (open) songT.restart() }
+    onTrackKeyChanged: { lyrStale = true; queStale = true; aiView = ""; aiOut = ""; aiFor = ""; if (open) songT.restart() }
     Timer { id: songT; interval: 900; onTriggered: if (root.open) root.ensure() }
 
     // ---- reading
@@ -165,6 +165,35 @@ Scope {
         return Math.floor(s / 60) + ":" + (r < 10 ? "0" : "") + r
     }
     readonly property bool busy: tab === "lyrics" ? !lyrLoaded : !queLoaded
+
+    // ---- the AI on the song (scripts/halcyon-ai.py lyrics meaning): what it is about.
+    // Shown in place of the lyrics until "Lyrics" is picked again or the song changes; answers are cached by the script per song.
+    property string aiView: ""              // "" (the lyrics) | meaning
+    property string aiOut: ""
+    property bool aiOk: true
+    property string aiFor: ""               // trackKey + view the answer is for
+    readonly property string aiScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-ai.py"
+    function aiShow(v) {
+        if (v === "" || v === aiView) { aiView = ""; return }
+        aiView = v
+        if (aiFor === trackKey + "\u0001" + v && aiOut !== "") return
+        if (aiProc.running) return
+        aiOut = ""; aiOk = true; aiFor = trackKey + "\u0001" + v
+        aiProc.command = ["python3", aiScript, "lyrics", v, "--json", "--title", title, "--artist", artist, "--album", album,
+                          "--duration", String(Math.round(duration)), "--url", fileUrl]
+        aiProc.running = true
+    }
+    Process {
+        id: aiProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var d = null
+                try { d = JSON.parse(text) } catch (e) { d = null }
+                root.aiOk = !!d && d.ok === true
+                root.aiOut = !d ? "No answer (is python3 there?)" : (d.ok ? d.text : d.error)
+            }
+        }
+    }
     readonly property var cur: tab === "lyrics" ? lyr : que
     // the song the answer is about (the script's own words, so a mismatch with the media page is visible)
     readonly property string subject: {
@@ -238,7 +267,7 @@ Scope {
                             }
                             else if (e.key === Qt.Key_R) { root.reload(); e.accepted = true }
                             else if (e.key === Qt.Key_Down || e.key === Qt.Key_Up || e.key === Qt.Key_PageDown || e.key === Qt.Key_PageUp) {
-                                var v = root.tab === "lyrics" ? lyrList : queList
+                                var v = root.tab === "lyrics" ? (root.aiView !== "" ? aiFlick : lyrList) : queList
                                 var step = (e.key === Qt.Key_PageDown || e.key === Qt.Key_PageUp) ? v.height * 0.85 : 60
                                 var dir = (e.key === Qt.Key_Down || e.key === Qt.Key_PageDown) ? 1 : -1
                                 v.contentY = Math.max(0, Math.min(Math.max(0, v.contentHeight - v.height), v.contentY + dir * step))
@@ -301,12 +330,48 @@ Scope {
                             font.weight: Font.DemiBold
                         }
 
-                        // ---- lyrics
+                        // ---- the lyrics, or what the AI says about them
+                        Flow {
+                            Layout.fillWidth: true
+                            visible: root.tab === "lyrics" && root.title !== ""
+                            spacing: 8
+                            Repeater {
+                                model: [["", "Lyrics"], ["meaning", "Meaning"]]
+                                delegate: Chip {
+                                    required property var modelData
+                                    pal: root.pal; implicitHeight: 28
+                                    label: modelData[1]
+                                    on: root.aiView === modelData[0]
+                                    onClicked: root.aiShow(modelData[0])
+                                }
+                            }
+                        }
+                        Flickable {
+                            id: aiFlick
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: root.tab === "lyrics" && root.aiView !== ""
+                            contentWidth: width
+                            contentHeight: aiTxt.implicitHeight
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            Text {
+                                id: aiTxt
+                                width: aiFlick.width - 12
+                                wrapMode: Text.Wrap
+                                text: aiProc.running ? "Thinking about the song…" : root.aiOut
+                                color: aiProc.running ? root.pal.muted : (root.aiOk ? root.pal.text : root.pal.warn)
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody + 1
+                                lineHeight: 1.3
+                            }
+                        }
+
                         ListView {
                             id: lyrList
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            visible: root.tab === "lyrics" && root.lyrLoaded && root.lyr.ok
+                            visible: root.tab === "lyrics" && root.lyrLoaded && root.lyr.ok && root.aiView === ""
                             clip: true
                             spacing: 4
                             model: root.tab === "lyrics" && root.lyr.ok ? root.lyr.lines : []
@@ -394,7 +459,7 @@ Scope {
                         ColumnLayout {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            visible: root.busy || !root.cur.ok
+                            visible: (root.busy || !root.cur.ok) && !(root.tab === "lyrics" && root.aiView !== "")
                             spacing: 14
                             Item { Layout.fillHeight: true }
                             Text {

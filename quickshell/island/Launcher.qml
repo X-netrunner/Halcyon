@@ -9,6 +9,8 @@ import Quickshell.Io
 //   >        list of commands (random wallpaper, calculator, settings, power options, ...)
 //   =        calculator, e.g.  =2*(3+4)   (Enter copies the result); also unit conversion  =5 km in miles  =72 f to c
 //   timer    a countdown that notifies when it ends, e.g.  timer 10m   timer 1h30m tea   timer 25  (minutes)   (Enter starts it)
+//   >ask     a quick one-line answer from the local AI, e.g.  >ask how many ml in a cup   (Enter asks, Enter again copies the answer)
+//   >do      plain English to a Halcyon action, e.g.  >do move this window to workspace 3   >do gaming mode on   (scripts/halcyon-ai.py)
 Item {
     id: root
     property var pal
@@ -104,8 +106,8 @@ Item {
     readonly property var catOrder: ["system", "desktop", "tools", "power"]
     readonly property var cmdOrder: [
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
-        "desktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "wallpaper", "theme", "barstyle", "edgemode", "routing",
-        "calendar", "notes", "notesall", "clipboard", "screenshot", "lyrics", "queue", "calc", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
+        "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
+        "calendar", "notes", "notesall", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
     readonly property bool cmdGrouped: mode === "cmd" && q0.substring(1).trim() === "" && cmdCategory === "all"
@@ -119,6 +121,7 @@ Item {
         { id: "wallgallery", name: "Wallpaper gallery", desc: "Interactive 3D carousel & search gallery (Tide style)", glyph: 0xF024B, kw: "wallpapers gallery background images picker choose coverflow", cat: "desktop" },
         { id: "splash", name: "Play the splash", desc: "The login animation: moving stars and the Halcyon sparkle (click or any key skips it)", glyph: 0xF035B, kw: "splash logo intro boot login animation stars sparkle startup screen", cat: "system" },
         { id: "weeklysky", name: "Weekly sky", desc: "Your week as stars: one for every focus session, finished task and calendar event. Save it as a picture to share", glyph: 0xF04CE, kw: "weekly sky week stars constellation focus tasks calendar wrapped share picture summary", cat: "desktop" },
+        { id: "focusgraph", name: "Focus streak graph", desc: "Your streak with its flame, today's minutes against the goal, the last 14 days, 12 weeks and your milestones, with Start / Pause / Stop for a Focus session (Space). Also `halcyon focus-graph`, or click the Focus streak graph widget", glyph: 0xF051B, kw: "focus streak graph days best minutes pomodoro history stats", cat: "desktop" },
         { id: "startupview", name: "Startup & processes", desc: "Everything that starts with the desktop and what is running: RAM, CPU, switches, End", glyph: 0xF035B, kw: "startup autostart boot login processes running ram memory cpu htop task manager services apps kill end", cat: "system" },
         { id: "calendar", name: "Calendar", desc: "Google Calendar: your events by day, with reminder notifications", glyph: 0xF00ED, kw: "calender calendar agenda schedule tasks events google reminders meeting", cat: "tools" },
         { id: "notes", name: "New note", desc: "A small panel on the side of the screen: type a note and press Enter to save it (Super + N)", glyph: 0xF03EB, kw: "notes note new write memo text scratchpad todo tasks quick add", cat: "tools" },
@@ -134,9 +137,12 @@ Item {
         { id: "desktopedit", name: "Place widgets on the desktop", desc: "Drag, resize and add your widgets right on the screen", glyph: 0xF0208, kw: "widgets desktop move drag place resize edit layout", cat: "desktop" },
         { id: "bartoggle", name: "Top bar on / off", desc: "Switch the top bar off (use desktop widgets instead) or back on", glyph: 0xF0208, kw: "bar top off hide disable remove widgets", cat: "desktop" },
         { id: "desktopbuilder", name: "Desktop builder", desc: "Wallpaper, blur, moving stars, where the widgets sit, and the activation zone (corner) of each box", glyph: 0xF0208, kw: "desktop wallpaper background blur stars moving corner boxes activation position hot corner builder", cat: "desktop" },
+        { id: "lockdesktopbuilder", name: "Lock screen builder", desc: "The lock screen's background, blur and tint, its stars and splash, and its widgets (the Desktop builder's Lock screen side)", glyph: 0xF033E, kw: "lock screen background blur tint widgets stars splash switch user builder", cat: "desktop" },
         { id: "notifbuilder", name: "Notification box builder", desc: "Arrange the notification box: its parts, constellations, flying stars, padding, width and place on the screen", glyph: 0xF009A, kw: "notifications notification box builder layout design style timeline grouped stars constellation padding edit customise", cat: "desktop" },
         { id: "reload", name: "Reload", desc: "Reload Hyprland, the terminal colours and the island", glyph: 0xF0450, kw: "restart refresh apply config hyprland island quickshell", cat: "system" },
         { id: "wallpaper", name: "Random wallpaper", desc: "Switch to a new wallpaper now", glyph: 0xF02E9, kw: "background change image", cat: "desktop" },
+        { id: "ask", name: "Ask the AI", desc: "Type >ask and a question for a quick one-line answer from your local model (Enter asks, Enter again copies it)", glyph: 0xF0B79, kw: "ai ask question answer llm ollama chat quick", cat: "tools" },
+        { id: "do", name: "Do it in plain English", desc: "Type >do and what you want: \"move this window to workspace 3\", \"gaming mode on\", \"volume 40\". Clear phrases work without the AI", glyph: 0xF06A9, kw: "ai do command action natural language plain english voice", cat: "tools" },
         { id: "calc", name: "Calculator", desc: "Type = then an expression or a conversion (=5 km in miles); \"timer 10m\" starts a countdown", glyph: 0xF00EB, kw: "math calculate convert units timer countdown", cat: "tools" },
         { id: "theme", name: "Light / dark theme", desc: "Switch the whole desktop between the dark and the light theme (toggle)", glyph: 0xF0594, kw: "dark light mode appearance colours day night", cat: "desktop" },
         { id: "settings", name: "Settings", desc: "Theme, wallpaper, scrolling, default apps, transparency, motion, gaming", glyph: 0xF0493, kw: "rice options look theme gear config", cat: "system" },
@@ -169,7 +175,9 @@ Item {
 
     // ---- mode
     readonly property string q0: query.replace(/^\s+/, "")
-    readonly property string mode: q0.charAt(0) === ">" ? "cmd"
+    readonly property string mode: /^>\s*ask\s/i.test(q0) ? "ask" : (/^>\s*do\s/i.test(q0) ? "do" : modeBase)
+    readonly property bool aiMode: mode === "ask" || mode === "do"
+    readonly property string modeBase: q0.charAt(0) === ">" ? "cmd"
                                  : ((q0.charAt(0) === "=" || /^timer\s/i.test(q0)) ? "calc"
                                  : (q0.charAt(0) === "." ? "all" : "apps"))
     readonly property bool gridMode: mode === "apps" || mode === "all"
@@ -182,6 +190,7 @@ Item {
     readonly property real wantedHeight: {
         // margins 36 + search 46 + header 14 + footer 16 + 4 gaps of 12 = 160 + content
         if (mode === "calc") return 36 + 46 + 12 + 64
+        if (aiMode) return 36 + 46 + 12 + Math.max(64, aiBox.implicitHeight) + 12 + 16
         if (mode === "cmd") return 160 + Math.max(1, Math.min(7, cmdResults.length)) * 46 + (infoIdx >= 0 && cmdResults[infoIdx] ? infoBox.height + 12 : 0)
         return 160 + (results.length === 0 ? 40 : rows * 92)
     }
@@ -387,7 +396,7 @@ Item {
             cmdList.currentIndex = 0
             return
         }
-        if (mode === "calc") return
+        if (mode === "calc" || aiMode) return
 
         var showAll = mode === "all"
         var apps = DesktopEntries.applications.values
@@ -462,6 +471,11 @@ Item {
             input.cursorPosition = 1
             return
         }
+        if (c.id === "ask" || c.id === "do") {
+            input.text = ">" + c.id + " "
+            input.cursorPosition = input.text.length
+            return
+        }
         commandRequested(c.id)
         closeRequested()
     }
@@ -480,6 +494,45 @@ Item {
         }
         closeRequested()
     }
+
+    // ---- >ask / >do (scripts/halcyon-ai.py). One run per Enter; the answer belongs to the text it was asked for
+    readonly property string aiArg: aiMode ? q0.replace(/^>\s*(ask|do)\s+/i, "").trim() : ""
+    property string aiFor: ""              // mode + text the answer below is for
+    property string aiText: ""
+    property bool aiOk: true
+    property bool aiConfirm: false         // >do: the action ends something (close, log out ...): Enter again does it
+    readonly property bool aiFresh: aiFor === mode + "\u0001" + aiArg
+    readonly property string aiScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-ai.py"
+    function aiEnter() {
+        if (aiArg === "" || aiProc.running) return
+        if (mode === "ask" && aiFresh && aiOk && aiText !== "") {          // the answer is there: Enter copies it
+            saveHistory(query)
+            Quickshell.execDetached(["wl-copy", aiText])
+            closeRequested()
+            return
+        }
+        var yes = mode === "do" && aiFresh && aiConfirm
+        saveHistory(query)
+        aiFor = mode + "\u0001" + aiArg
+        aiText = ""; aiOk = true; aiConfirm = false
+        aiProc.command = ["python3", aiScript, mode, "--json"].concat(yes ? ["--yes"] : []).concat([aiArg])
+        aiProc.running = true
+    }
+    Process {
+        id: aiProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var d = null
+                try { d = JSON.parse(text) } catch (e) { d = null }
+                if (!d) { root.aiOk = false; root.aiText = "No answer (is python3 there?)"; return }
+                root.aiOk = d.ok === true
+                root.aiText = d.ok ? d.text : d.error
+                root.aiConfirm = d.ok === true && d.confirm === true && d.done !== true
+                if (d.ok && d.done === true) aiCloseT.restart()
+            }
+        }
+    }
+    Timer { id: aiCloseT; interval: 650; onTriggered: root.closeRequested() }
 
     Timer { id: staggerT; interval: 600; onTriggered: root.stagger = false }
 
@@ -557,7 +610,7 @@ Item {
                 id: mag
                 x: 18
                 anchors.verticalCenter: parent.verticalCenter
-                text: String.fromCodePoint(root.mode === "cmd" ? 0xF0493 : (root.mode === "calc" ? 0xF00EB : (root.mode === "all" ? 0xF003B : 0xF0349)))
+                text: String.fromCodePoint(root.aiMode ? (root.mode === "do" ? 0xF06A9 : 0xF0B79) : (root.mode === "cmd" ? 0xF0493 : (root.mode === "calc" ? 0xF00EB : (root.mode === "all" ? 0xF003B : 0xF0349))))
                 color: root.pal.accent
                 font.family: root.pal.font
                 font.pixelSize: 18
@@ -622,7 +675,8 @@ Item {
                         e.accepted = true
                     }
                     else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                        if (cmd) root.runCmd(cmdList.currentIndex)
+                        if (root.aiMode) root.aiEnter()
+                        else if (cmd) root.runCmd(cmdList.currentIndex)
                         else if (calc) root.copyCalc()
                         else root.launch(grid.currentIndex)
                         e.accepted = true
@@ -644,7 +698,7 @@ Item {
                 Text {
                     id: badgeTxt
                     anchors.centerIn: parent
-                    text: root.mode === "cmd" ? "commands" : (root.mode === "calc" ? "calculator" : (root.mode === "all" ? "all apps" : "apps"))
+                    text: root.mode === "ask" ? "ask" : (root.mode === "do" ? "do" : (root.mode === "cmd" ? "commands" : (root.mode === "calc" ? "calculator" : (root.mode === "all" ? "all apps" : "apps"))))
                     color: root.pal.accent
                     font.family: root.pal.uiFont
                     font.pixelSize: 11
@@ -656,7 +710,7 @@ Item {
 
         // ---------- section label & category tabs ----------
         RowLayout {
-            visible: root.mode !== "calc"
+            visible: root.mode !== "calc" && !root.aiMode
             Layout.fillWidth: true
             Layout.leftMargin: 10
             Layout.rightMargin: 10
@@ -1048,9 +1102,49 @@ Item {
             }
         }
 
+        // ---------- >ask / >do ----------
+        Rectangle {
+            visible: root.aiMode
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(64, aiBox.implicitHeight)
+            radius: 18
+            color: Qt.alpha(root.aiFresh && !root.aiOk && !aiProc.running ? root.pal.warn : root.pal.accent, 0.12)
+            Column {
+                id: aiBox
+                anchors.left: parent.left; anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                leftPadding: 20; rightPadding: 20; topPadding: 14; bottomPadding: 14
+                spacing: 6
+                Text {
+                    width: aiBox.width - 40
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 8
+                    elide: Text.ElideRight
+                    text: aiProc.running ? (root.mode === "ask" ? "Thinking…" : "Working it out…")
+                        : (root.aiFresh && root.aiText !== "" ? root.aiText
+                        : (root.aiArg === "" ? (root.mode === "ask" ? "type a question, e.g. how many grams in a cup of flour" : "say what to do, e.g. move this window to workspace 3")
+                        : (root.mode === "ask" ? "Enter asks your local AI" : "Enter does it")))
+                    color: root.aiFresh && root.aiText !== "" && !aiProc.running ? (root.aiOk ? root.pal.text : root.pal.warn) : root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.aiFresh && root.aiText !== "" && !aiProc.running ? 16 : 15
+                    lineHeight: 1.15
+                }
+            }
+        }
+        Text {
+            visible: root.aiMode
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredHeight: 16
+            text: root.mode === "ask" ? (root.aiFresh && root.aiOk && root.aiText !== "" && !aiProc.running ? "⏎ copies the answer   ·   esc closes" : "⏎ asks   ·   answers come from your local model, nothing leaves this computer")
+                                      : (root.aiConfirm && root.aiFresh ? "⏎ again to do it   ·   esc cancels" : "⏎ does it   ·   clear phrases work without the AI")
+            color: root.pal.muted
+            font.family: root.pal.uiFont
+            font.pixelSize: 10
+        }
+
         // ---------- footer hints ----------
         Row {
-            visible: root.mode !== "calc"
+            visible: root.mode !== "calc" && !root.aiMode
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredHeight: 16
             spacing: 18

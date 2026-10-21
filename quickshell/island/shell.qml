@@ -123,6 +123,8 @@ ShellRoot {
         deskWidgetsOn: true,       // master switch: false = no desktop widgets are drawn and none of their readers run (each widget also has its own Switch off)
         lockDeskWidgets: null,     // the widgets on the LOCK screen { items: [...] }, same format as deskWidgets (Widget builder > Lock screen; placed with the desktop editor; Lock.qml draws them)
         lockDeskWidgetsOn: true,   // false = none of them are drawn on the lock screen
+        aiBriefCard: true,         // the daily brief as a notification, once a day, the first time the desktop is used (scripts/halcyon-ai.py brief)
+        aiExplain: true,           // a failed Halcyon service or a new island error gets explained by the local AI (halcyon-ai.py explain ... --if-new)
         deskGrid: true, deskGridSize: 40, deskGridSnap: false, deskCenter: true, deskThirds: false, deskSafe: true, deskMeasure: true,   // the desktop editor's helpers (grid, centre, thirds, safe area, measuring)
         barLayout: null,           // the bar builder's layout { left, center, right } (BarLayout.js); null = the default one
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
@@ -771,6 +773,8 @@ ShellRoot {
     }
     // the weekly sky: your week as stars (WeeklySky.qml; `>weekly sky`, `halcyon weekly-sky`, Settings > Splash, sky & time of day)
     WeeklySky { id: weeklySky; pal: pal }
+    // the Focus streak view (FocusStreak.qml; `>focus streak graph`, `halcyon focus-graph`, a click on the Focus streak graph widget)
+    FocusStreak { id: focusStreak; pal: pal; env: root }
     // a signature moment is allowed when the splash is on, motion is on and we are not gaming (same rule as the login splash)
     function splashAllowed(key) { return settingsLoaded && opt.splash !== false && opt[key] !== false && !gaming && pal.motion > 0.3 }
     // shut down / restart: draw the stars in first, then go. `powerFail` is the safety net: whatever happens to the animation
@@ -823,9 +827,25 @@ ShellRoot {
             else {
                 if (!root.lockWasLogin && root.splashAllowed("splashUnlock")) splashPreview.playMode("unlock")
                 root.lockWasLogin = false
+                briefT.restart()
             }
         }
     }
+    // ---- the small AI helpers (scripts/halcyon-ai.py). One-shot commands: nothing keeps running, and the script itself stops when the
+    // master AI switch is off (the brief then still works, in plain words, from your notes and Focus days).
+    readonly property string aiHelper: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-ai.py"
+    // the morning card: the first time the desktop is used each day (a while after login, or after an unlock), at most once a day
+    function briefCard(now) {
+        if (!now && (opt.aiBriefCard === false || gaming)) return
+        Quickshell.execDetached(now ? ["python3", aiHelper, "brief", "--notify"] : ["python3", aiHelper, "brief", "--notify", "--once"])
+    }
+    Timer { id: briefT; interval: 20000; running: true; onTriggered: if (!lockScreen.locked) root.briefCard(false) }
+    // a new QML error in this run of the island: explained once, as a notification (halcyon-ai.py remembers what it already explained)
+    Timer {
+        interval: 45000; running: true
+        onTriggered: if (root.opt.aiExplain !== false) Quickshell.execDetached(["python3", root.aiHelper, "explain", "island", "--notify", "--if-new"])
+    }
+
     PowerMenu {
         id: powerMenu
         pal: pal
@@ -1079,7 +1099,38 @@ ShellRoot {
         if (name === "calendar") { if (!calendar.open) calendar.show() } else if (calendar.open) calendar.hide()
         if (autoHide) { win.peek = true; hideTimer.stop() }
     }
-    Timer { interval: 1000; repeat: true; running: tour.open; onTriggered: root.tourApply(root.tourDemoName) }
+    Timer { interval: 1000; repeat: true; running: tour.open && !root.tourWaiting; onTriggered: root.tourApply(root.tourDemoName) }
+    // ---- tour challenges ("try" in features.json): the step waits until you open the thing yourself, then you get a star.
+    // While it waits nothing is opened for you (and nothing you opened is closed again); "Show me" opens it like a normal step.
+    property bool tourWaiting: false
+    function tourCheck(name) {
+        switch (name) {
+        case "launcher": return page === "launcher"
+        case "media": return page === "media"
+        case "perf": return page === "perf"
+        case "notifs": return notifs.centerOpen || (dropOn && (page === "notif" || (dropSide && page === "util")))
+        case "term": return quickTerm.open
+        case "cheat": return cheat.open
+        case "tree": return overviewOpen
+        case "notes": return notesMenu.open
+        case "screenshot": return shotMenu.open
+        case "clipboard": return clipMenu.open
+        }
+        return false
+    }
+    function tourShowDemo() {
+        tourWaiting = false
+        tourDemoName = tour.step ? (tour.step.demo || "") : ""
+        tourApply(tourDemoName)
+        tourRaiseT.restart()         // whatever opened (the launcher above all) took the keyboard: Enter must stay "next", not "launch"
+    }
+    Timer {
+        interval: 150; repeat: true; running: tour.open && root.tourWaiting
+        onTriggered: {
+            if (!tour.step || !tour.step.try) { root.tourWaiting = false; return }
+            if (root.tourCheck(tour.step.try.check)) { tour.challengeDone(); root.tourShowDemo() }
+        }
+    }
     // windows that open on top of the tour's own window: put it back on top after they have appeared
     Timer { id: tourRaiseT; interval: 220; onTriggered: if (tour.open) tour.raise() }
     // where the hole goes, in screen pixels (sw x sh = this screen); null = no hole. Read live (about 30 times a second) so the
@@ -1109,11 +1160,20 @@ ShellRoot {
         pal: pal
         rectFn: (name, sw, sh) => root.tourRect(name, sw, sh)
         onStepShown: step => {
+            if (step.try && !tour.isDone(step.id)) {
+                root.tourDemoName = ""
+                root.tourApply("")                  // the last step's demo goes away; this one waits for you
+                root.tourWaiting = true
+                return
+            }
+            root.tourWaiting = false
             root.tourDemoName = step.demo || ""
             root.tourApply(root.tourDemoName)
-            if (root.tourBigDemos.indexOf(root.tourDemoName) >= 0) tourRaiseT.restart()
+            if (root.tourDemoName !== "") tourRaiseT.restart()        // the tour keeps the keyboard (the launcher would take Enter)
         }
+        onShowMe: root.tourShowDemo()
         onFinished: completed => {
+            root.tourWaiting = false
             root.tourDemoName = ""
             root.tourApply("")
             root.tourSaveSeen()
@@ -1693,7 +1753,8 @@ ShellRoot {
         case "wallgallery": settingsWin.openGallery(); break
         case "barbuilder": settingsWin.openBuilder(); break
         case "notifbuilder": settingsWin.openNotifBuilder(); break
-        case "desktopbuilder": settingsWin.openDesktopBuilder(); break
+        case "desktopbuilder": settingsWin.openDesktopBuilder("desktop"); break
+        case "lockdesktopbuilder": settingsWin.openDesktopBuilder("lock"); break
         case "widgetbuilder": settingsWin.openWidgetBuilder("", "desktop"); break
         case "lockwidgetbuilder": settingsWin.openWidgetBuilder("", "lock"); break
         case "desktopedit": deskEditTarget = "desktop"; deskEditing = !deskEditing; break
@@ -1702,6 +1763,7 @@ ShellRoot {
         case "startupview": settingsWin.openStartup(); break
         case "splash": splashPreview.play(); break
         case "weeklysky": weeklySky.toggle(); break
+        case "focusgraph": focusStreak.toggle(); break
         case "tour": tourReplay(); break
         case "calendar": calendarKey(); break
         case "reload": fullReloadProc.running = true; break
@@ -2049,6 +2111,7 @@ ShellRoot {
     function deskSetVol(f) { pendVol = f; vol = f * 100; if (!sliderT.running) sliderT.start() }
     function deskSetBright(f) { pendBright = f; bright = f * 100; if (!sliderT.running) sliderT.start() }
     function deskRun(cmd) { Quickshell.execDetached(["sh", "-c", cmd]) }
+    function openFocusStreak() { focusStreak.show() }      // the Focus streak graph widget's click
     // what a widget button or wheel can do
     function deskAct(a) {
         switch (a) {
@@ -2092,13 +2155,22 @@ ShellRoot {
         readonly property int focusLeft: root.focusLeft
         readonly property string focusText: root.focusText
         readonly property real lockBackLum: root.lockBackLum
+        // what toggles, the boxes, workspaces and special workspaces SHOW (read only: their buttons are dead while locked)
+        readonly property bool caffeine: root.caffeine
+        readonly property bool dnd: root.dnd
+        readonly property bool gaming: root.gaming
+        readonly property bool numLock: root.numLock
+        readonly property string theme: root.theme
+        readonly property string activeSpecial: root.activeSpecial
         function deskAct(a) { }
+        function openFocusStreak() { }
         function deskRun(c) { }
         function deskSetVol(f) { }
         function deskSetBright(f) { }
         function focusRun(args) { }
         function focusToggle() { }
         function toggleSpecial(n) { }
+        function hypr(d) { }
     }
     // How bright the lock screen's background is (linear 0 .. 1): the plain theme colour, or the whole wallpaper (it is blurred, so only its average
     // counts) mixed with the theme colour by the tint sheet. The widgets pick readable colours from it (WidgetHost.lockLum); the Widget builder's
@@ -2120,7 +2192,15 @@ ShellRoot {
         command: ["bash", root.focusLogScript, "json"]
         stdout: StdioCollector { onStreamFinished: { try { root.focusDays = JSON.parse(text) } catch (e) {} } }
     }
-    onDeskNeedsChanged: if (deskNeeds.focusLog && !focusDaysProc.running) focusDaysProc.running = true
+    function refreshFocusDays() { if (!focusDaysProc.running) focusDaysProc.running = true }
+    // Read the history at startup, whenever a Focus widget appears or the Focus streak view opens, and every 5 min after. (This used to
+    // run only from onDeskNeedsChanged, which does not fire for the value a widget list already has at startup, so the streak / graph
+    // stayed empty until the list was edited. With no Focus widget at all it was never read, so the streak view showed 0.)
+    Timer {
+        interval: 300000; repeat: true; triggeredOnStart: true
+        running: root.deskNeeds.focusLog === true || focusStreak.open
+        onTriggered: if (!focusDaysProc.running) focusDaysProc.running = true
+    }
     Timer {
         interval: 60000; repeat: true
         running: root.focusState.on === true && root.focusState.paused !== true && root.focusState.phase === "work"
@@ -2231,6 +2311,10 @@ ShellRoot {
         function notifcenter(): void { if (!root.dropShow("notif")) notifs.toggleCenter() }
         function dnd(): void { root.setDnd(!root.dnd) }
         function dndset(on: bool): void { root.setDnd(on) }          // set (gamemode.sh): dnd() above only toggles
+        function gamingset(on: bool): void { if (root.gaming !== on) root.setGaming(on) }       // set, for `halcyon ai do gaming on`
+        function caffeineset(on: bool): void { if (root.caffeine !== on) root.setCaffeine(on, 0) }
+        function command(id: string): void { root.runCommand(id) }   // any launcher command by its id (">" list), e.g. profile-balanced, wifi
+        function brief(): void { root.briefCard(true) }              // the daily brief as a notification now (scripts/halcyon-ai.py brief)
         function cheatsheet(): void { root.runCommand("cheatsheet") }
         function display(): void { displayPicker.toggle() }
         // SUPER+Q (scripts/close.sh): closes the top-most island overlay and answers "closed"; "none" = nothing was open,
@@ -2244,7 +2328,8 @@ ShellRoot {
         function settings(): void { settingsWin.toggle() }
         function barbuilder(): void { settingsWin.openBuilder() }
         function notifbuilder(): void { settingsWin.openNotifBuilder() }
-        function desktopbuilder(): void { settingsWin.openDesktopBuilder() }
+        function desktopbuilder(): void { settingsWin.openDesktopBuilder("desktop") }
+        function lockdesktopbuilder(): void { settingsWin.openDesktopBuilder("lock") }
         function widgetbuilder(): void { settingsWin.openWidgetBuilder("", "desktop") }
         function lockwidgetbuilder(): void { settingsWin.openWidgetBuilder("", "lock") }
         function desktopedit(): void { root.deskEditTarget = "desktop"; root.deskEditing = !root.deskEditing }
@@ -2254,6 +2339,7 @@ ShellRoot {
         function startup(): void { settingsWin.openStartup() }
         function splash(): void { splashPreview.play() }
         function weeklysky(): void { weeklySky.toggle() }
+        function focusgraph(): void { focusStreak.toggle() }
         function tour(): void { root.tourReplay() }
         function calendar(): void { root.runCommand("calendar") }
         function processes(): void { settingsWin.openStartup() }

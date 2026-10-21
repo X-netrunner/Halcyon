@@ -527,7 +527,8 @@ Scope {
     // the notification box builder window (Settings > Panels & notifications > Notification box builder)
     function openNotifBuilder() { nbOpen = true }
     // the desktop builder window (Settings > Appearance > Desktop builder): wallpaper on / off + blur, moving stars, the corner each box opens from
-    function openDesktopBuilder() { dbOpen = true }
+    function openDesktopBuilder(target) { dbTarget = (target === "lock") ? "lock" : "desktop"; dbOpen = true }
+    property string dbTarget: "desktop"        // which screen the desktop builder builds: "desktop" or "lock"
     // the widget builder window (Settings > Appearance > Widget builder): one widget at a time, its layout and look
     property bool wbOpen: false
     property bool wbLoaded: false
@@ -852,13 +853,15 @@ Scope {
             { type: "acts", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading...", when: "fx:safe=false" }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring...", when: "fx:safe=true" }] }
         ] },
         { id: "suggestions", title: "Optimization & Suggestions", section: "Performance", items: [
-            { type: "toggle", key: "ai:enabled", def: true, label: "AI features", desc: "The master switch for everything that asks a local AI model: the notes overview and task sorting, the `ai` chat, the AI / LLM advisor and the model list below. Off: none of it runs and nothing asks Ollama anything; your notes, settings and downloaded models stay as they are. Ollama itself is not stopped (other programs may use it)." },
+            { type: "toggle", key: "ai:enabled", def: true, label: "AI features", desc: "The master switch for everything that asks a local AI model: the notes overview, task sorting and Organise, the `ai` chat, >ask and >do in the launcher, the clipboard and lyrics helpers, the error explainer, the AI / LLM advisor and the model list below. Off: none of it runs and nothing asks Ollama anything; your notes, settings and downloaded models stay as they are. Ollama itself is not stopped (other programs may use it)." },
             { type: "acts", label: "Recommended Sweet Spot (Aesthetic + Speed)", desc: "Optimizes performance without compromising visual fidelity: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied!" }] },
             { type: "acts", label: "Adaptive System Advisor", desc: "Analyzes your actual battery status, memory pressure, active workloads, and application launch habits to generate personalized tuning advice in the console (scripts/adaptive-advisor.py).", btns: [
                 { id: "opt-adaptive-advisor", btn: "Analyze My Setup", done: "Opening…" },
                 { id: "opt-llm-advisor", btn: "AI / LLM Advisor (Experimental)", done: "Analyzing…" }
             ] },
             { type: "custom", name: "aiModel", when: "ai:enabled=true", label: "AI advisor model" },
+            { type: "toggle", key: "opt:aiBriefCard", def: true, label: "Daily brief card", desc: "Once a day, the first time you use the desktop, a notification sums up your tasks (what is overdue and due today), your notes and your Focus streak. The local AI words it; with AI off it is written plainly from the same facts. The same brief is a desktop widget too (Widget builder > Daily brief). Terminal: halcyon ai brief." },
+            { type: "toggle", key: "opt:aiExplain", def: true, when: "ai:enabled=true", label: "Explain errors", desc: "When a Halcyon service fails, or the island logs a new QML error, the local AI reads the log (and the code at that line) and a notification says what went wrong and the likely fix. Each error is explained once. Nothing leaves this computer. Any time: halcyon ai explain last, and halcyon ai explain show for the full last answer." },
             { type: "toggle", key: "opt:lazyLoad", def: true, label: "Aggressive Memory Freeing & Lazy Loading", desc: "Unloads heavy background dialogs (Settings, Cheatsheet, Calendar) when closed and triggers garbage collection to keep Quickshell's resident RAM low. Enabled automatically in Low and Medium resource modes." },
             { type: "acts", label: "Live Memory Trimming", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] }
         ] },
@@ -2152,9 +2155,11 @@ Scope {
                 opt: root.opt
                 wallpaperPath: root.wallpaperPath
                 globalClick: root.clickMode
+                target: root.dbTarget
+                onTargetPicked: t => root.dbTarget = (t === "lock") ? "lock" : "desktop"
                 onClosed: root.dbOpen = false
-                onOpenWidgets: { root.dbOpen = false; root.openWidgetBuilder("") }
-                onEditDesktop: { root.dbOpen = false; root.editOnDesktop("desktop") }
+                onOpenWidgets: t => { root.dbOpen = false; root.openWidgetBuilder("", t) }
+                onEditDesktop: t => { root.dbOpen = false; root.editOnDesktop(t) }
                 onChanged: (k, v) => root.setting("opt:" + k, v)
             }
         }

@@ -11,7 +11,7 @@ Item {
     property var env
     property var opt: ({})
     property bool editing: false
-    property string target: "desktop"      // "desktop" or "lock": which list is drawn (opt.deskWidgets / opt.lockDeskWidgets; the lock list never holds the types WD.lockBlocked names)
+    property string target: "desktop"      // "desktop" or "lock": which list is drawn (opt.deskWidgets / opt.lockDeskWidgets; on the lock screen every widget is inert)
     property bool inert: false              // the lock screen: nothing can be clicked (WidgetHost's click shield)
     property real lockLum: -1               // the lock screen's background brightness, for the readability colours (WidgetHost.lockLum)
     property string selected: ""

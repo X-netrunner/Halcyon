@@ -1,8 +1,8 @@
 # Completions for the `halcyon` command (config/fish/functions/halcyon.fish).
 complete -c halcyon -f
 set -l __halcyon_cmds \
-    "launcher:app menu and commands" "settings:Settings" "notification-builder:notification box builder" "bar-builder:bar builder" "desktop-builder:desktop builder" "widget-builder:widget builder" "desktop-edit:place widgets on the desktop" "lock-widget-builder:lock screen widget builder" "lock-desktop-edit:place widgets on the lock screen" "bar:top bar on / off (toggle)" \
-    "wallpaper-gallery:wallpaper gallery" "startup-view:startup and processes" "splash:play the login splash" "weekly-sky:your week as stars" "tour:guided tour (replay)" "calendar:Google Calendar" "notifications:notification centre" \
+    "launcher:app menu and commands" "settings:Settings" "notification-builder:notification box builder" "bar-builder:bar builder" "desktop-builder:desktop builder" "lock-builder:lock screen builder" "widget-builder:widget builder" "desktop-edit:place widgets on the desktop" "lock-widget-builder:lock screen widget builder" "lock-desktop-edit:place widgets on the lock screen" "bar:top bar on / off (toggle)" \
+    "wallpaper-gallery:wallpaper gallery" "startup-view:startup and processes" "splash:play the login splash" "weekly-sky:your week as stars" "focus-graph:focus streak graph (Settings > Focus mode)" "tour:guided tour (replay)" "calendar:Google Calendar" "notifications:notification centre" \
     "clear-notifications:remove all notifications" "dnd:do not disturb (toggle)" "cheatsheet:shortcuts tree" "power-menu:power menu" \
     "quick-terminal:pop-out terminal" "overview:workspace tree" "gaming-mode:gaming mode (toggle)" "caffeine:keep the screen awake (toggle)" \
     "lock:lock the screen" "theme:light / dark theme (toggle)" "reload:reload the island and Hyprland" \
@@ -24,3 +24,8 @@ complete -c halcyon -n __fish_use_subcommand -a music -d "lyrics and queue panel
 complete -c halcyon -n "__fish_seen_subcommand_from music" -a "lyrics queue status" -d "music panel"
 complete -c halcyon -n __fish_use_subcommand -a lyrics -d "print the lyrics of what plays (any player)"
 complete -c halcyon -n __fish_use_subcommand -a queue -d "print what plays next"
+complete -c halcyon -n __fish_use_subcommand -a ai -d "local AI helpers: ask, do, clip, brief, explain, organise, lyrics"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and not __fish_seen_subcommand_from ask do clip brief explain organise lyrics" -a "ask do clip brief explain organise lyrics" -d "AI helper"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from clip" -a "summarise rewrite" -d "clipboard text"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from explain" -a "last island unit show" -d "explain"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from lyrics" -a "meaning" -d "lyrics"
