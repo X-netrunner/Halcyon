@@ -53,7 +53,7 @@ Item {
         for (var i = 0; i < layout.items.length; i++) u.push(layout.items[i].uid)
         if (u.join("|") !== uids.join("|")) uids = u
     }
-    onLayoutChanged: syncUids()
+    onLayoutChanged: { syncUids(); Qt.callLater(applyGroupW) }
     Component.onCompleted: { refreshLayout(); syncUids() }
 
     property real guideX: -1
@@ -108,6 +108,18 @@ Item {
     // the outer width every widget stacked with this one (above / below links) shares: the widest of them (0 = nothing is forced; side-by-side links never force a width)
     // A member that is only hidden for now (a visualizer while nothing plays, "hide when idle") still counts: the others keep their width and
     // their place instead of shrinking to their own text and jumping to the left edge every time the music stops. Only a widget you switched OFF drops out.
+    // a linked chain is as wide as its widest member. Set from here after a change (not a binding: a member's natural width can
+    // depend on its own width when its text wraps, and the binding fed on itself, "Binding loop detected for property forceW")
+    onTickChanged: Qt.callLater(applyGroupW)
+    onAnyLinksChanged: Qt.callLater(applyGroupW)
+    function applyGroupW() {
+        for (var i = 0; i < rep.count; i++) {
+            var h = rep.itemAt(i)
+            if (!h) continue
+            var w = groupW(h.uid, tick)
+            if (Math.abs(w - h.forceW) > 0.5) h.forceW = w
+        }
+    }
     function groupW(uid, t) {
         if (!anyLinks) return 0
         var g = WD.widthGroup(layout, uid)
@@ -167,7 +179,6 @@ Item {
             bottomInset: root.bottomInset
             collect: root.rectsExcept
             linkHost: root.linkHostOf(modelData, root.tick)
-            forceW: root.groupW(modelData, root.tick)
             extL: root.chainExt(modelData, "l", root.tick)
             extR: root.chainExt(modelData, "r", root.tick)
             chainRoot: root.chainRootOf(modelData, root.tick)
