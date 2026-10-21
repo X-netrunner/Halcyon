@@ -319,6 +319,7 @@ struct BatNow {
     has: bool,
     cap: i64,
     chg: bool,
+    w: f64, // power going out of (discharging) or into (charging) the battery, watts, smoothed; 0 = not known
     est: String,
 }
 impl Bat {
@@ -348,16 +349,17 @@ impl Bat {
             None => {
                 self.up.read();
                 return if self.up.dev.is_some() {
-                    BatNow { has: true, cap: self.up.cap, chg: self.up.st == "charging", est: self.up.est.clone() }
+                    BatNow { has: true, cap: self.up.cap, chg: self.up.st == "charging", w: 0.0, est: self.up.est.clone() }
                 } else {
-                    BatNow { has: false, cap: 0, chg: false, est: String::new() }
+                    BatNow { has: false, cap: 0, chg: false, w: 0.0, est: String::new() }
                 };
             }
         };
         let cap = first_line(&format!("{}/capacity", d)).parse::<i64>().unwrap_or(0);
         let st = first_line(&format!("{}/status", d));
         let num = |f: &str| -> Option<u64> { first_line(&format!("{}/{}", d, f)).trim_start_matches('-').parse().ok() };
-        let (now, full, rate) = if exists(&format!("{}/charge_now", d)) && exists(&format!("{}/current_now", d)) {
+        let by_charge = exists(&format!("{}/charge_now", d)) && exists(&format!("{}/current_now", d));
+        let (now, full, rate) = if by_charge {
             (num("charge_now"), num("charge_full"), num("current_now"))
         } else if exists(&format!("{}/energy_now", d)) && exists(&format!("{}/power_now", d)) {
             (num("energy_now"), num("energy_full"), num("power_now"))
@@ -390,7 +392,15 @@ impl Bat {
             self.up.read();
             est = self.up.est.clone();
         }
-        BatNow { has: true, cap, chg: st == "Charging", est }
+        // watts from the smoothed rate: µW as it is (energy_* / power_now), or µA x µV (charge_* / current_now)
+        let w = if self.rate_avg == 0 || (st != "Discharging" && st != "Charging") {
+            0.0
+        } else if by_charge {
+            num("voltage_now").map(|v| self.rate_avg as f64 * v as f64 / 1e12).unwrap_or(0.0)
+        } else {
+            self.rate_avg as f64 / 1e6
+        };
+        BatNow { has: true, cap, chg: st == "Charging", w, est }
     }
 }
 
@@ -463,8 +473,8 @@ pub fn stats(iv: f64) {
         }
 
         let line = format!(
-            "{{\"cpu\":{},\"mem\":{},\"memGb\":\"{}\",\"temp\":{},\"down\":{},\"up\":{},\"bat\":{},\"batEst\":{},\"charging\":{},\"ac\":{},\"hasBat\":{},\"sysmode\":\"{}\",\"auto\":{},\"pmode\":\"{}\",\"pprofile\":\"{}\"}}",
-            cpu, mem, memgb, temp, down, up, b.cap, js(&b.est), b.chg, ac, b.has, sm, auto, pmode, pprof
+            "{{\"cpu\":{},\"mem\":{},\"memGb\":\"{}\",\"temp\":{},\"down\":{},\"up\":{},\"bat\":{},\"batEst\":{},\"charging\":{},\"ac\":{},\"hasBat\":{},\"batW\":{:.1},\"sysmode\":\"{}\",\"auto\":{},\"pmode\":\"{}\",\"pprofile\":\"{}\"}}",
+            cpu, mem, memgb, temp, down, up, b.cap, js(&b.est), b.chg, ac, b.has, b.w, sm, auto, pmode, pprof
         );
         if !out.line(line) {
             return;
