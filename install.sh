@@ -64,6 +64,11 @@
 #                          The menu shows an estimate of the RAM / CPU each one needs; adaptive = medium now, limits learned from your use
 #   --resource-offset N    headroom in percent (0-100) above that estimate before Settings > Performance > Health warns (default 15)
 #   --prompt ID            your shell prompt (Starship): keep | colours | halcyon
+#   --plymouth             the boot splash: the login splash's stars and sparkle while Arch boots and shuts down (Plymouth;
+#                          scripts/halcyon-plymouth.sh). Edits mkinitcpio and the kernel command line (backed up). Once on, every
+#                          install / update redoes it in your current colours. Without this option you are ASKED in a terminal;
+#                          with --yes and nothing saved it is only updated where it is already installed. Arch (mkinitcpio) only
+#   --no-plymouth          leave the boot splash alone (takes nothing out; scripts/halcyon-plymouth.sh remove does that)
 #   --renderer MODE        how the island draws: auto | opengl | vulkan (default auto = picked for this machine each time Halcyon
 #                          starts; OpenGL on integrated graphics, where it measured ~500 MB less RAM than Vulkan at the same power)
 #                            keep     your prompt is not touched at all (Halcyon does not start Starship, and does not edit your starship.toml)
@@ -105,6 +110,7 @@ INSTALL_WHISPER=false; PICK_WHISPER_MODEL=""; WHISPER_ASKED=false   # speech-to-
 INSTALL_VLM=false; PICK_VLM_MODEL=""; VLM_ASKED=false                # picture descriptions for Notes (a vision model in Ollama)
 VLM_DEFAULT_MODEL="qwen2.5vl:3b"                                       # the model Notes was tested with (scripts/halcyon-notes.py VLM_DEFAULT)
 PICK_RENDERER=""      # auto | opengl | vulkan (see choose_renderer)
+INSTALL_PLYMOUTH=""; PLYMOUTH_ASKED=false      # the boot splash (see choose_plymouth); "" = not decided yet
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 PICK_PROMPT=""; FIRST_INSTALL=false        # your shell prompt: keep | colours | halcyon (see choose_prompt); FIRST_INSTALL: nothing was chosen on this machine yet
@@ -203,6 +209,8 @@ while [[ $# -gt 0 ]]; do
                             [[ "$PICK_PROMPT" =~ ^(keep|colours|halcyon)$ ]] || die "--prompt needs keep, colours or halcyon (see --help)" ;;
         --renderer)         shift; PICK_RENDERER="${1:-}"; [[ "$PICK_RENDERER" =~ ^(auto|opengl|vulkan)$ ]] || die "--renderer needs auto, opengl or vulkan" ;;
         --renderer=*)       PICK_RENDERER="${1#--renderer=}"; [[ "$PICK_RENDERER" =~ ^(auto|opengl|vulkan)$ ]] || die "--renderer needs auto, opengl or vulkan" ;;
+        --plymouth)         INSTALL_PLYMOUTH=true; PLYMOUTH_ASKED=true ;;
+        --no-plymouth)      INSTALL_PLYMOUTH=false; PLYMOUTH_ASKED=true ;;
         --choose)           CHOOSE=true ;;
         --no-tune)          SKIP_TUNE=true ;;
         --link)             LINK_CONFIG=true ;;
@@ -1475,6 +1483,35 @@ choose_renderer() {
 }
 [[ "$REMOVE_LOGIN" != "true" ]] && choose_renderer
 
+# ---- the boot splash (Plymouth): asked once, then remembered; where it is already installed it is kept up to date
+PLYMOUTH_THEME_DIR=/usr/share/plymouth/themes/halcyon
+choose_plymouth() {
+    local s_p have=false
+    [[ -f "$PLYMOUTH_THEME_DIR/halcyon.script" ]] && have=true
+    if ! command -v mkinitcpio >/dev/null 2>&1; then
+        INSTALL_PLYMOUTH=false
+        [[ "$PLYMOUTH_ASKED" == "true" ]] && log_warn "The boot splash needs mkinitcpio (Arch): skipped."
+        return 0
+    fi
+    s_p=$(saved_choice PLYMOUTH)
+    # precedence: command line > the question (terminal, no --yes; first time or --choose) > saved > already installed here
+    if [[ "$PLYMOUTH_ASKED" != "true" ]]; then
+        if [[ "$AUTO_CONFIRM" != "true" && -t 0 && ( "$CHOOSE" == "true" || -z "$s_p" ) ]]; then
+            echo -e "\n  ${CYAN}${BOLD}Boot splash (Plymouth)${RESET}  ${DIM}the login splash's moving stars and sparkle while the computer boots, played backwards on shutdown${RESET}"
+            echo -e "   ${DIM}installs plymouth, adds it to mkinitcpio and 'quiet splash' to the boot entry (each file is backed up first), rebuilds the initramfs.${RESET}"
+            echo -e "   ${DIM}Redone in your colours on every update. Take it out any time: ~/.config/Halcyon/scripts/halcyon-plymouth.sh remove${RESET}"
+            if confirm "  Set up the boot splash?"; then INSTALL_PLYMOUTH=true; else INSTALL_PLYMOUTH=false; fi
+        elif [[ -n "$s_p" ]]; then
+            [[ "$s_p" == yes ]] && INSTALL_PLYMOUTH=true || INSTALL_PLYMOUTH=false
+        else
+            INSTALL_PLYMOUTH=$have
+        fi
+        PLYMOUTH_ASKED=true
+    fi
+    log_info "Boot splash: $([[ "$INSTALL_PLYMOUTH" == true ]] && { [[ "$have" == true ]] && echo "on (updated in step 12)" || echo "set up in step 12"; } || echo "not set up")"
+}
+[[ "$REMOVE_LOGIN" != "true" ]] && choose_plymouth
+
 # ---------------------------------------------------------------------------------------------- step 5
 log_step "Step 5: Hyprland and the desktop"
 
@@ -2218,7 +2255,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
     user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} || true
 elif [[ -n "$PICK_RENDERER" ]]; then
@@ -2229,6 +2266,16 @@ fi
 if [[ "$DRY_RUN" != "true" && $EUID -eq 0 ]]; then      # run as root: make sure nothing of the user's ended up owned by root
     chown -R "$TARGET_UID:$TARGET_GID" "$TARGET_HOME/.local/state/island" "$TARGET_HOME/.cache/island" "$TARGET_HOME/.cache/halcyon-build" \
         "$TARGET_HOME/.config/systemd" "$TARGET_HOME/Pictures/Wallpapers" "$TARGET_HOME/Pictures/Screenshots" 2>/dev/null || true
+fi
+
+# the boot splash, now that the colours are made (scheme/current.lua): rendered in them, then the initramfs is rebuilt
+if [[ "$INSTALL_PLYMOUTH" == "true" ]]; then
+    if [[ -f "$TARGET_RICE/scripts/halcyon-plymouth.sh" ]]; then
+        run_cmd "Boot splash (Plymouth): theme in your colours, initramfs rebuilt" as_root env HALCYON_DIR="$TARGET_RICE" bash "$TARGET_RICE/scripts/halcyon-plymouth.sh" install \
+            || warn_later "The boot splash was not set up (see the log). Try it by hand: $TARGET_RICE/scripts/halcyon-plymouth.sh install"
+    else
+        warn_later "scripts/halcyon-plymouth.sh is missing from $TARGET_RICE: the boot splash was not set up."
+    fi
 fi
 
 # ---------------------------------------------------------------------------------------------- step 13
