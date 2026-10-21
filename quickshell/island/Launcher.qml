@@ -275,20 +275,90 @@ Item {
         if (/^timer(\s|$)/.test(e)) return parseTimer(e)
         var cv = convertUnits(e)
         if (cv) return cv
-        var s = e.replace(/\^/g, "**")
-                 .replace(/\b(sqrt|sin|cos|tan|abs|floor|ceil|round|pow)\b/g, "Math.$1")
-                 .replace(/\b(ln|log)\b/g, "Math.log")
-                 .replace(/\bpi\b/g, "Math.PI")
-        // whatever is left (after removing the Math.* names) may only be digits, operators, brackets
-        if (!/^[0-9+\-*\/%().,\s]*$/.test(s.replace(/Math\.[A-Za-z]+/g, "0")))
-            return { ok: false, text: "…" }
-        try {
-            var v = eval(s)
-            if (typeof v !== "number" || !isFinite(v)) return { ok: false, text: "…" }
-            return { ok: true, text: String(parseFloat(v.toPrecision(12))) }
-        } catch (err) {
-            return { ok: false, text: "…" }
+        // "20% of 50"
+        var po = /^([0-9]*\.?[0-9]+)\s*%\s*of\s+(.+)$/.exec(e)
+        if (po) e = "(" + po[1] + "/100)*(" + po[2] + ")"
+        var v = calcParse(e)
+        if (typeof v !== "number" || !isFinite(v)) return { ok: false, text: "…" }
+        return { ok: true, text: String(parseFloat(v.toPrecision(12))) }
+    }
+
+    // A small expression parser instead of eval(): numbers (1e5), + - * / % ^ (right to left, -2^2 = -4), ! , brackets,
+    // implicit multiplication (2pi, 3(4+1)), constants pi / e and a fixed list of functions. Anything else is NaN.
+    // It cannot run code, loop, or hang: input is capped and nesting is limited.
+    readonly property var calcFns: ({
+        sqrt: Math.sqrt, sin: Math.sin, cos: Math.cos, tan: Math.tan, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
+        round: Math.round, exp: Math.exp, ln: Math.log, log: Math.log, log10: Math.log10, log2: Math.log2,
+        pow: Math.pow, min: Math.min, max: Math.max, cbrt: Math.cbrt, asin: Math.asin, acos: Math.acos, atan: Math.atan })
+    function calcParse(src) {
+        if (src.length > 200) return NaN
+        var toks = [], rest = src, m
+        while (true) {
+            rest = rest.replace(/^\s+/, "")
+            if (rest === "") break
+            if ((m = /^(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:e[+-]?[0-9]+)?/.exec(rest))) toks.push({ n: parseFloat(m[0]) })
+            else if ((m = /^[a-z][a-z0-9]*/.exec(rest))) toks.push({ id: m[0] })
+            else if ((m = /^[-+*\/%^!(),]/.exec(rest))) toks.push({ op: m[0] })
+            else return NaN
+            rest = rest.substring(m[0].length)
         }
+        var pos = 0, depth = 0, bad = false, fns = calcFns
+        function peekOp(o) { return pos < toks.length && toks[pos].op === o }
+        function expr() {
+            var v = term()
+            while (!bad && (peekOp("+") || peekOp("-"))) { var o = toks[pos++].op; var r = term(); v = o === "+" ? v + r : v - r }
+            return v
+        }
+        function term() {
+            var v = unary()
+            while (!bad && pos < toks.length) {
+                var t = toks[pos]
+                if (t.op === "*" || t.op === "/" || t.op === "%") { pos++; var r = unary(); v = t.op === "*" ? v * r : t.op === "/" ? v / r : v % r }
+                else if (t.n !== undefined || t.id !== undefined || t.op === "(") v = v * unary()      // implicit multiplication
+                else break
+            }
+            return v
+        }
+        function unary() {
+            if (peekOp("-")) { pos++; return -unary() }
+            if (peekOp("+")) { pos++; return unary() }
+            return power()
+        }
+        function power() {
+            var b = postfix()
+            if (!bad && peekOp("^")) { pos++; return Math.pow(b, unary()) }
+            return b
+        }
+        function postfix() {
+            var v = primary()
+            while (!bad && peekOp("!")) {
+                pos++
+                if (v < 0 || v > 170 || Math.floor(v) !== v) { bad = true; return NaN }
+                var f = 1
+                for (var i = 2; i <= v; i++) f *= i
+                v = f
+            }
+            return v
+        }
+        function primary() {
+            if (pos >= toks.length || ++depth > 40) { bad = true; return NaN }
+            var t = toks[pos++], v
+            if (t.n !== undefined) v = t.n
+            else if (t.op === "(") { v = expr(); if (!peekOp(")")) bad = true; else pos++ }
+            else if (t.id === "pi") v = Math.PI
+            else if (t.id === "e") v = Math.E
+            else if (t.id !== undefined && fns[t.id] && peekOp("(")) {
+                pos++
+                var args = []
+                if (!peekOp(")")) { args.push(expr()); while (!bad && peekOp(",")) { pos++; args.push(expr()) } }
+                if (!peekOp(")")) bad = true; else pos++
+                v = bad ? NaN : fns[t.id].apply(null, args)
+            } else bad = true
+            depth--
+            return bad ? NaN : v
+        }
+        var out = expr()
+        return (bad || pos !== toks.length) ? NaN : out
     }
 
     function refresh() {
