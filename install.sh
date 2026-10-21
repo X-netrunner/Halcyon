@@ -1972,7 +1972,8 @@ UNITS="$TARGET_HOME/.config/systemd/user"
 try run_as_user_cmd "Installing the user services (gestures start with the desktop, Auto power from the island)" \
     install -m644 "$TARGET_RICE/systemd/power-manager.service" "$TARGET_RICE/systemd/touchpad-gestures.service" \
         "$TARGET_RICE/systemd/halcyon-remind.service" "$TARGET_RICE/systemd/halcyon-remind.timer" \
-        "$TARGET_RICE/systemd/halcyon-notes-due.service" "$TARGET_RICE/systemd/halcyon-notes-due.timer" "$UNITS/"
+        "$TARGET_RICE/systemd/halcyon-notes-due.service" "$TARGET_RICE/systemd/halcyon-notes-due.timer" \
+        "$TARGET_RICE/systemd/halcyon-explain@.service" "$UNITS/"
 if [[ "$DRY_RUN" != "true" ]] && have_systemd && user_bus_ready; then
     try run_cmd "Reloading the user systemd" user_systemctl daemon-reload
     # only inside a running desktop (the gestures need it); otherwise they start with the next login via execs.lua

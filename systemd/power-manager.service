@@ -1,5 +1,7 @@
 [Unit]
 Description=Halcyon Auto power manager (load / battery / heat aware)
+# a failure (after the restarts gave up) is explained by the local AI as a notification (halcyon-explain@.service)
+OnFailure=halcyon-explain@%n.service
 
 [Service]
 ExecStart=%h/.config/Halcyon/bin/power-manager

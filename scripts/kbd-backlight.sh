@@ -61,7 +61,7 @@ doctor() {
       else
         echo "  $mod exists but is not loaded."
         if [ "$1" = --load ]; then
-          sudo modprobe "$mod" && sleep 1 && ls /sys/class/leds | grep -i kbd && { echo "$mod" | sudo tee /etc/modules-load.d/halcyon-kbd.conf >/dev/null; echo "  loaded, and kept for every boot (/etc/modules-load.d/halcyon-kbd.conf)"; } || echo "  loading it did not create a keyboard light."
+          sudo modprobe "$mod" && sleep 1 && compgen -G "/sys/class/leds/*[kK][bB][dD]*" >/dev/null && { echo "$mod" | sudo tee /etc/modules-load.d/halcyon-kbd.conf >/dev/null; echo "  loaded, and kept for every boot (/etc/modules-load.d/halcyon-kbd.conf)"; } || echo "  loading it did not create a keyboard light."
         else echo "  try:  $0 doctor --load"; fi
       fi
     else echo "  your kernel has no $mod module."; fi

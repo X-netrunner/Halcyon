@@ -9,7 +9,7 @@ import "WidgetData.js" as WD
 // or the mouse wheel = resize, a click picks it, "Style and look" opens it in the Widget builder, ✕ takes it away. "Add" puts a new one on.
 // Esc or Done leaves. Everything is saved as you go.
 // The switch in the toolbar picks WHICH screen you place them on: the desktop, or the lock screen (its own list of widgets, opt.lockDeskWidgets). On the
-// lock screen the clock and the password box are drawn as outlines, so you leave room for them, and only the widgets that may be there are offered.
+// lock screen the clock and the password box are drawn as outlines, so you leave room for them; every widget is offered (the private ones are marked).
 // The "view bar" above the toolbar draws helpers like a design tool: a grid (size 20 / 40 / 80 / 120 px, optionally snapping to it), the
 // screen's centre lines (they light up when the picked widget is centred), rule-of-thirds lines, the safe area, and the measuring: the gap
 // in px to the screen edge or the next widget on every side of the picked widget, plus its size and place. Your choices are remembered.
@@ -132,7 +132,7 @@ PanelWindow {
                         visible: win.lockT
                         width: shelf.width
                         wrapMode: Text.WordWrap
-                        text: "Not offered on the lock screen (they run commands or show private things): " + WD.lockBlockedNames() + "."
+                        text: "Every widget works here too, but nothing on them can be clicked or run while the screen is locked. Marked private (anyone at your locked computer can read them): " + WD.lockPrivateNames() + "."
                         color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 10
                     }
                     Repeater {
@@ -140,7 +140,7 @@ PanelWindow {
                         delegate: Column {
                             id: shelfCat
                             required property var modelData
-                            readonly property var kinds: WD.catalog.filter(function (t) { return t.cat === modelData[0] && (!win.lockT || WD.lockOk(t.id)) })
+                            readonly property var kinds: WD.catalog.filter(function (t) { return t.cat === modelData[0] })
                             visible: kinds.length > 0
                             width: shelf.width
                             spacing: 6
@@ -153,7 +153,7 @@ PanelWindow {
                                     delegate: Chip {
                                         required property var modelData
                                         pal: win.pal; implicitHeight: 32
-                                        glyph: String.fromCodePoint(modelData.icon); label: modelData.name
+                                        glyph: String.fromCodePoint(modelData.icon); label: modelData.name + (win.lockT && WD.lockPrivateOf(modelData.id) !== "" ? "  · private" : "")
                                         onClicked: { var uid = WD.nextUid(win.layout.items); win.commit(WD.add(win.layout, modelData.id)); win.sel = uid; win.adding = false }
                                     }
                                 }

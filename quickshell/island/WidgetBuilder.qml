@@ -33,7 +33,7 @@ ColumnLayout {
     }
     Text {
         Layout.fillWidth: true
-        text: wb.lockT ? "Put widgets on the lock screen too: the time in a style of your own, the song that plays, system usage, battery, Wi-Fi, weather, the moon and more. They only show things: nothing on the lock screen can be clicked while it is locked (the music buttons stay), and the widgets that run commands or show private things (toggles, shortcuts, console, notes, utilities, workspaces) are not offered there. You build and place them the same way as the desktop ones, and your saved looks work on both."
+        text: wb.lockT ? "Put widgets on the lock screen too: the time in a style of your own, the song that plays, system usage, battery, Wi-Fi, weather, the moon and more. They only show things: nothing on the lock screen can be clicked while it is locked (the music buttons stay), and the ones that show private things (notes, tasks, console, workspaces ...) are marked private when you add them. Every desktop widget is offered there; you build and place them the same way, and your saved looks work on both."
               : "Put widgets on your desktop: the time, system usage, the song that plays, an audio visualizer, your Focus streak, battery, Wi-Fi, workspaces, quick toggles, notes and more. Each one has several layouts and a look you can change (box, colours, font, size), and you can save looks of your own. With enough of them on the desktop you can switch the top bar off (Settings > Bar style > Style > Off)."
         color: wb.pal.muted; font.family: wb.pal.uiFont; font.pixelSize: 10; lineHeight: 1.3; wrapMode: Text.WordWrap
     }

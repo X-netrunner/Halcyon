@@ -1,0 +1,13 @@
+[Unit]
+Description=Halcyon: explain why %i failed (local AI, scripts/halcyon-ai.py; Settings > Performance > Explain errors)
+# started by OnFailure= of the Halcyon user units. It does nothing when the AI or "Explain errors" is off, or this failure was explained before.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.config/Halcyon/scripts/halcyon-ai.py explain unit %i --notify --if-new
+Nice=10
+TimeoutStartSec=180
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
