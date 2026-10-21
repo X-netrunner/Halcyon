@@ -40,3 +40,17 @@ Thumbs.db
 /apps.custom
 /autostart.conf
 /gamemode.conf
+
+# Your own settings: install.sh / Settings write them and an update never overwrites them (KEEP_FILES in install.sh), so they
+# do not belong in the repo either (scripts/sync-and-push.sh would commit them back otherwise)
+/ai-advisor.conf
+/backup-exclude.conf
+/focus.conf
+/focus-apps.conf
+/notes.conf
+/remind.conf
+# install.sh links these to the built helpers in bin/ (absolute paths into one home folder)
+/sysmode/recon-deceiver
+/sysmode/log-analyst
+/sysmode/attacker-dossier
+/sysmode/setStaticMac
