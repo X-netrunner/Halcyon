@@ -56,6 +56,13 @@ var catalog = [
     { id: "battery", cat: "system", name: "Battery", icon: 0xF0079, size: [120, 120], hint: "Charge, and charging", metric: true,
       styles: [["ring", "Ring"], ["arc", "Arc"], ["bar", "Bar"], ["pill", "Pill"], ["number", "Number"]],
       opts: [{ k: "label", kind: "toggle", label: "Show the name", def: true }, { k: "hideNoBat", kind: "toggle", label: "Hide on a desktop PC", def: true }] },
+    { id: "battime", cat: "system", name: "Battery time", icon: 0xF19E5, size: [230, 90], hint: "How long the battery lasts at the current use (or until it is full), the charge and the power draw",
+      styles: [["card", "Card"], ["line", "One line"], ["ring", "Ring"], ["bar", "Bar"], ["minimal", "Minimal"]],
+      opts: [
+        { k: "watts", kind: "toggle", label: "Show the power draw (W)", def: true },
+        { k: "pct", kind: "toggle", label: "Show the charge (%)", def: true },
+        { k: "hideNoBat", kind: "toggle", label: "Hide on a desktop PC", def: true }
+      ] },
     { id: "volume", cat: "system", name: "Volume", icon: 0xF057E, size: [120, 120], hint: "Speaker volume (scroll on it to change)", metric: true,
       styles: [["ring", "Ring"], ["arc", "Arc"], ["bar", "Bar"], ["pill", "Pill"], ["number", "Number"]],
       opts: [{ k: "label", kind: "toggle", label: "Show the name", def: true }] },
@@ -201,7 +208,7 @@ function hintOf(id) { var t = typeOf(id); return t ? t.hint : "" }
 // which QML file draws each type
 var files = {
     clock: "WClock.qml", date: "WClock.qml", month: "WMonth.qml",
-    cpu: "WMetric.qml", ram: "WMetric.qml", temp: "WMetric.qml", gpu: "WMetric.qml", disk: "WMetric.qml", battery: "WMetric.qml", volume: "WMetric.qml", brightness: "WMetric.qml",
+    cpu: "WMetric.qml", ram: "WMetric.qml", temp: "WMetric.qml", gpu: "WMetric.qml", disk: "WMetric.qml", battery: "WMetric.qml", battime: "WBatTime.qml", volume: "WMetric.qml", brightness: "WMetric.qml",
     sysmon: "WSysmon.qml", net: "WNet.qml", uptime: "WNet.qml",
     music: "WMusic.qml", lyrics: "WLyrics.qml", viz: "WViz.qml", focus: "WFocus.qml", workspaces: "WWorkspaces.qml", special: "WSpecial.qml", toggles: "WToggles.qml", shortcuts: "WToggles.qml",
     notes: "WNotes.qml", weather: "WWeather.qml", text: "WText.qml",

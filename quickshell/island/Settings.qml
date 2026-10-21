@@ -2150,6 +2150,7 @@ Scope {
                 pal: root.pal
                 opt: root.opt
                 wallpaperPath: root.wallpaperPath
+                globalClick: root.clickMode
                 onClosed: root.dbOpen = false
                 onOpenWidgets: { root.dbOpen = false; root.openWidgetBuilder("") }
                 onEditDesktop: { root.dbOpen = false; root.editOnDesktop("desktop") }

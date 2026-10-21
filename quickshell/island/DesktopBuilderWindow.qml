@@ -16,6 +16,7 @@ Item {
     property bool open: false
     property var opt: ({})
     property string wallpaperPath: ""
+    property bool globalClick: false     // Settings > Edge boxes: what a box with no own choice does (see DS.trig)
     signal changed(string key, var value)
     signal closed()
     signal openWidgets()                 // the Widget builder (how each widget looks)
@@ -62,6 +63,7 @@ Item {
         liveT.stop(); root.pending = ({})
         for (var k in DS.resetValues) put(k, DS.resetValues[k])
         put("boxSpots", DS.clone(DS.defaults))
+        put("boxTrig", ({}))
         root.pick = ""
     }
 
@@ -219,7 +221,7 @@ Item {
                                             }
                                             Text {
                                                 anchors.horizontalCenter: parent.horizontalCenter
-                                                text: slot.picked ? "pick a corner" : (slot.target ? "move here" : (slot.boxId === "notif" ? ((root.opt && root.opt.notifSpot === "corner" ? "corner trigger" : "edge trigger") + " · " + DS.cornerNames[slot.c]) : DS.cornerNames[slot.c]))
+                                                text: slot.picked ? "pick a corner" : (slot.target ? "move here" : (slot.boxId === "notif" ? ((root.opt && root.opt.notifSpot === "corner" ? "corner trigger" : "edge trigger") + " · " + DS.cornerNames[slot.c]) : DS.cornerNames[slot.c]) + (DS.trig(root.opt, slot.boxId, root.globalClick) ? " · click" : " · hover"))
                                                 color: slot.picked ? root.pal.accent : root.pal.muted
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 10
@@ -410,6 +412,28 @@ Item {
                                 options: DS.corners.map(function (c) { return [c, DS.cornerNames[c]] })
                                 current: root.spots[modelData]
                                 onPicked: id => root.moveBox(boxRow.modelData, id)
+                            }
+                        }
+                        // ---- how each box opens: its own hover / click, or like the rest (Settings > Edge boxes)
+                        NbCap { pal: root.pal; text: "OPENS ON" }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Hover opens a box when the pointer reaches its corner and closes it when the pointer leaves. Click needs a click on the corner (a small dot shows where) and keeps the box open until you click elsewhere. \"Like the rest\" follows Settings > Edge boxes (now: " + (root.globalClick ? "click" : "hover") + ")."
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
+                        }
+                        Repeater {
+                            model: DS.order
+                            delegate: ChipRow {
+                                id: trigRow
+                                required property string modelData
+                                readonly property var own: root.opt && root.opt.boxTrig ? root.opt.boxTrig[modelData] : undefined
+                                Layout.fillWidth: true
+                                pal: root.pal
+                                label: DS.names[modelData]
+                                labelWidth: 104; fit: true
+                                options: [["default", "Like the rest"], ["hover", "Hover"], ["click", "Click"]]
+                                current: own === "hover" || own === "click" ? own : "default"
+                                onPicked: id => root.put("boxTrig", DS.setTrig(root.opt, trigRow.modelData, id))
                             }
                         }
                         ChipRow {
