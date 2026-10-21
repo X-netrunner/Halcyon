@@ -4,6 +4,8 @@ After=graphical-session.target
 # never a restart storm: at most 5 starts per minute, then the unit stays failed (see: systemctl --user status touchpad-gestures)
 StartLimitIntervalSec=60
 StartLimitBurst=5
+# a failure (after the restarts gave up) is explained by the local AI as a notification (halcyon-explain@.service)
+OnFailure=halcyon-explain@%n.service
 
 [Service]
 ExecStart=%h/.config/Halcyon/bin/touchpad-gestures

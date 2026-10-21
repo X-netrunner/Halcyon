@@ -200,7 +200,8 @@ def ocr_to_clipboard(png):
         ok = subprocess.run(["wl-copy"], input=text.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10).returncode == 0
     except (OSError, subprocess.SubprocessError):
         ok = False
-    notify(("Text copied (%d characters)" % len(text)) if ok else "Could not copy the text")
+    # the clipboard history's sparkle (or `halcyon ai clip summarise`) can summarise / rewrite what was read
+    notify(("Text copied (%d characters). Clipboard history > ✦ summarises it" % len(text)) if ok else "Could not copy the text")
     return 0 if ok else 1
 
 

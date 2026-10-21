@@ -8,6 +8,8 @@ import Quickshell.Wayland
 // A panel on the side of the screen (same place and look as the new-note panel) that lists what you copied lately. Type to search,
 // Up / Down and Enter, or click a row: it goes back on the clipboard with wl-copy and the panel leaves, ready to paste.
 //
+// AI (the sparkle on a text row): summarise or rewrite that entry with the local model (scripts/halcyon-ai.py clip); the answer
+// shows in the panel, Copy puts it on the clipboard. Text read from a screenshot (Screenshot panel > Text) lands here too, so it works on that.
 // Pin (the little pin on a row) keeps a text entry on top of the list; pins survive Clear history (scripts/halcyon-clip.py keeps their text
 // in ~/.local/state/island/clip-pins.json, readable only by you; do not pin a password).
 // There is NO watcher in here and none was added for it. The history is cliphist's, filled by the two small `wl-paste --watch`
@@ -38,7 +40,7 @@ Scope {
     readonly property bool panelBottom: spot.charAt(0) === "b"
     readonly property string script: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-clip.py"
 
-    function show() { search = ""; note = ""; confirmClear = false; open = true; load() }
+    function show() { search = ""; note = ""; confirmClear = false; aiItem = null; open = true; load() }
     function hide() { open = false; confirmClear = false }
     function close() { hide() }
     function toggle() { if (open) hide(); else show() }
@@ -97,6 +99,37 @@ Scope {
     Timer { id: leaveT; interval: 380; onTriggered: root.hide() }
 
     function deleteItem(it) { if (it) act(["python3", root.script, "delete", String(it.id)]) }
+
+    // ---- AI on one entry (scripts/halcyon-ai.py clip summarise | rewrite --id ID)
+    property var aiItem: null               // the entry the AI view is about (null = the list is shown)
+    property string aiKind: ""
+    property string aiOut: ""
+    property bool aiOk: true
+    readonly property string aiScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-ai.py"
+    function aiOpen(it) { if (!it || it.image) return; aiItem = it; aiKind = ""; aiOut = ""; aiOk = true }
+    function aiRun(kind) {
+        if (!aiItem || aiProc.running) return
+        aiKind = kind; aiOut = ""; aiOk = true
+        aiProc.command = ["python3", aiScript, "clip", kind, "--id", String(aiItem.id), "--json"]
+        aiProc.running = true
+    }
+    function aiCopy() {
+        if (aiOut === "" || !aiOk) return
+        Quickshell.execDetached(["wl-copy", aiOut])
+        note = "Copied"
+        leaveT.restart()
+    }
+    Process {
+        id: aiProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var d = null
+                try { d = JSON.parse(text) } catch (e) { d = null }
+                root.aiOk = !!d && d.ok === true
+                root.aiOut = !d ? "No answer (is python3 there?)" : (d.ok ? d.text : d.error)
+            }
+        }
+    }
     function pinItem(it) { if (it && !it.image) act(["python3", root.script, it.pin === true ? "unpin" : "pin", String(it.id)]) }
     function clearAll() {
         if (!confirmClear) { confirmClear = true; confirmT.restart(); return }
@@ -233,7 +266,8 @@ Scope {
                                 font.pixelSize: root.pal.tBody + 1
                                 onTextChanged: { root.search = text; list.currentIndex = 0 }
                                 Keys.onPressed: e => {
-                                    if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true }
+                                    if (e.key === Qt.Key_Escape) { if (root.aiItem) root.aiItem = null; else root.hide(); e.accepted = true }
+                                    else if (root.aiItem) { if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { root.aiCopy(); e.accepted = true } }
                                     else if (e.key === Qt.Key_Down) { if (list.currentIndex < root.shown.length - 1) list.currentIndex++; e.accepted = true }
                                     else if (e.key === Qt.Key_Up) { if (list.currentIndex > 0) list.currentIndex--; e.accepted = true }
                                     else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
@@ -286,7 +320,7 @@ Scope {
                             id: list
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            visible: root.shown.length > 0
+                            visible: root.shown.length > 0 && !root.aiItem
                             clip: true
                             spacing: 4
                             model: root.shown
@@ -336,6 +370,13 @@ Scope {
                                         visible: !row.modelData.image && (rowMa.containsMouse || row.cur)
                                         pal: root.pal
                                         size: 24
+                                        glyph: String.fromCodePoint(0xF0674)
+                                        onClicked: root.aiOpen(row.modelData)
+                                    }
+                                    RoundBtn {
+                                        visible: !row.modelData.image && (rowMa.containsMouse || row.cur)
+                                        pal: root.pal
+                                        size: 24
                                         glyph: String.fromCodePoint(row.modelData.pin === true ? 0xF0404 : 0xF0403)
                                         onClicked: root.pinItem(row.modelData)
                                     }
@@ -350,7 +391,7 @@ Scope {
                                 MouseArea {
                                     id: rowMa
                                     anchors.fill: parent
-                                    anchors.rightMargin: 68            // the pin and delete buttons keep their own clicks
+                                    anchors.rightMargin: 100           // the AI, pin and delete buttons keep their own clicks
                                     hoverEnabled: true
                                     onEntered: list.currentIndex = row.index
                                     onClicked: root.copyItem(row.modelData)
@@ -363,7 +404,7 @@ Scope {
                         Text {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            visible: root.shown.length === 0
+                            visible: root.shown.length === 0 && !root.aiItem
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                             text: !root.loaded ? "" : (!root.available ? "" : (root.search.trim() !== "" ? "Nothing copied matches that" : "Nothing copied yet"))
@@ -372,8 +413,77 @@ Scope {
                             font.pixelSize: root.pal.tBody
                         }
 
+                        // ---- the AI view: one entry, three things to do with it, the answer
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: root.aiItem !== null
+                            spacing: 10
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.aiItem ? root.aiItem.text : ""
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                                wrapMode: Text.Wrap
+                                color: root.pal.muted
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tCap + 1
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Repeater {
+                                    model: [["summarise", "Summarise"], ["rewrite", "Rewrite clearly"], ["shorter", "Make it shorter"]]
+                                    delegate: Chip {
+                                        required property var modelData
+                                        pal: root.pal; implicitHeight: 30
+                                        label: modelData[1]
+                                        on: root.aiKind === modelData[0]
+                                        onClicked: root.aiRun(modelData[0])
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: root.pal.rMd
+                                color: Qt.alpha(root.pal.bg, 0.45)
+                                border.width: 1
+                                border.color: !root.aiOk ? Qt.alpha(root.pal.warn, 0.5) : root.pal.lineSoft
+                                Flickable {
+                                    id: aiFlick
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    contentWidth: width
+                                    contentHeight: aiTxt.implicitHeight
+                                    clip: true
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    TextEdit {
+                                        id: aiTxt
+                                        width: aiFlick.width
+                                        readOnly: true
+                                        selectByMouse: true
+                                        wrapMode: TextEdit.Wrap
+                                        text: aiProc.running ? "Asking your local AI…" : (root.aiOut !== "" ? root.aiOut : "Pick what to do with it. The answer comes from your local model; nothing leaves this computer.")
+                                        color: aiProc.running || root.aiOut === "" ? root.pal.muted : (root.aiOk ? root.pal.text : root.pal.warn)
+                                        selectionColor: Qt.alpha(root.pal.accent, 0.45)
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                    }
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                ActionChip { pal: root.pal; label: "Back"; implicitHeight: 30; onClicked: root.aiItem = null }
+                                Item { Layout.fillWidth: true }
+                                ActionChip { pal: root.pal; label: "Copy the answer"; on: true; implicitHeight: 30; disabled: aiProc.running || root.aiOut === "" || !root.aiOk; onClicked: root.aiCopy() }
+                            }
+                        }
+
                         RowLayout {
                             Layout.fillWidth: true
+                            visible: !root.aiItem
                             spacing: 8
                             Text {
                                 Layout.fillWidth: true
