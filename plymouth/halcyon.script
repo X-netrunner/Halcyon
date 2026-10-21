@@ -71,8 +71,8 @@ word.SetOpacity(0);
 wordIdx = -1;
 
 # ---- the film
-DUR = 3.6;                       # seconds for p 0 -> 1, as on the desktop
-HOLD = 0.86;                     # boot: the film stops here and rests (the desktop splash fades out after this point)
+DUR = 3.0;                       # seconds for p 0 -> 1, fast enough to finish within boot time
+HOLD = 0.86;                     # boot: the film stops here and rests (2.58 s)
 t = 0;
 drift = 0;
 REVWAIT = 0.4;                   # shutdown: seconds on the bare dark screen before the film (see the top)
