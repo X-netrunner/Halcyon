@@ -28,7 +28,8 @@ Scope {
     property bool splashSound: false      // Settings > Splash, sky & time of day > Soft sounds: a quiet chime goes with the login splash
     property real splashDim: 0.75         // Settings > Splash, sky & time of day > Darken the screen during the splash
     property bool splashArm: false        // set by shell.qml for the lock that starts the session (lock-on-start); cleared when it unlocks
-    readonly property bool splashWanted: splash && splashArm && pal && pal.motion > 0.3
+    property bool splashSkip: false       // set by shell.qml: you were away less than splashAwayMin, so the login lock comes up without the splash
+    readonly property bool splashWanted: splash && splashArm && !splashSkip && pal && pal.motion > 0.3
     property string name: ""            // display name (profile name or login)
     property string avatarPath: ""
     property bool locked: false
@@ -186,7 +187,7 @@ Scope {
         // a PAM error is not a guess, so it does not count as a miss
         onError: err => { root.busy = false; root.buffer = ""; root.failure = "Could not check the password"; root.shakeTick++ }
     }
-    onLockedChanged: { switchOpen = false; if (!locked) { buffer = ""; failure = ""; busy = false; splashArm = false; pam.abort() } }
+    onLockedChanged: { switchOpen = false; if (!locked) { buffer = ""; failure = ""; busy = false; splashArm = false; splashSkip = false; pam.abort() } }
 
     SystemClock { id: clock; precision: SystemClock.Seconds }
 
