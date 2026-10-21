@@ -269,6 +269,14 @@ if [ "$(head -n1 "$state/gtk-icons" 2>/dev/null)" != "off" ]; then
     setini "$HOME/.config/gtk-3.0/settings.ini" gtk-icon-theme-name "$want"
     setini "$HOME/.config/gtk-4.0/settings.ini" gtk-icon-theme-name "$want"
     setini "$HOME/.config/gtk-4.0/settings.ini" gtk-application-prefer-dark-theme "$PREFER"
+    # Qt apps (and the island itself, through qt6ct) get the same icons: with no icon_theme there they fell back to a bare default,
+    # so names like x-office-calendar or hwloc were not found. Only in a qt5ct / qt6ct config that already exists.
+    for qf in "$HOME/.config/qt6ct/qt6ct.conf" "$HOME/.config/qt5ct/qt5ct.conf"; do
+      [ -f "$qf" ] || continue
+      if grep -q '^icon_theme *=' "$qf"; then sed -i "s|^icon_theme *=.*|icon_theme=$want|" "$qf"
+      elif grep -q '^\[Appearance\]' "$qf"; then sed -i "/^\[Appearance\]/a icon_theme=$want" "$qf"
+      else printf '[Appearance]\nicon_theme=%s\n' "$want" >> "$qf"; fi
+    done
   fi
 fi
 

@@ -3,7 +3,7 @@ import QtQuick
 // Moving stars for the desktop (Settings > Appearance > Desktop builder). Lives inside Wallpaper.qml, ABOVE the picture, so it
 // works on a wallpaper, on a blurred one and on the plain background you get with the wallpaper switched off.
 //   count / speed / size / direction / colour / twinkle / shooting stars all come from opt.desk* (Desktop builder).
-// Ultra-optimized: Uses a single hardware-accelerated Canvas with precomputed star matrices and direct rect blits.
+// Each star is a tiny scene item moved by one shared clock (t); the static per-star numbers are precomputed (cachedStars).
 Item {
     id: root
     property var pal
@@ -23,8 +23,8 @@ Item {
     readonly property real vx: dir === "right" ? 1 : dir === "left" ? -1 : dir === "diag" ? 1 : 0
     readonly property real vy: dir === "down" ? 1 : dir === "up" ? -1 : dir === "diag" ? 0.4 : 0
 
-    // Suppress painting when desktop is obscured (locked screen, fullscreen window, gaming mode)
-    readonly property bool covered: (env && env.gaming) || (env && env.screenLocked) || (env && env.fsQuiet)
+    // Suppress painting when desktop is obscured (locked screen, fullscreen window, gaming mode, windows over >= 92 % of it: shell.qml deskCovered)
+    readonly property bool covered: forceOn ? false : ((env && env.gaming) || (env && env.screenLocked) || (env && env.fsQuiet) || (env && env.deskCovered))
     readonly property bool live: on && visible && width > 0 && height > 0 && (pal ? pal.motion > 0.3 : true) && !covered
     property real t: 0                      // seconds of drifting so far (kept while hidden, so the stars carry on)
 
@@ -66,63 +66,35 @@ Item {
             var now = Date.now()
             root.t += root.lastMs > 0 ? Math.min(0.25, (now - root.lastMs) / 1000) : interval / 1000
             root.lastMs = now
-            canvas.requestPaint()
         }
     }
 
-    Canvas {
-        id: canvas
+    // one small scene item per star: each tick only moves ~70 tiny squares (the old full-screen Canvas re-painted and re-uploaded a
+    // screen-sized texture 13 times a second, ~6 % of a core on its own)
+    Item {
+        id: sky
         anchors.fill: parent
         visible: root.live
-        renderTarget: Canvas.FramebufferObject
-        renderStrategy: Canvas.Immediate
-
-        onPaint: {
-            var ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-            var stars = root.cachedStars
-            var len = stars.length
-            var w = width, h = height
-            var t = root.t
-            var vx = root.vx, vy = root.vy
-            var twOn = root.twinkle
-            var tone = root.tone
-            var pAccent = root.pal ? String(root.pal.accent) : "#88c0d0"
-            var pAccent2 = root.pal ? String(root.pal.accent2) : "#81a1c1"
-
-            var curTint = ""
-            for (var i = 0; i < len; i++) {
-                var s = stars[i]
-                var px = (((s.fx + vx * s.rate * t) % 1) + 1) % 1
-                var py = (((s.fy + vy * s.rate * t) % 1) + 1) % 1
-                var ex = Math.min(1, Math.min(px, 1 - px) * w / 36)
-                var ey = Math.min(1, Math.min(py, 1 - py) * h / 36)
-                var tw = twOn ? (0.5 + 0.5 * Math.sin(t * s.twFreq + s.twPhase)) : 1.0
-                var op = ex * ey * s.base * (twOn ? (0.35 + 0.65 * tw) : 1)
-                if (op < 0.01) continue
-
-                var tint = tone === "white" ? "#ffffff"
-                         : tone === "accent" ? pAccent
-                         : (s.colorType === 0 ? pAccent : (s.colorType === 1 ? pAccent2 : "#ffffff"))
-
-                if (curTint !== tint) {
-                    ctx.fillStyle = tint
-                    curTint = tint
-                }
-                ctx.globalAlpha = op
-                var cx = px * w
-                var cy = py * h
-                var sz = s.size
-                var half = sz * 0.5
-
-                ctx.fillRect(cx - half, cy - half, sz, sz)
-
-                if (s.isCross) {
-                    ctx.globalAlpha = op * 0.45
-                    var gl = sz * 4.5
-                    ctx.fillRect(cx - gl * 0.5, cy - 0.5, gl, 1)
-                    ctx.fillRect(cx - 0.5, cy - gl * 0.5, 1, gl)
-                }
+        readonly property color cA: root.pal ? root.pal.accent : "#88c0d0"
+        readonly property color cB: root.pal ? root.pal.accent2 : "#81a1c1"
+        Repeater {
+            model: root.cachedStars
+            delegate: Item {
+                id: st
+                required property var modelData
+                readonly property var s: modelData
+                readonly property real px: (((s.fx + root.vx * s.rate * root.t) % 1) + 1) % 1
+                readonly property real py: (((s.fy + root.vy * s.rate * root.t) % 1) + 1) % 1
+                readonly property real tw: root.twinkle ? (0.5 + 0.5 * Math.sin(root.t * s.twFreq + s.twPhase)) : 1
+                x: px * sky.width
+                y: py * sky.height
+                opacity: Math.min(1, Math.min(px, 1 - px) * sky.width / 36) * Math.min(1, Math.min(py, 1 - py) * sky.height / 36)
+                         * s.base * (root.twinkle ? (0.35 + 0.65 * tw) : 1)
+                readonly property color tint: root.tone === "white" ? "#ffffff" : root.tone === "accent" ? sky.cA
+                                              : (s.colorType === 0 ? sky.cA : (s.colorType === 1 ? sky.cB : "#ffffff"))
+                Rectangle { width: st.s.size; height: width; x: -width / 2; y: -width / 2; color: st.tint }
+                Rectangle { visible: st.s.isCross; width: st.s.size * 4.5; height: 1; x: -width / 2; y: -0.5; color: st.tint; opacity: 0.45 }
+                Rectangle { visible: st.s.isCross; width: 1; height: st.s.size * 4.5; x: -0.5; y: -height / 2; color: st.tint; opacity: 0.45 }
             }
         }
     }

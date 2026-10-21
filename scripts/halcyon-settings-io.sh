@@ -48,7 +48,7 @@ do_export() {
     [ -f "$RICE/$f" ] && { mkdir -p "$tmp/rice/$(dirname "$f")"; cp -p "$RICE/$f" "$tmp/rice/$f" && n=$((n+1)); }
   done
   [ "$n" -gt 0 ] || die "found nothing to export (looked in $STATE and $RICE)"
-  printf 'halcyon-settings 1\ncreated %s\nhost %s\n' "$(date -Is)" "$(hostname 2>/dev/null || echo unknown)" > "$tmp/MANIFEST"
+  printf 'halcyon-settings 1\ncreated %s\nhost %s\n' "$(date -Is)" "$(uname -n 2>/dev/null || echo unknown)" > "$tmp/MANIFEST"
   mkdir -p "$(dirname "$out")"
   tar -C "$tmp" -czf "$out" MANIFEST state rice || die "tar failed"
   chmod 600 "$out"   # settings can hold paths, calendar links and similar

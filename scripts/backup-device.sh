@@ -85,7 +85,7 @@ case "$fs" in
 esac
 [ "$NOX" = 1 ] && flags=("${flags[@]//X/}")        # -aAXH -> -aAH
 
-host=$(hostname 2>/dev/null || echo pc); stamp=$(date +%Y-%m-%d_%H-%M-%S)
+host=$(uname -n 2>/dev/null || echo pc); stamp=$(date +%Y-%m-%d_%H-%M-%S)
 root="$mnt/Halcyon-backup/$host"; dest="$root/$stamp"
 src=/; excl=(--exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/mnt --exclude=/media
   --exclude=/lost+found --exclude=/var/tmp --exclude=/var/cache --exclude=/var/lib/pacman/sync --exclude=/var/lib/apt/lists "--exclude=$mnt" --exclude=/swapfile --exclude=/.snapshots)

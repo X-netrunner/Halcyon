@@ -2257,6 +2257,64 @@ ShellRoot {
         }
     }
 
+    // ---- the desktop is hidden under windows (Hyprland's window list for the wallpaper's screen: its workspace and an open special
+    // workspace cover >= 92 % of it). The moving stars stop drawing then; nobody sees them, and every star tick also made Hyprland
+    // re-blur the windows above. Re-checked after window events and every 5 s while the stars are on (a floating window's drag or
+    // resize sends no event).
+    property bool deskCovered: false
+    readonly property bool deskCoverWatch: opt.deskStars === true && !gaming && !lockScreen.locked
+    Connections {
+        target: Hyprland
+        enabled: root.deskCoverWatch
+        function onRawEvent(event) {
+            var n = event.name
+            if (n === "openwindow" || n === "closewindow" || n === "movewindowv2" || n === "changefloatingmode" || n === "fullscreen"
+                || n === "workspacev2" || n === "activespecial" || n === "activespecialv2" || n === "focusedmonv2" || n === "activewindowv2") coverT.restart()
+        }
+    }
+    Timer { id: coverT; interval: 300; onTriggered: if (!coverProc.running) coverProc.running = true }
+    Timer { interval: 5000; repeat: true; running: root.deskCoverWatch; triggeredOnStart: true; onTriggered: coverT.restart() }
+    onDeskCoverWatchChanged: if (!deskCoverWatch) deskCovered = false
+    Process {
+        id: coverProc
+        command: ["sh", "-c", "hyprctl -j monitors; echo; echo @@; hyprctl -j clients"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var cov = false
+                try {
+                    var parts = text.split("@@")
+                    var mons = JSON.parse(parts[0]), wins = JSON.parse(parts[1])
+                    var want = wallpaperLayer.screen ? wallpaperLayer.screen.name : ""
+                    var m = null
+                    for (var i = 0; i < mons.length; i++) if (mons[i].name === want || (!m && want === "")) m = mons[i]
+                    if (m) {
+                        var sc = m.scale || 1, mw = m.width / sc, mh = m.height / sc
+                        if (m.transform % 2 === 1) { var tmp = mw; mw = mh; mh = tmp }
+                        var ws = [m.activeWorkspace ? m.activeWorkspace.id : -999, m.specialWorkspace ? m.specialWorkspace.id : -999]
+                        var rects = []
+                        for (var j = 0; j < wins.length; j++) {
+                            var c = wins[j]
+                            if (!c.mapped || c.hidden || !c.workspace || ws.indexOf(c.workspace.id) < 0) continue
+                            rects.push([c.at[0] - m.x, c.at[1] - m.y, c.size[0], c.size[1]])
+                        }
+                        // sample a 24 x 15 grid of the screen: the share of points under some window
+                        var hit = 0, tot = 0
+                        for (var gy = 0; gy < 15; gy++) for (var gx = 0; gx < 24; gx++) {
+                            var px = (gx + 0.5) * mw / 24, py = (gy + 0.5) * mh / 15
+                            tot++
+                            for (var r = 0; r < rects.length; r++) {
+                                var q = rects[r]
+                                if (px >= q[0] && px < q[0] + q[2] && py >= q[1] && py < q[1] + q[3]) { hit++; break }
+                            }
+                        }
+                        cov = hit / tot >= 0.92
+                    }
+                } catch (e) {}
+                root.deskCovered = cov && root.deskCoverWatch
+            }
+        }
+    }
+
     readonly property var compactEvents: ({ workspacev2: 1, focusedmonv2: 1, openwindow: 1, closewindow: 1, movewindowv2: 1, destroyworkspacev2: 1 })
     // which special workspace is open ("" = none)
     Connections {
@@ -2449,6 +2507,7 @@ ShellRoot {
     FileView {
         id: liveGestureView
         path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/halcyon-gesture.json"
+        printErrors: false             // the gesture tracker writes it on the first swipe; until then a missing file is normal
         watchChanges: true
         onFileChanged: reload()
         onLoaded: {
