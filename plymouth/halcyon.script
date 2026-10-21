@@ -1,6 +1,8 @@
 # Halcyon boot splash: quickshell/island/Splash.qml for Plymouth. Stars fly out of the middle, the sparkle unfolds, HALCYON fades in,
 # then it rests (the stars keep drifting slowly and the sparkle breathes) until the system hands over to the login.
-# Shut down / reboot plays the same film backwards: the stars are drawn back in and the sparkle folds shut.
+# Shut down / reboot plays the same film backwards: the stars are drawn back in and the sparkle folds shut. It waits REVWAIT on the
+# dark screen first: when the desktop has just played its own goodbye, halcyon-plymouth-film sends the status "halcyon-bare" in that
+# moment and the screen simply stays dark (no second film).
 #
 # halcyon-plymouth.sh glues layout.script (written by render-assets.py: sizes, colours, the stars) in front of this file.
 # All pictures are made by render-assets.py; nothing here draws, it only places them.
@@ -73,14 +75,19 @@ DUR = 3.6;                       # seconds for p 0 -> 1, as on the desktop
 HOLD = 0.86;                     # boot: the film stops here and rests (the desktop splash fades out after this point)
 t = 0;
 drift = 0;
+REVWAIT = 0.4;                   # shutdown: seconds on the bare dark screen before the film (see the top)
+bare = 0;                        # 1 = the desktop already said goodbye: stay dark
 if (rev) p = HOLD; else p = 0;
 
 fun refresh() {
     dt = 1 / 50;
     global.t = global.t + dt;
+    fa = 1;                                                     # how much of the film shows (shutdown: fades in after REVWAIT)
     if (global.rev) {
-        global.p = global.p - dt / (global.DUR * 0.67);       # the goodbye is shorter, like the desktop one (2.4 s)
+        if (global.t > global.REVWAIT) global.p = global.p - dt / (global.DUR * 0.67);   # the goodbye is shorter, like the desktop one (2.4 s)
         if (global.p < 0) global.p = 0;
+        fa = seg(global.t, global.REVWAIT, global.REVWAIT + 0.25);
+        if (global.bare) fa = 0;
     } else {
         global.p = global.p + dt / global.DUR;
         if (global.p > global.HOLD) global.p = global.HOLD;
@@ -92,7 +99,7 @@ fun refresh() {
     # after the film, a slow breath (the desktop's pulse)
     pulse = 0.5 + 0.5 * Math.Sin(Math.Max(0, p - 0.55) * 14 + Math.Max(0, global.t - global.DUR * global.HOLD) * 2.2);
     fadeIn = eo(seg(p, 0.0, 0.2));
-    global.tint_s.SetOpacity(eo(seg(p, 0.05, 0.5)));
+    global.tint_s.SetOpacity(eo(seg(p, 0.05, 0.5)) * fa);
 
     for (i = 0; i < global.nst; i++) {
         rr = fract(global.sb[i] + global.drift * global.sv[i]);
@@ -111,7 +118,7 @@ fun refresh() {
         half = img.GetWidth() / 2;
         global.spr[i].SetX(global.cx + global.sc[i] * d - half);
         global.spr[i].SetY(global.cy + global.ss[i] * d - half);
-        global.spr[i].SetOpacity(Math.Min(1, rr * 6) * Math.Min(1, (1 - rr) * 4) * fadeIn * global.sa[i]);
+        global.spr[i].SetOpacity(Math.Min(1, rr * 6) * Math.Min(1, (1 - rr) * 4) * fadeIn * global.sa[i] * fa);
     }
 
     # the sparkle: pick the frame for p (before p0 it is not there yet, after p1 it is whole)
@@ -125,9 +132,9 @@ fun refresh() {
             global.mark.SetImage(global.mk[idx]);
             global.markIdx = idx;
         }
-        global.mark.SetOpacity(1);
+        global.mark.SetOpacity(fa);
     }
-    global.halo.SetOpacity(eo(seg(p, 0.28, 0.62)) * (0.82 + 0.18 * pulse));
+    global.halo.SetOpacity(eo(seg(p, 0.28, 0.62)) * (0.82 + 0.18 * pulse) * fa);
 
     # the word: rises 18 px into place while its spacing closes
     wa = eo(seg(p, 0.52, 0.82));
@@ -135,9 +142,12 @@ fun refresh() {
     if (wi != global.wordIdx) { global.word.SetImage(global.wd[wi]); global.wordIdx = wi; }
     global.word.SetX(global.cx - global.wd[wi].GetWidth() / 2);
     global.word.SetY(global.cy + global.R * 1.7 + 18 * global.k * (1 - wa));
-    global.word.SetOpacity(wa);
+    global.word.SetOpacity(wa * fa);
 }
 Plymouth.SetRefreshFunction(refresh);
+
+fun status(text) { if (text == "halcyon-bare") global.bare = 1; }
+Plymouth.SetUpdateStatusFunction(status);
 
 # ---- a disk password (encrypted root): the prompt and one bullet per key, under the word
 dot_img = fit(Image("dot.png"));
