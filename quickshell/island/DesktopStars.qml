@@ -24,7 +24,7 @@ Item {
     readonly property real vy: dir === "down" ? 1 : dir === "up" ? -1 : dir === "diag" ? 0.4 : 0
 
     // Suppress painting when desktop is obscured (locked screen, fullscreen window, gaming mode)
-    readonly property bool covered: (env && env.gaming) || (env && env.lockScreen && env.lockScreen.locked) || (env && env.fsQuiet)
+    readonly property bool covered: (env && env.gaming) || (env && env.screenLocked) || (env && env.fsQuiet)
     readonly property bool live: on && visible && width > 0 && height > 0 && (pal ? pal.motion > 0.3 : true) && !covered
     property real t: 0                      // seconds of drifting so far (kept while hidden, so the stars carry on)
 

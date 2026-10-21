@@ -68,6 +68,10 @@ if [ "$gpu_mode" != dgpu ] && [ "$other_gpu" = 1 ]; then
   intel_icd="$(ls /usr/share/vulkan/icd.d/*intel*.json /etc/vulkan/icd.d/*intel*.json /usr/local/share/vulkan/icd.d/*intel*.json 2>/dev/null | grep -v "hasvk" | head -n1)"
   [ -z "$intel_icd" ] && intel_icd="$(ls /usr/share/vulkan/icd.d/*hasvk*.json /etc/vulkan/icd.d/*hasvk*.json 2>/dev/null | head -n1)"
   radeon_icd="$(ls /usr/share/vulkan/icd.d/*radeon*.json /etc/vulkan/icd.d/*radeon*.json /usr/local/share/vulkan/icd.d/*radeon*.json 2>/dev/null | head -n1)"
+  # EGL stays on Mesa whichever backend draws: anything in the process that still asks for OpenGL must not load NVIDIA's
+  # EGL (that wakes the dGPU and maps its blob). Measured: it costs nothing next to Vulkan.
+  mesa_egl="$(ls /usr/share/glvnd/egl_vendor.d/50_mesa.json /etc/glvnd/egl_vendor.d/50_mesa.json 2>/dev/null | head -n1)"
+  [ -n "$mesa_egl" ] && export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
   if [ "$intel_gpu" = 1 ] && [ -n "$intel_icd" ]; then
     export VK_DRIVER_FILES="$intel_icd"
     export VK_ICD_FILENAMES="$intel_icd"
@@ -76,10 +80,6 @@ if [ "$gpu_mode" != dgpu ] && [ "$other_gpu" = 1 ]; then
     export VK_DRIVER_FILES="$radeon_icd"
     export VK_ICD_FILENAMES="$radeon_icd"
     [ -z "${QSG_RHI_BACKEND:-}" ] && export QSG_RHI_BACKEND=vulkan
-  elif [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
-    export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
-  elif [ -f /etc/glvnd/egl_vendor.d/50_mesa.json ]; then
-    export __EGL_VENDOR_LIBRARY_FILENAMES=/etc/glvnd/egl_vendor.d/50_mesa.json
   fi
 fi
 
