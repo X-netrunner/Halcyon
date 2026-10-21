@@ -92,6 +92,7 @@ ShellRoot {
         splashStart: true,         // also play the splash once per login session when the lock screen is NOT the login screen (display-manager users); once per session, never on an island restart
         splashUnlock: true,        // the stars rush out again for ~2 s right after you unlock the screen (SplashPreview.qml, mode "unlock"); needs the login splash switch on; not in Gaming mode or with motion off
         splashShutdown: true,      // shut down / restart from the power menu: the stars are drawn back into the centre first (mode "shutdown"), then the machine goes down
+        splashAwayMin: 60,         // minutes: the login and unlock splashes only play after you were away (locked, logged out, off) at least this long; 0 = always
         splashSound: false,        // a quiet chime with the splash (scripts/splash-sound.sh); off by default
         todOn: false,              // time-of-day wallpaper: a soft colour grade over the wallpaper that follows the sun (TimeOfDay.js, Wallpaper.qml); Settings > Splash, sky & time of day
         todStrength: 60,           // 0 .. 100 : how strong that grade is (100 = full dusk orange / deep night blue)
@@ -759,8 +760,14 @@ ShellRoot {
     // instead of leaving an auto-logged-in desktop open.
     Process {
         running: true
-        command: ["sh", "-c", "[ -f \"$HOME/.cache/island/lock-on-start\" ] && echo yes"]
-        stdout: StdioCollector { onStreamFinished: { if (text.trim() === "yes") { lockScreen.splashArm = true; lockScreen.lock(); splashMark.running = true } } }
+        command: ["sh", "-c", "[ -f \"$HOME/.cache/island/lock-on-start\" ] && echo yes $(( $(date +%s) - $(cat \"$HOME/.local/state/island/last-seen\" 2>/dev/null || echo 0) ))"]
+        stdout: StdioCollector { onStreamFinished: {
+            var w = text.trim().split(" ")
+            if (w[0] !== "yes") return
+            // armed either way (it marks the login lock); the splash itself is skipped when you were away less than splashAwayMin
+            lockScreen.splashSkip = !root.awayLongEnough(Number(w[1]) * 1000)
+            lockScreen.splashArm = true; lockScreen.lock(); splashMark.running = true
+        } }
     }
     // the splash on its own (Settings > Power & lock > Play the splash, `halcyon splash`, `>splash`); the real one is inside the lock screen
     SplashPreview {
@@ -815,17 +822,29 @@ ShellRoot {
     }
     Process {
         id: splashCheck
-        command: ["sh", "-c", "f=\"${XDG_RUNTIME_DIR:-/tmp}/halcyon-splash-done-$(id -u)\"; [ -e \"$f\" ] && exit 0; : > \"$f\" && echo yes"]
-        stdout: StdioCollector { onStreamFinished: { if (text.trim() === "yes" && !lockScreen.locked) splashPreview.play() } }
+        command: ["sh", "-c", "f=\"${XDG_RUNTIME_DIR:-/tmp}/halcyon-splash-done-$(id -u)\"; [ -e \"$f\" ] && exit 0; : > \"$f\" && echo yes $(( $(date +%s) - $(cat \"$HOME/.local/state/island/last-seen\" 2>/dev/null || echo 0) ))"]
+        stdout: StdioCollector { onStreamFinished: {
+            var w = text.trim().split(" ")
+            if (w[0] === "yes" && !lockScreen.locked && root.awayLongEnough(Number(w[1]) * 1000)) splashPreview.play()
+        } }
     }
     Process { id: splashMark; command: ["sh", "-c", ": > \"${XDG_RUNTIME_DIR:-/tmp}/halcyon-splash-done-$(id -u)\""] }
+    // "away" for the splashes: a heartbeat in ~/.local/state/island/last-seen every minute while unlocked (and once at each lock),
+    // so after a logout, reboot or a long lock the gap since it is how long you were gone
+    property real lockedAt: Date.now()
+    function awayLongEnough(ms) {
+        var min = opt.splashAwayMin !== undefined ? Number(opt.splashAwayMin) : 60
+        return min <= 0 || !(ms >= 0) || ms >= min * 60000
+    }
+    Process { id: lastSeenMark; command: ["sh", "-c", "mkdir -p \"$HOME/.local/state/island\" && date +%s > \"$HOME/.local/state/island/last-seen\""] }
+    Timer { interval: 60000; repeat: true; triggeredOnStart: true; running: !lockScreen.locked; onTriggered: lastSeenMark.running = true }
     Process { id: lockFlagClear; command: ["rm", "-f", Quickshell.env("HOME") + "/.cache/island/lock-on-start"] }
     Connections {
         target: lockScreen
         function onLockedChanged() {
-            if (lockScreen.locked) { lockFlagClear.running = true; root.lockWasLogin = lockScreen.splashArm }
+            if (lockScreen.locked) { lockFlagClear.running = true; root.lockWasLogin = lockScreen.splashArm; root.lockedAt = Date.now(); lastSeenMark.running = true }
             else {
-                if (!root.lockWasLogin && root.splashAllowed("splashUnlock")) splashPreview.playMode("unlock")
+                if (!root.lockWasLogin && root.splashAllowed("splashUnlock") && root.awayLongEnough(Date.now() - root.lockedAt)) splashPreview.playMode("unlock")
                 root.lockWasLogin = false
                 briefT.restart()
             }
