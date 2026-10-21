@@ -34,6 +34,7 @@ Scope {
     property int notifMax: 5
     property bool compactSpecial: true
     property bool routeApps: true
+    property bool routeShow: false
     property bool clock24: false
     property bool growthOn: true
     property double growthMin: 0
@@ -739,7 +740,7 @@ Scope {
         ] },
         { id: "workspaces", title: "Workspaces & windows", section: "Desktop", items: [
             { type: "action", id: "layout", label: "Tiling layout", btn: "Switch dwindle / scrolling", done: "Switched" },
-            { type: "chips", label: "Behaviour", desc: "Compact: on workspace 3 with nothing on 1 and 2, its windows move to workspace 1. Compact special: scratch / music / communication / monitor / tasks windows are smaller. Jump: go to a window that asks for attention. Send: Spotify / Discord open on their own workspace.", opts: [ch("compactWs", "Keep workspaces compact"), ch("compactSpecial", "Compact special workspaces"), ch("hy:focusOnActivate", "Jump to a window that asks for attention"), ch("routeApps", "Send Spotify / Discord to their workspace")] },
+            { type: "chips", label: "Behaviour", desc: "Compact: on workspace 3 with nothing on 1 and 2, its windows move to workspace 1. Compact special: scratch / music / communication / monitor / tasks windows are smaller. Jump: go to a window that asks for attention. Send: Spotify / Discord open on their own workspace. Show: bring that workspace into view when one opens (off = it moves quietly).", opts: [ch("compactWs", "Keep workspaces compact"), ch("compactSpecial", "Compact special workspaces"), ch("hy:focusOnActivate", "Jump to a window that asks for attention"), ch("routeApps", "Send Spotify / Discord to their workspace"), ch("routeShow", "Show that workspace when the app opens")] },
             { type: "seg", adv: true, key: "opt:wsEnd", label: "Next workspace, from the last one", desc: "With workspaces 1 and 2, going next from 2 opens a new workspace 3 (never from an empty one).", opts: [o("new", "Open a new one"), o("wrap", "Go back to 1"), o("stay", "Stay")] },
             { type: "seg", adv: true, key: "opt:wsStart", label: "Previous workspace, from the first one", desc: "Wrap: from 1 you land on the highest workspace.", opts: [o("wrap", "Jump to the last"), o("stay", "Stay")] },
             { type: "seg", adv: true, key: "opt:wsMax", label: "Never open more than", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(9, "9"), o(10, "10")] },

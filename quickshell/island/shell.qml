@@ -415,6 +415,7 @@ ShellRoot {
 
     // app routing: Spotify / Discord ... go to their special workspace when they open (Routes.js)
     property bool routeApps: true
+    property bool routeShow: false      // pop the special workspace into view when a routed app opens (off = move the window quietly)
     property var routed: ({})           // window addresses already handled, so a window you move yourself is left alone
     property bool routeSeeded: false    // the first pass only notes what is already open
     readonly property double startedAt: Date.now()
@@ -566,6 +567,7 @@ ShellRoot {
         notifMax: root.notifMax
         compactSpecial: root.compactSpecial
         routeApps: root.routeApps
+        routeShow: root.routeShow
         clock24: root.clock24
         growthOn: root.growthOn
         growthMin: root.growthMin
@@ -1228,7 +1230,7 @@ ShellRoot {
         Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && printf '%s\\n' \"$2\" > \"$1/settings.json\"", "sh", stateDir,
                                  JSON.stringify({ autoHide: autoHide, autoPower: autoPower, compactSpecial: compactSpecial, dnd: dnd, edgeMode: edgeMode, glassShift: glassShift, motion: motion, rounding: rounding, gaps: gaps, blur: blur, shadows: shadows,
                                                   hyprAnim: hyprAnim, profileStars: profileStars, hyprTouched: hyprTouched,
-                                                  profileName: profileName, profileAvatar: profileAvatar, routeApps: routeApps,
+                                                  profileName: profileName, profileAvatar: profileAvatar, routeApps: routeApps, routeShow: routeShow,
                                                   notifHistoryMax: notifHistoryMax, notifMax: notifMax, idleLock: idleLock, idleSleep: idleSleep, idleDim: idleDim, osdOn: osdOn, idleTouched: idleTouched,
                                                   clock24: clock24, growthOn: growthOn, growthMin: growthMin, superTap: superTap, termFollow: termFollow, colorBoost: colorBoost,
                                                   theme: theme, themeTouched: themeTouched, scrollTouch: scrollTouch, scrollMouse: scrollMouse, scrollTouched: scrollTouched,
@@ -1286,6 +1288,7 @@ ShellRoot {
         case "colorBoost": colorBoost = Math.max(0.5, Math.min(1.5, v)); writeFlag("color-boost", colorBoost.toFixed(2)); boostT.restart(); break
         case "compactSpecial": setCompactSpecial(v); return
         case "routeApps": routeApps = v; break
+        case "routeShow": routeShow = v; break
         case "idleLock": idleLock = v; idleTouched = true; applyIdle(); break
         case "idleSleep": idleSleep = v; idleTouched = true; applyIdle(); break
         case "idleDim": idleDim = v; idleTouched = true; applyIdle(); break
@@ -1610,7 +1613,7 @@ ShellRoot {
             var wsName = c.workspace ? c.workspace.name : ""
             if (wsName === "special:" + app.ws) continue
             hypr("hl.dsp.window.move({ workspace = \"special:" + app.ws + "\", window = \"address:" + c.address + "\" })")
-            if (!quiet) { showWs = app.ws; showT.restart() }
+            if (!quiet && routeShow) { showWs = app.ws; showT.restart() }
         }
         routed = keep
         routeSeeded = true
@@ -1801,6 +1804,7 @@ ShellRoot {
                     root.compactSpecial = s.compactSpecial !== false
                     root.applySpecialScale()
                     root.routeApps = s.routeApps !== false
+                    root.routeShow = s.routeShow === true
                     root.profileName = s.profileName || ""
                     root.profileAvatar = s.profileAvatar || ""
                     if (s.notifHistoryMax !== undefined) root.notifHistoryMax = s.notifHistoryMax

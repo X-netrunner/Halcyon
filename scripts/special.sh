@@ -56,14 +56,34 @@ c=$(custom "$name"); [ -n "$c" ] && [ -n "$cmd" ] && cmd="$c"
 [ -n "$SPECIAL_CMD" ] && cmd="$SPECIAL_CMD"
 
 toggle() { hyprctl dispatch "hl.dsp.workspace.toggle_special(\"$name\")" >/dev/null 2>&1; }
-visible=0; hyprctl monitors 2>/dev/null | grep -q "special workspace: .*(special:$name)" && visible=1
-count=$(hyprctl clients 2>/dev/null | grep -c "workspace: .*(special:$name)")
+
+# Is the workspace showing / how many windows does it hold? JSON + jq (the text output of hyprctl changes between versions, and
+# a wrong answer here used to start the app again). Without jq the old text match is used.
+if command -v jq >/dev/null 2>&1; then
+  visible=0; hyprctl monitors -j 2>/dev/null | jq -e --arg w "special:$name" 'any(.[]; .specialWorkspace.name == $w)' >/dev/null 2>&1 && visible=1
+  count=$(hyprctl clients -j 2>/dev/null | jq --arg w "special:$name" '[.[] | select(.workspace.name == $w)] | length' 2>/dev/null)
+  case "$count" in ''|*[!0-9]*) count=-1 ;; esac      # hyprctl did not answer: unknown, so the app is NOT started
+else
+  visible=0; hyprctl monitors 2>/dev/null | grep -q "special workspace: .*(special:$name)" && visible=1
+  count=$(hyprctl clients 2>/dev/null | grep -c "workspace: .*(special:$name)")
+fi
+
+# start the app, at most once every 8 seconds per workspace (two quick key presses, or a window that is still being moved in,
+# must not start a second copy)
+launch() {
+  [ -n "$cmd" ] || return 0
+  local stamp="${XDG_RUNTIME_DIR:-/tmp}/halcyon-special-$name.stamp" now last
+  now=$(date +%s); last=$(cat "$stamp" 2>/dev/null); last=${last:-0}
+  [ $((now - last)) -lt 8 ] && return 0
+  echo "$now" > "$stamp"
+  setsid -f bash -c "$cmd" >/dev/null 2>&1
+}
 
 if [ "$visible" = 1 ]; then
   [ "$show" = 1 ] || toggle          # already showing: SUPER+M again hides it
-  [ "$count" = 0 ] && [ -n "$cmd" ] && setsid -f bash -c "$cmd" >/dev/null 2>&1   # showing but empty: start the app
+  [ "$count" = 0 ] && launch         # showing but empty: start the app
   exit 0
 fi
 toggle
-[ "$count" = 0 ] && [ -n "$cmd" ] && setsid -f bash -c "$cmd" >/dev/null 2>&1
+[ "$count" = 0 ] && launch
 exit 0

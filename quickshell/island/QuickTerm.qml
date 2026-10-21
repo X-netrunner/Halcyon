@@ -52,7 +52,8 @@ Scope {
                                          "clearnotifs", "dnd", "cheatsheet", "power", "quickterm", "overview", "gaming", "caffeine",
                                          "lock", "theme", "reload", "notes", "notesAll", "record", "extradim"]
     readonly property var directCmds: ["bar-builder", "notification-builder", "desktop-builder", "widget-builder", "desktop-edit", "wallpaper-gallery", "startup-view"]
-    readonly property string pwMarker: "SUDO_PW"
+    // random per session: a fixed word could be printed by any command to make the console ask for (and hand over) the password
+    readonly property string pwMarker: "SUDO_PW_" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36)
     readonly property var modes: ["secure", "stealth", "relaxed", "cyber", "lockdown"]   // "cyber" = old name of relaxed (the CLI still takes it)
     readonly property var rootless: ["status", "logs", "dossier", "verify", "check", "doctor", "help", "-h", "--help"]
     readonly property var tuis: ["vim", "nvim", "vi", "nano", "emacs", "htop", "btop", "top", "less", "more", "man", "ssh",
