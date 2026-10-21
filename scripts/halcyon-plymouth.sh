@@ -20,6 +20,8 @@ THEME_DIR=/usr/share/plymouth/themes/halcyon
 STATE=/etc/halcyon-plymouth.added
 MKCONF=/etc/mkinitcpio.conf
 PARAMS="quiet splash"
+FILM=/usr/lib/halcyon/halcyon-plymouth-film
+DROPIN_UNITS="plymouth-quit plymouth-poweroff plymouth-reboot plymouth-halt plymouth-kexec"
 
 say()  { printf '\033[1;36m::\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
@@ -115,6 +117,55 @@ cmdline_remove() {
   return 0
 }
 
+# ---- let the film finish: boot and shutdown
+# Boot: systemd tells Plymouth to quit as soon as the system is up (~2 s after it appeared here), which cut the film off. The helper
+# holds that quit until the film is done (at most 2 s more), and --retain-splash leaves its last frame on screen until Hyprland
+# (the lock screen) draws, so there is no black flash in between.
+# Shutdown: Plymouth's power-off screen starts only after tty1 (your Hyprland session) has stopped, and the machine was off before
+# the film ended. If the desktop has just played its goodbye (it leaves /dev/shm/halcyon-goodbye), the screen stays dark: no second
+# film. Otherwise the film plays and the power-off waits for it (at most 3.5 s, while the rest of the shutdown carries on).
+film_install() {
+  sudo install -d -m 755 "$(dirname "$FILM")"
+  sudo tee "$FILM" >/dev/null <<'SH'
+#!/bin/sh
+# halcyon-plymouth-film boot | shutdown   (installed by ~/.config/Halcyon/scripts/halcyon-plymouth.sh; see film_install there)
+pid=$(pidof plymouthd 2>/dev/null | cut -d' ' -f1)
+elapsed() {      # seconds this plymouthd has been running
+  if [ -n "$pid" ] && [ -r "/proc/$pid/stat" ]; then
+    awk -v hz="$(getconf CLK_TCK 2>/dev/null || echo 100)" -v up="$(cut -d' ' -f1 /proc/uptime)" '{ print up - $22 / hz }' "/proc/$pid/stat"
+  else echo 999; fi
+}
+wait_film() {    # until plymouthd has shown for $1 s, waiting $2 s at the most
+  n=0; max=$(awk -v m="$2" 'BEGIN { print int(m * 10) }')
+  while [ "$n" -lt "$max" ] && awk -v e="$(elapsed)" -v w="$1" 'BEGIN { exit !(e < w) }'; do sleep 0.1; n=$((n + 1)); done
+}
+case "$1" in
+  boot)     wait_film 3.3 2.0 ;;
+  shutdown) if [ -e /dev/shm/halcyon-goodbye ]; then plymouth update --status=halcyon-bare 2>/dev/null
+            else wait_film 3.3 3.5; fi ;;
+esac
+exit 0
+SH
+  sudo chmod 755 "$FILM"
+  local u
+  for u in $DROPIN_UNITS; do
+    sudo install -d -m 755 "/etc/systemd/system/$u.service.d"
+    if [[ "$u" == plymouth-quit ]]; then
+      printf '[Service]\nExecStartPre=-%s boot\nExecStart=\nExecStart=-/usr/bin/plymouth quit --retain-splash\n' "$FILM" | sudo tee "/etc/systemd/system/$u.service.d/halcyon.conf" >/dev/null
+    else
+      printf '[Service]\nExecStartPost=-%s shutdown\n' "$FILM" | sudo tee "/etc/systemd/system/$u.service.d/halcyon.conf" >/dev/null
+    fi
+  done
+  sudo systemctl daemon-reload
+  say "boot and shutdown wait for the film to finish ($FILM, drop-ins for: $DROPIN_UNITS)"
+}
+film_remove() {
+  local u
+  for u in $DROPIN_UNITS; do sudo rm -f "/etc/systemd/system/$u.service.d/halcyon.conf"; sudo rmdir "/etc/systemd/system/$u.service.d" 2>/dev/null || true; done
+  sudo rm -f "$FILM"; sudo rmdir "$(dirname "$FILM")" 2>/dev/null || true
+  sudo systemctl daemon-reload
+}
+
 # ---- mkinitcpio: the plymouth hook goes right after udev (or systemd), before any encrypt hook so the password prompt is drawn
 hook_present() { grep -qE '^HOOKS=\(.*\bplymouth\b.*\)' "$MKCONF"; }
 hook_add() {
@@ -161,6 +212,7 @@ EOF
   sudo install -m 644 "$work/theme/"* "$THEME_DIR/"
   say "theme installed in $THEME_DIR"
   sudo plymouth-set-default-theme halcyon
+  film_install
   hook_add || true
   cmdline_add
   say "rebuilding the initramfs (mkinitcpio -P) ..."
@@ -178,6 +230,7 @@ do_remove() {
     sudo plymouth-set-default-theme bgrt 2>/dev/null || sudo plymouth-set-default-theme spinner 2>/dev/null || true
   fi
   sudo rm -rf "$THEME_DIR"
+  film_remove
   say "rebuilding the initramfs (mkinitcpio -P) ..."
   sudo mkinitcpio -P
   say "done: no boot splash from the next boot (the plymouth package is still installed: sudo pacman -Rns plymouth to remove it)"
@@ -189,6 +242,7 @@ do_status() {
   if hook_present 2>/dev/null; then echo "mkinitcpio:   plymouth hook in place"; else echo "mkinitcpio:   no plymouth hook"; fi
   if grep -qw splash /proc/cmdline; then echo "this boot:    splash on"; else echo "this boot:    splash off (no 'splash' on the kernel command line)"; fi
   [[ -f "$STATE" ]] && echo "added by us:  $(cat "$STATE")"
+  if [[ -x "$FILM" ]]; then echo "film:         boot and shutdown wait for it to finish"; else echo "film:         not set up (boot / shutdown may cut it short: run install)"; fi
   return 0
 }
 

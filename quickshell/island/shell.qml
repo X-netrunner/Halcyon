@@ -772,8 +772,11 @@ ShellRoot {
     function goodbye(action) {
         if (powerPending !== "") return                      // already on its way
         powerPending = action
-        if (splashAllowed("splashShutdown")) { powerFail.restart(); splashPreview.playMode("shutdown") }
-        else powerNow()
+        if (splashAllowed("splashShutdown")) {
+            powerFail.restart(); splashPreview.playMode("shutdown")
+            // tells the Plymouth power-off screen (halcyon-plymouth.sh) that the goodbye was just played: it stays dark, no second film
+            Quickshell.execDetached(["sh", "-c", ": > /dev/shm/halcyon-goodbye"])
+        } else powerNow()
     }
     function powerNow() {
         var a = powerPending
@@ -2247,6 +2250,8 @@ ShellRoot {
         function processes(): void { settingsWin.openStartup() }
         function wallpaperpicker(): void { settingsWin.openGallery() }
         function power(): void { powerMenu.show() }
+        // shut down / restart with the goodbye splash first (the fish poweroff / reboot / shutdown now / systemctl wrappers call this)
+        function goodbye(action: string): void { root.goodbye(action === "reboot" ? "reboot" : "shutdown") }
         function gaming(): void { root.setGaming(!root.gaming) }
         function caffeine(): void { root.setCaffeine(!root.caffeine, 0) }
         function focus(): void { root.focusToggle() }                 // start / stop a Focus session (SUPER+ALT+F)

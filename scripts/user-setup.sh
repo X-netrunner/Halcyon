@@ -355,6 +355,11 @@ fish_commands() {
   if [ -f "$RICE/config/fish/completions/halcyon.fish" ]; then
     cmp -s "$RICE/config/fish/completions/halcyon.fish" "$HOME/.config/fish/completions/halcyon.fish" 2>/dev/null || cp "$RICE/config/fish/completions/halcyon.fish" "$HOME/.config/fish/completions/halcyon.fish"
   fi
+  # poweroff / reboot / shutdown now / systemctl poweroff|reboot play the goodbye splash first (several functions: a conf.d file too)
+  if [ -f "$RICE/config/fish/goodbye.fish" ]; then
+    mkdir -p "$HOME/.config/fish/conf.d"
+    cmp -s "$RICE/config/fish/goodbye.fish" "$HOME/.config/fish/conf.d/halcyon-goodbye.fish" 2>/dev/null || cp "$RICE/config/fish/goodbye.fish" "$HOME/.config/fish/conf.d/halcyon-goodbye.fish"
+  fi
   # the one-time hints (grep, find, cat, ls, cd ...): a conf.d file, because it defines several functions at once
   if [ -f "$RICE/config/fish/hints.fish" ]; then
     mkdir -p "$HOME/.config/fish/conf.d"
