@@ -18,6 +18,7 @@ Scope {
     property bool open: false
     property string mode: "login"          // login | unlock | shutdown
     property bool sound: false             // Settings > "Soft sounds with the splash"
+    property real dim: 0.75                // Settings > "Darken the screen during the splash"
     signal done()                          // shutdown only: the collapse is over, act now
 
     readonly property int durLogin: 3600
@@ -62,6 +63,7 @@ Scope {
                     anchors.fill: parent
                     pal: root.pal
                     mode: root.mode
+                    dim: root.dim
                     duration: root.mode === "unlock" ? root.durUnlock : (root.mode === "shutdown" ? root.durShutdown : root.durLogin)
                     onFinished: {
                         if (root.mode === "shutdown") { holdT.restart(); root.done() }

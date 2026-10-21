@@ -1674,11 +1674,18 @@ fi
 
 try run_as_user_cmd "Making the scripts executable" bash -c '
     cd "$1" || exit 0
-    for f in install.sh update.sh scripts/*.sh scripts/*.py scripts/halcyon-tune bin/* launch/*.sh quickshell/island/scripts/*.sh \
+    for f in install.sh update.sh scripts/*.sh scripts/*.py scripts/halcyon-tune bin/* launch/*.sh quickshell/island/scripts/*.sh plymouth/*.py \
              sysmode/sysmode sysmode/*.py sysmode/*.py.bak; do
         [ -f "$f" ] && chmod +x "$f"
     done
     exit 0' _ "$TARGET_RICE"
+
+# The login splash (Splash.qml, played by Lock.qml; SplashPreview.qml for `halcyon splash`) needs no package and no build step:
+# it is plain QML in the island folder. Check that the copy really has all of it, so a half-copied update is told right away.
+for _f in Splash.qml SplashPreview.qml Lock.qml WeeklySky.qml TimeOfDay.js; do
+    [[ -f "$TARGET_RICE/quickshell/island/$_f" ]] || warn_later "quickshell/island/$_f is missing from the installed copy: the login splash will not work. Run ./install.sh again."
+done
+unset _f
 
 # ---------------------------------------------------------------------------------------------- step 8
 log_step "Step 8: Building the Rust helpers"
@@ -1843,7 +1850,8 @@ else
         # Opt-in only. It used to be "yes" by default (and --yes always said yes), so a machine whose Halcyon did not start
         # right booted straight into a broken desktop with no text console in sight. Now it is only set up when you ask for it.
         echo "   Optional: Halcyon can use its own lock screen as the login screen: tty1 logs you in by itself, Halcyon starts ALREADY"
-        echo "   LOCKED, and you type your password on the lock screen. Other consoles (Ctrl+Alt+F2) stay normal text logins."
+        echo "   LOCKED (with a short splash of moving stars and the Halcyon sparkle first; Settings > Power & lock > Login splash turns it off),"
+        echo "   and you type your password on the lock screen. Other consoles (Ctrl+Alt+F2) stay normal text logins."
         echo "   Undo any time: ./install.sh --remove-lock-login"
         if [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && confirm_no "   Set that up? (Enter = no; start-halcyon works from any text console)"; then WANT_LOCK_LOGIN=true
         else log_info "Not set up. Add --lock-login (or answer y when asked) to enable it later."; fi
@@ -2285,6 +2293,8 @@ echo -e "${BOLD}Start it${RESET}"
 echo -e "  ${CYAN}•${RESET} Login screen: pick the ${BOLD}Halcyon${RESET} session (or ${BOLD}Hyprland${RESET}: it loads Halcyon too)."
 echo -e "  ${CYAN}•${RESET} From a text console: run ${BOLD}start-halcyon${RESET}"
 [[ "$WANT_LOCK_LOGIN" == "true" ]] && echo -e "  ${CYAN}•${RESET} Lock-screen login is on: just reboot, Halcyon starts locked. (undo: ./install.sh --remove-lock-login; skip it once: touch ~/.cache/island/no-autostart)"
+echo -e "  ${CYAN}•${RESET} Login splash (moving stars and the Halcyon sparkle): on by default, once per login; it also plays on unlock and (folding shut) on shutdown. See it now: ${BOLD}halcyon splash${RESET}  (turn it off: Settings > Power & lock)"
+echo -e "  ${CYAN}•${RESET} Weekly sky (your week as stars, savable as a picture): ${BOLD}halcyon weekly-sky${RESET}.  Wallpaper that follows the sun: Settings > Splash, sky & time of day"
 [[ "$NEED_RELOGIN" == "true" ]] && echo -e "  ${CYAN}•${RESET} ${YELLOW}Log out and in again first${RESET}: you were added to the input / video groups (touchpad gestures, brightness)."
 echo -e "  ${CYAN}•${RESET} Already inside Halcyon? Restart the island:  pkill quickshell; $TARGET_RICE/scripts/start-shell.sh island &"
 echo -e "  ${CYAN}•${RESET} Something not working (no bar, no keybinds)?  ${BOLD}$TARGET_RICE/scripts/halcyon-doctor.sh${RESET}   (island log: ~/.cache/island/quickshell-island.log)"

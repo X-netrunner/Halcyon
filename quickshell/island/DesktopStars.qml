@@ -8,6 +8,7 @@ Item {
     id: root
     property var pal
     property var opt: ({})
+    property var env: null
     property real previewScale: 1          // the builder's small preview draws the same stars smaller
     property bool forceOn: false           // the builder preview shows them even while the real ones are off
 
@@ -22,7 +23,9 @@ Item {
     readonly property real vx: dir === "right" ? 1 : dir === "left" ? -1 : dir === "diag" ? 1 : 0
     readonly property real vy: dir === "down" ? 1 : dir === "up" ? -1 : dir === "diag" ? 0.4 : 0
 
-    readonly property bool live: on && visible && width > 0 && height > 0 && (pal ? pal.motion > 0.3 : true)
+    // Suppress painting when desktop is obscured (locked screen, fullscreen window, gaming mode)
+    readonly property bool covered: (env && env.gaming) || (env && env.lockScreen && env.lockScreen.locked) || (env && env.fsQuiet)
+    readonly property bool live: on && visible && width > 0 && height > 0 && (pal ? pal.motion > 0.3 : true) && !covered
     property real t: 0                      // seconds of drifting so far (kept while hidden, so the stars carry on)
 
     // Precompute invariant static star calculations to eliminate hot-loop JS math and GC churn
@@ -52,10 +55,10 @@ Item {
     onSizeKChanged: rebuildStars()
     Component.onCompleted: rebuildStars()
 
-    // Smooth ~16.6 fps drift: visually silky, 35% lower CPU overhead
+    // Smooth ~13.3 fps drift: visually silky, minimal CPU and allocator overhead
     property real lastMs: 0
     Timer {
-        interval: Math.round(60 * (root.pal ? root.pal.starSlow : 1))
+        interval: Math.round(75 * (root.pal ? root.pal.starSlow : 1))
         repeat: true
         running: root.live
         onRunningChanged: root.lastMs = 0
@@ -87,6 +90,7 @@ Item {
             var pAccent = root.pal ? String(root.pal.accent) : "#88c0d0"
             var pAccent2 = root.pal ? String(root.pal.accent2) : "#81a1c1"
 
+            var curTint = ""
             for (var i = 0; i < len; i++) {
                 var s = stars[i]
                 var px = (((s.fx + vx * s.rate * t) % 1) + 1) % 1
@@ -101,24 +105,23 @@ Item {
                          : tone === "accent" ? pAccent
                          : (s.colorType === 0 ? pAccent : (s.colorType === 1 ? pAccent2 : "#ffffff"))
 
+                if (curTint !== tint) {
+                    ctx.fillStyle = tint
+                    curTint = tint
+                }
                 ctx.globalAlpha = op
-                ctx.fillStyle = tint
                 var cx = px * w
                 var cy = py * h
+                var sz = s.size
+                var half = sz * 0.5
 
-                if (s.size <= 2.5) {
-                    ctx.fillRect(cx - s.size / 2, cy - s.size / 2, s.size, s.size)
-                } else {
-                    ctx.beginPath()
-                    ctx.arc(cx, cy, s.size / 2, 0, 6.2832)
-                    ctx.fill()
-                }
+                ctx.fillRect(cx - half, cy - half, sz, sz)
 
                 if (s.isCross) {
                     ctx.globalAlpha = op * 0.45
-                    var gl = s.size * 4.5
-                    ctx.fillRect(cx - gl / 2, cy - 0.5, gl, 1)
-                    ctx.fillRect(cx - 0.5, cy - gl / 2, 1, gl)
+                    var gl = sz * 4.5
+                    ctx.fillRect(cx - gl * 0.5, cy - 0.5, gl, 1)
+                    ctx.fillRect(cx - 0.5, cy - gl * 0.5, 1, gl)
                 }
             }
         }

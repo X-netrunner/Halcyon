@@ -4,6 +4,12 @@
 # The island (Osd.qml) turns those into the slide-in bar. Works no matter WHO changed it: the brightness keys, the touchpad
 # edge gesture, the panel slider, another app. (Volume is watched by the island itself through `pactl subscribe`.)
 # Silent while the idle dim is active, and for a moment after it ends, so dimming and waking up never pop the bar.
+
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" osd-watch "$@"
+fi
+
 shopt -s nullglob
 screen=""; bmax=0
 for d in /sys/class/backlight/*; do

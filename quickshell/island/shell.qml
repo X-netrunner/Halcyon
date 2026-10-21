@@ -87,6 +87,8 @@ ShellRoot {
         lockBlur: 40,              // blur radius of that wallpaper (4 .. 64)
         lockTint: 0.55,            // how opaque the theme-colour sheet over the blurred wallpaper is (0 = wallpaper as it is .. 0.95); yours to set
         lockWidgets: false,        // OFF by default: the lock screen is just the clock + password. On = battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
+        splashLock: true,          // the splash on the lock screen that is also the login screen (Lock.qml); needs the master `splash` switch
+        splashDim: 0.75,           // 0 .. 0.9 : how dark the screen gets while any splash plays (a black veil under the stars; Splash.qml)
         splashStart: true,         // also play the splash once per login session when the lock screen is NOT the login screen (display-manager users); once per session, never on an island restart
         splashUnlock: true,        // the stars rush out again for ~2 s right after you unlock the screen (SplashPreview.qml, mode "unlock"); needs the login splash switch on; not in Gaming mode or with motion off
         splashShutdown: true,      // shut down / restart from the power menu: the stars are drawn back into the centre first (mode "shutdown"), then the machine goes down
@@ -601,6 +603,7 @@ ShellRoot {
             else if (id === "splash-preview") splashPreview.play()
             else if (id === "splash-unlock-preview") splashPreview.playMode("unlock")
             else if (id === "splash-shutdown-preview") splashPreview.playMode("shutdown")
+            else if (id === "plymouth-install" || id === "plymouth-remove") { var pm = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", pm + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1/halcyon-plymouth.sh\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", pm, id === "plymouth-install" ? "install" : "remove"]) }
             else if (id === "sky-open") weeklySky.show()
             else if (id === "greeting-paste") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "paste"])
             else if (id === "greeting-edit") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "edit"])
@@ -726,8 +729,9 @@ ShellRoot {
         tint: root.opt.lockTint !== undefined ? root.opt.lockTint : 0.55
         widgets: root.opt.lockWidgets === true
         allowSwitch: root.opt.lockSwitch === true
-        splash: root.opt.splash !== false
+        splash: root.opt.splash !== false && root.opt.splashLock !== false
         splashSound: root.opt.splashSound === true
+        splashDim: root.opt.splashDim !== undefined ? root.opt.splashDim : 0.75
         player: root.player
         hasBat: root.stats.hasBat === true
         batPct: Math.round(root.stats.bat || 0)
@@ -754,6 +758,7 @@ ShellRoot {
         id: splashPreview
         pal: pal
         sound: root.opt.splashSound === true
+        dim: root.opt.splashDim !== undefined ? root.opt.splashDim : 0.75
         // a preview (Settings > Play the goodbye) has nothing pending: just give the screen back; a real shutdown / restart goes on now
         onDone: { if (root.powerPending === "") splashPreview.stop(); else root.powerNow() }
     }

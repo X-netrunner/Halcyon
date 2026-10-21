@@ -69,6 +69,13 @@ for sh in island; do   # the wallpaper layer is part of the island shell now (qu
     else echo "      no log yet: it was never started. In Halcyon, run:  $RICE/scripts/start-shell.sh $sh"; fi
   fi
 done
+# the login splash (Splash.qml is played by Lock.qml; SplashPreview.qml is `halcyon splash`, the unlock / shutdown splash and the preview), the weekly sky
+# (WeeklySky.qml + scripts/weekly-sky.py) and the time-of-day wallpaper (TimeOfDay.js, used by Wallpaper.qml): they must all be there together
+sp_missing=""
+for f in Splash.qml SplashPreview.qml Lock.qml WeeklySky.qml TimeOfDay.js; do [ -f "$RICE/quickshell/island/$f" ] || sp_missing="$sp_missing $f"; done
+for f in splash-sound.sh weekly-sky.py halcyon-plymouth.sh; do [ -f "$RICE/scripts/$f" ] || sp_missing="$sp_missing scripts/$f"; done
+if [ -z "$sp_missing" ]; then ok "login splash files are in place (try it: halcyon splash)"
+else bad "the login splash is incomplete, missing:$sp_missing (run ./install.sh or update.sh again)"; fi
 echo "  ${D}to see the errors live:  pkill quickshell; quickshell -p $RICE/quickshell/island${N}"
 have notify-send || warn "notify-send missing ($PKG_INSTALL libnotify)"
 
