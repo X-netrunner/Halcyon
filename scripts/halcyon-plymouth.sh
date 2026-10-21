@@ -22,7 +22,7 @@ STATE=/etc/halcyon-plymouth.added
 MKCONF=/etc/mkinitcpio.conf
 PARAMS="quiet splash"
 FILM=/usr/lib/halcyon/halcyon-plymouth-film
-DROPIN_UNITS="plymouth-quit plymouth-poweroff plymouth-reboot plymouth-halt plymouth-kexec"
+DROPIN_UNITS="plymouth-start plymouth-quit plymouth-poweroff plymouth-reboot plymouth-halt plymouth-kexec"
 
 say()  { printf '\033[1;36m::\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
@@ -132,17 +132,26 @@ film_install() {
 #!/bin/sh
 # halcyon-plymouth-film boot | shutdown   (installed by ~/.config/Halcyon/scripts/halcyon-plymouth.sh; see film_install there)
 pid=$(pidof plymouthd 2>/dev/null | cut -d' ' -f1)
-elapsed() {      # seconds this plymouthd has been running
+elapsed() {      # seconds the boot splash has actually been visible on screen
+  if [ -r /run/halcyon-plymouth-start ]; then
+    awk -v up="$(cut -d' ' -f1 /proc/uptime)" -v st="$(cat /run/halcyon-plymouth-start 2>/dev/null)" 'BEGIN { print (up - st) + 0.8 }'
+    return
+  fi
+  us=$(systemctl show -p UserspaceTimestampMonotonic 2>/dev/null | awk -F= '{ if ($2 > 0) print $2 / 1000000 }')
+  if [ -n "$us" ]; then
+    awk -v up="$(cut -d' ' -f1 /proc/uptime)" -v us="$us" 'BEGIN { print (up - us) + 0.8 }'
+    return
+  fi
   if [ -n "$pid" ] && [ -r "/proc/$pid/stat" ]; then
     awk -v hz="$(getconf CLK_TCK 2>/dev/null || echo 100)" -v up="$(cut -d' ' -f1 /proc/uptime)" '{ print up - $22 / hz }' "/proc/$pid/stat"
   else echo 999; fi
 }
-wait_film() {    # until plymouthd has shown for $1 s, waiting $2 s at the most
+wait_film() {    # until splash has shown for $1 s, waiting at most $2 s
   n=0; max=$(awk -v m="$2" 'BEGIN { print int(m * 10) }')
   while [ "$n" -lt "$max" ] && awk -v e="$(elapsed)" -v w="$1" 'BEGIN { exit !(e < w) }'; do sleep 0.1; n=$((n + 1)); done
 }
 case "$1" in
-  boot)     wait_film 3.3 2.0 ;;
+  boot)     wait_film 3.2 3.5 ;;
   shutdown) if [ -e /dev/shm/halcyon-goodbye ]; then plymouth update --status=halcyon-bare 2>/dev/null
             else wait_film 3.3 3.5; fi ;;
 esac
@@ -152,7 +161,9 @@ SH
   local u
   for u in $DROPIN_UNITS; do
     $SUDO install -d -m 755 "/etc/systemd/system/$u.service.d"
-    if [[ "$u" == plymouth-quit ]]; then
+    if [[ "$u" == plymouth-start ]]; then
+      printf '[Service]\nExecStartPost=-/bin/sh -c "cut -d\\\" \\\" -f1 /proc/uptime > /run/halcyon-plymouth-start"\n' | $SUDO tee "/etc/systemd/system/$u.service.d/halcyon.conf" >/dev/null
+    elif [[ "$u" == plymouth-quit ]]; then
       printf '[Service]\nExecStartPre=-%s boot\nExecStart=\nExecStart=-/usr/bin/plymouth quit --retain-splash\n' "$FILM" | $SUDO tee "/etc/systemd/system/$u.service.d/halcyon.conf" >/dev/null
     else
       printf '[Service]\nExecStartPost=-%s shutdown\n' "$FILM" | $SUDO tee "/etc/systemd/system/$u.service.d/halcyon.conf" >/dev/null
