@@ -34,6 +34,7 @@ Thumbs.db
 # a fresh install on another machine started with the author's GPU mode ("dgpu") and an NVIDIA hybrid-laptop gpu.lua.
 # (Already tracking them in a git checkout? One time:  git rm --cached gpu-mode gpu.lua scheme/current.lua )
 /gpu-mode
+/renderer
 /gpu.lua
 /scheme/current.lua
 /special.conf
