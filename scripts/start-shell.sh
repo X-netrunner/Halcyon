@@ -50,40 +50,50 @@ case "${LANG:-}" in
   *) export LANG="${LANG:-en_US}.UTF-8" ;;
 esac
 
-# On a hybrid laptop keep Quickshell on the integrated GPU (Mesa) and out of NVIDIA's 60MB shader compiler blob
-# (libnvidia-gpucomp.so). Only when there REALLY is a non-NVIDIA GPU: on a desktop with only an NVIDIA card, forcing the Mesa EGL
-# vendor left Quickshell with no usable GPU driver (software rendering, or no window at all).
+# On a hybrid laptop keep Quickshell on the integrated GPU (Mesa/Vulkan) and out of NVIDIA's 60MB shader compiler blob
+# (libnvidia-gpucomp.so). When an integrated GPU is present, prefer Vulkan (libvulkan_intel / radv) which avoids Mesa Gallium's
+# heavy LLVM JIT runtime (~80MB RSS saving) and duplicate CPU staging buffers.
 # (not in dGPU mode, see scripts/gpu-mode.sh: there the island draws on the NVIDIA GPU like the compositor does)
 gpu_mode="igpu"; [ -s "$RICE/gpu-mode" ] && gpu_mode="$(head -n1 "$RICE/gpu-mode")"
-other_gpu=0; amd_gpu=0
+other_gpu=0; amd_gpu=0; intel_gpu=0
 for c in /sys/class/drm/card[0-9]*; do
   case "$c" in */card[0-9]*-*) continue ;; esac
   v="$(cat "$c/device/vendor" 2>/dev/null)"
   [ -n "$v" ] || continue
   [ "$v" != 0x10de ] && other_gpu=1
   [ "$v" = 0x1002 ] && amd_gpu=1
+  [ "$v" = 0x8086 ] && intel_gpu=1
 done
-if [ "$gpu_mode" != dgpu ] && [ "$other_gpu" = 1 ] && [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
-  export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
-fi
-radeon_icd="$(ls /usr/share/vulkan/icd.d/radeon_icd*.json 2>/dev/null | head -n1)"
-if [ "$gpu_mode" != dgpu ] && [ "$amd_gpu" = 1 ] && [ -n "$radeon_icd" ]; then
-  export VK_DRIVER_FILES="$radeon_icd"
-  export VK_ICD_FILENAMES="$radeon_icd"
+if [ "$gpu_mode" != dgpu ] && [ "$other_gpu" = 1 ]; then
+  intel_icd="$(ls /usr/share/vulkan/icd.d/*intel*.json /etc/vulkan/icd.d/*intel*.json /usr/local/share/vulkan/icd.d/*intel*.json 2>/dev/null | grep -v "hasvk" | head -n1)"
+  [ -z "$intel_icd" ] && intel_icd="$(ls /usr/share/vulkan/icd.d/*hasvk*.json /etc/vulkan/icd.d/*hasvk*.json 2>/dev/null | head -n1)"
+  radeon_icd="$(ls /usr/share/vulkan/icd.d/*radeon*.json /etc/vulkan/icd.d/*radeon*.json /usr/local/share/vulkan/icd.d/*radeon*.json 2>/dev/null | head -n1)"
+  if [ "$intel_gpu" = 1 ] && [ -n "$intel_icd" ]; then
+    export VK_DRIVER_FILES="$intel_icd"
+    export VK_ICD_FILENAMES="$intel_icd"
+    [ -z "${QSG_RHI_BACKEND:-}" ] && export QSG_RHI_BACKEND=vulkan
+  elif [ "$amd_gpu" = 1 ] && [ -n "$radeon_icd" ]; then
+    export VK_DRIVER_FILES="$radeon_icd"
+    export VK_ICD_FILENAMES="$radeon_icd"
+    [ -z "${QSG_RHI_BACKEND:-}" ] && export QSG_RHI_BACKEND=vulkan
+  elif [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
+    export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+  elif [ -f /etc/glvnd/egl_vendor.d/50_mesa.json ]; then
+    export __EGL_VENDOR_LIBRARY_FILENAMES=/etc/glvnd/egl_vendor.d/50_mesa.json
+  fi
 fi
 
 # Quickshell links jemalloc. Without tuning, jemalloc retains hundreds of megabytes across multi-core arenas.
-# Restrict to 2 arenas and immediately purge dirty/muzzy pages back to the kernel.
+# Restrict to 2 arenas, disable retain so freed pages unmap cleanly, and purge dirty/muzzy pages back to the kernel.
 # (decay of 0 returned pages on every free = constant madvise calls and page faults; a short delay keeps most of the RAM saving
 #  for far less CPU. Override from the environment to A/B test:  HALCYON_JE_DIRTY_MS / HALCYON_JE_MUZZY_MS)
-export MALLOC_CONF="narenas:2,dirty_decay_ms:${HALCYON_JE_DIRTY_MS:-1000},muzzy_decay_ms:${HALCYON_JE_MUZZY_MS:-3000},background_thread:true"
+[ -z "${MALLOC_CONF:-}" ] && export MALLOC_CONF="narenas:2,retain:false,dirty_decay_ms:${HALCYON_JE_DIRTY_MS:-1000},muzzy_decay_ms:${HALCYON_JE_MUZZY_MS:-2000},background_thread:true"
 # Also tune glibc malloc (for Qt/driver allocations), QML V4 JS GC threshold, and QtQuick RHI atlas size:
 export MALLOC_TRIM_THRESHOLD_=131072       # same value as hyprland/execs.lua (they used to disagree)
-# (no MALLOC_MMAP_THRESHOLD_: forcing 64 KB allocations into their own mmap costs a syscall + page faults each time;
-#  QV4_GC_MAX_ALLOC is not a Qt variable and did nothing)
 export MALLOC_ARENA_MAX=2
 export QSG_ATLAS_WIDTH=1024
 export QSG_ATLAS_HEIGHT=1024
+export QSG_RENDER_LOOP="${QSG_RENDER_LOOP:-basic}"
 
 say "using $qs ($("$qs" --version 2>&1 | head -n1)) on $WAYLAND_DISPLAY, QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}"
 [ "$name" = island ] && bash "$RICE/scripts/notif-guard.sh" 2>/dev/null

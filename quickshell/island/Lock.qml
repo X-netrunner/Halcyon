@@ -26,6 +26,7 @@ Scope {
     property bool profileStars: true
     property bool splash: true            // Settings > Power & lock > Login splash: play Splash.qml first when this lock screen is the login screen
     property bool splashSound: false      // Settings > Splash, sky & time of day > Soft sounds: a quiet chime goes with the login splash
+    property real splashDim: 0.75         // Settings > Splash, sky & time of day > Darken the screen during the splash
     property bool splashArm: false        // set by shell.qml for the lock that starts the session (lock-on-start); cleared when it unlocks
     readonly property bool splashWanted: splash && splashArm && pal && pal.motion > 0.3
     property string name: ""            // display name (profile name or login)
@@ -724,6 +725,7 @@ Scope {
                 anchors.fill: parent
                 z: 100
                 pal: root.pal
+                dim: root.splashDim
                 onHandoff: appearAnim.restart()
             }
             Connections { target: root; function onBufferChanged() { if (root.buffer !== "") splashItem.skip() } }

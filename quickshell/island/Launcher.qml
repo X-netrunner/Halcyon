@@ -104,7 +104,7 @@ Item {
     readonly property var catOrder: ["system", "desktop", "tools", "power"]
     readonly property var cmdOrder: [
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
-        "desktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "wallpaper", "theme", "barstyle", "edgemode", "routing",
+        "desktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "wallpaper", "theme", "barstyle", "edgemode", "routing",
         "calendar", "notes", "notesall", "clipboard", "screenshot", "lyrics", "queue", "calc", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
@@ -117,6 +117,8 @@ Item {
     // ---- commands (">" mode). confirm = needs Enter twice.
     readonly property var commands: [
         { id: "wallgallery", name: "Wallpaper gallery", desc: "Interactive 3D carousel & search gallery (Tide style)", glyph: 0xF024B, kw: "wallpapers gallery background images picker choose coverflow", cat: "desktop" },
+        { id: "splash", name: "Play the splash", desc: "The login animation: moving stars and the Halcyon sparkle (click or any key skips it)", glyph: 0xF035B, kw: "splash logo intro boot login animation stars sparkle startup screen", cat: "system" },
+        { id: "weeklysky", name: "Weekly sky", desc: "Your week as stars: one for every focus session, finished task and calendar event. Save it as a picture to share", glyph: 0xF04CE, kw: "weekly sky week stars constellation focus tasks calendar wrapped share picture summary", cat: "desktop" },
         { id: "startupview", name: "Startup & processes", desc: "Everything that starts with the desktop and what is running: RAM, CPU, switches, End", glyph: 0xF035B, kw: "startup autostart boot login processes running ram memory cpu htop task manager services apps kill end", cat: "system" },
         { id: "calendar", name: "Calendar", desc: "Google Calendar: your events by day, with reminder notifications", glyph: 0xF00ED, kw: "calender calendar agenda schedule tasks events google reminders meeting", cat: "tools" },
         { id: "notes", name: "New note", desc: "A small panel on the side of the screen: type a note and press Enter to save it (Super + N)", glyph: 0xF03EB, kw: "notes note new write memo text scratchpad todo tasks quick add", cat: "tools" },

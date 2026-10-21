@@ -164,6 +164,7 @@ PanelWindow {
         anchors.fill: parent
         pal: wallpaper.pal
         opt: wallpaper.opt
+        env: wallpaper.env
     }
 
     // the desktop widgets (Widget builder = how each looks, Desktop builder / desktop editor = where they sit)

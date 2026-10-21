@@ -18,6 +18,8 @@
 //!   hal notif-guard        <- scripts/notif-guard.sh         (kill conflicting notification daemons)
 //!   hal charge-limit ...   <- quickshell/island/scripts/charge-limit.sh
 //!   hal bt-battery         <- quickshell/island/scripts/bt-battery.sh
+//!   hal hypr-values        <- quickshell/island/scripts/hypr-values.sh
+//!   hal osd-watch          <- scripts/osd-watch.sh
 //!   hal ping
 
 mod btbattery;
@@ -26,12 +28,14 @@ mod chargelimit;
 mod close;
 mod extradim;
 mod gestures;
+mod hyprvalues;
 mod idledim;
 mod input;
 pub mod light;
 mod nightlight;
 mod notifguard;
 mod numlock;
+mod osdwatch;
 mod supertap;
 mod toolstate;
 mod touchpad;
@@ -86,6 +90,8 @@ fn main() {
         Some("notif-guard") | Some("notifguard") => notifguard::run(),
         Some("charge-limit") | Some("chargelimit") => chargelimit::run(rest),
         Some("bt-battery") | Some("btbattery") => btbattery::run(),
+        Some("hypr-values") | Some("hyprvalues") => hyprvalues::run(),
+        Some("osd-watch") | Some("osdwatch") => osdwatch::run(),
         Some("ping") => 0,
         _ => {
             usage();

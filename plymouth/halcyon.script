@@ -1,0 +1,180 @@
+# Halcyon boot splash: quickshell/island/Splash.qml for Plymouth. Stars fly out of the middle, the sparkle unfolds, HALCYON fades in,
+# then it rests (the stars keep drifting slowly and the sparkle breathes) until the system hands over to the login.
+# Shut down / reboot plays the same film backwards: the stars are drawn back in and the sparkle folds shut.
+#
+# halcyon-plymouth.sh glues layout.script (written by render-assets.py: sizes, colours, the stars) in front of this file.
+# All pictures are made by render-assets.py; nothing here draws, it only places them.
+
+W = Window.GetWidth();
+H = Window.GetHeight();
+OX = Window.GetX();
+OY = Window.GetY();
+k = Math.Min(W, H) / refS;                       # the pictures were rendered for another screen size: scale once, here
+R = Rm * k;
+cx = OX + W / 2;
+cy = OY + H * 0.45;
+maxR = Math.Sqrt(W * W + H * H) / 2;
+
+Window.SetBackgroundTopColor(stage_r, stage_g, stage_b);
+Window.SetBackgroundBottomColor(stage_r, stage_g, stage_b);
+
+mode = Plymouth.GetMode();
+rev = (mode == "shutdown" || mode == "reboot");
+
+fun fit(img) {
+    if (global.k > 0.98 && global.k < 1.02) return img;
+    return img.Scale(Math.Int(img.GetWidth() * global.k + 0.5), Math.Int(img.GetHeight() * global.k + 0.5));
+}
+fun seg(p, a, b) {
+    v = (p - a) / (b - a);
+    if (v < 0) return 0;
+    if (v > 1) return 1;
+    return v;
+}
+fun eo(x) { y = 1 - x; return 1 - y * y * y; }
+fun fract(x) { f = x - Math.Int(x); if (f < 0) f = f + 1; return f; }
+
+# ---- the accent wash
+tint_s = Sprite(Image("tint.png").Scale(W, H));
+tint_s.SetPosition(OX, OY, 1);
+tint_s.SetOpacity(0);
+
+# ---- the stars (three streak lengths each; the short one doubles as the dot while they are drawn in)
+for (i = 0; i < nst; i++) {
+    st0[i] = Image("star-" + i + "-0.png");
+    st1[i] = Image("star-" + i + "-1.png");
+    st2[i] = Image("star-" + i + "-2.png");
+    spr[i] = Sprite(st0[i]);
+    spr[i].SetZ(2);
+    spr[i].SetOpacity(0);
+    lvl[i] = 0;
+}
+
+# ---- the sparkle
+halo_img = fit(Image("halo.png"));
+halo = Sprite(halo_img);
+halo.SetPosition(cx - halo_img.GetWidth() / 2, cy - halo_img.GetHeight() / 2, 3);
+halo.SetOpacity(0);
+for (i = 0; i < nmark; i++) mk[i] = fit(Image("mark-" + i + ".png"));
+mark = Sprite(mk[0]);
+mark.SetPosition(cx - mk[0].GetWidth() / 2, cy - mk[0].GetHeight() / 2, 4);
+mark.SetOpacity(0);
+markIdx = -1;
+
+# ---- the word
+for (i = 0; i < nword; i++) wd[i] = fit(Image("word-" + i + ".png"));
+word = Sprite(wd[0]);
+word.SetZ(5);
+word.SetOpacity(0);
+wordIdx = -1;
+
+# ---- the film
+DUR = 3.6;                       # seconds for p 0 -> 1, as on the desktop
+HOLD = 0.86;                     # boot: the film stops here and rests (the desktop splash fades out after this point)
+t = 0;
+drift = 0;
+if (rev) p = HOLD; else p = 0;
+
+fun refresh() {
+    dt = 1 / 50;
+    global.t = global.t + dt;
+    if (global.rev) {
+        global.p = global.p - dt / (global.DUR * 0.67);       # the goodbye is shorter, like the desktop one (2.4 s)
+        if (global.p < 0) global.p = 0;
+    } else {
+        global.p = global.p + dt / global.DUR;
+        if (global.p > global.HOLD) global.p = global.HOLD;
+    }
+    p = global.p;
+    calm = 1 - eo(seg(p, 0.0, 0.7));
+    if (global.rev) global.drift = global.drift - dt * (0.045 + 0.34 * calm);
+    else global.drift = global.drift + dt * (0.045 + 0.34 * calm);
+    # after the film, a slow breath (the desktop's pulse)
+    pulse = 0.5 + 0.5 * Math.Sin(Math.Max(0, p - 0.55) * 14 + Math.Max(0, global.t - global.DUR * global.HOLD) * 2.2);
+    fadeIn = eo(seg(p, 0.0, 0.2));
+    global.tint_s.SetOpacity(eo(seg(p, 0.05, 0.5)));
+
+    for (i = 0; i < global.nst; i++) {
+        rr = fract(global.sb[i] + global.drift * global.sv[i]);
+        d = rr * rr * global.maxR + 14;
+        tail = 4 + rr * 26 * (0.5 + 1.5 * calm);
+        if (global.rev || tail < 10) L = 0; else if (tail < 26) L = 1; else L = 2;
+        if (L != global.lvl[i]) {
+            if (L == 0) global.spr[i].SetImage(global.st0[i]);
+            else if (L == 1) global.spr[i].SetImage(global.st1[i]);
+            else global.spr[i].SetImage(global.st2[i]);
+            global.lvl[i] = L;
+        }
+        img = global.st0[i];
+        if (L == 1) img = global.st1[i];
+        if (L == 2) img = global.st2[i];
+        half = img.GetWidth() / 2;
+        global.spr[i].SetX(global.cx + global.sc[i] * d - half);
+        global.spr[i].SetY(global.cy + global.ss[i] * d - half);
+        global.spr[i].SetOpacity(Math.Min(1, rr * 6) * Math.Min(1, (1 - rr) * 4) * fadeIn * global.sa[i]);
+    }
+
+    # the sparkle: pick the frame for p (before p0 it is not there yet, after p1 it is whole)
+    q = (p - global.p0) / (global.p1 - global.p0);
+    if (q <= 0) {
+        global.mark.SetOpacity(0);
+    } else {
+        if (q > 1) q = 1;
+        idx = Math.Int(q * (global.nmark - 1) + 0.5);
+        if (idx != global.markIdx) {
+            global.mark.SetImage(global.mk[idx]);
+            global.markIdx = idx;
+        }
+        global.mark.SetOpacity(1);
+    }
+    global.halo.SetOpacity(eo(seg(p, 0.28, 0.62)) * (0.82 + 0.18 * pulse));
+
+    # the word: rises 18 px into place while its spacing closes
+    wa = eo(seg(p, 0.52, 0.82));
+    wi = Math.Int(eo(seg(p, 0.52, 0.9)) * (global.nword - 1) + 0.5);
+    if (wi != global.wordIdx) { global.word.SetImage(global.wd[wi]); global.wordIdx = wi; }
+    global.word.SetX(global.cx - global.wd[wi].GetWidth() / 2);
+    global.word.SetY(global.cy + global.R * 1.7 + 18 * global.k * (1 - wa));
+    global.word.SetOpacity(wa);
+}
+Plymouth.SetRefreshFunction(refresh);
+
+# ---- a disk password (encrypted root): the prompt and one bullet per key, under the word
+dot_img = fit(Image("dot.png"));
+prompt_s = Sprite();
+prompt_s.SetZ(6);
+fun show_bullets(n) {
+    gap = global.dot_img.GetWidth() * 1.9;
+    x0 = global.cx - (n * gap - (gap - global.dot_img.GetWidth())) / 2;
+    y = global.cy + global.R * 2.75;
+    for (i = 0; i < n || global.bullets[i]; i++) {
+        if (!global.bullets[i]) { global.bullets[i] = Sprite(global.dot_img); global.bullets[i].SetZ(6); }
+        if (i < n) {
+            global.bullets[i].SetPosition(x0 + i * gap, y, 6);
+            global.bullets[i].SetOpacity(1);
+        } else global.bullets[i].SetOpacity(0);
+    }
+}
+fun display_password(prompt, n) {
+    img = Image.Text(prompt, 0.85, 0.85, 0.9, 1, "Sans 12");
+    global.prompt_s.SetImage(img);
+    global.prompt_s.SetPosition(global.cx - img.GetWidth() / 2, global.cy + global.R * 2.4, 6);
+    global.prompt_s.SetOpacity(1);
+    show_bullets(n);
+}
+fun display_normal() {
+    global.prompt_s.SetOpacity(0);
+    show_bullets(0);
+}
+Plymouth.SetDisplayPasswordFunction(display_password);
+Plymouth.SetDisplayNormalFunction(display_normal);
+
+# ---- messages (e.g. a disk check): one quiet line near the bottom
+msg_s = Sprite();
+msg_s.SetZ(6);
+fun message(text) {
+    img = Image.Text(text, 0.75, 0.75, 0.8, 1, "Sans 10");
+    global.msg_s.SetImage(img);
+    global.msg_s.SetPosition(global.cx - img.GetWidth() / 2, global.OY + global.H * 0.9, 6);
+}
+Plymouth.SetMessageFunction(message);

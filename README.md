@@ -7,6 +7,7 @@ Lightweight, minimal, smooth and fast Hyprland setup in Lua, independent of cael
 - `quickshell/`: island bar; the wallpaper layer (`island/Wallpaper.qml`) runs inside the same Quickshell process
 - `launch/`: start scripts (`halcyon.sh`, `halcyon-isolated.sh`)
 - `scripts/switch-user.sh` (the lock screen's Switch user button), `scripts/halcyon-settings-io.sh` (export / import your settings as one file) and `scripts/honeypot-digest.sh` (daily honeypot summary), see `changelog.md`
+- `scripts/weekly-sky.py` (your week as stars, `halcyon weekly-sky`), `scripts/splash-sound.sh` (optional splash chimes) and `scripts/halcyon-plymouth.sh` (boot splash)
 - `scripts/`: app themes (`app-themes.sh`, `app-themes-extra.sh`), cheatsheet, emoji picker, area screenshot, and the toggles (layout, nightlight, touchpad, gestures, power manager, live wallpaper)
 - `src/`: Rust sources for `power-manager` (Auto power), `touchpad-gestures` and `hx` (island data feeds, sysmode status / IDS / dossier); `systemd/`: their user services
 - `sysmode/`: the `sysmode` hardening/decoy-lab CLI plus the honeypot and IDS scripts it launches

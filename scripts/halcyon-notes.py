@@ -1105,6 +1105,25 @@ def pin_note(arg):
     else:
         print(f"[!] Note not found: {arg}")
 
+SKY_LOG = os.path.join(STATE_DIR, "sky-events.jsonl")
+
+def _sky_log(kind, nid, text=""):
+    """The weekly sky (scripts/weekly-sky.py) draws one star per finished note. `done_at` on the note says when, but clearing the
+    done notes deletes them, so each tick is also kept in this small append-only log ({"t", "kind": "task" | "untask", "id", "text"}).
+    A failure here must never get in the way of ticking a note, so everything is swallowed."""
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(SKY_LOG, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"t": time.time(), "kind": kind, "id": nid, "text": (text or "")[:80]}, ensure_ascii=False) + "\n")
+        if os.path.getsize(SKY_LOG) > 400_000:                      # keep the last ~2000 ticks, the sky only ever looks back a few weeks
+            with open(SKY_LOG, "r", encoding="utf-8") as fh:
+                tail = fh.readlines()[-2000:]
+            with open(SKY_LOG + ".tmp", "w", encoding="utf-8") as fh:
+                fh.writelines(tail)
+            os.replace(SKY_LOG + ".tmp", SKY_LOG)
+    except Exception:
+        pass
+
 def done_note(arg):
     notes = load_notes()
     target = None
@@ -1129,6 +1148,12 @@ def done_note(arg):
         return
     if target:
         target["done"] = not target.get("done", False)
+        if target["done"]:
+            target["done_at"] = time.time()                       # when it was finished: a star in the weekly sky
+            _sky_log("task", target.get("id", ""), target.get("text", ""))
+        else:
+            target.pop("done_at", None)
+            _sky_log("untask", target.get("id", ""))
         save_notes(notes)
         state = "Completed" if target["done"] else "Uncompleted"
         print(f"✓ {state}: \"{target.get('text')}\"")

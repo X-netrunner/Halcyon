@@ -24,6 +24,10 @@ Item {
     property var pal
     property int duration: 3600           // ms from the first star to the last fade
     property string mode: "login"         // login | unlock | shutdown (see above)
+    property real dim: 0.75               // 0 .. 0.9: how dark the screen gets while it plays (Settings > Splash, sky & time of day), so the
+                                          // stars and the word read on a light theme or a bright wallpaper showing through on unlock
+    // on a darkened screen the theme's own text colour can be dark (light theme): use a soft white then
+    readonly property color ink: pal && pal.light && dim >= 0.35 ? Qt.rgba(0.95, 0.95, 0.98, 1) : (pal ? pal.text : "white")
     readonly property bool rev: mode === "shutdown"
     property bool ended: false            // shutdown: the collapse has finished and the screen is being held bare
     property bool playing: false
@@ -67,6 +71,8 @@ Item {
     // ---- stage
     // (unlock: the stage melts away early, so the desktop is already visible while the stars are still flying and the mark is flaring)
     Rectangle { anchors.fill: parent; color: root.pal.bg; opacity: root.mode === "unlock" ? 1 - root.eo(root.seg(0.30, 0.78)) : 1 }
+    // the dark veil over the stage (and over the desktop once the unlock stage has melted); it leaves with the whole splash
+    Rectangle { anchors.fill: parent; color: "black"; opacity: root.dim }
 
     // ---- moving stars (they fly out of the middle; their speed falls as the mark settles)
     property real drift: 0
@@ -110,7 +116,7 @@ Item {
             if (!root.playing) return
             var cx = width / 2, cy = height * 0.45
             var maxR = Math.sqrt(width * width + height * height) / 2
-            var a1 = root.pal.accent, a2 = root.pal.accent2, tx = root.pal.text
+            var a1 = root.pal.accent, a2 = root.pal.accent2, tx = root.ink
             var fadeIn = root.eo(root.seg(0.0, 0.2))
             var calm = 1 - root.eo(root.seg(0.0, 0.7))           // 1 while the stars rush, 0 once the mark has settled
             // a soft tint in the middle, so the mark has something to glow against (a real radial gradient)
@@ -161,7 +167,7 @@ Item {
             var ctx = getContext("2d")
             ctx.clearRect(0, 0, width, height)
             if (!root.playing) return
-            var R = root.markRadius, g = root.grow, a1 = root.pal.accent, a2 = root.pal.accent2, tx = root.pal.text
+            var R = root.markRadius, g = root.grow, a1 = root.pal.accent, a2 = root.pal.accent2, tx = root.ink
             function rgba(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
             // a four-point star with pinched, curved sides; rv = upright arm, rh = sideways arm, k = how deep the sides curve in
             function star(rv, rh, k) {
@@ -238,9 +244,11 @@ Item {
     Text {
         id: word
         anchors.horizontalCenter: parent.horizontalCenter
+        // Qt adds the letter spacing after the last letter too, which pushes the word left of centre by half of it: give that back
+        anchors.horizontalCenterOffset: font.letterSpacing / 2
         y: root.height * 0.45 + root.markRadius * 1.7 + 18 * (1 - root.eo(root.seg(0.52, 0.82)))
         text: "HALCYON"
-        color: root.pal.text
+        color: root.ink
         font.family: root.pal.uiFont
         font.pixelSize: Math.max(18, Math.round(root.markRadius * 0.5))
         font.weight: Font.Light
