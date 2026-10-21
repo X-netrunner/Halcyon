@@ -3,7 +3,7 @@
 //! Replaces scripts/osd-watch.sh running continuous Bash loops.
 
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;
@@ -62,6 +62,10 @@ pub fn run() -> i32 {
     let mut lk: i64 = -1;
     let mut quiet: i32 = 0;
     let mut idle: u32 = 0;
+    // writeln! instead of println!: println! panics when the island closes the pipe (it restarted), and with panic = "abort"
+    // that was a core dump every time. A failed write just ends the watcher.
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
 
     loop {
         let mut chg = false;
@@ -76,8 +80,7 @@ pub fn run() -> i32 {
                 if b != lb {
                     if lb != -1 && quiet == 0 && bmax > 0 {
                         let pct = (b * 100) / bmax;
-                        println!("{{\"k\":\"bright\",\"p\":{}}}", pct);
-                        if std::io::stdout().flush().is_err() {
+                        if writeln!(out, "{{\"k\":\"bright\",\"p\":{}}}", pct).and_then(|_| out.flush()).is_err() {
                             break;
                         }
                     }
@@ -92,8 +95,7 @@ pub fn run() -> i32 {
                 if k != lk {
                     if lk != -1 && quiet == 0 && kmax > 0 {
                         let pct = (k * 100) / kmax;
-                        println!("{{\"k\":\"kbd\",\"p\":{}}}", pct);
-                        if std::io::stdout().flush().is_err() {
+                        if writeln!(out, "{{\"k\":\"kbd\",\"p\":{}}}", pct).and_then(|_| out.flush()).is_err() {
                             break;
                         }
                     }

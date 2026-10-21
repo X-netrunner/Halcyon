@@ -2125,6 +2125,7 @@ ShellRoot {
     // centre; Halcyon's own (timers, reminders) and urgent ones still show. Do not disturb itself is not touched. After a fullscreen /
     // workspace / window-close event it asks Hyprland once what the active window is doing (one short hyprctl call, nothing runs in between).
     property bool fsQuiet: false
+    readonly property bool screenLocked: lockScreen.locked      // for things that only get the shell as `env` (DesktopStars stops drawing)
     Connections {
         target: Hyprland
         function onRawEvent(event) {
