@@ -91,9 +91,12 @@ Item {
     readonly property real backMax: onLockBg ? lockLum : (pal ? pal.lumMaxAt(fX, fY, fW, fH) : 0.1)
     readonly property real effLum: backLum * (1 - bodyOp) + 0.012 * bodyOp     // linear luminance seen through the box (a dark glass box is ~0.012)
     readonly property bool themed: textToneEff === "theme"
-    // 1) an evenly BRIGHT patch: dark, accent-tinted text.   0.18 is where black text starts to beat white on contrast
+    // 1) a BRIGHT patch: dark, accent-tinted text.   0.18 is where black text starts to beat white on contrast.
+    //    Bright on average and with no truly dark part (a sky with a gradient counts; it used to need a perfectly even patch,
+    //    so light wallpapers almost always fell through to the outlined "mixed" look)
     readonly property bool autoTone: textToneEff === "auto"
-    readonly property bool onBright: (themed || autoTone) && effLum > 0.45 && backSpread < 0.1
+    readonly property real effMin: (backMax - backSpread) * (1 - bodyOp) + 0.012 * bodyOp
+    readonly property bool onBright: (themed || autoTone) && effLum > 0.22 && effMin >= 0.12
     // 2) a MIXED patch (pink next to black ...): neither colour reads on all of it, so light text with a strong dark outline, like subtitles
     readonly property bool onMixed: themed && !onBright && bodyOp < 0.5 && backMax > 0.2 && (backSpread >= 0.15 || effLum > 0.2)
     readonly property color accentRaw: toneEff === "custom" ? look.color : (toneEff === "second" ? pal.accent2 : pal.accent)
