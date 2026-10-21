@@ -274,7 +274,7 @@ sync_push() {
             git -C "$d" add -A
             git -C "$d" diff --cached --stat | sed 's/^/      /'
             if [ -z "$MSG" ]; then
-                local def; def="sync: $(date '+%Y-%m-%d %H:%M') from $(hostname)"
+                local def; def="sync: $(date '+%Y-%m-%d %H:%M') from $(uname -n)"
                 if [ "$YES" = 1 ] || [ ! -t 0 ]; then
                     msg="$def"
                 else
