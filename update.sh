@@ -10,7 +10,7 @@
 #   options: --yes (no questions)   --notify (desktop notification with the result)   -q (less output)   -h
 #            passed on to install.sh:  --no-packages  --no-drivers  --no-aur  --no-apps  --no-tune  --sysmode / --no-sysmode
 #            --safety-check / --no-safety-check  --llm[=MODEL] / --no-llm  --whisper[=MODEL] / --no-whisper  --vlm[=MODEL] / --no-vlm  --lock-login / --no-lock-login  --tty-autostart
-#            --browser ID  --files ID[,ID]  --editor ID[,ID]  --music ID[,ID]  --resources low|medium|high|adaptive
+#            --browser ID  --files ID[,ID]  --editor ID[,ID]  --music ID[,ID]  --resources low|medium|high|adaptive  --renderer auto|opengl|vulkan
 #            --resource-offset N   (a value goes after a space or an =, see ./install.sh --help)
 #   First install on a new machine (nothing to update yet):  curl -fsSL https://raw.githubusercontent.com/X-netrunner/Halcyon/HEAD/get.sh | bash
 #
@@ -139,8 +139,8 @@ main() {
       # install.sh flags (no value)
       --no-packages|--no-drivers|--no-aur|--no-apps|--no-tune|--sysmode|--no-sysmode|--safety-check|--no-safety-check|--llm|--no-llm|--whisper|--no-whisper|--vlm|--no-vlm|--lock-login|--no-lock-login|--tty-autostart) PASS+=("$1") ;;
       # install.sh options with a value, as  --opt=value  or  --opt value
-      --llm=*|--whisper=*|--vlm=*|--browser=*|--files=*|--editor=*|--music=*|--resources=*|--resource-offset=*) PASS+=("$1") ;;
-      --browser|--files|--editor|--music|--resources|--resource-offset)
+      --llm=*|--whisper=*|--vlm=*|--browser=*|--files=*|--editor=*|--music=*|--resources=*|--resource-offset=*|--renderer=*) PASS+=("$1") ;;
+      --browser|--files|--editor|--music|--resources|--resource-offset|--renderer)
         [ $# -ge 2 ] && [[ "$2" != -* ]] || { echo "$1 needs a value (try --help)"; exit 2; }
         PASS+=("$1" "$2"); shift ;;
       -h|--help) usage; exit 0 ;;

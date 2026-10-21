@@ -50,11 +50,21 @@ case "${LANG:-}" in
   *) export LANG="${LANG:-en_US}.UTF-8" ;;
 esac
 
-# On a hybrid laptop keep Quickshell on the integrated GPU (Mesa/Vulkan) and out of NVIDIA's 60MB shader compiler blob
-# (libnvidia-gpucomp.so). When an integrated GPU is present, prefer Vulkan (libvulkan_intel / radv) which avoids Mesa Gallium's
-# heavy LLVM JIT runtime (~80MB RSS saving) and duplicate CPU staging buffers.
+# ---- which GPU and which renderer the island draws with
+# On a hybrid laptop keep Quickshell on the integrated GPU (Mesa) and out of NVIDIA's 60MB shader compiler blob
+# (libnvidia-gpucomp.so). Only when there REALLY is a non-NVIDIA GPU: on a desktop with only an NVIDIA card, forcing the Mesa EGL
+# vendor left Quickshell with no usable GPU driver (software rendering, or no window at all).
 # (not in dGPU mode, see scripts/gpu-mode.sh: there the island draws on the NVIDIA GPU like the compositor does)
+#
+# Renderer: $RICE/renderer = auto | opengl | vulkan (install.sh --renderer, asked by --choose; HALCYON_RENDERER overrides it once).
+# auto picks OpenGL wherever it works. Measured on an Intel laptop (whole island, idle): OpenGL 185 MB + 178 MB of GPU buffers,
+# Vulkan 176 MB + 712 MB. On integrated graphics those buffers ARE system RAM, and Vulkan keeps a swapchain and memory pools per
+# window (the island has many). The LLVM pages Vulkan avoids are already resident for Hyprland (it draws with Mesa GL), so
+# skipping them frees nothing. Idle power is the same either way (the island redraws little), so nothing pays for the extra RAM.
+# auto only takes Vulkan when there is no usable OpenGL (no Mesa EGL on a non-NVIDIA machine) but a Vulkan driver is there.
 gpu_mode="igpu"; [ -s "$RICE/gpu-mode" ] && gpu_mode="$(head -n1 "$RICE/gpu-mode")"
+renderer="${HALCYON_RENDERER:-}"; [ -z "$renderer" ] && [ -s "$RICE/renderer" ] && renderer="$(head -n1 "$RICE/renderer")"
+case "$renderer" in opengl|vulkan) ;; *) renderer=auto ;; esac
 other_gpu=0; amd_gpu=0; intel_gpu=0
 for c in /sys/class/drm/card[0-9]*; do
   case "$c" in */card[0-9]*-*) continue ;; esac
@@ -64,24 +74,31 @@ for c in /sys/class/drm/card[0-9]*; do
   [ "$v" = 0x1002 ] && amd_gpu=1
   [ "$v" = 0x8086 ] && intel_gpu=1
 done
+mesa_egl="$(ls /usr/share/glvnd/egl_vendor.d/50_mesa.json /etc/glvnd/egl_vendor.d/50_mesa.json 2>/dev/null | head -n1)"
+vk_icd=""
 if [ "$gpu_mode" != dgpu ] && [ "$other_gpu" = 1 ]; then
-  intel_icd="$(ls /usr/share/vulkan/icd.d/*intel*.json /etc/vulkan/icd.d/*intel*.json /usr/local/share/vulkan/icd.d/*intel*.json 2>/dev/null | grep -v "hasvk" | head -n1)"
-  [ -z "$intel_icd" ] && intel_icd="$(ls /usr/share/vulkan/icd.d/*hasvk*.json /etc/vulkan/icd.d/*hasvk*.json 2>/dev/null | head -n1)"
-  radeon_icd="$(ls /usr/share/vulkan/icd.d/*radeon*.json /etc/vulkan/icd.d/*radeon*.json /usr/local/share/vulkan/icd.d/*radeon*.json 2>/dev/null | head -n1)"
-  # EGL stays on Mesa whichever backend draws: anything in the process that still asks for OpenGL must not load NVIDIA's
-  # EGL (that wakes the dGPU and maps its blob). Measured: it costs nothing next to Vulkan.
-  mesa_egl="$(ls /usr/share/glvnd/egl_vendor.d/50_mesa.json /etc/glvnd/egl_vendor.d/50_mesa.json 2>/dev/null | head -n1)"
-  [ -n "$mesa_egl" ] && export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
-  if [ "$intel_gpu" = 1 ] && [ -n "$intel_icd" ]; then
-    export VK_DRIVER_FILES="$intel_icd"
-    export VK_ICD_FILENAMES="$intel_icd"
-    [ -z "${QSG_RHI_BACKEND:-}" ] && export QSG_RHI_BACKEND=vulkan
-  elif [ "$amd_gpu" = 1 ] && [ -n "$radeon_icd" ]; then
-    export VK_DRIVER_FILES="$radeon_icd"
-    export VK_ICD_FILENAMES="$radeon_icd"
-    [ -z "${QSG_RHI_BACKEND:-}" ] && export QSG_RHI_BACKEND=vulkan
+  # the Vulkan driver of the integrated GPU (never NVIDIA's): Intel ANV (hasvk for old Intel), AMD RADV
+  if [ "$intel_gpu" = 1 ]; then
+    vk_icd="$(ls /usr/share/vulkan/icd.d/*intel*.json /etc/vulkan/icd.d/*intel*.json /usr/local/share/vulkan/icd.d/*intel*.json 2>/dev/null | grep -v hasvk | grep -v i686 | head -n1)"
+    [ -z "$vk_icd" ] && vk_icd="$(ls /usr/share/vulkan/icd.d/*hasvk*.json /etc/vulkan/icd.d/*hasvk*.json 2>/dev/null | grep -v i686 | head -n1)"
+  elif [ "$amd_gpu" = 1 ]; then
+    vk_icd="$(ls /usr/share/vulkan/icd.d/*radeon*.json /etc/vulkan/icd.d/*radeon*.json /usr/local/share/vulkan/icd.d/*radeon*.json 2>/dev/null | grep -v i686 | head -n1)"
   fi
+  # EGL stays on Mesa whichever renderer draws: anything in the process that still asks for OpenGL must not load NVIDIA's EGL
+  # (that wakes the dGPU and maps its blob)
+  [ -n "$mesa_egl" ] && export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
+  if [ -n "$vk_icd" ]; then export VK_DRIVER_FILES="$vk_icd" VK_ICD_FILENAMES="$vk_icd"; fi
 fi
+if [ "$renderer" = auto ]; then
+  renderer=opengl
+  [ "$other_gpu" = 1 ] && [ -z "$mesa_egl" ] && [ -n "$vk_icd" ] && renderer=vulkan
+fi
+# Vulkan asked for but no Vulkan driver at all on this machine: Qt would show no window, so draw with OpenGL instead
+if [ "$renderer" = vulkan ] && [ -z "$vk_icd" ] && [ -z "$(ls /usr/share/vulkan/icd.d/*.json /etc/vulkan/icd.d/*.json 2>/dev/null)" ]; then
+  say "renderer: vulkan was chosen but no Vulkan driver is installed, using opengl"; renderer=opengl
+fi
+# a renderer set from outside (QSG_RHI_BACKEND in the environment) still wins
+[ -z "${QSG_RHI_BACKEND:-}" ] && export QSG_RHI_BACKEND="$renderer"
 
 # Quickshell links jemalloc. Without tuning, jemalloc retains hundreds of megabytes across multi-core arenas.
 # Restrict to 2 arenas, disable retain so freed pages unmap cleanly, and purge dirty/muzzy pages back to the kernel.
@@ -95,7 +112,7 @@ export QSG_ATLAS_WIDTH=1024
 export QSG_ATLAS_HEIGHT=1024
 export QSG_RENDER_LOOP="${QSG_RENDER_LOOP:-basic}"
 
-say "using $qs ($("$qs" --version 2>&1 | head -n1)) on $WAYLAND_DISPLAY, QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}"
+say "using $qs ($("$qs" --version 2>&1 | head -n1)) on $WAYLAND_DISPLAY, QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}, renderer=$QSG_RHI_BACKEND (gpu mode $gpu_mode)"
 [ "$name" = island ] && bash "$RICE/scripts/notif-guard.sh" 2>/dev/null
 
 # the log was only trimmed when the shell (re)started: a QML warning loop in a long session could grow it without limit.
