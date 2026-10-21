@@ -64,6 +64,8 @@
 #                          The menu shows an estimate of the RAM / CPU each one needs; adaptive = medium now, limits learned from your use
 #   --resource-offset N    headroom in percent (0-100) above that estimate before Settings > Performance > Health warns (default 15)
 #   --prompt ID            your shell prompt (Starship): keep | colours | halcyon
+#   --renderer MODE        how the island draws: auto | opengl | vulkan (default auto = picked for this machine each time Halcyon
+#                          starts; OpenGL on integrated graphics, where it measured ~500 MB less RAM than Vulkan at the same power)
 #                            keep     your prompt is not touched at all (Halcyon does not start Starship, and does not edit your starship.toml)
 #                            colours  your own layout stays, only the colours follow the wallpaper
 #                            halcyon  Halcyon's prompt (your old starship.toml is saved as starship.toml.before-halcyon)
@@ -102,6 +104,7 @@ INSTALL_LLM=false; PICK_LLM_MODEL=""; LLM_ASKED=false # local AI performance adv
 INSTALL_WHISPER=false; PICK_WHISPER_MODEL=""; WHISPER_ASKED=false   # speech-to-text for voice notes (whisper.cpp + a ggml model)
 INSTALL_VLM=false; PICK_VLM_MODEL=""; VLM_ASKED=false                # picture descriptions for Notes (a vision model in Ollama)
 VLM_DEFAULT_MODEL="qwen2.5vl:3b"                                       # the model Notes was tested with (scripts/halcyon-notes.py VLM_DEFAULT)
+PICK_RENDERER=""      # auto | opengl | vulkan (see choose_renderer)
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 PICK_PROMPT=""; FIRST_INSTALL=false        # your shell prompt: keep | colours | halcyon (see choose_prompt); FIRST_INSTALL: nothing was chosen on this machine yet
@@ -198,6 +201,8 @@ while [[ $# -gt 0 ]]; do
                             [[ "$PICK_PROMPT" =~ ^(keep|colours|halcyon)$ ]] || die "--prompt needs keep, colours or halcyon (see --help)" ;;
         --prompt=*)         PICK_PROMPT="${1#--prompt=}"; [[ "$PICK_PROMPT" == colors ]] && PICK_PROMPT=colours
                             [[ "$PICK_PROMPT" =~ ^(keep|colours|halcyon)$ ]] || die "--prompt needs keep, colours or halcyon (see --help)" ;;
+        --renderer)         shift; PICK_RENDERER="${1:-}"; [[ "$PICK_RENDERER" =~ ^(auto|opengl|vulkan)$ ]] || die "--renderer needs auto, opengl or vulkan" ;;
+        --renderer=*)       PICK_RENDERER="${1#--renderer=}"; [[ "$PICK_RENDERER" =~ ^(auto|opengl|vulkan)$ ]] || die "--renderer needs auto, opengl or vulkan" ;;
         --choose)           CHOOSE=true ;;
         --no-tune)          SKIP_TUNE=true ;;
         --link)             LINK_CONFIG=true ;;
@@ -1433,6 +1438,43 @@ choose_resources() {
 }
 [[ "$REMOVE_LOGIN" != "true" ]] && choose_resources
 
+# ---- how the island draws (written to ~/.config/Halcyon/renderer, read by scripts/start-shell.sh on every start)
+# auto is decided at start, not here, so it follows the GPU mode (scripts/gpu-mode.sh) and a driver installed later.
+renderer_advice() {      # one line: what auto will pick on this machine, and why
+    local c v igpu=false nv=false vk=false
+    for c in /sys/class/drm/card[0-9]*; do
+        [[ "$c" == */card[0-9]*-* ]] && continue
+        v="$(cat "$c/device/vendor" 2>/dev/null)"
+        case "$v" in 0x10de) nv=true ;; 0x8086|0x1002) igpu=true ;; esac
+    done
+    compgen -G "/usr/share/vulkan/icd.d/*.json" >/dev/null && vk=true
+    if [[ "$igpu" == true && "$nv" == true ]]; then echo "hybrid laptop: OpenGL on the integrated GPU (NVIDIA stays asleep; GPU buffers are system RAM there)"
+    elif [[ "$igpu" == true ]]; then echo "integrated graphics: OpenGL (its GPU buffers are system RAM; Vulkan measured ~500 MB more)"
+    elif [[ "$nv" == true ]]; then echo "NVIDIA: OpenGL (the tested path; Vulkan saves nothing at idle)"
+    else echo "OpenGL$([[ "$vk" == true ]] && echo ", or Vulkan when no OpenGL driver is found")"; fi
+}
+choose_renderer() {
+    local interactive=false s_r
+    [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
+    s_r=$(saved_choice RENDERER)
+    # precedence: command line > the menu (terminal, no --yes; asked with --choose or when nothing is saved) > saved > auto
+    if [[ -z "$PICK_RENDERER" ]]; then
+        if [[ "$interactive" == "true" && ( "$CHOOSE" == "true" || -z "$s_r" ) ]]; then
+            echo -e "\n  ${CYAN}${BOLD}How should the island draw?${RESET}  ${DIM}(auto on this machine: $(renderer_advice))${RESET}"
+            echo -e "   ${DIM}Same look either way. Idle power is about the same; the difference is RAM, most of all on integrated graphics.${RESET}"
+            menu_pick PICK_RENDERER "Renderer" "auto" 0 \
+                "auto|Auto|picked for this machine every time Halcyon starts (recommended)" \
+                "opengl|OpenGL|least RAM: shares the driver Hyprland already has loaded" \
+                "vulkan|Vulkan|skips Mesa's LLVM pages, but keeps far more GPU buffers per window (more RAM on integrated graphics)"
+        else
+            PICK_RENDERER="${s_r:-auto}"
+        fi
+    fi
+    [[ "$PICK_RENDERER" =~ ^(auto|opengl|vulkan)$ ]] || PICK_RENDERER=auto
+    log_info "Island renderer: ${PICK_RENDERER}$([[ "$PICK_RENDERER" == auto ]] && echo " -> $(renderer_advice)")"
+}
+[[ "$REMOVE_LOGIN" != "true" ]] && choose_renderer
+
 # ---------------------------------------------------------------------------------------------- step 5
 log_step "Step 5: Hyprland and the desktop"
 
@@ -1641,7 +1683,7 @@ run_as_user_cmd "Creating the config, state and cache folders" mkdir -p \
     "$TARGET_HOME/.cache/island" "$TARGET_HOME/Pictures/Wallpapers" "$TARGET_HOME/Pictures/Screenshots" \
     || die "Could not create folders in $TARGET_HOME"
 
-KEEP_FILES=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf notes.conf backup-exclude.conf birthdays.txt holidays.txt)     # yours: never overwritten by the copy
+KEEP_FILES=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf notes.conf backup-exclude.conf birthdays.txt holidays.txt renderer)     # yours: never overwritten by the copy
 if [[ "$(readlink -f "$TARGET_RICE" 2>/dev/null)" == "$(readlink -f "$RICE_SOURCE")" ]]; then
     log_success "Halcyon is already in ${TARGET_RICE}"
 else
@@ -1670,6 +1712,7 @@ else
         [[ ${#EXCL[@]} -gt 0 ]] && log_info "Kept your own files: ${KEEP_FILES[*]}"
     fi
 fi
+[[ -n "$PICK_RENDERER" ]] && { run_as_user_cmd "Island renderer: $PICK_RENDERER" bash -c 'printf "%s\n" "$2" > "$1/renderer"' _ "$TARGET_RICE" "$PICK_RENDERER" || true; }
 [[ -f "$TARGET_RICE/scripts/user-setup.sh" ]] && USER_SETUP="$TARGET_RICE/scripts/user-setup.sh"
 
 try run_as_user_cmd "Making the scripts executable" bash -c '
@@ -2175,9 +2218,11 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
-    user_setup save-choices "PROMPT=$PICK_PROMPT" || true     # --no-packages: the prompt choice is still remembered
+    user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} || true
+elif [[ -n "$PICK_RENDERER" ]]; then
+    user_setup save-choices "RENDERER=$PICK_RENDERER" || true     # --no-packages: the prompt choice is still remembered
 fi
 [[ "$PACKAGES" == "true" && "$SKIP_DRIVERS" != "true" ]] && { user_setup gpu-env "$GPU_ENV_MODE" || true; }
 
