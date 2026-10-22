@@ -1,0 +1,29 @@
+# Known per-game fixes and warnings, built into hgl. Your own entries go in ~/.config/Halcyon/hgl-fixes.conf (same format, read after this
+# file, so yours win). `hgl fixes <id>` shows what applies to a game; `hgl fixes <id> --apply` applies it again.
+#
+# [selector, selector]   steam:<appid>   epic:<app name>   gog:<product id>   name:<part of the name, lowercase>
+# note = text the Game Center shows under the game
+# env.NAME = value            an environment variable (added only when the game has none of that name)
+# set.KEY = value             KEY is one of: wrappers args wayland gamescope umu_id lean debug
+#
+# Settings are applied once, when a game is added or imported, so a change you make later is never undone.
+# Example (not active):
+#   [name:some old game]
+#   note = Needs the OpenGL renderer.
+#   env.PROTON_USE_WINED3D = 1
+#   set.wayland = off
+#
+# This list is small on purpose: only things that are known to be true. Warnings about anti-cheat reflect what was known in 2025;
+# check protondb.com when in doubt.
+
+[steam:1085660]
+note = Destiny 2: Bungie blocks Linux (BattlEye without Proton support), so it will not get past the start.
+
+[steam:1172470]
+note = Apex Legends: Easy Anti-Cheat, and the publisher has blocked Linux and Steam Deck players since late 2024. Expect it not to start online.
+
+[steam:578080]
+note = PUBG: BattlEye is not enabled for Linux, so online play does not work.
+
+[epic:Fortnite]
+note = Fortnite does not run on Linux: Epic does not allow its Easy Anti-Cheat there.

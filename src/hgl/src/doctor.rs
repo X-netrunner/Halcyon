@@ -346,6 +346,33 @@ pub fn run_checks() -> Vec<Check> {
     if have("steam") {
         c.push(Check::ok("steam", "Steam (optional, for the Steam library)", "present").optional());
     }
+
+    // downloads (Proton, cover art, the GOG library) go through curl
+    if have("curl") {
+        c.push(Check::ok("curl", "curl (downloads: Proton, cover art)", "present").optional());
+    } else {
+        c.push(Check::bad("curl", "curl (downloads: Proton, cover art)", Level::Warn, "not installed").pkgs(names(m, &["curl"], &["curl"])).optional());
+    }
+
+    // stores: neither is needed for Steam or plain .exe games
+    if have("legendary") {
+        c.push(Check::ok("legendary", "legendary (Epic Games, optional)", "present").optional());
+    } else {
+        c.push(
+            Check::bad("legendary", "legendary (Epic Games, optional)", Level::Warn, "not installed: Epic login and install are off")
+                .manual("Arch: yay -S legendary (AUR). Any distribution: pipx install legendary-gl")
+                .optional(),
+        );
+    }
+    if crate::gog::gogdl_present() {
+        c.push(Check::ok("gogdl", "gogdl (GOG, optional)", "present").optional());
+    } else {
+        c.push(
+            Check::bad("gogdl", "gogdl (GOG, optional)", Level::Warn, "not installed: GOG install is off (games you installed some other way still import)")
+                .manual("gogdl is Heroic's GOG downloader: github.com/Heroic-Games-Launcher/heroic-gogdl. If it is installed under another name: hgl config gogdl /path/to/gogdl")
+                .optional(),
+        );
+    }
     c
 }
 
