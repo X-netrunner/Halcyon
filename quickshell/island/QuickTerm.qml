@@ -43,8 +43,10 @@ Scope {
     readonly property bool atRight: spot.charAt(1) === "r"
     readonly property bool atBottom: spot.charAt(0) === "b"
 
-    readonly property int boxW: 520
-    readonly property int maxOut: 400
+    // narrow for the status, wide once there is output (long lines, pacman's tables)
+    readonly property bool wide: out.count > 0 || busy
+    readonly property int boxW: wide ? 760 : 520
+    readonly property int maxOut: 1000
     readonly property string sysmodeBin: "/usr/local/bin/sysmode"
     readonly property string hx: Quickshell.env("HOME") + "/.config/Halcyon/bin/hx"
     readonly property string rice: Quickshell.env("HOME") + "/.config/Halcyon"
@@ -89,6 +91,7 @@ Scope {
     ListModel { id: out }
 
     // ---------- open / close ----------
+    readonly property bool typing: input.text !== ""
     readonly property bool mayAutoClose: !askPass && input.text === "" && (autoHide || (!clickMode && !pinned))
     function setHover(on) {
         if (on) { closeT.stop(); if (!clickMode) { open = true; if (!focused) autoFocusT.restart() } }
@@ -155,6 +158,36 @@ Scope {
     }
 
     // ---------- output ----------
+    // Every command is a block: a header (the command, running / done / failed, how long, how many lines) and its lines. A block that
+    // finished well and is long folds to its last lines; a click on the header unfolds it. Lines carry their block (r) and their
+    // number inside it (n), so folding is just hiding the early ones.
+    property int runSeq: 0
+    property int curRun: -1
+    property var runs: ({})               // id -> { start, end, code, count, open }
+    property int runsRev: 0               // bumped on every change: the delegates read runs through runInfo()
+    property double nowMs: Date.now()
+    Timer { interval: 1000; repeat: true; running: root.busy && root.shown; onTriggered: root.nowMs = Date.now() }
+    // a fresh copy each time: the objects in `runs` change in place, and a binding only wakes up for a new value
+    function runInfo(r) { runsRev; var x = runs[r]; return x ? { start: x.start, end: x.end, code: x.code, count: x.count, open: x.open } : undefined }
+    function touchRuns() { runsRev++ }
+    function newRun(header) {
+        runSeq++
+        curRun = runSeq
+        runs[curRun] = { start: Date.now(), end: 0, code: null, count: 0, open: true }
+        pend.push({ t: header, k: "cmd", r: curRun, n: -1 })
+        if (!flushT.running) flushT.start()
+        touchRuns()
+    }
+    function nextN() { var x = runs[curRun]; if (!x) return 0; return x.count++ }
+    function endRun(code) {
+        var x = runs[curRun]
+        if (!x) return
+        x.end = Date.now()
+        x.code = code
+        if (code === 0 && x.count > 12) x.open = false      // long and fine: fold it, the end is what matters
+        touchRuns()
+    }
+    function toggleRun(r) { var x = runs[r]; if (x) { x.open = !x.open; touchRuns() } }
     // the running command's output arrives in pieces: whole lines go to the list, the unfinished last one is shown live
     property string partial: ""
     property int liveIdx: -1              // row of `out` that shows `partial` (-1 = none)
@@ -171,7 +204,7 @@ Scope {
         var p = clean(partial)
         if (p === "") return
         flushOut()
-        if (liveIdx < 0) { out.append({ t: p, k: "out" }); liveIdx = out.count - 1 }
+        if (liveIdx < 0) { out.append({ t: p, k: "out", r: curRun, n: nextN() }); liveIdx = out.count - 1; touchRuns() }
         else out.setProperty(liveIdx, "t", p)
         Qt.callLater(toEnd)
     }
@@ -185,7 +218,7 @@ Scope {
     property var pend: []                 // lines waiting to be shown (flushed every 40 ms)
     function push(text, kind) {
         var lines = String(text).split("\n")
-        for (var i = 0; i < lines.length; i++) pend.push({ t: lines[i], k: kind })
+        for (var i = 0; i < lines.length; i++) pend.push({ t: lines[i], k: kind, r: curRun, n: nextN() })
         if (!flushT.running) flushT.start()
     }
     function toEnd() { view.positionViewAtEnd() }
@@ -197,8 +230,8 @@ Scope {
         if (out.count > maxOut) { var cut = out.count - maxOut; out.remove(0, cut); if (liveIdx >= 0) liveIdx = Math.max(-1, liveIdx - cut) }
         Qt.callLater(toEnd)
     }
-    Timer { id: flushT; interval: 40; onTriggered: root.flushOut() }
-    function clearOut() { pend = []; out.clear(); liveIdx = -1 }
+    Timer { id: flushT; interval: 40; onTriggered: { root.flushOut(); root.touchRuns() } }
+    function clearOut() { pend = []; out.clear(); liveIdx = -1; runs = ({}); curRun = -1; touchRuns() }
     // the whole process group (setsid in submit): sudo, pacman, wine ... stop too, not only the bash in front of them
     readonly property string pidFile: Quickshell.env("XDG_RUNTIME_DIR") + "/halcyon-console.pid"
     function cancelRun() {
@@ -249,7 +282,7 @@ Scope {
         if (line === "") return
         if (history[history.length - 1] !== line) history = history.concat([line]).slice(-100)
         histIdx = -1
-        push(cwdLabel() + " ❯ " + line, "cmd")
+        newRun(line)
 
         if (line === "clear" || line === "cls") { clearOut(); return }
         if (line === "exit" || line === "quit") { close(); return }
@@ -404,7 +437,9 @@ Scope {
         stdout: SplitParser { splitMarker: ""; onRead: d => root.chunk(d) }
         onExited: (code, status) => {
             root.endLive()
-            if (code !== 0 && code !== 143 && code !== 15) root.push("exit " + code + (code === 126 || code === 127 ? "  (not found / not allowed)" : ""), "err")
+            root.flushOut()
+            if (code === 126 || code === 127) root.push("not found, or not allowed to run", "err")
+            root.endRun(code)
             if (root.queued !== "") { var q = root.queued; root.queued = ""; Qt.callLater(function () { root.submit(q) }) }
         }
     }
@@ -433,26 +468,34 @@ Scope {
     Timer { interval: out.count === 0 ? 3000 : 15000; running: root.shown; repeat: true; triggeredOnStart: true; onTriggered: if (!statusProc.running) statusProc.running = true }
 
     function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
-    // idle: only what tells you something (the mode is already in the header). Services that run, alerts when there are any.
+    function dot(on, label) {
+        return "<font color='" + (on ? pal.good : pal.muted) + "'>" + (on ? "●" : "○") + "</font> " + esc(label)
+    }
+    function row(k, v) { return "<font color='" + pal.muted + "'>" + esc(k.padEnd(12, " ")) + "</font>" + v }
     readonly property var statusRows: {
         var s = st || {}
-        var muted = function (t) { return "<font color='" + pal.muted + "'>" + esc(t) + "</font>" }
-        var on = []
-        if (s.honeypot) on.push("honeypot")
-        if (s.ids) on.push("ids")
-        if (s.cowrie) on.push("cowrie")
-        if (s.decoyWifi) on.push("decoy wifi " + s.decoyWifi)
-        var rows = [on.length ? "<font color='" + pal.good + "'>●</font> " + esc(on.join("  ·  ")) : muted("Security services off")]
-        var n = function (v) { return Number(v || 0) }
-        if (s.readable && (n(s.today) > 0 || n(s.idsAlerts) > 0))
-            rows.push("<font color='" + pal.warn + "'>" + n(s.today) + " alert" + (n(s.today) === 1 ? "" : "s") + " today</font>" +
-                      muted("  ·  " + n(s.alerts) + " total" + (n(s.attackers) > 0 ? "  ·  " + n(s.attackers) + " attackers" : "")))
-        if (s.readable && s.last && n(s.today) > 0) {
-            var ev = String(s.last), i = ev.indexOf("] ")
+        var m = sysmode || s.mode || ""
+        var mc = modeColor[m] || pal.muted
+        var rd = !!s.readable
+        var num = function (v) { return (v === undefined || v === null) ? "–" : String(v) }
+        var rows = [
+            row("sysmode", "<font color='" + mc + "'><b>" + esc(m !== "" ? m : "not set") + "</b></font>"),
+            row("honeypot", dot(!!s.honeypot, s.honeypot ? "active" : "off")),
+            row("ids", dot(!!s.ids, s.ids ? "active" : "off")),
+            row("cowrie", dot(!!s.cowrie, s.cowrie ? "active" : "off")),
+            row("decoy wifi", dot(!!s.decoyWifi, s.decoyWifi ? s.decoyWifi : "off")),
+            "&nbsp;",
+            row(">ids hit", ": " + num(s.idsAlerts)),
+            row(">alerts", ": " + (rd ? num(s.today) + " today · " + num(s.alerts) + " total" : "–")),
+            row(">attackers", ": " + (rd ? num(s.attackers) : "–"))
+        ]
+        if (s.last) {
+            var ev = String(s.last)
+            var i = ev.indexOf("] ")                 // drop the leading [timestamp]
             if (ev.charAt(0) === "[" && i > 0) ev = ev.substring(i + 2)
-            rows.push(muted("last: " + ev.slice(0, 56)))
+            rows.push(row(">last", ": " + esc(ev.slice(0, 52))))
         }
-        if (!s.readable && on.length) rows.push(muted("alerts need root: sudo sysmode logs"))
+        if (!rd) rows.push("<font color='" + pal.muted + "'>log not readable as your user: <b>sudo sysmode logs</b></font>")
         return rows
     }
 
@@ -476,16 +519,18 @@ Scope {
         id: win
         anchors { top: !root.atBottom; bottom: root.atBottom; left: !root.atRight; right: root.atRight }
         // fixed size: resizing on open / close re-sends enter / leave and made the console open and close by itself (mask = click-through)
-        implicitWidth: root.boxW + 60
-        implicitHeight: 660
+        implicitWidth: 760 + 60               // the widest the box gets (the mask keeps the rest click-through)
+        implicitHeight: 780
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-term"
         WlrLayershell.layer: WlrLayer.Top
         // Exclusive while the pointer is over the console (Hyprland's follow_mouse would otherwise hand the keyboard to the
         // terminal beside it); the moment the pointer leaves it is on-demand again, so clicking another window just works
+        // ...and while you are typing (text in the line, or answering a running command): the pointer drifting off the box must not
+        // send the rest of the line to the window under it. An empty line is on-demand again, so clicking another window just works.
         WlrLayershell.keyboardFocus: !root.focused ? WlrKeyboardFocus.None
-                                   : ((root.grabKeys || root.zoneHover || root.askPass) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
+                                   : ((root.grabKeys || root.zoneHover || root.askPass || root.typing) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
 
         mask: Region { item: zone }
 
@@ -529,7 +574,7 @@ Scope {
             y: root.atBottom ? (zone.height - root.pal.boxEdge - height + (1 - root.reveal) * (height + root.pal.boxEdge + 14))
                              : (root.pal.boxTop - (1 - root.reveal) * (height + root.pal.boxTop + 14))
             width: root.boxW
-            height: Math.min(520, 40 + body.implicitHeight + 76)
+            height: Math.min(660, 40 + body.implicitHeight + 76)
             radius: root.pal.rLg
             opacityBody: 0.94
             opacity: Math.min(1, root.reveal * 1.6)
@@ -539,6 +584,7 @@ Scope {
             Behavior on y { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
 
             MouseArea {
                 anchors.fill: parent
@@ -590,7 +636,7 @@ Scope {
                 Text {
                     anchors.centerIn: parent
                     visible: root.busy
-                    text: root.askPass ? "waiting for password" : "running · Ctrl+C"
+                    text: root.askPass ? "waiting for password" : "running · Ctrl+C stops"
                     color: root.pal.accent
                     font.family: root.mono
                     font.pixelSize: 11
@@ -612,7 +658,8 @@ Scope {
                 id: body
                 anchors { left: parent.left; right: parent.right; top: sep1.bottom; bottom: sep2.top; leftMargin: 20; rightMargin: 20; topMargin: 12; bottomMargin: 10 }
                 readonly property bool idle: input.text === "" && out.count === 0 && !root.busy
-                implicitHeight: idle ? statusCol.implicitHeight : Math.min(320, Math.max(40, view.contentHeight + 4))
+                // never smaller than the idle status: starting to type must not shrink the box out from under the pointer
+                implicitHeight: idle ? statusCol.implicitHeight : Math.min(470, Math.max(statusCol.implicitHeight, view.contentHeight + 4))
 
                 Column {
                     id: statusCol
@@ -640,7 +687,7 @@ Scope {
                     }
                     Text {
                         topPadding: 6
-                        text: "type a command  ·  help"
+                        text: "type a command · secure · stealth · relaxed · lockdown · help"
                         color: Qt.alpha(root.pal.muted, 0.9)
                         font.family: root.mono
                         font.pixelSize: 10
@@ -657,19 +704,86 @@ Scope {
                     boundsBehavior: Flickable.StopAtBounds
                     TapHandler { onTapped: root.takeFocus() }
                     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
-                    delegate: Text {
+                    spacing: 0
+                    delegate: Item {
+                        id: ln
                         required property string t
                         required property string k
+                        required property int r
+                        required property int n
+                        readonly property var run: root.runInfo(r)
+                        readonly property bool head: k === "cmd"
+                        // a folded block shows its last 4 lines
+                        readonly property bool hidden: !head && run !== undefined && !run.open && n < run.count - 4
+                        readonly property string tone: k === "err" || /\b(error|failed|fatal|cannot|denied|not found)\b/i.test(t) ? "bad"
+                                                     : (/\bwarning\b/i.test(t) ? "warn" : (/^::|^\[sudo\]|\?\s*\[[yYnN]\/[yYnN]\]/.test(t) ? "ask" : ""))
                         width: view.width
-                        text: t === "" ? " " : t
-                        textFormat: Text.PlainText
-                        wrapMode: Text.WrapAnywhere
-                        color: k === "cmd" ? root.pal.accent : k === "err" ? root.pal.bad : k === "info" ? Qt.lighter(root.pal.muted, 1.35) : "#f9fafb"
-                        font.family: root.mono
-                        font.pixelSize: 12
-                        font.weight: k === "cmd" ? Font.DemiBold : Font.Normal
-                        style: Text.Outline
-                        styleColor: Qt.rgba(0, 0, 0, 0.70)
+                        height: hidden ? 0 : (head ? hdr.height : line.implicitHeight)
+                        visible: !hidden
+
+                        // ---- the block's header: the command, then how it went
+                        Item {
+                            id: hdr
+                            visible: ln.head
+                            width: parent.width
+                            height: ln.head ? (ln.n === -1 && ln.r > 1 ? 34 : 24) : 0
+                            Rectangle {               // a hairline between blocks
+                                visible: ln.r > 1
+                                anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 4 }
+                                height: 1
+                                color: root.pal.lineSoft
+                            }
+                            Text {
+                                id: hcmd
+                                anchors { left: parent.left; bottom: parent.bottom; bottomMargin: 4; right: hstat.left; rightMargin: 12 }
+                                text: "❯ " + ln.t
+                                elide: Text.ElideRight
+                                textFormat: Text.PlainText
+                                color: root.pal.accent
+                                font.family: root.mono
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                id: hstat
+                                anchors { right: parent.right; bottom: parent.bottom; bottomMargin: 4 }
+                                readonly property var ri: ln.run
+                                readonly property real secs: !ri ? 0 : Math.max(0, ((ri.end || root.nowMs) - ri.start) / 1000)
+                                readonly property string dur: secs < 1 ? "" : (secs < 60 ? Math.round(secs) + " s" : Math.floor(secs / 60) + " min " + Math.round(secs % 60) + " s")
+                                readonly property string lines: !ri || ri.count === 0 ? "" : ri.count + (ri.count === 1 ? " line" : " lines")
+                                readonly property bool running: !!ri && ri.end === 0 && ln.r === root.curRun && root.busy
+                                text: !ri ? "" : (running ? "running" + (dur ? " · " + dur : "") + (lines ? " · " + lines : "")
+                                      : (ri.code === null ? "" : (ri.code === 0 ? "✓" : (ri.code === 143 || ri.code === 15 ? "stopped" : "✗ exit " + ri.code))
+                                         + (dur ? " · " + dur : "") + (lines ? " · " + lines : "")
+                                         + (ri.count > 4 ? (ri.open ? "   fold" : "   show all") : "")))
+                                color: running ? root.pal.accent : (!ri || ri.code === 0 ? root.pal.muted : (ri.code === 143 || ri.code === 15 ? root.pal.muted : root.pal.bad))
+                                font.family: root.mono
+                                font.pixelSize: 10
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !!ln.run && ln.run.end > 0 && ln.run.count > 4
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: root.toggleRun(ln.r)
+                            }
+                        }
+                        // ---- an output line: one line each (long ones end in …), coloured by what it says
+                        Text {
+                            id: line
+                            visible: !ln.head
+                            width: parent.width
+                            leftPadding: 14
+                            text: ln.t === "" ? " " : ln.t
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: ln.tone === "bad" ? root.pal.bad : ln.tone === "warn" ? root.pal.warn : ln.tone === "ask" ? root.pal.accent
+                                 : (ln.k === "info" ? Qt.lighter(root.pal.muted, 1.35) : "#d7dae0")
+                            font.family: root.mono
+                            font.pixelSize: 11
+                            lineHeight: 1.12
+                            style: Text.Outline
+                            styleColor: Qt.rgba(0, 0, 0, 0.6)
+                        }
                     }
                 }
             }

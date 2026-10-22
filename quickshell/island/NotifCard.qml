@@ -198,9 +198,11 @@ Item {
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
-                    maximumLineCount: 1
+                    wrapMode: Text.Wrap
+                    maximumLineCount: hov.hovered ? 4 : 2
                 }
                 Text {
+                    id: nbody0
                     Layout.fillWidth: true
                     visible: text !== ""
                     text: (card.notif && card.notif.body) ? card.notif.body.replace(/\n/g, "<br>") : ""
@@ -210,8 +212,16 @@ Item {
                     font.pixelSize: 13
                     lineHeight: 1.12
                     wrapMode: Text.Wrap
-                    maximumLineCount: 3
+                    maximumLineCount: hov.hovered ? 80 : 3          // hover shows the whole message
                     elide: Text.ElideRight
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: !hov.hovered && nbody0.truncated
+                    text: "hover to read all"
+                    color: Qt.alpha(card.pal.muted, 0.9)
+                    font.family: card.pal.uiFont
+                    font.pixelSize: 10
                 }
                 RowLayout {
                     visible: card.extraActions.length > 0
