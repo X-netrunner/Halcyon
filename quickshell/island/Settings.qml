@@ -589,6 +589,7 @@ Scope {
         case "barBuilder": return cBarBuilder
         case "aiModel": return cAiModel
         case "voiceKey": return cVoiceKey
+        case "discover": return cDiscover
         case "growth": return cGrowth
         default: return cSwatches
         }
@@ -609,6 +610,10 @@ Scope {
     // Rice in Apps. Items marked adv: true sit behind each group's "Advanced" row
     // (a search or the header switch shows them all). The two reminder blocks of Backup / Safety come from remind() below.
     readonly property var groups: [
+        { id: "discover", title: "What Halcyon can do", section: "Discover", items: [
+            { type: "action", id: "tour-replay", label: "Guided tour", btn: "Start", done: "", desc: "A minute's walk round the desktop, with a few things to try. Also >tour in the launcher." },
+            { type: "custom", name: "discover" }
+        ] },
         { id: "look", title: "Look", section: "Appearance", items: [
             { type: "seg", key: "opt:keysStyle", label: "Shortcuts layout", desc: "Tree: every shortcut on a branching tree. Pages: a menu of groups on the left and one group at a time. Same shortcuts in both; the chip in the Shortcuts header switches too.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
             { type: "seg", key: "opt:settingsStyle", label: "Settings layout", desc: "Tree: the branching view. Pages: a menu on the left and one page at a time. Same settings in both.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
@@ -1003,7 +1008,7 @@ Scope {
     property string query: ""
     property bool scrolling: false          // true while the list is moving: the starfield / pulses pause so scrolling gets the whole frame
     property string section: ""             // "" = every section; else Appearance | Bar & panels | Desktop | Input & power | Performance | System
-    readonly property var sections: ["Appearance", "Stars & splash", "Bar & panels", "Desktop", "Productivity", "Input & power", "Performance", "System"]
+    readonly property var sections: ["Discover", "Appearance", "Stars & splash", "Bar & panels", "Desktop", "Productivity", "Input & power", "Performance", "System"]
     property var collapsed: ({ apps: true, growth: true, gestures: true, mousebtn: true, treeview: true })
 
     // ---- two layouts: "tree" (the branching view, the default) and "pages" (a menu on the left, one page at a time).
@@ -1011,6 +1016,7 @@ Scope {
     readonly property bool pagesMode: opt && opt.settingsStyle === "pages"
     // every group sits on exactly ONE page (tests/settings-groups.test.js checks it); the pages follow the section tabs of the tree
     readonly property var pages: [
+        { id: "Discover", sub: "Everything Halcyon can do, and the guided tour.", groups: ["discover"] },
         { id: "Appearance", sub: "Look, colours, wallpaper, transparency and motion.", groups: ["look", "colours", "wallpaper", "glass", "motion"] },
         { id: "Stars & splash", sub: "Constellations, the splash, the weekly sky, time of day and the terminal greeting.", groups: ["growth", "signature", "greeting"] },
         { id: "Bar", sub: "The bar, how it behaves, and the clock.", groups: ["bar", "barbehave", "clock"] },
@@ -1023,7 +1029,7 @@ Scope {
         { id: "System", sub: "Preferences, timeouts, login manager, startup and apps.", groups: ["sysoptions", "startup", "apps"] },
         { id: "Backup", sub: "Backups, restore and the safety check.", groups: ["backup"] }
     ]
-    property string page: "Appearance"
+    property string page: "Discover"
     function pageOf(gid) { for (var i = 0; i < pages.length; i++) if (pages[i].groups.indexOf(gid) >= 0) return pages[i].id; return "Appearance" }
     function pageInfo(id) { for (var i = 0; i < pages.length; i++) if (pages[i].id === id) return pages[i]; return pages[0] }
     // "Advanced" rows: items marked adv: true stay behind a fold in each group (a search always finds them; advAll shows them everywhere)
@@ -1108,7 +1114,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 5 : t.name === "counterScan" ? 6 : t.name === "dayClock" ? 13 : t.name === "wallClock" ? 5 : t.name === "focusClock" ? 6 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 5 : t.name === "counterScan" ? 6 : t.name === "dayClock" ? 13 : t.name === "wallClock" ? 5 : t.name === "focusClock" ? 6 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : t.name === "discover" ? 30 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -1190,6 +1196,7 @@ Scope {
 
     Component { id: cAiModel; SetAiModel { root: settingsScope } }
     Component { id: cVoiceKey; SetVoiceKey { root: settingsScope } }
+    Component { id: cDiscover; SetDiscover { root: settingsScope } }
 
     Component { id: cFocusApps; SetFocusApps { root: settingsScope } }
 

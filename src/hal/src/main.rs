@@ -20,6 +20,7 @@
 //!   hal bt-battery         <- quickshell/island/scripts/bt-battery.sh
 //!   hal hypr-values        <- quickshell/island/scripts/hypr-values.sh
 //!   hal osd-watch          <- scripts/osd-watch.sh
+//!   hal tools ...          <- scripts/halcyon-tools.py       (colour picker, measure, zoom, snippets, windows: the ones on a key)
 //!   hal ping
 
 mod btbattery;
@@ -31,6 +32,7 @@ mod gestures;
 mod hyprvalues;
 mod idledim;
 mod input;
+mod json;
 pub mod light;
 mod nightlight;
 mod notifguard;
@@ -38,6 +40,7 @@ mod numlock;
 mod osdwatch;
 mod supertap;
 mod toolstate;
+mod tools;
 mod touchpad;
 mod util;
 mod wifips;
@@ -64,6 +67,7 @@ fn usage() {
          \x20 notif-guard\n\
          \x20 charge-limit status | toggle | on | off\n\
          \x20 bt-battery\n\
+         \x20 tools colorpick [hex|rgb|hsl] | measure | zoom in|out|reset|toggle | snippets pick|list|copy|type | windows last|next|prev|pick|list\n\
          \x20 ping"
     );
 }
@@ -92,6 +96,7 @@ fn main() {
         Some("bt-battery") | Some("btbattery") => btbattery::run(),
         Some("hypr-values") | Some("hyprvalues") => hyprvalues::run(),
         Some("osd-watch") | Some("osdwatch") => osdwatch::run(),
+        Some("tools") => tools::run(rest),
         Some("ping") => 0,
         _ => {
             usage();
