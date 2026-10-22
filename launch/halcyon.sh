@@ -63,6 +63,9 @@ elif [ "$mode" = dgpu ]; then
   echo "GPU mode: dgpu asked for but the NVIDIA driver is not loaded, using the default GPU" >> "$log"
 fi
 
+# From the tty1 login (launch/halcyon-login.sh) the console still shows the boot splash: Hyprland's start-up text (its logo and
+# log lines) would be drawn over it, so it goes to the launch log instead
+if [ "${HALCYON_LOGIN_LOCK:-}" = 1 ]; then exec >>"$log" 2>&1; fi
 if command -v start-hyprland >/dev/null 2>&1; then exec start-hyprland; fi     # Hyprland's own start wrapper (0.53 and newer)
 if command -v Hyprland >/dev/null 2>&1; then exec Hyprland; fi
 text_console

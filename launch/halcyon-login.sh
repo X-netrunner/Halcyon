@@ -46,4 +46,7 @@ if [ "$recent" -ge 3 ]; then
   exit 1
 fi
 : > "$state/lock-on-start"                  # the island takes this file and locks first thing
+# read by the island the moment it starts (no file read needed): it keeps the desktop hidden until the lock screen is up, so the
+# desktop never shows for a frame between the boot splash and the lock. Also: Hyprland's start-up text goes to a log, not tty1.
+export HALCYON_LOGIN_LOCK=1
 exec "$(dirname "$(readlink -f "$0")")/halcyon.sh"
