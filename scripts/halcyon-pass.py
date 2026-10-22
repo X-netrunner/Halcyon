@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """halcyon-pass.py: native, lightweight, AES-256 encrypted password manager for Halcyon.
 
-Vault: ~/.local/state/island/vault.enc  (AES-256-CBC, PBKDF2 via openssl; same file format as before, old vaults still open)
-Key:   ~/.local/state/island/.vault.key (0600, made once; the vault is NEVER re-keyed or overwritten if it cannot be opened)
+Vault: ~/.local/state/island/vault.enc  (AES-256-CBC, PBKDF2 via openssl, sealed with HMAC-SHA256 so a changed file is refused;
+       older unsealed vaults still open and are sealed on the next save)
+Key:   ~/.local/state/island/.vault.key (0600, made once; the vault is NEVER re-keyed or overwritten if it cannot be opened),
+       or in the desktop keyring after `passman keyring on` (then the vault only opens while you are logged in)
 
 Usage:
   passman list [keyword]                   list saved services (optionally filtered)
@@ -18,12 +20,14 @@ Usage:
   passman backup [file]                    copy the encrypted vault (default: ~/vault-backup-<date>.enc)
   passman import <file.csv>                import a Brave / Chrome / Edge password export (name,url,username,password)
   passman browser                          set up "save this login?" prompts in Brave / Chromium browsers
+  passman keyring on|off                   keep the key in the desktop keyring instead of next to the vault (off: back to the file)
   passman status                           check the vault, the key and the tools
 """
 
 import fcntl
 import getpass
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -56,14 +60,29 @@ def err(msg: str):
 
 
 # ------------------------------------------------------------------------------------------------ key handling
+KEYRING_ATTR = ["application", "halcyon-vault", "item", os.environ.get("HALCYON_VAULT_KEYRING_ITEM", "key")]   # the env var: tests use their own item
+
+
+def keyring_key():
+    """The key from the desktop keyring (secret-tool), or None. The keyring may ask for your login password once if it is locked."""
+    if shutil.which("secret-tool") is None:
+        return None
+    try:
+        r = subprocess.run(["secret-tool", "lookup"] + KEYRING_ATTR, capture_output=True, timeout=60)
+    except (subprocess.SubprocessError, OSError):
+        return None
+    key = r.stdout.strip()
+    return key if r.returncode == 0 and len(key) >= 32 else None
+
+
 def read_key():
-    """The device key, or None if there is no usable key file."""
+    """The device key (the key file, else the desktop keyring), or None if there is none."""
     try:
         with open(KEY_FILE, "rb") as f:
             key = f.read().strip()
         return key if len(key) >= 32 else None
     except FileNotFoundError:
-        return None
+        return keyring_key()
     except OSError as e:
         raise VaultError(f"Cannot read the key file {KEY_FILE}: {e}")
 
@@ -117,12 +136,28 @@ def _openssl(decrypt: bool, data: bytes, key: bytes) -> bytes:
     return out
 
 
-def decrypt_data(cipher: bytes, key: bytes) -> bytes:
-    return _openssl(True, cipher, key)
+# A sealed vault: SEAL + HMAC-SHA256(mac key, openssl output) + openssl output. CBC alone has no integrity check, so a changed or
+# swapped file was only noticed if the padding happened to break; the seal is checked before anything is decrypted.
+SEAL = b"HALCYON-VAULT-2\n"
+
+
+def _mac(cipher: bytes, key: bytes) -> bytes:
+    mac_key = hashlib.sha256(b"halcyon-vault-mac\0" + key).digest()     # its own key, derived from the vault key
+    return hmac.new(mac_key, cipher, hashlib.sha256).digest()
+
+
+def decrypt_data(blob: bytes, key: bytes) -> bytes:
+    if blob.startswith(SEAL):
+        tag, cipher = blob[len(SEAL):len(SEAL) + 32], blob[len(SEAL) + 32:]
+        if len(tag) != 32 or not hmac.compare_digest(tag, _mac(cipher, key)):
+            raise VaultError("The vault's seal does not match: the file was changed or damaged, or this is not its key")
+        return _openssl(True, cipher, key)
+    return _openssl(True, blob, key)                 # an older, unsealed vault: sealed on its next save
 
 
 def encrypt_data(plain: bytes, key: bytes) -> bytes:
-    return _openssl(False, plain, key)
+    cipher = _openssl(False, plain, key)
+    return SEAL + _mac(cipher, key) + cipher
 
 
 # ------------------------------------------------------------------------------------------------ vault file
@@ -462,7 +497,54 @@ def backup(dest: str = "") -> int:
     shutil.copy2(VAULT_FILE, dest)
     os.chmod(dest, 0o600)
     print(c("1;32", "OK") + f" Encrypted vault copied to {dest}")
-    print(c("90", "It only opens with ~/.local/state/island/.vault.key: back that file up too, but keep it somewhere else."))
+    if os.path.isfile(KEY_FILE):
+        print(c("90", "It only opens with ~/.local/state/island/.vault.key: back that file up too, but keep it somewhere else."))
+    else:
+        print(c("90", "Its key is in your desktop keyring (passman keyring off writes it back to a file you can back up)."))
+    return 0
+
+
+def keyring(on: bool) -> int:
+    """Move the key into the desktop keyring (on) or back into the key file (off). The vault itself is not touched, and the old
+    place is only cleared after the new one gives back exactly the same key and the vault opens with it."""
+    if shutil.which("secret-tool") is None:
+        err("secret-tool is not installed (sudo pacman -S libsecret) or there is no keyring running (gnome-keyring, KWallet).")
+        return 1
+    with locked():
+        if on:
+            try:
+                with open(KEY_FILE, "rb") as f:
+                    key = f.read().strip()
+            except FileNotFoundError:
+                print("The key is already in the keyring." if keyring_key() else "There is no key file yet: add a password first.")
+                return 0 if keyring_key() else 1
+            if len(key) < 32:
+                raise VaultError("The key file looks damaged; nothing was moved.")
+            r = subprocess.run(["secret-tool", "store", "--label=Halcyon password vault key"] + KEYRING_ATTR, input=key, capture_output=True, timeout=120)
+            if r.returncode != 0 or keyring_key() != key:
+                err("The keyring did not keep the key (is it unlocked?). The key file was left where it was.")
+                return 1
+            if os.path.isfile(VAULT_FILE) and os.path.getsize(VAULT_FILE) > 0:
+                with open(VAULT_FILE, "rb") as f:
+                    decrypt_data(f.read(), keyring_key())       # raises: then the file stays
+            os.remove(KEY_FILE)
+            print(c("1;32", "OK") + " The vault key is in your desktop keyring now; the key file next to the vault is gone.")
+            print(c("90", "The vault opens while you are logged in (the keyring unlocks with your login password). passman keyring off undoes it."))
+        else:
+            if os.path.isfile(KEY_FILE):
+                print("The key is already in the key file.")
+                return 0
+            key = keyring_key()
+            if not key:
+                err("No vault key in the keyring (or it is locked).")
+                return 1
+            fd = os.open(KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(key)
+                f.flush()
+                os.fsync(f.fileno())
+            subprocess.run(["secret-tool", "clear"] + KEYRING_ATTR, capture_output=True, timeout=60)
+            print(c("1;32", "OK") + f" The vault key is back in {KEY_FILE}.")
     return 0
 
 
@@ -471,7 +553,14 @@ def status() -> int:
     print(c("1;36", "Halcyon password vault: status"))
     print(f"  {'openssl':<14}" + ("found" if ok else c("1;31", "MISSING")))
     print(f"  {'clipboard':<14}" + ("found" if (shutil.which("wl-copy") or shutil.which("xclip")) else c("1;33", "no wl-copy / xclip (passwords are printed instead)")))
-    print(f"  {'key file':<14}" + ("present" if read_key() else c("1;31", "missing")))
+    if os.path.isfile(KEY_FILE):
+        print(f"  {'key':<14}" + "key file next to the vault" + c("90", "  (passman keyring on keeps it in the desktop keyring instead)"))
+    else:
+        print(f"  {'key':<14}" + ("in the desktop keyring" if keyring_key() else c("1;31", "missing")))
+    if os.path.isfile(VAULT_FILE) and os.path.getsize(VAULT_FILE) > 0:
+        with open(VAULT_FILE, "rb") as f:
+            sealed = f.read(len(SEAL)) == SEAL
+        print(f"  {'tamper seal':<14}" + ("yes" if sealed else c("1;33", "not yet (added on the next save)")))
     print(f"  {'vault file':<14}" + ((f"{os.path.getsize(VAULT_FILE)} bytes") if os.path.isfile(VAULT_FILE) else "none yet"))
     print(f"  {'last backup':<14}" + (time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(BACKUP_FILE))) if os.path.isfile(BACKUP_FILE) else "none yet"))
     if shutil.which("wl-copy") and shutil.which("cliphist"):
@@ -558,6 +647,11 @@ def main() -> int:
         return backup(rest[0] if rest else "")
     elif cmd in ("status", "doctor", "check"):
         return status()
+    elif cmd == "keyring":
+        if not rest or rest[0] not in ("on", "off"):
+            print("Usage: passman keyring on|off")
+            return 2
+        return keyring(rest[0] == "on")
     elif cmd in ("help", "-h", "--help"):
         print_help()
     elif cmd.startswith("-"):

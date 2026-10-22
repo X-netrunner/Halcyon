@@ -146,11 +146,11 @@ fn get_permanent_mac(device: &str) -> Option<String> {
     if code != 0 {
         return None;
     }
-    let perm_regex = Regex::new(r"permaddr\s+([0-9a-fA-F:]{17})").unwrap();
+    let perm_regex = Regex::new(r"permaddr\s+([0-9a-fA-F:]{17})").expect("valid regex");
     if let Some(caps) = perm_regex.captures(&stdout) {
         return Some(caps[1].to_lowercase());
     }
-    let ether_regex = Regex::new(r"link/ether\s+([0-9a-fA-F:]{17})").unwrap();
+    let ether_regex = Regex::new(r"link/ether\s+([0-9a-fA-F:]{17})").expect("valid regex");
     if let Some(caps) = ether_regex.captures(&stdout) {
         return Some(caps[1].to_lowercase());
     }
@@ -162,7 +162,7 @@ fn get_current_mac(device: &str) -> Option<String> {
     if code != 0 {
         return None;
     }
-    let ether_regex = Regex::new(r"link/ether\s+([0-9a-fA-F:]{17})").unwrap();
+    let ether_regex = Regex::new(r"link/ether\s+([0-9a-fA-F:]{17})").expect("valid regex");
     if let Some(caps) = ether_regex.captures(&stdout) {
         return Some(caps[1].to_lowercase());
     }
@@ -278,7 +278,7 @@ fn show_status() {
         for line in content.lines() {
             let stripped = line.trim();
             if stripped.starts_with('[') && stripped.ends_with(']') {
-                in_settings = &stripped[1..stripped.len() - 1].trim() == &"Settings";
+                in_settings = stripped[1..stripped.len() - 1].trim() == "Settings";
             } else if in_settings && stripped.starts_with("AddressOverride") {
                 let parts: Vec<&str> = stripped.split('=').collect();
                 if parts.len() >= 2 {
@@ -353,7 +353,7 @@ fn list_connections() {
                 for line in content.lines() {
                     let stripped = line.trim();
                     if stripped.starts_with('[') && stripped.ends_with(']') {
-                        in_settings = &stripped[1..stripped.len() - 1].trim() == &"Settings";
+                        in_settings = stripped[1..stripped.len() - 1].trim() == "Settings";
                     } else if in_settings && stripped.starts_with("AddressOverride") {
                         let parts: Vec<&str> = stripped.split('=').collect();
                         if parts.len() >= 2 {
@@ -414,6 +414,7 @@ fn main() {
         return;
     }
 
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let is_root = unsafe { libc::geteuid() == 0 };
     if !is_root {
         println!("{RED}Error: This script must be run with sudo/root privileges.{RESET}");
@@ -445,12 +446,11 @@ fn main() {
                     i += 1;
                 }
             }
-            "-m" | "--mac" => {
-                if i + 1 < args.len() {
+            "-m" | "--mac"
+                if i + 1 < args.len() => {
                     mac_arg = Some(args[i + 1].clone());
                     i += 1;
                 }
-            }
             _ => {}
         }
         i += 1;
@@ -508,7 +508,7 @@ fn main() {
         }
         println!("{GREEN}✓ Successfully removed MAC override policy.{RESET}");
     } else {
-        let mac_regex = Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").unwrap();
+        let mac_regex = Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").expect("valid regex");
         let target_mac = if let Some(ref m) = mac_arg {
             if !mac_regex.is_match(m) {
                 println!("{RED}Error: Invalid MAC address format. Expected XX:XX:XX:XX:XX:XX.{RESET}");
@@ -566,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_mac_regex() {
-        let mac_regex = Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").unwrap();
+        let mac_regex = Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").expect("valid regex");
         assert!(mac_regex.is_match("00:11:22:33:44:55"));
         assert!(mac_regex.is_match("AA:BB:CC:DD:EE:FF"));
         assert!(mac_regex.is_match("aa-bb-cc-dd-ee-ff"));

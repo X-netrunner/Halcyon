@@ -53,7 +53,7 @@ pub fn palette(image: Option<&str>) {
     const BINS: usize = 24;
     let data = image.map(pixels).unwrap_or_default();
     let (mut w, mut hs, mut ss) = ([0.0f64; BINS], [0.0f64; BINS], [0.0f64; BINS]);
-    for px in data.chunks_exact(3) {
+    for px in data.as_chunks::<3>().0 {
         let (h, s, v) = rgb_to_hsv(px[0] as f64 / 255.0, px[1] as f64 / 255.0, px[2] as f64 / 255.0);
         if s < 0.18 || v < 0.2 { continue; }
         let wt = s * (0.3 + v);

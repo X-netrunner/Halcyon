@@ -65,7 +65,7 @@ fn ts(t: &str) -> String {
     let days = era * 146097 + doe - 719468;
     let mut secs = days * 86400 + h * 3600 + mi * 60 + s;
     // an explicit +hh:mm offset (cowrie writes Z, but be tolerant)
-    if let Some(off) = t.get(19..).and_then(|r| r.rfind(|c| c == '+' || c == '-').map(|i| &r[i..])) {
+    if let Some(off) = t.get(19..).and_then(|r| r.rfind(['+', '-']).map(|i| &r[i..])) {
         if off.len() >= 6 {
             if let (Ok(oh), Ok(om)) = (off[1..3].parse::<i64>(), off[4..6].parse::<i64>()) {
                 let o = oh * 3600 + om * 60;
@@ -73,6 +73,7 @@ fn ts(t: &str) -> String {
             }
         }
     }
+    // SAFETY: tm is a zeroed plain C struct and every pointer is to a live local; localtime_r is the thread-safe variant.
     unsafe {
         let tt = secs as libc::time_t;
         let mut tm: libc::tm = std::mem::zeroed();
@@ -122,9 +123,9 @@ fn load_cowrie(logs: &str) -> (HashMap<String, Cowrie>, Vec<(String, String, Str
 
 fn load_recon(logs: &str) -> HashMap<String, Counter> {
     let mut agg: HashMap<String, Counter> = HashMap::new();
-    let any_ip = Regex::new(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b").unwrap();
-    let head = Regex::new(r"^\[[^\]]*\]\s*\[ALERT\]\s*").unwrap();
-    let from_ip = Regex::new(r"\s*\b(?:from|Source IP|Banning IP)\s+\d{1,3}(?:\.\d{1,3}){3}\b").unwrap();
+    let any_ip = Regex::new(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b").expect("valid regex");
+    let head = Regex::new(r"^\[[^\]]*\]\s*\[ALERT\]\s*").expect("valid regex");
+    let from_ip = Regex::new(r"\s*\b(?:from|Source IP|Banning IP)\s+\d{1,3}(?:\.\d{1,3}){3}\b").expect("valid regex");
     let raw = fs::read(format!("{}/recon-attempts.log", logs)).unwrap_or_default();
     for line in String::from_utf8_lossy(&raw).lines() {
         if !line.contains("[ALERT]") {

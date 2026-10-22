@@ -36,11 +36,10 @@ fn is_halcyon_proc(pid: i32) -> bool {
     }
     b.clear();
     if let Ok(mut f) = File::open(format!("/proc/{}/cmdline", pid)) {
-        if f.read_to_string(&mut b).is_ok() {
-            if b.contains("/Halcyon/") || b.contains(".config/Halcyon") || b.contains("halcyon") {
+        if f.read_to_string(&mut b).is_ok()
+            && (b.contains("/Halcyon/") || b.contains(".config/Halcyon") || b.contains("halcyon")) {
                 return true;
             }
-        }
     }
     false
 }
@@ -82,7 +81,9 @@ fn read_proc_pss_mb(pid: i32, page_mb: f64) -> f64 {
 }
 
 pub fn sample() {
+    // SAFETY: sysconf with a valid name constant only reads a system value.
     let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+    // SAFETY: sysconf with a valid name constant only reads a system value.
     let page_mb = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as f64 / 1048576.0;
     let ncpu = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f64;
 
@@ -201,7 +202,11 @@ pub fn status() {
         return;
     }
 
-    let days = ((rows.last().unwrap().0 - rows.first().unwrap().0) / 86400.0 * 100.0).round() / 100.0;
+    let span = match (rows.first(), rows.last()) {
+        (Some(first), Some(last)) => last.0 - first.0,
+        _ => 0.0,
+    };
+    let days = (span / 86400.0 * 100.0).round() / 100.0;
     let samples = rows.len();
 
     if days >= ADAPT_DAYS && samples >= ADAPT_MIN_SAMPLES {

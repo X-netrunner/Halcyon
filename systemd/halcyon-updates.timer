@@ -1,0 +1,12 @@
+[Unit]
+Description=Halcyon: look once a day for waiting updates (off until you run: halcyon updates timer on)
+
+[Timer]
+# a few minutes after login (the laptop may be off at the usual time), then every day at 11:00; Persistent catches up a missed one
+OnStartupSec=10min
+OnCalendar=*-*-* 11:00:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
