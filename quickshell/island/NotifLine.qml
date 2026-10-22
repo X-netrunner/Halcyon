@@ -109,9 +109,11 @@ Item {
             font.pixelSize: row.pal.tBody + 2
             font.weight: Font.DemiBold
             elide: Text.ElideRight
-            maximumLineCount: 1
+            wrapMode: Text.Wrap
+            maximumLineCount: hov.hovered ? 4 : 2
         }
         Text {
+            id: nbody0
             Layout.fillWidth: true
             visible: text !== ""
             text: row.notif && row.notif.body ? row.notif.body.replace(/\n/g, "<br>") : ""
@@ -121,8 +123,16 @@ Item {
             font.pixelSize: row.pal.tBody
             lineHeight: 1.1
             wrapMode: Text.Wrap
-            maximumLineCount: 3
+            maximumLineCount: hov.hovered ? 80 : 3          // hover shows the whole message
             elide: Text.ElideRight
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: !hov.hovered && nbody0.truncated
+            text: "hover to read all"
+            color: Qt.alpha(row.pal.muted, 0.9)
+            font.family: row.pal.uiFont
+            font.pixelSize: 10
         }
         RowLayout {
             visible: row.extraActions.length > 0
