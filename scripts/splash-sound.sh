@@ -2,6 +2,9 @@
 # Soft sounds for the splash (Settings > Splash, sky & time of day > "Soft sounds with the splash"; off by default).
 #   splash-sound.sh login | unlock | shutdown     play that sound (login / unlock rise, shutdown falls)
 #   splash-sound.sh make                          only (re)write the three files and print where they are
+#   ... --if-on    only when Settings > Sounds with the splash is on (read from settings.json: the login splash starts before the
+#                  island has read its settings)
+#   ... --wait     wait (up to 4 s) for the sound output to exist first: at login PipeWire / WirePlumber are still starting
 # No sound files ship with Halcyon: python3 (standard library only) writes them once to ~/.cache/island/sounds/ and every later
 # play just plays the file. Calm and spacious on purpose, nothing that rings or clicks: soft pure tones that fade in over about a
 # second and drift a little in pitch, a low hum under them, a breath of filtered noise that slowly opens (or closes), a faint
@@ -10,7 +13,18 @@
 # Played with pw-play, paplay, aplay or ffplay, whichever is installed first; with none of them nothing happens.
 set -u
 dir="${XDG_CACHE_HOME:-$HOME/.cache}/island/sounds"
-kind="${1:-login}"
+kind="login"; ifon=0; wait=0
+for a in "$@"; do
+  case "$a" in
+    --if-on) ifon=1 ;;
+    --wait)  wait=1 ;;
+    *)       kind="$a" ;;
+  esac
+done
+if [ $ifon -eq 1 ]; then
+  conf="$HOME/.local/state/island/settings.json"
+  [ "$(jq -r '(.opt // {}).splashSound // false' "$conf" 2>/dev/null)" = true ] || exit 0
+fi
 mkdir -p "$dir" 2>/dev/null || exit 0
 
 SOUND_VERSION=3
@@ -163,6 +177,12 @@ f="$dir/$kind.wav"
 # cached copies from an older version of the sounds are written again
 { [ -s "$f" ] && [ "$(cat "$dir/.version" 2>/dev/null)" = "$SOUND_VERSION" ]; } || make_all
 [ -s "$f" ] || exit 0
+if [ $wait -eq 1 ]; then         # a real output (not the dummy sink) within 4 s, else play anyway
+  for _ in $(seq 40); do
+    s=$(wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null) && ! grep -q 'auto_null\|Dummy' <<<"$s" && break
+    sleep 0.1
+  done
+fi
 if   command -v pw-play >/dev/null 2>&1; then exec pw-play "$f" >/dev/null 2>&1
 elif command -v paplay  >/dev/null 2>&1; then exec paplay "$f" >/dev/null 2>&1
 elif command -v aplay   >/dev/null 2>&1; then exec aplay -q "$f" >/dev/null 2>&1

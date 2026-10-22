@@ -29,7 +29,11 @@ log="$HOME/.cache/island/launch.log"
   command -v quickshell >/dev/null 2>&1 || echo "WARNING: quickshell is not installed (sudo pacman -S quickshell)"
 } >> "$log" 2>&1
 
+# From the tty1 auto-login the console is still showing the boot splash (launch/halcyon-login.sh): text mode back before an error
+text_console() { [ -t 0 ] && { python3 -c 'import fcntl; fcntl.ioctl(0, 0x4B3A, 0)' 2>/dev/null; printf '\033[?25h'; stty echo 2>/dev/null; }; }
+
 if [ ! -f "$cfg" ]; then
+  text_console
   echo "Halcyon: config not found: $cfg" | tee -a "$log" >&2
   echo "Run the installer again:  ./install.sh   (from the Halcyon folder)" >&2
   sleep 5; exit 1
@@ -61,5 +65,6 @@ fi
 
 if command -v start-hyprland >/dev/null 2>&1; then exec start-hyprland; fi     # Hyprland's own start wrapper (0.53 and newer)
 if command -v Hyprland >/dev/null 2>&1; then exec Hyprland; fi
+text_console
 echo "Halcyon: Hyprland is not installed (sudo pacman -S hyprland), then run ./install.sh" | tee -a "$log" >&2
 sleep 5; exit 1

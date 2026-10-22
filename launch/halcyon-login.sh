@@ -11,7 +11,15 @@
 #   * opt out any time:  touch ~/.cache/island/no-autostart   (then tty1 is an ordinary shell)
 state="$HOME/.cache/island"
 mkdir -p "$state"
+# The boot splash is still on screen (Plymouth leaves its last frame until Hyprland draws, and the tty1 getty does not reset the
+# console): no cursor, no echo of keys pressed while it loads. text_console brings the text back before anything is printed.
+if [ -t 0 ]; then printf '\033[?25l'; stty -echo 2>/dev/null; fi
+text_console() {   # KDSETMODE (0x4B3A) KD_TEXT, cursor and echo back on
+  python3 -c 'import fcntl; fcntl.ioctl(0, 0x4B3A, 0)' 2>/dev/null
+  printf '\033[?25h'; stty echo 2>/dev/null
+}
 if [ -e "$state/no-autostart" ]; then
+  text_console
   echo "Halcyon autostart is off (remove $state/no-autostart to turn it on)."
   exit 0
 fi
@@ -29,6 +37,7 @@ fi
 printf '%s%s\n' "$kept" "$now" > "$guard"
 if [ "$recent" -ge 3 ]; then
   rm -f "$state/lock-on-start"
+  text_console
   echo
   echo "Halcyon did not stay up (3 starts in 90 seconds), so it is not starting again."
   echo "Press Ctrl+Alt+F2 for another console, log in there and look at ~/.config/Halcyon (journalctl --user -e)."
