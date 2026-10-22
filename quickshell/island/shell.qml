@@ -622,6 +622,7 @@ ShellRoot {
             else if (id === "splash-shutdown-preview") splashPreview.playMode("shutdown")
             else if (id === "plymouth-install" || id === "plymouth-remove") { var pm = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", pm + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1/halcyon-plymouth.sh\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", pm, id === "plymouth-install" ? "install" : "remove"]) }
             else if (id === "sky-open") weeklySky.show()
+            else if (id === "tour-replay") { settingsWin.hide(); root.tourReplay() }
             else if (id === "greeting-paste") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "paste"])
             else if (id === "greeting-edit") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "edit"])
             else if (id === "greeting-preview") quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh preview")
@@ -787,6 +788,8 @@ ShellRoot {
     }
     // the weekly sky: your week as stars (WeeklySky.qml; `>weekly sky`, `halcyon weekly-sky`, Settings > Splash, sky & time of day)
     WeeklySky { id: weeklySky; pal: pal }
+    // the Wi-Fi QR code (WifiQr.qml; scripts/halcyon-tools.py wifi-qr)
+    WifiQr { id: wifiQr; pal: pal }
     // the Focus streak view (FocusStreak.qml; `>focus streak graph`, `halcyon focus-graph`, a click on the Focus streak graph widget)
     FocusStreak { id: focusStreak; pal: pal; env: root }
     // a signature moment is allowed when the splash is on, motion is on and we are not gaming (same rule as the login splash)
@@ -1838,10 +1841,16 @@ ShellRoot {
         "snippets": ["snippets", "pick"], "windows": ["windows", "pick"], "mixer": ["mixer", "pick"],
         "phone-text": ["phone", "text"], "phone-ring": ["phone", "ring"], "zoom": ["zoom", "toggle"], "vpn": ["vpn", "toggle"]
     })
+    // the ones `hal tools` has (Rust, ~1 ms to start) run there; the rest, or any without hal built, in the Python helper
+    readonly property var halTools: ["colorpick", "measure", "zoom", "snippets", "windows"]
     function runTool(name) {
         var a = toolArgs[name]
         if (!a) return
-        Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-tools.py"].concat(a))
+        var home = Quickshell.env("HOME")
+        if (halTools.indexOf(a[0]) >= 0)
+            Quickshell.execDetached(["sh", "-c", "h=\"$1\"; shift; [ -x \"$h\" ] && exec \"$h\" tools \"$@\"; exec python3 \"$HOME/.config/Halcyon/scripts/halcyon-tools.py\" \"$@\"", "sh", home + "/.config/Halcyon/bin/hal"].concat(a))
+        else
+            Quickshell.execDetached(["python3", home + "/.config/Halcyon/scripts/halcyon-tools.py"].concat(a))
     }
     function runCommand(id) {
         if (id.indexOf("tool-") === 0) { runTool(id.substring(5)); return }
@@ -2517,6 +2526,7 @@ ShellRoot {
         function startup(): void { settingsWin.openStartup() }
         function splash(): void { splashPreview.play() }
         function weeklysky(): void { weeklySky.toggle() }
+        function wifiqr(png: string, ssid: string): void { if (png === "") wifiQr.hide(); else wifiQr.show(png, ssid) }   // halcyon-tools.py wifi-qr ("" closes it)
         function focusgraph(): void { focusStreak.toggle() }
         function tour(): void { root.tourReplay() }
         function calendar(): void { root.runCommand("calendar") }

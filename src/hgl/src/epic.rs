@@ -206,9 +206,9 @@ pub fn install(app: &str) -> Result<i32, String> {
     if !st.success() {
         return Ok(st.code().unwrap_or(1));
     }
+    // the same finishing step as `hgl import`: known fixes, then cover art for what was added
     let r = import()?;
-    println!("Epic: installed. {} game(s) added to the library.", r.added.len());
-    Ok(0)
+    crate::finish_import("Epic", &r)
 }
 
 #[cfg(test)]
