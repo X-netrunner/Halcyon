@@ -17,7 +17,7 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
-        text: "Build your own notification box: it opens in its own window with a live copy of the box. Switch its parts on and off and move them up or down (the constellation band, the title and buttons, the list), add or remove the constellations and the flying stars, set the padding, the width and the corners, and pick where on the screen it sits."
+        text: "Parts, order, stars, size and position of the notification box, with a live preview."
         color: nb.pal.muted
         font.family: nb.pal.uiFont
         font.pixelSize: 10

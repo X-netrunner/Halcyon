@@ -231,7 +231,7 @@ Item {
         }
         Text {
             width: parent.width; wrapMode: Text.WordWrap
-            text: "Connect your Google Calendar once and your events, reminders and tasks show up here."
+            text: "Connect Google Calendar to see your events here."
             color: pg.pal.muted; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody
         }
         Rectangle {

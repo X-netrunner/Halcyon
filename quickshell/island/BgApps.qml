@@ -56,7 +56,7 @@ Glass {
             Layout.fillWidth: true
             spacing: 8
             Text {
-                text: "BACKGROUND APPS"
+                text: "BACKGROUND"
                 color: root.pal.muted
                 font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4
             }
@@ -74,17 +74,9 @@ Glass {
             Text {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
-                text: "Nothing is running in the background"
+                text: "Nothing running"
                 color: Qt.alpha(root.pal.text, 0.7)
                 font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium
-            }
-            Text {
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-                text: "Apps you close to the tray (Spotify, Discord ...) will show up here."
-                color: Qt.alpha(root.pal.muted, 0.9)
-                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
             }
         }
 
@@ -186,7 +178,8 @@ Glass {
                                     Text {
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
-                                        text: appRow.modelData.status === 2 ? "Needs your attention" : "Running in the background"
+                                        visible: appRow.modelData.status === 2       // the list itself says they run in the background
+                                        text: "Needs your attention"
                                         color: appRow.modelData.status === 2 ? root.pal.accent2 : Qt.alpha(root.pal.muted, 0.95)
                                         font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                     }

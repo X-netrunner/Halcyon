@@ -653,7 +653,7 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "Colour depth tints the box, bars and quiet text with the wallpaper accent. Readability brightens the colours and outlines each letter; \"No box\" never gets a backing."
+                            text: "Colour depth tints it with the wallpaper accent. Readability brightens and outlines the text."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
                         }
                         ChipRow {
@@ -768,7 +768,7 @@ Item {
                         NbCap { pal: root.pal; text: "STYLES" }
                         Text {
                             Layout.fillWidth: true
-                            text: "Pick one to give this widget that look (box, colours, font, text size). Make your own above, then save it here to reuse on any widget."
+                            text: "Apply a saved look, or save this one to reuse."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                         }
                         Flow {

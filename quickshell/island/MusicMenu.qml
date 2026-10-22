@@ -477,7 +477,7 @@ Scope {
                                 visible: root.busy && root.tab === "queue"
                                 horizontalAlignment: Text.AlignHCenter
                                 wrapMode: Text.Wrap
-                                text: "The first read can take a few seconds when spotify_player is not already running."
+                                text: "The first read can take a few seconds."
                                 color: Qt.alpha(root.pal.muted, 0.85)
                                 font.family: root.pal.uiFont
                                 font.pixelSize: 10

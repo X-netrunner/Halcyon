@@ -14,13 +14,16 @@ import Quickshell.Wayland
 //           Auto-hide on = it closes whenever the pointer leaves, in both modes (never while you have text typed).
 //  idle     empty input and nothing run yet: shows the sysmode / honeypot status (`hx status`) as plain console lines;
 //           they fade away the moment you type
-//  run      Enter. Output streams in. Ctrl+C stops, Ctrl+L clears, Up/Down = history
+//  run      Enter. Output streams in. Ctrl+C stops the command and everything it started, Ctrl+L clears, Up/Down = history.
+//           While a command runs, Enter sends the line to it (answers to "Proceed? [y/N]"); a question without a line end shows
+//           as the last line. A command sent from elsewhere (the Game Center's "Fix it") waits for a running one to finish.
 //  complete Tab completes the word under the cursor: commands (and the console's own words) at the start of a command, folders after
 //           cd, sysmode actions after sysmode / sm, files and folders everywhere else. One match completes it, several complete the
 //           common start and list them; Tab again goes through them (Shift+Tab back), Esc closes the list. A greyed suggestion
 //           from your history follows what you type: Right arrow (or End) takes it.
 //  sudo     `sudo ...` and root sysmode actions (`sysmode stealth`, `sm lockdown`, or just `lockdown`) ask for your
-//           password right in the console (masked) and feed it to sudo -S; nothing is stored or logged
+//           password right in the console (masked) and feed it to sudo -S; nothing is stored or logged. A sudo run by a script
+//           or program (hgl doctor --fix) asks the same way: scripts/console-bin/sudo comes first on PATH here
 //  TUIs     vim, htop, ssh, less ... need a real terminal, so they open in foot instead
 //
 // quickshell ipc -p ~/.config/Halcyon/quickshell/island call island quickterm
@@ -110,8 +113,10 @@ Scope {
         open = true
         pinned = true
         takeFocus()
+        if (busy) { queued = cmd; push("next, when the running command ends: " + cmd, "info"); return }
         submit(cmd)
     }
+    property string queued: ""            // run() while busy: started when the running command ends
     // a command picked in the commands tree (CmdTree.qml): open the console with the text typed in, not run
     property string pendingText: ""
     function prefill(t) { pendingText = t; prefillT.restart() }
@@ -150,6 +155,33 @@ Scope {
     }
 
     // ---------- output ----------
+    // the running command's output arrives in pieces: whole lines go to the list, the unfinished last one is shown live
+    property string partial: ""
+    property int liveIdx: -1              // row of `out` that shows `partial` (-1 = none)
+    function clean(l) { return l.substring(l.lastIndexOf("\r") + 1).replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "").replace(/\x1b\][^\x07]*\x07/g, "") }
+    function chunk(d) {
+        var parts = (partial + d).split("\n")
+        partial = parts.pop()
+        for (var i = 0; i < parts.length; i++) {
+            var l = clean(parts[i])
+            if (l === pwMarker) { endLive(); askPass = true; takeFocus(); continue }
+            if (liveIdx >= 0) { flushOut(); out.setProperty(liveIdx, "t", l); liveIdx = -1 }
+            else push(l, "out")
+        }
+        var p = clean(partial)
+        if (p === "") return
+        flushOut()
+        if (liveIdx < 0) { out.append({ t: p, k: "out" }); liveIdx = out.count - 1 }
+        else out.setProperty(liveIdx, "t", p)
+        Qt.callLater(toEnd)
+    }
+    function endLive() { partial = ""; liveIdx = -1 }
+    // Enter while a command runs: the line goes to its input, shown after its question
+    function answer(l) {
+        runner.write(l + "\n")
+        if (liveIdx >= 0) { out.setProperty(liveIdx, "t", out.get(liveIdx).t + l); liveIdx = -1; partial = "" }
+        else push("› " + l, "cmd")
+    }
     property var pend: []                 // lines waiting to be shown (flushed every 40 ms)
     function push(text, kind) {
         var lines = String(text).split("\n")
@@ -162,16 +194,23 @@ Scope {
         pend = []
         if (p.length > maxOut) p = p.slice(p.length - maxOut)      // only the last maxOut lines could stay anyway
         for (var i = 0; i < p.length; i++) out.append(p[i])
-        if (out.count > maxOut) out.remove(0, out.count - maxOut)
+        if (out.count > maxOut) { var cut = out.count - maxOut; out.remove(0, cut); if (liveIdx >= 0) liveIdx = Math.max(-1, liveIdx - cut) }
         Qt.callLater(toEnd)
     }
     Timer { id: flushT; interval: 40; onTriggered: root.flushOut() }
-    function clearOut() { pend = []; out.clear() }
-    function cancelRun() { askPass = false; runner.running = false }
+    function clearOut() { pend = []; out.clear(); liveIdx = -1 }
+    // the whole process group (setsid in submit): sudo, pacman, wine ... stop too, not only the bash in front of them
+    readonly property string pidFile: Quickshell.env("XDG_RUNTIME_DIR") + "/halcyon-console.pid"
+    function cancelRun() {
+        askPass = false
+        queued = ""
+        if (runner.running) Quickshell.execDetached(["sh", "-c", "p=$(cat \"$1\" 2>/dev/null) && [ -n \"$p\" ] && kill -TERM -- -\"$p\"", "sh", pidFile])
+        runner.running = false
+    }
 
     // ---------- running a command ----------
     function words(s) { return s.trim().split(/\s+/) }
-    function sudoed(rest) { return "sudo -S -p $'" + pwMarker + "\\n' " + rest }
+    function sudoed(rest) { return "sudo " + rest }        // scripts/console-bin/sudo adds -S and the console's prompt
 
     // ai / advisor / notes are fish functions (config/fish/functions), and this console runs bash: call their scripts directly
     readonly property var pyTools: ({ ai: "halcyon-chat.py", advisor: "adaptive-advisor.py", notes: "halcyon-notes.py" })
@@ -227,7 +266,6 @@ Scope {
         }
         var cd = line.match(/^cd(?:\s+(.*))?$/)
         if (cd) { cdProc.target = (cd[1] || "~").trim(); cdProc.running = true; return }
-        if (busy) { push("still running: Ctrl+C to stop it first", "err"); return }
 
         var p = prepare(line)
         if (p.tui) {
@@ -235,7 +273,9 @@ Scope {
             push("opened in a terminal window", "info")
             return
         }
-        runner.command = ["bash", "-c", "export PATH=\"$HOME/.local/bin:$HOME/.config/Halcyon/bin:$PATH\"; exec 2>&1; " + p.cmd]
+        // setsid: its own process group, so Ctrl+C can stop everything it starts (the group id is written to pidFile)
+        runner.command = ["setsid", "-w", "bash", "-c", "echo $$ > \"$HALCYON_CONSOLE_PID\"; export PATH=\"$HOME/.config/Halcyon/scripts/console-bin:$HOME/.local/bin:$HOME/.config/Halcyon/bin:$PATH\"; exec 2>&1; " + p.cmd]
+        runner.environment = { HALCYON_SUDO_PROMPT: pwMarker, HALCYON_CONSOLE_PID: pidFile }
         runner.running = true
     }
     function cwdLabel() {
@@ -364,15 +404,12 @@ Scope {
         workingDirectory: root.cwd
         stdinEnabled: true
         onRunningChanged: { root.busy = running; if (!running) root.askPass = false }
-        stdout: SplitParser {
-            onRead: d => {
-                var l = d.replace(/\r/g, "").replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "")
-                if (l === root.pwMarker) { root.askPass = true; root.takeFocus(); return }
-                root.push(l, "out")
-            }
-        }
+        // raw chunks, not lines: a question like "Proceed? [y/N] " has no line end and would never show otherwise
+        stdout: SplitParser { splitMarker: ""; onRead: d => root.chunk(d) }
         onExited: (code, status) => {
-            if (code !== 0) root.push("exit " + code + (code === 126 || code === 127 ? "  (not found / not allowed)" : ""), "err")
+            root.endLive()
+            if (code !== 0 && code !== 143 && code !== 15) root.push("exit " + code + (code === 126 || code === 127 ? "  (not found / not allowed)" : ""), "err")
+            if (root.queued !== "") { var q = root.queued; root.queued = ""; Qt.callLater(function () { root.submit(q) }) }
         }
     }
     Process {
@@ -702,7 +739,7 @@ Scope {
                 Text {
                     id: prompt
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.askPass ? "[sudo] password ❯" : root.cwdLabel() + " ❯"
+                    text: root.askPass ? "[sudo] password ❯" : (root.busy ? "answer ❯" : root.cwdLabel() + " ❯")
                     color: root.askPass ? root.pal.warn : root.pal.accent
                     font.family: root.mono
                     font.pixelSize: 13
@@ -756,6 +793,7 @@ Scope {
                         var l = text
                         text = ""
                         if (root.askPass) { runner.write(l + "\n"); root.askPass = false; return }
+                        if (root.busy && !/^\s*(clear|cls)\s*$/.test(l)) { root.answer(l); return }
                         root.submit(l)
                     }
                 }
@@ -775,8 +813,8 @@ Scope {
                     anchors.left: prompt.right
                     anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: input.text === "" && !root.focused
-                    text: "click here, or press SUPER+SHIFT+Enter, to type"
+                    visible: input.text === "" && (!root.focused || (root.busy && !root.askPass))
+                    text: root.focused ? "Enter sends a line to the command · Ctrl+C stops it" : "click here, or press SUPER+SHIFT+Enter, to type"
                     color: Qt.alpha(root.pal.muted, 0.7)
                     font.family: root.mono
                     font.pixelSize: 11

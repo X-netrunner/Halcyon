@@ -23,7 +23,7 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
-        text: "Build your desktop: switch the wallpaper picture off (you get a plain background, the colours still follow the last wallpaper), blur it, put slowly moving stars over it, see where your widgets sit and move them, switch the top bar off, and choose the activation zone of each box (notifications, utilities, background apps, console): the screen corner it opens from. It opens in its own window with a small picture of the screen that changes as you do. What each widget looks like is the Widget builder (next entry)."
+        text: "Wallpaper, blur, stars, where widgets sit and which corner each box opens from, with a live preview."
         color: db.pal.muted
         font.family: db.pal.uiFont
         font.pixelSize: 10

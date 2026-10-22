@@ -1,0 +1,19 @@
+#!/bin/sh
+# sudo for the pop-out console (QuickTerm.qml puts this folder first on PATH for the commands it runs).
+# The console has no terminal, so a plain `sudo` inside a script or program (hgl doctor --fix, pacman ...) could not ask for the
+# password and the console looked stuck. Here sudo reads the password from the console's input (-S) and prints the console's
+# prompt marker (-p), so the console shows its masked password line. Outside the console (no HALCYON_SUDO_PROMPT) it is plain sudo.
+here=$(cd "$(dirname "$0")" && pwd)
+real=""
+IFS=:
+for d in $PATH; do
+    [ "$d" = "$here" ] && continue
+    [ -x "$d/sudo" ] && { real="$d/sudo"; break; }
+done
+unset IFS
+[ -n "$real" ] || { echo "sudo: not installed" >&2; exit 127; }
+if [ -n "${HALCYON_SUDO_PROMPT:-}" ]; then
+    exec "$real" -S -p "$HALCYON_SUDO_PROMPT
+" "$@"
+fi
+exec "$real" "$@"

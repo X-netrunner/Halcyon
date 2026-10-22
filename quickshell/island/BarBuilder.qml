@@ -24,7 +24,7 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
-        text: "Build your own bar: pick its shape, what it shows and where. The builder opens in its own window and shows the bar itself: drag a widget along it to move it, drop it on the shelf to take it off, and type how much padding you want. Colours, Wi-Fi look and Bluetooth mode come from the options below."
+        text: "Shape, widgets and padding of the bar. Drag widgets along it to move them, onto the shelf to remove them."
         color: bb.pal.muted
         font.family: bb.pal.uiFont
         font.pixelSize: 10

@@ -1074,13 +1074,13 @@ Item {
                         Text {
                             visible: root.loaded && root.overAny && root.shownFindings.length === 0
                             width: parent.width; leftPadding: 4; wrapMode: Text.WordWrap
-                            text: "Over a limit, but no single part stands out right now: it was most likely a short burst. Press F5 in a few seconds to look again."
+                            text: "Nothing stands out now: likely a short burst. F5 checks again."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                         }
                         Text {
                             visible: root.loaded && !root.overAny
                             width: parent.width; leftPadding: 4; wrapMode: Text.WordWrap
-                            text: "Nothing to fix. If Halcyon goes over a limit, the likely causes and what you can do about each one appear here."
+                            text: "Nothing to fix."
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                         }
                         Text {
