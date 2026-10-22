@@ -295,6 +295,10 @@ name = "hal"
 version = "0.1.0"
 
 [[package]]
+name = "hgl"
+version = "0.1.0"
+
+[[package]]
 name = "hx"
 version = "0.1.0"
 dependencies = [

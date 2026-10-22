@@ -7,7 +7,7 @@ A short map, and the reasons behind choices that look odd until you know them. B
 | Piece | Where | What it does |
 |---|---|---|
 | The island and widgets | `quickshell/island/` | The Quickshell UI. `shell.qml` holds state and timers, `Settings.qml` is built by a `LazyLoader` only while Settings is open, `Pal.qml` carries the look and the performance knobs (`motion`, `artFps`, `lowPower`). |
-| Helper binaries (Rust) | `src/<crate>/`, installed to `~/.config/Halcyon/bin` | `hx` (system feeds: stats, net, states; focus), `hal`, `power-manager`, `touchpad-gestures`, `birthday-sync`. Sysmode only: `recon-deceiver`, `log-analyst`, `attacker-dossier`, `setStaticMac` (symlinked into `sysmode/`). Optional: `safety-check`. |
+| Helper binaries (Rust) | `src/<crate>/`, installed to `~/.config/Halcyon/bin` | `hx` (system feeds: stats, net, states; focus), `hal`, `hgl` (game launcher engine, docs/games.md), `power-manager`, `touchpad-gestures`, `birthday-sync`. Sysmode only: `recon-deceiver`, `log-analyst`, `attacker-dossier`, `setStaticMac` (symlinked into `sysmode/`). Optional: `safety-check`. |
 | Scripts | `scripts/`, `quickshell/island/scripts/` | Shell and Python glue. The Python that is left (notes, local AI, calendar import, lyrics, clipboard) only runs when its feature is opened. |
 | Config | `hyprland.lua`, `variables.lua`, `hypr-user.lua`, `scheme/` | Hyprland (Lua). `hypr-user.lua` is yours and is never overwritten. |
 | Your state | `~/.local/state/island/settings.json`, `~/.local/state/halcyon/` | Settings and run logs. `scripts/halcyon-settings.sh` exports and imports the important files. |

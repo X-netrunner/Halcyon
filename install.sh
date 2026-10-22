@@ -20,7 +20,7 @@
 #    6  Rust toolchain (for the helpers below)
 #    7  copies the rice to ~/.config/Halcyon (an older copy is backed up; your hypr-user.lua, scheme/current.lua and
 #       gamemode.conf are kept)
-#    8  builds the Rust helpers (hx, hal, power-manager, touchpad-gestures, birthday-sync)
+#    8  builds the Rust helpers (hx, hal, hgl, power-manager, touchpad-gestures, birthday-sync)
 #    9  makes Hyprland load Halcyon (~/.config/hypr/hyprland.lua) + a "Halcyon" login-screen session. NO login manager on
 #       this machine? Then the Halcyon LOCK SCREEN becomes the login screen (tty1 logs you in, Halcyon starts locked)
 #   10  user services (gestures, auto power) + the boot service that saves RAM details for the performance page
@@ -389,7 +389,7 @@ fi
 
 if [[ "$REMOVE_LOGIN" != "true" ]]; then
     [[ -f "$RICE_SOURCE/hyprland.lua" ]] || die "The Halcyon files were not found next to this script (${RICE_SOURCE}). Run install.sh from inside the Halcyon folder."
-    for d in power-manager touchpad-gestures hx hal recon-deceiver log-analyst attacker-dossier setStaticMac safety-check birthday-sync; do
+    for d in power-manager touchpad-gestures hx hal hgl recon-deceiver log-analyst attacker-dossier setStaticMac safety-check birthday-sync; do
         [[ -f "$RICE_SOURCE/src/$d/Cargo.toml" ]] || die "Missing Rust crate: ${RICE_SOURCE}/src/$d"
     done
     log_info "Halcyon files: ${RICE_SOURCE}"
@@ -1780,7 +1780,7 @@ BUILD_ROOT="$TARGET_HOME/.cache/halcyon-build"           # outside the rice: the
 run_as_user_cmd "Creating $BIN_DIR" mkdir -p "$BIN_DIR" "$BUILD_ROOT" \
     || die "Cannot create $BIN_DIR$([[ "$LINK_CONFIG" == "true" ]] && echo " (with --link the Halcyon folder itself must be writable by $TARGET_USER)")"
 BUILD_FAILED=()
-CRATES=(hx hal power-manager touchpad-gestures birthday-sync)    # hal: Rust ports of input-conf / ws-nav / brightness / backlight (no dependencies, installed to ~/.config/Halcyon/bin). birthday-sync: Calendar > "Sync Google Birthdays" (installed to ~/.config/Halcyon/bin, no root)
+CRATES=(hx hal hgl power-manager touchpad-gestures birthday-sync)    # hgl: game launcher core (library, Proton runtimes, doctor, scoped runs; no dependencies, installed to ~/.config/Halcyon/bin, no root). hal: Rust ports of input-conf / ws-nav / brightness / backlight (no dependencies, installed to ~/.config/Halcyon/bin). birthday-sync: Calendar > "Sync Google Birthdays" (installed to ~/.config/Halcyon/bin, no root)
 SYSMODE_CRATES=(recon-deceiver log-analyst attacker-dossier setStaticMac)       # only sysmode uses these four: no sysmode, no build
 [[ "$SYSMODE" == "true" ]] && CRATES+=("${SYSMODE_CRATES[@]}")
 [[ "$SAFETY" == "true" ]] && CRATES+=(safety-check)
@@ -2304,6 +2304,7 @@ check_cmd quickshell quickshell critical
 check_cmd start-shell.sh "$TARGET_RICE/scripts/start-shell.sh" critical
 check_cmd hx "$BIN_DIR/hx" critical
 check_cmd power-manager "$BIN_DIR/power-manager" critical
+check_cmd hgl "$BIN_DIR/hgl"
 check_cmd touchpad-gestures "$BIN_DIR/touchpad-gestures" critical
 if [[ "$SYSMODE" == "true" ]]; then
     for h in "${SYSMODE_CRATES[@]}"; do check_cmd "$h" "$BIN_DIR/$h" critical; done
