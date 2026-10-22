@@ -100,6 +100,7 @@ cat >"$T/srv/releases.json" <<J
 J
 cat >"$T/bin/curl" <<'F'
 #!/bin/bash
+echo "$*" >>"$FAKE_T/curl.log"
 # fake curl: api URL -> releases.json; https://dl/X -> file X from the fake server (-o FILE saves it, otherwise stdout)
 out=""; url=""
 while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; http*) url="$1"; shift ;; -H|-A|--max-time|--retry) shift 2 ;; *) shift ;; esac; done
@@ -218,10 +219,132 @@ F
 chmod +x "$T/bin/steam"
 ok "steam launch: headless URL, waits for the game, restores" bash -c "'$HGL' run steam-1145360 >'$T/s.out' 2>&1; grep -q -- '-silent steam://rungameid/1145360' '$T/steam.log' && grep -q 'Session over' '$T/s.out' && [ ! -f '$T/gm-state' ]"
 
+echo "--- Epic (fake legendary)"
+mkdir -p "$T/epic/Hades2Game/Bin"
+printf 'MZ' >"$T/epic/Hades2Game/Bin/Game.exe"
+cat >"$T/epic-list.json" <<'J'
+[{"app_name":"Fortnite","app_title":"Fortnite","metadata":{"keyImages":[{"type":"DieselGameBoxTall","url":"https://cdn.epic/fort.jpg"}]}},
+ {"app_name":"Hades2Game","app_title":"Hades II \u00e9","metadata":{"keyImages":[{"type":"Thumbnail","url":"https://cdn.epic/thumb.jpg"},{"type":"DieselGameBoxTall","url":"https://cdn.epic/hades-tall.jpg"}]}},
+ {"app_name":"HadesDLC","app_title":"Hades DLC","metadata":{"mainGameItem":{"id":"x"}}}]
+J
+cat >"$T/epic-installed.full.json" <<J
+[{"app_name":"Hades2Game","title":"Hades II \u00e9","install_path":"$T/epic/Hades2Game","executable":"Bin/GAME.EXE","platform":"Windows"},
+ {"app_name":"MacOnly","title":"Mac","install_path":"$T/epic/mac","executable":"x","platform":"Mac"}]
+J
+cp "$T/epic-installed.full.json" "$T/epic-installed.json"
+printf 'jpgdata' >"$T/srv/hades-tall.jpg"
+cat >"$T/bin/legendary" <<'F'
+#!/bin/bash
+echo "$*" >>"$FAKE_T/legendary.log"
+case "$1" in
+  status) echo '{"account":"tester","games_available":2,"games_installed":1}' ;;
+  list) cat "$FAKE_T/epic-list.json" ;;
+  list-installed) cat "$FAKE_T/epic-installed.json" ;;
+  install)
+    mkdir -p "$FAKE_T/epic/Hades2Game/Bin"
+    printf 'MZ' >"$FAKE_T/epic/Hades2Game/Bin/Game.exe"
+    cp "$FAKE_T/epic-installed.full.json" "$FAKE_T/epic-installed.json" ;;
+  launch)
+    app="$2"; shift 2
+    wrapper=""; extra=()
+    while [ $# -gt 0 ]; do case "$1" in --wrapper) wrapper="$2"; shift 2 ;; --no-wine) shift ;; *) extra+=("$1"); shift ;; esac; done
+    echo "legendary launch $app wrapper=[$wrapper]"
+    exec $wrapper "$FAKE_T/epic/Hades2Game/Bin/Game.exe" "${extra[@]}" ;;
+esac
+F
+chmod +x "$T/bin/legendary"
+ok "epic status" bash -c "'$HGL' epic status --json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d[\"installed\"] and d[\"loggedIn\"] and d[\"account\"]==\"tester\", d'"
+ok "epic list: owned games, DLC left out, installed marked, \\u escapes read" bash -c "'$HGL' epic list --json | python3 -c 'import sys,json; d={x[\"app\"]:x for x in json.load(sys.stdin)}; assert sorted(d)==[\"Fortnite\",\"Hades2Game\"], d; assert d[\"Hades2Game\"][\"installed\"] and not d[\"Fortnite\"][\"installed\"]; assert d[\"Hades2Game\"][\"title\"]==\"Hades II \u00e9\", d'"
+ok "epic import adds the Windows game (and its art)" bash -c "'$HGL' import epic | grep -q '1 added.*art for 1'"
+ok "epic game: source, exact exe path (case fixed)" bash -c "'$HGL' list --json | python3 -c 'import sys,json; d={g[\"id\"]:g for g in json.load(sys.stdin)}; g=d[\"epic-hades2game\"]; assert g[\"source\"]==\"epic\" and g[\"appid\"]==\"Hades2Game\" and g[\"exe\"].endswith(\"/Bin/Game.exe\") and g[\"cover\"].endswith(\"epic-hades2game-art.jpg\"), g'"
+ok "a second epic import changes nothing" bash -c "'$HGL' import epic | grep -q '0 added, 0 updated, 0 no longer'"
+ok "epic dry run: legendary launch with umu-run as its wrapper" bash -c "'$HGL' run epic-hades2game --dry-run | grep '^cmd:' | grep -q \"legendary launch Hades2Game --no-wine --wrapper 'gamemoderun umu-run'\""
+FAKE_UMU_SLEEP=1 ok "epic run goes through legendary, gamemoderun and umu-run" bash -c "'$HGL' run epic-hades2game >/dev/null 2>&1; cat '$HOME/.local/state/Halcyon/hgl/logs/epic-hades2game/'*.log | grep -q 'legendary launch Hades2Game wrapper=\[gamemoderun umu-run\]' && cat '$HOME/.local/state/Halcyon/hgl/logs/epic-hades2game/'*.log | grep -q 'WINEPREFIX=.*prefixes/epic-hades2game'"
+rm -f "$T/gm-state"
+ok "legendary config of another launcher is passed on" bash -c "'$HGL' config epic_config '$T/heroic-leg' && '$HGL' run epic-hades2game --dry-run | grep '^env:' | grep -q 'LEGENDARY_CONFIG_PATH=$T/heroic-leg'; r=\$?; '$HGL' config epic_config ''; exit \$r"
+printf '[]' >"$T/epic-installed.json"
+ok "uninstalled in legendary: leaves the library" bash -c "'$HGL' import epic | grep -q '1 no longer' && ! '$HGL' list | grep -q epic-hades2game"
+ok "epic install: base path, Windows, then the game is in the library" bash -c "'$HGL' epic install Hades2Game >/dev/null && grep -q 'install Hades2Game --base-path .*Games/Halcyon/Epic --platform Windows -y' '$T/legendary.log' && '$HGL' list | grep -q epic-hades2game"
+no "epic install refuses an odd app name" "$HGL" epic install "x;rm -rf"
+printf 'name=Fortnite\nsource=epic\nappid=Fortnite\nexe=%s\n' "$T/epic/Hades2Game/Bin/Game.exe" >"$HOME/.config/Halcyon/games/epic-fortnite.conf"
+ok "known warning shows up in the list" bash -c "'$HGL' list --json | python3 -c 'import sys,json; d={g[\"id\"]:g for g in json.load(sys.stdin)}; assert \"Linux\" in d[\"epic-fortnite\"][\"known\"] and d[\"epic-hades2game\"][\"known\"]==\"\", d'"
+ok "hgl fixes prints the warning" bash -c "'$HGL' fixes epic-fortnite | grep -q Linux"
+"$HGL" remove epic-fortnite >/dev/null
+
+echo "--- GOG (fake gogdl, fake GOG web API)"
+mkdir -p "$T/gogdir/Witcher/bin"
+printf 'MZ' >"$T/gogdir/Witcher/bin/witcher3.exe"
+cat >"$T/gogdir/Witcher/goggame-1207664643.info" <<'J'
+{"gameId":"1207664643","rootGameId":"1207664643","name":"The Witcher 3","playTasks":[{"type":"URLTask","path":"x"},{"isPrimary":true,"type":"FileTask","path":"BIN\\Witcher3.EXE","arguments":"-windowed"}]}
+J
+cat >"$T/gogdir/Witcher/goggame-111.info" <<'J'
+{"gameId":"111","rootGameId":"1207664643","name":"Witcher DLC","playTasks":[{"isPrimary":true,"type":"FileTask","path":"bin/witcher3.exe"}]}
+J
+cat >"$T/bin/gogdl" <<'F'
+#!/bin/bash
+echo "$*" >>"$FAKE_T/gogdl.log"
+auth=""
+if [ "$1" = "--auth-config-path" ]; then auth="$2"; shift 2; fi
+case "$1" in
+  auth)
+    [ "$2" = "--code" ] || exit 2
+    mkdir -p "$(dirname "$auth")"
+    printf '{"46899977096215655":{"access_token":"AT","refresh_token":"RT","expires_in":3600,"loginTime":%s}}' "$(date +%s)" >"$auth" ;;
+  download)
+    id="$2"; shift 2; p=""
+    while [ $# -gt 0 ]; do case "$1" in --path) p="$2"; shift 2 ;; *) shift ;; esac; done
+    mkdir -p "$p/bin"
+    printf 'MZ' >"$p/bin/c.exe"
+    printf '{"gameId":"%s","name":"Cyber Thing","playTasks":[{"isPrimary":true,"type":"FileTask","path":"bin/c.exe"}]}' "$id" >"$p/goggame-$id.info" ;;
+esac
+F
+chmod +x "$T/bin/gogdl"
+printf '%s' '{"page":1,"totalPages":1,"products":[{"id":1207664643,"title":"The Witcher 3","worksOn":{"Windows":true,"Mac":false}},{"id":999,"title":"Linux Only","worksOn":{"Windows":false}},{"id":555,"title":"Cyber Thing","worksOn":{"Windows":true}}]}' >"$T/srv/getFilteredProducts?mediaType=1&page=1"
+printf '%s' '{"_links":{"boxArtImage":{"href":"https://images.gog-statics.com/box555.png"}}}' >"$T/srv/555"
+printf 'pngdata' >"$T/srv/box555.png"
+ok "gog status before login" bash -c "'$HGL' gog status --json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d[\"installed\"] and not d[\"loggedIn\"] and \"auth.gog.com\" in d[\"url\"], d'"
+ok "gog login without an address prints the sign-in page" bash -c "'$HGL' gog login | grep -q 'auth.gog.com'"
+no "gog login refuses something that is not a code" "$HGL" gog login "nope"
+no "gog list needs a login" "$HGL" gog list --json
+ok "gog login takes the redirect address" "$HGL" gog login "https://embed.gog.com/on_login_success?origin=client&code=ABCDEFGH12345"
+ok "gogdl got the code" grep -q -- "auth --code ABCDEFGH12345" "$T/gogdl.log"
+ok "login file is private" bash -c "[ \"\$(stat -c %a '$HOME/.config/Halcyon/gog/auth.json')\" = 600 ]"
+ok "gog status after login" bash -c "'$HGL' gog status --json | python3 -c 'import sys,json; assert json.load(sys.stdin)[\"loggedIn\"]'"
+ok "gog import reads the info file (add-ons skipped)" bash -c "'$HGL' import gog '$T/gogdir' | grep -q '1 added,'"
+ok "gog game: program found whatever the case, arguments kept" bash -c "'$HGL' run gog-1207664643 --dry-run | grep '^cmd:' | grep -q 'umu-run .*bin/witcher3.exe -windowed'"
+ok "umu id sets the store" bash -c "'$HGL' set gog-1207664643 umu_id umu-1207664643 >/dev/null && '$HGL' run gog-1207664643 --dry-run | grep '^env:' | grep -q 'GAMEID=umu-1207664643.*STORE=gog'"
+"$HGL" config gog_dirs "$T/gogdir" >/dev/null
+ok "gog list: Windows games only, installed marked" bash -c "'$HGL' gog list --json | python3 -c 'import sys,json; d={x[\"id\"]:x for x in json.load(sys.stdin)}; assert sorted(d)==[\"1207664643\",\"555\"] and d[\"1207664643\"][\"installed\"] and not d[\"555\"][\"installed\"], d'"
+ok "the token never appears on a command line" bash -c "! grep -q 'Bearer' '$T/curl.log'"
+ok "gog install: gogdl gets the platform and a folder, then art" bash -c "'$HGL' gog install 555 --title 'Cyber Thing' >/dev/null && grep -q 'download 555 --platform windows --path .*Games/Halcyon/GOG/cyber-thing --lang en-US' '$T/gogdl.log' && '$HGL' list --json | python3 -c 'import sys,json; d={g[\"id\"]:g for g in json.load(sys.stdin)}; assert d[\"gog-555\"][\"cover\"].endswith(\"gog-555-art.png\"), d[\"gog-555\"]'"
+no "gog install refuses a non-numeric id" "$HGL" gog install "12;x"
+
+echo "--- cover art"
+mkdir -p "$S/steamapps"
+printf '"AppState" { "appid" "730" "name" "Counter Thing" "StateFlags" "4" }' >"$S/steamapps/appmanifest_730.acf"
+printf 'jpgdata' >"$T/srv/library_600x900.jpg"
+ok "steam import adds a game without cached art" bash -c "'$HGL' import steam | grep -q '1 added'"
+ok "hgl art takes Steam art from the CDN" bash -c "'$HGL' art steam-730 | grep -q '1 found' && '$HGL' list --json | python3 -c 'import sys,json; d={g[\"id\"]:g for g in json.load(sys.stdin)}; assert d[\"steam-730\"][\"cover\"].endswith(\"steam-730-art.jpg\"), d[\"steam-730\"]'"
+ok "a game that has art is left alone" bash -c "'$HGL' art steam-730 | grep -q '0 found, 0 of 0'"
+ok "a Steam re-read keeps the art that was fetched" bash -c "'$HGL' import steam >/dev/null && '$HGL' list --json | python3 -c 'import sys,json; d={g[\"id\"]:g for g in json.load(sys.stdin)}; assert d[\"steam-730\"][\"cover\"].endswith(\"steam-730-art.jpg\"), d[\"steam-730\"]'"
+printf '%s' '{"success":true,"data":[{"id":77,"name":"Hades II"}]}' >"$T/srv/Hades%20II"
+printf '%s' '{"success":true,"data":[{"url":"https://cdn2.steamgriddb.com/grid/abc.png"}]}' >"$T/srv/77?dimensions=600x900&types=static"
+printf 'pngdata' >"$T/srv/abc.png"
+ok "without a key an .exe game gets no art (and no network)" bash -c ": >'$T/curl.log'; '$HGL' art hades-ii | grep -q '0 found'; [ ! -s '$T/curl.log' ]"
+ok "the key is stored but never printed" bash -c "'$HGL' config steamgriddb_key SECRETKEY >/dev/null && '$HGL' config | grep steamgriddb_key | grep -q '(set)' && ! '$HGL' config | grep -q SECRETKEY && [ \"\$(stat -c %a '$HOME/.config/Halcyon/hgl.conf')\" = 600 ]"
+ok "with a key, SteamGridDB art is found by name" bash -c "'$HGL' art hades-ii | grep -q '1 found' && '$HGL' list --json | python3 -c 'import sys,json; d={g[\"id\"]:g for g in json.load(sys.stdin)}; assert d[\"hades-ii\"][\"cover\"].endswith(\"hades-ii-art.png\"), d[\"hades-ii\"]'"
+ok "the key was not on any command line" bash -c "! grep -q SECRETKEY '$T/curl.log'"
+"$HGL" config steamgriddb_key "" >/dev/null
+
 echo "--- doctor"
 ok "doctor runs and prints" bash -c "'$HGL' doctor | grep -q 'umu-launcher'"
 ok "doctor --json is valid JSON" bash -c "'$HGL' doctor --json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert any(c[\"id\"]==\"vulkan\" for c in d)'"
 
+
+echo "--- class and suggestions"
+ok "class --json names a class A-D" bash -c "'$HGL' class --json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d[\"class\"] in \"ABCD\" and isinstance(d[\"gpus\"], list)'"
+ok "suggest --json has changes and in-game settings" bash -c "'$HGL' suggest hades-ii --json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d[\"inGame\"] and \"changes\" in d and d[\"applied\"] is False'"
+ok "suggest --apply leaves nothing more to change" bash -c "'$HGL' suggest hades-ii --apply >/dev/null && '$HGL' suggest hades-ii --json | python3 -c 'import sys,json; assert json.load(sys.stdin)[\"changes\"] == []'"
 echo
 if [ "$fail" = 0 ]; then echo "hgl: all tests passed"; else echo "hgl: FAILURES"; fi
 exit "$fail"

@@ -3,7 +3,12 @@
 notes (HALCYON_AI_MODEL, else MODEL= in ai-advisor.conf, else qwen2.5:3b-instruct), and they all stop when the master AI switch is
 off (Settings > Performance > AI features). Nothing leaves this machine.
 
-  halcyon-ai.py ask <question>                  one short answer (the launcher's  >ask ...)
+  halcyon-ai.py ask <question>                  one short answer (the launcher's  >ask ...). A question about Halcyon itself
+                                                ("how do I turn off the constellations") is answered by howto below
+  halcyon-ai.py howto <question>                a step-by-step guide to a Halcyon setting or command. The entries that match are
+                                                looked up in Settings.qml and the launcher's commands, and only those are given to
+                                                the model, so it names real switches; --json adds "open" (the Settings group or
+                                                launcher command to go to). Works without the model too (the plain guide).
   halcyon-ai.py do <phrase> [--dry] [--yes]     plain English to one Halcyon action: "move this window to workspace 3", "gaming mode on"
                                                 (the launcher's  >do ...). Clear phrases are understood without the model. Actions that end
                                                 something (close a window, log out, restart, shut down, sleep) only run with --yes.
@@ -209,6 +214,10 @@ def cmd_ask(args):
     q = " ".join(a for a in args if not a.startswith("--")).strip()
     if not q:
         raise Fail("Ask something, e.g.  ask how many ml in a cup")
+    if HOWTO_INTENT.search(q):
+        hits = help_search(q)
+        if hits and hits[0][0] >= HOWTO_MIN:
+            return howto(q, hits)
     ans = generate(q, system=(
         "You answer quick questions typed into a desktop launcher. Answer in one or two short sentences of plain text: no markdown, "
         "no lists, no preamble. If it is a calculation or a fact, give the result first. If you are not sure, say so briefly."),
@@ -1398,8 +1407,177 @@ def cmd_safety(args):
     return {"text": text, "verdict": key, "open": len(open_items)}
 
 
+# ------------------------------------------------------------------------------------------------ howto: a guide to Halcyon itself
+# The model is small and knows nothing about Halcyon, so it is never asked to remember: the question is matched against the real
+# Settings rows (Settings.qml: group, label, description, the Advanced fold) and the launcher commands (Launcher.qml), and the model
+# only picks the entry that answers and words the steps. Steps that do not name the entry's own label are thrown away and the plain
+# guide (built from the entry) is shown instead.
+HOWTO_INTENT = re.compile(r"\b(how|where|turn|switch|disable|enable|hide|show|change|set|stop|remove|get rid|make|can i|toggle|"
+                          r"off|on|setting|settings|option)\b", re.I)
+HOWTO_MIN = 4               # a label word or two: below it, >ask treats the question as a general one
+HELP_STOP = set("""a an the i me my to of in on off it its is are be do does did can could would should how what where when which
+    want wanna like please just turn switch set make get rid stop start enable disable change toggle remove this that
+    there with for from and or not no any all some them they you your halcyon desktop thing things way using use""".split())
+STR_FIELD = re.compile(r'(\w+): "((?:\\.|[^"\\])*)"')
+
+
+def _unq(v):
+    try:
+        return json.loads('"' + v + '"')
+    except ValueError:
+        return v
+
+
+def _stem(w):
+    for suf in ("ations", "ation", "ings", "ing", "ies", "es", "ed", "s"):
+        if len(w) > len(suf) + 3 and w.endswith(suf):
+            return w[: -len(suf)]
+    return w
+
+
+def _words(t):
+    return [_stem(w) for w in re.findall(r"[a-z0-9]+", t.lower()) if w not in HELP_STOP and len(w) > 1]
+
+
+def help_index():
+    """Every Settings row and launcher command as {kind, label, where, text, open, ...}."""
+    out = []
+    try:
+        src = open(os.path.join(ISLAND_DIR, "Settings.qml"), encoding="utf-8").read()
+    except OSError:
+        src = ""
+    pages = {}
+    for m in re.finditer(r'\{ id: "([^"]+)", sub: "[^"]*", groups: \[([^\]]*)\] \}', src):
+        for g in re.findall(r'"(\w+)"', m.group(2)):
+            pages[g] = m.group(1)
+    gm = list(re.finditer(r'^ {8}\{ id: "(\w+)", title: "([^"]+)", section: "([^"]+)", items: \[', src, re.M))
+    for i, g in enumerate(gm):
+        body = src[g.end(): gm[i + 1].start() if i + 1 < len(gm) else len(src)]
+        gid, title = g.group(1), g.group(2)
+        for line in re.findall(r"^ {12}\{ type: .*$", body, re.M):
+            f = {k: _unq(v) for k, v in STR_FIELD.findall(line)}
+            if not f.get("label"):
+                continue
+            opts = [_unq(x) for x in re.findall(r'(?:o|ch)\("[^"]*", "((?:\\.|[^"\\])*)"\)', line)]
+            out.append({"kind": "setting", "type": f.get("type", ""), "label": f["label"], "group": gid, "title": title,
+                        "page": pages.get(gid, g.group(3)), "adv": "adv: true" in line, "opts": opts, "btn": f.get("btn", ""),
+                        "text": " ".join([f.get("desc", ""), f.get("why", ""), " ".join(opts)]), "open": {"settings": gid}})
+    try:
+        lsrc = open(os.path.join(ISLAND_DIR, "Launcher.qml"), encoding="utf-8").read()
+    except OSError:
+        lsrc = ""
+    for line in re.findall(r'^ {8}\{ id: "[\w-]+", name: .*$', lsrc, re.M):
+        f = {k: _unq(v) for k, v in STR_FIELD.findall(line)}
+        if f.get("id") and f.get("name"):
+            out.append({"kind": "command", "label": f["name"], "id": f["id"], "title": "", "page": "", "adv": False, "opts": [],
+                        "text": f.get("desc", "") + " " + f.get("kw", ""), "open": {"command": f["id"]}})
+    return out
+
+
+def help_search(q, limit=6):
+    """[(score, entry)] best first. Label words count most, then the group, then the description and keywords."""
+    qw = set(_words(q))
+    if not qw:
+        return []
+    ql = q.lower()
+    res = []
+    for e in help_index():
+        lw, tw, dw = set(_words(e["label"])), set(_words(e["title"])), set(_words(e["text"]))
+        s = 3 * len(qw & lw) + 2 * len(qw & tw) + len(qw & dw)
+        if not s:
+            continue
+        s += 2 * len(qw & lw) / max(1, len(lw))        # the question covers most of the label: "Moving stars in bars"
+        if e["label"].lower() in ql:
+            s += 5
+        if re.search(r"\b(off = none|master switch|everywhere|anywhere)\b", e["text"], re.I):
+            s += 1          # the main switch of a feature beats its details
+        if e["kind"] == "command":
+            s -= 1          # a Settings row is usually what "turn X off" means
+        res.append((round(s, 1), e))
+    res.sort(key=lambda x: -x[0])
+    return res[:limit]
+
+
+def _where(e):
+    if e["kind"] == "command":
+        return f'the launcher command "{e["label"]}" (type >{e["label"].lower()})'
+    return f'Settings > {e["page"]} > {e["title"]}' + (' (under "Advanced" in that group)' if e["adv"] else "") + f' > "{e["label"]}"'
+
+
+def plain_steps(q, e, action=""):
+    """The steps, straight from the entry. action (the model's reading of the question): on | off | one of the choices | ""."""
+    act = action.strip().lower()
+    # the question's own words win over the model's reading (small models answer "on" to "turn X off")
+    q_off = re.search(r"\b(off|disable|hide|stop|remove|get rid|no more|without|less)\b", q, re.I) is not None
+    q_on = re.search(r"\b(turn on|switch on|enable|show|start|make)\b", q, re.I) is not None
+    off = q_off or (not q_on and act == "off")
+    if e["kind"] == "command":
+        return [f'Open the launcher and type  >{e["label"].lower()}', "Press Enter."]
+    steps = ["Open Settings (press Enter here, or type  >settings  in the launcher).",
+             f'Go to the "{e["page"]}" page, group "{e["title"]}".']
+    if e["adv"]:
+        steps.append('Open "Advanced" at the bottom of that group.')
+    t, lab = e["type"], e["label"]
+    if t == "toggle":
+        steps.append(f'Switch "{lab}" {"off" if off else "on"}.')
+    elif t == "seg" and e["opts"]:
+        pick = next((o for o in e["opts"] if act and act == o.lower()), None)
+        pick = pick or next((o for o in e["opts"] if off and re.match(r"(off|none|no)\b", o, re.I)), None)
+        pick = pick or next((o for o in e["opts"] if set(_words(o)) & set(_words(q))), None)
+        steps.append(f'Under "{lab}", pick "{pick}".' if pick else f'Under "{lab}", pick one of: {", ".join(e["opts"])}.')
+    elif t == "chips":
+        steps.append(f'In "{lab}", {"untick" if off else "tick"} the boxes you want ({", ".join(e["opts"])}).')
+    elif t == "action":
+        steps.append(f'Press "{e["btn"] or lab}" next to "{lab}".')
+    else:
+        steps.append(f'Change "{lab}".')
+    return steps
+
+
+def howto(q, hits=None):
+    hits = hits if hits is not None else help_search(q)
+    if not hits or hits[0][0] < 2:
+        raise Fail("I could not find a Halcyon setting or command for that. Try other words, or search in Settings.")
+    refs = "\n".join(f'[{i + 1}] "{e["label"]}" ({e.get("type") or e["kind"]}' + (f'; choices: {", ".join(e["opts"])}' if e["opts"] else "")
+                     + f'). In {e["title"] or "the launcher"}. ' + e["text"][:300] for i, (_, e) in enumerate(hits))
+    pick, action, note, by_ai = hits[0][1], "", "", True
+    # the model reads the question and the entries; where things are and what they are called comes from the entries themselves
+    try:
+        d = generate_json(
+            f"Question: {q}\n\nEntries:\n{refs}",
+            system=("You are the built-in help of Halcyon, a Linux desktop. Pick the ONE entry that does what the question asks "
+                    "(prefer the main switch of a feature over its details). Reply with JSON: {\"entry\": <its number, 0 if no "
+                    "entry fits>, \"action\": \"on\" or \"off\" for a switch, the exact choice for a list of choices, \"\" "
+                    "otherwise, \"note\": \"one or two short sentences: what it changes and anything worth knowing, using only "
+                    "what the entry says\"}"),
+            num_predict=200)
+        n = int(d.get("entry", 0) or 0)
+        if n == 0:
+            raise Fail("I could not find a Halcyon setting for that. Try other words, or search in Settings.")
+        if 1 <= n <= len(hits):
+            pick = hits[n - 1][1]
+        action = str(d.get("action") or "")
+        note = " ".join(plain(str(d.get("note") or "")).split())
+    except AiOff:
+        by_ai = False
+    except (Fail, ValueError, TypeError) as e:
+        if "could not find" in str(e):
+            raise
+        by_ai = False
+    steps = plain_steps(q, pick, action)
+    text = "\n".join(f"{i + 1}. {x}" for i, x in enumerate(steps)) + (("\n" + note) if note else "")
+    return {"text": text, "kind": "howto", "steps": steps, "note": note, "where": _where(pick), "open": pick["open"], "ai": by_ai}
+
+
+def cmd_howto(args):
+    q = " ".join(a for a in args if not a.startswith("--")).strip()
+    if not q:
+        raise Fail("Say what you want to change, e.g.  howto turn off the constellations")
+    return howto(q)
+
+
 # ------------------------------------------------------------------------------------------------ main
-COMMANDS = {"ask": cmd_ask, "do": cmd_do, "clip": cmd_clip, "brief": cmd_brief, "explain": cmd_explain,
+COMMANDS = {"ask": cmd_ask, "howto": cmd_howto, "do": cmd_do, "clip": cmd_clip, "brief": cmd_brief, "explain": cmd_explain,
             "safety": cmd_safety, "organise": cmd_organise, "organize": cmd_organise, "lyrics": cmd_lyrics}
 
 

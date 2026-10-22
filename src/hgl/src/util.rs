@@ -335,6 +335,90 @@ pub fn pid_alive(pid: u32) -> bool {
     Path::new(&format!("/proc/{pid}")).exists()
 }
 
+/// `~/x` -> `$HOME/x`; anything else is taken as it is.
+pub fn expand_home(s: &str) -> PathBuf {
+    if s == "~" {
+        home()
+    } else if let Some(rest) = s.strip_prefix("~/") {
+        home().join(rest)
+    } else {
+        PathBuf::from(s)
+    }
+}
+
+/// `rel` (either slash style) below `base`. When a name is not there exactly, a name that differs only in case is taken: GOG and Epic
+/// write Windows-style paths, Linux file systems are case-sensitive. `..` is refused.
+pub fn resolve_ci(base: &Path, rel: &str) -> Option<PathBuf> {
+    let mut cur = base.to_path_buf();
+    for part in rel.split(|c: char| c == '/' || c == '\\').filter(|p| !p.is_empty() && *p != ".") {
+        if part == ".." {
+            return None;
+        }
+        let exact = cur.join(part);
+        if exact.exists() {
+            cur = exact;
+            continue;
+        }
+        let want = part.to_ascii_lowercase();
+        let found = fs::read_dir(&cur).ok()?.flatten().find(|e| e.file_name().to_string_lossy().to_ascii_lowercase() == want)?;
+        cur = found.path();
+    }
+    Some(cur)
+}
+
+pub fn url_encode(s: &str) -> String {
+    let mut o = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            o.push(b as char);
+        } else {
+            o.push_str(&format!("%{b:02X}"));
+        }
+    }
+    o
+}
+
+/// A secret (API key, token) must not show up in the process list: it goes into a 0600 file that curl reads with `-H @file`.
+fn header_file(h: &str) -> Option<PathBuf> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let dir = state_dir();
+    fs::create_dir_all(&dir).ok()?;
+    let p = dir.join(format!(".hdr-{}", std::process::id()));
+    let mut f = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&p).ok()?;
+    f.write_all(format!("{h}\n").as_bytes()).ok()?;
+    Some(p)
+}
+
+/// One HTTPS GET with curl (40 s limit). Returns the body, or "" when `dest` is given and the file was saved. None on any failure
+/// (offline, HTTP error, no curl). `header` is a whole header line such as `Authorization: Bearer ...`.
+pub fn curl_run(url: &str, header: Option<&str>, dest: Option<&Path>) -> Option<String> {
+    if !url.starts_with("https://") || !have("curl") {
+        return None;
+    }
+    let hf = match header {
+        Some(h) => Some(header_file(h)?),
+        None => None,
+    };
+    let mut cmd = Command::new("curl");
+    cmd.args(["-fsSL", "--max-time", "40", "-A", "halcyon-hgl"]);
+    if let Some(p) = &hf {
+        cmd.arg("-H").arg(format!("@{}", p.display()));
+    }
+    if let Some(d) = dest {
+        cmd.arg("-o").arg(d);
+    }
+    cmd.arg(url).stdin(Stdio::null()).stderr(Stdio::null());
+    let res = cmd.output();
+    if let Some(p) = &hf {
+        let _ = fs::remove_file(p);
+    }
+    let o = res.ok()?;
+    if !o.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&o.stdout).into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,6 +450,26 @@ mod tests {
     #[test]
     fn json_escape() {
         assert_eq!(json_str("a\"b\\c\n"), "\"a\\\"b\\\\c\\n\"");
+    }
+
+    #[test]
+    fn url_encoding() {
+        assert_eq!(url_encode("Hades II"), "Hades%20II");
+        assert_eq!(url_encode("a&b/c"), "a%26b%2Fc");
+        assert_eq!(url_encode("Ab-1_2.3~"), "Ab-1_2.3~");
+    }
+
+    #[test]
+    fn case_insensitive_paths() {
+        let t = std::env::temp_dir().join(format!("hgl-ci-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&t);
+        let _ = fs::create_dir_all(t.join("bin/x64"));
+        let _ = fs::write(t.join("bin/x64/game.exe"), "MZ");
+        assert_eq!(resolve_ci(&t, "Bin\\X64\\GAME.EXE"), Some(t.join("bin/x64/game.exe")));
+        assert_eq!(resolve_ci(&t, "bin/x64/game.exe"), Some(t.join("bin/x64/game.exe")));
+        assert_eq!(resolve_ci(&t, "../etc"), None);
+        assert_eq!(resolve_ci(&t, "nope/game.exe"), None);
+        let _ = fs::remove_dir_all(&t);
     }
 
     #[test]

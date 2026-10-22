@@ -1,9 +1,15 @@
 //! hgl — Halcyon game launcher core.
 //!
-//! Library, Steam import, Proton runtimes, doctor, scoped runs, logs and crash triage. The Game Center in the island (and the `>games`
+//! Library, Steam / Epic / GOG, Proton runtimes, doctor, scoped runs, logs, crash triage, cover art and known fixes. The Game Center in the island (and the `>games`
 //! commands) call this binary; everything also works from a terminal. `--json` output is for the UI.
 
+mod art;
+mod class;
 mod doctor;
+mod epic;
+mod fixes;
+mod gog;
+mod json;
 mod proton;
 mod run;
 mod steam;
@@ -28,6 +34,14 @@ Library
   hgl set <id> <key> <value>              name exe proton prefix args wrappers gamescope wayland lean debug umu_id cover env.NAME
   hgl remove <id> [--prefix]              forget a game (--prefix also deletes its Wine prefix)
   hgl import steam                        read the Steam library (appmanifests, cover art)
+  hgl import epic                         add the games legendary has installed
+  hgl import gog [<folder> ...]           add the GOG games found in the install folders (and any folder you name)
+  hgl art [<id>] [--force]                fetch cover art (Steam CDN, Epic, GOG; SteamGridDB with your key)
+  hgl fixes <id> [--apply]                known notes and fixes for a game (see fixes.db)
+
+Stores
+  hgl epic login | logout | status [--json] | list [--json] | install <app name>      (needs legendary)
+  hgl gog login [<address or code>] | status [--json] | list [--json] | install <id> [--title T]   (needs gogdl)
 
 Run
   hgl run <id> [--dry-run] [--no-lean] [--no-scope]
@@ -49,7 +63,10 @@ Runtimes
 
 Machine
   hgl doctor [--fix] [--yes] [--json]     check Vulkan, 32-bit libraries, umu, gamemode, gamescope, mangohud
-  hgl config [<key> <value>]              global options (proton_family, proton_keep, game_weight, halcyon_weight, halcyon_core ...)
+  hgl class [--json]                      this machine's gaming class: A high end, B mid range, C entry, D integrated graphics
+  hgl suggest <id> [--apply] [--json]     the settings suggested for a game on this class (what hgl sets, and what to set in the game)
+  hgl config [<key> <value>]              global options (proton_family, proton_keep, game_weight, halcyon_weight, halcyon_core,
+                                          games_dir, steamgriddb_key, epic_config, gogdl, gog_dirs ...)
 ";
 
 struct Args {
@@ -131,7 +148,13 @@ fn main() {
         "fix" => cmd_fix(rest),
         "proton" => cmd_proton(rest),
         "doctor" => cmd_doctor(rest),
+        "class" => cmd_class(rest),
+        "suggest" => cmd_suggest(rest),
         "config" => cmd_config(rest),
+        "epic" => cmd_epic(rest),
+        "gog" => cmd_gog(rest),
+        "art" => cmd_art(rest),
+        "fixes" => cmd_fixes(rest),
         "__watch" => {
             let n = |i: usize| rest.get(i).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
             run::watch(n(0) as u32, n(1));
@@ -164,6 +187,9 @@ fn game_status(g: &Game, cfg: &Conf, have_umu: bool, have_runtime: bool) -> (&'s
         }
         return ("ready", String::new());
     }
+    if g.source == "epic" && !have("legendary") {
+        return ("attention", "legendary is not installed (Doctor)".into());
+    }
     if g.exe.is_empty() || !Path::new(&g.exe).is_file() {
         return ("attention", "game file not found".into());
     }
@@ -182,12 +208,12 @@ fn game_status(g: &Game, cfg: &Conf, have_umu: bool, have_runtime: bool) -> (&'s
     ("ready", String::new())
 }
 
-fn game_json(g: &Game, status: (&str, &str), running: bool) -> String {
+fn game_json(g: &Game, status: (&str, &str), running: bool, known: &str) -> String {
     let wr: Vec<String> = g.wrappers.iter().map(|w| json_str(w)).collect();
     let env: Vec<String> = g.env.iter().map(|(k, v)| format!("{}:{}", json_str(k), json_str(v))).collect();
     let cover = if !g.cover.is_empty() && Path::new(&g.cover).is_file() { g.cover.as_str() } else { "" };
     format!(
-        "{{\"id\":{},\"name\":{},\"source\":{},\"exe\":{},\"appid\":{},\"proton\":{},\"prefix\":{},\"args\":{},\"wrappers\":[{}],\"gamescope\":{},\"wayland\":{},\"lean\":{},\"debug\":{},\"umuId\":{},\"env\":{{{}}},\"cover\":{},\"lastPlayed\":{},\"playtime\":{},\"lastExit\":{},\"status\":{},\"statusReason\":{},\"running\":{}}}",
+        "{{\"id\":{},\"name\":{},\"source\":{},\"exe\":{},\"appid\":{},\"proton\":{},\"prefix\":{},\"args\":{},\"wrappers\":[{}],\"gamescope\":{},\"wayland\":{},\"lean\":{},\"debug\":{},\"umuId\":{},\"env\":{{{}}},\"cover\":{},\"lastPlayed\":{},\"playtime\":{},\"lastExit\":{},\"status\":{},\"statusReason\":{},\"running\":{},\"known\":{}}}",
         json_str(&g.id),
         json_str(&g.name),
         json_str(&g.source),
@@ -209,7 +235,8 @@ fn game_json(g: &Game, status: (&str, &str), running: bool) -> String {
         g.last_exit.map(|c| c.to_string()).unwrap_or_else(|| "null".into()),
         json_str(status.0),
         json_str(status.1),
-        running
+        running,
+        json_str(known)
     )
 }
 
@@ -221,11 +248,12 @@ fn cmd_list(rest: &[String]) -> Result<i32, String> {
     let running = run::running_id();
     let games = store::all_games();
     if a.has("json") {
+        let db = fixes::Db::load();
         let items: Vec<String> = games
             .iter()
             .map(|g| {
                 let (st, why) = game_status(g, &cfg, have_umu, have_rt);
-                game_json(g, (st, &why), running.as_deref() == Some(g.id.as_str()))
+                game_json(g, (st, &why), running.as_deref() == Some(g.id.as_str()), &db.note_for(g))
             })
             .collect();
         println!("[{}]", items.join(","));
@@ -250,12 +278,16 @@ fn cmd_show(rest: &[String]) -> Result<i32, String> {
     let g = Game::load(a.need(0, "game id")?)?;
     let cfg = Conf::load();
     let (st, why) = game_status(&g, &cfg, have("umu-run"), proton::resolve("", &cfg).is_some());
+    let known = fixes::Db::load().note_for(&g);
     if a.has("json") {
-        println!("{}", game_json(&g, (st, &why), run::running_id().as_deref() == Some(g.id.as_str())));
+        println!("{}", game_json(&g, (st, &why), run::running_id().as_deref() == Some(g.id.as_str()), &known));
     } else {
         print!("{}", g.serialize());
         let rt = proton::resolve(&g.proton, &cfg).map(|r| r.name).unwrap_or_else(|| "(none)".into());
         println!("# runtime in use: {rt}\n# prefix: {}\n# status: {st} {why}", g.prefix_path().display());
+        if !known.is_empty() {
+            println!("# known: {known}");
+        }
     }
     Ok(0)
 }
@@ -338,8 +370,19 @@ fn cmd_add(rest: &[String]) -> Result<i32, String> {
             g.cover = p.to_string_lossy().to_string();
         }
     }
+    let applied = fixes::Db::load().apply(&mut g, false);
     g.save()?;
     println!("Added {name} as '{id}'{}", if g.cover.is_empty() { "" } else { " (icon extracted)" });
+    for c in &applied {
+        println!("Known fix applied: {c}");
+    }
+    // SteamGridDB art only when you gave a key: otherwise adding a game never touches the network
+    if !a.has("no-icon") && Conf::load().get("steamgriddb_key").is_some() {
+        let (found, _) = art::fetch_ids(&[id.clone()], false);
+        if found > 0 {
+            println!("Cover art found.");
+        }
+    }
     println!("Run it: hgl run {id}");
     Ok(0)
 }
@@ -382,8 +425,150 @@ fn cmd_import(rest: &[String]) -> Result<i32, String> {
             println!("Steam: {added} added, {updated} updated, {removed} no longer installed (removed from the library)");
             Ok(0)
         }
-        other => Err(format!("cannot import '{other}' yet (steam only; Heroic/Lutris/Epic/GOG come later)")),
+        "epic" => {
+            let r = epic::import()?;
+            finish_import("Epic", &r)
+        }
+        "gog" => {
+            let extra: Vec<String> = a.pos.iter().skip(1).cloned().collect();
+            let r = gog::import(&extra)?;
+            finish_import("GOG", &r)
+        }
+        other => Err(format!("cannot import '{other}' (steam, epic or gog; Heroic and Lutris libraries are not read yet)")),
     }
+}
+
+/// After an Epic / GOG import: the known fixes for the new games, then their cover art.
+fn finish_import(label: &str, r: &store::Imported) -> Result<i32, String> {
+    let db = fixes::Db::load();
+    for id in &r.added {
+        if let Ok(mut g) = Game::load(id) {
+            let _ = db.apply(&mut g, false);
+            let _ = g.save();
+        }
+    }
+    let (found, _) = art::fetch_ids(&r.added, false);
+    let art_note = if found > 0 { format!(", art for {found}") } else { String::new() };
+    println!("{label}: {} added, {} updated, {} no longer installed (removed from the library){art_note}", r.added.len(), r.updated, r.removed);
+    Ok(0)
+}
+
+// ------------------------------------------------------------------------------------------------ stores, art, fixes
+
+fn cmd_epic(rest: &[String]) -> Result<i32, String> {
+    let a = Args::parse(rest, &[]);
+    match a.need(0, "an Epic subcommand (login, logout, status, list, install)")? {
+        "login" => epic::login(),
+        "logout" => epic::logout(),
+        "status" => {
+            let s = epic::status();
+            if a.has("json") {
+                println!("{{\"installed\":{},\"loggedIn\":{},\"account\":{}}}", s.installed, s.logged_in, json_str(&s.account));
+            } else if !s.installed {
+                println!("legendary is not installed (see: hgl doctor)");
+            } else if s.logged_in {
+                println!("Logged in to Epic as {}", s.account);
+            } else {
+                println!("Not logged in. Run: hgl epic login");
+            }
+            Ok(0)
+        }
+        "list" => {
+            if a.has("json") {
+                println!("{}", epic::titles_json()?);
+            } else {
+                for t in epic::owned()? {
+                    println!("{:<34} {}{}", t.app, t.title, if t.installed { "  [installed]" } else { "" });
+                }
+            }
+            Ok(0)
+        }
+        "install" => epic::install(a.need(1, "the Epic app name (hgl epic list)")?),
+        other => Err(format!("unknown epic subcommand '{other}'")),
+    }
+}
+
+fn cmd_gog(rest: &[String]) -> Result<i32, String> {
+    let a = Args::parse(rest, &["title"]);
+    match a.need(0, "a GOG subcommand (login, status, list, install)")? {
+        "login" => gog::login(a.pos.get(1).map(|s| s.as_str())),
+        "status" => {
+            let present = gog::gogdl_present();
+            let logged = gog::logged_in();
+            if a.has("json") {
+                println!("{{\"installed\":{present},\"loggedIn\":{logged},\"url\":{}}}", json_str(&gog::login_url()));
+            } else if !present {
+                println!("gogdl is not installed (see: hgl doctor)");
+            } else if logged {
+                println!("Logged in to GOG.");
+            } else {
+                println!("Not logged in. Run: hgl gog login");
+            }
+            Ok(0)
+        }
+        "list" => {
+            if a.has("json") {
+                println!("{}", gog::titles_json()?);
+            } else {
+                for t in gog::owned()? {
+                    println!("{:<12} {}{}", t.id, t.title, if t.installed { "  [installed]" } else { "" });
+                }
+            }
+            Ok(0)
+        }
+        "install" => gog::install(a.need(1, "the GOG product id (hgl gog list)")?, a.val("title")),
+        other => Err(format!("unknown gog subcommand '{other}'")),
+    }
+}
+
+fn cmd_art(rest: &[String]) -> Result<i32, String> {
+    let a = Args::parse(rest, &[]);
+    let ids: Vec<String> = match a.pos.first() {
+        Some(id) => {
+            Game::load(id)?;
+            vec![id.clone()]
+        }
+        None => store::list_ids(),
+    };
+    let (found, tried) = art::fetch_ids(&ids, a.has("force"));
+    println!("Cover art: {found} found, {} of {tried} still without", tried - found);
+    if tried > found && !art::Ctx::new().has_key() {
+        println!("Games from other sources get art from SteamGridDB: get a free key at steamgriddb.com/profile/preferences/api, then: hgl config steamgriddb_key <key>");
+    }
+    Ok(0)
+}
+
+fn cmd_fixes(rest: &[String]) -> Result<i32, String> {
+    let a = Args::parse(rest, &[]);
+    let mut g = Game::load(a.need(0, "game id")?)?;
+    let db = fixes::Db::load();
+    if a.has("apply") {
+        let done = db.apply(&mut g, true);
+        g.save()?;
+        if done.is_empty() {
+            println!("Nothing to change for {}.", g.name);
+        }
+        for c in done {
+            println!("Applied: {c}");
+        }
+        return Ok(0);
+    }
+    let note = db.note_for(&g);
+    let changes = db.changes_for(&g);
+    if note.is_empty() && changes.is_empty() {
+        println!("No known fixes or warnings for {}.", g.name);
+        return Ok(0);
+    }
+    if !note.is_empty() {
+        println!("{note}");
+    }
+    for c in &changes {
+        println!("  would set: {c}");
+    }
+    if !changes.is_empty() {
+        println!("Apply them: hgl fixes {} --apply", g.id);
+    }
+    Ok(0)
 }
 
 // ------------------------------------------------------------------------------------------------ run
@@ -580,6 +765,60 @@ fn cmd_proton(rest: &[String]) -> Result<i32, String> {
 
 // ------------------------------------------------------------------------------------------------ machine
 
+fn cmd_class(rest: &[String]) -> Result<i32, String> {
+    let a = Args::parse(rest, &[]);
+    let m = class::detect();
+    if a.has("json") {
+        println!("{}", class::machine_json(&m));
+    } else {
+        class::print_human(&m);
+    }
+    Ok(0)
+}
+
+fn cmd_suggest(rest: &[String]) -> Result<i32, String> {
+    let a = Args::parse(rest, &[]);
+    let mut g = Game::load(a.need(0, "game id")?)?;
+    let m = class::detect();
+    let changes = class::suggest(&g, &m);
+    let game_tips = class::in_game(m.class, class::nvidia_rtx(&m));
+    if a.has("apply") {
+        for c in &changes {
+            g.set(&c.key, &c.value)?;
+        }
+        g.save()?;
+    }
+    if a.has("json") {
+        let ch: Vec<String> = changes
+            .iter()
+            .map(|c| format!("{{\"key\":{},\"value\":{},\"why\":{}}}", json_str(&c.key), json_str(&c.value), json_str(&c.why)))
+            .collect();
+        let tips: Vec<String> = game_tips.iter().map(|t| json_str(t)).collect();
+        println!(
+            "{{\"machine\":{},\"changes\":[{}],\"inGame\":[{}],\"applied\":{}}}",
+            class::machine_json(&m),
+            ch.join(","),
+            tips.join(","),
+            a.has("apply")
+        );
+        return Ok(0);
+    }
+    println!("{} on a class {} machine ({})", g.name, m.class, class::class_label(m.class));
+    if changes.is_empty() {
+        println!("  hgl settings: nothing to change");
+    } else {
+        println!("  hgl settings{}:", if a.has("apply") { " (applied)" } else { " (hgl suggest <id> --apply sets them)" });
+        for c in &changes {
+            println!("    {} = {}    {}", c.key, if c.value.is_empty() { "(off)" } else { &c.value }, c.why);
+        }
+    }
+    println!("  In the game:");
+    for t in &game_tips {
+        println!("    {t}");
+    }
+    Ok(0)
+}
+
 fn cmd_doctor(rest: &[String]) -> Result<i32, String> {
     let a = Args::parse(rest, &[]);
     let checks = doctor::run_checks();
@@ -604,11 +843,27 @@ fn cmd_doctor(rest: &[String]) -> Result<i32, String> {
 
 fn cmd_config(rest: &[String]) -> Result<i32, String> {
     let mut cfg = Conf::load();
-    let keys = ["proton_family", "proton_default", "proton_keep", "steam_link", "game_weight", "halcyon_weight", "halcyon_throttle", "halcyon_core"];
+    let keys = [
+        "proton_family",
+        "proton_default",
+        "proton_keep",
+        "steam_link",
+        "game_weight",
+        "halcyon_weight",
+        "halcyon_throttle",
+        "halcyon_core",
+        "games_dir",
+        "steamgriddb_key",
+        "epic_config",
+        "gogdl",
+        "gog_dirs",
+    ];
     match rest.len() {
         0 => {
             for k in keys {
-                println!("{k} = {}", cfg.get(k).unwrap_or(""));
+                // an API key is not printed in full
+                let v = cfg.get(k).unwrap_or("");
+                println!("{k} = {}", if k.ends_with("_key") && !v.is_empty() { "(set)" } else { v });
             }
         }
         1 => println!("{}", cfg.get(&rest[0]).unwrap_or("")),
