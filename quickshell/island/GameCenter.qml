@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
 import Quickshell.Wayland
+import Quickshell.Hyprland
 
 // Game Center.   >gamecenter in the launcher (also `island command gamecenter`, and the IPC calls `gamecenter` / `gamecenterpage`).
 // One window for the game launcher (scripts: none, everything goes through the `hgl` binary, see docs/games.md):
@@ -86,7 +87,12 @@ Scope {
     Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
 
     // the game started or ended (shell.qml): read the library again so the badges and play times are right
-    onRunningIdChanged: if (open) reloadAll()
+    onRunningIdChanged: {
+        if (runningId === "") endedT.restart()           // last-session.json is written as hgl finishes: read it a moment later
+        if (open) reloadAll()
+    }
+    Timer { id: endedT; interval: 900; onTriggered: { root.loadSession(); endedRead.restart() } }
+    Timer { id: endedRead; interval: 400; onTriggered: root.launchEnded() }
 
     function flash(t, bad) { note = t; noteBad = bad === true; noteT.restart() }
     Timer { id: noteT; interval: 5000; onTriggered: root.note = "" }
@@ -107,7 +113,13 @@ Scope {
         if (d < 86400 * 60) return Math.floor(d / 86400) + " days ago"
         return Math.floor(d / 86400 / 30) + " months ago"
     }
-    function srcLabel(s) { return s === "steam" ? "Steam" : (s === "epic" ? "Epic" : (s === "gog" ? "GOG" : "Windows")) }
+    function srcLabel(s) { return s === "steam" ? "Steam" : (s === "epic" ? "Epic" : (s === "gog" ? "GOG" : (s === "flatpak" ? "Flatpak" : "Windows"))) }
+    // runs through Proton (a prefix, wrappers, gamescope); Steam and Flatpak games start their own way
+    function isWine(g) { return g !== null && g !== undefined && g.source !== "steam" && g.source !== "flatpak" }
+    function refreshLibrary() {
+        act([hgl, "import", "flatpak"], "")
+        act([hgl, "import", "steam"], "Library refreshed")
+    }
     function lastLine(t) {
         var l = String(t || "").trim().split("\n")
         return l[l.length - 1].replace(/^hgl:\s*/, "")
@@ -151,7 +163,7 @@ Scope {
     readonly property var sources: {
         var seen = []
         for (var i = 0; i < games.length; i++) if (seen.indexOf(games[i].source) < 0) seen.push(games[i].source)
-        return ["steam", "epic", "gog", "exe"].filter(function (s) { return seen.indexOf(s) >= 0 })
+        return ["steam", "epic", "gog", "flatpak", "exe"].filter(function (s) { return seen.indexOf(s) >= 0 })
     }
     onSourcesChanged: if (filter !== "all" && sources.indexOf(filter) < 0) filter = "all"
     readonly property var shown: {
@@ -432,21 +444,81 @@ Scope {
         addOpen = false; addPath = ""; addName = ""
     }
     function prefixFolder() {
-        if (!sel || sel.source === "steam") return
+        if (!isWine(sel)) return
         Quickshell.execDetached(["sh", "-c", "mkdir -p \"$1\" && xdg-open \"$1\"", "sh", sel.prefix])
     }
     function wineSettings() {
-        if (!sel || sel.source === "steam") return
+        if (!isWine(sel)) return
         var rt = runtimeFor(sel.proton)
         if (!rt) { flash("Install a Proton version first (the Proton tab)", true); return }
         runInConsole("WINEPREFIX=" + q(sel.prefix) + " PROTONPATH=" + q(rt.path) + " GAMEID=umu-0 umu-run winecfg")
     }
+    // ---- after Play: the window stays and says what is going on (hgl's own output and the game's log, in words) until the game's
+    // window appears; a game that closes within a minute brings the window back with what its log says
+    property string launchId: ""
+    property string phase: ""               // "" | starting | running | ended | failed
+    property string phaseText: ""
+    property string launchLog: ""           // the end of the game's log, without the noise
+    readonly property string launchOut: Quickshell.env("XDG_RUNTIME_DIR") + "/hgl-launch.out"     // shell.qml sends `hgl run` here
     function playSel() {
         if (!sel) return
         if (selRunning) { stopRequested(); return }
         if (runningId !== "") { flash("Another game is running: stop it first", true); return }
+        launchId = sel.id
+        phase = "starting"
+        phaseText = "Starting " + sel.name + "\u2026"
+        launchLog = ""
         launchRequested(sel.id)
-        hide()
+        pollT.restart()
+    }
+    Timer { id: pollT; interval: 1000; repeat: true; running: root.phase === "starting"; onTriggered: if (!pollProc.running) pollProc.running = true }
+    Process {
+        id: pollProc
+        command: ["sh", "-c", "cat \"$1\" 2>/dev/null; echo '@@LOG@@'; L=$(sed -n 's/^log: //p' \"$1\" 2>/dev/null | head -n 1); " +
+                  "[ -f \"$L\" ] && grep -avE 'gamemodeauto|^(env|cwd|cmd): |^hgl [0-9]|=== game output' \"$L\" | tail -n 40", "sh", root.launchOut]
+        stdout: StdioCollector { onStreamFinished: root.readLaunch(text) }
+    }
+    function readLaunch(t) {
+        var parts = t.split("@@LOG@@"), outText = parts[0], log = (parts[1] || "").trim()
+        var err = outText.split("\n").filter(function (l) { return l.indexOf("hgl: ") === 0 })
+        if (err.length > 0 && phase === "starting") {
+            phase = "failed"
+            phaseText = err[err.length - 1].substring(5)
+        }
+        var lines = log === "" ? [] : log.split("\n")
+        launchLog = lines.filter(function (l) { return !/^(ProtonFixes\[\d+\] INFO|INFO: )/.test(l) }).slice(-8).join("\n")
+        if (phase !== "starting") return
+        var g = null
+        for (var i = 0; i < games.length; i++) if (games[i].id === launchId) g = games[i]
+        var name = g ? g.name : "the game"
+        if (/Downloading steamrt|please wait/i.test(log) && !/ntsync|Executable is|launching with/i.test(log))
+            phaseText = "Downloading the Steam Runtime. First start only: a few minutes"
+        else if (/Upgrading prefix|Creating prefix|wineboot/i.test(log) && !/Executable is|launching with/i.test(log))
+            phaseText = "Setting up " + name + "'s Windows folder. First start only"
+        else if (/Executable is|launching with|ntsync/i.test(log))
+            phaseText = "Opening " + name + "\u2026"
+    }
+    // the game's window appeared: get out of the way
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name === "openwindow" && root.phase === "starting" && root.runningId === root.launchId) { root.phase = "running"; root.hide() }
+        }
+    }
+    // the game ended: a short session that you did not stop yourself is worth saying something about
+    function launchEnded() {
+        if (launchId === "" || (phase !== "starting" && phase !== "running")) return
+        var ls = lastSession
+        if (!ls || ls.id !== launchId) return
+        var stopped = ls.exit === 143 || ls.exit === 130 || ls.exit === 137
+        if (ls.playedSecs >= 60 || stopped) { phase = ""; return }
+        var name = ls.name || "The game"
+        phase = "ended"
+        phaseText = name + " closed after " + Math.max(1, ls.playedSecs) + " s" + (ls.exit !== null && ls.exit !== 0 ? " (code " + ls.exit + ")" : "")
+        pollProc.running = true
+        if (!open) { show("library") }
+        selId = launchId
+        Qt.callLater(function () { root.loadTriage() })
     }
     function fixFinding(f) {
         if (!sel) return
@@ -735,10 +807,10 @@ Scope {
                                     ActionChip {
                                         pal: root.pal
                                         implicitHeight: 38
-                                        glyph: String.fromCodePoint(0xF04D3)
-                                        label: "Read Steam"
+                                        glyph: String.fromCodePoint(0xF0450)
+                                        label: "Refresh"
                                         disabled: root.busy
-                                        onClicked: root.act([root.hgl, "import", "steam"], "Steam library read")
+                                        onClicked: root.refreshLibrary()
                                     }
                                     PrimaryBtn { glyph: String.fromCodePoint(0xF0415); label: "Add game"; onClicked: root.browseExe() }
                                 }
@@ -874,7 +946,7 @@ Scope {
                                             Image {
                                                 id: img
                                                 // an icon taken out of an .exe is small and square: show it whole instead of stretching it
-                                                readonly property bool small: implicitWidth < 300 || implicitHeight < 150
+                                                readonly property bool small: implicitWidth < 300 || implicitHeight < 150 || String(source).indexOf("/icons/") >= 0
                                                 anchors.fill: parent
                                                 anchors.margins: small ? 40 : 0
                                                 anchors.bottomMargin: small ? 70 : 0
@@ -1010,7 +1082,7 @@ Scope {
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             wrapMode: Text.Wrap
-                                            text: "Add a Windows game, or read your Steam library."
+                                            text: "Add a Windows game, or find your Steam and Flatpak games."
                                             color: root.pal.muted
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tBody
@@ -1021,7 +1093,7 @@ Scope {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             spacing: 10
                                             PrimaryBtn { glyph: String.fromCodePoint(0xF0415); label: "Add a Windows game"; onClicked: root.browseExe() }
-                                            ActionChip { pal: root.pal; implicitHeight: 38; glyph: String.fromCodePoint(0xF04D3); label: "Read Steam library"; onClicked: root.act([root.hgl, "import", "steam"], "Steam library read") }
+                                            ActionChip { pal: root.pal; implicitHeight: 38; glyph: String.fromCodePoint(0xF0450); label: "Find my games"; onClicked: root.refreshLibrary() }
                                         }
                                     }
                                 }
@@ -1059,7 +1131,7 @@ Scope {
                                             fillMode: Image.PreserveAspectCrop
                                             asynchronous: true
                                             cache: false
-                                            visible: status === Image.Ready && implicitWidth >= 300
+                                            visible: status === Image.Ready && implicitWidth >= 300 && String(source).indexOf("/icons/") < 0
                                         }
                                         Rectangle {
                                             anchors.fill: parent
@@ -1099,12 +1171,96 @@ Scope {
                                         width: dflick.width - 36
                                         spacing: 16
 
+                                        // what is happening with this game right now (after Play)
+                                        Rectangle {
+                                            id: launchCard
+                                            readonly property bool here: root.sel !== null && root.launchId === root.sel.id && root.phase !== ""
+                                            readonly property bool bad: root.phase === "ended" || root.phase === "failed"
+                                            width: parent.width
+                                            visible: here
+                                            implicitHeight: lcCol.implicitHeight + 24
+                                            radius: root.pal.rMd
+                                            color: Qt.alpha(bad ? root.pal.warn : root.pal.accent, 0.10)
+                                            border.width: 1
+                                            border.color: Qt.alpha(bad ? root.pal.warn : root.pal.accent, 0.35)
+                                            Column {
+                                                id: lcCol
+                                                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                                                spacing: 8
+                                                Row {
+                                                    width: parent.width
+                                                    spacing: 10
+                                                    Rectangle {
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: 8; height: 8; radius: 4
+                                                        color: launchCard.bad ? root.pal.warn : root.pal.accent
+                                                        opacity: root.phase === "starting" ? 0.35 + 0.65 * Math.abs(Math.sin(lpulse.tp * Math.PI)) : 1
+                                                        Item {
+                                                            id: lpulse
+                                                            property real tp: 0
+                                                            NumberAnimation on tp { from: 0; to: 1; duration: 1100; loops: Animation.Infinite; running: root.phase === "starting" }
+                                                        }
+                                                    }
+                                                    Text {
+                                                        width: parent.width - 18
+                                                        wrapMode: Text.Wrap
+                                                        text: root.phase === "running" ? "Running" : root.phaseText
+                                                        color: root.pal.text
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tBody
+                                                        font.weight: Font.Medium
+                                                    }
+                                                }
+                                                Text {
+                                                    width: parent.width
+                                                    visible: root.phase === "starting"
+                                                    wrapMode: Text.Wrap
+                                                    text: "This window steps aside when the game opens."
+                                                    color: root.pal.muted
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tCap
+                                                }
+                                                Text {
+                                                    width: parent.width
+                                                    visible: launchCard.bad && root.launchLog !== ""
+                                                    text: "What the log says last:"
+                                                    color: root.pal.muted
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tCap
+                                                }
+                                                Rectangle {
+                                                    width: parent.width
+                                                    visible: launchCard.bad && root.launchLog !== ""
+                                                    implicitHeight: llTxt.implicitHeight + 16
+                                                    radius: root.pal.rSm
+                                                    color: Qt.alpha(root.pal.bg, 0.6)
+                                                    Text {
+                                                        id: llTxt
+                                                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
+                                                        wrapMode: Text.WrapAnywhere
+                                                        text: root.launchLog
+                                                        color: root.pal.muted
+                                                        font.family: root.pal.font
+                                                        font.pixelSize: 10
+                                                    }
+                                                }
+                                                Flow {
+                                                    width: parent.width
+                                                    spacing: 6
+                                                    visible: launchCard.bad
+                                                    ActionChip { pal: root.pal; implicitHeight: 30; label: "Full log"; onClicked: { root.advOpen = true; root.logOpen = true; root.loadLog() } }
+                                                    ActionChip { pal: root.pal; implicitHeight: 30; label: "Dismiss"; onClicked: root.phase = "" }
+                                                }
+                                            }
+                                        }
                                         PrimaryBtn {
                                             width: parent.width
                                             implicitHeight: 46
+                                            readonly property bool starting: root.phase === "starting" && root.sel !== null && root.launchId === root.sel.id
                                             glyph: String.fromCodePoint(root.selRunning ? 0xF04DB : 0xF040A)
-                                            label: root.selRunning ? "Stop" : "Play"
+                                            label: root.selRunning ? "Stop" : (starting ? "Starting\u2026" : ((root.phase === "ended" || root.phase === "failed") && root.sel && root.launchId === root.sel.id ? "Try again" : "Play"))
                                             danger: root.selRunning
+                                            disabled: starting && !root.selRunning
                                             onClicked: root.playSel()
                                         }
                                         // a known problem with this game (fixes.db)
@@ -1334,7 +1490,7 @@ Scope {
                                         Column {
                                             width: parent.width
                                             spacing: 8
-                                            visible: root.sel !== null && root.sel.source !== "steam"
+                                            visible: root.isWine(root.sel)
                                             SectionTitle { text: "Runs with" }
                                             Rectangle {
                                                 width: parent.width
@@ -1447,7 +1603,7 @@ Scope {
                                                 delegate: RowLayout {
                                                     required property var modelData
                                                     // Wayland mode and the wrappers apply to games Halcyon starts itself, not to Steam's own launch
-                                                    visible: !(root.sel && root.sel.source === "steam" && modelData.k !== "lean")
+                                                    visible: root.isWine(root.sel) || modelData.k === "lean"
                                                     width: parent.width
                                                     height: visible ? implicitHeight : 0
                                                     spacing: 10
@@ -1604,8 +1760,8 @@ Scope {
                                                 Flow {
                                                     width: parent.width
                                                     spacing: 6
-                                                    ActionChip { pal: root.pal; implicitHeight: 32; visible: root.sel !== null && root.sel.source !== "steam"; label: "Prefix folder"; onClicked: root.prefixFolder() }
-                                                    ActionChip { pal: root.pal; implicitHeight: 32; visible: root.sel !== null && root.sel.source !== "steam"; label: "Wine settings"; onClicked: root.wineSettings() }
+                                                    ActionChip { pal: root.pal; implicitHeight: 32; visible: root.isWine(root.sel); label: "Prefix folder"; onClicked: root.prefixFolder() }
+                                                    ActionChip { pal: root.pal; implicitHeight: 32; visible: root.isWine(root.sel); label: "Wine settings"; onClicked: root.wineSettings() }
                                                     ActionChip { pal: root.pal; implicitHeight: 32; label: root.logOpen ? "Hide log" : "Show log"; onClicked: { root.logOpen = !root.logOpen; if (root.logOpen) root.loadLog() } }
                                                     ActionChip { pal: root.pal; implicitHeight: 32; label: "Check last run"; onClicked: root.loadTriage() }
                                                 }

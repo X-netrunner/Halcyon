@@ -268,6 +268,11 @@ pub fn run_checks() -> Vec<Check> {
     // umu
     if have("umu-run") {
         c.push(Check::ok("umu", "umu-launcher (umu-run)", "present"));
+        if crate::run::umu_runtime_ready() {
+            c.push(Check::ok("umu-runtime", "Steam Runtime for umu", "downloaded"));
+        } else {
+            c.push(Check::bad("umu-runtime", "Steam Runtime for umu", Level::Warn, "not downloaded yet: the first game start downloads it (a few hundred MB, a few minutes); let that first start finish"));
+        }
     } else {
         let mut ch = Check::bad("umu", "umu-launcher (umu-run)", Level::Fail, "umu-run not found");
         match m {

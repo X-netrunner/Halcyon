@@ -6,6 +6,7 @@ The game launcher. Phase 1 is the engine: a Rust helper, no dependencies, instal
 | Command | What it does |
 |---|---|
 | `hgl import steam` | Reads `libraryfolders.vdf` and every `appmanifest_*.acf` (native, `~/.steam`, Flatpak, extra drives), skips Steam's own tools and half-installed games, takes cover art from Steam's local cache, drops games you uninstalled. Your per-game settings are kept. |
+| `hgl import flatpak` | Adds the installed Flatpak apps whose desktop entry is in the Game category (Sober, PrismLauncher, RetroArch ...), with their icon, and drops uninstalled ones. They start with `flatpak run <app id>` (environment variables through `--env`), no Proton or prefix; `hgl stop` uses `flatpak kill`. The Game Center's **Refresh** reads Flatpak and Steam. |
 | `hgl add game.exe [--name N] [--proton V] [--wayland]` | Adds a plain .exe. Icon extracted offline with `icoutils` when installed. |
 | `hgl list [--json]` / `hgl show <id>` | Library, last played first, with a status (`ready` / `attention` and why). |
 | `hgl set <id> <key> <value>` | `name exe proton prefix args wrappers gamescope wayland lean debug umu_id cover env.NAME`. `wrappers` = `gamemode,mangohud`; `gamescope` = a preset (`native 1080p 1440p fsr1080 fsr1440`) or raw gamescope options. Wayland is off by default. |
@@ -82,6 +83,9 @@ The **drawer** on the right is the selected game's profile, under its cover:
 
 **Not tested against the real services:** the Epic and GOG commands were written from their documented behaviour and checked with fake `legendary`, `gogdl` and `curl` in `tests/hgl.test.sh`. The exact `legendary` / `gogdl` options, the GOG API answers and the SteamGridDB and CDN URLs have not been run against the real thing. If one of them differs, the log or the error line says which.
 
+## After Play
+The Game Center stays open after Play and says what is happening, from `hgl run`'s output (`$XDG_RUNTIME_DIR/hgl-launch.out`) and the game's log: *Starting*, *Downloading the Steam Runtime* (first start), *Setting up the Windows folder* (first start), *Opening*. It steps aside when the game's window appears. If the game closes within a minute (and you did not stop it), the window comes back with "*Game* closed after *N* s", the last lines of the log (gamemode noise left out), the crash check's findings, Full log and Try again. An error before the game starts (a missing file, no Proton) shows the same way.
+
 ## Machine class and suggested settings
 `hgl class [--json]` sorts the machine into a gaming class from its best GPU (by name: RTX / GTX, RX, Arc, the Radeon 680M-890M iGPUs; by video memory when the name is unknown), capped by video memory (under 8 GB: at most B), CPU threads and system memory:
 
@@ -98,6 +102,7 @@ The **drawer** on the right is the selected game's profile, under its cover:
 `~/.config/Halcyon/games/<id>.conf` (one per game, plain `key=value`), `~/.config/Halcyon/hgl.conf` (global options, mode 600), `~/.config/Halcyon/gog/auth.json`, `~/.config/Halcyon/hgl-fixes.conf`, `$XDG_DATA_HOME/Halcyon/{proton,prefixes,covers}`, `$XDG_STATE_HOME/Halcyon/hgl/`. Nothing is hardcoded to a home path.
 
 ## Limits
+- The first start of a Windows game is slow: umu downloads its Steam Runtime once (about 700 MB) and the game's Wine prefix is created. `hgl run` sends a notification when that is about to happen; let it finish.
 - Kernel-level anti-cheat (Easy Anti-Cheat, BattlEye) only works when the developer enabled Proton support. No launcher changes that.
 - A game that is already running refuses a second launch (a notification says so). The pill's Stop and `>games stop` end the whole scope.
 - Heroic and Lutris libraries are not read (a Heroic legendary install can be used: `hgl config epic_config ~/.config/heroic/legendaryConfig/legendary`). "Add game" has its own .exe browser inside the window (a system file chooser would open under it); a pasted path works too, `~` included.

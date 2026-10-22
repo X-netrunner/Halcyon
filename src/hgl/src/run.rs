@@ -5,6 +5,7 @@
 //! (`hgl __watch`) restores it when the game is gone even if this process was killed.
 
 use crate::epic;
+use crate::flatpak;
 use crate::proton;
 use crate::steam;
 use crate::store::{Conf, Game};
@@ -56,6 +57,20 @@ pub fn gamescope_args(preset: &str) -> Vec<String> {
 }
 
 pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
+    // a Flatpak game: its own sandbox and scope, no Proton; the environment goes in through --env
+    if g.source == "flatpak" {
+        if !have("flatpak") {
+            return Err("flatpak is not installed".into());
+        }
+        if !flatpak::valid_app_id(&g.appid) {
+            return Err(format!("{} has no valid Flatpak app id (run: hgl import flatpak)", g.name));
+        }
+        let mut argv: Vec<String> = vec!["flatpak".into(), "run".into()];
+        argv.extend(g.env.iter().map(|(k, v)| format!("--env={k}={v}")));
+        argv.push(g.appid.clone());
+        argv.extend(shell_split(&g.args));
+        return Ok(Plan { argv, env: vec![], cwd: None, unit: String::new(), notes: vec![] });
+    }
     if g.exe.is_empty() {
         return Err(format!("{} has no .exe set (hgl set {} exe /path/to/game.exe)", g.name, g.id));
     }
@@ -205,6 +220,8 @@ pub struct Session {
     pub name: String,
     pub unit: String,
     pub appid: String,
+    /// a Flatpak game's app id (stopped with `flatpak kill`, alive while `flatpak ps` lists it)
+    pub flatpak: String,
     pub started: u64,
     pub gm: bool,
     pub throttled: Vec<String>,
@@ -224,12 +241,13 @@ impl Session {
     fn serialize(&self) -> String {
         let aff: Vec<String> = self.affinity.iter().map(|(p, l)| format!("{p}:{l}")).collect();
         format!(
-            "pid={}\nid={}\nname={}\nunit={}\nappid={}\nstarted={}\ngm={}\nthrottled={}\naffinity={}\nlog={}\n",
+            "pid={}\nid={}\nname={}\nunit={}\nappid={}\nflatpak={}\nstarted={}\ngm={}\nthrottled={}\naffinity={}\nlog={}\n",
             self.pid,
             self.id,
             self.name.replace('\n', " "),
             self.unit,
             self.appid,
+            self.flatpak,
             self.started,
             self.gm as u8,
             self.throttled.join(" "),
@@ -258,6 +276,11 @@ impl Session {
                 "appid" => {
                     if v.chars().all(|c| c.is_ascii_digit()) {
                         s.appid = v
+                    }
+                }
+                "flatpak" => {
+                    if flatpak::valid_app_id(&v) {
+                        s.flatpak = v
                     }
                 }
                 "started" => s.started = v.parse().unwrap_or(0),
@@ -338,6 +361,8 @@ fn game_alive(s: &Session) -> bool {
         run_quiet("systemctl", &["--user", "is-active", "--quiet", &format!("{}.scope", s.unit)], 5)
     } else if !s.appid.is_empty() {
         !steam::game_pids(&s.appid).is_empty()
+    } else if !s.flatpak.is_empty() {
+        out("flatpak", &["ps", "--columns=application"]).map(|t| t.lines().any(|l| l.trim() == s.flatpak)).unwrap_or(false)
     } else {
         false
     }
@@ -582,7 +607,9 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
     }
 
     if let Some(p) = &plan {
-        fs::create_dir_all(g.prefix_path()).map_err(|e| format!("cannot create the prefix folder: {e}"))?;
+        if g.source != "flatpak" {
+            fs::create_dir_all(g.prefix_path()).map_err(|e| format!("cannot create the prefix folder: {e}"))?;
+        }
         for n in &p.notes {
             eprintln!("note: {n}");
         }
@@ -596,6 +623,7 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
         name: g.name.clone(),
         unit: plan.as_ref().map(|p| p.unit.clone()).unwrap_or_default(),
         appid: if is_steam { g.appid.clone() } else { String::new() },
+        flatpak: if g.source == "flatpak" { g.appid.clone() } else { String::new() },
         started,
         log: logpath.to_string_lossy().to_string(),
         ..Session::default()
@@ -620,6 +648,12 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
     island_call("gamestart", &[g.id.as_str(), g.name.as_str(), since.as_str(), if lean { "true" } else { "false" }]);
 
     println!("Launching {} ...\nlog: {}", g.name, logpath.display());
+    if let Some(n) = plan.as_ref().filter(|_| g.source != "flatpak").and_then(|_| first_start_note(&g)) {
+        eprintln!("note: {n}");
+        if have("notify-send") {
+            let _ = Command::new("notify-send").args(["-a", "Halcyon", "-i", "applications-games", "-t", "15000", "Setting up the game", &n]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+        }
+    }
     let t0 = Instant::now();
     let mut sampler = Sampler::default();
     sampler.sample();
@@ -646,6 +680,27 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
     }
     finish(&g, secs, code, &sampler, s.gm, is_steam);
     Ok(0)
+}
+
+/// umu's Steam Runtime is unpacked (umu downloads it, a few hundred MB, on the first game start and checks it on every start).
+pub fn umu_runtime_ready() -> bool {
+    let root = data_home().join("umu");
+    let Ok(rd) = fs::read_dir(&root) else { return false };
+    rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("steamrt")).any(|e| {
+        fs::read_dir(e.path()).map(|d| d.flatten().any(|f| f.file_name().to_string_lossy().contains("_platform_"))).unwrap_or(false)
+    })
+}
+
+/// A first start looks like nothing happens for minutes (the runtime download, a new Wine prefix): say so, so it is not stopped.
+fn first_start_note(g: &Game) -> Option<String> {
+    let runtime = !umu_runtime_ready();
+    let prefix = !g.prefix_path().join("system.reg").is_file();
+    let what = match (runtime, prefix) {
+        (true, _) => "downloading the Steam Runtime (one time, a few hundred MB) and setting up its Windows folder",
+        (false, true) => "setting up its Windows folder",
+        _ => return None,
+    };
+    Some(format!("First start of {}: {what}. This takes a few minutes and the game opens by itself; do not stop it.", g.name))
 }
 
 fn spawn_game(p: &Plan, log: fs::File) -> Result<Child, String> {
@@ -822,6 +877,12 @@ pub fn stop(id: Option<&str>) -> Result<(), String> {
         }
         return Ok(());
     }
+    if !s.flatpak.is_empty() {
+        if !run_quiet("flatpak", &["kill", &s.flatpak], 10) {
+            return Err("could not stop the Flatpak app".into());
+        }
+        return Ok(());
+    }
     if !s.appid.is_empty() {
         let pids = steam::game_pids(&s.appid);
         if pids.is_empty() {
@@ -867,6 +928,7 @@ mod tests {
             name: "Hades".into(),
             unit: "hgl-hades-42".into(),
             appid: String::new(),
+            flatpak: "org.vinegarhq.Sober".into(),
             started: 7,
             gm: true,
             throttled: vec!["app-quickshell.service".into()],
@@ -876,6 +938,8 @@ mod tests {
         let t = Session::parse(&s.serialize());
         assert_eq!(t.id, "hades");
         assert_eq!(t.unit, "hgl-hades-42");
+        assert_eq!(t.flatpak, "org.vinegarhq.Sober");
+        assert!(Session::parse("flatpak=org.x; rm -rf ~\n").flatpak.is_empty());
         assert!(t.gm);
         assert_eq!(t.throttled, vec!["app-quickshell.service"]);
         assert_eq!(t.affinity, vec![(10, "0-15".to_string()), (11, "0,2".to_string())]);
