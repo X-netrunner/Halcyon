@@ -17,10 +17,7 @@ pub fn run(args: &[String]) -> i32 {
             if flag.exists() {
                 return 0;
             }
-            let (sdev, scur, _) = match light::best_screen_info() {
-                Some(b) => b,
-                None => (String::new(), 0, 0),
-            };
+            let (sdev, scur, _) = light::best_screen_info().unwrap_or_default();
             let mut record = String::new();
             if !sdev.is_empty() {
                 record.push_str(&format!("screen {} {}\n", sdev, scur));

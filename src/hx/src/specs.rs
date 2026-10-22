@@ -10,7 +10,7 @@ fn cpu() -> (String, usize, usize) {
     let mut name = String::new();
     for l in read("/proc/cpuinfo").lines() {
         if l.starts_with("model name") {
-            name = l.splitn(2, ':').nth(1).unwrap_or("").trim().to_string();
+            name = l.split_once(':').map(|x| x.1).unwrap_or("").trim().to_string();
             break;
         }
     }
@@ -23,7 +23,7 @@ fn cpu() -> (String, usize, usize) {
         (r"\s+\d+-Core", ""),
         (r"\s+", " "),
     ] {
-        name = Regex::new(re).unwrap().replace_all(&name, rep).into_owned();
+        name = Regex::new(re).expect("valid regex").replace_all(&name, rep).into_owned();
     }
     let name = name.trim().to_string();
     let cores: HashSet<String> = run("lscpu", &["-p=core,socket"], 4)
@@ -45,7 +45,7 @@ fn tidy(vendor: &str, model: &str) -> String {
     } else {
         vendor
     };
-    let re = Regex::new(r"\[(.+)\]").unwrap();
+    let re = Regex::new(r"\[(.+)\]").expect("valid regex");
     let mut m = re.captures(model).map(|c| c[1].to_string()).unwrap_or_else(|| model.to_string());
     if m.starts_with(v) {
         m = m[v.len()..].trim().to_string();
@@ -122,7 +122,7 @@ fn gpus() -> Vec<String> {
         }
     }
     // fallback: lspci (may wake a sleeping dGPU once)
-    let q = Regex::new(r#""([^"]*)""#).unwrap();
+    let q = Regex::new(r#""([^"]*)""#).expect("valid regex");
     let mut out = Vec::new();
     for line in run("lspci", &["-mm"], 4).lines() {
         let parts: Vec<String> = q.captures_iter(line).map(|c| c[1].to_string()).collect();
@@ -135,7 +135,7 @@ fn gpus() -> Vec<String> {
 
 fn ram() -> Value {
     let kb: f64 = Regex::new(r"MemTotal:\s+(\d+)")
-        .unwrap()
+        .expect("valid regex")
         .captures(&read("/proc/meminfo"))
         .and_then(|c| c[1].parse().ok())
         .unwrap_or(0.0);
@@ -152,8 +152,8 @@ fn ram() -> Value {
         return info;
     }
     struct Module { mb: i64, ty: String, form: String, speed: String, loc: String }
-    let kv = Regex::new(r"(?m)^\s*([A-Za-z /]+?):\s*(.+?)\s*$").unwrap();
-    let sz = Regex::new(r"^(\d+)\s*(MB|GB)").unwrap();
+    let kv = Regex::new(r"(?m)^\s*([A-Za-z /]+?):\s*(.+?)\s*$").expect("valid regex");
+    let sz = Regex::new(r"^(\d+)\s*(MB|GB)").expect("valid regex");
     let mut mods: Vec<Module> = Vec::new();
     for block in text.split("Memory Device").skip(1) {
         let f: HashMap<String, String> = kv.captures_iter(block).map(|c| (c[1].to_string(), c[2].to_string())).collect();
@@ -176,7 +176,7 @@ fn ram() -> Value {
     }
     let t = mods[0].ty.clone();
     info["type"] = json!(if !t.is_empty() && t != "Unknown" { t.clone() } else { String::new() });
-    let sp = Regex::new(r"^(\d+)").unwrap().captures(&mods[0].speed).map(|c| format!("{} MT/s", &c[1])).unwrap_or_default();
+    let sp = Regex::new(r"^(\d+)").expect("valid regex").captures(&mods[0].speed).map(|c| format!("{} MT/s", &c[1])).unwrap_or_default();
     info["speed"] = json!(sp);
     info["modules"] = json!(mods.len());
     let sums: i64 = mods.iter().map(|m| m.mb).sum::<i64>() / 1024;
@@ -189,7 +189,7 @@ fn ram() -> Value {
     if soldered {
         info["channels"] = json!("soldered");
     } else {
-        let ch = Regex::new(r"(?i)(controller\s*\d+)?[-\s]*channel\s*([A-Da-d0-9])").unwrap();
+        let ch = Regex::new(r"(?i)(controller\s*\d+)?[-\s]*channel\s*([A-Da-d0-9])").expect("valid regex");
         let mut chans: HashSet<(String, String)> = HashSet::new();
         for m in &mods {
             if let Some(c) = ch.captures(&m.loc) {

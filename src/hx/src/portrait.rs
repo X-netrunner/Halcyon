@@ -30,7 +30,7 @@ fn box_blur(src: &[f64], n: usize, r: usize) -> Vec<f64> {
         for x in 0..r.min(n) { s += src[y * n + x]; c += 1; }
         for x in 0..n {
             if x + r < n { s += src[y * n + x + r]; c += 1; }
-            if x >= r + 1 { s -= src[y * n + x - r - 1]; c -= 1; }
+            if x > r { s -= src[y * n + x - r - 1]; c -= 1; }
             t[y * n + x] = s / c as f64;
         }
     }
@@ -40,7 +40,7 @@ fn box_blur(src: &[f64], n: usize, r: usize) -> Vec<f64> {
         for y in 0..r.min(n) { s += t[y * n + x]; c += 1; }
         for y in 0..n {
             if y + r < n { s += t[(y + r) * n + x]; c += 1; }
-            if y >= r + 1 { s -= t[(y - r - 1) * n + x]; c -= 1; }
+            if y > r { s -= t[(y - r - 1) * n + x]; c -= 1; }
             o[y * n + x] = s / c as f64;
         }
     }

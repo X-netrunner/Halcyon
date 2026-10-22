@@ -45,7 +45,7 @@ fn conf_path() -> PathBuf {
 /// What an id does until Settings changes it (the way Halcyon always behaved: 4 fingers = workspaces,
 /// 3 fingers up / down = scratch, pinch = tree view ...).
 fn default_of(id: &str) -> &'static str {
-    let right4 = util::first_line(&util::state_dir().join("ws-swipe4")).map_or(false, |s| s == "right");
+    let right4 = util::first_line(&util::state_dir().join("ws-swipe4")).is_some_and(|s| s == "right");
     match id {
         "g3-up" | "g3-down" => "scratch",
         "g3-pinchin" | "g3-pinchout" => "overview",
@@ -234,7 +234,7 @@ fn print_conf() {
 }
 
 fn cmd_set(args: &[String]) -> i32 {
-    let id = args.get(0).map(|s| s.as_str()).unwrap_or("");
+    let id = args.first().map(|s| s.as_str()).unwrap_or("");
     let act = args.get(1).map(|s| s.as_str()).unwrap_or("");
     let cmd = args.get(2).map(|s| s.replace('\n', " ")).unwrap_or_default();
     let mut c = load();
@@ -257,7 +257,7 @@ fn cmd_set(args: &[String]) -> i32 {
 }
 
 fn cmd_reset(args: &[String]) -> i32 {
-    let what = args.get(0).map(|s| s.as_str()).unwrap_or("all");
+    let what = args.first().map(|s| s.as_str()).unwrap_or("all");
     let mut c = load();
     if what == "gestures" || what == "all" {
         for id in gesture_ids() {
@@ -375,7 +375,7 @@ fn do_action(action: &str, cmd: &str) -> i32 {
 }
 
 fn cmd_run(args: &[String]) -> i32 {
-    let id = args.get(0).map(|s| s.as_str()).unwrap_or("");
+    let id = args.first().map(|s| s.as_str()).unwrap_or("");
     let c = load();
     if !valid_id(&c, id) {
         return 2;
@@ -396,7 +396,7 @@ fn usage() {
 
 pub fn run(args: &[String]) -> i32 {
     let rest: &[String] = if args.is_empty() { &[] } else { &args[1..] };
-    match args.get(0).map(|s| s.as_str()).unwrap_or("conf") {
+    match args.first().map(|s| s.as_str()).unwrap_or("conf") {
         "conf" => {
             print_conf();
             0

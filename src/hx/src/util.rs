@@ -62,6 +62,7 @@ pub fn home() -> String {
 
 pub fn now_stamp() -> String {
     // local time "YYYY-MM-DD HH:MM:SS" without pulling in chrono
+    // SAFETY: tm is a zeroed plain C struct and every pointer is to a live local; localtime_r is the thread-safe variant.
     unsafe {
         let t = libc::time(std::ptr::null_mut());
         let mut tm: libc::tm = std::mem::zeroed();
@@ -140,6 +141,7 @@ pub fn sys_home() -> String { sys_conf("SYS_HOME", &format!("/home/{}", sys_user
 /// always; as the user it is used when it exists, else the old ~/logs.
 pub fn logs_dir() -> String {
     const D: &str = "/var/log/halcyon";
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     if unsafe { libc::geteuid() } == 0 {
         let _ = std::fs::create_dir_all(D);
         return D.to_string();

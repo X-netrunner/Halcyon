@@ -88,11 +88,9 @@ pub fn run() {
             use std::io::BufRead;
             let reader = std::io::BufReader::new(file);
             let mut count = 0;
-            for line_res in reader.lines() {
-                if let Ok(line) = line_res {
-                    if line.contains("[CRITICAL ALERT]") {
-                        count += 1;
-                    }
+            for line in reader.lines().map_while(Result::ok) {
+                if line.contains("[CRITICAL ALERT]") {
+                    count += 1;
                 }
             }
             count

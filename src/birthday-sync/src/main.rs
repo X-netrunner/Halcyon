@@ -474,7 +474,7 @@ fn line_key(line: &str) -> Option<(String, u32, u32)> {
         return None;
     }
     let (date, rest) = l.split_once(char::is_whitespace)?;
-    let parts: Vec<&str> = date.split(|c| c == '-' || c == '/').collect();
+    let parts: Vec<&str> = date.split(['-', '/']).collect();
     let nums: Vec<u32> = parts.iter().filter_map(|p| p.parse().ok()).collect();
     if nums.len() != parts.len() || !(2..=3).contains(&nums.len()) {
         return None;
@@ -496,7 +496,7 @@ fn merge(existing: &str, found: &[Bday]) -> Res<(String, usize, usize, Vec<Strin
     };
     let others: Vec<(String, u32, u32)> = before.iter().chain(after.iter()).filter_map(|l| line_key(l)).collect();
     let mut sorted = found.to_vec();
-    sorted.sort_by(|a, b| (a.month, a.day, a.name.to_lowercase()).cmp(&(b.month, b.day, b.name.to_lowercase())));
+    sorted.sort_by_key(|a| (a.month, a.day, a.name.to_lowercase()));
     let (mut out, mut seen, mut skipped, mut clashes) = (Vec::new(), Vec::new(), 0, Vec::new());
     for b in &sorted {
         let key = (b.name.to_lowercase(), b.month, b.day);
@@ -511,7 +511,7 @@ fn merge(existing: &str, found: &[Bday]) -> Res<(String, usize, usize, Vec<Strin
         out.push(b.line());
     }
     let mut head: Vec<&str> = before;
-    while head.last().map_or(false, |l| l.trim().is_empty()) {
+    while head.last().is_some_and(|l| l.trim().is_empty()) {
         head.pop();
     }
     let mut text: Vec<String> = head.iter().map(|s| s.to_string()).collect();

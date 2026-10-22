@@ -106,6 +106,36 @@ The utilities panel and the notification centre share `boxW`, `boxPad`, `boxEdge
 - **Screenshot panel** (Super + Ctrl + S, `>screenshot`, or `halcyon screenshot`): **Region**, **Window** or **Full screen**, then **Copy** (clipboard only, no file), **Save** (`~/Pictures/Screenshots`) or **Both**; the panel leaves before the capture so it is not in the picture, and Esc during the selection cancels cleanly. R / W / F and C / S / B work as keys. It sits beside the existing shortcuts: Super + Shift + S (frozen region, saved and copied), Print and Super + Shift + Print are unchanged. Without the panel: `halcyon shot region|window|full [copy|save|both]` (works without the island; `python3 ~/.config/Halcyon/scripts/halcyon-shot.py ...` without fish). Needs `grim` and `slurp` (and `wl-clipboard` for Copy / Both); `wayfreeze` freezes the screen for Region and Window when installed.
 - **Lyrics and queue** (the **Lyrics** and **Queue** chips on the music page, `>lyrics` / `>queue` in the launcher, or `halcyon music`): a panel on the side of the screen with the lyrics of the song that plays and what plays next. **Lyrics work with any player** that shows up in the bar (the Spotify app, a browser, mpv, VLC, Rhythmbox ...): the panel passes the title, artist, album and length to `scripts/halcyon-music.py`, which looks the song up in this order (`LYRICS_SOURCE` in `~/.config/Halcyon/music.conf`, default `auto`; change it with `halcyon-music.py source auto|local|lrclib|ovh|spotify`): a `.lrc` / `.txt` file with the same name next to the song file (offline), **lrclib.net** (free, no account, no key), **api.lyrics.ovh** (a second free site), and `spotify_player lyrics` if it is installed (0.24.0 or newer, logged in). So `spotify_player` is optional now. The only thing sent to a lyrics site is the title, artist, album and length of the song; nothing is stored (no cache file, no log). The **queue** is still Spotify's and needs `spotify_player` (it is read-only). It adds no process: the helper runs once when the panel opens and once more when the song changes. Tab switches tab, Up / Down scroll, R reads again, Esc closes. Terminal: `halcyon lyrics`, `halcyon queue`, `halcyon music status`.
 
+## Everyday tools
+Small tools in one helper (`scripts/halcyon-tools.py`). Each is a `>` command in the launcher and a `halcyon <name>` command in a terminal; each needs its own program and says which one when it is missing (`halcyon-doctor.sh` lists them).
+- **Colour picker** (Super + Shift + C, `halcyon colorpick [hex|rgb|hsl]`): click a pixel, the colour is copied and shown as a swatch. Uses `hyprpicker`, or `slurp` + `grim` without it. The last colours are kept in `~/.local/state/island/colors.log`.
+- **Measure on screen** (Super + Alt + M, `halcyon measure`): drag a box, its size (`320x200`) is copied (`slurp`).
+- **Wi-Fi QR** (`>wi-fi qr code`, `halcyon wifi-qr`): a QR code of the network you are on, for a friend to scan. The picture holds the password, so it is private to you and deleted after two minutes. Company / login Wi-Fi has no saved password and cannot be shared (`nmcli`, `qrencode`).
+- **Updates** (`>check for updates`, `halcyon updates check|now|status|run`): how many pacman and AUR updates wait (`checkupdates` from pacman-contrib; `yay` or `paru` for the AUR). `halcyon updates timer on` checks once a day and notifies when 10 or more wait (`HALCYON_UPDATES_NOTIFY` changes the number); it is off until you switch it on. `run` opens the update in a terminal.
+- **Snippets** (Super + Alt + V, `halcyon snippets add|list|rm|copy|type|pick`): texts you paste often, saved in `~/.config/Halcyon/snippets.json`. `{date}`, `{time}` and `{clip}` are filled in. They are typed into the window you were in (`wtype`), else copied and pasted with Ctrl + V. Add one with `halcyon snippets add sig "Best regards, Sam"`, or copy a text and run `halcyon snippets add sig`.
+- **Windows** (Alt + Tab, Alt + Shift + Tab, `halcyon windows last|next|prev|pick|list`): Alt + Tab flips to the previous window, Alt + Shift + Tab opens a list, most recently used first. It is not a held-key popup: one press, one switch.
+- **Volume per app** (`>volume per app`, `halcyon mixer list|set|mute`, or `>do spotify volume 30` / `>do mute firefox`): the volume of one app that plays sound (`pactl`, works with PipeWire).
+- **Phone** (`>send clipboard to phone`, `>find my phone`, `halcyon phone devices|send|text|ring|ping`): KDE Connect, paired once from the phone. With more than one phone, `--to <name>`.
+- **Magnifier** (Super + Alt + Z, `halcyon zoom in|out|reset|toggle`): zooms the whole screen 2x and back (Hyprland's cursor zoom).
+- **VPN** (`>vpn on / off`, `halcyon vpn status|up|down|toggle`): NetworkManager VPN and WireGuard connections, or Tailscale. Toggle turns what is on off, else connects (and asks which with several).
+
+## Self-test
+`halcyon selftest` (`scripts/halcyon-selftest.sh`) runs the CI checks on this machine, read-only: shell and Python syntax, the JSON files,
+the QML lint, unknown QML types and properties set twice (`tests/qml-types.test.js`: qmllint cannot see those without Quickshell's
+type info, and both stop the island at login), every test suite in `tests/`, and for the installed copy whether the island is running,
+whether its last reload succeeded and whether the `hx` feeds are up. `--quick` = only what breaks a login (a few seconds; `push halcyon`
+runs it before it commits and stops on a failure, `HALCYON_PUSH_SKIP_CHECKS=1` skips it), `--rust` = also the CI clippy gate, a folder
+argument checks that checkout instead of `~/.config/Halcyon`.
+
+## Password vault
+`passman` (`scripts/halcyon-pass.py`): AES-256-CBC through openssl, and since this round every save also seals the file with
+HMAC-SHA256, so a changed byte, a swapped file or the wrong key is refused before anything is decrypted (and the file is left as it
+was). An older unsealed vault still opens and is sealed on its next save. The key lives next to the vault (`.vault.key`) unless you run
+`passman keyring on`: then it moves into the desktop keyring (gnome-keyring / KWallet through `secret-tool`), which unlocks with your
+login password, so a copy of `~/.local/state/island` alone no longer opens the vault. The key file is only removed after the keyring
+gave back the very same key and the vault opened with it; `passman keyring off` writes it back. `passman status` shows where the key
+is and whether the vault is sealed.
+
 ## Caffeine
 Keeps the screen awake: no dimming, no hypridle lock, no idle sleep, until you turn it off. **SUPER+ALT+C**, the **Caffeine** chip in the bottom-right panel (right-click = on for one hour), or `>caffeine` in the launcher. A small cup shows in the bar while it is on. It is a `systemd-inhibit` lock held by a transient user unit (`halcyon-caffeine.service`, `scripts/caffeine.sh on [minutes] | off | toggle | status`), so it vanishes on log out and never survives a reboot. hypridle honours it as long as `ignore_systemd_inhibit` is not true in `hypridle.conf`. (A manual `systemctl suspend` and the lid switch are not blocked on purpose.)
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Halcyon: count the waiting pacman / AUR updates (halcyon updates check)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.config/Halcyon/scripts/halcyon-tools.py updates check
+# Hardening that cannot change what this job does:
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes

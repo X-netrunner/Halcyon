@@ -90,11 +90,10 @@ fn decide(ids: &[i64], wins: &HashMap<i64, i64>, cur: i64, go_prev: bool, end: &
                         target = Some(first);
                     }
                 }
-                "wrap" => {
-                    if first != cur {
+                "wrap"
+                    if first != cur => {
                         target = Some(first);
                     }
-                }
                 _ => {}
             }
         }
@@ -107,7 +106,7 @@ fn decide(ids: &[i64], wins: &HashMap<i64, i64>, cur: i64, go_prev: bool, end: &
 }
 
 pub fn run(args: &[String]) -> i32 {
-    let mut dir: String = args.get(0).cloned().unwrap_or_else(|| "next".to_string());
+    let mut dir: String = args.first().cloned().unwrap_or_else(|| "next".to_string());
     if dir.starts_with("gesture") {
         trace(&dir);
     }

@@ -26,7 +26,7 @@ fn is_running() -> bool {
 fn start_hyprsunset(temp: &str) {
     let _ = util::ok("pkill", &["-x", "hyprsunset"]);
     let _ = Command::new("hyprsunset")
-        .args(&["-t", temp])
+        .args(["-t", temp])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

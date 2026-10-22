@@ -66,7 +66,7 @@ fn find_touchpad() -> Option<Device> {
     let mut denied = 0;
     for entry in entries.flatten() {
         let path = entry.path();
-        let is_event = path.file_name().and_then(|n| n.to_str()).map_or(false, |s| s.starts_with("event"));
+        let is_event = path.file_name().and_then(|n| n.to_str()).is_some_and(|s| s.starts_with("event"));
         if !is_event {
             continue;
         }
@@ -76,7 +76,7 @@ fn find_touchpad() -> Option<Device> {
                 let named = name.contains("touchpad") || name.contains("touch pad") || name.contains("trackpad");
                 let has_mt = device
                     .supported_absolute_axes()
-                    .map_or(false, |a| a.contains(AbsoluteAxisType::ABS_MT_POSITION_X) && a.contains(AbsoluteAxisType::ABS_MT_POSITION_Y));
+                    .is_some_and(|a| a.contains(AbsoluteAxisType::ABS_MT_POSITION_X) && a.contains(AbsoluteAxisType::ABS_MT_POSITION_Y));
                 if named && has_mt {
                     return Some(device);
                 }
@@ -320,8 +320,7 @@ fn main() {
                                     let x = value;
                                     let slot_y = slot.y;
 
-                                    if start_x.is_none() && slot_y.is_some() {
-                                        let sy = slot_y.unwrap();
+                                    if let (None, Some(sy)) = (start_x, slot_y) {
                                         start_x = Some(x);
                                         start_y = Some(sy);
                                         last_trigger_x = Some(x);
@@ -356,8 +355,7 @@ fn main() {
                                     let y = value;
                                     let slot_x = slot.x;
 
-                                    if start_y.is_none() && slot_x.is_some() {
-                                        let sx = slot_x.unwrap();
+                                    if let (None, Some(sx)) = (start_y, slot_x) {
                                         start_x = Some(sx);
                                         start_y = Some(y);
                                         last_trigger_x = Some(sx);
@@ -380,8 +378,8 @@ fn main() {
                                                 }
                                                 last_trigger_y = Some(y);
                                             }
-                                        } else if is_left_edge {
-                                            if !music_disabled && !triggered_action && delta_y.abs() >= v_threshold * 2 {
+                                        } else if is_left_edge
+                                            && !music_disabled && !triggered_action && delta_y.abs() >= v_threshold * 2 {
                                                 if delta_y < 0 {
                                                     println!("Gesture: Media Next");
                                                     fire_s("playerctl", &["next"]);
@@ -391,7 +389,6 @@ fn main() {
                                                 }
                                                 triggered_action = true;
                                             }
-                                        }
                                     }
                                 }
                             }

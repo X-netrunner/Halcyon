@@ -104,7 +104,7 @@ fn logind_set(class: &str, dev: &str, val: &str) -> bool {
 
 /// hal brightness up|down [percent]   (default step 5)
 pub fn brightness(args: &[String]) -> i32 {
-    let dir = args.get(0).map(|s| s.as_str()).unwrap_or("up");
+    let dir = args.first().map(|s| s.as_str()).unwrap_or("up");
     let step: i64 = args.get(1).and_then(|s| s.parse::<i64>().ok()).unwrap_or(5);
     let up = match dir {
         "up" => true,
@@ -152,7 +152,7 @@ pub fn brightness(args: &[String]) -> i32 {
 
 /// hal backlight set <backlight|leds> <device> <raw> | best-screen | kbd
 pub fn backlight(args: &[String]) -> i32 {
-    match args.get(0).map(|s| s.as_str()) {
+    match args.first().map(|s| s.as_str()) {
         Some("best-screen") => match best_screen() {
             Some((dev, cur, max)) => {
                 println!("{} {} {}", dev, cur, max);
@@ -175,7 +175,7 @@ pub fn backlight(args: &[String]) -> i32 {
 }
 
 fn backlight_set(args: &[String]) -> i32 {
-    let class = args.get(0).map(|s| s.as_str()).unwrap_or("");
+    let class = args.first().map(|s| s.as_str()).unwrap_or("");
     let dev = args.get(1).map(|s| s.as_str()).unwrap_or("");
     let val = args.get(2).map(|s| s.as_str()).unwrap_or("");
     if class != "backlight" && class != "leds" {

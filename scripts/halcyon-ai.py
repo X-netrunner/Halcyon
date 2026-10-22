@@ -15,6 +15,10 @@ off (Settings > Performance > AI features). Nothing leaves this machine.
   halcyon-ai.py explain unit <name> | island | last  [--notify] [--if-new]
                                                 read the log of a failed service, or the island's QML errors, and say what went wrong and
                                                 the likely fix. --if-new: only errors not explained before (what the automatic checks use)
+  halcyon-ai.py safety [--file LOG] [--notify]  review the newest safety-check log: sorts every finding into known noise (false
+                                                positives), "confirm this" and "look at this", and says plainly whether everything is
+                                                good. The verdict comes from fixed rules, so it works with the AI off; the model only
+                                                explains what is left.
   halcyon-ai.py organise [--apply]              notes: tags, groups and duplicates. Without --apply it only proposes (and saves the
                                                 proposal); --apply carries out the saved proposal (a backup of notes.json is kept first)
   halcyon-ai.py lyrics meaning [--title T --artist A --album B --duration S --url U]
@@ -230,6 +234,7 @@ DO_ACTIONS = {
     "theme":        ("light or dark theme", "choice:light|dark|toggle", False),
     "nightlight":   ("night light, warmer screen (toggle)", "none", False),
     "volume":       ("speaker volume in percent, or up / down / mute", "pct", False),
+    "app-volume":   ("the volume of ONE app that plays sound (Spotify, Discord, Firefox ...), not the speakers", "app", False),
     "brightness":   ("screen brightness in percent, or up / down", "pct", False),
     "wallpaper":    ("the next wallpaper", "none", False),
     "power-mode":   ("power mode", "choice:saver|balanced|performance|auto", False),
@@ -272,8 +277,21 @@ def _state(p):
     return "toggle"
 
 
+# words that follow "mute" / precede "volume" but are not an app: "mute it", "sound volume 30" stay the speaker volume
+NOT_APPS = {"the", "it", "all", "everything", "sound", "audio", "volume", "speaker", "speakers", "this", "that", "music", "system", "master", "computer", "laptop", "headphones"}
+
+
+def _app_value(app, what):
+    app = (app or "").lower()
+    if app in NOT_APPS:
+        return None
+    if what in ("mute", "unmute"):
+        return f"{app}|{what}"
+    return f"{app}|{max(0, min(150, int(what)))}"
+
+
 NUM = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|first|second|third|fourth|fifth)"
-RULES = [
+DO_RULES = [
     (rf"\b(move|send|put|throw|shift)\b.*\b(window|app|this|it)\b.*\b(workspace|ws|desktop|space)\s*{NUM}\b", "move-window", lambda m: _num(m.group(4))),
     (rf"\b(move|send|put)\b.*\bto\s+(workspace|ws|desktop)\s*{NUM}\b", "move-window", lambda m: _num(m.group(3))),
     (rf"\b(move|send|put|throw|shift)\b.*\b{NUM}\s+(workspace|ws|desktop|space)\b", "move-window", lambda m: _num(m.group(2))),
@@ -285,6 +303,9 @@ RULES = [
     (r"\b(do not disturb|don'?t disturb|dnd)\b", "dnd", None),
     (r"\bnight ?light\b|\bblue light\b", "nightlight", None),
     (r"\b(dark|light)\s+(theme|mode)\b|\btheme\b", "theme", None),
+    (r"\b([a-z][\w-]{2,})\s+volume\s+(?:to\s+)?(\d{1,3})\s*(?:%|percent)?\s*$", "app-volume", lambda m: _app_value(m.group(1), m.group(2))),
+    (r"\bvolume\s+(?:of|for|on)\s+([a-z][\w-]{2,})\s+(?:to\s+)?(\d{1,3})\s*(?:%|percent)?\s*$", "app-volume", lambda m: _app_value(m.group(1), m.group(2))),
+    (r"\b(mute|unmute)\s+([a-z][\w-]{2,})\s*$", "app-volume", lambda m: _app_value(m.group(2), m.group(1))),
     (r"\b(volume|sound|audio)\b|\b(mute|unmute)\b", "volume", None),
     (r"\bbrightness\b|\b(dim|brighten)\b.*\bscreen\b", "brightness", None),
     (r"\b(next|new|change|another|random)\b.*\bwallpaper\b", "wallpaper", None),
@@ -331,6 +352,12 @@ def value_for(action, p, given=None):
     if kind == "state":
         g = str(given).lower() if given is not None else ""
         return g if g in ("on", "off", "toggle") else _state(p)
+    if kind == "app":
+        g = str(given or "").lower().strip()
+        m = re.fullmatch(r"([\w .-]{1,40})\|(\d{1,3}|mute|unmute)", g)
+        if not m or m.group(1).strip() in NOT_APPS:
+            return None
+        return f"{m.group(1).strip()}|{min(150, int(m.group(2))) if m.group(2).isdigit() else m.group(2)}"
     if kind == "pct":
         if isinstance(given, (int, float)) and not isinstance(given, bool):
             return max(0, min(100, int(given)))
@@ -353,7 +380,7 @@ def value_for(action, p, given=None):
 
 def plan_by_rules(phrase):
     p = phrase.lower().strip()
-    for pat, action, getv in RULES:
+    for pat, action, getv in DO_RULES:
         m = re.search(pat, p)
         if not m:
             continue
@@ -368,7 +395,8 @@ def plan_by_model(phrase):
     lines = []
     for k, (what, kind, _) in DO_ACTIONS.items():
         val = {"none": "", "state": ' value: "on", "off" or "toggle"', "ws": " value: the workspace number",
-               "pct": ' value: a number 0-100, or "up", "down", "mute"'}.get(kind, "")
+               "pct": ' value: a number 0-100, or "up", "down", "mute"',
+               "app": ' value: "<app name>|<0-150, mute or unmute>", e.g. "spotify|30"'}.get(kind, "")
         if kind.startswith("choice:"):
             val = " value: one of " + ", ".join(f'"{c}"' for c in kind[7:].split("|"))
         lines.append(f"- {k}: {what}.{val}")
@@ -393,7 +421,8 @@ def describe(plan):
     a, v = plan["action"], plan["value"]
     names = {"workspace": f"Go to workspace {v}", "move-window": f"Move the window to workspace {v}",
              "volume": f"Volume {v}" + ("%" if isinstance(v, int) else ""), "brightness": f"Brightness {v}" + ("%" if isinstance(v, int) else ""),
-             "power-mode": f"Power mode: {v}", "theme": "Theme: " + str(v)}
+             "power-mode": f"Power mode: {v}", "theme": "Theme: " + str(v),
+             "app-volume": "Volume of " + str(v).split("|")[0] + ": " + str(v).split("|")[-1] + ("%" if str(v).split("|")[-1].isdigit() else "")}
     if a in names:
         return names[a]
     what = DO_ACTIONS[a][0]
@@ -439,6 +468,14 @@ def run_plan(plan):
         arg = "5%+" if v == "up" else ("5%-" if v == "down" else f"{int(v)}%")
         sh(["wpctl", "set-mute", sink, "0"])
         return sh(["wpctl", "set-volume", "-l", "1.0", sink, arg])[0] == 0
+    if a == "app-volume":
+        app, what = str(v).split("|", 1)
+        tools = os.path.join(RICE, "scripts", "halcyon-tools.py")
+        args = ["mixer", "set", app, what] if what.isdigit() else ["mixer", what, app]
+        rc, _ = sh(["python3", tools] + args, timeout=10)
+        if rc != 0:
+            raise Fail(f"Nothing called '{app}' is playing sound right now.")
+        return True
     if a == "brightness":
         if not have("brightnessctl"):
             raise Fail("Brightness needs brightnessctl.")
@@ -1121,9 +1158,249 @@ def cmd_lyrics(args):
     return {"text": out, "title": title, "artist": artist, "kind": what}
 
 
+# ------------------------------------------------------------------------------------------------ safety check review
+# Reads what src/safety-check wrote (/var/log/halcyon/safety_check/safety_check_DATE.log) and decides, WITHOUT the model, what is
+# known noise, what to confirm and what needs a look. Rules first, model second: a 3B model must not be the one that says "all good".
+SAFETY_DIRS = ["/var/log/halcyon/safety_check", os.path.join(HOME, ".local", "state", "halcyon", "safety_check")]
+RKH_LOG = "/var/log/rkhunter.log"
+LOG_TS = re.compile(r"^\[\d\d:\d\d:\d\d\] ?")
+SEC_RE = re.compile(r"^(\d)/7 \u2014 (.+)$")
+TOOL_OF = {"1": "update", "2": "clamav", "3": "rkhunter", "4": "firewall", "5": "lynis", "6": "aide", "7": "backup"}
+TOOL_LABEL = {"update": "System update", "clamav": "ClamAV", "rkhunter": "rkhunter", "firewall": "Firewall", "lynis": "Lynis",
+              "aide": "AIDE", "backup": "Backup"}
+PREFIX = re.compile(r"^(?:rkhunter stderr|rkhunter|AIDE stderr|AIDE|ufw status): ?")
+
+# (tool, regex on the finding, verdict, why, how to check). "ok" = known harmless noise; "verify" = usually harmless, confirm it once;
+# a finding that matches nothing is "look". Order matters: the first match wins, so the dangerous patterns come first.
+SAFETY_RULES = [
+    ("rkhunter", r"Found\s*\]|rootkit.*(found|infected)|Possible rootkits:\s*[1-9]", "look",
+     "rkhunter says a known rootkit file or trace was found", "sudo grep -B2 -A3 -i 'found' /var/log/rkhunter.log"),
+    ("rkhunter", r"/dev/shm|[Ss]uspicious file types|[Pp]romiscuous|hidden ports|[Ss]uspicious.*port", "look",
+     "this kind of warning is not usually a side effect of normal use", "sudo grep -B1 -A3 'Warning' /var/log/rkhunter.log"),
+    ("rkhunter", r"replaced by a script.*?/usr/bin/(egrep|fgrep|ldd|lwp-request|which|ifup|ifdown|unhide\.rb)\b"
+                 r"|/usr/bin/(egrep|fgrep|ldd|lwp-request|which|ifup|ifdown|unhide\.rb)\b.*replaced by a script", "ok",
+     "these programs are shell scripts in the package, rkhunter only expects binaries", "pacman -Qo /usr/bin/egrep"),
+    ("rkhunter", r"[Hh]idden (file|director\w*) found: /(etc/\.(updated|pwd\.lock)|usr/share/man/man5/\.k5(login|identity)\.5\.gz"
+                 r"|usr/lib/debug/\.build-id|dev/\.udev)", "ok",
+     "a normal dot-file made by the system itself", "pacman -Qo THE_PATH"),
+    ("rkhunter", r"SSH root access|PermitRootLogin|SSH and rkhunter configuration", "verify",
+     "a setting, not an infection: it only matters if the SSH server is running", "systemctl is-active sshd"),
+    ("rkhunter", r"file propert(y|ies)|[Ff]ile properties", "verify",
+     "very often just the system update that ran first: new program versions have new fingerprints",
+     "sudo pacman -Qkk 2>&1 | grep -v ' 0 altered files'"),
+    ("rkhunter", r"[Aa]pplication|version|out-of-date|outdated", "verify",
+     "an old-version note about a program, not an attack", "pacman -Qu"),
+    ("rkhunter", r"[Hh]idden (file|director)", "verify",
+     "dot-files in system folders are often harmless but name the file before deciding", "pacman -Qo THE_PATH"),
+    ("rkhunter", r"Checking for (hidden files|file properties|prerequisites|SSH|application)|'strings' command|shared libraries", "verify",
+     "the console only shows the check name; the exact file is in rkhunter's own log",
+     "sudo grep -A2 'Warning' /var/log/rkhunter.log"),
+    ("clamav", r"Eicar|EICAR", "ok", "the standard antivirus test file, harmless by design", "delete it if you did not mean to keep it"),
+    ("clamav", r"Heuristics\.(Encrypted|PDF|OLE2)|\.Heuristics|Broken\.Executable|PUA\.", "verify",
+     "a heuristic guess (password-protected archive, macro, unwanted-program signature), often a false positive",
+     "sha256sum THE_FILE and look the hash up on virustotal.com (the hash only, never upload private files)"),
+    ("aide", r"^/(etc/(passwd|shadow|group|gshadow|sudoers|ssh|pam\.d|systemd/system|cron|profile|ld\.so\.preload)|boot|usr/local/bin|root/\.ssh)",
+     "look", "a security-relevant file changed or appeared", "pacman -Qo THE_PATH; ls -l THE_PATH"),
+    ("aide", r"^/var/(log|cache|tmp|lib/(pacman|aide|systemd|NetworkManager|ollama|bluetooth))|^/etc/(resolv\.conf|ld\.so\.cache|adjtime|mtab)", "ok",
+     "logs, caches and package/system state change all the time", ""),
+    ("aide", r"^/(usr|opt)/", "verify",
+     "expected after a system update; unexpected if you did not update", "pacman -Qo THE_PATH && pacman -Qkk $(pacman -Qqo THE_PATH)"),
+    ("firewall", r"INACTIVE", "verify", "the firewall was off and the check switched it back on; find out why it was off",
+     "systemctl is-enabled ufw; sudo ufw status verbose"),
+    ("backup", r"not found|skipped|not connected|Failed to mount|not ext4", "verify",
+     "not a security problem, but this time there is no backup", "plug in the backup disk and run the check again"),
+]
+
+
+def safety_logs():
+    out = []
+    for d in SAFETY_DIRS:
+        try:
+            out += [os.path.join(d, f) for f in os.listdir(d) if f.startswith("safety_check_") and f.endswith(".log")]
+        except OSError:
+            pass
+    return sorted(out, key=lambda p: os.path.getmtime(p))
+
+
+def last_run(lines):
+    """A day's log holds every run of that day, one after another: only the last one counts."""
+    idx = [i for i, l in enumerate(lines) if "Safety Check started" in l]
+    return lines[idx[-1]:] if idx else lines
+
+
+def parse_safety(text):
+    """The log as {"items": [(tool, text)], "skipped": [...], "clean_counts": {...}, "errors": int|None, "done": bool}."""
+    lines = last_run(text.splitlines())
+    sec, items, skipped, counts = "", [], [], {}
+    errors, done = None, False
+    pending = []                                   # rkhunter "[ Warning ]" console lines
+    for raw in lines:
+        l = LOG_TS.sub("", raw).rstrip()
+        m = SEC_RE.match(l.strip())
+        if m:
+            sec = TOOL_OF.get(m.group(1), "")
+            continue
+        body = PREFIX.sub("", l).strip()
+        if not body:
+            continue
+        if "Errors found:" in body:
+            with contextlib.suppress(ValueError):
+                errors = int(body.rsplit(":", 1)[1].strip())
+        if "Check complete" in body:
+            done = True
+        if body.startswith("! ") and ("not installed" in body or "not updated" in body or "No supported" in body):
+            skipped.append(body[2:])
+            continue
+        if sec == "clamav":
+            m = re.match(r"^(.*): (\S+) FOUND$", body)
+            if m:
+                items.append(("clamav", f"{m.group(1)}: {m.group(2)}"))
+            m = re.match(r"^Infected files:\s*(\d+)", body)
+            if m:
+                counts["clamav"] = int(m.group(1))
+        elif sec == "rkhunter":
+            if "Warning" in body and "\u26a0" not in body[:2]:
+                items.append(("rkhunter", re.sub(r"\s{2,}", " ", body)))
+        elif sec == "aide":
+            m = re.match(r"^(Added|Removed|Changed) entries:\s*(\d+)", body)
+            if m:
+                counts.setdefault("aide", 0)
+                counts["aide"] += int(m.group(2))
+                counts["aide_seen"] = True
+                continue
+            m = re.search(r"(?:^(?:changed|added|removed):\s*|\s:\s+)(/\S.*)$", body)
+            if m:
+                items.append(("aide", m.group(1).strip()))
+        elif sec == "firewall":
+            if "INACTIVE" in body:
+                items.append(("firewall", body.lstrip("\u26a0 ").strip()))
+            m = re.search(r"Status:\s*(\w+)", body)
+            if m:
+                counts["ufw"] = m.group(1).lower()
+        elif sec == "lynis":
+            m = re.search(r"Hardening index\s*:\s*(\d+)", body)
+            if m:
+                counts["lynis_index"] = int(m.group(1))
+            if re.match(r"^! .+\[[A-Z]+-\d+\]", body):
+                items.append(("lynis", body[2:].strip()))
+        if body.startswith("\u26a0") and sec in ("update", "backup", "firewall"):
+            if not (sec == "firewall" and "INACTIVE" in body):
+                items.append((sec, body.lstrip("\u26a0 ").strip()))
+    # rkhunter's console only says "[ Warning ]" next to a check name; the file is in its own log (root-only, so often unreadable).
+    # When the log does carry the detail lines ("Warning: ..."), they say more than the bare check names: keep only those.
+    bare = re.compile(r"\[\s*Warning\s*\]\s*$")
+    if any(t == "rkhunter" and not bare.search(x) for t, x in items):
+        items = [(t, x) for t, x in items if not (t == "rkhunter" and bare.search(x))]
+    return {"items": items, "skipped": skipped, "counts": counts, "errors": errors, "done": done}
+
+
+def triage(parsed):
+    """-> list of dicts {tool, text, verdict, why, check}. verdict: ok | verify | look."""
+    counts, out = parsed["counts"], []
+    for tool, text in parsed["items"]:
+        if tool == "aide" and counts.get("aide_seen") and counts.get("aide", 0) == 0:
+            continue                                # the report itself says 0 added / removed / changed: a word in a path, not a change
+        if tool == "clamav" and counts.get("clamav") == 0:
+            continue
+        hit = None
+        for t, rx, verdict, why, check in SAFETY_RULES:
+            if t == tool and re.search(rx, text):
+                hit = {"verdict": verdict, "why": why, "check": check}
+                break
+        if hit is None:
+            hit = {"verdict": "look", "why": "no rule knows this one, so it is treated as real until you have looked",
+                   "check": "sudo less /var/log/halcyon/safety_check/"}
+        if tool == "lynis":
+            hit = {"verdict": "verify", "why": "a hardening suggestion from Lynis, not a sign of an attack", "check": "sudo lynis show details TEST-ID"}
+        path = text.split(":", 1)[0] if tool == "clamav" else text
+        hit["check"] = hit["check"].replace("THE_PATH", path if path.startswith("/") else "THE_PATH").replace("THE_FILE", path)
+        if "THE_PATH" in hit["check"] or "THE_FILE" in hit["check"]:      # a bare check name: no file to point at yet
+            hit["check"] = "sudo grep -B1 -A3 'Warning' /var/log/rkhunter.log   (names the exact file)"
+        out.append(dict(hit, tool=tool, text=text))
+    return out
+
+
+def safety_verdict(parsed, found):
+    look = [f for f in found if f["verdict"] == "look"]
+    verify = [f for f in found if f["verdict"] == "verify"]
+    noise = [f for f in found if f["verdict"] == "ok"]
+    if not parsed["items"] and not parsed["done"]:
+        return "unclear", "The log has no finished run: the check may have been stopped half way."
+    if look:
+        return "look", f"{len(look)} thing{'s' if len(look) != 1 else ''} need a look."
+    if verify:
+        return "verify", f"Probably fine. {len(verify)} thing{'s' if len(verify) != 1 else ''} to confirm once."
+    if noise:
+        return "good", f"Everything is good. {len(noise)} warning{'s were' if len(noise) != 1 else ' was'} known noise (false positives)."
+    return "good", "Everything is good: no findings."
+
+
+def safety_report(path, as_notify=False):
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        text = fh.read()
+    parsed = parse_safety(text)
+    found = triage(parsed)
+    key, headline = safety_verdict(parsed, found)
+    out = [f"Safety check log: {os.path.basename(path)}", f"Verdict: {headline}"]
+    for verdict, title in (("look", "Needs a look"), ("verify", "Confirm once"), ("ok", "Known noise (false positives)")):
+        group = [f for f in found if f["verdict"] == verdict]
+        if not group:
+            continue
+        out.append(f"\n{title} ({len(group)})")
+        for f in group[:12]:
+            out.append(f"- {TOOL_LABEL.get(f['tool'], f['tool'])}: {f['text'][:200]}")
+            out.append(f"    {f['why']}." + (f" Check: {f['check']}" if f["check"] and verdict != "ok" else ""))
+        if len(group) > 12:
+            out.append(f"- ... and {len(group) - 12} more (see the log)")
+    c = parsed["counts"]
+    seen = [f"ClamAV: {c['clamav']} infected" if "clamav" in c else "", f"firewall {c['ufw']}" if "ufw" in c else "",
+            f"Lynis hardening index {c['lynis_index']}" if "lynis_index" in c else ""]
+    seen = [x for x in seen if x]
+    if seen:
+        out.append("\nSeen: " + ", ".join(seen))
+    if parsed["skipped"]:
+        out.append("Not checked: " + "; ".join(parsed["skipped"]) + ". Those parts say nothing about your system.")
+    if parsed["errors"] is not None and parsed["errors"] > len([f for f in found if f["verdict"] != "ok"]):
+        out.append(f"The check itself counted {parsed['errors']} issue(s): its word matching is cruder than these rules, "
+                   "so a higher number there is not by itself a problem.")
+    report = "\n".join(out)
+    if key == "good" and parsed["skipped"]:
+        report = report.replace("Everything is good", "Everything that was checked is good", 1)
+    if as_notify:
+        notify("Halcyon safety check", headline, "dialog-warning" if key in ("look", "unclear") else "security-high")
+    return report, key, [f for f in found if f["verdict"] != "ok"]
+
+
+def cmd_safety(args):
+    path = argval(args, "--file")
+    if not path:
+        logs = safety_logs()
+        if not logs:
+            raise Fail("No safety-check log found (looked in " + " and ".join(SAFETY_DIRS) + "). Run the safety check first.")
+        path = logs[-1]
+    if not os.path.isfile(path):
+        raise Fail(f"No such log: {path}")
+    report, key, open_items = safety_report(path, "--notify" in args)
+    note = ""
+    if open_items and "--no-ai" not in args:
+        listing = "\n".join(f"- [{f['verdict']}] {f['tool']}: {f['text'][:200]}  (rule note: {f['why']})" for f in open_items[:8])
+        try:
+            note = plain(generate(
+                "Findings from a Linux security check, already sorted by fixed rules:\n" + listing + "\n",
+                system=("You explain security-scan findings to the owner of a Linux desktop. For each finding give one plain sentence: "
+                        "what it means and whether it is likely a false positive or worth acting on, and the one next step. "
+                        "Only talk about the findings listed; do not add others, do not claim a system is infected or safe, and "
+                        "never suggest deleting user data or system files. If you are not sure, say so."),
+                num_predict=380, temperature=0.1, timeout=120))
+        except (AiOff, Fail) as e:
+            note = "(AI notes unavailable: " + str(e) + " The rule-based result above stands on its own.)"
+    text = report + (("\n\nAI notes on the open items\n" + note) if note else "")
+    return {"text": text, "verdict": key, "open": len(open_items)}
+
+
 # ------------------------------------------------------------------------------------------------ main
 COMMANDS = {"ask": cmd_ask, "do": cmd_do, "clip": cmd_clip, "brief": cmd_brief, "explain": cmd_explain,
-            "organise": cmd_organise, "organize": cmd_organise, "lyrics": cmd_lyrics}
+            "safety": cmd_safety, "organise": cmd_organise, "organize": cmd_organise, "lyrics": cmd_lyrics}
 
 
 def main(argv):

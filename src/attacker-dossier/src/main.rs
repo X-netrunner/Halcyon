@@ -4,11 +4,11 @@ use std::fs;
 use std::sync::LazyLock;
 
 static ANY_IP: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b").unwrap());
+    LazyLock::new(|| Regex::new(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b").expect("valid regex"));
 static ALERT_PREFIX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\[[^\]]*\]\s*\[ALERT\]\s*").unwrap());
+    LazyLock::new(|| Regex::new(r"^\[[^\]]*\]\s*\[ALERT\]\s*").expect("valid regex"));
 static IP_LABEL_CLEAN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\s*\b(?:from|Source IP|Banning IP)\s+\d{1,3}(?:\.\d{1,3}){3}\b").unwrap()
+    Regex::new(r"\s*\b(?:from|Source IP|Banning IP)\s+\d{1,3}(?:\.\d{1,3}){3}\b").expect("valid regex")
 });
 
 #[derive(Default, Clone)]
@@ -86,7 +86,7 @@ fn ts(t: &str) -> String {
     let mut secs = days * 86400 + h * 3600 + mi * 60 + s;
     if let Some(off) = t
         .get(19..)
-        .and_then(|r| r.rfind(|c| c == '+' || c == '-').map(|i| &r[i..]))
+        .and_then(|r| r.rfind(['+', '-']).map(|i| &r[i..]))
     {
         if off.len() >= 6 {
             if let (Ok(oh), Ok(om)) = (off[1..3].parse::<i64>(), off[4..6].parse::<i64>()) {
@@ -95,6 +95,7 @@ fn ts(t: &str) -> String {
             }
         }
     }
+    // SAFETY: tm is a zeroed plain C struct and every pointer is to a live local; localtime_r is the thread-safe variant.
     unsafe {
         let tt = secs as libc::time_t;
         let mut tm: libc::tm = std::mem::zeroed();

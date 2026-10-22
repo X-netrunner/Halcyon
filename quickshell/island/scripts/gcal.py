@@ -297,7 +297,7 @@ def build(raw, calname, win_from, win_to):
             "title": unescape(p.get("SUMMARY", ("", "(no title)"))[1]).strip() or "(no title)",
             "start": s, "end": max(e, s), "allDay": allday,
             "loc": unescape(p.get("LOCATION", ("", ""))[1]).strip(),
-            "desc": unescape(p.get("DESCRIPTION", ("", ""))[1]).strip()[:400],
+            "desc": unescape(p.get("DESCRIPTION", ("", ""))[1]).strip()[:4000],
             "cal": calname,
         })
 

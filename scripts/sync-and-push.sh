@@ -260,6 +260,22 @@ sync_push() {
     ref="$remote/$branch"
     step "remote: $remote  ($(git -C "$d" remote get-url "$remote" 2>/dev/null))"
 
+    # ---- what would break the island at login never leaves this machine: shell / Python syntax, the QML lint, unknown QML types and
+    #      double bindings (scripts/halcyon-selftest.sh --quick, a few seconds). HALCYON_PUSH_SKIP_CHECKS=1 skips it.
+    local st="$d/scripts/halcyon-selftest.sh"
+    if [ -f "$st" ] && [ "${HALCYON_PUSH_SKIP_CHECKS:-0}" != 1 ]; then
+        step "quick self-test (what breaks a login)"
+        if bash "$st" "$d" --quick | sed 's/^/   /'; then
+            :
+        elif [ "$YES" = 1 ] || [ ! -t 0 ]; then
+            warn "the self-test failed (above): nothing was committed or pushed. HALCYON_PUSH_SKIP_CHECKS=1 pushes anyway."
+            return 1
+        else
+            local go; printf '   %sThe self-test failed (above). Push anyway? [y/N] %s' "$B" "$R"; read -r go
+            case "$go" in y|Y|yes) warn "pushing despite the failed self-test" ;; *) warn "nothing was committed or pushed."; return 1 ;; esac
+        fi
+    fi
+
     # ---- stage and commit your work FIRST: a pull can then never clobber it or leave
     #      half-applied changes, and any clash with the remote is a normal rebase conflict.
     local f choice cf

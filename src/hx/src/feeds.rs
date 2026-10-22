@@ -155,18 +155,23 @@ pub fn bt() {
 // ---------------------------------------------------------------- wifi
 /// terse nmcli output: ':' separates fields, '\:' is a literal colon inside one
 fn fields(line: &str) -> Vec<String> {
-    let mut out = vec![String::new()];
+    let mut out = Vec::new();
+    let mut cur = String::new();
     let mut it = line.chars().peekable();
     while let Some(c) = it.next() {
         match c {
             '\\' => match it.peek() {
-                Some(':') | Some('\\') => out.last_mut().unwrap().push(it.next().unwrap()),
-                _ => out.last_mut().unwrap().push('\\'),
+                Some(&n @ (':' | '\\')) => {
+                    cur.push(n);
+                    it.next();
+                }
+                _ => cur.push('\\'),
             },
-            ':' => out.push(String::new()),
-            _ => out.last_mut().unwrap().push(c),
+            ':' => out.push(std::mem::take(&mut cur)),
+            _ => cur.push(c),
         }
     }
+    out.push(cur);
     out
 }
 
@@ -255,7 +260,9 @@ fn disks_once() -> Value {
             Ok(c) => c,
             Err(_) => continue,
         };
+        // SAFETY: statvfs is a plain C struct, for which all zero bytes are a valid value.
         let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+        // SAFETY: c is a NUL-terminated CString that outlives the call and st is a valid out-pointer.
         if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
             continue;
         }
@@ -366,6 +373,15 @@ pub fn gpu(iv: f64) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn nmcli_fields_split_on_bare_colons_only() {
+        use super::fields;
+        assert_eq!(fields("yes:Cafe\\:5G:80"), vec!["yes", "Cafe:5G", "80"]);
+        assert_eq!(fields("a\\\\b:"), vec!["a\\b", ""]);
+        assert_eq!(fields("trail\\x"), vec!["trail\\x"]);
+        assert_eq!(fields(""), vec![""]);
+    }
+
     use super::unescape_mount;
 
     #[test]

@@ -24,9 +24,8 @@ jobs:
         run: cargo build --workspace --release
       - name: test
         run: cargo test --workspace
-      - name: clippy (warnings reported, not blocking yet)
-        continue-on-error: true
-        run: cargo clippy --workspace -- -W clippy::unwrap_used
+      - name: clippy (no unwrap(), every unsafe block has a SAFETY comment; other lints are reported, not blocking)
+        run: cargo clippy --workspace -- -D clippy::unwrap_used -D clippy::undocumented_unsafe_blocks
 
   shell:
     runs-on: ubuntu-latest
@@ -51,6 +50,8 @@ jobs:
         run: node tests/widgetdata-lock.test.js
       - name: settings groups (every group on exactly one page, known sections, section order)
         run: node tests/settings-groups.test.js
+      - name: QML types and double bindings (what qmllint cannot see without Quickshell's types; both stop the island at login)
+        run: node tests/qml-types.test.js
       - name: shellcheck (errors only, so old scripts do not block a push)
         run: sudo apt-get install -y shellcheck && shellcheck -S error $(git ls-files '*.sh') install.sh update.sh get.sh sysmode/sysmode scripts/halcyon-tune
 
@@ -64,6 +65,16 @@ jobs:
         run: python3 tests/test_task_detect.py
       - name: birthday import (date formats, invalid days like 02-30 are rejected, vCard and CSV)
         run: python3 tests/test_birthdays.py
+      - name: everyday tools (colour formats, Wi-Fi QR text, mixer, VPN, updates, snippets, windows, phone, zoom; system programs are stubs)
+        run: python3 tests/test_tools.py
+      - name: safety check review (rkhunter / AIDE / Lynis noise rules, the verdicts, never "all good" from the model)
+        run: python3 tests/test_safety_review.py
+      - name: weekly sky (the week's stars from Focus, tasks and calendar)
+        run: python3 tests/test_weekly_sky.py
+      - name: no script defines the same top-level constant or function twice (two RULES tables once broke >do)
+        run: python3 tests/test_no_redefine.py
+      - name: password vault (old vaults still open, the HMAC seal refuses a changed byte or a wrong key, nothing is overwritten)
+        run: python3 tests/test_vault.py
 
   qml:
     runs-on: ubuntu-latest
@@ -111,10 +122,8 @@ jobs:
 
   install-smoke:
     # install.sh --dry-run on a clean Arch and a clean Debian: catches syntax slips, bad flags and steps that die before they start.
-    # It changes nothing in the container. continue-on-error for now: if a container quirk (no systemd, no TTY) trips it, it is a
-    # signal to read, not a blocked push; remove that line once it has been green for a while.
+    # It changes nothing in the container. Blocking since it stayed green on both images for every run up to v10.2.0.
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:

@@ -110,7 +110,7 @@ impl PowerMode {
 // ---------------------------------------------------------------------------------------------
 
 /// Read a small file into a caller-provided buffer (no heap allocation) and return it trimmed.
-fn read_trim<'a>(path: impl AsRef<Path>, buf: &'a mut [u8]) -> Option<&'a str> {
+fn read_trim(path: impl AsRef<Path>, buf: &mut [u8]) -> Option<&str> {
     let n = File::open(path).ok()?.read(buf).ok()?;
     std::str::from_utf8(&buf[..n]).ok().map(str::trim)
 }
@@ -131,6 +131,7 @@ fn write_sysfs(path: &str, val: &str) {
 /// XDG_RUNTIME_DIR, or /run/user/<this user's uid> when the service did not inherit it.
 fn runtime_dir() -> String {
     std::env::var("XDG_RUNTIME_DIR")
+        // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
         .unwrap_or_else(|_| format!("/run/user/{}", unsafe { libc::getuid() }))
 }
 
@@ -150,6 +151,7 @@ fn find_pid(name: &str) -> Option<i32> {
 /// Send `sig` to every process of ours whose name is in PAUSE_APPS (one /proc pass, no pkill spawns).
 /// `comm` is truncated to 15 bytes by the kernel, so long names are compared truncated too.
 fn signal_apps(sig: i32) {
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let uid = unsafe { libc::getuid() };
     let Ok(rd) = fs::read_dir("/proc") else { return };
     let mut b = [0u8; 32];
@@ -160,7 +162,8 @@ fn signal_apps(sig: i32) {
         if !PAUSE_APPS.iter().any(|a| comm == &a[..a.len().min(15)]) {
             continue;
         }
-        if e.metadata().map_or(false, |m| m.uid() == uid) {
+        if e.metadata().is_ok_and(|m| m.uid() == uid) {
+            // SAFETY: kill() only sends a signal (0 = does the process exist); no memory is shared.
             unsafe { libc::kill(pid, sig) };
         }
     }
@@ -381,11 +384,11 @@ impl Hypr {
     }
 
     fn heavy_window(&mut self) -> bool {
-        self.query("j/clients").map_or(false, |j| heavy_class_present(&j))
+        self.query("j/clients").is_some_and(|j| heavy_class_present(&j))
     }
 
     fn fullscreen(&mut self) -> bool {
-        self.query("j/monitors").map_or(false, |j| any_solitary(&j))
+        self.query("j/monitors").is_some_and(|j| any_solitary(&j))
     }
 
     fn set_refresh(&mut self, high: bool) {
@@ -431,7 +434,7 @@ impl Ac {
             let is_ac = name.starts_with("AC")
                 || name.starts_with("ADP")
                 || name.starts_with("ucsi")
-                || read_trim(dir.join("type"), &mut b).map_or(false, |t| {
+                || read_trim(dir.join("type"), &mut b).is_some_and(|t| {
                     t.eq_ignore_ascii_case("Mains") || t.eq_ignore_ascii_case("USB") || t.eq_ignore_ascii_case("USB_PD")
                 });
             if is_ac {
@@ -584,7 +587,7 @@ fn discover_nvidia_pci() -> (Option<PathBuf>, Vec<PathBuf>) {
                 if ctrl.exists() {
                     control_paths.push(ctrl);
                 }
-                if status_path.is_none() && read_trim(p.join("class"), &mut b).map_or(false, |c| c.starts_with("0x03")) {
+                if status_path.is_none() && read_trim(p.join("class"), &mut b).is_some_and(|c| c.starts_with("0x03")) {
                     let st = p.join("power/runtime_status");
                     if st.exists() {
                         status_path = Some(st);
@@ -601,8 +604,8 @@ fn dgpu_asleep() -> bool {
     let mut b = [0u8; 32];
     let (status_path, _) = discover_nvidia_pci();
     match status_path {
-        Some(st) => read_trim(&st, &mut b).map_or(false, |s| s.starts_with("suspend")),
-        None => !Path::new(DGPU_STATUS).exists() || read_trim(DGPU_STATUS, &mut b).map_or(true, |s| s.starts_with("suspend")),
+        Some(st) => read_trim(&st, &mut b).is_some_and(|s| s.starts_with("suspend")),
+        None => !Path::new(DGPU_STATUS).exists() || read_trim(DGPU_STATUS, &mut b).is_none_or(|s| s.starts_with("suspend")),
     }
 }
 
@@ -695,6 +698,7 @@ impl Input {
             for p in self.pfds.iter_mut() {
                 p.revents = 0;
             }
+            // SAFETY: pointer and length come from the same live pollfd array.
             let n = unsafe { libc::poll(self.pfds.as_mut_ptr(), self.pfds.len() as libc::nfds_t, 0) };
             if n > 0 {
                 for (i, p) in self.pfds.iter().enumerate() {
@@ -714,7 +718,7 @@ impl Input {
             }
         }
         // rescan after a device error (unplug) and periodically (hot-plug); after draining, so nothing is lost
-        if broken || self.polls % RESCAN_POLLS == 0 {
+        if broken || self.polls.is_multiple_of(RESCAN_POLLS) {
             self.scan();
         }
         activity
@@ -803,7 +807,7 @@ impl Daemon {
         if !running {
             return false;
         }
-        let need_check = self.mode == Some(PowerMode::Gaming) || self.prof_tick % 4 == 0;
+        let need_check = self.mode == Some(PowerMode::Gaming) || self.prof_tick.is_multiple_of(4);
         if !need_check {
             return false;
         }
@@ -812,7 +816,7 @@ impl Daemon {
             .stdin(Stdio::null())
             .stderr(Stdio::null())
             .output()
-            .map_or(false, |o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("is active"))
+            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("is active"))
     }
 
     fn determine_mode(&mut self, ac: bool) -> PowerMode {
@@ -877,7 +881,7 @@ impl Daemon {
         self.prof_tick = self.prof_tick.wrapping_add(1);
         let needed = match active_profile() {
             Some(p) => p != target,
-            None => changed || self.prof_tick % 8 == 0,
+            None => changed || self.prof_tick.is_multiple_of(8),
         };
         if needed {
             set_profile(target);
@@ -1019,6 +1023,7 @@ impl Daemon {
 /// A signalfd for the termination signals (replaces a signal-handler thread). Signals are only
 /// blocked once the fd exists, so a failure here leaves default signal handling intact.
 fn termination_signalfd() -> RawFd {
+    // SAFETY: set is zeroed and then initialised by sigemptyset; every pointer is to a live local.
     unsafe {
         let mut set: libc::sigset_t = std::mem::zeroed();
         libc::sigemptyset(&mut set);
@@ -1069,6 +1074,7 @@ fn main() {
 
         pfds[0].revents = 0;
         pfds[1].revents = 0;
+        // SAFETY: pointer and length come from the same live pollfd array.
         let n = unsafe { libc::poll(pfds.as_mut_ptr(), 2, POLL_MS) };
         if n > 0 {
             if pfds[1].revents & libc::POLLIN != 0 {
@@ -1088,6 +1094,7 @@ fn main() {
     daemon.shutdown();
     let _ = fs::remove_file(&lock_path);
     if sfd >= 0 {
+        // SAFETY: sfd came from termination_signalfd and is closed exactly once here.
         unsafe { libc::close(sfd) };
     }
 }

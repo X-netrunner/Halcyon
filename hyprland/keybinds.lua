@@ -181,6 +181,13 @@ bind("notes", "SUPER + N", hl.dsp.exec_cmd(ipc .. "notes"))                     
 bind("voicenote", "SUPER + SHIFT + V", hl.dsp.exec_cmd("python3 " .. home .. "/.config/Halcyon/scripts/halcyon-notes.py rec-toggle"))
 bind("extradim", "SUPER + ALT + D", hl.dsp.exec_cmd(ipc .. "extradim"))         -- extra dim mode (SUPER + ALT + D)
 bind("record", "SUPER + ALT + R", hl.dsp.exec_cmd(home .. "/.config/Halcyon/scripts/screen-record.sh toggle")) -- screen recorder
+-- everyday tools (scripts/halcyon-tools.py)
+bind("colorpick", "SUPER + SHIFT + C", hl.dsp.exec_cmd("python3 " .. home .. "/.config/Halcyon/scripts/halcyon-tools.py colorpick"))   -- colour picker
+bind("measure", "SUPER + ALT + M", hl.dsp.exec_cmd("python3 " .. home .. "/.config/Halcyon/scripts/halcyon-tools.py measure"))   -- measure a box on the screen
+bind("zoom", "SUPER + ALT + Z", hl.dsp.exec_cmd("python3 " .. home .. "/.config/Halcyon/scripts/halcyon-tools.py zoom toggle"))   -- magnifier
+bind("snippets", "SUPER + ALT + V", hl.dsp.exec_cmd("python3 " .. home .. "/.config/Halcyon/scripts/halcyon-tools.py snippets pick"))   -- paste a saved text
+bind("winlast", "ALT + Tab", hl.dsp.focus({ last = true }))   -- flip to the previous window
+bind("winpick", "ALT + SHIFT + Tab", hl.dsp.exec_cmd("python3 " .. home .. "/.config/Halcyon/scripts/halcyon-tools.py windows pick"))   -- list of windows, most recent first
 bind("dnd", "SUPER + SHIFT + D", hl.dsp.exec_cmd(ipc .. "dnd"))
 bind("theme", "SUPER + SHIFT + T", hl.dsp.exec_cmd(ipc .. "theme"))                 -- light / dark theme
 

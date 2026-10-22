@@ -89,6 +89,7 @@ impl Wake {
             Ok(c) => c,
             Err(_) => return Wake { fd: -1 },
         };
+        // SAFETY: c is a NUL-terminated CString alive for the whole block; st is a zeroed plain C struct used as an out-pointer.
         unsafe {
             let mut st: libc::stat = std::mem::zeroed();
             if libc::stat(c.as_ptr(), &mut st) == 0 && (st.st_mode & libc::S_IFMT) != libc::S_IFIFO {
@@ -101,10 +102,12 @@ impl Wake {
     }
     fn poll(&self, ms: i32) -> bool {
         let mut p = libc::pollfd { fd: self.fd, events: libc::POLLIN, revents: 0 };
+        // SAFETY: p is one valid pollfd on the stack and nfds is 1.
         unsafe { libc::poll(&mut p, 1, ms) > 0 && (p.revents & libc::POLLIN) != 0 }
     }
     fn drain(&self) {
         let mut buf = [0u8; 256];
+        // SAFETY: buf is a live stack buffer and its real length is passed; the fd is non-blocking, so the loop ends.
         unsafe { while libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) > 0 {} }
     }
     /// Sleep `secs`, or less when poked. A poke gets one more second so the action that caused it can finish first.
@@ -124,6 +127,7 @@ impl Wake {
 impl Drop for Wake {
     fn drop(&mut self) {
         if self.fd >= 0 {
+            // SAFETY: the fd is owned by Wake and closed once, here in Drop.
             unsafe { libc::close(self.fd) };
         }
     }
@@ -413,6 +417,7 @@ pub fn stats(iv: f64) {
     let mut bat = Bat::new();
     let (mut pt, mut pi) = cpu_times();
     let (mut prx, mut ptx) = net_bytes();
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let uid = unsafe { libc::getuid() };
     let pm_state = format!("{}/power-manager.state", xdg_rt().unwrap_or_else(|| format!("/run/user/{}", uid)));
     let mut out = Out { last: String::new() };
@@ -557,6 +562,7 @@ fn wifi_radio() -> Option<bool> {
 
 impl Drop for Net {
     fn drop(&mut self) {
+        // SAFETY: both sockets are owned by Net and closed once, here in Drop.
         unsafe {
             if self.ip_sock >= 0 { libc::close(self.ip_sock); }
             if self.hci_sock >= 0 { libc::close(self.hci_sock); }
@@ -566,8 +572,10 @@ impl Drop for Net {
 
 impl Net {
     fn new() -> Net {
+        // SAFETY: socket() takes plain integers and returns an fd or -1, which is checked before use.
         let ip_sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         // AF_BLUETOOTH = 31, BTPROTO_HCI = 1: only used to ask "is the adapter up" (no root needed)
+        // SAFETY: socket() takes plain integers and returns an fd or -1, which is checked before use.
         let hci_sock = unsafe { libc::socket(31, libc::SOCK_RAW | libc::SOCK_CLOEXEC, 1) };
         Net { ip_sock, hci_sock, ssid_cache: None, bt_sig: String::new(), bt_n: 0, bt_dev: String::new(), bt_at: None, bt_settle: false }
     }
@@ -582,11 +590,14 @@ impl Net {
             req.name[i] = b;
         }
         // SIOCGIWESSID = 0x8B1B (wireless extensions, still served by cfg80211 on mainstream kernels)
+        // SAFETY: req is a live, initialised IwReq whose pointer targets buf (40 bytes) with length 33, so the kernel writes at most 33 bytes into it.
         let rc = unsafe { libc::ioctl(self.ip_sock, 0x8B1B as libc::c_ulong, &mut req as *mut IwReq) };
         if rc < 0 {
             return None;
         }
+        // some drivers count the terminating NUL in the length ("iBus Wi-Fi\0"): the name ends at the first NUL
         let n = (req.length as usize).min(32);
+        let n = buf[..n].iter().position(|&b| b == 0).unwrap_or(n);
         let s = String::from_utf8_lossy(&buf[..n]).into_owned();
         if s.is_empty() { None } else { Some(s) }
     }
@@ -600,6 +611,7 @@ impl Net {
         }
         let mut buf = [0u8; 128]; // struct hci_dev_info: dev_id u16 first, flags u32 at offset 16, HCI_UP = bit 0
         buf[..2].copy_from_slice(&id.to_ne_bytes());
+        // SAFETY: buf is 128 bytes, larger than struct hci_dev_info (92 bytes), so the kernel's write stays inside it.
         let rc = unsafe { libc::ioctl(self.hci_sock, 0x800448D3 as libc::c_ulong, buf.as_mut_ptr()) }; // HCIGETDEVINFO
         if rc < 0 {
             return None;
@@ -911,6 +923,7 @@ fn caffeine_on() -> bool {
     if !exists(FLAG) {
         return false;
     }
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let uid = unsafe { libc::getuid() };
     let cg = format!("/sys/fs/cgroup/user.slice/user-{0}.slice/user@{0}.service/app.slice/halcyon-caffeine.service", uid);
     if exists(&cg) {
@@ -973,6 +986,7 @@ fn focus_flag(conf: &str, key: &str, default: bool) -> bool {
 /// What `focus.sh status` prints. The common cases (no session; a session whose helper is alive) are answered from the
 /// state file; anything that needs clean-up (a dead helper, a left-over restore marker) is handed to focus.py as before.
 fn focus_status() -> Value {
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let rt = xdg_rt().unwrap_or_else(|| format!("/run/user/{}", unsafe { libc::getuid() }));
     let st: Option<Value> = serde_json::from_str(&read(&format!("{}/halcyon-focus.json", rt))).ok().filter(|v: &Value| v.is_object());
     let slow = || -> Value {
@@ -990,6 +1004,7 @@ fn focus_status() -> Value {
     }
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
     let alive = match st["pid"].as_i64().filter(|p| *p != 0) {
+        // SAFETY: kill() only sends a signal (0 = does the process exist); no memory is shared.
         Some(pid) => unsafe { libc::kill(pid as i32, 0) == 0 },
         None => now - st["t0"].as_f64().unwrap_or(0.0) < 8.0, // the helper is still starting
     };

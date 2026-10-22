@@ -34,6 +34,19 @@ t("launcher: every id in the command order has an entry", () => {
   const missing = order.filter(i => !ids.has(i) && !i.startsWith("profile-"))
   assert.deepStrictEqual(missing, [], "no launcher entry for: " + missing)
 })
+t("everyday tools: every launcher tool-* entry has its arguments in shell.qml, and every key has its Binds.js entry", () => {
+  const ids = [...launcher.matchAll(/\{ id: "tool-([\w-]+)", name:/g)].map(m => m[1])
+  assert.ok(ids.length >= 10, "the tool entries are there")
+  const map = shell.match(/readonly property var toolArgs: \(\{([\s\S]*?)\}\)/)[1]
+  const keys = [...map.matchAll(/"([\w-]+)":/g)].map(m => m[1])
+  assert.deepStrictEqual(ids.filter(i => !keys.includes(i)), [], "launcher entries without arguments")
+  assert.deepStrictEqual(keys.filter(i => !ids.includes(i)), [], "arguments without a launcher entry")
+  const binds = rd("quickshell/island/Binds.js"), lua = rd("hyprland/keybinds.lua")
+  for (const id of ["colorpick", "measure", "zoom", "snippets", "winlast", "winpick"]) {
+    assert.match(binds, new RegExp(`id: "${id}"`), id + " is missing from Binds.js")
+    assert.match(lua, new RegExp(`bind\\("${id}"`), id + " is missing from keybinds.lua")
+  }
+})
 t("widgets: every catalog type has a body file that exists", () => {
   const ctx = {}; vm.createContext(ctx); vm.runInContext(rd("quickshell/island/WidgetData.js").replace(/^\.pragma.*$/m, ""), ctx)
   for (const c of ctx.catalog) assert.ok(fs.existsSync(path.join(root, "quickshell/island", ctx.files[c.id] || "")), c.id + " -> " + ctx.files[c.id])

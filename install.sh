@@ -538,6 +538,10 @@ map_pkg_for_apt() {
         python-gobject)         echo "python3-gi gir1.2-atspi-2.0" ;;
         at-spi2-core)           echo "at-spi2-core" ;;
         wtype)                  echo "wtype" ;;
+        qrencode)               echo "qrencode" ;;
+        kdeconnect)             echo "kdeconnect" ;;
+        hyprpicker)             echo "" ;;     # not in Debian: the colour picker falls back to slurp + grim
+        pacman-contrib)         echo "" ;;     # checkupdates is Arch only
         xdg-utils)              echo "xdg-utils" ;;
         xdg-user-dirs)          echo "xdg-user-dirs" ;;
         dmidecode)              echo "dmidecode" ;;
@@ -1522,6 +1526,7 @@ if [[ "$PACKAGES" == "true" ]]; then
           qt6-base qt6-declarative qt6-svg qt6-shadertools qt6-wayland qt6-5compat qt6-multimedia qt5-wayland qt6ct kvantum kservice
           imagemagick cava btop fish starship poppler fd ripgrep fzf grim slurp wl-clipboard cliphist fuzzel tesseract tesseract-data-eng
           dmidecode util-linux lsof jq zenity gamemode python libnotify
+          hyprpicker qrencode pacman-contrib libpulse wtype kdeconnect
           inter-font ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji adwaita-icon-theme)
     # (the browser, file manager and editor you chose are installed below)
     install_pkgs "${CORE[@]}"
@@ -1973,6 +1978,7 @@ try run_as_user_cmd "Installing the user services (gestures start with the deskt
     install -m644 "$TARGET_RICE/systemd/power-manager.service" "$TARGET_RICE/systemd/touchpad-gestures.service" \
         "$TARGET_RICE/systemd/halcyon-remind.service" "$TARGET_RICE/systemd/halcyon-remind.timer" \
         "$TARGET_RICE/systemd/halcyon-notes-due.service" "$TARGET_RICE/systemd/halcyon-notes-due.timer" \
+        "$TARGET_RICE/systemd/halcyon-updates.service" "$TARGET_RICE/systemd/halcyon-updates.timer" \
         "$TARGET_RICE/systemd/halcyon-explain@.service" "$UNITS/"
 if [[ "$DRY_RUN" != "true" ]] && have_systemd && user_bus_ready; then
     try run_cmd "Reloading the user systemd" user_systemctl daemon-reload

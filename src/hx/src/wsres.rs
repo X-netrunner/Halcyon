@@ -99,7 +99,9 @@ fn meminfo() -> (f64, f64) {
 fn round1(x: f64) -> f64 { (x * 10.0).round() / 10.0 }
 
 pub fn wsres(interval: f64) {
+    // SAFETY: sysconf with a valid name constant only reads a system value.
     let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+    // SAFETY: sysconf with a valid name constant only reads a system value.
     let page_mb = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as f64 / 1048576.0;
     let ncpu = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f64;
     let mut prev = snapshot();

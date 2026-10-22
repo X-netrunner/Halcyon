@@ -51,8 +51,9 @@ fn strip_ansi(s: &str) -> String {
 
 fn write_to_log(msg: &str) {
     let log_path = get_log_file_path();
-    let log_dir = Path::new(&log_path).parent().unwrap();
-    fs::create_dir_all(log_dir).ok();
+    if let Some(log_dir) = Path::new(&log_path).parent() {
+        fs::create_dir_all(log_dir).ok();
+    }
     if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
         let clean_msg = strip_ansi(msg);
         writeln!(file, "[{}] {}", Local::now().format("%H:%M:%S"), clean_msg).ok();
@@ -63,12 +64,12 @@ fn notify(msg: &str, urgency: &str, real_user: &str) {
     if real_user == "root" {
         return;
     }
-    let user_id_output = Command::new("id").args(&["-u", real_user]).output();
+    let user_id_output = Command::new("id").args(["-u", real_user]).output();
     if let Ok(out) = user_id_output {
         let uid_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
         let dbus_addr = format!("unix:path=/run/user/{}/bus", uid_str);
         Command::new("sudo")
-            .args(&[
+            .args([
                 "-u",
                 real_user,
                 "env",
@@ -145,44 +146,39 @@ fn main() {
         let status = Command::new("clamscan")
             .arg("-r")
             .arg("--bell")
-            .args(&scan_dirs)
+            .args(scan_dirs)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map(|mut child| {
-                let stdout = child.stdout.take().unwrap();
-                let stderr = child.stderr.take().unwrap();
+            .and_then(|mut child| {
+                let stdout = child.stdout.take().expect("spawned with a pipe");
+                let stderr = child.stderr.take().expect("spawned with a pipe");
                 
                 let stderr_handle = std::thread::spawn(move || {
                     let reader = BufReader::new(stderr);
-                    for line in reader.lines() {
-                        if let Ok(l) = line {
-                            println!("    {} {}", "[STDERR]".red(), l);
-                            write_to_log(&format!("[STDERR] {}", l));
-                        }
+                    for l in reader.lines().map_while(Result::ok) {
+                        println!("    {} {}", "[STDERR]".red(), l);
+                        write_to_log(&format!("[STDERR] {}", l));
                     }
                 });
 
                 let reader = BufReader::new(stdout);
                 let mut infected = 0;
-                for line in reader.lines() {
-                    if let Ok(l) = line {
-                        write_to_log(&l);
-                        if l.contains("FOUND") {
-                            println!("    {}", l.bold().red());
-                        } else {
-                            println!("    {}", l.dimmed());
-                        }
-                        if l.contains("Infected files:") {
-                            if let Some(count_str) = l.split_whitespace().last() {
-                                infected = count_str.parse::<i32>().unwrap_or(0);
-                            }
+                for l in reader.lines().map_while(Result::ok) {
+                    write_to_log(&l);
+                    if l.contains("FOUND") {
+                        println!("    {}", l.bold().red());
+                    } else {
+                        println!("    {}", l.dimmed());
+                    }
+                    if l.contains("Infected files:") {
+                        if let Some(count_str) = l.split_whitespace().last() {
+                            infected = count_str.parse::<i32>().unwrap_or(0);
                         }
                     }
                 }
                 let _ = stderr_handle.join();
-                let s = child.wait().unwrap();
-                (s, infected)
+                child.wait().map(|s| (s, infected))
             });
 
         match status {
@@ -216,37 +212,33 @@ fn main() {
         write_to_log("Running: rkhunter --check --sk");
         
         let child = Command::new("rkhunter")
-            .args(&["--check", "--sk"])
+            .args(["--check", "--sk"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
             
         match child {
             Ok(mut child_proc) => {
-                let stdout = child_proc.stdout.take().unwrap();
-                let stderr = child_proc.stderr.take().unwrap();
+                let stdout = child_proc.stdout.take().expect("spawned with a pipe");
+                let stderr = child_proc.stderr.take().expect("spawned with a pipe");
                 
                 let stderr_handle = std::thread::spawn(move || {
                     let reader = BufReader::new(stderr);
-                    for line in reader.lines() {
-                        if let Ok(l) = line {
-                            println!("    {} {}", "[STDERR]".red(), l);
-                            write_to_log(&format!("rkhunter stderr: {}", l));
-                        }
+                    for l in reader.lines().map_while(Result::ok) {
+                        println!("    {} {}", "[STDERR]".red(), l);
+                        write_to_log(&format!("rkhunter stderr: {}", l));
                     }
                 });
                 
                 let reader = BufReader::new(stdout);
                 let mut warn_count = 0;
-                for line in reader.lines() {
-                    if let Ok(l) = line {
-                        write_to_log(&format!("rkhunter: {}", l));
-                        if l.contains("Warning") {
-                            warn_count += 1;
-                            println!("    {}", l.bold().red());
-                        } else {
-                            println!("    {}", l.dimmed());
-                        }
+                for l in reader.lines().map_while(Result::ok) {
+                    write_to_log(&format!("rkhunter: {}", l));
+                    if l.contains("Warning") {
+                        warn_count += 1;
+                        println!("    {}", l.bold().red());
+                    } else {
+                        println!("    {}", l.dimmed());
                     }
                 }
                 
@@ -359,30 +351,26 @@ fn main() {
                 
                 match child {
                     Ok(mut child_proc) => {
-                        let stdout = child_proc.stdout.take().unwrap();
-                        let stderr = child_proc.stderr.take().unwrap();
+                        let stdout = child_proc.stdout.take().expect("spawned with a pipe");
+                        let stderr = child_proc.stderr.take().expect("spawned with a pipe");
                         
                         let stderr_handle = std::thread::spawn(move || {
                             let reader = BufReader::new(stderr);
-                            for line in reader.lines() {
-                                if let Ok(l) = line {
-                                    println!("    {} {}", "[STDERR]".red(), l);
-                                    write_to_log(&format!("AIDE stderr: {}", l));
-                                }
+                            for l in reader.lines().map_while(Result::ok) {
+                                println!("    {} {}", "[STDERR]".red(), l);
+                                write_to_log(&format!("AIDE stderr: {}", l));
                             }
                         });
                         
                         let reader = BufReader::new(stdout);
                         let mut changes = 0;
-                        for line in reader.lines() {
-                            if let Ok(l) = line {
-                                write_to_log(&format!("AIDE: {}", l));
-                                if l.contains("changed") || l.contains("added") || l.contains("removed") {
-                                    changes += 1;
-                                    println!("    {}", l.bold().red());
-                                } else {
-                                    println!("    {}", l.dimmed());
-                                }
+                        for l in reader.lines().map_while(Result::ok) {
+                            write_to_log(&format!("AIDE: {}", l));
+                            if l.contains("changed") || l.contains("added") || l.contains("removed") {
+                                changes += 1;
+                                println!("    {}", l.bold().red());
+                            } else {
+                                println!("    {}", l.dimmed());
                             }
                         }
                         
@@ -441,7 +429,7 @@ fn main() {
         backup_dev = String::new();       // automatic run: no question can be answered, so no disk = no backup this time
     } else {
         println!("\nAvailable disks:");
-        Command::new("lsblk").args(&["-o", "NAME,SIZE,TYPE,MOUNTPOINT"]).status().ok();
+        Command::new("lsblk").args(["-o", "NAME,SIZE,TYPE,MOUNTPOINT"]).status().ok();
         
         print!("\nEnter backup device [Default: sda1]: ");
         let _ = io::stdout().flush();
@@ -463,7 +451,7 @@ fn main() {
         log_error(&format!("Device {} not found — skipping backup", backup_dev));
         notify("⚠ Backup skipped — drive not found", "critical", &real_user);
     } else {
-        let label_output = Command::new("blkid").args(&["-o", "value", "-s", "LABEL", &backup_dev]).output().ok();
+        let label_output = Command::new("blkid").args(["-o", "value", "-s", "LABEL", &backup_dev]).output().ok();
         let label = label_output.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_else(|| "none".to_string());
         
         println!("Selected backup device: {} (Label: {})", backup_dev.yellow(), label.cyan());
@@ -510,7 +498,7 @@ fn main() {
         }
 
         if proceed {
-            let fs_type_output = Command::new("blkid").args(&["-o", "value", "-s", "TYPE", &backup_dev]).output().ok();
+            let fs_type_output = Command::new("blkid").args(["-o", "value", "-s", "TYPE", &backup_dev]).output().ok();
             let fs_type = fs_type_output.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
             
             if fs_type != "ext4" {
@@ -546,7 +534,7 @@ fn main() {
                     write_to_log("Running rsync ...");
                     
                     let child = Command::new("rsync")
-                        .args(&[
+                        .args([
                             "-aAXH",
                             "--delete",
                             "--info=progress2",
@@ -570,25 +558,21 @@ fn main() {
                         
                     match child {
                         Ok(mut child_proc) => {
-                            let stdout = child_proc.stdout.take().unwrap();
-                            let stderr = child_proc.stderr.take().unwrap();
+                            let stdout = child_proc.stdout.take().expect("spawned with a pipe");
+                            let stderr = child_proc.stderr.take().expect("spawned with a pipe");
                             
                             let stderr_handle = std::thread::spawn(move || {
                                 let reader = BufReader::new(stderr);
-                                for line in reader.lines() {
-                                    if let Ok(l) = line {
-                                        println!("    {} {}", "[STDERR]".red(), l);
-                                        write_to_log(&format!("rsync stderr: {}", l));
-                                    }
+                                for l in reader.lines().map_while(Result::ok) {
+                                    println!("    {} {}", "[STDERR]".red(), l);
+                                    write_to_log(&format!("rsync stderr: {}", l));
                                 }
                             });
                             
                             let reader = BufReader::new(stdout);
-                            for line in reader.lines() {
-                                if let Ok(l) = line {
-                                    println!("    {}", l);
-                                    write_to_log(&l);
-                                }
+                            for l in reader.lines().map_while(Result::ok) {
+                                println!("    {}", l);
+                                write_to_log(&l);
                             }
                             
                             let _ = stderr_handle.join();
@@ -705,20 +689,16 @@ fn run_command(cmd: &str, args: &[&str]) -> bool {
     // Spawn a thread to read stderr and print/log it
     let stderr_handle = std::thread::spawn(move || {
         let reader = BufReader::new(stderr);
-        for line in reader.lines() {
-            if let Ok(l) = line {
-                println!("    {} {}", "[STDERR]".red(), l);
-                write_to_log(&format!("[STDERR] {}", l));
-            }
+        for l in reader.lines().map_while(Result::ok) {
+            println!("    {} {}", "[STDERR]".red(), l);
+            write_to_log(&format!("[STDERR] {}", l));
         }
     });
 
     let stdout_reader = BufReader::new(stdout);
-    for line in stdout_reader.lines() {
-        if let Ok(l) = line {
-            println!("    {}", l);
-            write_to_log(&l);
-        }
+    for l in stdout_reader.lines().map_while(Result::ok) {
+        println!("    {}", l);
+        write_to_log(&l);
     }
 
     let _ = stderr_handle.join();
