@@ -5,6 +5,7 @@
 #     user-setup.sh hypr-entry            ~/.config/hypr/hyprland.lua loads Halcyon (your old Hyprland config is backed up first)
 #     user-setup.sh login-add             the start-on-tty1 lines in ~/.bash_profile / ~/.zprofile (lock screen as login screen)
 #     user-setup.sh login-remove          take those lines out again
+#     user-setup.sh hushlogin             ~/.hushlogin, so login prints nothing over the boot splash on tty1 (login-add does it too)
 #     user-setup.sh tty-autostart         start Halcyon on tty1 without the lock screen first
 #     user-setup.sh wallpaper             make a first wallpaper if the folder is empty, then colours from a wallpaper
 #     user-setup.sh terminals             colour files + the Halcyon look (fish, font, padding, 0.85 alpha, cursor, scrollback, search keys) for
@@ -68,7 +69,13 @@ end
 FISH
   grep -q "halcyon-login.sh" "$f" 2>/dev/null
 }
+HUSH_MARK="$HOME/.cache/island/hushlogin-by-halcyon"
+hushlogin() {   # login stays quiet (no "Last login") so nothing is drawn over the boot splash; login-remove takes it out again if we made it
+  [ -e "$HOME/.hushlogin" ] && return 0
+  : > "$HOME/.hushlogin" && mkdir -p "$(dirname "$HUSH_MARK")" && : > "$HUSH_MARK"
+}
 login_add() {   # 0 = the lines are in place
+  hushlogin
   if login_is_fish; then login_add_fish; return; fi
   local f; f=$(login_profile); [ -n "$f" ] || return 1
   if ! grep -q "halcyon-login.sh" "$f" 2>/dev/null; then
@@ -86,6 +93,7 @@ login_add() {   # 0 = the lines are in place
 }
 login_remove() {
   local f
+  [ -e "$HUSH_MARK" ] && rm -f "$HOME/.hushlogin" "$HUSH_MARK"
   rm -f "$(login_fish_file)"
   for f in "$HOME/.bash_profile" "${ZDOTDIR:-$HOME}/.zprofile"; do
     [ -f "$f" ] || continue
@@ -108,7 +116,18 @@ wallpaper() {
   mkdir -p "$wp"
   find_first() { find "$wp" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) 2>/dev/null | head -n1; }
   if [ -z "$(find_first)" ]; then
-    if command -v magick >/dev/null || command -v convert >/dev/null; then
+    local W=2560 H=1600 s st
+    for st in /sys/class/drm/card*-*/status; do      # the screen's own size, so the stars stay sharp
+      [ "$(cat "$st" 2>/dev/null)" = connected ] || continue
+      s=$(head -1 "$(dirname "$st")/modes" 2>/dev/null)
+      case "$s" in [0-9]*x[0-9]*) W=${s%%x*}; H=${s#*x}; H=${H%%[!0-9]*}; break ;; esac
+    done
+    if python3 -I "$RICE/scripts/default-wallpaper.py" "$wp/halcyon-default.jpg" "$W" "$H" 2>/dev/null; then
+      ok "no wallpapers found: drew a first one ($wp/halcyon-default.jpg, deep space in the Halcyon colours). Put your own pictures in $wp; Settings > Wallpaper picks a new one."
+      # a first look: the live Halcyon sky on the desktop and the lock screen (the island applies it once; the picture gives the colours)
+      mkdir -p "$HOME/.local/state/island" && printf '{"deskLive":"on","lockBg":"sky"}\n' > "$HOME/.local/state/island/look-seed.json"
+      ok "live wallpaper: the Halcyon sky (Settings > Wallpaper > Live wallpaper switches it off)"
+    elif command -v magick >/dev/null || command -v convert >/dev/null; then
       im=magick; command -v magick >/dev/null || im=convert
       if $im -size 2560x1600 gradient:'#1b2340-#6a4c93' -rotate 15 -gravity center -crop 2560x1600+0+0 +repage "$wp/halcyon-default.png" 2>/dev/null; then
         ok "no wallpapers found: made a first one ($wp/halcyon-default.png). Put your own pictures in $wp; Settings > Wallpaper picks a new one."
@@ -461,6 +480,7 @@ case "${1:-}" in
   hypr-entry)    hypr_entry ;;
   login-add)     login_add || { warn "your login shell is not bash, zsh or fish, so the lock-screen login was NOT set up (auto-login without it would leave an open shell)"; exit 1; } ;;
   login-remove)  login_remove ;;
+  hushlogin)     hushlogin ;;
   tty-autostart) tty_autostart ;;
   wallpaper)     wallpaper ;;
   terminals)     terminals ;;

@@ -1,36 +1,12 @@
 #!/bin/bash
-
-STATE_FILE="$HOME/.local/state/livewallpaper_disabled"
-
-# monitor: the laptop panel (eDP-*) if there is one, else the first one Hyprland reports (override: HALCYON_MONITOR)
-MONITOR="${HALCYON_MONITOR:-$(hyprctl monitors 2>/dev/null | awk '/^Monitor/ {n=$2; if (n ~ /^eDP/) {print n; found=1; exit} if (first=="") first=n} END {if (!found) print first}')}"
-MONITOR="${MONITOR:-eDP-1}"
-
-# wallpaper: a random video from ~/Pictures/Wallpapers/live (same folder the power manager uses; override: HALCYON_LIVE_WALLPAPER)
-WALLPAPER="${HALCYON_LIVE_WALLPAPER:-$(find "$HOME/Pictures/Wallpapers/live" -maxdepth 1 -type f \( -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.webm' \) 2>/dev/null | shuf -n1)}"
-
-# Set Wayland display environment if not set (for udev/sudo/keybindings fallback)
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-if [ -z "$WAYLAND_DISPLAY" ]; then
-    if [ -S "$XDG_RUNTIME_DIR/wayland-1" ]; then
-        export WAYLAND_DISPLAY="wayland-1"
-    elif [ -S "$XDG_RUNTIME_DIR/wayland-0" ]; then
-        export WAYLAND_DISPLAY="wayland-0"
-    else
-        export WAYLAND_DISPLAY="wayland-1"
-    fi
+# Super + Alt + W: the live wallpaper on / off. The island plays it (Wallpaper.qml: the Halcyon sky, or a video / GIF from
+# ~/Pictures/Wallpapers/live picked in Settings > Wallpaper > Live wallpaper), so nothing else has to be installed.
+#   toggle_livewallpaper.sh            on <-> off
+#   toggle_livewallpaper.sh <file|sky> switch to that one (and on)
+ipc=(quickshell ipc -p "$HOME/.config/Halcyon/quickshell/island" call wallpaper)
+if [ -n "${1:-}" ]; then
+    "${ipc[@]}" live "$1" >/dev/null 2>&1 || { notify-send -a Halcyon "Live wallpaper" "The island is not running"; exit 1; }
+    exit 0
 fi
-
-if [ -f "$STATE_FILE" ]; then
-    rm -f "$STATE_FILE"
-    if [ -z "$WALLPAPER" ]; then
-        notify-send "Live Wallpaper" "No video found in ~/Pictures/Wallpapers/live" -i video-display -h string:x-canonical-private-synchronous:livewallpaper
-    elif ! pgrep -x gslapper >/dev/null; then
-        gslapper --fork --cache-size 16 -l background -o "no-audio loop fill" "$MONITOR" "$WALLPAPER"
-    fi
-    notify-send "Live Wallpaper" "Enabled live wallpaper" -i video-display -h string:x-canonical-private-synchronous:livewallpaper
-else
-    touch "$STATE_FILE"
-    pkill -x gslapper 2>/dev/null || pkill -9 -x gslapper 2>/dev/null || true
-    notify-send "Live Wallpaper" "Disabled live wallpaper" -i video-display -h string:x-canonical-private-synchronous:livewallpaper
-fi
+now=$("${ipc[@]}" toggleLive 2>/dev/null) || { notify-send -a Halcyon "Live wallpaper" "The island is not running"; exit 1; }
+notify-send -a Halcyon -i video-display -h string:x-canonical-private-synchronous:livewallpaper "Live wallpaper" "$([ "$now" = on ] && echo "On" || echo "Off: back to your picture")"

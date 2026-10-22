@@ -31,6 +31,7 @@ on() {
   auto=no; systemctl --user is-active --quiet power-manager.service && auto=yes
   caf=no; [ "$(bash "$HOME/.config/Halcyon/scripts/caffeine.sh" status 2>/dev/null)" = on ] && caf=yes
   dnd=no; dnd_was_on && dnd=yes
+  gmd=no; systemctl --user is-active --quiet gamemoded.service && gmd=yes
 
   nvpm=""
   if command -v nvidia-settings >/dev/null 2>&1; then
@@ -45,6 +46,7 @@ on() {
     echo "dnd=$dnd"
     echo "stopped=$(for s in $STOP_SERVICES; do systemctl --user is-active --quiet "$s" && printf '%s ' "$s"; done)"
     echo "nvpm=$nvpm"
+    echo "gmd=$gmd"
   } > "$STATE")
 
   # 1. Power Manager & Power Profile -> Performance
@@ -80,7 +82,7 @@ on() {
 off() {
   [ -f "$STATE" ] || return 0
   # read the saved values; never `source` this file: /dev/shm is writable by every local user
-  profile=balanced; auto=no; caf=no; dnd=no; stopped=""; nvpm=""
+  profile=balanced; auto=no; caf=no; dnd=no; stopped=""; nvpm=""; gmd=yes
   while IFS='=' read -r k v; do
     case "$k" in
       profile) case "$v" in power-saver|balanced|performance) profile=$v ;; esac ;;
@@ -89,9 +91,18 @@ off() {
       dnd) [ "$v" = yes ] && dnd=yes ;;
       stopped) for u in $v; do [[ $u =~ ^[A-Za-z0-9@:._-]+$ ]] && stopped+="$u "; done ;;     # unit names only
       nvpm) case "$v" in [0-9]|[0-9][0-9]) nvpm=$v ;; esac ;;
+      gmd) [ "$v" = no ] && gmd=no ;;
     esac
   done < "$STATE"
   rm -f "$STATE"
+
+  # Hyprland first: the config files put animations / blur / gaps back. This used to come last, after the power manager had
+  # been started again; that one could still see the game (gamemoded keeps a finished game as a client for a moment), take
+  # its "before gaming" snapshot of the effects while they were still off, and later "restore" them to off.
+  hl reload
+
+  # Feral's gamemoded: stopped again if `on` started it, so no stale client makes anything think a game still runs
+  [ "$gmd" = yes ] || systemctl --user stop gamemoded.service >/dev/null 2>&1
 
   # Restore Power Profile & Manager
   timeout 4 powerprofilesctl set "${profile:-balanced}" 2>/dev/null
@@ -107,9 +118,6 @@ off() {
 
   # Restore background services
   for s in $stopped; do systemctl --user start "$s" 2>/dev/null; done
-
-  # Reload Hyprland config
-  hl reload
 
   note "Off: System restored to normal mode"
 }

@@ -112,7 +112,14 @@ Item {
         "gamecenter", "games", "games-stop",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
-    readonly property bool cmdGrouped: mode === "cmd" && q0.substring(1).trim() === "" && cmdCategory === "all"
+    // ">"  = adaptive: your most used commands first (usage.log, "cmd:<id>", decayed like the apps), topped up from cmdCore while
+    //        you have used fewer than cmdShort; ">." = every command, grouped by category. Words or a category chip search them all.
+    readonly property bool cmdAll: mode === "cmd" && q0.substring(1).trim() === "."
+    readonly property bool cmdGrouped: mode === "cmd" && cmdAll && cmdCategory === "all"
+    readonly property int cmdShort: 10
+    readonly property var cmdCore: ["settings", "wallgallery", "desktopbuilder", "barbuilder", "calendar", "notes", "clipboard", "screenshot", "record",
+        "tool-colorpick", "ask", "calc", "quickterm", "cheatsheet", "startupview", "reload", "gamecenter", "games-stop", "power", "gaming"]
+    property int cmdTucked: 0
     function cmdRank(c) {
         var ci = catOrder.indexOf(c.cat), oi = cmdOrder.indexOf(c.id)
         return (ci < 0 ? 9 : ci) * 1000 + (oi < 0 ? 999 : oi)
@@ -425,11 +432,21 @@ Item {
         dirty = false
         if (mode === "cmd") {
             var cq = q0.substring(1).trim().toLowerCase()
-            var outc = []
+            if (cq === ".") cq = ""                          // ">." = everything
+            var outc = [], total = 0
+            var shortList = cq === "" && !cmdAll && root.cmdCategory === "all"
             for (var c = 0; c < commands.length; c++) {
                 var cm = commands[c]
                 if (root.cmdCategory !== "all" && cm.cat !== root.cmdCategory) continue
                 if (cm.id === "games-stop" && root.runningGame === "") continue
+                total++
+                if (shortList) {                             // used: by how much (always above the core ones); core: in its own order
+                    var us = score("cmd:" + cm.id), ci = cmdCore.indexOf(cm.id)
+                    if (cm.id === "games-stop") outc.push({ c: cm, r: 1000, i: c })
+                    else if (us >= 0.3) outc.push({ c: cm, r: 100 + us, i: c })
+                    else if (ci >= 0) outc.push({ c: cm, r: 1 - ci / 100, i: c })
+                    continue
+                }
                 var nm = cm.name.toLowerCase()
                 var r = 1
                 if (cq !== "") {
@@ -443,6 +460,8 @@ Item {
             }
             outc = outc.concat(root.gameRows(cq))
             outc.sort(function (x, y) { return (y.r - x.r) || (root.cmdRank(x.c) - root.cmdRank(y.c)) || (x.i - y.i) })
+            if (shortList && outc.length > cmdShort) outc = outc.slice(0, cmdShort)
+            cmdTucked = shortList ? Math.max(0, total - outc.length) : 0
             var ncmd = outc.map(function (o) { return o.c })
             infoIdx = -1
             if (!sameList(ncmd, cmdResults)) cmdResults = ncmd
@@ -531,6 +550,10 @@ Item {
         if (c.confirm && pendingConfirm !== c.id) { pendingConfirm = c.id; return }
         pendingConfirm = ""
         saveHistory(query)
+        if (c.id.indexOf("game:") !== 0) {      // remembered, so it stays in the short ">" list (cmdCore)
+            bumpScore("cmd:" + c.id)
+            Quickshell.execDetached(["sh", "-c", "mkdir -p ~/.local/state/island && echo \"$0\" >> ~/.local/state/island/usage.log", "cmd:" + c.id])
+        }
         if (c.id === "calc") {            // stay in the bar, switch to calculator mode
             input.text = "="
             input.cursorPosition = 1
@@ -1231,7 +1254,8 @@ Item {
             spacing: 18
             Repeater {
                 model: root.mode === "cmd"
-                    ? [["↑↓", "move"], ["⏎", "run"], ["esc", "close"]]
+                    ? (root.cmdTucked > 0 ? [["↑↓", "move"], ["⏎", "run"], [">.", "all " + (root.cmdTucked + root.cmdResults.length) + " commands"]]
+                                                              : [["↑↓", "move"], ["⏎", "run"], ["esc", "close"]])
                     : [["↑↓", "history"], ["←→", "cursor"], ["tab", "move"], ["⏎", "open"], [".", "all apps"], [">", "commands"], ["=", "calc"]]
                 delegate: Row {
                     required property var modelData
