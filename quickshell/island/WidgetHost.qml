@@ -55,7 +55,25 @@ Item {
     readonly property string type: item ? item.type : ""
     readonly property string uid: item ? item.uid : ""
     readonly property string style: item ? WD.styleOf(item) : ""
-    readonly property var look: WD.look(item ? item.look : null)
+    // Linked widgets (Widget builder > Place > Link, "Same colours as its group", on by default): the colours come from the first
+    // widget of the group (leadLook, null for that one itself) and the wallpaper is read behind the whole group (groupHosts), so the
+    // members make the same colour choice instead of splitting into dark text here and light text there.
+    property var leadLook: null
+    property var groupHosts: []
+    readonly property var ownLook: WD.look(item ? item.look : null)
+    readonly property bool groupCol: ownLook.groupColours && groupHosts.length > 1
+    readonly property var look: groupCol && leadLook ? WD.withColours(ownLook, WD.look(leadLook)) : ownLook
+    // the rectangle the whole group covers (screen pixels); the hosts' x / y / vw / vh are read here, so it follows a drag
+    readonly property var groupRect: {
+        if (!groupCol) return null
+        var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
+        for (var i = 0; i < groupHosts.length; i++) {
+            var h = groupHosts[i]
+            if (!h) continue
+            x0 = Math.min(x0, h.x); y0 = Math.min(y0, h.y); x1 = Math.max(x1, h.x + h.vw); y1 = Math.max(y1, h.y + h.vh)
+        }
+        return x1 > x0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null
+    }
     readonly property var opts: {
         var t = WD.typeOf(type), o = {}
         if (t) for (var i = 0; i < t.opts.length; i++) o[t.opts[i].k] = t.opts[i].def
@@ -80,10 +98,10 @@ Item {
     // with a light halo, so they read on any wallpaper. Only for the "Theme" text colour: a colour you picked yourself stays as you set it.
     readonly property real bodyOp: (look.surface === "clear" || look.surface === "outline") ? 0 : look.op
     // the patch of wallpaper behind this widget (screen fractions); the preview in the builder looks at the whole picture
-    readonly property real fX: preview ? 0 : x / Math.max(1, screenW)
-    readonly property real fY: preview ? 0 : y / Math.max(1, screenH)
-    readonly property real fW: preview ? 1 : vw / Math.max(1, screenW)
-    readonly property real fH: preview ? 1 : vh / Math.max(1, screenH)
+    readonly property real fX: preview ? 0 : (groupRect ? groupRect.x : x) / Math.max(1, screenW)
+    readonly property real fY: preview ? 0 : (groupRect ? groupRect.y : y) / Math.max(1, screenH)
+    readonly property real fW: preview ? 1 : (groupRect ? groupRect.w : vw) / Math.max(1, screenW)
+    readonly property real fH: preview ? 1 : (groupRect ? groupRect.h : vh) / Math.max(1, screenH)
     // on the lock screen the wallpaper is blurred (an even patch) and under a tint sheet, so the patch behind a widget is one even brightness (lockLum), not the desktop picture
     readonly property bool onLockBg: lockLum >= 0
     readonly property real wallLum: onLockBg ? lockLum : (pal ? pal.lumAt(fX, fY, fW, fH) : 0.1)
@@ -99,10 +117,17 @@ Item {
     readonly property real dimAmt: Math.max(0.1, Math.min(0.8, gOpt.widgetDimAmt !== undefined ? Number(gOpt.widgetDimAmt) : 0.35))
     readonly property bool shadeHere: !onLockBg && !preview && bodyOp < 0.5
                                       && (dimMode === "widgets" || (dimMode === "auto" && (wallMax > 0.15 || wallSpread > 0.12)))
-    readonly property real scrim: onLockBg || preview ? 0 : (dimMode === "wall" ? dimAmt : (shadeHere ? dimAmt : 0))
-    readonly property real backLum: wallLum * (1 - scrim)
-    readonly property real backSpread: wallSpread * (1 - scrim)
-    readonly property real backMax: wallMax * (1 - scrim)
+    readonly property real scrim: onLockBg ? 0 : (dimMode === "wall" ? dimAmt : (shadeHere ? dimAmt : 0))      // (the builder's preview is dimmed like the desktop)
+    // The time-of-day grade (Settings > Splash, sky & time of day) lays a colour wash and a dim over the picture too: at night a pale sky
+    // is mid grey on screen. The picture is judged as it is SEEN, after that wash and after the dim above (a near-white sky in the file
+    // used to give the clock dark text on what looked grey at night, while every other widget stayed light).
+    readonly property var tod: (!onLockBg && !preview && env && env.todGrade) ? env.todGrade : null
+    readonly property real todLum: tod ? relLum(Qt.rgba(tod.r, tod.g, tod.b, 1)) : 0
+    function seen(l) { return tod ? (l * (1 - tod.tint) + tod.tint * todLum) * (1 - tod.dim) : l }
+    readonly property real seenK: tod ? (1 - tod.tint) * (1 - tod.dim) : 1          // how much of the picture's own contrast is left
+    readonly property real backLum: seen(wallLum) * (1 - scrim)
+    readonly property real backSpread: wallSpread * seenK * (1 - scrim)
+    readonly property real backMax: seen(wallMax) * (1 - scrim)
     readonly property real effLum: backLum * (1 - bodyOp) + 0.012 * bodyOp     // linear luminance seen through the box (a dark glass box is ~0.012)
     readonly property bool themed: textToneEff === "theme"
     // 1) a BRIGHT patch: dark, accent-tinted text.   0.18 is where black text starts to beat white on contrast.
@@ -112,7 +137,9 @@ Item {
     readonly property real effMin: (backMax - backSpread) * (1 - bodyOp) + 0.012 * bodyOp
     // with the wallpaper dimmed for the widgets (scrim) the patch must still be clearly bright AFTER the dim to get dark text: a pale
     // part of a dimmed busy picture otherwise turned the text dark on what now looks mid-dark (the light look with an outline reads there)
-    readonly property bool onBright: (themed || autoTone) && effLum > (scrim > 0 ? 0.32 : 0.22) && effMin >= (scrim > 0 ? 0.2 : 0.12)
+    // (0.32 still let a pale grey sky turn the clock alone dark while every other widget was light: with a dim on, dark text is kept for a
+    // patch that is near white even after the dim)
+    readonly property bool onBright: (themed || autoTone) && effLum > (scrim > 0 ? 0.5 : 0.22) && effMin >= (scrim > 0 ? 0.35 : 0.12)
     // 2) a MIXED patch (pink next to black ...): neither colour reads on all of it, so light text with a strong dark outline, like subtitles
     readonly property bool onMixed: themed && !onBright && bodyOp < 0.5 && backMax > 0.2 && (backSpread >= 0.15 || effLum > 0.2)
     readonly property color accentRaw: toneEff === "custom" ? look.color : (toneEff === "second" ? pal.accent2 : pal.accent)

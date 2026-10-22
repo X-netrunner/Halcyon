@@ -132,6 +132,21 @@ Item {
         return m
     }
 
+    // linked groups share their colours (WidgetHost.leadLook / groupHosts): the first widget's look, and every member's host
+    function leadLookOf(uid) {
+        if (!anyLinks) return null
+        var r = WD.linkRoot(layout, uid)
+        if (r === uid) return null
+        var it = WD.find(layout, r)
+        return it ? (it.look || {}) : null
+    }
+    function groupHostsOf(uid, t) {
+        if (!anyLinks) return []
+        var g = WD.linkGroup(layout, uid), out = []
+        for (var i = 0; i < g.length; i++) { var h = hostOf(g[i]); if (h && !h.bodyHidden) out.push(h) }
+        return out
+    }
+
     // where the other widgets are (for snapping), and moving one by a few pixels (arrow keys); the widgets linked to the moving one
     // are not "others": they travel with it
     function rectsExcept(uid) {
@@ -182,6 +197,8 @@ Item {
             extL: root.chainExt(modelData, "l", root.tick)
             extR: root.chainExt(modelData, "r", root.tick)
             chainRoot: root.chainRootOf(modelData, root.tick)
+            leadLook: root.leadLookOf(modelData)
+            groupHosts: root.groupHostsOf(modelData, root.tick)
             onNatWChanged: if (root.anyLinks) root.tick++
             onBodyHiddenChanged: if (root.anyLinks) root.tick++
             gridSnap: root.editing && root.snapGrid ? root.gridSize : 0
