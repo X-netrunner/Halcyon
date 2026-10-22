@@ -1,0 +1,7 @@
+[package]
+name = "hgl"
+version = "0.1.0"
+edition = "2021"
+description = "Halcyon game launcher core: library, Proton runtimes, doctor, scoped runs (no dependencies)"
+
+[dependencies]

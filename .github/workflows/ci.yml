@@ -44,6 +44,8 @@ jobs:
         run: sudo apt-get install -y jq && bash tests/special.test.sh
       - name: settings export / import (round trip, import preview new / changed / same, hostile archives refused)
         run: bash tests/settings-io.test.sh
+      - name: game launcher (hgl: library, checksum-verified Proton install, scoped run, gaming-mode restore even when hgl is killed, Steam import, triage; system programs are fakes)
+        run: cargo build --release -p hgl && HGL=target/release/hgl bash tests/hgl.test.sh
       - name: commands and widgets (halcyon CLI lists line up, every IPC call and launcher entry exists, every widget type has its file)
         run: node tests/commands-widgets.test.js
       - name: lock screen widget rules (which widgets may be on the lock screen, the two lists stay apart, feeds merge)

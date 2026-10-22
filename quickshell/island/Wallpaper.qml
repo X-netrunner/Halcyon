@@ -170,7 +170,7 @@ PanelWindow {
     // the desktop widgets (Widget builder = how each looks, Desktop builder / desktop editor = where they sit)
     DeskWidgets {
         anchors.fill: parent
-        visible: !wallpaper.widgetsHidden && wallpaper.opt.deskWidgetsOn !== false
+        visible: !wallpaper.widgetsHidden && wallpaper.opt.deskWidgetsOn !== false && !(wallpaper.env && wallpaper.env.lean === true)     // lean (a game runs): hidden, so every widget timer stops
         pal: wallpaper.pal
         env: wallpaper.env
         opt: wallpaper.opt
