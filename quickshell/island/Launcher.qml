@@ -103,11 +103,12 @@ Item {
     property string cmdCategory: "all"
     property int infoIdx: -1              // the command row whose description popup is open (-1 = none)
     // the order of the command list: groups first, then this order inside each group (anything not listed goes last)
-    readonly property var catOrder: ["system", "desktop", "tools", "power"]
+    readonly property var catOrder: ["system", "desktop", "tools", "games", "power"]
     readonly property var cmdOrder: [
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
         "calendar", "notes", "notesall", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-phone-text", "tool-phone-ring", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
+        "games", "games-add", "games-import", "games-doctor", "games-proton", "games-stop",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
     readonly property bool cmdGrouped: mode === "cmd" && q0.substring(1).trim() === "" && cmdCategory === "all"
@@ -159,6 +160,12 @@ Item {
         { id: "theme", name: "Light / dark theme", desc: "Switch the whole desktop between the dark and the light theme (toggle)", glyph: 0xF0594, kw: "dark light mode appearance colours day night", cat: "desktop" },
         { id: "settings", name: "Settings", desc: "Theme, wallpaper, scrolling, default apps, transparency, motion, gaming", glyph: 0xF0493, kw: "rice options look theme gear config", cat: "system" },
         { id: "extradim", name: "Extra dim display", desc: "Dim screen backlight to minimum (Super + Alt + D)", glyph: 0xF058F, kw: "dim brightness backlight dark night minimum screen", cat: "tools" },
+        { id: "games", name: "Games", desc: "Your game library: Enter launches. Type  >game  and a name to find one (Steam games and the .exe games you added). Halcyon rests while a game runs", glyph: 0xF0297, kw: "game games play library steam proton launcher", cat: "games" },
+        { id: "games-add", name: "Games add", desc: "Add a Windows game (.exe) to the library: asks for the path in the console", glyph: 0xF0297, kw: "game add exe windows import new", cat: "games" },
+        { id: "games-import", name: "Games import", desc: "Read your Steam library again (installed games, cover art)", glyph: 0xF0297, kw: "game import steam library scan refresh", cat: "games" },
+        { id: "games-doctor", name: "Games doctor", desc: "Check the system for games: Vulkan, 32-bit libraries, umu, gamemode. Offers to install what is missing", glyph: 0xF0297, kw: "game doctor check vulkan lib32 multilib fix", cat: "games" },
+        { id: "games-proton", name: "Games Proton versions", desc: "The Proton runtimes games use: installed versions, install the newest GE-Proton, roll back", glyph: 0xF0297, kw: "game proton ge runtime wine version install rollback", cat: "games" },
+        { id: "games-stop", name: "Games stop", desc: "Stop the running game completely (no leftover wine processes); Halcyon goes back to normal", glyph: 0xF0297, kw: "game stop quit kill close running", cat: "games" },
         { id: "power", name: "Power options", desc: "Lock, sleep, log out, restart, shut down", glyph: 0xF0425, kw: "session", cat: "power" },
         { id: "gaming", name: "Gaming mode", desc: "Performance profile, effects off, helpers stopped (toggle)", glyph: 0xF0297, kw: "game fast performance snappy", cat: "power" },
         { id: "caffeine", name: "Caffeine (keep screen awake)", desc: "No dimming, idle lock or idle sleep until you turn it off (toggle)", glyph: 0xF0176, kw: "coffee awake sleep idle lock inhibit stay on", cat: "tools" },
@@ -382,6 +389,39 @@ Item {
         return (bad || pos !== toks.length) ? NaN : out
     }
 
+    // ---- >games / >game <name>: the game library (hgl list --json) as extra rows in the commands list; Enter runs the game ("game:<id>")
+    readonly property bool gameQuery: mode === "cmd" && /^>\s*games?(\s|$)/i.test(q0)
+    readonly property string gameArg: gameQuery ? q0.replace(/^>\s*games?\s*/i, "").trim() : ""
+    property var gameList: []
+    onGameQueryChanged: if (gameQuery && !gamesProc.running) gamesProc.running = true      // read the library each time you start typing it
+    Process {
+        id: gamesProc
+        command: [Quickshell.env("HOME") + "/.config/Halcyon/bin/hgl", "list", "--json"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var l = []
+                try { l = JSON.parse(text) } catch (e) { l = [] }
+                root.gameList = Array.isArray(l) ? l : []
+                if (root.gameQuery) root.refresh()
+            }
+        }
+    }
+    function gameRows(cq) {
+        var out = []
+        if (!gameQuery || (cmdCategory !== "all" && cmdCategory !== "games")) return out
+        var ga = gameArg.toLowerCase()
+        for (var gi = 0; gi < gameList.length; gi++) {
+            var gm = gameList[gi]
+            if (!gm || !gm.id) continue
+            var gn = String(gm.name || gm.id).toLowerCase()
+            var gr = ga === "" ? 5 : (gn.indexOf(ga) === 0 ? 8 : (gn.indexOf(ga) >= 0 ? 7 : (ga.length > 1 && fuzzy(ga, gn) ? 6 : 0)))
+            if (gr === 0) continue
+            var why = gm.running ? "Running now" : (gm.status === "attention" ? "Needs attention: " + (gm.statusReason || "see hgl show " + gm.id) : "Enter to play")
+            out.push({ c: { id: "game:" + gm.id, name: gm.name || gm.id, desc: why, glyph: 0xF0297, kw: "", cat: "games" }, r: gr, i: -1000 + gi })
+        }
+        return out
+    }
+
     function refresh() {
         dirty = false
         if (mode === "cmd") {
@@ -401,6 +441,7 @@ Item {
                 }
                 outc.push({ c: cm, r: r, i: c })
             }
+            outc = outc.concat(root.gameRows(cq))
             outc.sort(function (x, y) { return (y.r - x.r) || (root.cmdRank(x.c) - root.cmdRank(y.c)) || (x.i - y.i) })
             var ncmd = outc.map(function (o) { return o.c })
             infoIdx = -1
@@ -472,6 +513,18 @@ Item {
         closeRequested()
     }
 
+    // `island command games` (and the Games row) opens the bar on the game list
+    property string pendingQuery: ""
+    function applyPending() {
+        if (pendingQuery === "") return
+        input.text = pendingQuery
+        input.cursorPosition = input.text.length
+        pendingQuery = ""
+    }
+    function openGames() {
+        pendingQuery = ">game "
+        if (active) applyPending()
+    }
     function runCmd(i) {
         var c = cmdResults[i]
         if (!c) return
@@ -486,6 +539,10 @@ Item {
         if (c.id === "ask" || c.id === "do") {
             input.text = ">" + c.id + " "
             input.cursorPosition = input.text.length
+            return
+        }
+        if (c.id === "games") {           // stay in the bar: the game list (last played first)
+            openGames()
             return
         }
         commandRequested(c.id)
@@ -562,6 +619,7 @@ Item {
             // rebuilding the grid while the island starts to grow is what made opening choppy: only do it when it is needed
             if (had !== "" || dirty) refresh()
             Qt.callLater(function () { input.forceActiveFocus() })
+            if (pendingQuery !== "") Qt.callLater(applyPending)
         }
     }
 
@@ -753,6 +811,7 @@ Item {
                         { id: "desktop", label: "Desktop" },
                         { id: "system", label: "System" },
                         { id: "tools", label: "Tools" },
+                        { id: "games", label: "Games" },
                         { id: "power", label: "Power" }
                     ]
                     delegate: Rectangle {

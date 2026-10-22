@@ -329,6 +329,7 @@ ShellRoot {
     }
 
     readonly property string hx: Quickshell.env("HOME") + "/.config/Halcyon/bin/hx"
+    readonly property string hgl: Quickshell.env("HOME") + "/.config/Halcyon/bin/hgl"
     readonly property string cfg: Quickshell.env("HOME") + "/.config/Halcyon/quickshell"
     readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/island"
 
@@ -411,6 +412,12 @@ ShellRoot {
     property real mic: 0
     property bool micMuted: false
     property bool gaming: false
+    // ---- game launcher (hgl): `hgl run` tells the island through IPC (gamestart / gameend); the pill and the lean mode follow it
+    property string gameId: ""          // the running game ("" = none)
+    property string gameName: ""
+    property double gameSince: 0        // unix seconds
+    property bool lean: false           // lean island: the feeds, desktop widgets and animations rest while a game runs (setLean)
+    property double leanAt: 0           // when lean last changed: a feed that exits right after being paused is not a broken feed
     property bool caffeine: false       // keep the screen awake (scripts/caffeine.sh); the unit is the truth, polled every 5 s
     property double caffeineGuard: 0
     property bool numLock: false        // Num Lock (scripts/numlock.sh); only watched while the Num Lock widget is on the custom bar
@@ -523,7 +530,7 @@ ShellRoot {
         light: root.theme === "light"
         surfaceStyle: root.opt.surface || "tint"
         glassShift: root.glassShift
-        motion: root.gaming ? 0.25 : root.motion
+        motion: root.lean ? 0 : (root.gaming ? 0.25 : root.motion)
         growth: root.growth
         growthOn: root.growthOn
         // Gaming mode: tree view and constellations drop to the lightest settings whatever Settings > Performance says
@@ -837,7 +844,7 @@ ShellRoot {
         return min <= 0 || !(ms >= 0) || ms >= min * 60000
     }
     Process { id: lastSeenMark; command: ["sh", "-c", "mkdir -p \"$HOME/.local/state/island\" && date +%s > \"$HOME/.local/state/island/last-seen\""] }
-    Timer { interval: 60000; repeat: true; triggeredOnStart: true; running: !lockScreen.locked; onTriggered: lastSeenMark.running = true }
+    Timer { interval: 60000; repeat: true; triggeredOnStart: true; running: !lockScreen.locked && !root.lean; onTriggered: lastSeenMark.running = true }
     Process { id: lockFlagClear; command: ["rm", "-f", Quickshell.env("HOME") + "/.cache/island/lock-on-start"] }
     Connections {
         target: lockScreen
@@ -1542,6 +1549,58 @@ ShellRoot {
         if (!on) { hyprKick.interval = 1200; hyprKick.restart() }   // the script reloads Hyprland; put our tweaks back on top
         gamingCheck.restart()
     }
+    // ---- game launcher (hgl). `hgl run` calls gamestart when the game starts and gameend once everything is put back (also when the
+    // game crashed or hgl itself was killed: the watchdog does it). Lean = the island rests while the game runs: the stats / net
+    // feeds stop, the desktop widgets are hidden (their timers stop with them), the visualizer and animations are off. Only the pill stays.
+    function setLean(on) {
+        if (lean === on) return
+        leanAt = Date.now()
+        lean = on
+    }
+    function gameStarted(id, name, since, lean) {
+        gameId = id
+        gameName = name
+        gameSince = since > 0 ? since : Date.now() / 1000
+        setLean(lean === true)
+        gamingCheck.restart()                    // gamemode.sh was run by hgl just before: show the Gaming chip as it is
+    }
+    function gameEnded() {
+        gameId = ""
+        gameName = ""
+        setLean(false)
+        gamingCheck.restart()
+        hyprKick.interval = 1200; hyprKick.restart()     // gamemode.sh off reloads Hyprland: put our tweaks back on top
+    }
+    function gameLaunch(id) {
+        if (gameId !== "") {
+            Quickshell.execDetached(["notify-send", "-a", "Halcyon", "-i", "applications-games", gameName + " is already running", "Stop it first (the pill, or >games stop)"])
+            return
+        }
+        // its own process group and a scope-less detach: the game must not die with the shell
+        Quickshell.execDetached([root.hgl, "run", id])
+    }
+    // the island restarted while a game runs (a reload, a crash): hgl knows
+    Process {
+        running: true
+        command: ["sh", "-c", "[ -x \"$1\" ] && \"$1\" status", "sh", root.hgl]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var j = JSON.parse(text)
+                    if (j.running === true && root.gameId === "") root.gameStarted(j.id, j.name, j.since, j.lean === true)
+                } catch (e) {}
+            }
+        }
+    }
+    GamePill {
+        pal: pal
+        running: root.gameId !== ""
+        name: root.gameName
+        since: root.gameSince
+        lean: root.lean
+        onStopRequested: Quickshell.execDetached([root.hgl, "stop"])
+    }
+
     // the state file is the truth: re-read it shortly after a click and every few seconds, so the chip can never
     // disagree with the script (a toggle from SUPER+F10 / a terminal / a failed run all end up shown correctly)
     Timer { id: gamingCheck; interval: 1700; onTriggered: gamingProc.running = true }
@@ -1586,7 +1645,7 @@ ShellRoot {
         else if (numLockProbed && !numLockProc.running) numLockProc.running = true
     }
     Timer { id: numLockCheck; interval: 900; onTriggered: root.pollNumLock() }
-    Timer { interval: 1000; running: root.numLockShown; repeat: true; triggeredOnStart: true; onTriggered: root.pollNumLock() }
+    Timer { interval: 1000; running: root.numLockShown && !root.lean; repeat: true; triggeredOnStart: true; onTriggered: root.pollNumLock() }
     Process {
         id: numLedProbe
         running: root.numLockShown && !root.numLockProbed
@@ -1773,6 +1832,7 @@ ShellRoot {
     }
     function runCommand(id) {
         if (id.indexOf("tool-") === 0) { runTool(id.substring(5)); return }
+        if (id.indexOf("game:") === 0) { gameLaunch(id.substring(5)); return }       // a game row of >games / >game <name> (Launcher.qml)
         if (id.indexOf("profile-") === 0) {
             var p = id.substring(8)
             if (p === "auto") setAuto(); else setProfile(p)
@@ -1809,6 +1869,13 @@ ShellRoot {
         case "barstyle": setOpt("barStyle", notchStyle ? "island" : "notch"); break
         case "notifications": notifs.toggleCenter(); break
         case "quickterm": quickTerm.toggle(); break
+        // game launcher (hgl). The Game Center window is Phase 3: until then these run in the console
+        case "games": launcher.openGames(); if (page !== "launcher") { overviewOpen = false; page = "launcher" } break
+        case "games-add": quickTerm.prefill(root.hgl + " add "); break
+        case "games-import": quickTerm.run(root.hgl + " import steam"); break
+        case "games-doctor": quickTerm.run(root.hgl + " doctor"); break
+        case "games-proton": quickTerm.run(root.hgl + " proton list"); break
+        case "games-stop": Quickshell.execDetached([root.hgl, "stop"]); break
         case "cmdlist": cmdTree.toggle(); break
         case "edgemode": toggleEdgeMode(); break
         case "dnd": setDnd(!dnd); break
@@ -1964,14 +2031,14 @@ ShellRoot {
     property bool statsLegacy: false
     property bool statsSeen: false
     Process {
-        running: !root.statsLegacy
+        running: !root.statsLegacy && !root.lean
         command: [root.hx, "stats", "2"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.stats = JSON.parse(d); root.statsSeen = true } catch (e) {} } }
-        onExited: code => { if (code !== 0) root.statsLegacy = true }
+        onExited: code => { if (code !== 0 && Date.now() - root.leanAt > 4000) root.statsLegacy = true }     // (a feed stopped for lean mode is not a broken feed)
     }
-    Timer { interval: 10000; running: !root.statsLegacy && !root.statsSeen; onTriggered: root.statsLegacy = true }   // hx missing / silent
+    Timer { interval: 10000; running: !root.statsLegacy && !root.statsSeen && !root.lean; onTriggered: root.statsLegacy = true }   // hx missing / silent
     Process {
-        running: root.statsLegacy
+        running: root.statsLegacy && !root.lean
         command: ["bash", root.cfg + "/island/scripts/stats.sh", "2"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.stats = JSON.parse(d) } catch (e) {} } }
     }
@@ -2011,26 +2078,26 @@ ShellRoot {
     // after "Detect RAM details" (Settings): read the hardware list again once the password was given
     Timer { id: specsAgain; interval: 12000; onTriggered: { specsProc.running = false; specsProc.running = true } }
     Process {
-        running: root.page === "perf" || root.deskNeeds.disk
+        running: (root.page === "perf" || root.deskNeeds.disk) && !root.lean
         command: [root.hx, "disk", "10"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.disks = JSON.parse(d) } catch (e) {} } }
     }
     Process {
-        running: root.page === "perf" || root.deskNeeds.gpu
+        running: (root.page === "perf" || root.deskNeeds.gpu) && !root.lean
         command: ["bash", root.cfg + "/island/scripts/gpu.sh", "2"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.gpu = JSON.parse(d) } catch (e) {} } }
     }
     property bool netLegacy: false
     property bool netSeen: false
     Process {
-        running: !root.netLegacy
+        running: !root.netLegacy && !root.lean
         command: [root.hx, "net", "4"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.net = JSON.parse(d); root.netSeen = true } catch (e) {} } }
-        onExited: code => { if (code !== 0) root.netLegacy = true }
+        onExited: code => { if (code !== 0 && Date.now() - root.leanAt > 4000) root.netLegacy = true }
     }
-    Timer { interval: 10000; running: !root.netLegacy && !root.netSeen; onTriggered: root.netLegacy = true }
+    Timer { interval: 10000; running: !root.netLegacy && !root.netSeen && !root.lean; onTriggered: root.netLegacy = true }
     Process {
-        running: root.netLegacy
+        running: root.netLegacy && !root.lean
         command: ["bash", root.cfg + "/island/scripts/net.sh", "4"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.net = JSON.parse(d) } catch (e) {} } }
     }
@@ -2105,7 +2172,7 @@ ShellRoot {
     // visualizer feed, only runs while something is playing AND a surface showing it is visible (bar style Off has no bar: the
     // media page and the desktop widget are the only readers, and the widget has its own cava below)
     Process {
-        running: root.playing && !root.gaming && !root.focusQuiet && root.opt.viz !== "off" && !root.vizHold && (root.page === "media" || (root.page === "home" && root.opt.barStyle !== "off" && (win.shown || root.notchStyle || root.opt.barStyle === "custom")))
+        running: root.playing && !root.gaming && !root.lean && !root.focusQuiet && root.opt.viz !== "off" && !root.vizHold && (root.page === "media" || (root.page === "home" && root.opt.barStyle !== "off" && (win.shown || root.notchStyle || root.opt.barStyle === "custom")))
         command: ["cava", "-p", Quickshell.shellPath(root.opt.viz === "light" ? "cava-light.conf" : "cava.conf")]
         stdout: SplitParser {
             onRead: d => {
@@ -2119,7 +2186,7 @@ ShellRoot {
     // the desktop's audio visualizer widget has its own, finer cava (48 bars): started only while that widget exists and music plays
     property var cavaDesk: []
     Process {
-        running: root.playing && !root.gaming && !root.focusQuiet && root.opt.viz !== "off" && root.deskNeeds.viz
+        running: root.playing && !root.gaming && !root.lean && !root.focusQuiet && root.opt.viz !== "off" && root.deskNeeds.viz
         command: ["cava", "-p", Quickshell.shellPath(root.opt.viz === "light" ? "cava-desk-light.conf" : "cava-desk.conf")]
         stdout: SplitParser {
             onRead: d => {
@@ -2402,6 +2469,9 @@ ShellRoot {
         function dnd(): void { root.setDnd(!root.dnd) }
         function dndset(on: bool): void { root.setDnd(on) }          // set (gamemode.sh): dnd() above only toggles
         function gamingset(on: bool): void { if (root.gaming !== on) root.setGaming(on) }       // set, for `halcyon ai do gaming on`
+        function gamestart(id: string, name: string, since: string, lean: bool): void { root.gameStarted(id, name, Number(since), lean) }   // hgl run
+        function gameend(): void { root.gameEnded() }                                                                                     // hgl run, when the game is over
+        function leanset(on: bool): void { root.setLean(on) }                                                                              // by hand: the lean island alone
         function caffeineset(on: bool): void { if (root.caffeine !== on) root.setCaffeine(on, 0) }
         function command(id: string): void { root.runCommand(id) }   // any launcher command by its id (">" list), e.g. profile-balanced, wifi
         function brief(): void { root.briefCard(true) }              // the daily brief as a notification now (scripts/halcyon-ai.py brief)
