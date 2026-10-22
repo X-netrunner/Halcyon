@@ -4,6 +4,7 @@
 //! units lowered while the game runs. Everything that was switched is written to a state file in /dev/shm first; a detached watchdog
 //! (`hgl __watch`) restores it when the game is gone even if this process was killed.
 
+use crate::epic;
 use crate::proton;
 use crate::steam;
 use crate::store::{Conf, Game};
@@ -65,6 +66,16 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
     if !have("umu-run") {
         return Err("umu-run is not installed (run: hgl doctor --fix)".into());
     }
+    // Epic games start through legendary (it supplies the login parameters) with umu-run as its wrapper; GOG and plain games start umu-run directly
+    let is_epic = g.source == "epic";
+    if is_epic {
+        if !have("legendary") {
+            return Err("legendary is not installed (hgl doctor shows how)".into());
+        }
+        if g.appid.is_empty() {
+            return Err(format!("{} has no Epic app name (run: hgl import epic)", g.name));
+        }
+    }
     let mut notes = Vec::new();
     let proton_path = match proton::resolve(&g.proton, cfg) {
         Some(r) => r.path.to_string_lossy().to_string(),
@@ -81,6 +92,19 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
         ("PROTONPATH".into(), proton_path),
         ("GAMEID".into(), if g.umu_id.is_empty() { "0".into() } else { g.umu_id.clone() }),
     ];
+    // umu looks a game up by store + id; with no id it still runs the game, just without the per-game fixes
+    if !g.umu_id.is_empty() {
+        match g.source.as_str() {
+            "epic" => env.push(("STORE".into(), "egs".into())),
+            "gog" => env.push(("STORE".into(), "gog".into())),
+            _ => {}
+        }
+    }
+    if is_epic {
+        if let Some(kv) = epic::config_env(cfg) {
+            env.push(kv);
+        }
+    }
     if g.wayland {
         env.push(("PROTON_ENABLE_WAYLAND".into(), "1".into()));
     }
@@ -107,6 +131,8 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
         argv.push("--".into());
     }
     let mango = g.wrapper_on("mangohud") && have("mangohud");
+    // what goes in front of umu-run (for Epic: inside legendary's --wrapper)
+    let mut wrap: Vec<String> = Vec::new();
     if !g.gamescope.is_empty() {
         if have("gamescope") {
             argv.push("gamescope".into());
@@ -119,17 +145,31 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
             notes.push("gamescope is not installed: starting without it".into());
         }
     } else if mango {
-        argv.push("mangohud".into());
+        wrap.push("mangohud".into());
     }
     if g.wrapper_on("gamemode") {
         if have("gamemoderun") {
-            argv.push("gamemoderun".into());
+            wrap.push("gamemoderun".into());
         } else {
             notes.push("gamemoderun is not installed: starting without it".into());
         }
     }
-    argv.push("umu-run".into());
-    argv.push(g.exe.clone());
+    if is_epic {
+        wrap.push("umu-run".into());
+        let wrapper = wrap.iter().map(|a| quote(a)).collect::<Vec<String>>().join(" ");
+        for a in ["legendary", "launch"] {
+            argv.push(a.into());
+        }
+        argv.push(g.appid.clone());
+        for a in ["--no-wine", "--wrapper"] {
+            argv.push(a.into());
+        }
+        argv.push(wrapper);
+    } else {
+        argv.extend(wrap);
+        argv.push("umu-run".into());
+        argv.push(g.exe.clone());
+    }
     argv.extend(shell_split(&g.args));
 
     Ok(Plan { argv, env, cwd: exe.parent().map(|p| p.to_path_buf()), unit, notes })

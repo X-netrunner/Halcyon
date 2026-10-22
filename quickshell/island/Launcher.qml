@@ -101,6 +101,7 @@ Item {
     }
 
     property string cmdCategory: "all"
+    property string runningGame: ""       // the game that runs now (shell.qml): "Stop the game" is only listed then
     property int infoIdx: -1              // the command row whose description popup is open (-1 = none)
     // the order of the command list: groups first, then this order inside each group (anything not listed goes last)
     readonly property var catOrder: ["system", "desktop", "tools", "games", "power"]
@@ -108,7 +109,7 @@ Item {
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
         "calendar", "notes", "notesall", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-phone-text", "tool-phone-ring", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
-        "games", "games-add", "games-import", "games-doctor", "games-proton", "games-stop",
+        "gamecenter", "games", "games-stop",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
     readonly property bool cmdGrouped: mode === "cmd" && q0.substring(1).trim() === "" && cmdCategory === "all"
@@ -154,18 +155,16 @@ Item {
         { id: "notifbuilder", name: "Notification box builder", desc: "Arrange the notification box: its parts, constellations, flying stars, padding, width and place on the screen", glyph: 0xF009A, kw: "notifications notification box builder layout design style timeline grouped stars constellation padding edit customise", cat: "desktop" },
         { id: "reload", name: "Reload", desc: "Reload Hyprland, the terminal colours and the island", glyph: 0xF0450, kw: "restart refresh apply config hyprland island quickshell", cat: "system" },
         { id: "wallpaper", name: "Random wallpaper", desc: "Switch to a new wallpaper now", glyph: 0xF02E9, kw: "background change image", cat: "desktop" },
-        { id: "ask", name: "Ask the AI", desc: "Type >ask and a question for a quick one-line answer from your local model (Enter asks, Enter again copies it)", glyph: 0xF0B79, kw: "ai ask question answer llm ollama chat quick", cat: "tools" },
+        { id: "ask", name: "Ask the AI", desc: "Type >ask and a question for a quick answer from your local model. Ask how to change something in Halcyon (\"how do I turn off the constellations\") and you get the steps; Enter then takes you to that setting", glyph: 0xF0B79, kw: "ai ask question answer llm ollama chat quick help how guide setting where turn off", cat: "tools" },
         { id: "do", name: "Do it in plain English", desc: "Type >do and what you want: \"move this window to workspace 3\", \"gaming mode on\", \"volume 40\". Clear phrases work without the AI", glyph: 0xF06A9, kw: "ai do command action natural language plain english voice", cat: "tools" },
         { id: "calc", name: "Calculator", desc: "Type = then an expression or a conversion (=5 km in miles); \"timer 10m\" starts a countdown", glyph: 0xF00EB, kw: "math calculate convert units timer countdown", cat: "tools" },
         { id: "theme", name: "Light / dark theme", desc: "Switch the whole desktop between the dark and the light theme (toggle)", glyph: 0xF0594, kw: "dark light mode appearance colours day night", cat: "desktop" },
         { id: "settings", name: "Settings", desc: "Theme, wallpaper, scrolling, default apps, transparency, motion, gaming", glyph: 0xF0493, kw: "rice options look theme gear config", cat: "system" },
         { id: "extradim", name: "Extra dim display", desc: "Dim screen backlight to minimum (Super + Alt + D)", glyph: 0xF058F, kw: "dim brightness backlight dark night minimum screen", cat: "tools" },
+        { id: "gamecenter", name: "Game Center", desc: "Your games with cover art: add a Windows game (.exe), read Steam, Epic and GOG, Proton versions and the system check for games", glyph: 0xF0297, kw: "game games center library add exe import steam epic gog stores proton runtimes doctor check settings launcher", cat: "games" },
         { id: "games", name: "Games", desc: "Your game library: Enter launches. Type  >game  and a name to find one (Steam games and the .exe games you added). Halcyon rests while a game runs", glyph: 0xF0297, kw: "game games play library steam proton launcher", cat: "games" },
-        { id: "games-add", name: "Games add", desc: "Add a Windows game (.exe) to the library: asks for the path in the console", glyph: 0xF0297, kw: "game add exe windows import new", cat: "games" },
-        { id: "games-import", name: "Games import", desc: "Read your Steam library again (installed games, cover art)", glyph: 0xF0297, kw: "game import steam library scan refresh", cat: "games" },
-        { id: "games-doctor", name: "Games doctor", desc: "Check the system for games: Vulkan, 32-bit libraries, umu, gamemode. Offers to install what is missing", glyph: 0xF0297, kw: "game doctor check vulkan lib32 multilib fix", cat: "games" },
-        { id: "games-proton", name: "Games Proton versions", desc: "The Proton runtimes games use: installed versions, install the newest GE-Proton, roll back", glyph: 0xF0297, kw: "game proton ge runtime wine version install rollback", cat: "games" },
-        { id: "games-stop", name: "Games stop", desc: "Stop the running game completely (no leftover wine processes); Halcyon goes back to normal", glyph: 0xF0297, kw: "game stop quit kill close running", cat: "games" },
+        // only listed while a game runs (runningGame)
+        { id: "games-stop", name: "Stop the game", desc: "Stop the running game completely (no leftover wine processes); Halcyon goes back to normal", glyph: 0xF04DB, kw: "game stop quit kill close running", cat: "games" },
         { id: "power", name: "Power options", desc: "Lock, sleep, log out, restart, shut down", glyph: 0xF0425, kw: "session", cat: "power" },
         { id: "gaming", name: "Gaming mode", desc: "Performance profile, effects off, helpers stopped (toggle)", glyph: 0xF0297, kw: "game fast performance snappy", cat: "power" },
         { id: "caffeine", name: "Caffeine (keep screen awake)", desc: "No dimming, idle lock or idle sleep until you turn it off (toggle)", glyph: 0xF0176, kw: "coffee awake sleep idle lock inhibit stay on", cat: "tools" },
@@ -430,6 +429,7 @@ Item {
             for (var c = 0; c < commands.length; c++) {
                 var cm = commands[c]
                 if (root.cmdCategory !== "all" && cm.cat !== root.cmdCategory) continue
+                if (cm.id === "games-stop" && root.runningGame === "") continue
                 var nm = cm.name.toLowerCase()
                 var r = 1
                 if (cq !== "") {
@@ -570,10 +570,17 @@ Item {
     property string aiText: ""
     property bool aiOk: true
     property bool aiConfirm: false         // >do: the action ends something (close, log out ...): Enter again does it
+    property var aiOpen: null              // >ask about Halcyon itself: the guide's place, { settings: group } or { command: id }; Enter goes there
     readonly property bool aiFresh: aiFor === mode + "\u0001" + aiArg
     readonly property string aiScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-ai.py"
     function aiEnter() {
         if (aiArg === "" || aiProc.running) return
+        if (mode === "ask" && aiFresh && aiOk && aiOpen) {                // a guide: Enter opens the setting it is about
+            saveHistory(query)
+            commandRequested(aiOpen.settings ? "settings:" + aiOpen.settings : aiOpen.command)
+            closeRequested()
+            return
+        }
         if (mode === "ask" && aiFresh && aiOk && aiText !== "") {          // the answer is there: Enter copies it
             saveHistory(query)
             Quickshell.execDetached(["wl-copy", aiText])
@@ -583,7 +590,7 @@ Item {
         var yes = mode === "do" && aiFresh && aiConfirm
         saveHistory(query)
         aiFor = mode + "\u0001" + aiArg
-        aiText = ""; aiOk = true; aiConfirm = false
+        aiText = ""; aiOk = true; aiConfirm = false; aiOpen = null
         aiProc.command = ["python3", aiScript, mode, "--json"].concat(yes ? ["--yes"] : []).concat([aiArg])
         aiProc.running = true
     }
@@ -597,6 +604,7 @@ Item {
                 root.aiOk = d.ok === true
                 root.aiText = d.ok ? d.text : d.error
                 root.aiConfirm = d.ok === true && d.confirm === true && d.done !== true
+                root.aiOpen = d.ok === true && d.kind === "howto" && d.open ? d.open : null
                 if (d.ok && d.done === true) aiCloseT.restart()
             }
         }
@@ -1189,7 +1197,7 @@ Item {
                 Text {
                     width: aiBox.width - 40
                     wrapMode: Text.Wrap
-                    maximumLineCount: 8
+                    maximumLineCount: 12
                     elide: Text.ElideRight
                     text: aiProc.running ? (root.mode === "ask" ? "Thinking…" : "Working it out…")
                         : (root.aiFresh && root.aiText !== "" ? root.aiText
@@ -1206,7 +1214,9 @@ Item {
             visible: root.aiMode
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredHeight: 16
-            text: root.mode === "ask" ? (root.aiFresh && root.aiOk && root.aiText !== "" && !aiProc.running ? "⏎ copies the answer   ·   esc closes" : "⏎ asks   ·   answers come from your local model, nothing leaves this computer")
+            text: root.mode === "ask" ? (root.aiFresh && root.aiOk && root.aiText !== "" && !aiProc.running
+                                         ? (root.aiOpen ? (root.aiOpen.settings ? "⏎ takes you there in Settings   ·   esc closes" : "⏎ runs it   ·   esc closes") : "⏎ copies the answer   ·   esc closes")
+                                         : "⏎ asks   ·   ask about anything, or how to change something in Halcyon   ·   nothing leaves this computer")
                                       : (root.aiConfirm && root.aiFresh ? "⏎ again to do it   ·   esc cancels" : "⏎ does it   ·   clear phrases work without the AI")
             color: root.pal.muted
             font.family: root.pal.uiFont
