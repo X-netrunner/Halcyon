@@ -585,6 +585,7 @@ map_pkg_for_apt() {
         zenity)                 echo "zenity" ;;
         gamemode)               echo "gamemode" ;;
         python)                 echo "python3 python3-pip" ;;
+        python-pillow)          echo "python3-pil" ;;
         inter-font)             echo "fonts-inter" ;;
         ttf-jetbrains-mono-nerd) echo "fonts-jetbrains-mono" ;;
         noto-fonts)             echo "fonts-noto-core" ;;
@@ -1525,7 +1526,7 @@ if [[ "$PACKAGES" == "true" ]]; then
           hypridle hyprlock hyprsunset hyprutils
           qt6-base qt6-declarative qt6-svg qt6-shadertools qt6-wayland qt6-5compat qt6-multimedia qt5-wayland qt6ct kvantum kservice
           imagemagick cava btop fish starship poppler fd ripgrep fzf grim slurp wl-clipboard cliphist fuzzel tesseract tesseract-data-eng
-          dmidecode util-linux lsof jq zenity gamemode python libnotify
+          dmidecode util-linux lsof jq zenity gamemode python python-pillow libnotify
           hyprpicker qrencode pacman-contrib libpulse wtype kdeconnect
           inter-font ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji adwaita-icon-theme)
     # (the browser, file manager and editor you chose are installed below)
@@ -1950,12 +1951,24 @@ getty_dropin() {   # the tty1 auto-login drop-in for $TARGET_USER (\\u in the fi
     sed "s|@USER@|$TARGET_USER|g" <<'GETTY'
 # Written by Halcyon's install.sh: tty1 logs @USER@ in by itself; the profile then starts Halcyon with the lock screen on.
 # The auto-login only reaches a shell that immediately starts the locked desktop (launch/halcyon-login.sh).
+# Quiet on purpose, so the boot splash stays on screen until Hyprland draws: no /etc/issue, no login line, and the console is
+# neither reset to text mode nor cleared (TTYReset / TTYVTDisallocate), which is what showed the bare tty for a moment.
 # Remove with ./install.sh --remove-lock-login
 [Service]
 ExecStart=
-ExecStart=-/sbin/agetty -o '-p -f -- \\u' --noclear --autologin @USER@ - $TERM
+ExecStart=-/sbin/agetty -o '-p -f -- \\u' --noclear --noissue --nohints --skip-login --nonewline --autologin @USER@ - $TERM
+TTYReset=no
+TTYVTDisallocate=no
 GETTY
 }
+# Already set up: bring an older drop-in (it printed the tty1 banner over the boot splash) up to date
+if [[ "$WANT_LOCK_LOGIN" != "true" && -f "$GETTY_DROPIN" ]] && ! getty_dropin | cmp -s - "$GETTY_DROPIN"; then
+    if getty_dropin | write_root_file "$GETTY_DROPIN" 644; then
+        have_systemd && try run_cmd "Reloading systemd" as_root systemctl daemon-reload
+        user_setup hushlogin || true
+        log_success "Lock-screen login updated: tty1 no longer shows text between the boot splash and the lock screen."
+    fi
+fi
 if [[ "$WANT_LOCK_LOGIN" == "true" ]]; then
     if user_setup login-add; then
         if getty_dropin | write_root_file "$GETTY_DROPIN" 644; then

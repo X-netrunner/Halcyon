@@ -97,7 +97,7 @@ Scope {
     }
 
     // background: "solid" = the theme colour (pal.bg); "wallpaper" = the current wallpaper, blurred, with a sheet of the
-    // theme colour over it. The sheet's opacity (tint) is the user's: 0 shows the wallpaper as it is.
+    // theme colour over it. The sheet's opacity (tint) is the user's: 0 shows the wallpaper as it is. "sky" = LiveSky.qml without the mark.
     property string bgMode: "solid"
     property string wallpaper: ""         // path of the wallpaper on screen (Wallpaper.qml currentPath)
     property real blurRadius: 40          // 4 .. 64
@@ -207,7 +207,9 @@ Scope {
             Component.onCompleted: {
                 if (root.splashWanted) {
                     splashItem.start()
-                    if (root.splashSound) Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/splash-sound.sh", "login"])
+                    // asked every time: at login this runs before the island has read its settings (root.splashSound is still the
+                    // default), so the script reads the switch itself, and waits for PipeWire to have an output
+                    Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/splash-sound.sh", "login", "--if-on", "--wait"])
                 } else appearAnim.start()
             }
 
@@ -249,6 +251,15 @@ Scope {
                 }
                 // theme-colour sheet: this is the "opacity" of the lock screen
                 Rectangle { anchors.fill: parent; color: root.pal.bg; opacity: root.tint }
+            }
+
+            // ---- Halcyon sky (Lock screen background: Halcyon sky): the splash's stars keep drifting behind the clock, so the login splash
+            // hands over to the same sky. Stars only: the clock and the password box sit where the sparkle would be.
+            Loader {
+                anchors.fill: parent
+                active: root.bgMode === "sky" && root.locked
+                opacity: surf.appear
+                sourceComponent: LiveSky { pal: root.pal; showMark: false }
             }
 
             // ---- constellation + drifting dots (same quiet look as everything else)

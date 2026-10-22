@@ -4,7 +4,7 @@ Lightweight, minimal, smooth and fast Hyprland setup in Lua, independent of cael
 
 ## Layout
 - `hyprland/`, `variables.lua`, `scheme/`: Hyprland config (Lua)
-- `quickshell/`: island bar; the wallpaper layer (`island/Wallpaper.qml`) runs inside the same Quickshell process
+- `quickshell/`: island bar; the wallpaper layer (`island/Wallpaper.qml`) runs inside the same Quickshell process; the live wallpaper "Halcyon sky" (`island/LiveSky.qml`: the login splash kept as a wallpaper, also a lock screen background)
 - `launch/`: start scripts (`halcyon.sh`, `halcyon-isolated.sh`)
 - `scripts/switch-user.sh` (the lock screen's Switch user button), `scripts/halcyon-settings-io.sh` (export / import your settings as one file) and `scripts/honeypot-digest.sh` (daily honeypot summary), see `changelog.md`
 - `scripts/weekly-sky.py` (your week as stars, `halcyon weekly-sky`), `scripts/splash-sound.sh` (optional splash sounds: calm, spacious swells, generated on the machine) and `scripts/halcyon-plymouth.sh` (boot splash)

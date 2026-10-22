@@ -50,6 +50,11 @@ ShellRoot {
         wpSource: "local",         // local | online | mixed : where "next wallpaper" takes pictures from (scripts/wallpaper.sh)
         wpCat: "nature",           // online category: nature movies anime anime-art space city minimal cars random custom
         wpQuery: "",               // the search word used when wpCat is "custom"
+        wpBootNew: false,          // a new random wallpaper at every boot (scripts/wallpaper.sh); off = the one you chose stays
+        deskLive: "off",           // off | on : live wallpaper instead of the picture (Wallpaper.qml; Super + Alt + W)
+        deskLivePick: "sky",       // which one: "sky" = the Halcyon sky (LiveSky.qml), or a video / GIF path (LiveVideo.qml, scripts/live-wallpapers.sh)
+        gamePillCorner: "tr",      // tr | tl | br | bl : the corner of the game overlay (GamePill.qml; its Move button cycles it)
+        deskLiveWord: true,        // the word HALCYON under the mark of the live sky
         widgetHalo: true,          // desktop widgets: the faint dark glow behind the words on a busy wallpaper (WidgetHost.qml)
         widgetReadability: 0,      // desktop widgets: percent added to every widget's own Readability (-30 .. 40)
         clockSeconds: false,       // show seconds in the bar clock
@@ -83,7 +88,7 @@ ShellRoot {
         wsInvert: false,           // invert the direction of workspace scrolling: bar wheel over the numbers + 3 / 4 finger swipes (scripts/ws-nav.sh)
         nightTemp: 4000,           // night light colour temperature (K)
         settingsGlass: 0.72,       // how opaque the Settings window is (lower = more see-through)
-        lockBg: "solid",           // solid | wallpaper : the lock screen's background is the plain theme colour, or the current wallpaper blurred (Lock.qml)
+        lockBg: "solid",           // solid | wallpaper | sky : the plain theme colour, the current wallpaper blurred, or the splash's drifting stars (Lock.qml)
         lockBlur: 40,              // blur radius of that wallpaper (4 .. 64)
         lockTint: 0.55,            // how opaque the theme-colour sheet over the blurred wallpaper is (0 = wallpaper as it is .. 0.95); yours to set
         lockWidgets: false,        // OFF by default: the lock screen is just the clock + password. On = battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
@@ -168,6 +173,7 @@ ShellRoot {
         switch (k) {
         case "wpSource": writeFlag("wallpaper-source", v); break    // scripts/wallpaper.sh reads these two on every change
         case "wpCat": writeFlag("wallpaper-cat", v); break
+        case "wpBootNew": writeFlag("wallpaper-boot-new", v ? "1" : "0"); break
         case "wpQuery": writeFlag("wallpaper-query", String(v || "").replace(/[\r\n]+/g, " ").trim()); break
         case "wsEnd": writeFlag("ws-end", v); break
         case "wsStart": writeFlag("ws-start", v); break
@@ -311,7 +317,7 @@ ShellRoot {
     // wallpaper slideshow (Settings > Wallpaper): a new random wallpaper every N minutes; the island's colours follow it
     Timer {
         interval: Math.max(1, root.opt.wpEvery) * 60000
-        running: root.settingsLoaded && root.opt.wpEvery > 0 && !root.gaming
+        running: root.settingsLoaded && root.opt.wpEvery > 0 && !root.gaming && root.opt.deskLive !== "on" && root.opt.deskLive !== "sky"
         repeat: true
         onTriggered: root.randomWallpaper()
     }
@@ -742,7 +748,7 @@ ShellRoot {
         profileStars: root.profileStars
         name: root.profileName !== "" ? root.profileName : Quickshell.env("USER")
         avatarPath: root.avatarPath
-        bgMode: root.opt.lockBg === "wallpaper" ? "wallpaper" : "solid"
+        bgMode: root.opt.lockBg === "wallpaper" || root.opt.lockBg === "sky" ? root.opt.lockBg : "solid"
         wallpaper: wallpaperLayer.currentPath
         blurRadius: root.opt.lockBlur !== undefined ? root.opt.lockBlur : 40
         tint: root.opt.lockTint !== undefined ? root.opt.lockTint : 0.55
@@ -785,8 +791,13 @@ ShellRoot {
         sound: root.opt.splashSound === true
         dim: root.opt.splashDim !== undefined ? root.opt.splashDim : 0.75
         // a preview (Settings > Play the goodbye) has nothing pending: just give the screen back; a real shutdown / restart goes on now
-        onDone: { if (root.powerPending === "") splashPreview.stop(); else root.powerNow() }
+        onDone: {
+            if (root.powerPending === "") { splashPreview.stop(); return }
+            var left = splashPreview.soundEndsAt - Date.now()          // let the goodbye sound finish first (at most ~1.5 s more)
+            if (left > 50) { soundWaitT.interval = Math.min(2000, left); soundWaitT.restart() } else root.powerNow()
+        }
     }
+    Timer { id: soundWaitT; onTriggered: root.powerNow() }
     // the weekly sky: your week as stars (WeeklySky.qml; `>weekly sky`, `halcyon weekly-sky`, Settings > Splash, sky & time of day)
     WeeklySky { id: weeklySky; pal: pal }
     // the Wi-Fi QR code (WifiQr.qml; scripts/halcyon-tools.py wifi-qr)
@@ -1611,6 +1622,7 @@ ShellRoot {
     }
     GamePill {
         pal: pal
+        env: root
         running: root.gameId !== ""
         name: root.gameName
         since: root.gameSince
@@ -2037,6 +2049,22 @@ ShellRoot {
             }
         }
     }
+    // A first look from the installer (scripts/user-setup.sh wallpaper, on a machine with no wallpapers yet): the live Halcyon sky on the
+    // desktop and the lock screen. Applied once, like resource-seed.json; only these keys are taken.
+    Process {
+        running: root.settingsLoaded
+        command: ["sh", "-c", "f=\"$HOME/.local/state/island/look-seed.json\"; [ -s \"$f\" ] && cat \"$f\" && rm -f \"$f\"; true"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    if (text.trim() === "") return
+                    var r = JSON.parse(text)
+                    if (r.deskLive === "on" || r.deskLive === "off") root.setOpt("deskLive", r.deskLive)
+                    if (["solid", "wallpaper", "sky"].indexOf(r.lockBg) >= 0) root.setOpt("lockBg", r.lockBg)
+                } catch (e) {}
+            }
+        }
+    }
     // tree-branch shader (branch.frag): compiled once with Qt's `qsb` into ~/.cache/halcyon, again only when branch.frag changes.
     // No qsb on the machine (package qt6-shadertools) = the url stays empty and the branches use the Shape fallback.
     property string branchShaderUrl: ""
@@ -2049,7 +2077,14 @@ ShellRoot {
         id: gamingProc
         running: true
         command: ["sh", "-c", "test -f /dev/shm/halcyon-gamemode && echo on || echo off"]
-        stdout: StdioCollector { onStreamFinished: { if (Date.now() > root.gamingGuard) root.gaming = text.trim() === "on" } }
+        stdout: StdioCollector { onStreamFinished: {
+            if (Date.now() <= root.gamingGuard) return
+            var was = root.gaming
+            root.gaming = text.trim() === "on"
+            // gaming mode ended (by hgl after a game, or anywhere else): gamemode.sh reloaded Hyprland, so put our look back on top.
+            // (gameEnded's own kick came before this read and was skipped while `gaming` was still true)
+            if (was && !root.gaming) { hyprKick.interval = 600; hyprKick.restart() }
+        } }
     }
     // The always-on readers are `hx stats` / `hx net` (Rust, src/hx/src/sysfeeds.rs): no process is started per tick.
     // An older hx without them exits with code 2 and `touch ~/.local/state/island/stats-legacy` (or net-legacy) makes them exit
@@ -2368,7 +2403,7 @@ ShellRoot {
     // re-blur the windows above. Re-checked after window events and every 5 s while the stars are on (a floating window's drag or
     // resize sends no event).
     property bool deskCovered: false
-    readonly property bool deskCoverWatch: opt.deskStars === true && !gaming && !lockScreen.locked
+    readonly property bool deskCoverWatch: (opt.deskStars === true || opt.deskLive === "on" || opt.deskLive === "sky") && !gaming && !lockScreen.locked
     Connections {
         target: Hyprland
         enabled: root.deskCoverWatch
