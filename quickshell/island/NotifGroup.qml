@@ -122,7 +122,8 @@ Rectangle {
                             font.pixelSize: g.pal.tBody + 1
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
-                            maximumLineCount: 1
+                            wrapMode: Text.Wrap
+                            maximumLineCount: ihov.hovered ? 4 : 2
                         }
                         Text {
                             text: g.rel(it.n ? it.n.id : 0)
@@ -132,6 +133,7 @@ Rectangle {
                         }
                     }
                     Text {
+                        id: nbody0
                         Layout.fillWidth: true
                         visible: text !== ""
                         text: it.n && it.n.body ? it.n.body.replace(/\n/g, "<br>") : ""
@@ -141,8 +143,16 @@ Rectangle {
                         font.pixelSize: g.pal.tBody
                         lineHeight: 1.1
                         wrapMode: Text.Wrap
-                        maximumLineCount: 3
+                        maximumLineCount: ihov.hovered ? 80 : 3          // hover shows the whole message
                         elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: !ihov.hovered && nbody0.truncated
+                        text: "hover to read all"
+                        color: Qt.alpha(g.pal.muted, 0.9)
+                        font.family: g.pal.uiFont
+                        font.pixelSize: 10
                     }
                     RowLayout {
                         visible: it.extra.length > 0

@@ -622,6 +622,7 @@ ShellRoot {
             else if (id === "splash-shutdown-preview") splashPreview.playMode("shutdown")
             else if (id === "plymouth-install" || id === "plymouth-remove") { var pm = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", pm + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1/halcyon-plymouth.sh\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", pm, id === "plymouth-install" ? "install" : "remove"]) }
             else if (id === "sky-open") weeklySky.show()
+            else if (id === "splash-sound-preview") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/splash-sound.sh", "login"])
             else if (id === "tour-replay") { settingsWin.hide(); root.tourReplay() }
             else if (id === "greeting-paste") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "paste"])
             else if (id === "greeting-edit") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/greeting-conf.sh", "edit"])
