@@ -990,6 +990,17 @@ ShellRoot {
         profileStars: root.profileStars
     }
 
+    // >gamecenter in the launcher: the game library, Proton versions and the system check in one window (GameCenter.qml, everything goes through `hgl`)
+    GameCenter {
+        id: gameCenter
+        pal: pal
+        hgl: root.hgl
+        runningId: root.gameId
+        onLaunchRequested: id => root.gameLaunch(id)
+        onStopRequested: Quickshell.execDetached([root.hgl, "stop"])
+        onConsoleRequested: cmd => quickTerm.run(cmd)
+    }
+
     // SUPER + CTRL + S, >screenshot: Region / Window / Full screen, then Copy, Save or Both (ShotMenu.qml, scripts/halcyon-shot.py)
     ShotMenu {
         id: shotMenu
@@ -1024,7 +1035,7 @@ ShellRoot {
     // notifs.centerOpen is NOT in this list on purpose: the notification window does not need to raise itself above itself, and the
     // raise() un-maps the window for a moment, which made the box think the pointer had left and close about a second after opening.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
-        || calendar.open || notesMenu.open || clipMenu.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
+        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
         || settingsWin.galleryOpen || settingsWin.builderOpen
         || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
@@ -1264,6 +1275,7 @@ ShellRoot {
         if (powerMenu.open) { powerMenu.hide(); return true }
         if (notesMenu.open) { notesMenu.close(); return true }
         if (clipMenu.open) { clipMenu.close(); return true }
+        if (gameCenter.open) { gameCenter.close(); return true }
         if (shotMenu.open) { shotMenu.close(); return true }
         if (musicMenu.open) { musicMenu.close(); return true }
         if (calendar.open) { calendar.hide(); return true }
@@ -1833,6 +1845,7 @@ ShellRoot {
     function runCommand(id) {
         if (id.indexOf("tool-") === 0) { runTool(id.substring(5)); return }
         if (id.indexOf("game:") === 0) { gameLaunch(id.substring(5)); return }       // a game row of >games / >game <name> (Launcher.qml)
+        if (id.indexOf("settings:") === 0) { settingsWin.show(id.substring(9)); return }  // >ask's guide: Settings at that group (Launcher.qml)
         if (id.indexOf("profile-") === 0) {
             var p = id.substring(8)
             if (p === "auto") setAuto(); else setProfile(p)
@@ -1869,12 +1882,14 @@ ShellRoot {
         case "barstyle": setOpt("barStyle", notchStyle ? "island" : "notch"); break
         case "notifications": notifs.toggleCenter(); break
         case "quickterm": quickTerm.toggle(); break
-        // game launcher (hgl). The Game Center window is Phase 3: until then these run in the console
+        // game launcher (hgl): `>games` is the quick list in the launcher, the rest opens the Game Center (GameCenter.qml)
         case "games": launcher.openGames(); if (page !== "launcher") { overviewOpen = false; page = "launcher" } break
-        case "games-add": quickTerm.prefill(root.hgl + " add "); break
-        case "games-import": quickTerm.run(root.hgl + " import steam"); break
-        case "games-doctor": quickTerm.run(root.hgl + " doctor"); break
-        case "games-proton": quickTerm.run(root.hgl + " proton list"); break
+        case "gamecenter": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggle(); break
+        case "games-add": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.showAdd(); break
+        case "games-import": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("library"); gameCenter.act([root.hgl, "import", "steam"], "Steam library read"); break
+        case "games-doctor": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("doctor"); break
+        case "games-stores": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("stores"); break
+        case "games-proton": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("runtimes"); break
         case "games-stop": Quickshell.execDetached([root.hgl, "stop"]); break
         case "cmdlist": cmdTree.toggle(); break
         case "edgemode": toggleEdgeMode(); break
@@ -2471,6 +2486,8 @@ ShellRoot {
         function gamingset(on: bool): void { if (root.gaming !== on) root.setGaming(on) }       // set, for `halcyon ai do gaming on`
         function gamestart(id: string, name: string, since: string, lean: bool): void { root.gameStarted(id, name, Number(since), lean) }   // hgl run
         function gameend(): void { root.gameEnded() }                                                                                     // hgl run, when the game is over
+        function gamecenter(): void { root.runCommand("gamecenter") }                                                                      // the Game Center window (toggle)
+        function gamecenterpage(page: string): void { gameCenter.show(page) }                                                              // library | stores | runtimes | doctor
         function leanset(on: bool): void { root.setLean(on) }                                                                              // by hand: the lean island alone
         function caffeineset(on: bool): void { if (root.caffeine !== on) root.setCaffeine(on, 0) }
         function command(id: string): void { root.runCommand(id) }   // any launcher command by its id (">" list), e.g. profile-balanced, wifi
@@ -3186,6 +3203,7 @@ ShellRoot {
                 width: launcher.wantedWidth - 44
                 height: launcher.wantedHeight - 44
                 pal: pal
+                runningGame: root.gameId
                 active: root.page === "launcher"
                 opacity: root.page === "launcher" ? 1 : 0
                 visible: opacity > 0.01

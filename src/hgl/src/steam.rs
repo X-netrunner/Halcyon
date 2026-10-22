@@ -170,7 +170,11 @@ pub fn import() -> Result<(usize, usize, usize), String> {
             Ok(mut g) => {
                 let before = (g.name.clone(), g.cover.clone());
                 g.name = a.name.clone();
-                g.cover = cover;
+                // Steam's cache has no art for this game: keep the art `hgl art` fetched earlier instead of wiping it
+                let keep = cover.is_empty() && !g.cover.is_empty() && Path::new(&g.cover).is_file();
+                if !keep {
+                    g.cover = cover;
+                }
                 g.last_played = g.last_played.max(a.last_played);
                 if before != (g.name.clone(), g.cover.clone()) {
                     updated += 1;

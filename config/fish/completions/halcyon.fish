@@ -7,7 +7,7 @@ set -l __halcyon_cmds \
     "quick-terminal:pop-out terminal" "overview:workspace tree" "gaming-mode:gaming mode (toggle)" "caffeine:keep the screen awake (toggle)" \
     "lock:lock the screen" "theme:light / dark theme (toggle)" "reload:reload the island and Hyprland" \
     "notes:new-note panel on the side (type, Enter saves)" "notes-all:all notes: search, pin, tick off" \
-    "clipboard:clipboard history panel" "screenshot:screenshot panel"
+    "clipboard:clipboard history panel" "screenshot:screenshot panel" "games:game center (library, Proton versions, doctor)"
 for __e in $__halcyon_cmds
     set -l __p (string split -m1 : $__e)
     complete -c halcyon -n __fish_use_subcommand -a $__p[1] -d $__p[2]
