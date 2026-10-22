@@ -1010,7 +1010,7 @@ Scope {
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             wrapMode: Text.Wrap
-                                            text: "Pick a Windows game's .exe and Halcyon runs it with Proton in a prefix of its own. Steam games are read from Steam itself."
+                                            text: "Add a Windows game, or read your Steam library."
                                             color: root.pal.muted
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tBody
@@ -1254,6 +1254,25 @@ Scope {
                                                         Text { width: parent.width; wrapMode: Text.Wrap; text: modelData.t; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                                                         Text { width: parent.width; wrapMode: Text.Wrap; text: modelData.d; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                                     }
+                                                }
+                                                // which Proton (hgl suggest: GE-Proton by default; installing is a download, so it is its own button)
+                                                Column {
+                                                    width: parent.width
+                                                    spacing: 6
+                                                    visible: root.suggestion !== null && root.suggestion.proton !== null && root.suggestion.proton !== undefined
+                                                    readonly property var tip: visible ? root.suggestion.proton : ({})
+                                                    Text { width: parent.width; wrapMode: Text.Wrap; text: parent.tip.action === "install" ? "Proton" : "Proton \u2713"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
+                                                    Text { width: parent.width; wrapMode: Text.Wrap; text: parent.tip.why || ""; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                                    ActionChip {
+                                                        visible: parent.tip.action === "install"
+                                                        pal: root.pal
+                                                        implicitHeight: 30
+                                                        glyph: String.fromCodePoint(0xF01DA)
+                                                        label: parent.tip.family === "cachyos" ? "Install Proton-CachyOS" : "Install GE-Proton"
+                                                        disabled: root.busy
+                                                        onClicked: root.act([root.hgl, "proton", "install", "latest", "--family", parent.tip.family], "Proton installed")
+                                                    }
+                                                    Text { width: parent.width; wrapMode: Text.Wrap; visible: (parent.tip.alt || "") !== ""; text: parent.tip.alt || ""; color: Qt.alpha(root.pal.muted, 0.8); font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                                 }
                                                 PrimaryBtn {
                                                     visible: root.sugRows.length > 0
@@ -1651,7 +1670,7 @@ Scope {
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.Wrap
-                                text: "Proton is what runs Windows games. Halcyon keeps the newest three of each kind, checks every download, and never removes a version a game is pinned to."
+                                text: "Proton runs Windows games. The newest three of each kind are kept."
                                 color: root.pal.muted
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tBody
@@ -1728,7 +1747,7 @@ Scope {
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.Wrap
-                                text: "Epic needs legendary, GOG needs gogdl (the Doctor tab says if they are missing). Installs run in the console so you see the progress. Games you installed some other way are found by Read installed."
+                                text: "Epic needs legendary, GOG needs gogdl (see Doctor). Installs run in the console."
                                 color: root.pal.muted
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tBody
@@ -1740,7 +1759,7 @@ Scope {
                                 Text {
                                     height: 36
                                     verticalAlignment: Text.AlignVCenter
-                                    text: "Steam, Epic and GOG art comes by itself. For .exe games: hgl config steamgriddb_key <key>"
+                                    text: "Art for .exe games needs a SteamGridDB key: hgl config steamgriddb_key <key>"
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap
@@ -1923,7 +1942,7 @@ Scope {
                                 Text {
                                     Layout.fillWidth: true
                                     wrapMode: Text.Wrap
-                                    text: "What the system needs to run games well. Fixing opens the console, because installing packages asks for your password."
+                                    text: "What games need. Fixing opens the console (it asks for your password)."
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody

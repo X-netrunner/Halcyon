@@ -222,7 +222,7 @@ Item {
                         Text {
                             visible: !root.stars
                             Layout.fillWidth: true
-                            text: "The constellations are switched off for the notification centre (Settings > Constellations), so none of this shows on the screen."
+                            text: "Constellations are off for the notification centre (Settings > Constellations)."
                             color: root.pal.warn
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tCap
@@ -313,7 +313,7 @@ Item {
                                     font.weight: Font.DemiBold
                                 }
                                 Text {
-                                    text: "Assign notifications to any corner in Desktop builder (Settings > Appearance > Desktop builder)."
+                                    text: "The corner is set in the Desktop builder."
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: 10

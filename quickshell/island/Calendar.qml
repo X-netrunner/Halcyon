@@ -1039,7 +1039,7 @@ Scope {
                                     Text {
                                         width: parent.width; wrapMode: Text.WordWrap
                                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
-                                        text: "A notification this many minutes before an event starts (0 = at the start). All-day events notify at 08:00. They arrive like any other notification, on top of everything."
+                                        text: "Minutes before an event starts (0 = at the start). All-day events notify at 08:00."
                                     }
                                     Flow {
                                         width: parent.width; spacing: 8
@@ -1095,7 +1095,7 @@ Scope {
                                             color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
                                         }
                                         Text {
-                                            text: "1-Click national holidays feeds, local custom dates, and recurring celebrations."
+                                            text: "Holidays, your own dates and birthdays."
                                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                         }
                                     }
@@ -1130,7 +1130,7 @@ Scope {
                                         color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
                                     }
                                     Text {
-                                        text: "Click any country to automatically add its public holidays to your calendar:"
+                                        text: "Add a country's public holidays:"
                                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                     }
                                     Flow {
@@ -1357,7 +1357,7 @@ Scope {
                                             color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
                                         }
                                         Text {
-                                            text: "Sync birthdays from Google Contacts in 2 clicks, or add & manage birthdays right here."
+                                            text: "Import from Google Contacts, or add them here."
                                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                         }
                                     }
@@ -1392,7 +1392,7 @@ Scope {
                                     }
                                     Text {
                                         width: parent.width; wrapMode: Text.WordWrap
-                                        text: "Google Calendar's Birthdays calendar has no iCal address and often misses Google Contacts birthdays or birth years. Click '1. Open Google Contacts', then click Export → Export in your browser (Google CSV, Outlook CSV, or vCard all work!). Halcyon automatically grabs the download from ~/Downloads and imports every birthday with its birth year."
+                                        text: "Press '1. Open Google Contacts', then Export in your browser (any format). Halcyon picks the file up from ~/Downloads with birth years."
                                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                     }
                                     Flow {
@@ -1427,7 +1427,7 @@ Scope {
                                         color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
                                     }
                                     Text {
-                                        text: "Add a birthday directly (use MM-DD like 05-12, or YYYY-MM-DD like 1998-05-12 to show age):"
+                                        text: "Add one (05-12, or 1998-05-12 to show the age):"
                                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                     }
                                     RowLayout {

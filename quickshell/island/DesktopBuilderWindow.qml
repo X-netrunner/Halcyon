@@ -369,7 +369,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 visible: !root.wallOn
-                                text: "No picture is loaded while this is off (it also frees the memory it used). The colours of the island, terminals and apps still follow the last wallpaper."
+                                text: "Off frees its memory. Colours still follow the last wallpaper."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             NbSlider {
@@ -382,7 +382,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 visible: root.wallOn && root.blurAmt > 0
-                                text: "A blurred wallpaper is drawn through a GPU effect; it only works again when the picture changes, but on a weak GPU keep it low."
+                                text: "Uses the GPU only when the picture changes. Keep it low on a weak GPU."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             ChipRow {
@@ -406,7 +406,7 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "They float above the wallpaper, or above the plain background when the wallpaper is off. They stand still (and cost nothing) in Gaming mode."
+                                text: "They stand still in Gaming mode."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             ColumnLayout {
@@ -482,7 +482,7 @@ Item {
                             NbCap { pal: root.pal; text: "ACTIVATION ZONES  ·  WHERE THE BOXES OPEN" }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Each of the four boxes (Notifications, Utilities, Background apps, Console) opens from the corner you pick. Moving a box onto an occupied corner swaps them."
+                                text: "Pick the corner each box opens from. Taking a used corner swaps the two."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             Repeater {
@@ -503,7 +503,7 @@ Item {
                             NbCap { pal: root.pal; text: "OPENS ON" }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Hover opens a box when the pointer reaches its corner and closes it when the pointer leaves. Click needs a click on the corner (a small dot shows where) and keeps the box open until you click elsewhere. \"Like the rest\" follows Settings > Edge boxes (now: " + (root.globalClick ? "click" : "hover") + ")."
+                                text: "Hover: opens at the corner, closes when you leave. Click: a click on the corner, stays until you click elsewhere. \"Like the rest\" is now " + (root.globalClick ? "click" : "hover") + "."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             Repeater {
@@ -639,7 +639,7 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Jump to another user who is logged in, or open a login screen for someone else. This screen stays locked while you are away."
+                                text: "Switch to another user. This session stays locked."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                         }
