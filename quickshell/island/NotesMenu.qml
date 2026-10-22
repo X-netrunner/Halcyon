@@ -967,7 +967,7 @@ Scope {
                                 Text {
                                     Layout.fillWidth: true
                                     visible: root.orgChanges
-                                    text: "Nothing changes until you press Apply. Duplicates are merged into one note (their extra lines are kept); a copy of your notes from before is kept."
+                                    text: "Nothing changes until Apply. Duplicates are merged; a backup is kept."
                                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.Wrap
                                 }
                                 Item { Layout.fillWidth: true; visible: !root.orgChanges }

@@ -487,7 +487,7 @@ Scope {
                             spacing: 8
                             Text {
                                 Layout.fillWidth: true
-                                text: "Enter copies   \u00b7   Pin keeps it on top   \u00b7   Esc closes   \u00b7   Password-manager copies are not kept"
+                                text: "Enter copies   \u00b7   Pin keeps it on top   \u00b7   Esc closes"
                                 elide: Text.ElideRight
                                 color: Qt.alpha(root.pal.muted, 0.85)
                                 font.family: root.pal.uiFont
