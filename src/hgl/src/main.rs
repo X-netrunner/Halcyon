@@ -782,6 +782,10 @@ fn cmd_suggest(rest: &[String]) -> Result<i32, String> {
     let m = class::detect();
     let changes = class::suggest(&g, &m);
     let game_tips = class::in_game(m.class, class::nvidia_rtx(&m));
+    let cfg = Conf::load();
+    let names: Vec<String> = proton::installed().into_iter().map(|r| r.name).collect();
+    let cur = proton::resolve(&g.proton, &cfg).map(|r| r.name);
+    let ptip = class::proton_tip(&g, &m, &names, cur.as_deref(), proton::cpu_has_v3());
     if a.has("apply") {
         for c in &changes {
             g.set(&c.key, &c.value)?;
@@ -794,11 +798,16 @@ fn cmd_suggest(rest: &[String]) -> Result<i32, String> {
             .map(|c| format!("{{\"key\":{},\"value\":{},\"why\":{}}}", json_str(&c.key), json_str(&c.value), json_str(&c.why)))
             .collect();
         let tips: Vec<String> = game_tips.iter().map(|t| json_str(t)).collect();
+        let pj = ptip
+            .as_ref()
+            .map(|t| format!("{{\"family\":{},\"action\":{},\"current\":{},\"why\":{},\"alt\":{}}}", json_str(&t.family), json_str(&t.action), json_str(&t.current), json_str(&t.why), json_str(&t.alt)))
+            .unwrap_or_else(|| "null".into());
         println!(
-            "{{\"machine\":{},\"changes\":[{}],\"inGame\":[{}],\"applied\":{}}}",
+            "{{\"machine\":{},\"changes\":[{}],\"inGame\":[{}],\"proton\":{},\"applied\":{}}}",
             class::machine_json(&m),
             ch.join(","),
             tips.join(","),
+            pj,
             a.has("apply")
         );
         return Ok(0);
@@ -810,6 +819,12 @@ fn cmd_suggest(rest: &[String]) -> Result<i32, String> {
         println!("  hgl settings{}:", if a.has("apply") { " (applied)" } else { " (hgl suggest <id> --apply sets them)" });
         for c in &changes {
             println!("    {} = {}    {}", c.key, if c.value.is_empty() { "(off)" } else { &c.value }, c.why);
+        }
+    }
+    if let Some(t) = &ptip {
+        println!("  Proton: {}{}", t.why, if t.action == "install" { format!("  (hgl proton install latest --family {})", t.family) } else { String::new() });
+        if !t.alt.is_empty() {
+            println!("          {}", t.alt);
         }
     }
     println!("  In the game:");

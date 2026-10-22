@@ -364,6 +364,45 @@ pub fn suggest(g: &Game, m: &Machine) -> Vec<Change> {
     v
 }
 
+/// Which Proton the game should run on. GE-Proton is the default pick: it carries the most game fixes and media codecs and is what
+/// umu's per-game fixes are tested with. Proton-CachyOS is offered as the alternative when the CPU can run its x86-64-v3 build
+/// (a little faster in CPU-heavy games). Downloading is never part of --apply: the Game Center has its own Install button.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProtonTip {
+    /// ge | cachyos
+    pub family: String,
+    /// install | ok
+    pub action: String,
+    /// the runtime the game runs on now ("" = none installed)
+    pub current: String,
+    pub why: String,
+    /// the other family, in one sentence ("" = none)
+    pub alt: String,
+}
+
+pub fn proton_tip(g: &Game, m: &Machine, installed: &[String], current: Option<&str>, cpu_v3: bool) -> Option<ProtonTip> {
+    if g.source == "steam" {
+        return None; // Steam picks Proton for its own games (Properties > Compatibility)
+    }
+    let is_ge = |n: &str| n.to_ascii_lowercase().starts_with("ge-proton");
+    let is_cachy = |n: &str| n.to_ascii_lowercase().starts_with("proton-cachyos");
+    let alt = if cpu_v3 && m.class != 'D' {
+        "Proton-CachyOS has a build for your CPU (x86-64-v3) and can be a little faster in CPU-heavy games; switch if GE-Proton runs a game poorly.".to_string()
+    } else {
+        String::new()
+    };
+    let tip = |action: &str, cur: &str, why: String| ProtonTip { family: "ge".into(), action: action.into(), current: cur.into(), why, alt: alt.clone() };
+    if !g.proton.is_empty() && !installed.iter().any(|n| *n == g.proton) {
+        return Some(tip("install", "", format!("This game is pinned to {}, which is not installed. Install GE-Proton, then pick it under Runs with.", g.proton)));
+    }
+    match current {
+        None => Some(tip("install", "", "No Proton is installed, so this game cannot start. GE-Proton is the one to get: it has the most game fixes and works best with umu.".into())),
+        Some(c) if is_ge(c) => Some(tip("ok", c, format!("Runs on {c}, the recommended one."))),
+        Some(c) if is_cachy(c) => Some(ProtonTip { family: "cachyos".into(), action: "ok".into(), current: c.into(), why: format!("Runs on {c}. Fine for most games; if one misbehaves, try GE-Proton."), alt: String::new() }),
+        Some(c) => Some(tip("install", c, format!("Runs on {c}. GE-Proton usually has more fixes for games outside Steam."))),
+    }
+}
+
 pub fn nvidia_rtx(m: &Machine) -> bool {
     m.best.map(|i| m.gpus[i].vendor == "nvidia" && m.gpus[i].name.to_ascii_lowercase().contains("rtx")).unwrap_or(false)
 }
@@ -455,6 +494,20 @@ mod tests {
     fn lspci_names() {
         assert_eq!(lspci_name("01:00.0 VGA compatible controller [0300]: NVIDIA Corporation AD107M [GeForce RTX 4050 Max-Q / Mobile] [10de:28a1] (rev a1)"), "GeForce RTX 4050 Max-Q / Mobile");
         assert_eq!(lspci_name("00:02.0 VGA compatible controller [0300]: Intel Corporation Raptor Lake-P [Intel Graphics] [8086:a7a0] (rev 04)"), "Intel Graphics");
+    }
+
+    #[test]
+    fn proton_tips() {
+        let m = Machine { gpus: vec![], best: None, threads: 16, ram_mb: 16_000, hybrid_nvidia: false, class: 'B', why: vec![] };
+        let g = Game::new("hades", "Hades", "exe");
+        assert_eq!(proton_tip(&g, &m, &[], None, true).map(|t| t.action), Some("install".into()));
+        let t = proton_tip(&g, &m, &["GE-Proton10-25".into()], Some("GE-Proton10-25"), true).unwrap_or_else(|| panic!("tip"));
+        assert_eq!((t.action.as_str(), t.alt.is_empty()), ("ok", false));
+        assert_eq!(proton_tip(&g, &m, &["Proton-CachyOS-10".into()], Some("Proton-CachyOS-10"), false).map(|t| t.family), Some("cachyos".into()));
+        let mut pinned = Game::new("x", "X", "exe");
+        pinned.proton = "GE-Proton9-1".into();
+        assert_eq!(proton_tip(&pinned, &m, &["GE-Proton10-25".into()], None, true).map(|t| t.action), Some("install".into()));
+        assert!(proton_tip(&Game::new("s", "S", "steam"), &m, &[], None, true).is_none());
     }
 
     #[test]
