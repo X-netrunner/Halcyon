@@ -923,6 +923,12 @@ impl Daemon {
     fn gaming_tweaks(&mut self, on: bool) {
         let saved = self.gaming_saved_path();
         if on {
+            // Halcyon's gaming mode (scripts/gamemode.sh) switches the effects itself and reloads Hyprland when it ends: a snapshot
+            // taken now would hold its "off" values, and restoring them later would leave animations and blur off for good
+            if Path::new(GAMEMODE_FLAG).exists() {
+                signal_apps(libc::SIGSTOP);
+                return;
+            }
             // remember what the user actually had (animations / blur / shadow can be off in their preset); never overwrite
             // an existing snapshot, it holds the real values if we were restarted while gaming
             if !Path::new(&saved).exists() {

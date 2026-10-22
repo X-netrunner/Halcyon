@@ -7,7 +7,7 @@
 // A new Qt / Quickshell type: add it to EXTERNAL.
 const fs = require("fs"), path = require("path")
 const dir = path.join(__dirname, "..", "quickshell", "island")
-const EXTERNAL = new Set(`Behavior Canvas ClippingRectangle ColorAnimation Column ColumnLayout Component Connections DragHandler FileView
+const EXTERNAL = new Set(`AnimatedImage MediaPlayer VideoOutput Behavior Canvas ClippingRectangle ColorAnimation Column ColumnLayout Component Connections DragHandler FileView
   Flickable Flow FocusScope FolderListModel FrameAnimation Gradient GradientStop Grid GridLayout GridView HoverHandler Image IntValidator
   IpcHandler Item LazyLoader LinearGradient ListModel ListView Loader MouseArea MultiEffect NotificationServer NumberAnimation PamContext
   PanelWindow ParallelAnimation Path PathAngleArc PathArc PathAttribute PathCubic PathLine PathSvg PathView PauseAnimation Process

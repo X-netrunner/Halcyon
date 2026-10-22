@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Prints the wallpaper to show.
-#   wallpaper.sh          -> the wallpaper chosen for this boot (picks one on the first call after boot)
+#   wallpaper.sh          -> the current wallpaper: the one you chose stays across reboots; with Settings > Wallpaper >
+#                            "New wallpaper each boot" on (flag file wallpaper-boot-new = 1) a new one is picked on the first call after boot
 #   wallpaper.sh next     -> force a new random one (and remember it for the rest of this boot)
 #   wallpaper.sh set <f>  -> use this file (and remember it for the rest of this boot)
 #   wallpaper.sh back     -> the previous wallpaper (the last 30 are remembered)
@@ -74,7 +75,8 @@ if [ -f "$state" ]; then
   saved_boot=$(sed -n 1p "$state"); saved=$(sed -n 2p "$state")
 fi
 
-if [ "$1" != "next" ] && [ "$saved_boot" = "$boot" ] && [ -f "$saved" ]; then
+bootnew=0; [ -s "$sdir/wallpaper-boot-new" ] && bootnew=$(head -n1 "$sdir/wallpaper-boot-new")
+if [ "$1" != "next" ] && [ -f "$saved" ] && { [ "$saved_boot" = "$boot" ] || [ "$bootnew" != 1 ]; }; then
   echo "$saved"; exit 0
 fi
 

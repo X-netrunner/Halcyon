@@ -26,9 +26,13 @@ Scope {
     readonly property int durShutdown: 2400
 
     function play() { playMode("login") }
+    // when the sound that goes with it is over (ms since the epoch; 0 = no sound): a shutdown waits for it (shell.qml), since the
+    // goodbye sound (3.6 s) is longer than the film and powering off ends the sound with the session
+    property double soundEndsAt: 0
     function playMode(m) {
         mode = (m === "unlock" || m === "shutdown") ? m : "login"
         open = true
+        soundEndsAt = sound ? Date.now() + (mode === "shutdown" ? 3700 : mode === "unlock" ? 3300 : 5100) : 0
         if (sound) Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/splash-sound.sh", mode])
     }
     function stop() { open = false }

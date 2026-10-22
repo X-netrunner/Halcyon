@@ -20,7 +20,19 @@ PanelWindow {
     property var env: null                  // the shell: the feeds and actions the desktop widgets use
     property bool widgetsHidden: false      // the desktop editor shows them itself while you place them
     property real widgetsTop: 24            // room kept free at the top (the bar)
-    readonly property bool wpOn: !opt || opt.deskWall !== false                       // false = no picture: a plain background (colours still follow the last wallpaper)
+    // Live wallpaper (Settings > Wallpaper > Live wallpaper, Super + Alt + W): opt.deskLive "on" shows opt.deskLivePick instead of the picture:
+    // "sky" = the Halcyon sky (LiveSky.qml), else a video / GIF file (LiveVideo.qml). The picture is then not decoded at all. The colours
+    // come from the file's thumbnail (scripts/live-wallpapers.sh); the sky keeps the colours of the last picture.
+    readonly property bool liveOn: !!opt && (opt.deskLive === "on" || opt.deskLive === "sky")
+    readonly property string livePick: (opt && opt.deskLivePick) || "sky"
+    readonly property bool liveRun: !(env && (env.gaming || env.screenLocked || env.fsQuiet || env.deskCovered || env.lean === true || env.focusQuiet === true))
+    function liveThumb(path) { return Quickshell.env("HOME") + "/.cache/island/live-thumbs/" + Qt.md5(path) + ".jpg" }
+    onLivePickChanged: if (liveOn && livePick !== "sky") runPalette(liveThumb(livePick))
+    onLiveOnChanged: {
+        if (liveOn && livePick !== "sky") runPalette(liveThumb(livePick))
+        else if (!liveOn && currentPath !== "") runPalette(currentPath)        // back to the picture's own colours
+    }
+    readonly property bool wpOn: (!opt || opt.deskWall !== false) && !liveOn         // false = no picture: a plain background (colours still follow the last wallpaper)
     readonly property real blurAmt: Math.max(0, Math.min(1, (opt && opt.deskBlur !== undefined ? Number(opt.deskBlur) : 0) / 100))
     readonly property int blurPad: Math.round(blurAmt * 56)                           // the picture is drawn a bit larger so the blur does not darken the screen edges
     readonly property string bgKind: (opt && opt.deskBg) || "theme"                   // theme | black | gradient : what you see when the wallpaper is off
@@ -46,7 +58,7 @@ PanelWindow {
     Rectangle {
         id: bgFill
         anchors.fill: parent
-        visible: !wallpaper.wpOn || !wallpaper.shown
+        visible: (!wallpaper.wpOn || !wallpaper.shown) && !wallpaper.liveOn
         color: wallpaper.bgKind === "black" ? "#000000" : (wallpaper.pal ? wallpaper.pal.bg : "#000000")
         gradient: wallpaper.bgKind === "gradient" && wallpaper.pal ? bgGrad : null
         Gradient {
@@ -126,6 +138,29 @@ PanelWindow {
         border.color: "#ffffff"
         visible: wallpaper.revealing
         opacity: 0.4 * (1 - Math.min(1, wallpaper.maskSize / wallpaper.diag))
+    }
+
+    // ---- the live wallpaper; it stops drawing whenever nobody can see it (the same rules as the moving stars)
+    Loader {
+        anchors.fill: parent
+        active: wallpaper.liveOn && wallpaper.livePick === "sky"
+        sourceComponent: LiveSky {
+            pal: wallpaper.pal
+            showWord: !wallpaper.opt || wallpaper.opt.deskLiveWord !== false
+            running: wallpaper.liveRun
+        }
+    }
+    Loader {
+        anchors.fill: parent
+        active: wallpaper.liveOn && wallpaper.livePick !== "sky"
+        sourceComponent: LiveVideo {
+            path: wallpaper.livePick
+            running: wallpaper.liveRun
+            onFailed: why => {
+                Quickshell.execDetached(["notify-send", "-a", "Halcyon", "-i", "video-display", "Live wallpaper", "Could not play " + wallpaper.livePick.replace(/^.*\//, "") + ": back to the Halcyon sky. " + why])
+                if (wallpaper.env && typeof wallpaper.env.setOpt === "function") wallpaper.env.setOpt("deskLivePick", "sky")
+            }
+        }
     }
 
     // ---- time-of-day grade (Settings > Splash, sky & time of day): a soft colour wash and a little dimming over the picture that follow
@@ -278,7 +313,18 @@ PanelWindow {
         Quickshell.execDetached(["sh", "-c", "bash \"$1/scripts/palette.sh\" \"$2\" || \"$HOME/.config/Halcyon/bin/hx\" palette \"$2\"", "sh", wallpaper.island, p])
     }
 
+    // picking a picture (next, back, a thumbnail) switches the live wallpaper off, so the picture is what you see
+    function leaveLive() { if (liveOn && env && typeof env.setOpt === "function") env.setOpt("deskLive", "off") }
+    // Super + Alt + W (scripts/toggle_livewallpaper.sh) and the Settings tiles
+    function toggleLive() { if (env && typeof env.setOpt === "function") env.setOpt("deskLive", liveOn ? "off" : "on") }
+    function pickLive(path) {
+        if (!env || typeof env.setOpt !== "function") return
+        env.setOpt("deskLivePick", path === "" ? "sky" : path)
+        if (!liveOn) env.setOpt("deskLive", "on")
+    }
+
     function next() {
+        leaveLive()
         wpProc.mode = "next"
         wpProc.arg = ""
         wpProc.running = true
@@ -286,6 +332,7 @@ PanelWindow {
 
     // the previous wallpaper (scripts/wallpaper.sh remembers the last 30)
     function back() {
+        leaveLive()
         wpProc.mode = "back"
         wpProc.arg = ""
         wpProc.running = true
@@ -298,6 +345,7 @@ PanelWindow {
 
     // a specific file (Settings > Wallpaper thumbnails)
     function useFile(path) {
+        leaveLive()
         if (!path) return
         wpProc.mode = "set"
         wpProc.arg = path
@@ -325,5 +373,7 @@ PanelWindow {
         function back(): void { wallpaper.back() }
         function keep(): void { wallpaper.keep() }
         function set(path: string): void { wallpaper.useFile(path) }
+        function toggleLive(): string { wallpaper.toggleLive(); return wallpaper.liveOn ? "on" : "off" }      // what it is now
+        function live(path: string): void { wallpaper.pickLive(path === "sky" ? "" : path) }
     }
 }

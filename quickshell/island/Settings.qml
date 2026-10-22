@@ -66,6 +66,7 @@ Scope {
     property string toolPending: ""
     readonly property var toolActions: ({ nightlight: "nightlight", touchpad: "touchpad", gestures: "gestures", wifips: "wifi-powersave" })
     function toolFlip(k) {
+        noteUse(k)
         var t = JSON.parse(JSON.stringify(tools))
         t[k] = !t[k]
         tools = t                       // show it at once; the real state is read again below
@@ -86,7 +87,45 @@ Scope {
     property string startupNote: ""        // "applies at the next login" hint after changing the agent or the GPU
     readonly property string startupScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-conf.sh"
     // every change in the tree goes through here: "st:" values are written by the script, everything else goes to shell.qml
+    // ---- Often used (top of Discover): how often each row was changed (opt.setUse = { key or "act:<id>": count }); the most used rows
+    // are listed there. A slider dragged or the same row clicked again within 3 s counts once.
+    property string _lastUse: ""
+    property double _lastUseMs: 0
+    function noteUse(key) {
+        if (typeof key !== "string" || key === "" || key.indexOf("pair:") === 0) return
+        var now = Date.now()
+        if (key === _lastUse && now - _lastUseMs < 3000) { _lastUseMs = now; return }
+        _lastUse = key; _lastUseMs = now
+        var u = {}, src = opt && opt.setUse ? opt.setUse : {}
+        for (var k in src) u[k] = src[k]
+        u[key] = (u[key] || 0) + 1
+        setting("opt:setUse", u)
+    }
+    Connections { target: root; function onAction(id) { root.noteUse("act:" + id) } }
+    readonly property int oftenMax: 8
+    // the rows of "Often used": the original rows (any `when` still applies), most used first
+    readonly property var oftenItems: {
+        var u = opt && opt.setUse ? opt.setUse : {}, all = []
+        for (var g = 0; g < groups.length; g++) {
+            if (groups[g].id === "often") continue
+            for (var i = 0; i < groups[g].items.length; i++) {
+                var it = groups[g].items[i]
+                var k = it.type === "action" ? "act:" + it.id : it.key
+                if (!k || !(u[k] >= 1) || it.type === "custom") continue
+                var c = {}
+                for (var x in it) c[x] = it[x]
+                delete c.adv
+                c.desc = groups[g].title + (it.desc ? " · " + it.desc : "")         // where it lives
+                all.push({ n: u[k], it: c })
+            }
+        }
+        all.sort(function (a, b) { return b.n - a.n })
+        var out = []
+        for (var j = 0; j < all.length && j < oftenMax; j++) out.push(all[j].it)
+        return out
+    }
     function change(key, v) {
+        noteUse(key)
         if (typeof key === "string" && key.indexOf("pair:") === 0) {
             var pr = pairs[key.substring(5)]
             for (var i = 0; i < pr.length; i++) setting("opt:" + pr[i], v)
@@ -580,6 +619,7 @@ Scope {
         case "focusApps": return cFocusApps
         case "dayClock": return cDayClock
         case "wallClock": return cWallClock
+        case "liveWalls": return cLiveWalls
         case "focusClock": return cFocusClock
         case "safetyAuto": return cSafetyAuto
         case "counterScan": return cCounterScan
@@ -610,6 +650,7 @@ Scope {
     // Rice in Apps. Items marked adv: true sit behind each group's "Advanced" row
     // (a search or the header switch shows them all). The two reminder blocks of Backup / Safety come from remind() below.
     readonly property var groups: [
+        { id: "often", title: "Often used", section: "Discover", items: [] },       // filled from oftenItems (groupsNow): the rows you change most
         { id: "discover", title: "What Halcyon can do", section: "Discover", items: [
             { type: "action", id: "tour-replay", label: "Guided tour", btn: "Start", done: "", desc: "A minute's walk round the desktop, with a few things to try. Also >tour in the launcher." },
             { type: "custom", name: "discover" }
@@ -639,10 +680,14 @@ Scope {
         ] },
         { id: "wallpaper", title: "Wallpaper", section: "Appearance", items: [
             { type: "custom", name: "wallClock" },
+            { type: "seg", key: "opt:deskLive", label: "Live wallpaper", desc: "A moving wallpaper instead of the picture (Super + Alt + W switches it). Halcyon sky is the login splash kept as your wallpaper; your own videos and GIFs go in ~/Pictures/Wallpapers/live. It pauses under fullscreen windows, while a game runs, while the screen is locked and during Focus with quiet visuals. Choosing a picture switches it off.", opts: [o("off", "Off: a picture"), o("on", "On")] },
+            { type: "custom", name: "liveWalls", label: "Live wallpapers", btn: "live video gif animated halcyon sky" },
+            { type: "toggle", adv: true, key: "opt:deskLiveWord", label: "HALCYON under the sparkle", when: "opt:deskLivePick=sky" },
             { type: "custom", name: "wallpaper" },
             { type: "seg", key: "opt:wpSource", label: "Source", desc: "Local: only your folder. Online: a fresh picture from Wallhaven (safe-for-work) in the category below, cached on disk. Mixed: either one. No network = your folder.", opts: [o("local", "Local"), o("online", "Online"), o("mixed", "Mixed")] },
             { type: "seg", key: "opt:wpCat", label: "Online category", desc: "What \"Next wallpaper\" and the timer fetch. Anime = characters, Anime art = anime-style scenery. Random picks a category each time. Search… uses your own word (the box below).", opts: [o("nature", "Nature"), o("movies", "Movies"), o("anime", "Anime"), o("anime-art", "Anime art"), o("space", "Space"), o("city", "City"), o("minimal", "Minimal"), o("cars", "Cars"), o("random", "Random"), o("custom", "Search…")], when: "opt:wpSource=online|mixed" },
-            { type: "seg", key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] }
+            { type: "seg", key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] },
+            { type: "toggle", key: "opt:wpBootNew", label: "New wallpaper each boot", desc: "Off: the wallpaper you chose stays after a reboot. On: a random one from the folder at every boot." }
         ] },
         { id: "glass", title: "Transparency & blur", section: "Appearance", items: [
             { type: "slider", key: "glassShift", label: "Transparency", desc: "Of the island, panels and overlays", min: -0.15, max: 0.05, step: 0.01, scale: 100, signed: true, glyph: 0xF0335 },
@@ -672,16 +717,16 @@ Scope {
         { id: "signature", title: "Splash, sky & time of day", section: "Stars & splash", items: [
             { type: "toggle", key: "opt:splashUnlock", def: true, label: "Splash when you unlock", desc: "The stars rush out again for about 2 seconds over your desktop right after you unlock the screen (the lock screen that is also your login does not repeat it). It never takes a click or a key. Needs the Splash animation switch (Power & lock). Not shown in Gaming mode or when motion is off.", when: "opt:splash=true" },
             { type: "toggle", key: "opt:splashShutdown", def: true, label: "Goodbye splash when you shut down", desc: "Shut down or Restart (power menu, launcher) first draws the stars back into the centre while the sparkle folds shut, about 2.4 seconds, and then goes. A click or a key skips straight to the end; the machine always goes down within about 5 seconds even if the animation fails. Needs the Splash animation switch (Power & lock). Not shown in Gaming mode or when motion is off.", when: "opt:splash=true" },
-            { type: "slider", key: "opt:splashAwayMin", def: 60, label: "Only after being away", desc: "The login and unlock splashes play only when you were locked, logged out or powered off at least this long. Shorter breaks go straight to the password or the desktop. 0 = every time.", min: 0, max: 240, step: 5, unit: " min", glyph: 0xF0954 },
-            { type: "slider", key: "opt:splashDim", def: 0.75, label: "Darken the screen during the splash", desc: "A dark veil under the stars, so the sparkle and the word stand out on a light theme or over a bright wallpaper (the unlock splash plays over your desktop). 0 % = no veil.", min: 0, max: 0.9, step: 0.05, scale: 100, unit: " %", when: "opt:splash=true" },
+            { type: "slider", adv: true, key: "opt:splashAwayMin", def: 60, label: "Only after being away", desc: "The login and unlock splashes play only when you were locked, logged out or powered off at least this long. Shorter breaks go straight to the password or the desktop. 0 = every time.", min: 0, max: 240, step: 5, unit: " min", glyph: 0xF0954 },
+            { type: "slider", adv: true, key: "opt:splashDim", def: 0.75, label: "Darken the screen during the splash", desc: "A dark veil under the stars, so the sparkle and the word stand out on a light theme or over a bright wallpaper (the unlock splash plays over your desktop). 0 % = no veil.", min: 0, max: 0.9, step: 0.05, scale: 100, unit: " %", when: "opt:splash=true" },
             { type: "toggle", key: "opt:splashSound", def: false, label: "Sounds with the splash", desc: "Calm, spacious sounds: a slow swell that opens up when you log in, a short warm one on unlock, and one that settles on shutdown. Nothing rings." },
             { type: "action", id: "splash-sound-preview", label: "Hear the login sound", btn: "Play", done: "", desc: "Plays it once, whether the switch above is on or not." },
-            { type: "action", id: "splash-unlock-preview", label: "Unlock splash", btn: "Play it now", done: "", desc: "Plays the unlock animation once over what is on screen. It does not lock anything." },
-            { type: "action", id: "splash-shutdown-preview", label: "Goodbye splash", btn: "Play it now", done: "", desc: "Plays the shutdown animation once. It does NOT shut the computer down: a click, a key or a few seconds gives the screen back." },
+            { type: "action", adv: true, id: "splash-unlock-preview", label: "Unlock splash", btn: "Play it now", done: "", desc: "Plays the unlock animation once over what is on screen. It does not lock anything." },
+            { type: "action", adv: true, id: "splash-shutdown-preview", label: "Goodbye splash", btn: "Play it now", done: "", desc: "Plays the shutdown animation once. It does NOT shut the computer down: a click, a key or a few seconds gives the screen back." },
             { type: "action", id: "plymouth-install", label: "Boot splash (Plymouth)", btn: "Install / update", done: "", desc: "The same stars and sparkle while Arch boots, before you log in (and when it shuts down). Opens a terminal: it needs your sudo password, installs plymouth if missing, adds it to mkinitcpio, adds `quiet splash` to your boot entry and rebuilds the initramfs. Uses your current accent colours. Also `halcyon-plymouth.sh install`." },
-            { type: "action", id: "plymouth-remove", label: "Boot splash off", btn: "Remove", done: "", desc: "Takes the Halcyon boot splash out again: plymouth is dropped from mkinitcpio, `splash` from the boot entry, and the initramfs is rebuilt (the plymouth package stays installed). Also `halcyon-plymouth.sh remove`." },
+            { type: "action", adv: true, id: "plymouth-remove", label: "Boot splash off", btn: "Remove", done: "", desc: "Takes the Halcyon boot splash out again: plymouth is dropped from mkinitcpio, `splash` from the boot entry, and the initramfs is rebuilt (the plymouth package stays installed). Also `halcyon-plymouth.sh remove`." },
             { type: "toggle", key: "opt:todOn", def: false, label: "Time-of-day wallpaper", desc: "A soft colour wash over the wallpaper that follows the sun: blue at night, rose at dawn, clear around noon, amber in the golden hour, magenta at dusk. Your picture and the colours taken from it are not changed; switching this off gives the plain wallpaper back at once. It updates once a minute while it is on." },
-            { type: "slider", key: "opt:todStrength", def: 60, label: "Time-of-day strength", desc: "How strong the wash and the night dimming are. 100 % is full dusk orange and deep night blue.", min: 0, max: 100, step: 5, unit: " %", when: "opt:todOn=true" },
+            { type: "slider", adv: true, key: "opt:todStrength", def: 60, label: "Time-of-day strength", desc: "How strong the wash and the night dimming are. 100 % is full dusk orange and deep night blue.", min: 0, max: 100, step: 5, unit: " %", when: "opt:todOn=true" },
             { type: "action", id: "sky-open", label: "Weekly sky", btn: "Open it", done: "", desc: "Your week as stars: one for every focus session, every note you ticked off and every calendar event that has happened. Stars of one day are joined into a constellation. Save picture writes a PNG (or SVG) to ~/Pictures/Halcyon to share. Also `>weekly sky` and `halcyon weekly-sky`." }
         ] },
         { id: "greeting", title: "Terminal greeting", section: "Stars & splash", items: [
@@ -770,22 +815,22 @@ Scope {
             { type: "toggle", key: "opt:calOn", label: "Calendar", desc: "Master switch. Off: Super + R, the clock click, the reminders, nagging and auto Focus mode are all off and nothing is synced. Connect your Google Calendar once from the calendar itself (Super + R)." },
             { type: "toggle", key: "opt:calClock", label: "Clock click", desc: "A left click on the time in the bar drops the calendar out of the bar (the pill in the island style, the notch in the notch style). Off: the click does what it did before. Click the time again to close it.", when: "opt:calOn=true" },
             { type: "toggle", key: "opt:calNotify", label: "Reminder notifications", desc: "A notification before an event starts and when it starts. When they come is set in the calendar itself (Super + R, the gear). Nagging below needs this on.", when: "opt:calOn=true" },
-            { type: "seg", key: "opt:calTasks", label: "What counts as a task", desc: "A task can be nagged and can start Focus mode. Events I mark: press Task on an event's row, then tick it off with the round check when you have done it. Every event: all timed events are tasks.", opts: [o("marked", "Events I mark"), o("all", "Every event")], when: "opt:calOn=true" },
+            { type: "seg", adv: true, key: "opt:calTasks", label: "What counts as a task", desc: "A task can be nagged and can start Focus mode. Events I mark: press Task on an event's row, then tick it off with the round check when you have done it. Every event: all timed events are tasks.", opts: [o("marked", "Events I mark"), o("all", "Every event")], when: "opt:calOn=true" },
             { type: "toggle", key: "opt:calFocus", label: "Auto Focus mode", desc: "When a task starts, Focus mode starts by itself and lasts until the task ends (Focus mode settings above: Do not disturb, blocked apps ...). Ticking the task off early ends it. It never touches a session you started yourself, and events shorter than 10 minutes are skipped.", when: "opt:calOn=true" },
             { type: "toggle", key: "opt:calNag", label: "Keep reminding until it is done", desc: "From the moment a task starts you get an urgent notification again and again, each replacing the last, until you press Done on it or tick the task off in the calendar. It is only a notification: nothing is blocked.", when: "opt:calOn=true&opt:calNotify=true" },
-            { type: "seg", key: "opt:calNagEvery", label: "Nag every", opts: [o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" },
-            { type: "seg", key: "opt:calNagGiveUp", label: "Give up", desc: "How long after the task has ended it still nags.", opts: [o(60, "After 1 h"), o(180, "After 3 h"), o(720, "After 12 h"), o(4320, "After 3 days")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" }
+            { type: "seg", adv: true, key: "opt:calNagEvery", label: "Nag every", opts: [o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" },
+            { type: "seg", adv: true, key: "opt:calNagGiveUp", label: "Give up", desc: "How long after the task has ended it still nags.", opts: [o(60, "After 1 h"), o(180, "After 3 h"), o(720, "After 12 h"), o(4320, "After 3 days")], when: "opt:calOn=true&opt:calNotify=true&opt:calNag=true" }
         ] },
         { id: "notes", title: "Notes", section: "Productivity", items: [
             { type: "custom", name: "voiceKey", label: "Voice note hotkey" },
-            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_SUMMARY", label: "Full summary of long notes", desc: "A note of 150 words or more gets a full summary under it by itself: one sentence with the main point and then every important point as its own line. It has no length limit (a very long note is read in pieces and nothing is cut off), and every line is checked against the note, so a line the note does not support is left out. The short Overview is separate. For any note, press Summarise on its row." },
+            { type: "toggle", adv: true, soft: true, when: "ai:enabled=true", key: "nt:NOTES_SUMMARY", label: "Full summary of long notes", desc: "A note of 150 words or more gets a full summary under it by itself: one sentence with the main point and then every important point as its own line. It has no length limit (a very long note is read in pieces and nothing is cut off), and every line is checked against the note, so a line the note does not support is left out. The short Overview is separate. For any note, press Summarise on its row." },
             { type: "toggle", soft: true, key: "nt:NOTES_OCR", label: "Read the text in pictures", desc: "A picture you paste into a note is read in the background with tesseract (offline, on this computer): the text in it shows under the picture, can be copied, and is found by the search box. It only copies what is there, it cannot invent anything. Needs: sudo pacman -S tesseract tesseract-data-eng" },
             { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_VLM", label: "Describe pictures (vision model)", desc: "Adds a Describe button to picture notes: a local vision model in Ollama writes one or two sentences about the picture. Only when you press it, never by itself; the model is unloaded right after. Small models can be wrong, so a sentence with a number that is not in the picture's own text is dropped. Install it once with: ollama pull qwen2.5vl:3b (another one: notes set NOTES_VLM_MODEL name)." },
             { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_OVERVIEW", label: "AI overview under every note", desc: "In the background your local Ollama model writes a short overview under each note you save, task or not: one sentence for a short note, a short intro and a few bullet points for a longer one (a pasted article, say). The Think button on a note writes it again. Nothing is sent anywhere (the model runs on this PC); if Ollama is not running the note is simply saved. Off by default." },
             { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_AI", label: "Sort new notes into tasks", desc: "Super + N saves a note at once, as always. In the background your local Ollama model then decides whether it is a task: \"call mom at 6\" becomes a task due 18:00, \"idea: dark theme for the lock screen\" stays a plain note. The model's short comment (what it decided and why) shows right under the note in the All notes window, and Think on a note asks it again. Tasks show under Tasks, and a task with a time sends a notification when it is due. Off by default; nothing is sent anywhere (the model runs on this PC) and if Ollama is not running the note is simply saved." },
-            { type: "seg", key: "nt:NOTES_AI_MODE", label: "When the model thinks it is a task", desc: "Ask me: the note shows \"Make task / Keep as note\" in the All notes window. Automatically: it just becomes a task (you can turn it back with Note on its row).", opts: [o("ask", "Ask me first"), o("auto", "Do it automatically")], when: "ai:enabled=true&nt:NOTES_AI=true" },
-            { type: "seg", key: "nt:NOTES_NUDGE_HOURS", label: "Later today: nudge every", desc: "Press Remind > Later today on a task (or the AI sees \"later\" in a note) and Halcyon sends a quiet notification every few hours during the rest of that day, until you tick the task off, it has nudged the most times below, or the day ends. Nothing at night (09:00 to 21:00 by default; change it with: notes set NOTES_NUDGE_FROM / NOTES_NUDGE_TO). It never nags: a task that is done or deleted is left alone.", opts: [o("1", "1 h"), o("2", "2 h"), o("3", "3 h"), o("4", "4 h"), o("6", "6 h")] },
-            { type: "seg", key: "nt:NOTES_NUDGE_MAX", label: "Later today: at most", desc: "The most nudges one task gets in a day.", opts: [o("2", "2"), o("3", "3"), o("4", "4"), o("6", "6")] }
+            { type: "seg", adv: true, key: "nt:NOTES_AI_MODE", label: "When the model thinks it is a task", desc: "Ask me: the note shows \"Make task / Keep as note\" in the All notes window. Automatically: it just becomes a task (you can turn it back with Note on its row).", opts: [o("ask", "Ask me first"), o("auto", "Do it automatically")], when: "ai:enabled=true&nt:NOTES_AI=true" },
+            { type: "seg", adv: true, key: "nt:NOTES_NUDGE_HOURS", label: "Later today: nudge every", desc: "Press Remind > Later today on a task (or the AI sees \"later\" in a note) and Halcyon sends a quiet notification every few hours during the rest of that day, until you tick the task off, it has nudged the most times below, or the day ends. Nothing at night (09:00 to 21:00 by default; change it with: notes set NOTES_NUDGE_FROM / NOTES_NUDGE_TO). It never nags: a task that is done or deleted is left alone.", opts: [o("1", "1 h"), o("2", "2 h"), o("3", "3 h"), o("4", "4 h"), o("6", "6 h")] },
+            { type: "seg", adv: true, key: "nt:NOTES_NUDGE_MAX", label: "Later today: at most", desc: "The most nudges one task gets in a day.", opts: [o("2", "2"), o("3", "3"), o("4", "4"), o("6", "6")] }
         ] },
         { id: "recording", title: "Screen & audio recording", section: "Productivity", items: [
             { type: "seg", key: "opt:recKind", label: "What to record", desc: "Screen: a video of the whole screen. Audio only: just sound, saved as an .m4a file. Start and stop with Super + Alt + R, the Record button in the utilities box, or the button below.", opts: [o("screen", "Screen video"), o("audio", "Audio only")] },
@@ -827,39 +872,39 @@ Scope {
             { type: "seg", key: "powerMgr", label: "Power manager", desc: "Which program controls CPU power. Only one runs at a time; the others are stopped. Halcyon Auto drives power-profiles-daemon by itself.", opts: [o("halcyon", "Halcyon Auto"), o("power-profiles-daemon", "power-profiles-daemon"), o("tlp", "TLP"), o("auto-cpufreq", "auto-cpufreq"), o("tuned", "Tuned")] },
             { type: "seg", key: "idleDim", label: "Dim the screen and keyboard light after", opts: [o(0, "Never"), o(1, "1 min"), o(2, "2 min"), o(3, "3 min"), o(5, "5 min"), o(10, "10 min")] },
             { type: "seg", key: "idleLock", label: "Lock the screen after", opts: [o(0, "Never"), o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")] },
-            { type: "seg", key: "opt:lockBg", label: "Lock screen background", desc: "Solid: the plain colour of your theme. Blurred wallpaper: your current wallpaper, blurred, behind the clock and the password box. The wallpaper is only loaded while the screen is locked and let go when you unlock. If the picture cannot be read, the plain colour stays; the password box is never affected.", opts: [o("solid", "Solid colour"), o("wallpaper", "Blurred wallpaper")] },
-            { type: "slider", key: "opt:lockBlur", def: 40, label: "Lock screen blur", desc: "How strongly the wallpaper is blurred.", min: 4, max: 64, step: 2, unit: "", when: "opt:lockBg=wallpaper" },
-            { type: "slider", key: "opt:lockTint", def: 0.55, label: "Lock screen tint", desc: "How much of the theme colour covers the wallpaper. 0 % = the wallpaper as it is, 100 % = no wallpaper visible.", min: 0, max: 0.95, step: 0.05, scale: 100, unit: " %", when: "opt:lockBg=wallpaper" },
+            { type: "seg", key: "opt:lockBg", label: "Lock screen background", desc: "Halcyon sky: the splash's stars keep drifting behind the clock, so the login splash flows straight into the lock screen. Solid: the plain colour of your theme. Blurred wallpaper: your current wallpaper, blurred, behind the clock and the password box. The wallpaper is only loaded while the screen is locked and let go when you unlock. If the picture cannot be read, the plain colour stays; the password box is never affected.", opts: [o("solid", "Solid colour"), o("wallpaper", "Blurred wallpaper"), o("sky", "Halcyon sky")] },
+            { type: "slider", adv: true, key: "opt:lockBlur", def: 40, label: "Lock screen blur", desc: "How strongly the wallpaper is blurred.", min: 4, max: 64, step: 2, unit: "", when: "opt:lockBg=wallpaper" },
+            { type: "slider", adv: true, key: "opt:lockTint", def: 0.55, label: "Lock screen tint", desc: "How much of the theme colour covers the wallpaper. 0 % = the wallpaper as it is, 100 % = no wallpaper visible.", min: 0, max: 0.95, step: 0.05, scale: 100, unit: " %", when: "opt:lockBg=wallpaper" },
             { type: "toggle", key: "opt:lockWidgets", def: false, label: "Lock screen widgets", desc: "Show the battery, the Wi-Fi name, how many notifications are waiting (only the number, never what they say) and a media card with previous / play / next on the lock screen. Off: just the clock and the password. Your own widgets for this screen (clock styles, system usage, weather ...): Widget builder > Lock screen." },
             { type: "toggle", key: "opt:splash", def: true, label: "Splash animation", desc: "The master switch for every splash (moving stars and the Halcyon sparkle): on the lock screen, at login, on unlock and on shutdown. Off = none of them play. Each one also has its own switch below and in Appearance > Splash, sky & time of day. Never shown when motion is switched off (Gaming mode). The boot splash (Plymouth) is separate: Appearance > Splash, sky & time of day." },
             { type: "toggle", key: "opt:splashLock", def: true, label: "Splash on the lock screen", desc: "About 3.5 seconds on the lock screen when it is also your login screen (Power & lock > lock screen as login). The screen is already locked while it plays, and a click or any key skips it.", when: "opt:splash=true" },
-            { type: "toggle", key: "opt:splashStart", def: true, label: "Splash at login (no lock-screen login)", desc: "For people who log in through a login manager (sddm, gdm ...): play the splash once when the desktop starts, not again when the island is restarted. Not played in Gaming mode or when motion is off.", when: "opt:splash=true" },
+            { type: "toggle", adv: true, key: "opt:splashStart", def: true, label: "Splash at login (no lock-screen login)", desc: "For people who log in through a login manager (sddm, gdm ...): play the splash once when the desktop starts, not again when the island is restarted. Not played in Gaming mode or when motion is off.", when: "opt:splash=true" },
             { type: "action", id: "splash-preview", label: "Splash", btn: "Play it now", done: "", desc: "Plays the splash once, full screen. A click, Esc or any key ends it. Also `halcyon splash`." },
-            { type: "toggle", key: "opt:lockSwitch", def: false, label: "Switch user button", desc: "A Switch user button on the lock screen: jump to another user who is already logged in, or open a login screen for someone else. This screen stays locked while you are away, and needs your password when you come back." },
+            { type: "toggle", adv: true, key: "opt:lockSwitch", def: false, label: "Switch user button", desc: "A Switch user button on the lock screen: jump to another user who is already logged in, or open a login screen for someone else. This screen stays locked while you are away, and needs your password when you come back." },
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] },
             { type: "tool", adv: true, key: "wifips", label: "Wi-Fi power saving", desc: "On saves battery. Off gives the lowest latency (Gaming mode switches it off by itself)." }
         ] },
         { id: "performance", title: "Performance & memory", section: "Performance", items: [
             { type: "seg", key: "opt:resMode", label: "Resource use", desc: "One switch for how much RAM, CPU and GPU the desktop may use. Low: no blur, shadows or window animations, still stars (no moving stars in the bar), 30 fps, small notification lists, light music bars. Medium: light blur, no shadows, 60 fps. (How often the readers look again is separate: Update speed.) High: everything on, as designed. It sets the options on this page and in Effects and Constellations in one go; you can still change any of them afterwards. It never touches the startup items or the GPU below (those need a new login).", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "toggle", key: "opt:autoLowBat", def: false, label: "Low preset on battery", desc: "Unplug the charger and Resource use switches to Low by itself; plug it in again and your previous preset comes back (only if you did not pick another one meanwhile). Off by default." },
-            { type: "toggle", key: "opt:focusQuiet", def: true, label: "Quiet visuals during Focus", desc: "While a Focus work session runs, the music bars stop and a video wallpaper is frozen (it resumes when the session ends or goes on break), so Focus also saves GPU and battery." },
+            { type: "toggle", adv: true, key: "opt:focusQuiet", def: true, label: "Quiet visuals during Focus", desc: "While a Focus work session runs, the music bars stop and a video wallpaper is frozen (it resumes when the session ends or goes on break), so Focus also saves GPU and battery." },
             { type: "seg", key: "opt:limMode", label: "Limits", desc: "Manual: you set the two limits below. Adaptive: Halcyon measures its own RAM and CPU use every 5 minutes while the desktop runs (not while Gaming mode is on), and after 3 days sets the limits itself, a little above what is normal for you (the busy 5 % of the time plus headroom). It keeps adjusting over the last 14 days. Until it has learned, the manual limits apply. It only measures and advises, like the manual limits.", opts: [o("manual", "Manual"), o("auto", "Adaptive")] },
-            { type: "acts", label: "Adaptive limits", desc: "Start learning again from zero, for example after a big change to the setup.", btns: [{ id: "adapt-reset", btn: "Forget what it learned", done: "Learning again" }], when: "opt:limMode=auto" },
+            { type: "acts", adv: true, label: "Adaptive limits", desc: "Start learning again from zero, for example after a big change to the setup.", btns: [{ id: "adapt-reset", btn: "Forget what it learned", done: "Learning again" }], when: "opt:limMode=auto" },
             { type: "slider", key: "opt:limRam", def: 600, when: "opt:limMode=manual", label: "Halcyon RAM limit", desc: "How much memory all of Halcyon together (Hyprland, the island with its helpers, the daemons) should stay under. Above it, Startup & processes > Health shows the likely causes and what to do. It only measures and advises: nothing is changed or stopped by itself.", min: 300, max: 1500, step: 50, unit: " MB" },
             { type: "slider", key: "opt:limCpu", def: 10, when: "opt:limMode=manual", label: "Halcyon CPU limit", desc: "The share of the whole processor all of Halcyon together should stay under. Flagged in Startup & processes > Health after two readings in a row over it (5 s apart), so a short burst does not count.", min: 3, max: 30, step: 1, unit: " %" },
             { type: "toggle", key: "gaming", label: "Gaming mode", desc: "CPU / GPU at full speed, turbo on, Wi-Fi power saving off, effects off, Caffeine and Do not disturb on, background helpers stopped. SUPER+F10." },
             { type: "seg", key: "opt:bgRefresh", label: "Update speed", desc: "How often the always-on readers (CPU, battery, Wi-Fi and Bluetooth state) look again while nothing needs fresh numbers. It is its own choice, the Resource use presets do not touch it, so you can have low RAM and CPU use and still live numbers. High: every 2 s / 4 s (live). Medium: 5 s / 10 s. Low: 10 s / 20 s (fewest wake-ups). Adaptive: live on the mains, slower on battery, slowest while the machine is busy (a game, a build) or the battery is nearly empty. It also learns from you: if your Wi-Fi and Bluetooth hardly ever change (after 3 days of use), their background look is stretched up to 4 times more, and it is live again for 5 minutes after any change. The performance page and the bar's CPU / RAM / TEMP row always stay at the live pace, and the Wi-Fi and Bluetooth label updates the moment you connect.", opts: [o("normal", "High"), o("relaxed", "Medium"), o("slow", "Low"), o("auto", "Adaptive")] },
-            { type: "acts", label: "Update speed, learned habits", desc: "Adaptive keeps a small count of how often your Wi-Fi / Bluetooth state really changed in the last 14 days (a file of day and time numbers, nothing else: no network names). Forget it to start learning again.", btns: [{ id: "netlearn-reset", btn: "Forget what it learned", done: "Learning again" }], when: "opt:bgRefresh=auto" },
+            { type: "acts", adv: true, label: "Update speed, learned habits", desc: "Adaptive keeps a small count of how often your Wi-Fi / Bluetooth state really changed in the last 14 days (a file of day and time numbers, nothing else: no network names). Forget it to start learning again.", btns: [{ id: "netlearn-reset", btn: "Forget what it learned", done: "Learning again" }], when: "opt:bgRefresh=auto" },
             { type: "acts", adv: true, label: "Memory", desc: "Show what uses my RAM: opens the console with the memory use of every Halcyon process (scripts/halcyon-mem.sh). Detect RAM: asks for your password once to read the memory type and speed.", btns: [{ id: "mem-report", btn: "Show what uses my RAM", done: "Opening…" }, { id: "detect-ram", btn: "Detect RAM", done: "Asking…" }] }
         ] },
         { id: "treeview", title: "Tree view & constellations", section: "Performance", items: [
             { type: "seg", key: "opt:perf", label: "Tree view & constellation quality", desc: "High: everything moves (twinkling stars, travelling lights, floating dots). Medium: fewer twinkles and lights. Low: still stars, no lights or floating dots, the lightest. Lower also gives your picture constellation fewer stars.", opts: [o("low", "Low"), o("medium", "Medium"), o("high", "High")] },
             { type: "seg", key: "opt:fps", label: "Tree view & constellation frame rate", desc: "How often they update. Max follows your screen and is the smoothest. Lower numbers use less CPU / GPU but look less smooth.", opts: [o(0, "Max"), o(60, "60"), o(30, "30"), o(20, "20"), o(15, "15")] },
             { type: "seg", key: "opt:treeConst", label: "Tree view constellation", desc: "Full: the big constellation behind the tree. Corner: the same constellation made small and tucked into a screen corner, out of the way of the tree. Off: no constellation in the tree at all (the lightest).", opts: [o("full", "Full"), o("corner", "Small, in a corner"), o("off", "Off")] },
-            { type: "seg", key: "opt:treeConstCorner", when: "opt:treeConst=corner", soft: true, label: "Constellation corner", desc: "Which corner the small constellation sits in.", opts: [o("tl", "Top-left"), o("tr", "Top-right"), o("bl", "Bottom-left"), o("br", "Bottom-right")] },
-            { type: "slider", key: "opt:treeConstSize", def: 30, when: "opt:treeConst=corner", soft: true, label: "Small constellation size", desc: "How much of the screen the small constellation takes (a share of the tree's width and height).", min: 15, max: 50, step: 5, unit: " %" },
-            { type: "seg", key: "opt:treeDots", label: "Floating dots in the tree", desc: "Where the drifting dots gather. By load: more dots circle the workspaces and windows that use the most CPU and memory, and they glide over as the load changes. Even: spread over the whole screen. Off: none. (Quality Low shows none either way.)", opts: [o("load", "By load"), o("even", "Even"), o("off", "Off")] },
-            { type: "seg", key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
+            { type: "seg", adv: true, key: "opt:treeConstCorner", when: "opt:treeConst=corner", soft: true, label: "Constellation corner", desc: "Which corner the small constellation sits in.", opts: [o("tl", "Top-left"), o("tr", "Top-right"), o("bl", "Bottom-left"), o("br", "Bottom-right")] },
+            { type: "slider", adv: true, key: "opt:treeConstSize", def: 30, when: "opt:treeConst=corner", soft: true, label: "Small constellation size", desc: "How much of the screen the small constellation takes (a share of the tree's width and height).", min: 15, max: 50, step: 5, unit: " %" },
+            { type: "seg", adv: true, key: "opt:treeDots", label: "Floating dots in the tree", desc: "Where the drifting dots gather. By load: more dots circle the workspaces and windows that use the most CPU and memory, and they glide over as the load changes. Even: spread over the whole screen. Off: none. (Quality Low shows none either way.)", opts: [o("load", "By load"), o("even", "Even"), o("off", "Off")] },
+            { type: "seg", adv: true, key: "opt:lines", label: "Line drawing", desc: "Who draws the constellation lines and the tree branches. GPU: plain quads and a small shader, nothing is built on the CPU, so they appear at once. CPU: the old path drawing (slower to appear, but needs nothing extra). GPU branches need qt6-shadertools (qsb); without it they use CPU. Gaming mode always uses the lightest settings.", opts: [o("gpu", "GPU"), o("cpu", "CPU")] },
         ] },
         { id: "profiles", title: "Profiles & safe mode", section: "Performance", items: [
             { type: "seg", key: "fx:profile", label: "Profile", desc: "One switch for stars, blur, island motion, screen brightness and the top bar. Work: no stars, blur on, fast motion. Gaming: no stars, no blur, no motion, top bar off. Battery: no stars, no blur, fast motion, brightness 40 %. Night: stars on, brightness 15 %. Custom is your own setup: it is saved when you leave it and comes back when you pick Custom again. Terminal: halcyon profile <name>. To change what a profile does, edit ~/.local/state/island/profiles.json (halcyon profile --help).", opts: [o("custom", "Custom"), o("work", "Work"), o("gaming", "Gaming"), o("battery", "Battery"), o("night", "Night")] },
@@ -890,7 +935,7 @@ Scope {
             { type: "toggle", key: "st:CLIPBOARD", label: "Clipboard history", desc: "The two small watchers that remember what you copy (text and pictures) for the clipboard pickers: Super + V and >clipboard in the launcher. A copy that a password manager marks as secret is never saved. Off stops them at once and saves a few MB; the pickers then only show what was saved before. Empty the history from >clipboard (Clear history)." },
             { type: "toggle", key: "st:AUDIO_FOCUS", label: "One thing plays at a time", desc: "Start a video or any other player while music is going and the music pauses; when the video stops or ends, the music carries on by itself. Only what it paused itself comes back: if you paused the music yourself, it stays paused. Works with everything that shows up as a media player (Spotify, browser tabs, mpv, VLC ...). Needs playerctl." },
             { type: "toggle", key: "st:AUDIO_RESUME", when: "st:AUDIO_FOCUS=true", label: "Bring the music back afterwards", desc: "When the video or other player stops or ends, what was paused for it starts again. Off: the music is only paused for you, you start it yourself. Something you paused by hand is never started either way." },
-            { type: "seg", key: "st:AUDIO_DELAY", when: "st:AUDIO_FOCUS=true&st:AUDIO_RESUME=true", label: "Wait before bringing it back", desc: "Seconds of silence first, so a song change or the next video in a playlist does not count as a stop.", opts: [o("1", "1 s"), o("2", "2 s"), o("5", "5 s"), o("10", "10 s")] },
+            { type: "seg", adv: true, key: "st:AUDIO_DELAY", when: "st:AUDIO_FOCUS=true&st:AUDIO_RESUME=true", label: "Wait before bringing it back", desc: "Seconds of silence first, so a song change or the next video in a playlist does not count as a stop.", opts: [o("1", "1 s"), o("2", "2 s"), o("5", "5 s"), o("10", "10 s")] },
             { type: "seg", adv: true, key: "st:PORTAL", label: "Screen-sharing helper", desc: "At login: it is always ready (Hyprland's own screen-share portal). On demand: it is not started until the first app asks to share or record the screen (browser, OBS), which then takes a moment longer once. Saves its memory until then.", opts: [o("login", "At login"), o("demand", "On demand")] },
             { type: "seg", adv: true, key: "st:POLKIT", label: "Password prompt helper (polkit agent)", desc: "The small program that shows the 'enter your password' window for apps that need admin rights. Auto picks the lightest one installed: Hyprland's, then GNOME's, then KDE's (the heaviest). None = no password windows at all. Takes effect at the next login.", opts: [o("auto", "Auto"), o("hyprpolkitagent", "Hyprland"), o("gnome", "GNOME"), o("kde", "KDE"), o("none", "None")] },
             { type: "seg", adv: true, key: "st:GPU", label: "Graphics card for the desktop", desc: "Integrated: the Intel / AMD graphics draw the desktop; the NVIDIA card sleeps until you run a program with prime-run. Lowest RAM and battery use. NVIDIA: the NVIDIA card draws the desktop; smoother with heavy blur, but it loads the NVIDIA libraries (+100 MB or more RAM) and uses a lot more battery. Takes effect at the next login.", opts: [o("igpu", "Integrated (saves RAM)"), o("dgpu", "NVIDIA")] }
@@ -1017,7 +1062,7 @@ Scope {
     readonly property bool pagesMode: opt && opt.settingsStyle === "pages"
     // every group sits on exactly ONE page (tests/settings-groups.test.js checks it); the pages follow the section tabs of the tree
     readonly property var pages: [
-        { id: "Discover", sub: "Everything Halcyon can do, and the guided tour.", groups: ["discover"] },
+        { id: "Discover", sub: "The settings you use most, everything Halcyon can do, and the guided tour.", groups: ["often", "discover"] },
         { id: "Appearance", sub: "Look, colours, wallpaper, transparency and motion.", groups: ["look", "colours", "wallpaper", "glass", "motion"] },
         { id: "Stars & splash", sub: "Constellations, the splash, the weekly sky, time of day and the terminal greeting.", groups: ["growth", "signature", "greeting"] },
         { id: "Bar", sub: "The bar, how it behaves, and the clock.", groups: ["bar", "barbehave", "clock"] },
@@ -1068,6 +1113,13 @@ Scope {
         var out = [], sig = ""
         for (var g = 0; g < groups.length; g++) {
             var grp = groups[g], items = [], idx = "", advN = 0, dis = [], didx = ""
+            if (grp.id === "often") {                      // not in a search (the rows show in their own groups there)
+                if (q !== "" || oftenItems.length === 0 || (!pagesMode && section !== "" && grp.section !== section)) continue
+                out.push({ id: grp.id, title: grp.title, section: grp.section, items: oftenItems, advN: 0, advShow: false })
+                for (var oi = 0; oi < oftenItems.length; oi++) sig += (oftenItems[oi].key || oftenItems[oi].id) + ","
+                sig += ";"
+                continue
+            }
             var advShow = advAll || !!advMap[grp.id]
             if (q === "" && !pagesMode && section !== "" && grp.section !== section) continue
             for (var i = 0; i < grp.items.length; i++) {
@@ -1115,7 +1167,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 5 : t.name === "counterScan" ? 6 : t.name === "dayClock" ? 13 : t.name === "wallClock" ? 5 : t.name === "focusClock" ? 6 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : t.name === "discover" ? 30 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 5 : t.name === "counterScan" ? 6 : t.name === "dayClock" ? 13 : t.name === "wallClock" ? 5 : t.name === "liveWalls" ? 7 : t.name === "focusClock" ? 6 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : t.name === "discover" ? 30 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -1182,6 +1234,7 @@ Scope {
     // Wallpaper timeline (top of Settings > Wallpaper): when the picture last changed. wallpaper.sh saves the time when it really
     // changes (wallpaper-changed); an install from before that has no file yet, and then the date of the wallpaper state file is used.
     Component { id: cWallClock; SetWallClock { root: settingsScope } }
+    Component { id: cLiveWalls; SetLiveWall { root: settingsScope } }
 
     // Focus streak timeline (top of Settings > Focus mode): days in a row you reached the goal, against your best streak. The goal is
     // the Focus widget's "Minutes that count as a focus day" (25 when there is no Focus widget), the same rule the widget uses.
