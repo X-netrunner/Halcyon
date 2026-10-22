@@ -2387,6 +2387,9 @@ ShellRoot {
     // centre; Halcyon's own (timers, reminders) and urgent ones still show. Do not disturb itself is not touched. After a fullscreen /
     // workspace / window-close event it asks Hyprland once what the active window is doing (one short hyprctl call, nothing runs in between).
     property bool fsQuiet: false
+    // the time-of-day grade over the wallpaper right now (Wallpaper.qml: { r, g, b, tint, dim }), or null when it is off: the desktop
+    // widgets work out their colours from the picture as it is seen, after this wash (WidgetHost.qml)
+    readonly property var todGrade: wallpaperLayer.todOn ? wallpaperLayer.todNow : null
     readonly property bool screenLocked: lockScreen.locked      // for things that only get the shell as `env` (DesktopStars stops drawing)
     Connections {
         target: Hyprland
