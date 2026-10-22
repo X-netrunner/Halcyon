@@ -310,10 +310,16 @@ def cmd_wifi_qr(args):
     if rc != 0:
         raise Fail("qrencode failed")
     forget_later(png, 120)
-    viewer = next((v for v in ("imv", "swayimg", "feh") if have(v)), None)
-    if viewer:
-        subprocess.Popen([viewer, png], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    notify(f"Wi-Fi QR: {ssid}", "Scan it with your phone camera. It is deleted in 2 minutes.", png)
+    # the island shows it big (WifiQr.qml); without the island an image viewer, and the notification either way as a last resort
+    island = os.path.join(CONF, "quickshell", "island")
+    shown = have("quickshell") and sh(["quickshell", "ipc", "-p", island, "call", "island", "wifiqr", png, ssid])[0] == 0
+    if not shown:
+        viewer = next((v for v in ("imv", "swayimg", "feh") if have(v)), None)
+        if viewer:
+            subprocess.Popen([viewer, png], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            shown = True
+    if not shown:
+        notify(f"Wi-Fi QR: {ssid}", "Scan it with your phone camera. It is deleted in 2 minutes.", png)
     return 0
 
 

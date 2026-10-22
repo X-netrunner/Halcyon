@@ -254,14 +254,10 @@ Scope {
         if (line === "clear" || line === "cls") { clearOut(); return }
         if (line === "exit" || line === "quit") { close(); return }
         if (line === "help") {
-            push("sysmode: secure | stealth | relaxed | lockdown | status | logs | dossier [ip]   (sm = sysmode)\n" +
-                 "ai <question> or ai /diag: local AI assistant.  notes <text>: quick notes.\n" +
-                 "hotspot-on / hotspot-off: Wi-Fi.\n" +
-                 "halcyon <command>, bar-builder, desktop-builder, widget-builder, desktop-edit, wallpaper-gallery ...: open windows.\n" +
-                 "sudo works here: it asks for your password in this line.\n" +
-                 "SUPER+ALT+/ lists every command.\n" +
-                 "cd, clear, exit, Ctrl+C stop, Ctrl+L clear, Up/Down history, Tab completes. Anything else runs in bash.\n" +
-                 "vim / htop / ssh / bare ai ... open in a real terminal.", "info")
+            push("Anything runs in bash; sudo asks for the password here. vim, htop, ssh ... open in a terminal.\n" +
+                 "secure  stealth  relaxed  lockdown    switch sysmode  (sm status, sm logs)\n" +
+                 "ai <question>    notes <text>    halcyon <window>    hotspot-on / -off\n" +
+                 "Tab completes  ·  Up/Down history  ·  Ctrl+C stops  ·  Ctrl+L clears  ·  SUPER+ALT+/ lists everything", "info")
             return
         }
         var cd = line.match(/^cd(?:\s+(.*))?$/)
@@ -437,34 +433,26 @@ Scope {
     Timer { interval: out.count === 0 ? 3000 : 15000; running: root.shown; repeat: true; triggeredOnStart: true; onTriggered: if (!statusProc.running) statusProc.running = true }
 
     function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
-    function dot(on, label) {
-        return "<font color='" + (on ? pal.good : pal.muted) + "'>" + (on ? "●" : "○") + "</font> " + esc(label)
-    }
-    function row(k, v) { return "<font color='" + pal.muted + "'>" + esc(k.padEnd(12, " ")) + "</font>" + v }
+    // idle: only what tells you something (the mode is already in the header). Services that run, alerts when there are any.
     readonly property var statusRows: {
         var s = st || {}
-        var m = sysmode || s.mode || ""
-        var mc = modeColor[m] || pal.muted
-        var rd = !!s.readable
-        var num = function (v) { return (v === undefined || v === null) ? "–" : String(v) }
-        var rows = [
-            row("sysmode", "<font color='" + mc + "'><b>" + esc(m !== "" ? m : "not set") + "</b></font>"),
-            row("honeypot", dot(!!s.honeypot, s.honeypot ? "active" : "off")),
-            row("ids", dot(!!s.ids, s.ids ? "active" : "off")),
-            row("cowrie", dot(!!s.cowrie, s.cowrie ? "active" : "off")),
-            row("decoy wifi", dot(!!s.decoyWifi, s.decoyWifi ? s.decoyWifi : "off")),
-            "&nbsp;",
-            row(">ids hit", ": " + num(s.idsAlerts)),
-            row(">alerts", ": " + (rd ? num(s.today) + " today · " + num(s.alerts) + " total" : "–")),
-            row(">attackers", ": " + (rd ? num(s.attackers) : "–"))
-        ]
-        if (s.last) {
-            var ev = String(s.last)
-            var i = ev.indexOf("] ")                 // drop the leading [timestamp]
+        var muted = function (t) { return "<font color='" + pal.muted + "'>" + esc(t) + "</font>" }
+        var on = []
+        if (s.honeypot) on.push("honeypot")
+        if (s.ids) on.push("ids")
+        if (s.cowrie) on.push("cowrie")
+        if (s.decoyWifi) on.push("decoy wifi " + s.decoyWifi)
+        var rows = [on.length ? "<font color='" + pal.good + "'>●</font> " + esc(on.join("  ·  ")) : muted("Security services off")]
+        var n = function (v) { return Number(v || 0) }
+        if (s.readable && (n(s.today) > 0 || n(s.idsAlerts) > 0))
+            rows.push("<font color='" + pal.warn + "'>" + n(s.today) + " alert" + (n(s.today) === 1 ? "" : "s") + " today</font>" +
+                      muted("  ·  " + n(s.alerts) + " total" + (n(s.attackers) > 0 ? "  ·  " + n(s.attackers) + " attackers" : "")))
+        if (s.readable && s.last && n(s.today) > 0) {
+            var ev = String(s.last), i = ev.indexOf("] ")
             if (ev.charAt(0) === "[" && i > 0) ev = ev.substring(i + 2)
-            rows.push(row(">last", ": " + esc(ev.slice(0, 52))))
+            rows.push(muted("last: " + ev.slice(0, 56)))
         }
-        if (!rd) rows.push("<font color='" + pal.muted + "'>log not readable as your user: <b>sudo sysmode logs</b></font>")
+        if (!s.readable && on.length) rows.push(muted("alerts need root: sudo sysmode logs"))
         return rows
     }
 
@@ -645,14 +633,14 @@ Scope {
                             font.family: root.mono
                             font.pixelSize: 12
                             font.weight: Font.Medium
-                            lineHeight: 1.15
+                            lineHeight: 1.3
                             style: Text.Outline
                             styleColor: Qt.rgba(0, 0, 0, 0.70)
                         }
                     }
                     Text {
                         topPadding: 6
-                        text: "type a command · secure · stealth · relaxed · lockdown"
+                        text: "type a command  ·  help"
                         color: Qt.alpha(root.pal.muted, 0.9)
                         font.family: root.mono
                         font.pixelSize: 10
