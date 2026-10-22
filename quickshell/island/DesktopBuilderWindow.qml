@@ -30,6 +30,9 @@ Item {
     readonly property bool wallOn: !opt || opt.deskWall !== false
     readonly property real blurAmt: Math.max(0, Math.min(1, (opt && opt.deskBlur !== undefined ? Number(opt.deskBlur) : 0) / 100))
     readonly property string bgKind: (opt && opt.deskBg) || "theme"
+    // Dim the wallpaper so the widgets read (the same setting as Settings > Widget builder: opt.widgetDim / widgetDimAmt)
+    readonly property string dimMode: (opt && opt.widgetDim) || "wall"
+    readonly property real dimAmt: Math.max(0.1, Math.min(0.8, opt && opt.widgetDimAmt !== undefined ? Number(opt.widgetDimAmt) : 0.35))
     readonly property bool starsOn: !!opt && opt.deskStars === true
     readonly property var spots: DS.normalize(opt ? opt.boxSpots : null)
     readonly property var wlayout: WD.normalize(opt ? opt.deskWidgets : null)
@@ -202,6 +205,13 @@ Item {
                                 cache: false
                                 layer.enabled: root.blurAmt > 0.001
                                 layer.effect: MultiEffect { blurEnabled: true; blurMax: 64; blur: root.blurAmt; autoPaddingEnabled: false }
+                            }
+                            // Dim the wallpaper (whole picture), as the desktop draws it (Wallpaper.qml)
+                            Rectangle {
+                                anchors.fill: parent
+                                visible: root.wallOn && !root.lockT && root.dimMode === "wall"
+                                color: "black"
+                                opacity: root.dimAmt
                             }
                             DesktopStars {
                                 anchors.fill: parent
@@ -383,6 +393,27 @@ Item {
                                 Layout.fillWidth: true
                                 visible: root.wallOn && root.blurAmt > 0
                                 text: "Uses the GPU only when the picture changes. Keep it low on a weak GPU."
+                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
+                            }
+                            ChipRow {
+                                Layout.fillWidth: true
+                                visible: root.wallOn
+                                pal: root.pal; label: "Dim it"
+                                options: [["off", "No"], ["wall", "Whole picture"], ["auto", "Behind widgets"]]
+                                current: root.dimMode === "widgets" ? "auto" : root.dimMode
+                                onPicked: id => root.put("widgetDim", id)
+                            }
+                            NbSlider {
+                                Layout.fillWidth: true
+                                visible: root.wallOn && root.dimMode !== "off"
+                                pal: root.pal; label: "How dark"; from: 10; to: 80; unit: " %"
+                                value: Math.round(root.dimAmt * 100)
+                                onPicked: v => root.putLive("widgetDimAmt", v / 100)
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: root.wallOn
+                                text: root.dimMode === "off" ? "Widgets choose their colours from the picture as it is." : "Keeps the widgets readable on light or busy wallpapers; their text colour follows the dim."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             ChipRow {

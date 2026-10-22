@@ -251,7 +251,15 @@ function fileOf(type) { return files[type] || "WText.qml" }
 //   fs       0.7 .. 1.6 : text size
 //   halo     a soft dark glow behind the words of box-less widgets (readability on a busy wallpaper)
 //   border   a hairline around it     shadow  a soft shadow
-var lookDefaults = { surface: "glass", op: 0.65, radius: -1, pad: -1, tone: "theme", color: "#9aa9d4", textTone: "theme", textColor: "#ffffff", font: "ui", fs: 1, border: true, shadow: true, contrast: 0.6, depth: 0.5, match: false, halo: true }
+var lookDefaults = { surface: "glass", op: 0.65, radius: -1, pad: -1, tone: "theme", color: "#9aa9d4", textTone: "theme", textColor: "#ffffff", font: "ui", fs: 1, border: true, shadow: true, contrast: 0.6, depth: 0.5, match: false, halo: true, groupColours: true }
+// the colour part of a look: what a linked widget takes from the first widget of its group (groupColours, on by default)
+var colourKeys = ["tone", "color", "textTone", "textColor", "match", "depth", "contrast", "halo"]
+function withColours(own, lead) {
+    var o = {}
+    for (var k in own) o[k] = own[k]
+    if (lead) for (var i = 0; i < colourKeys.length; i++) o[colourKeys[i]] = lead[colourKeys[i]]
+    return o
+}
 var surfaces = [["glass", "Frosted glass"], ["solid", "Solid"], ["clear", "No box"], ["outline", "Outline"], ["pill", "Pill"]]
 var tones = [["theme", "Wallpaper accent"], ["second", "Second colour"], ["custom", "My colour"]]
 var swatches = ["#ffffff", "#e6e8ee", "#b9bdc8", "#9aa9d4", "#7ec8e3", "#c2add8", "#e58a8a", "#f5a623"]
@@ -294,6 +302,7 @@ function look(l) {
     o.border = o.border !== false
     o.shadow = o.shadow !== false
     o.halo = o.halo !== false
+    o.groupColours = o.groupColours !== false
     if (!/^#[0-9a-fA-F]{6}$/.test(String(o.color))) o.color = lookDefaults.color
     if (!/^#[0-9a-fA-F]{6}$/.test(String(o.textColor))) o.textColor = lookDefaults.textColor
     return o

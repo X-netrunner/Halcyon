@@ -16,6 +16,7 @@ Item {
     property var env
     property bool open: false
     property var opt: ({})
+    property string wallpaper: ""              // the wallpaper on screen: the preview shows the widget over it (dimmed like the desktop)
     signal changed(string key, var value)
     signal closed()
     signal editOnDesktop(string which)         // which = "desktop" or "lock": the screen to place the widgets on
@@ -30,6 +31,7 @@ Item {
     readonly property var layout: WD.normalizeFor(livePending !== null ? livePending : (opt ? opt[lkey] : null), target)
     readonly property var saved: (opt && opt.deskStyles && opt.deskStyles.length !== undefined) ? opt.deskStyles : []
     property string sel: ""
+    property string tab: "content"        // the right column's tab: content | place | look | styles
     property string pick: ""              // asked to open on this widget (from the desktop editor)
     onPickChanged: if (pick !== "" && WD.find(layout, pick) !== null) { sel = pick; adding = false }
     property bool adding: false
@@ -182,7 +184,7 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 2
                     Text { text: "Widget builder"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Text { text: root.lockT ? "The widgets of your lock screen: the same ones as the desktop, but nothing on them can be clicked while it is locked." : "One widget at a time: pick it on the left, shape it on the right. Where they all sit is the Desktop builder's job."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    Text { text: root.lockT ? "Your lock screen's widgets. Nothing on them can be clicked while it is locked." : "Pick a widget on the left, shape it on the right."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                 }
                 SegSwitch {
                     Layout.alignment: Qt.AlignVCenter
@@ -204,16 +206,16 @@ Item {
                 // ================================================= left: the list
                 Rectangle {
                     Layout.fillHeight: true
-                    Layout.preferredWidth: 250
+                    Layout.preferredWidth: 260
                     radius: root.pal.rLg
-                    color: Qt.alpha(root.pal.bg, 0.45)
+                    color: Qt.alpha(root.pal.bg, 0.35)
                     border.width: 1; border.color: root.pal.lineTint
 
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 14
                         spacing: 10
-                        NbCap { pal: root.pal; text: "YOUR WIDGETS  ·  " + root.layout.items.length }
+                        Text { text: "Your widgets  ·  " + root.layout.items.length; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 12; font.weight: Font.Medium }
                         Flickable {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -241,7 +243,7 @@ Item {
                                         readonly property color grpCol: grouped ? WD.groupColor(modelData.g) : "transparent"
                                         readonly property bool on: itm.uid === root.sel && !root.adding
                                         readonly property real hdr: (grouped && modelData.pos === "first") ? 20 : 0
-                                        width: lst.width; height: hdr + 44
+                                        width: lst.width; height: hdr + 48
                                         opacity: itm.off === true ? 0.55 : 1
                                         // linked widgets: a small header for the first one, and a coloured bracket down the side of the whole group
                                         Row {
@@ -258,7 +260,7 @@ Item {
                                         }
                                         Rectangle {
                                             x: rowD.grouped ? 14 : 0; y: rowD.hdr
-                                            width: rowD.width - x; height: 44; radius: 14
+                                            width: rowD.width - x; height: 44; radius: 12
                                             color: rowD.on ? Qt.alpha(root.pal.accent, 0.18) : (lm.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : Qt.alpha(root.pal.surface, 0.5))
                                             border.width: 1; border.color: rowD.on ? Qt.alpha(root.pal.accent, 0.5) : (rowD.grouped ? Qt.alpha(rowD.grpCol, 0.35) : root.pal.lineSoft)
                                             Row {
@@ -307,15 +309,42 @@ Item {
                     color: Qt.alpha(root.pal.bg, 0.55)
                     border.width: 1; border.color: root.pal.lineTint
                     clip: true
-                    NbCap { pal: root.pal; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14; text: root.adding ? "ADD A WIDGET" : "LIVE PREVIEW  ·  LIFE SIZE" }
+                    Rectangle {
+                        z: 5
+                        anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14
+                        width: capT.implicitWidth + 20; height: 24; radius: 12
+                        color: Qt.alpha(root.pal.bg, 0.7)
+                        Text { id: capT; anchors.centerIn: parent; text: root.adding ? "Add a widget" : "Live preview · life size"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11 }
+                    }
 
-                    // a soft backdrop so light and dark widgets both show
+                    // the backdrop: your wallpaper, dimmed the way the desktop dims it (Settings > Widget builder > Dim the wallpaper),
+                    // so the preview shows the widget as it really sits; a soft accent wash when there is no picture
                     Rectangle {
                         anchors.fill: parent; anchors.margins: 1; radius: root.pal.rLg
                         visible: !root.adding
                         gradient: Gradient {
                             GradientStop { position: 0; color: Qt.alpha(root.pal.accent, 0.10) }
                             GradientStop { position: 1; color: Qt.alpha(root.pal.accent2, 0.06) }
+                        }
+                    }
+                    Item {
+                        anchors.fill: parent; anchors.margins: 1
+                        visible: !root.adding && root.wallpaper !== "" && !root.lockT && wallPv.status === Image.Ready
+                        clip: true
+                        Image {
+                            id: wallPv
+                            anchors.fill: parent
+                            source: root.wallpaper !== "" && root.open ? "file://" + encodeURI(root.wallpaper).replace(/#/g, "%23").replace(/\?/g, "%3F") : ""
+                            sourceSize: Qt.size(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)))
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            cache: false
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            color: "black"
+                            readonly property string mode: (root.opt && root.opt.widgetDim) || "wall"
+                            opacity: mode === "off" ? 0.08 : Math.max(0.1, Math.min(0.8, root.opt && root.opt.widgetDimAmt !== undefined ? Number(root.opt.widgetDimAmt) : 0.35))
                         }
                     }
                     Item {
@@ -327,6 +356,9 @@ Item {
                             pal: root.pal
                             env: root.env
                             item: root.cur
+                            // a linked widget is previewed in its group's colours (the group's area is not known here: the whole picture is)
+                            leadLook: root.cur && root.curLook.groupColours && WD.linkRoot(root.layout, root.sel) !== root.sel ? (WD.find(root.layout, WD.linkRoot(root.layout, root.sel)) || {}).look || {} : null
+                            groupHosts: leadLook !== null ? [pv, pv] : []
                             preview: true
                             inert: root.lockT
                             lockLum: (root.lockT && root.env && root.env.lockBackLum !== undefined) ? root.env.lockBackLum : -1
@@ -339,15 +371,7 @@ Item {
                         text: "Add a widget to start"
                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle
                     }
-                    Text {
-                        visible: !root.adding && root.cur !== null
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.top: parent.top; anchors.topMargin: 16
-                        width: parent.width - 40
-                        horizontalAlignment: Text.AlignHCenter
-                        text: root.curType ? root.curType.hint : ""
-                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; wrapMode: Text.WordWrap
-                    }
+                    // (the kind's hint now sits under "Layout" in the Content tab)
 
                     // the catalog
                     Flickable {
@@ -414,399 +438,423 @@ Item {
                     }
                 }
 
-                // ================================================= right: the controls
-                Flickable {
-                    id: ctl
+                // ================================================= right: the controls, in four calm tabs
+                ColumnLayout {
                     Layout.fillHeight: true
-                    Layout.preferredWidth: 470
-                    contentWidth: width
-                    contentHeight: cc.implicitHeight + 8
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
+                    Layout.preferredWidth: 480
+                    Layout.maximumWidth: 480
                     visible: root.cur !== null
+                    spacing: 14
 
-                    ColumnLayout {
-                        id: cc
-                        width: ctl.width - 12
+                    // the widget's name and its show / hide switch, then the tabs
+                    RowLayout {
+                        Layout.fillWidth: true
                         spacing: 12
-
-                        // ---- show / hide this one (switched off: not drawn, nothing runs for it, it stays here to switch on again)
-                        RowLayout {
+                        Text { text: root.cur ? String.fromCodePoint(WD.iconOf(root.cur.type)) : ""; color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
+                        Column {
                             Layout.fillWidth: true
-                            spacing: 10
-                            Text { Layout.fillWidth: true; text: root.lockT ? "Show this widget on the lock screen" : "Show this widget on the desktop"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; elide: Text.ElideRight }
-                            Toggle { pal: root.pal; on: root.cur !== null && root.cur.off !== true; onToggled: root.edit(WD.setOff(root.layout, root.sel, root.cur !== null && root.cur.off !== true), false) }
+                            spacing: 1
+                            Text { text: root.cur ? WD.nameOf(root.cur.type) : ""; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
+                            Text { text: root.cur && root.cur.off === true ? "Switched off: not drawn, nothing runs for it" : (root.lockT ? "Shown on the lock screen" : "Shown on the desktop"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11 }
                         }
-
-                        // ---- layout
-                        NbCap { pal: root.pal; text: "LAYOUT" }
-                        ChipRow {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Style"; labelWidth: 90
-                            options: root.curType ? root.curType.styles : []
-                            current: root.cur ? WD.styleOf(root.cur) : ""
-                            onPicked: id => root.setStyle(id)
-                        }
-
-                        // ---- options of this kind of widget
-                        NbCap { visible: root.curType !== null && root.curType.opts.length > 0; pal: root.pal; text: "OPTIONS" }
-                        Repeater {
-                            model: root.curType ? root.curType.opts : []
-                            delegate: Loader {
-                                id: ol
-                                required property var modelData
-                                Layout.fillWidth: true
-                                readonly property var o: modelData
-                                readonly property var val: (root.cur && root.cur.opts && root.cur.opts[o.k] !== undefined) ? root.cur.opts[o.k] : o.def
-            Component {
-                id: oToggle
-                RowLayout {
-                    spacing: 10
-                    Text { Layout.fillWidth: true; text: ol.o.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
-                    Toggle { pal: root.pal; on: ol.val === true; onToggled: root.setOptV(ol.o.k, !(ol.val === true), false) }
-                }
-            }
-            Component {
-                id: oChips
-                ChipRow {
-                    pal: root.pal; label: ol.o.label; labelWidth: 90
-                    options: ol.o.options
-                    current: ol.val
-                    onPicked: id => root.setOptV(ol.o.k, id, false)
-                }
-            }
-            Component {
-                id: oSlider
-                NbSlider {
-                    pal: root.pal; label: ol.o.label; from: ol.o.min; to: ol.o.max; unit: ol.o.unit
-                    value: Math.round(Number(ol.val))
-                    onPicked: v => root.setOptV(ol.o.k, v, true)
-                }
-            }
-            Component {
-                id: oMulti
-                Column {
-                    spacing: 6
-                    Text { text: ol.o.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
-                    Flow {
-                        width: parent.width
-                        spacing: 8
-                        Repeater {
-                            model: ol.o.options
-                            delegate: Chip {
-                                required property var modelData
-                                pal: root.pal; implicitHeight: 30; label: modelData[1]
-                                on: (ol.val || []).indexOf(modelData[0]) >= 0
-                                onClicked: root.toggleIn(ol.o.k, modelData[0])
-                            }
-                        }
+                        Toggle { pal: root.pal; on: root.cur !== null && root.cur.off !== true; onToggled: root.edit(WD.setOff(root.layout, root.sel, root.cur !== null && root.cur.off !== true), false) }
                     }
-                }
-            }
-            Component {
-                id: oText
-                Column {
-                    spacing: 6
-                    Text { text: ol.o.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
-                    WbText {
-                        width: parent.width
-                        pal: root.pal; text: String(ol.val); hintText: ol.o.hintText || ""
-                        onCommitted: t => root.setOptV(ol.o.k, t, false)
+                    SegSwitch {
+                        Layout.fillWidth: true
+                        pal: root.pal
+                        options: [{ k: "content", t: "Content" }, { k: "place", t: "Place" }, { k: "look", t: "Look" }, { k: "styles", t: "Styles" }]
+                        current: root.tab
+                        onPicked: k => { root.tab = k; ctl.contentY = 0 }
                     }
-                }
-            }
-                                sourceComponent: o.kind === "toggle" ? oToggle : (o.kind === "chips" ? oChips : (o.kind === "slider" ? oSlider : (o.kind === "multi" ? oMulti : oText)))
+
+                    Flickable {
+                        id: ctl
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        contentWidth: width
+                        contentHeight: cc.implicitHeight + 8
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        ColumnLayout {
+                            id: cc
+                            width: ctl.width - 10
+                            spacing: 14
+
+                            // ======================= Content: what it shows
+                            WbSection {
+                                visible: root.tab === "content"
+                                pal: root.pal; title: "Layout"; sub: root.curType ? root.curType.hint : ""
+                                ChipRow {
+                                    Layout.fillWidth: true
+                                    pal: root.pal; label: "Style"; labelWidth: 84
+                                    options: root.curType ? root.curType.styles : []
+                                    current: root.cur ? WD.styleOf(root.cur) : ""
+                                    onPicked: id => root.setStyle(id)
+                                }
                             }
-                        }
-
-                        Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
-
-                        // ---- size and place
-                        NbCap { pal: root.pal; text: "SIZE AND PLACE" }
-                        NbSlider {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Size"; from: 50; to: 250; unit: " %"
-                            value: Math.round((root.cur ? root.cur.scale : 1) * 100)
-                            onPicked: v => root.edit(WD.setScale(root.layout, root.sel, v / 100), true)
-                        }
-                        ChipRow {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Put it at"; labelWidth: 90
-                            options: WD.spots.map(function (s) { return [s[0], s[1]] })
-                            current: ""
-                            onPicked: id => root.edit(WD.placeAt(root.layout, root.sel, id), false)
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.lockT ? "For an exact spot, use \"Place them on the lock screen\": drag it there, the wheel resizes it." : "For an exact spot, use \"Place them on the desktop\": drag it there, the wheel resizes it."
-                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
-                        }
-
-                        Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
-
-                        // ---- link: follow another widget
-                        Row {
-                            spacing: 6
-                            NbCap { pal: root.pal; text: "LINK"; anchors.verticalCenter: parent.verticalCenter }
-                            HelpTip {
-                                id: qLink
-                                pal: root.pal
-                                onHoveredChanged: root.setTip(qLink, hovered)
-                                anchors.verticalCenter: parent.verticalCenter
-                                tip: "Link makes this widget follow another one, for example uptime next to the workspaces. It takes the other widget's size and keeps a fixed gap from it. When one of them gets wider (\"9h\" turning into \"1d 11h\") the linked one is pushed along instead of being covered. Drag or resize either one on the desktop and both move together. Two or more widgets can follow the same one: on the same side of it they line up one after the other."
-                            }
-                        }
-                        ChipRow {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Follow"; labelWidth: 90
-                            options: root.linkOptions
-                            current: root.curLinkTo
-                            onPicked: id => root.setLinkTo(id)
-                        }
-                        ChipRow {
-                            Layout.fillWidth: true
-                            visible: root.curLinkTo !== ""
-                            pal: root.pal; label: "Sits"; labelWidth: 90
-                            HelpTip {
-                                id: qSide
-                                pal: root.pal
-                                onHoveredChanged: root.setTip(qSide, hovered)
-                                Layout.alignment: Qt.AlignTop
-                                Layout.topMargin: 8
-                                tip: "Which side of the widget it follows this one stays on. Below it / Above it: stacked, same left edge, and both become as wide as the wider of the two. Right of it / Left of it: side by side and centred on each other; each keeps its own width, so one that grows pushes the other along. Gap is the space between them."
-                            }
-                            options: [["below", "Below it"], ["above", "Above it"], ["right", "Right of it"], ["left", "Left of it"]]
-                            current: root.curLinkSide
-                            onPicked: id => root.setLinkV(id, root.curLinkGap, false)
-                        }
-                        NbSlider {
-                            Layout.fillWidth: true
-                            visible: root.curLinkTo !== ""
-                            pal: root.pal; label: "Gap"; from: 0; to: 80; unit: " px"
-                            value: root.curLinkGap
-                            onPicked: v => root.setLinkV(root.curLinkSide, v, true)
-                        }
-                        // another widget follows the same one on the same side: they stand in a line, this says who comes first
-                        ChipRow {
-                            Layout.fillWidth: true
-                            visible: root.curLinkTo !== "" && root.curSiblings.length > 1
-                            pal: root.pal; label: "Place in line"; labelWidth: 90
-                            options: root.slotOptions
-                            current: root.curSlot
-                            onPicked: id => root.setLinkSlot(id)
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.curLinkTo === "" ? "Link a widget to another one, for example uptime to the workspaces. Put it above / below (stacked, same width) or right / left (side by side, each its own width) and it keeps the gap you set, even when the other one grows. Move or resize one on the desktop and the other goes with it."
-                                                        : "Linked: this widget takes the size of the one it follows and moves with it (stacked ones also share its width). On the desktop, drag or resize the one it follows (the Size slider above no longer applies here)."
-                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
-                        }
-
-                        Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
-
-                        // ---- the look
-                        NbCap { pal: root.pal; text: "LOOK" }
-                        ChipRow {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Box"; labelWidth: 90
-                            options: WD.surfaces
-                            current: root.curLook.surface
-                            onPicked: id => root.setLookV("surface", id)
-                        }
-                        NbSlider {
-                            Layout.fillWidth: true
-                            visible: root.curLook.surface !== "clear"
-                            pal: root.pal; label: "Box opacity"; from: 0; to: 100; unit: " %"
-                            value: Math.round(root.curLook.op * 100)
-                            onPicked: v => root.setLookV("op", v / 100, true)
-                        }
-                        NbSlider {
-                            Layout.fillWidth: true
-                            visible: root.curLook.surface !== "clear" && root.curLook.surface !== "pill"
-                            pal: root.pal; label: "Corners"; from: 0; to: 60; unit: " px"; zeroText: "Auto"
-                            value: root.curLook.radius < 0 ? 0 : root.curLook.radius
-                            onPicked: v => root.setLookV("radius", v === 0 ? -1 : v, true)
-                        }
-                        NbSlider {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Inner space"; from: 0; to: 48; unit: " px"; zeroText: "Auto"
-                            value: root.curLook.pad < 0 ? 0 : root.curLook.pad
-                            onPicked: v => root.setLookV("pad", v === 0 ? -1 : v, true)
-                        }
-                        NbSlider {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Text size"; from: 60; to: 180; unit: " %"
-                            value: Math.round(root.curLook.fs * 100)
-                            onPicked: v => root.setLookV("fs", v / 100, true)
-                        }
-                        NbSlider {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Colour depth"; from: 0; to: 100; unit: " %"; zeroText: "Plain"
-                            value: Math.round(root.curLook.depth * 100)
-                            onPicked: v => root.setLookV("depth", v / 100, true)
-                        }
-                        NbSlider {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Readability"; from: 0; to: 100; unit: " %"; zeroText: "Off"
-                            value: Math.round(root.curLook.contrast * 100)
-                            onPicked: v => root.setLookV("contrast", v / 100, true)
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Colour depth tints it with the wallpaper accent. Readability brightens and outlines the text."
-                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
-                        }
-                        ChipRow {
-                            Layout.fillWidth: true
-                            pal: root.pal; label: "Font"; labelWidth: 90
-                            options: [["ui", "Clean"], ["serif", "Serif"], ["mono", "Code"]]
-                            current: root.curLook.font
-                            onPicked: id => root.setLookV("font", id)
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-                            Text { Layout.fillWidth: true; text: "Match wallpaper accent"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; elide: Text.ElideRight }
-                            Toggle { pal: root.pal; on: root.curLook.match; onToggled: root.setLookV("match", !root.curLook.match) }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Match on all"; onClicked: root.edit(WD.setLookAll(root.layout, "match", true), false) }
-                            ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Off on all"; onClicked: root.edit(WD.setLookAll(root.layout, "match", false), false) }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.curLook.match ? "On: the lit colour, the text and the box tint all follow the wallpaper accent and change with the wallpaper. The colour pickers are hidden while this is on."
-                                                     : "Turn on to make the colours of this widget follow the wallpaper accent (text, bars and box). \"Match on all\" does it for every widget at once."
-                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
-                        }
-                        ChipRow {
-                            Layout.fillWidth: true
-                            visible: !root.curLook.match
-                            pal: root.pal; label: "Lit colour"; labelWidth: 90
-                            options: WD.tones
-                            current: root.curLook.tone
-                            onPicked: id => root.setLookV("tone", id)
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            visible: root.curLook.tone === "custom" && !root.curLook.match
-                            spacing: 8
-                            Item { Layout.preferredWidth: 90; height: 1 }
-                            Flow {
-                                Layout.fillWidth: true
-                                spacing: 8
+                            WbSection {
+                                visible: root.tab === "content" && root.curType !== null && root.curType.opts.length > 0
+                                pal: root.pal; title: "What it shows"
                                 Repeater {
-                                    model: (root.pal.swatches || []).slice(0, 8).map(function (c) { return String(c).toLowerCase() }).concat(WD.swatches)
-                                    delegate: Rectangle {
-                                        required property string modelData
-                                        width: 26; height: 26; radius: 13; color: modelData
-                                        border.width: root.curLook.color.toLowerCase() === modelData ? 3 : 1
-                                        border.color: root.curLook.color.toLowerCase() === modelData ? root.pal.text : root.pal.line
-                                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setLookV("color", parent.modelData) }
-                                    }
-                                }
-                                WbText {
-                                    pal: root.pal; width: 110; height: 28; radius: 14
-                                    text: root.curLook.color; hintText: "#rrggbb"
-                                    onCommitted: t => { if (/^#[0-9a-fA-F]{6}$/.test(t)) root.setLookV("color", t.toLowerCase()) }
-                                }
-                            }
-                        }
-                        ChipRow {
-                            Layout.fillWidth: true
-                            visible: !root.curLook.match
-                            pal: root.pal; label: "Text colour"; labelWidth: 90
-                            options: [["theme", "Theme"], ["auto", "Auto"], ["accent", "Accent"], ["second", "Second"], ["split", "Split"], ["light", "White"], ["dark", "Dark"], ["custom", "My colour"]]
-                            current: root.curLook.textTone
-                            onPicked: id => root.setLookV("textTone", id)
-                        }
-                        Flow {
-                            Layout.fillWidth: true
-                            visible: root.curLook.textTone === "custom" && !root.curLook.match
-                            spacing: 8
-                            Repeater {
-                                model: (root.pal.swatches || []).slice(0, 8).map(function (c) { return String(c).toLowerCase() }).concat(WD.swatches)
-                                delegate: Rectangle {
-                                    required property string modelData
-                                    width: 26; height: 26; radius: 13; color: modelData
-                                    border.width: root.curLook.textColor.toLowerCase() === modelData ? 3 : 1
-                                    border.color: root.curLook.textColor.toLowerCase() === modelData ? root.pal.text : root.pal.line
-                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setLookV("textColor", parent.modelData) }
-                                }
-                            }
-                        }
-                        WbText {
-                            Layout.fillWidth: true
-                            visible: root.curLook.textTone === "custom" && !root.curLook.match
-                            pal: root.pal; text: root.curLook.textColor; hintText: "#rrggbb"
-                            onCommitted: t => { if (/^#[0-9a-fA-F]{6}$/.test(t)) root.setLookV("textColor", t.toLowerCase()) }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-                            Text { Layout.fillWidth: true; text: "Soft dark halo behind the words"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
-                            Toggle { pal: root.pal; on: root.curLook.halo !== false; onToggled: root.setLookV("halo", root.curLook.halo === false) }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-                            Text { Layout.fillWidth: true; text: "Hairline edge"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
-                            Toggle { pal: root.pal; on: root.curLook.border; onToggled: root.setLookV("border", !root.curLook.border) }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-                            Text { Layout.fillWidth: true; text: "Soft shadow"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
-                            Toggle { pal: root.pal; on: root.curLook.shadow; onToggled: root.setLookV("shadow", !root.curLook.shadow) }
-                        }
-
-                        Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
-
-                        // ---- styles: ready-made and your own
-                        NbCap { pal: root.pal; text: "STYLES" }
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Apply a saved look, or save this one to reuse."
-                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
-                        }
-                        Flow {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Repeater {
-                                model: WD.presets
-                                delegate: Chip { required property var modelData; pal: root.pal; implicitHeight: 30; label: modelData.name; onClicked: root.applyStyleLook(modelData.look) }
-                            }
-                        }
-                        NbCap { visible: root.saved.length > 0; pal: root.pal; text: "YOURS" }
-                        Flow {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Repeater {
-                                model: root.saved
-                                delegate: Row {
-                                    required property var modelData
-                                    spacing: 4
-                                    Chip { pal: root.pal; implicitHeight: 30; label: modelData.name; on: true; onClicked: root.applyStyleLook(modelData.look) }
-                                    Rectangle {
-                                        width: 30; height: 30; radius: 15; color: dm.containsMouse ? Qt.alpha(root.pal.bad, 0.3) : Qt.alpha(root.pal.surface, 0.8); border.width: 1; border.color: root.pal.lineSoft
-                                        Text { anchors.centerIn: parent; text: "✕"; color: root.pal.text; font.pixelSize: 11 }
-                                        MouseArea { id: dm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.dropStyle(parent.parent.modelData.name) }
+                                    model: root.curType ? root.curType.opts : []
+                                    delegate: Loader {
+                                        id: ol
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        readonly property var o: modelData
+                                        readonly property var val: (root.cur && root.cur.opts && root.cur.opts[o.k] !== undefined) ? root.cur.opts[o.k] : o.def
+                                        Component {
+                                            id: oToggle
+                                            RowLayout {
+                                                spacing: 14
+                                                Text { Layout.fillWidth: true; text: ol.o.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; wrapMode: Text.WordWrap; lineHeight: 1.15 }
+                                                Toggle { Layout.alignment: Qt.AlignVCenter; pal: root.pal; on: ol.val === true; onToggled: root.setOptV(ol.o.k, !(ol.val === true), false) }
+                                            }
+                                        }
+                                        Component {
+                                            id: oChips
+                                            ChipRow {
+                                                pal: root.pal; label: ol.o.label; labelWidth: 84
+                                                options: ol.o.options
+                                                current: ol.val
+                                                onPicked: id => root.setOptV(ol.o.k, id, false)
+                                            }
+                                        }
+                                        Component {
+                                            id: oSlider
+                                            NbSlider {
+                                                pal: root.pal; label: ol.o.label; from: ol.o.min; to: ol.o.max; unit: ol.o.unit
+                                                value: Math.round(Number(ol.val))
+                                                onPicked: v => root.setOptV(ol.o.k, v, true)
+                                            }
+                                        }
+                                        Component {
+                                            id: oMulti
+                                            Column {
+                                                spacing: 8
+                                                Text { width: parent.width; text: ol.o.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; wrapMode: Text.WordWrap }
+                                                Flow {
+                                                    width: parent.width
+                                                    spacing: 8
+                                                    Repeater {
+                                                        model: ol.o.options
+                                                        delegate: Chip {
+                                                            required property var modelData
+                                                            pal: root.pal; implicitHeight: 30; label: modelData[1]
+                                                            on: (ol.val || []).indexOf(modelData[0]) >= 0
+                                                            onClicked: root.toggleIn(ol.o.k, modelData[0])
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Component {
+                                            id: oText
+                                            Column {
+                                                spacing: 8
+                                                Text { width: parent.width; text: ol.o.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; wrapMode: Text.WordWrap }
+                                                WbText {
+                                                    width: parent.width
+                                                    pal: root.pal; text: String(ol.val); hintText: ol.o.hintText || ""
+                                                    onCommitted: t => root.setOptV(ol.o.k, t, false)
+                                                }
+                                            }
+                                        }
+                                        sourceComponent: o.kind === "toggle" ? oToggle : (o.kind === "chips" ? oChips : (o.kind === "slider" ? oSlider : (o.kind === "multi" ? oMulti : oText)))
                                     }
                                 }
                             }
+
+                            // ======================= Place: size, spot, link
+                            WbSection {
+                                visible: root.tab === "place"
+                                pal: root.pal; title: "Size and spot"
+                                sub: root.curLinkTo !== "" ? "Linked: it moves and sizes with the widget it follows. Drag that one on the desktop." : "Pick a spot on the little screen, or use \"" + (root.lockT ? "Place them on the lock screen" : "Place them on the desktop") + "\" for an exact one."
+                                NbSlider {
+                                    Layout.fillWidth: true
+                                    enabled: root.curLinkTo === ""
+                                    opacity: enabled ? 1 : 0.45
+                                    pal: root.pal; label: "Size"; from: 50; to: 250; unit: " %"
+                                    value: Math.round((root.cur ? root.cur.scale : 1) * 100)
+                                    onPicked: v => root.edit(WD.setScale(root.layout, root.sel, v / 100), true)
+                                }
+                                // the nine spots as a small screen (16:10)
+                                Rectangle {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    visible: root.curLinkTo === ""
+                                    width: 240; height: 150; radius: 14
+                                    color: Qt.alpha(root.pal.bg, 0.5)
+                                    border.width: 1; border.color: root.pal.lineSoft
+                                    Grid {
+                                        anchors.fill: parent; anchors.margins: 10
+                                        columns: 3; spacing: 6
+                                        Repeater {
+                                            model: WD.spots
+                                            delegate: Rectangle {
+                                                required property var modelData
+                                                width: (240 - 20 - 12) / 3; height: (150 - 20 - 12) / 3; radius: 9
+                                                color: spm.containsMouse ? Qt.alpha(root.pal.accent, 0.25) : Qt.alpha(root.pal.surface, 0.55)
+                                                border.width: 1; border.color: spm.containsMouse ? Qt.alpha(root.pal.accent, 0.6) : "transparent"
+                                                Behavior on color { ColorAnimation { duration: 120 } }
+                                                Rectangle { anchors.centerIn: parent; width: 14; height: 6; radius: 3; color: spm.containsMouse ? root.pal.accent : Qt.alpha(root.pal.muted, 0.6) }
+                                                MouseArea { id: spm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.edit(WD.placeAt(root.layout, root.sel, parent.modelData[0]), false) }
+                                                HoverHandler { onHoveredChanged: if (hovered) spotTip.text = parent.modelData[1] }
+                                            }
+                                        }
+                                    }
+                                }
+                                Text { id: spotTip; Layout.alignment: Qt.AlignHCenter; visible: root.curLinkTo === ""; text: "Click a spot"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11 }
+                            }
+                            WbSection {
+                                visible: root.tab === "place"
+                                pal: root.pal; title: "Link"
+                                sub: root.curLinkTo === "" ? "Make it follow another widget, e.g. uptime next to the workspaces: same size, a fixed gap, and it is pushed along when the other one grows."
+                                                           : "It takes the size of the widget it follows and moves with it."
+                                ChipRow {
+                                    Layout.fillWidth: true
+                                    pal: root.pal; label: "Follow"; labelWidth: 84
+                                    options: root.linkOptions
+                                    current: root.curLinkTo
+                                    onPicked: id => root.setLinkTo(id)
+                                }
+                                ChipRow {
+                                    Layout.fillWidth: true
+                                    visible: root.curLinkTo !== ""
+                                    pal: root.pal; label: "Sits"; labelWidth: 84
+                                    options: [["below", "Below it"], ["above", "Above it"], ["right", "Right of it"], ["left", "Left of it"]]
+                                    current: root.curLinkSide
+                                    onPicked: id => root.setLinkV(id, root.curLinkGap, false)
+                                }
+                                NbSlider {
+                                    Layout.fillWidth: true
+                                    visible: root.curLinkTo !== ""
+                                    pal: root.pal; label: "Gap"; from: 0; to: 80; unit: " px"
+                                    value: root.curLinkGap
+                                    onPicked: v => root.setLinkV(root.curLinkSide, v, true)
+                                }
+                                ChipRow {
+                                    Layout.fillWidth: true
+                                    visible: root.curLinkTo !== "" && root.curSiblings.length > 1
+                                    pal: root.pal; label: "In line"; labelWidth: 84
+                                    options: root.slotOptions
+                                    current: root.curSlot
+                                    onPicked: id => root.setLinkSlot(id)
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    visible: root.curLinkTo !== ""
+                                    spacing: 14
+                                    Column {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text { width: parent.width; text: "Same colours as its group"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                        Text { width: parent.width; text: "Takes the colours of the first widget of the group and reads the wallpaper behind the whole group, so linked widgets never split into different colours."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap; lineHeight: 1.15 }
+                                    }
+                                    Toggle { pal: root.pal; on: root.curLook.groupColours; onToggled: root.setLookV("groupColours", !root.curLook.groupColours) }
+                                }
+                            }
+
+                            // ======================= Look: box, text, colour, finish
+                            WbSection {
+                                visible: root.tab === "look"
+                                pal: root.pal; title: "Box"
+                                ChipRow {
+                                    Layout.fillWidth: true
+                                    pal: root.pal; label: "Kind"; labelWidth: 84
+                                    options: WD.surfaces
+                                    current: root.curLook.surface
+                                    onPicked: id => root.setLookV("surface", id)
+                                }
+                                NbSlider {
+                                    Layout.fillWidth: true
+                                    visible: root.curLook.surface !== "clear"
+                                    pal: root.pal; label: "Opacity"; from: 0; to: 100; unit: " %"
+                                    value: Math.round(root.curLook.op * 100)
+                                    onPicked: v => root.setLookV("op", v / 100, true)
+                                }
+                                NbSlider {
+                                    Layout.fillWidth: true
+                                    visible: root.curLook.surface !== "clear" && root.curLook.surface !== "pill"
+                                    pal: root.pal; label: "Corners"; from: 0; to: 60; unit: " px"; zeroText: "Auto"
+                                    value: root.curLook.radius < 0 ? 0 : root.curLook.radius
+                                    onPicked: v => root.setLookV("radius", v === 0 ? -1 : v, true)
+                                }
+                                NbSlider {
+                                    Layout.fillWidth: true
+                                    pal: root.pal; label: "Inner space"; from: 0; to: 48; unit: " px"; zeroText: "Auto"
+                                    value: root.curLook.pad < 0 ? 0 : root.curLook.pad
+                                    onPicked: v => root.setLookV("pad", v === 0 ? -1 : v, true)
+                                }
+                            }
+                            WbSection {
+                                visible: root.tab === "look"
+                                pal: root.pal; title: "Text"
+                                ChipRow {
+                                    Layout.fillWidth: true
+                                    pal: root.pal; label: "Font"; labelWidth: 84
+                                    options: [["ui", "Clean"], ["serif", "Serif"], ["mono", "Code"]]
+                                    current: root.curLook.font
+                                    onPicked: id => root.setLookV("font", id)
+                                }
+                                NbSlider {
+                                    Layout.fillWidth: true
+                                    pal: root.pal; label: "Size"; from: 60; to: 180; unit: " %"
+                                    value: Math.round(root.curLook.fs * 100)
+                                    onPicked: v => root.setLookV("fs", v / 100, true)
+                                }
+                                NbSlider {
+                                    Layout.fillWidth: true
+                                    pal: root.pal; label: "Readability"; from: 0; to: 100; unit: " %"; zeroText: "Off"
+                                    value: Math.round(root.curLook.contrast * 100)
+                                    onPicked: v => root.setLookV("contrast", v / 100, true)
+                                }
+                            }
+                            WbSection {
+                                visible: root.tab === "look"
+                                pal: root.pal; title: "Colour"
+                                sub: root.curLinkTo !== "" && root.curLook.groupColours ? "This widget uses its group's colours (Place > Link). Switch that off to colour it on its own." : ""
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 14
+                                    Column {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text { width: parent.width; text: "Follow the wallpaper accent"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                        Text { width: parent.width; text: "Text, bars and box change with every wallpaper."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                                    }
+                                    Toggle { pal: root.pal; on: root.curLook.match; onToggled: root.setLookV("match", !root.curLook.match) }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Follow on all"; onClicked: root.edit(WD.setLookAll(root.layout, "match", true), false) }
+                                    ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Off on all"; onClicked: root.edit(WD.setLookAll(root.layout, "match", false), false) }
+                                }
+                                ChipRow {
+                                    Layout.fillWidth: true
+                                    visible: !root.curLook.match
+                                    pal: root.pal; label: "Lit colour"; labelWidth: 84
+                                    options: WD.tones
+                                    current: root.curLook.tone
+                                    onPicked: id => root.setLookV("tone", id)
+                                }
+                                Flow {
+                                    Layout.fillWidth: true
+                                    visible: root.curLook.tone === "custom" && !root.curLook.match
+                                    spacing: 8
+                                    Repeater {
+                                        model: (root.pal.swatches || []).slice(0, 8).map(function (c) { return String(c).toLowerCase() }).concat(WD.swatches)
+                                        delegate: Rectangle {
+                                            required property string modelData
+                                            width: 26; height: 26; radius: 13; color: modelData
+                                            border.width: root.curLook.color.toLowerCase() === modelData ? 3 : 1
+                                            border.color: root.curLook.color.toLowerCase() === modelData ? root.pal.text : root.pal.line
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setLookV("color", parent.modelData) }
+                                        }
+                                    }
+                                    WbText {
+                                        pal: root.pal; width: 110; height: 28; radius: 14
+                                        text: root.curLook.color; hintText: "#rrggbb"
+                                        onCommitted: t => { if (/^#[0-9a-fA-F]{6}$/.test(t)) root.setLookV("color", t.toLowerCase()) }
+                                    }
+                                }
+                                ChipRow {
+                                    Layout.fillWidth: true
+                                    visible: !root.curLook.match
+                                    pal: root.pal; label: "Text colour"; labelWidth: 84
+                                    options: [["theme", "Theme"], ["auto", "Auto"], ["accent", "Accent"], ["second", "Second"], ["split", "Split"], ["light", "White"], ["dark", "Dark"], ["custom", "My colour"]]
+                                    current: root.curLook.textTone
+                                    onPicked: id => root.setLookV("textTone", id)
+                                }
+                                Flow {
+                                    Layout.fillWidth: true
+                                    visible: root.curLook.textTone === "custom" && !root.curLook.match
+                                    spacing: 8
+                                    Repeater {
+                                        model: (root.pal.swatches || []).slice(0, 8).map(function (c) { return String(c).toLowerCase() }).concat(WD.swatches)
+                                        delegate: Rectangle {
+                                            required property string modelData
+                                            width: 26; height: 26; radius: 13; color: modelData
+                                            border.width: root.curLook.textColor.toLowerCase() === modelData ? 3 : 1
+                                            border.color: root.curLook.textColor.toLowerCase() === modelData ? root.pal.text : root.pal.line
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setLookV("textColor", parent.modelData) }
+                                        }
+                                    }
+                                    WbText {
+                                        pal: root.pal; width: 110; height: 28; radius: 14
+                                        text: root.curLook.textColor; hintText: "#rrggbb"
+                                        onCommitted: t => { if (/^#[0-9a-fA-F]{6}$/.test(t)) root.setLookV("textColor", t.toLowerCase()) }
+                                    }
+                                }
+                                NbSlider {
+                                    Layout.fillWidth: true
+                                    pal: root.pal; label: "Colour depth"; from: 0; to: 100; unit: " %"; zeroText: "Plain"
+                                    value: Math.round(root.curLook.depth * 100)
+                                    onPicked: v => root.setLookV("depth", v / 100, true)
+                                }
+                            }
+                            WbSection {
+                                visible: root.tab === "look"
+                                pal: root.pal; title: "Finish"
+                                Repeater {
+                                    model: [["halo", "Soft dark halo behind the words"], ["border", "Hairline edge"], ["shadow", "Soft shadow"]]
+                                    delegate: RowLayout {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        spacing: 14
+                                        Text { Layout.fillWidth: true; text: modelData[1]; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                        Toggle { pal: root.pal; on: root.curLook[modelData[0]] !== false; onToggled: root.setLookV(modelData[0], root.curLook[modelData[0]] === false) }
+                                    }
+                                }
+                            }
+
+                            // ======================= Styles: ready-made and your own
+                            WbSection {
+                                visible: root.tab === "styles"
+                                pal: root.pal; title: "Ready-made"; sub: "One click puts that look on this widget."
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Repeater {
+                                        model: WD.presets
+                                        delegate: Chip { required property var modelData; pal: root.pal; implicitHeight: 32; label: modelData.name; onClicked: root.applyStyleLook(modelData.look) }
+                                    }
+                                }
+                            }
+                            WbSection {
+                                visible: root.tab === "styles"
+                                pal: root.pal; title: "Yours"; sub: root.saved.length === 0 ? "Shape a look you like, name it and save it to reuse on other widgets." : ""
+                                Flow {
+                                    Layout.fillWidth: true
+                                    visible: root.saved.length > 0
+                                    spacing: 8
+                                    Repeater {
+                                        model: root.saved
+                                        delegate: Row {
+                                            required property var modelData
+                                            spacing: 4
+                                            Chip { pal: root.pal; implicitHeight: 32; label: modelData.name; on: true; onClicked: root.applyStyleLook(modelData.look) }
+                                            Rectangle {
+                                                width: 32; height: 32; radius: 16; color: dm.containsMouse ? Qt.alpha(root.pal.bad, 0.3) : Qt.alpha(root.pal.surface, 0.8); border.width: 1; border.color: root.pal.lineSoft
+                                                Text { anchors.centerIn: parent; text: "✕"; color: root.pal.text; font.pixelSize: 11 }
+                                                MouseArea { id: dm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.dropStyle(parent.parent.modelData.name) }
+                                            }
+                                        }
+                                    }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    WbText { Layout.fillWidth: true; pal: root.pal; text: root.newName; hintText: "Name for this look"; onCommitted: t => root.newName = t }
+                                    ActionChip { pal: root.pal; label: "Save this look"; doneLabel: "Saved"; disabled: root.newName.trim() === ""; onClicked: root.saveStyle() }
+                                }
+                            }
+                            Item { Layout.fillWidth: true; height: 6 }
                         }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            WbText { Layout.fillWidth: true; pal: root.pal; text: root.newName; hintText: "Name for this look"; onCommitted: t => root.newName = t }
-                            ActionChip { pal: root.pal; label: "Save this look"; doneLabel: "Saved"; disabled: root.newName.trim() === ""; onClicked: root.saveStyle() }
-                        }
-                        Item { Layout.fillWidth: true; height: 8 }
                     }
                 }
-                Item { visible: root.cur === null; Layout.preferredWidth: 470; Layout.fillHeight: true }
+                Item { visible: root.cur === null; Layout.preferredWidth: 480; Layout.fillHeight: true }
             }
         }
 
