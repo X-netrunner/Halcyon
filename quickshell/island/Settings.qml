@@ -2257,6 +2257,7 @@ Scope {
                 pal: root.pal
                 env: root.env
                 opt: root.opt
+                wallpaper: root.wallpaperPath
                 pick: root.wbPick
                 target: root.wbTarget
                 onTargetPicked: t => root.wbTarget = t
