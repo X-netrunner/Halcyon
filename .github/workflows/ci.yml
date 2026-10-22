@@ -73,8 +73,6 @@ jobs:
         run: python3 tests/test_weekly_sky.py
       - name: no script defines the same top-level constant or function twice (two RULES tables once broke >do)
         run: python3 tests/test_no_redefine.py
-      - name: password vault (old vaults still open, the HMAC seal refuses a changed byte or a wrong key, nothing is overwritten)
-        run: python3 tests/test_vault.py
 
   qml:
     runs-on: ubuntu-latest

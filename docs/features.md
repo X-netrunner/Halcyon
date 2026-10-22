@@ -127,15 +127,6 @@ whether its last reload succeeded and whether the `hx` feeds are up. `--quick` =
 runs it before it commits and stops on a failure, `HALCYON_PUSH_SKIP_CHECKS=1` skips it), `--rust` = also the CI clippy gate, a folder
 argument checks that checkout instead of `~/.config/Halcyon`.
 
-## Password vault
-`passman` (`scripts/halcyon-pass.py`): AES-256-CBC through openssl, and since this round every save also seals the file with
-HMAC-SHA256, so a changed byte, a swapped file or the wrong key is refused before anything is decrypted (and the file is left as it
-was). An older unsealed vault still opens and is sealed on its next save. The key lives next to the vault (`.vault.key`) unless you run
-`passman keyring on`: then it moves into the desktop keyring (gnome-keyring / KWallet through `secret-tool`), which unlocks with your
-login password, so a copy of `~/.local/state/island` alone no longer opens the vault. The key file is only removed after the keyring
-gave back the very same key and the vault opened with it; `passman keyring off` writes it back. `passman status` shows where the key
-is and whether the vault is sealed.
-
 ## Caffeine
 Keeps the screen awake: no dimming, no hypridle lock, no idle sleep, until you turn it off. **SUPER+ALT+C**, the **Caffeine** chip in the bottom-right panel (right-click = on for one hour), or `>caffeine` in the launcher. A small cup shows in the bar while it is on. It is a `systemd-inhibit` lock held by a transient user unit (`halcyon-caffeine.service`, `scripts/caffeine.sh on [minutes] | off | toggle | status`), so it vanishes on log out and never survives a reboot. hypridle honours it as long as `ignore_systemd_inhibit` is not true in `hypridle.conf`. (A manual `systemctl suspend` and the lid switch are not blocked on purpose.)
 
