@@ -79,7 +79,7 @@ static PROBE_HEADER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     )
     .case_insensitive(true)
     .build()
-    .unwrap()
+    .expect("valid regex")
 });
 
 static SUSPICIOUS_PATH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -88,7 +88,7 @@ static SUSPICIOUS_PATH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     )
     .case_insensitive(true)
     .build()
-    .unwrap()
+    .expect("valid regex")
 });
 
 #[derive(Clone)]
@@ -107,6 +107,7 @@ struct AppState {
 
 fn get_hostname() -> String {
     let mut buf = [0u8; 256];
+    // SAFETY: buf is a live buffer and its real length is passed; it is only read up to the NUL.
     let res = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
     if res == 0 {
         if let Ok(s) = std::ffi::CStr::from_bytes_until_nul(&buf) {
@@ -244,6 +245,7 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
     let uid = sys_uid(&user);
     let env_map = get_desktop_env(uid);
 
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let is_root = unsafe { libc::geteuid() == 0 };
     let mut cmd = if is_root {
         let mut c = Command::new("sudo");
@@ -692,16 +694,16 @@ fn generate_telnet_credentials() -> (String, String) {
     use rand::Rng;
     let mut rng = rand::thread_rng();
 
-    let mut user = (*TELNET_USERNAMES.choose(&mut rng).unwrap()).to_string();
+    let mut user = (*TELNET_USERNAMES.choose(&mut rng).expect("non-empty list")).to_string();
     if rng.gen_bool(0.45) {
         user.push_str(&rng.gen_range(1..100).to_string());
     }
 
-    let word = *TELNET_PASSWORD_WORDS.choose(&mut rng).unwrap();
+    let word = *TELNET_PASSWORD_WORDS.choose(&mut rng).expect("non-empty list");
     let years = ["2024", "2025", "2026"];
-    let year = years.choose(&mut rng).unwrap();
+    let year = years.choose(&mut rng).expect("non-empty list");
     let suffixes = ["", "", "1", "2", "123", "!", "@", "#", "!", "123", "456"];
-    let suffix = suffixes.choose(&mut rng).unwrap();
+    let suffix = suffixes.choose(&mut rng).expect("non-empty list");
 
     let pass = format!("{}{}{}", word, year, suffix);
     (user, pass)
@@ -933,7 +935,7 @@ impl<'a> TarBuilder<'a> {
         self.out.extend_from_slice(content);
         let rem = content.len() % 512;
         if rem != 0 {
-            self.out.extend(std::iter::repeat(0).take(512 - rem));
+            self.out.extend(std::iter::repeat_n(0, 512 - rem));
         }
     }
 }
@@ -1174,7 +1176,7 @@ fn execute_sandbox_command(
             if args.is_empty() {
                 return format!("{}: missing operand\n", base);
             }
-            let target = args.last().unwrap();
+            let target = args.last().expect("checked non-empty above");
             let full = sandbox_normalize(cwd, target);
             if base == "mkdir" && fs_map.contains_key(full.as_str()) {
                 format!("mkdir: cannot create directory '{}': File exists\n", target)
@@ -2264,6 +2266,7 @@ fn main() {
         return;
     }
 
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let is_root = unsafe { libc::geteuid() == 0 };
     if !is_root {
         eprintln!("[ERROR] Must run as root to bind ports below 1024");

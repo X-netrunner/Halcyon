@@ -26,6 +26,25 @@ get_monitors_json() {
 }
 
 # Returns: "INTERNAL_NAME EXTERNAL_NAME"
+# mon OUTPUT MODE POSITION SCALE [MIRROR_OF]  |  mon OUTPUT off
+# Hyprland 0.55+ with the Lua config refuses `hyprctl keyword` ("keyword can't work with non-legacy parsers", exit 0 all the same),
+# so the rule goes through `hyprctl eval` first; an older Hyprland / hyprlang config still gets the keyword form.
+mon() {
+    local lua legacy out
+    if [ "$2" = off ]; then
+        lua="hl.monitor({ output = \"$1\", disabled = true })"; legacy="$1,disable"
+    else
+        lua="hl.monitor({ output = \"$1\", mode = \"$2\", position = \"$3\", scale = $4${5:+, mirror = \"$5\"} })"
+        legacy="$1,$2,$3,$4${5:+,mirror,$5}"
+    fi
+    out=$(hyprctl eval "$lua" 2>&1)
+    [ "$out" = ok ] && return 0
+    out=$(hyprctl keyword monitor "$legacy" 2>&1)
+    [ "$out" = ok ] && return 0
+    echo "display-manager: Hyprland refused the monitor rule for ${1:-every screen}: $out" >&2
+    return 1
+}
+
 detect_monitors() {
     local json internal="" external=""
     json="$(get_monitors_json)"
@@ -56,8 +75,8 @@ apply_mirror() {
     fi
 
     # Mirror external to internal display with preferred mode
-    hyprctl keyword monitor "$internal,preferred,0x0,1" >/dev/null
-    hyprctl keyword monitor "$external,preferred,auto,1,mirror,$internal" >/dev/null
+    mon "$internal" preferred 0x0 1
+    mon "$external" preferred auto 1 "$internal"
 
     echo "MODE=mirror" > "$STATE_FILE"
     echo "INTERNAL=$internal" >> "$STATE_FILE"
@@ -77,8 +96,8 @@ apply_extend_right() {
         return 1
     fi
 
-    hyprctl keyword monitor "$internal,preferred,0x0,1" >/dev/null
-    hyprctl keyword monitor "$external,preferred,auto-right,1" >/dev/null
+    mon "$internal" preferred 0x0 1
+    mon "$external" preferred auto-right 1
 
     echo "MODE=extend-right" > "$STATE_FILE"
     notify "Extended Display (Right)" "Extended workspace with $external on the right." "video-display"
@@ -95,8 +114,8 @@ apply_extend_left() {
         return 1
     fi
 
-    hyprctl keyword monitor "$external,preferred,0x0,1" >/dev/null
-    hyprctl keyword monitor "$internal,preferred,auto-right,1" >/dev/null
+    mon "$external" preferred 0x0 1
+    mon "$internal" preferred auto-right 1
 
     echo "MODE=extend-left" > "$STATE_FILE"
     notify "Extended Display (Left)" "Extended workspace with $external on the left." "video-display"
@@ -113,8 +132,8 @@ apply_external_only() {
         return 1
     fi
 
-    hyprctl keyword monitor "$internal,disable" >/dev/null
-    hyprctl keyword monitor "$external,preferred,0x0,1" >/dev/null
+    mon "$internal" off
+    mon "$external" preferred 0x0 1
 
     echo "MODE=external-only" > "$STATE_FILE"
     notify "Presentation Only (External)" "Laptop screen disabled. Displaying exclusively on $external." "video-display"
@@ -126,9 +145,9 @@ apply_internal_only() {
     internal="${mons[0]:-}"
     external="${mons[1]:-}"
 
-    hyprctl keyword monitor "$internal,preferred,0x0,1" >/dev/null
+    mon "$internal" preferred 0x0 1
     if [[ -n "$external" ]]; then
-        hyprctl keyword monitor "$external,disable" >/dev/null
+        mon "$external" off
     fi
 
     echo "MODE=internal-only" > "$STATE_FILE"
@@ -136,7 +155,7 @@ apply_internal_only() {
 }
 
 apply_auto() {
-    hyprctl keyword monitor ",preferred,auto,1" >/dev/null
+    mon "" preferred auto 1
     echo "MODE=auto" > "$STATE_FILE"
     notify "Displays Reset" "All connected displays set to auto-detect preferred layout." "video-display"
 }

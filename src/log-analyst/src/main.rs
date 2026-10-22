@@ -140,6 +140,7 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
     let uid = sys_uid(&user);
     let env_map = get_desktop_env(uid);
 
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let is_root = unsafe { libc::geteuid() == 0 };
     let mut cmd = if is_root {
         let mut c = Command::new("sudo");

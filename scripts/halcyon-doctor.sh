@@ -220,6 +220,14 @@ nmap|sysmode counter-recon|nmap
 tcpdump|sysmode packet capture|tcpdump
 ufw|sysmode firewall and honeypot bans|ufw
 docker|sysmode honeypot runtime|docker
+hyprpicker|colour picker (Super + Shift + C; without it slurp + grim are used)|hyprpicker
+qrencode|Wi-Fi QR code|qrencode
+checkupdates|update count (halcyon updates)|pacman-contrib
+pactl|volume per app (halcyon mixer)|libpulse
+wtype|snippets typed into the window (without it: copy + Ctrl+V)|wtype
+kdeconnect-cli|phone tools (halcyon phone)|kdeconnect
+fuzzel|menus for snippets, windows, VPN and phones|fuzzel
+nmcli|VPN switch and Wi-Fi QR|networkmanager
 python3|Notes, local AI, calendar import, lyrics, Focus mode|python'
 missing=0; miss_pkgs=()
 while IFS='|' read -r cmd what pkg; do
