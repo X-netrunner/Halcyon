@@ -896,7 +896,7 @@ Scope {
                                                         visible: modelData.desc !== ""
                                                         text: modelData.desc
                                                         color: Qt.alpha(root.pal.text, 0.6); font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
-                                                        maximumLineCount: 2; elide: Text.ElideRight; wrapMode: Text.WordWrap
+                                                        textFormat: Text.PlainText; wrapMode: Text.WordWrap
                                                     }
                                                 }
                                             }

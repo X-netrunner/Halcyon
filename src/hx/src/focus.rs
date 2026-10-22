@@ -30,6 +30,7 @@ const FLAGS: [&str; 6] = ["POMODORO", "DND", "CAFFEINE", "BLOCK", "CLOSE_RUNNING
 
 // ------------------------------------------------------------------ paths
 fn rt() -> String {
+    // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| format!("/run/user/{}", unsafe { libc::getuid() }))
 }
 fn state_path() -> String { format!("{}/halcyon-focus.json", rt()) }                              // the live session (gone at logout)
@@ -334,6 +335,7 @@ fn alive(st: &Value) -> bool {
     if pid == 0 {
         return util::epoch() - nf(&st["t0"]) < 8.0; // the helper is still starting
     }
+    // SAFETY: kill() only sends a signal (0 = does the process exist); no memory is shared.
     unsafe { libc::kill(pid as i32, 0) == 0 }
 }
 
@@ -480,6 +482,7 @@ fn start_daemon() {
     // no systemd user manager: run the helper on its own
     let mut c = Command::new(&exe);
     c.args(["focus", "daemon"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    // SAFETY: runs in the forked child just before exec; prctl / setsid are async-signal-safe and nothing is allocated.
     unsafe {
         c.pre_exec(|| {
             libc::setsid();
@@ -737,6 +740,7 @@ fn next_phase(st: &mut Value, conf: &Conf) -> bool {
 extern "C" fn bye(_sig: libc::c_int) {
     // `hx focus stop` has already put everything back. At logout the island is gone too, so nothing is touched here:
     // the restore marker stays, and the next status / start (or the next login) puts Do not disturb / Caffeine back
+    // SAFETY: _exit is async-signal-safe and never returns.
     unsafe { libc::_exit(0) }
 }
 
@@ -748,6 +752,7 @@ fn daemon() -> i32 {
     let me = std::process::id() as i64;
     st["pid"] = json!(me);
     write_json(&state_path(), &st);
+    // SAFETY: bye() only calls _exit, which is async-signal-safe, so it is a valid signal handler.
     unsafe {
         libc::signal(libc::SIGTERM, bye as extern "C" fn(libc::c_int) as libc::sighandler_t);
         libc::signal(libc::SIGINT, bye as extern "C" fn(libc::c_int) as libc::sighandler_t);
@@ -803,7 +808,7 @@ fn daemon() -> i32 {
             Some(s) => s,
             None => {
                 std::thread::sleep(Duration::from_secs(1));
-                if (now as u64) % 10 == 0 {
+                if (now as u64).is_multiple_of(10) {
                     sock = hypr_socket();
                 }
                 continue;

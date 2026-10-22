@@ -18,7 +18,18 @@ function halcyon --description 'Open and control the Halcyon desktop from a term
         printf "  %-20s %s\n" "music" "lyrics and queue panel (music lyrics | music queue to pick the tab)"
         printf "  %-20s %s\n" "lyrics" "print the lyrics of what plays, in the terminal (any source: .lrc file, lrclib.net, lyrics.ovh, spotify_player)"
         printf "  %-20s %s\n" "queue" "print what plays next, in the terminal"
-        printf "  %-20s %s\n" "ai" "ai ask|do|clip|brief|explain|organise|lyrics: the local AI helpers (halcyon ai --help)"
+        printf "  %-20s %s\n" "colorpick" "pick a pixel on screen: its colour is copied (colorpick hex|rgb|hsl)"
+        printf "  %-20s %s\n" "measure" "drag a box on screen: its size in pixels is copied"
+        printf "  %-20s %s\n" "wifi-qr" "QR code of the Wi-Fi you are on (wifi-qr --text prints the code text)"
+        printf "  %-20s %s\n" "updates" "updates check|now|status|run: pending pacman / AUR updates"
+        printf "  %-20s %s\n" "snippets" "snippets list|add|rm|copy|type|pick: text you paste often ({date} {time} {clip})"
+        printf "  %-20s %s\n" "windows" "windows last|next|prev|pick|list: flip between open windows"
+        printf "  %-20s %s\n" "mixer" "mixer list|set|mute: volume per app (mixer set spotify 30)"
+        printf "  %-20s %s\n" "phone" "phone devices|send|text|ring|ping: KDE Connect"
+        printf "  %-20s %s\n" "zoom" "zoom in|out|reset|toggle: magnify the whole screen"
+        printf "  %-20s %s\n" "vpn" "vpn status|up|down|toggle: NetworkManager VPN / WireGuard / Tailscale"
+        printf "  %-20s %s\n" "ai" "ai ask|do|clip|brief|explain|safety|organise|lyrics: the local AI helpers (halcyon ai --help)"
+        printf "  %-20s %s\n" "selftest" "selftest [--quick] [--rust] [DIR]: the CI checks on this machine, plus is the island running and loaded"
         return 0
     end
 
@@ -45,9 +56,21 @@ function halcyon --description 'Open and control the Halcyon desktop from a term
         return $status
     end
 
-    # the local AI helpers (scripts/halcyon-ai.py): ask, do, clip, brief, explain, organise, lyrics. Only `do` needs the island
+    # the local AI helpers (scripts/halcyon-ai.py): ask, do, clip, brief, explain, safety, organise, lyrics. Only `do` needs the island
     if test "$argv[1]" = ai
         python3 $HOME/.config/Halcyon/scripts/halcyon-ai.py $rest
+        return $status
+    end
+
+    # the CI checks here, read-only (scripts/halcyon-selftest.sh); also without the island
+    if test "$argv[1]" = selftest
+        bash $HOME/.config/Halcyon/scripts/halcyon-selftest.sh $rest
+        return $status
+    end
+
+    # the everyday tools (scripts/halcyon-tools.py): colour picker, Wi-Fi QR, updates, snippets, windows, mixer, phone, zoom, VPN
+    if contains -- $argv[1] colorpick measure wifi-qr updates snippets snippet windows mixer phone zoom vpn
+        python3 $HOME/.config/Halcyon/scripts/halcyon-tools.py $argv
         return $status
     end
 

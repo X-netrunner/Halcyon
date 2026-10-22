@@ -17,7 +17,7 @@ fn backlight() -> Option<(String, f64)> {
     for e in std::fs::read_dir("/sys/class/backlight").ok()?.flatten() {
         let p = e.path().to_string_lossy().into_owned();
         let max: f64 = util::read(&format!("{}/max_brightness", p)).trim().parse().unwrap_or(0.0);
-        if max > 0.0 && best.as_ref().map_or(true, |(_, m)| max > *m) {
+        if max > 0.0 && best.as_ref().is_none_or(|(_, m)| max > *m) {
             best = Some((p, max));
         }
     }
@@ -53,6 +53,7 @@ pub fn run() {
         // child would be left behind, one more orphan on every open / close of the panel. PDEATHSIG makes the kernel kill it with us.
         let mut cmd = Command::new("pactl");
         cmd.arg("subscribe").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+        // SAFETY: runs in the forked child just before exec; prctl / setsid are async-signal-safe and nothing is allocated.
         unsafe {
             cmd.pre_exec(|| {
                 let _ = libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong);

@@ -1759,7 +1759,20 @@ ShellRoot {
     function randomWallpaper() {
         wallpaperLayer.next()
     }
+    // the everyday tools (scripts/halcyon-tools.py): a launcher entry "tool-<name>" runs the helper with these arguments
+    readonly property var toolArgs: ({
+        "colorpick": ["colorpick"], "measure": ["measure"], "wifi-qr": ["wifi-qr"],
+        "updates-now": ["updates", "now"], "updates-run": ["updates", "run"],
+        "snippets": ["snippets", "pick"], "windows": ["windows", "pick"], "mixer": ["mixer", "pick"],
+        "phone-text": ["phone", "text"], "phone-ring": ["phone", "ring"], "zoom": ["zoom", "toggle"], "vpn": ["vpn", "toggle"]
+    })
+    function runTool(name) {
+        var a = toolArgs[name]
+        if (!a) return
+        Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-tools.py"].concat(a))
+    }
     function runCommand(id) {
+        if (id.indexOf("tool-") === 0) { runTool(id.substring(5)); return }
         if (id.indexOf("profile-") === 0) {
             var p = id.substring(8)
             if (p === "auto") setAuto(); else setProfile(p)
