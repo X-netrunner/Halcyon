@@ -1589,7 +1589,8 @@ ShellRoot {
             return
         }
         // its own process group and a scope-less detach: the game must not die with the shell
-        Quickshell.execDetached([root.hgl, "run", id])
+        // its output (and any error before the game starts) goes to a file the Game Center reads to say what is happening
+        Quickshell.execDetached(["sh", "-c", "exec \"$1\" run \"$2\" >\"$3\" 2>&1", "sh", root.hgl, id, Quickshell.env("XDG_RUNTIME_DIR") + "/hgl-launch.out"])
     }
     // the island restarted while a game runs (a reload, a crash): hgl knows
     Process {
