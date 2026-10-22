@@ -787,6 +787,8 @@ Scope {
             { type: "custom", name: "desktopBuilder" }
         ] },
         { id: "widgets", title: "Widget builder", section: "Desktop", items: [
+            { type: "seg", key: "opt:widgetDim", label: "Dim the wallpaper", desc: "Darkens the wallpaper so your desktop widgets stay readable on light or busy pictures. Whole wallpaper: evenly everywhere (the default). Behind widgets only: a soft shade where a widget sits on a bright or busy part (Auto) or behind every widget; the rest of the picture keeps its full brightness, but neighbouring widgets can look uneven. The text colour follows the shade.", opts: [o("off", "Off"), o("wall", "Whole wallpaper"), o("auto", "Behind widgets: auto"), o("widgets", "Behind every widget")] },
+            { type: "slider", key: "opt:widgetDimAmt", def: 0.35, label: "How dark", min: 0.1, max: 0.8, step: 0.05, scale: 100, unit: " %", when: "opt:widgetDim=auto|widgets|wall" },
             { type: "toggle", key: "opt:widgetHalo", label: "Soft halo behind widget text", desc: "A faint dark glow behind the words of box-less desktop widgets, only where the wallpaper behind them is busy. Off = never, for every widget." },
             { type: "slider", key: "opt:widgetReadability", label: "Widget text readability", desc: "Added to every widget's own Readability setting: a stronger outline and a lighter text colour. 0 = each widget as you set it.", min: -30, max: 40, step: 5, def: 0, unit: " %", glyph: 0xF0A39 },
             { type: "custom", name: "widgetBuilder" }

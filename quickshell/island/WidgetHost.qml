@@ -86,9 +86,23 @@ Item {
     readonly property real fH: preview ? 1 : vh / Math.max(1, screenH)
     // on the lock screen the wallpaper is blurred (an even patch) and under a tint sheet, so the patch behind a widget is one even brightness (lockLum), not the desktop picture
     readonly property bool onLockBg: lockLum >= 0
-    readonly property real backLum: onLockBg ? lockLum : (pal ? pal.lumAt(fX, fY, fW, fH) : 0.1)
-    readonly property real backSpread: onLockBg ? 0 : (pal ? pal.lumSpreadAt(fX, fY, fW, fH) : 0)
-    readonly property real backMax: onLockBg ? lockLum : (pal ? pal.lumMaxAt(fX, fY, fW, fH) : 0.1)
+    readonly property real wallLum: onLockBg ? lockLum : (pal ? pal.lumAt(fX, fY, fW, fH) : 0.1)
+    readonly property real wallSpread: onLockBg ? 0 : (pal ? pal.lumSpreadAt(fX, fY, fW, fH) : 0)
+    readonly property real wallMax: onLockBg ? lockLum : (pal ? pal.lumMaxAt(fX, fY, fW, fH) : 0.1)
+    // ---- Dim behind widgets (Settings > Widget builder; opt.widgetDim): a dark shade between the wallpaper and the words.
+    //   wall     the whole wallpaper is dimmed (Wallpaper.qml draws it; the default: even, nothing patchy)
+    //   auto     a feathered shade behind this widget only when the patch is bright or busy (light wallpapers, mixed corners)
+    //   widgets  that shade behind every widget
+    //   off      nothing
+    // The colour choice below sees the wallpaper as it is AFTER the shade, so the text goes back to the plain light look.
+    readonly property string dimMode: gOpt.widgetDim || "wall"
+    readonly property real dimAmt: Math.max(0.1, Math.min(0.8, gOpt.widgetDimAmt !== undefined ? Number(gOpt.widgetDimAmt) : 0.35))
+    readonly property bool shadeHere: !onLockBg && !preview && bodyOp < 0.5
+                                      && (dimMode === "widgets" || (dimMode === "auto" && (wallMax > 0.15 || wallSpread > 0.12)))
+    readonly property real scrim: onLockBg || preview ? 0 : (dimMode === "wall" ? dimAmt : (shadeHere ? dimAmt : 0))
+    readonly property real backLum: wallLum * (1 - scrim)
+    readonly property real backSpread: wallSpread * (1 - scrim)
+    readonly property real backMax: wallMax * (1 - scrim)
     readonly property real effLum: backLum * (1 - bodyOp) + 0.012 * bodyOp     // linear luminance seen through the box (a dark glass box is ~0.012)
     readonly property bool themed: textToneEff === "theme"
     // 1) a BRIGHT patch: dark, accent-tinted text.   0.18 is where black text starts to beat white on contrast.
@@ -96,7 +110,9 @@ Item {
     //    so light wallpapers almost always fell through to the outlined "mixed" look)
     readonly property bool autoTone: textToneEff === "auto"
     readonly property real effMin: (backMax - backSpread) * (1 - bodyOp) + 0.012 * bodyOp
-    readonly property bool onBright: (themed || autoTone) && effLum > 0.22 && effMin >= 0.12
+    // with the wallpaper dimmed for the widgets (scrim) the patch must still be clearly bright AFTER the dim to get dark text: a pale
+    // part of a dimmed busy picture otherwise turned the text dark on what now looks mid-dark (the light look with an outline reads there)
+    readonly property bool onBright: (themed || autoTone) && effLum > (scrim > 0 ? 0.32 : 0.22) && effMin >= (scrim > 0 ? 0.2 : 0.12)
     // 2) a MIXED patch (pink next to black ...): neither colour reads on all of it, so light text with a strong dark outline, like subtitles
     readonly property bool onMixed: themed && !onBright && bodyOp < 0.5 && backMax > 0.2 && (backSpread >= 0.15 || effLum > 0.2)
     readonly property color accentRaw: toneEff === "custom" ? look.color : (toneEff === "second" ? pal.accent2 : pal.accent)
@@ -211,6 +227,26 @@ Item {
 
     // ---- the surface
     readonly property real corner: look.surface === "pill" ? height / 2 : (look.radius >= 0 ? Math.min(look.radius, height / 2) : pal.rLg)
+    // the shade of "Dim behind widgets": feathered over ~40 px so it reads as the wallpaper getting darker there, not as a box.
+    // Layer alpha a with 1 - (1 - a)^n = dimAmt, so the middle is exactly as dark as asked.
+    Item {
+        id: shade
+        visible: host.shadeHere
+        anchors.fill: parent
+        readonly property int n: 10
+        readonly property real a: 1 - Math.pow(1 - host.dimAmt, 1 / n)
+        Repeater {
+            model: shade.n
+            delegate: Rectangle {
+                required property int index
+                anchors.fill: parent
+                anchors.margins: -(index * 4 + 4)
+                radius: Math.max(host.corner, 12) + index * 4
+                color: Qt.rgba(0, 0, 0, shade.a)
+            }
+        }
+    }
+
     Glass {
         visible: host.look.surface === "glass" || host.look.surface === "pill"
         anchors.fill: parent

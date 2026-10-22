@@ -57,6 +57,8 @@ ShellRoot {
         deskLiveWord: true,        // the word HALCYON under the mark of the live sky
         widgetHalo: true,          // desktop widgets: the faint dark glow behind the words on a busy wallpaper (WidgetHost.qml)
         widgetReadability: 0,      // desktop widgets: percent added to every widget's own Readability (-30 .. 40)
+        widgetDim: "wall",         // off | wall | auto | widgets : dim the whole wallpaper (default) or only behind widgets, so they read (WidgetHost.qml, Wallpaper.qml)
+        widgetDimAmt: 0.35,        // how dark (0.1 .. 0.8)
         clockSeconds: false,       // show seconds in the bar clock
         clockDate: true,           // show the weekday and date next to the clock
         calOn: true,               // Calendar master switch (Super + R, >calendar, the clock click, reminders, auto Focus)
@@ -773,12 +775,20 @@ ShellRoot {
     // The flag is only READ here. It is removed further down, once the session lock really is up (lockScreen.locked):
     // login-watchdog.sh keeps waiting for the flag to disappear, so if the lock never engages it still ends the session
     // instead of leaving an auto-logged-in desktop open.
+    // Started from the tty1 login (launch/halcyon-login.sh exports HALCYON_LOGIN_LOCK=1; read at once, no file read): the desktop
+    // (wallpaper, bar, corner boxes) stays hidden until the lock screen is really up, so it never shows for a frame between the boot
+    // splash and the lock. Released when the flag turns out not to be there (an island restart later in the session), 700 ms after
+    // the lock engaged, or after 8 s whatever happens.
+    property bool startHold: Quickshell.env("HALCYON_LOGIN_LOCK") === "1"
+    Timer { id: startHoldT; interval: 700; onTriggered: root.startHold = false }
+    Timer { interval: 8000; running: root.startHold; onTriggered: root.startHold = false }
+    Connections { target: lockScreen; enabled: root.startHold; function onLockedChanged() { if (lockScreen.locked) startHoldT.restart() } }
     Process {
         running: true
         command: ["sh", "-c", "[ -f \"$HOME/.cache/island/lock-on-start\" ] && echo yes $(( $(date +%s) - $(cat \"$HOME/.local/state/island/last-seen\" 2>/dev/null || echo 0) ))"]
         stdout: StdioCollector { onStreamFinished: {
             var w = text.trim().split(" ")
-            if (w[0] !== "yes") return
+            if (w[0] !== "yes") { root.startHold = false; return }
             // armed either way (it marks the login lock); the splash itself is skipped when you were away less than splashAwayMin
             lockScreen.splashSkip = !root.awayLongEnough(Number(w[1]) * 1000)
             lockScreen.splashArm = true; lockScreen.lock(); splashMark.running = true
@@ -2505,7 +2515,7 @@ ShellRoot {
 
     // the wallpaper layer (circular reveal) lives in this same Quickshell process: one Qt/QML/GL stack instead of two.
     // `quickshell ipc -p ~/.config/Halcyon/quickshell/island call wallpaper next` still works (target "wallpaper" in Wallpaper.qml)
-    Wallpaper { id: wallpaperLayer; pal: pal; opt: root.opt; env: root; widgetsHidden: root.deskEditing; widgetsTop: root.deskTop }
+    Wallpaper { id: wallpaperLayer; visible: !root.startHold; pal: pal; opt: root.opt; env: root; widgetsHidden: root.deskEditing; widgetsTop: root.deskTop }
 
     // quickshell ipc -p ~/.config/Halcyon/quickshell/island call island <fn>
     IpcHandler {
@@ -2719,6 +2729,7 @@ ShellRoot {
 
     PanelWindow {
         id: win
+        visible: !root.startHold
 
         anchors { top: true; left: true; right: true }
         // FIXED height on purpose. Shrinking this surface while the bar is idle made every page open / close re-send the pointer
@@ -3436,7 +3447,7 @@ ShellRoot {
     // =====================================================================
     PanelWindow {
         id: corner
-        visible: !root.dropOn       // the drop-down (Settings > Bar > Drag the bar down) replaces this box
+        visible: !root.dropOn && !root.startHold       // the drop-down (Settings > Bar > Drag the bar down) replaces this box
 
         // the corner it opens from (Desktop builder > Where the boxes open): default bottom-right
         readonly property string spot: root.boxSpots.util
@@ -3615,6 +3626,7 @@ ShellRoot {
     // =====================================================================
     PanelWindow {
         id: appsWin
+        visible: !root.startHold
 
         // the corner it opens from (Desktop builder > Where the boxes open): default bottom-left
         readonly property string spot: root.boxSpots.apps

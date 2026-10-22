@@ -202,6 +202,14 @@ PanelWindow {
         env: wallpaper.env
     }
 
+    // Dim behind widgets: Whole wallpaper (Settings > Widget builder; WidgetHost.qml does the other modes, around each widget)
+    Rectangle {
+        anchors.fill: parent
+        color: "black"
+        visible: !wallpaper.opt || (wallpaper.opt.widgetDim || "wall") === "wall"
+        opacity: Math.max(0.1, Math.min(0.8, wallpaper.opt && wallpaper.opt.widgetDimAmt !== undefined ? Number(wallpaper.opt.widgetDimAmt) : 0.35))
+    }
+
     // the desktop widgets (Widget builder = how each looks, Desktop builder / desktop editor = where they sit)
     DeskWidgets {
         anchors.fill: parent
