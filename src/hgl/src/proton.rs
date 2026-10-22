@@ -140,7 +140,9 @@ pub fn parse_releases(json: &str, fam: Family, cpu_v3: bool) -> Vec<Release> {
             .iter()
             .filter(|u| {
                 let b = base(u);
-                match fam {
+                // GE-Proton 11 ships -aarch64 and -x86_64 tarballs side by side (CachyOS: -arm64): never the ARM one
+                let arm = b.contains("aarch64") || b.contains("arm64");
+                !arm && match fam {
                     Family::Ge => b.starts_with("GE-Proton") && b.ends_with(".tar.gz"),
                     Family::Cachy => b.starts_with("proton-cachyos") && b.ends_with(".tar.xz"),
                 }
@@ -188,9 +190,84 @@ fn curl_text(url: &str) -> Result<String, String> {
 }
 
 pub fn available(fam: Family, count: usize) -> Result<Vec<Release>, String> {
+    available_for(fam, count, None)
+}
+
+/// A GitHub token, when there is one: GITHUB_TOKEN / GH_TOKEN, or the `gh` CLI's login. It lifts the API limit from 60 requests an
+/// hour per address (shared by everyone behind the same router, so a campus network runs out fast) to 5000.
+fn gh_token() -> Option<String> {
+    let ok = |t: &str| !t.is_empty() && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    for v in ["GITHUB_TOKEN", "GH_TOKEN"] {
+        if let Ok(t) = std::env::var(v) {
+            if ok(t.trim()) {
+                return Some(t.trim().to_string());
+            }
+        }
+    }
+    if have("gh") {
+        return out("gh", &["auth", "token"]).map(|t| t.trim().to_string()).filter(|t| ok(t));
+    }
+    None
+}
+
+/// The releases JSON from the GitHub API (with the token if there is one; it goes in a 0600 header file, never on a command line).
+fn api_releases(fam: Family, count: usize) -> Option<String> {
     let url = format!("https://api.github.com/repos/{}/releases?per_page={}", fam.repo(), count.clamp(1, 30));
-    let json = curl_text(&url)?;
-    let r = parse_releases(&json, fam, cpu_has_v3());
+    if let Some(t) = gh_token() {
+        if let Some(b) = curl_run(&url, Some(&format!("Authorization: Bearer {t}")), None) {
+            return Some(b);
+        }
+    }
+    curl_run(&url, None, None)
+}
+
+/// The same releases from github.com's own pages, which the API limit does not cover: the tags from releases.atom, the files of
+/// each from its expanded_assets page. Written out as the API's JSON shape so parse_releases reads both. `want`: a tag (only that one
+/// is read), "latest" (stops at the first release with a usable file), or None (the newest `count`).
+fn web_releases(fam: Family, count: usize, want: Option<&str>) -> Option<String> {
+    let repo = fam.repo();
+    let atom = curl_run(&format!("https://github.com/{repo}/releases.atom"), None, None)?;
+    let mut tags: Vec<String> = Vec::new();
+    for part in atom.split("/releases/tag/").skip(1) {
+        let t: String = part.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+')).collect();
+        if !t.is_empty() && !tags.contains(&t) {
+            tags.push(t);
+        }
+    }
+    let mut json = String::from("[");
+    for tag in tags.iter().take(count.clamp(1, 30)) {
+        if want.is_some_and(|w| w != "latest" && w != tag) {
+            continue;
+        }
+        let Some(html) = curl_run(&format!("https://github.com/{repo}/releases/expanded_assets/{tag}"), None, None) else { continue };
+        let prefix = format!("/{repo}/releases/download/{tag}/");
+        let files: Vec<String> = html
+            .split("href=\"")
+            .skip(1)
+            .filter_map(|h| h.split('"').next())
+            .filter(|h| h.starts_with(&prefix) && !h.contains(['<', '>', ' ']))
+            .map(|h| format!("{{\"browser_download_url\":\"https://github.com{h}\"}}"))
+            .collect();
+        json.push_str(&format!("{{\"tag_name\":\"{tag}\",\"assets\":[{}]}},", files.join(",")));
+        if want == Some("latest") && !parse_releases(&format!("{}]", json.trim_end_matches(',')), fam, cpu_has_v3()).is_empty() {
+            break;
+        }
+    }
+    Some(format!("{}]", json.trim_end_matches(',')))
+}
+
+/// `want`: the tag being installed, or "latest" (the web pages are then read only as far as needed); None = the newest `count`.
+fn available_for(fam: Family, count: usize, want: Option<&str>) -> Result<Vec<Release>, String> {
+    let v3 = cpu_has_v3();
+    if let Some(json) = api_releases(fam, count) {
+        let r = parse_releases(&json, fam, v3);
+        if !r.is_empty() {
+            return Ok(r);
+        }
+    }
+    // the API refused (its hourly limit) or had nothing usable: github.com's pages
+    let json = web_releases(fam, count, want).ok_or("could not reach GitHub (offline?)")?;
+    let r = parse_releases(&json, fam, v3);
     if r.is_empty() {
         return Err("GitHub answered, but no matching release files were found".into());
     }
@@ -215,7 +292,9 @@ pub fn install(spec: &str, fam: Family, cfg: &mut Conf) -> Result<String, String
             return Err(format!("{t} is not installed"));
         }
     }
-    let releases = available(fam, 12)?;
+    // the newest only needs one release; a named tag is looked for among the newest 12
+    let latest = spec == "latest" || spec.is_empty();
+    let releases = available_for(fam, if latest { 5 } else { 12 }, Some(if latest { "latest" } else { spec }))?;
     let rel = if spec == "latest" || spec.is_empty() {
         releases.first()
     } else {
@@ -411,6 +490,19 @@ pub fn unlink_steam_all() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ge_11_picks_the_x86_64_tarball_not_aarch64() {
+        let j = r#"[{"tag_name":"GE-Proton11-11","assets":[
+            {"browser_download_url":"https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton11-11/GE-Proton11-11-aarch64.sha512sum"},
+            {"browser_download_url":"https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton11-11/GE-Proton11-11-aarch64.tar.gz"},
+            {"browser_download_url":"https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton11-11/GE-Proton11-11-x86_64.sha512sum"},
+            {"browser_download_url":"https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton11-11/GE-Proton11-11-x86_64.tar.gz"}]}]"#;
+        let r = parse_releases(j, Family::Ge, true);
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].tarball, "GE-Proton11-11-x86_64.tar.gz");
+        assert!(r[0].sum_url.ends_with("GE-Proton11-11-x86_64.sha512sum"));
+    }
+
     use super::*;
 
     const GE: &str = r#"[{"url":"x","tag_name":"GE-Proton10-4","assets":[{"name":"GE-Proton10-4.sha512sum","browser_download_url":"https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton10-4/GE-Proton10-4.sha512sum"},{"name":"GE-Proton10-4.tar.gz","browser_download_url":"https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton10-4/GE-Proton10-4.tar.gz"}]},{"tag_name":"GE-Proton10-3","assets":[{"browser_download_url":"https://x/GE-Proton10-3.tar.gz"},{"browser_download_url":"https://x/GE-Proton10-3.sha512sum"}]}]"#;
