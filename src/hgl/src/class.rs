@@ -329,6 +329,7 @@ pub fn suggest(g: &Game, m: &Machine) -> Vec<Change> {
     if g.source == "steam" {
         return v; // Steam starts its games: Proton, wrappers, gamescope and the environment are set in Steam
     }
+    let flat = g.source == "flatpak";     // its own sandbox: no wrappers or gamescope, the environment still applies
     let mut wr = g.wrappers.clone();
     if !wr.iter().any(|w| w == "gamemode") {
         wr.insert(0, "gamemode".into());
@@ -337,7 +338,9 @@ pub fn suggest(g: &Game, m: &Machine) -> Vec<Change> {
     if m.class == 'D' {
         wr.retain(|w| w != "mangohud");
     }
-    want("wrappers", &wr.join(","), &g.wrappers.join(","), "gamemode asks the CPU and GPU for their performance mode");
+    if !flat {
+        want("wrappers", &wr.join(","), &g.wrappers.join(","), "gamemode asks the CPU and GPU for their performance mode");
+    }
     // gamescope: render at 720p and upscale with FSR only where the GPU needs it; elsewhere it only adds latency
     let scope = if m.class == 'D' { "fsr1080" } else { "" };
     let scope_why = if m.class == 'D' {
@@ -345,7 +348,7 @@ pub fn suggest(g: &Game, m: &Machine) -> Vec<Change> {
     } else {
         "the GPU is fast enough to render at full resolution; gamescope would only add a little latency"
     };
-    if !(scope.is_empty() && !["", "native", "1080p", "1440p", "fsr1080", "fsr1440"].contains(&g.gamescope.as_str())) {
+    if !flat && !(scope.is_empty() && !["", "native", "1080p", "1440p", "fsr1080", "fsr1440"].contains(&g.gamescope.as_str())) {
         // custom gamescope options are yours: left alone
         want("gamescope", scope, &g.gamescope, scope_why);
     }
@@ -358,7 +361,7 @@ pub fn suggest(g: &Game, m: &Machine) -> Vec<Change> {
         want("env.__VK_LAYER_NV_optimus", "NVIDIA_only", env("__VK_LAYER_NV_optimus"), why);
         want("env.__GLX_VENDOR_LIBRARY_NAME", "nvidia", env("__GLX_VENDOR_LIBRARY_NAME"), why);
     }
-    if nvidia && best.map(|b| b.name.to_ascii_lowercase().contains("rtx")).unwrap_or(false) {
+    if !flat && nvidia && best.map(|b| b.name.to_ascii_lowercase().contains("rtx")).unwrap_or(false) {
         want("env.PROTON_ENABLE_NVAPI", "1", env("PROTON_ENABLE_NVAPI"), "lets games offer DLSS and NVIDIA Reflex");
     }
     v
@@ -381,8 +384,8 @@ pub struct ProtonTip {
 }
 
 pub fn proton_tip(g: &Game, m: &Machine, installed: &[String], current: Option<&str>, cpu_v3: bool) -> Option<ProtonTip> {
-    if g.source == "steam" {
-        return None; // Steam picks Proton for its own games (Properties > Compatibility)
+    if g.source == "steam" || g.source == "flatpak" {
+        return None; // Steam picks Proton for its own games (Properties > Compatibility); a Flatpak game is native
     }
     let is_ge = |n: &str| n.to_ascii_lowercase().starts_with("ge-proton");
     let is_cachy = |n: &str| n.to_ascii_lowercase().starts_with("proton-cachyos");

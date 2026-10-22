@@ -8,6 +8,7 @@ mod class;
 mod doctor;
 mod epic;
 mod fixes;
+mod flatpak;
 mod gog;
 mod json;
 mod proton;
@@ -36,6 +37,7 @@ Library
   hgl import steam                        read the Steam library (appmanifests, cover art)
   hgl import epic                         add the games legendary has installed
   hgl import gog [<folder> ...]           add the GOG games found in the install folders (and any folder you name)
+  hgl import flatpak                      add the installed Flatpak apps that are games (Sober ...)
   hgl art [<id>] [--force]                fetch cover art (Steam CDN, Epic, GOG; SteamGridDB with your key)
   hgl fixes <id> [--apply]                known notes and fixes for a game (see fixes.db)
 
@@ -184,6 +186,15 @@ fn game_status(g: &Game, cfg: &Conf, have_umu: bool, have_runtime: bool) -> (&'s
     if g.source == "steam" {
         if !have("steam") {
             return ("attention", "Steam is not installed".into());
+        }
+        return ("ready", String::new());
+    }
+    if g.source == "flatpak" {
+        if !have("flatpak") {
+            return ("attention", "flatpak is not installed".into());
+        }
+        if run::looks_crashed(g.last_exit, g.last_run_secs) {
+            return ("attention", format!("last run ended with code {} after {}s", g.last_exit.unwrap_or(-1), g.last_run_secs));
         }
         return ("ready", String::new());
     }
@@ -428,6 +439,11 @@ fn cmd_import(rest: &[String]) -> Result<i32, String> {
         "epic" => {
             let r = epic::import()?;
             finish_import("Epic", &r)
+        }
+        "flatpak" => {
+            let (added, updated, removed) = flatpak::import()?;
+            println!("Flatpak: {added} added, {updated} updated, {removed} no longer installed (removed from the library)");
+            Ok(0)
         }
         "gog" => {
             let extra: Vec<String> = a.pos.iter().skip(1).cloned().collect();
