@@ -108,7 +108,7 @@ Item {
     readonly property var cmdOrder: [
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
-        "calendar", "notes", "notesall", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-phone-text", "tool-phone-ring", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
+        "calendar", "notes", "notesall", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "gamecenter", "games", "games-stop",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
@@ -148,8 +148,6 @@ Item {
         { id: "tool-snippets", name: "Paste a snippet", desc: "Pick a saved text (address, signature, reply ...) and it is typed into the window you were in. Add one with: halcyon snippets add <name> <text>", glyph: 0xF0E15, kw: "snippet snippets text expander template paste type canned reply signature", cat: "tools" },
         { id: "tool-windows", name: "Switch window", desc: "A list of every open window, most recently used first (Alt + Shift + Tab). Alt + Tab flips to the previous one", glyph: 0xF05AC, kw: "window windows switch alt tab app focus list", cat: "tools" },
         { id: "tool-mixer", name: "Volume per app", desc: "Choose an app that plays sound and set its own volume, or mute it. In a terminal: halcyon mixer set spotify 30", glyph: 0xF057E, kw: "volume mixer app per application spotify discord sound audio mute", cat: "tools" },
-        { id: "tool-phone-text", name: "Send clipboard to phone", desc: "Send what you copied to your phone (KDE Connect, paired once)", glyph: 0xF011C, kw: "phone android kdeconnect send clipboard text share", cat: "tools" },
-        { id: "tool-phone-ring", name: "Find my phone", desc: "Make your phone ring (KDE Connect)", glyph: 0xF011C, kw: "phone find ring lost android kdeconnect", cat: "tools" },
         { id: "tool-zoom", name: "Magnifier", desc: "Zoom the whole screen in and out (Super + Alt + Z toggles 2x); good for small text and for checking pixels", glyph: 0xF0349, kw: "zoom magnifier magnify screen enlarge accessibility lens", cat: "tools" },
         { id: "tool-vpn", name: "VPN on / off", desc: "Switch your VPN (NetworkManager, WireGuard or Tailscale) on or off; with several it asks which", glyph: 0xF0582, kw: "vpn wireguard tailscale network tunnel privacy openvpn", cat: "tools" },
         { id: "tour", name: "Guided tour", desc: "Replay the walkthrough of the island, its panels and shortcuts", glyph: 0xF02D6, kw: "tutorial help intro welcome walkthrough onboarding whats new release notes learn", cat: "system" },

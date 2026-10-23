@@ -1862,7 +1862,7 @@ ShellRoot {
         "colorpick": ["colorpick"], "measure": ["measure"], "wifi-qr": ["wifi-qr"],
         "updates-now": ["updates", "now"], "updates-run": ["updates", "run"],
         "snippets": ["snippets", "pick"], "windows": ["windows", "pick"], "mixer": ["mixer", "pick"],
-        "phone-text": ["phone", "text"], "phone-ring": ["phone", "ring"], "zoom": ["zoom", "toggle"], "vpn": ["vpn", "toggle"]
+        "zoom": ["zoom", "toggle"], "vpn": ["vpn", "toggle"]
     })
     // the ones `hal tools` has (Rust, ~1 ms to start) run there; the rest, or any without hal built, in the Python helper
     readonly property var halTools: ["colorpick", "measure", "zoom", "snippets", "windows"]
@@ -2153,9 +2153,16 @@ ShellRoot {
         command: [root.hx, "disk", "10"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.disks = JSON.parse(d) } catch (e) {} } }
     }
+    // every 2 s on the performance page, every 6 s for a desktop GPU widget alone: each read of an awake NVIDIA GPU starts
+    // nvidia-smi (~40 ms of CPU)
     Process {
-        running: (root.page === "perf" || root.deskNeeds.gpu) && !root.lean
+        running: root.page === "perf" && !root.lean
         command: ["bash", root.cfg + "/island/scripts/gpu.sh", "2"]
+        stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.gpu = JSON.parse(d) } catch (e) {} } }
+    }
+    Process {
+        running: root.page !== "perf" && root.deskNeeds.gpu && !root.lean
+        command: ["bash", root.cfg + "/island/scripts/gpu.sh", "6"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.gpu = JSON.parse(d) } catch (e) {} } }
     }
     property bool netLegacy: false
@@ -2412,18 +2419,26 @@ ShellRoot {
     }
 
     // ---- the desktop is hidden under windows (Hyprland's window list for the wallpaper's screen: its workspace and an open special
-    // workspace cover >= 92 % of it). The moving stars stop drawing then; nobody sees them, and every star tick also made Hyprland
-    // re-blur the windows above. Re-checked after window events and every 5 s while the stars are on (a floating window's drag or
-    // resize sends no event).
+    // workspace cover >= 92 % of it). The moving stars and the desktop widgets stop drawing then; nobody sees them, and every star
+    // tick or widget update also made Hyprland re-blur the windows above. Re-checked after window events and every 5 s while they
+    // are on (a floating window's drag or resize sends no event). An event that can uncover it shows them again at once, before
+    // the check: a closed window never leaves an empty desktop for a moment.
     property bool deskCovered: false
-    readonly property bool deskCoverWatch: (opt.deskStars === true || opt.deskLive === "on" || opt.deskLive === "sky") && !gaming && !lockScreen.locked
+    property string coverFocus: ""          // the focused window's address at the last activewindowv2
+    readonly property bool deskCoverWatch: (opt.deskStars === true || opt.deskLive === "on" || opt.deskLive === "sky" || opt.deskWidgetsOn !== false) && !gaming && !lockScreen.locked
     Connections {
         target: Hyprland
         enabled: root.deskCoverWatch
         function onRawEvent(event) {
             var n = event.name
+            // activewindowv2 also comes on every title change of the focused window (a terminal's spinner: once a second);
+            // only a focus change to another window counts
+            if (n === "activewindowv2") { if (event.data === root.coverFocus) return; root.coverFocus = event.data }
             if (n === "openwindow" || n === "closewindow" || n === "movewindowv2" || n === "changefloatingmode" || n === "fullscreen"
-                || n === "workspacev2" || n === "activespecial" || n === "activespecialv2" || n === "focusedmonv2" || n === "activewindowv2") coverT.restart()
+                || n === "workspacev2" || n === "activespecial" || n === "activespecialv2" || n === "focusedmonv2" || n === "activewindowv2") {
+                if (n !== "openwindow" && n !== "activewindowv2") root.deskCovered = false
+                coverT.restart()
+            }
         }
     }
     Timer { id: coverT; interval: 300; onTriggered: if (!coverProc.running) coverProc.running = true }

@@ -11,6 +11,8 @@
 # high shimmer, and a long soft room. Login opens up (C major 9), unlock is a short warm swell, shutdown settles downwards.
 # SOUND_VERSION: bump it when the sounds change, so cached copies are written again.
 # Played with pw-play, paplay, aplay or ffplay, whichever is installed first; with none of them nothing happens.
+# Under the Plymouth boot splash the login sound plays from halcyon-plymouth.sh's helper (ALSA, before PipeWire runs): it reads the
+# card you listen on from .alsa here (written on every play), and leaves /run/halcyon-boot-sound, so the login splash plays no second one.
 set -u
 dir="${XDG_CACHE_HOME:-$HOME/.cache}/island/sounds"
 kind="login"; ifon=0; wait=0
@@ -173,16 +175,26 @@ case "$kind" in
   *) echo "usage: splash-sound.sh login|unlock|shutdown|make" >&2; exit 2 ;;
 esac
 
+# the boot splash just played it (halcyon-boot-sound.service, within the last 20 s): not twice
+if [ "$kind" = login ] && [ $ifon -eq 1 ] && [ -r /run/halcyon-boot-sound ] && \
+   awk -v up="$(cut -d' ' -f1 /proc/uptime)" -v st="$(cat /run/halcyon-boot-sound)" 'BEGIN { exit !(up - st < 20) }'; then
+  exit 0
+fi
 f="$dir/$kind.wav"
 # cached copies from an older version of the sounds are written again
 { [ -s "$f" ] && [ "$(cat "$dir/.version" 2>/dev/null)" = "$SOUND_VERSION" ]; } || make_all
 [ -s "$f" ] || exit 0
+s=""
 if [ $wait -eq 1 ]; then         # a real output (not the dummy sink) within 4 s, else play anyway
   for _ in $(seq 40); do
     s=$(wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null) && ! grep -q 'auto_null\|Dummy' <<<"$s" && break
     sleep 0.1
   done
-fi
+else s=$(wpctl inspect @DEFAULT_AUDIO_SINK@ 2>/dev/null); fi
+# the ALSA card and device of that output ("sofhdadsp,0"), for the boot splash's sound
+card=$(sed -n 's/^ *alsa\.id = "\([A-Za-z0-9_-]*\)"$/\1/p' <<<"$s" | head -1)
+pdev=$(sed -n 's/^ *alsa\.device = "\([0-9]*\)"$/\1/p' <<<"$s" | head -1)
+[ -n "$card" ] && [ -n "$pdev" ] && [ "$(cat "$dir/.alsa" 2>/dev/null)" != "$card,$pdev" ] && echo "$card,$pdev" >"$dir/.alsa" 2>/dev/null
 if   command -v pw-play >/dev/null 2>&1; then exec pw-play "$f" >/dev/null 2>&1
 elif command -v paplay  >/dev/null 2>&1; then exec paplay "$f" >/dev/null 2>&1
 elif command -v aplay   >/dev/null 2>&1; then exec aplay -q "$f" >/dev/null 2>&1

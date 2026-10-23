@@ -25,7 +25,6 @@ function halcyon --description 'Open and control the Halcyon desktop from a term
         printf "  %-20s %s\n" "snippets" "snippets list|add|rm|copy|type|pick: text you paste often ({date} {time} {clip})"
         printf "  %-20s %s\n" "windows" "windows last|next|prev|pick|list: flip between open windows"
         printf "  %-20s %s\n" "mixer" "mixer list|set|mute: volume per app (mixer set spotify 30)"
-        printf "  %-20s %s\n" "phone" "phone devices|send|text|ring|ping: KDE Connect"
         printf "  %-20s %s\n" "zoom" "zoom in|out|reset|toggle: magnify the whole screen"
         printf "  %-20s %s\n" "vpn" "vpn status|up|down|toggle: NetworkManager VPN / WireGuard / Tailscale"
         printf "  %-20s %s\n" "ai" "ai ask|do|clip|brief|explain|safety|organise|lyrics: the local AI helpers (halcyon ai --help)"
@@ -69,7 +68,7 @@ function halcyon --description 'Open and control the Halcyon desktop from a term
     end
 
     # the everyday tools (scripts/halcyon-tools.py): colour picker, Wi-Fi QR, updates, snippets, windows, mixer, phone, zoom, VPN
-    if contains -- $argv[1] colorpick measure wifi-qr updates snippets snippet windows mixer phone zoom vpn
+    if contains -- $argv[1] colorpick measure wifi-qr updates snippets snippet windows mixer zoom vpn
         python3 $HOME/.config/Halcyon/scripts/halcyon-tools.py $argv
         return $status
     end

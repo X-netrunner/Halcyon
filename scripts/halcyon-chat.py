@@ -27,7 +27,6 @@ Commands inside the chat:
 import importlib.util
 import json
 import os
-import re
 import sys
 import subprocess
 import select
@@ -37,6 +36,20 @@ import urllib.error
 HOME = os.path.expanduser("~")
 RICE = os.environ.get("HALCYON_DIR", os.path.join(HOME, ".config/Halcyon"))
 URL = "http://127.0.0.1:11434/api/chat"
+# The context window every Halcyon AI script asks for: Ollama loads the model again whenever it changes between two requests,
+# so chat, agent, advisor, notes and the brief all use the same one (keep it equal in each of them).
+NUM_CTX = 8192
+KEEP_ALIVE = "30m"
+# Gaming mode is on (scripts/gamemode.sh writes this file, and unloads the models): the GPU memory is the game's, so no model is
+# loaded now. Only a regular file of ours counts: /dev/shm is writable by every local user.
+GAMING_FLAG = "/dev/shm/halcyon-gamemode"
+
+def gaming():
+    try:
+        st = os.lstat(GAMING_FLAG)
+    except OSError:
+        return False
+    return (st.st_mode & 0o170000) == 0o100000 and st.st_uid == os.getuid()
 HIST = os.path.join(HOME, ".local/state/halcyon/chat_history")
 ISLAND_LOG = os.path.join(HOME, ".cache/island/quickshell-island.log")
 MAX_MSGS = 28
@@ -174,13 +187,21 @@ class ThinkFilter:
     def flush(self):
         return "" if self.inside else self.buf
 
+def ctx_warn(chunk):
+    """Ollama silently drops the oldest part of a prompt that does not fit (the system prompt first): say so when it is close."""
+    used = chunk.get("prompt_eval_count") or 0
+    if used >= 0.9 * NUM_CTX and not CTX_WARNED[0]:
+        CTX_WARNED[0] = True
+        print(f"\033[2m(the conversation is {used} of {NUM_CTX} tokens: older parts, the instructions first, will be dropped; /clear starts afresh)\033[0m")
+CTX_WARNED = [False]
+
 def ask(messages):
     payload = {
         "model": model(),
         "messages": messages,
         "stream": True,
-        "keep_alive": "30m",
-        "options": {"temperature": 0.35, "num_ctx": 4096}
+        "keep_alive": KEEP_ALIVE,
+        "options": {"temperature": 0.35, "num_ctx": NUM_CTX}
     }
     req = urllib.request.Request(URL, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
     f, text = ThinkFilter(), []
@@ -196,6 +217,7 @@ def ask(messages):
                     text.append(piece)
                     print(piece, end="", flush=True)
                 if chunk.get("done"):
+                    ctx_warn(chunk)
                     break
         tail = f.flush()
         if tail:
@@ -376,10 +398,34 @@ def ai_enabled():
     return not os.path.exists(AI_OFF_FLAG)
 
 
+def gaming_ok():
+    """Gaming mode: the model would take GPU memory from the game. Asked at a terminal (and then let go right after each answer);
+    refused when nobody can answer."""
+    global KEEP_ALIVE
+    if not gaming():
+        return True
+    if not sys.stdin.isatty():
+        print("Gaming mode is on: the AI is paused so the game keeps the GPU memory. Ask again when Gaming mode is off.")
+        return False
+    try:
+        ans = input("Gaming mode is on: loading the model takes GPU memory from the game. Ask anyway? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    if ans not in ("y", "yes"):
+        return False
+    KEEP_ALIVE = 0                  # the model is unloaded again right after each answer
+    for m in (ADV, AG):
+        if m is not None:
+            m.KEEP_ALIVE = 0
+    return True
+
 def main():
     args = sys.argv[1:]
     if not ai_enabled():
         print(AI_OFF_MSG)
+        return
+    if not gaming_ok():
         return
     piped = check_piped_input()
 

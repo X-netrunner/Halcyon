@@ -859,17 +859,35 @@ def try_dispatch_keywords(prompt):
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 LAST_LLM_ERROR = ""
+# The context window every Halcyon AI script asks for: Ollama loads the model again whenever it changes between two requests,
+# so chat, agent, advisor, notes and the brief all use the same one (keep it equal in each of them).
+NUM_CTX = 8192
+KEEP_ALIVE = "30m"            # halcyon-chat.py sets 0 for a question asked while Gaming mode is on
+# Gaming mode is on (scripts/gamemode.sh writes this file, and unloads the models): the GPU memory is the game's, so no model is
+# loaded now. Only a regular file of ours counts: /dev/shm is writable by every local user.
+GAMING_FLAG = "/dev/shm/halcyon-gamemode"
+
+def gaming():
+    try:
+        st = os.lstat(GAMING_FLAG)
+    except OSError:
+        return False
+    return (st.st_mode & 0o170000) == 0o100000 and st.st_uid == os.getuid()
+
 
 def ollama_generate(prompt, schema=None, num_predict=320, temperature=0.2, stream=False, timeout=90):
     global LAST_LLM_ERROR
     LAST_LLM_ERROR = ""
+    if gaming() and KEEP_ALIVE != 0:
+        LAST_LLM_ERROR = "Gaming mode is on: the model is not loaded while a game needs the GPU memory."
+        return None
     model = get_advisor_model()
     if "qwen3" in model:
         stream = False
     payload = {
         "model": model, "prompt": prompt, "stream": bool(stream),
-        "keep_alive": "30m",
-        "options": {"num_predict": num_predict, "temperature": temperature, "num_ctx": 4096},
+        "keep_alive": KEEP_ALIVE,
+        "options": {"num_predict": num_predict, "temperature": temperature, "num_ctx": NUM_CTX},
     }
     if schema:
         payload["format"] = schema
