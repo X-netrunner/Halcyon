@@ -144,7 +144,24 @@ def plain(text):
 
 # ------------------------------------------------------------------------------------------------ the model
 def ai_enabled():
-    return not os.path.exists(AI_OFF_FLAG)
+    return not os.path.exists(AI_OFF_FLAG) and not gaming()
+
+
+# Gaming mode is on (scripts/gamemode.sh writes this file, and unloads the models): the GPU memory is the game's, so no model is
+# loaded now. Only a regular file of ours counts: /dev/shm is writable by every local user.
+GAMING_FLAG = "/dev/shm/halcyon-gamemode"
+
+def gaming():
+    try:
+        st = os.lstat(GAMING_FLAG)
+    except OSError:
+        return False
+    return (st.st_mode & 0o170000) == 0o100000 and st.st_uid == os.getuid()
+
+
+# The context window every Halcyon AI script asks for: Ollama loads the model again whenever it changes between two requests,
+# so chat, agent, advisor, notes and the brief all use the same one (keep it equal in each of them).
+NUM_CTX = 8192
 
 
 def ollama_host():
@@ -166,6 +183,8 @@ def model_name():
 
 
 def need_ai():
+    if gaming():
+        raise AiOff("Gaming mode is on: the AI is paused so the game keeps the GPU memory.")
     if not ai_enabled():
         raise AiOff("AI features are switched off (Settings > Performance > AI features).")
 
@@ -174,7 +193,7 @@ def generate(prompt, system="", fmt=None, num_predict=300, temperature=0.2, time
     """One answer from the local model. Raises AiOff when it is switched off / not running, Fail on anything else."""
     need_ai()
     body = {"model": model_name(), "prompt": prompt, "stream": False, "think": False,
-            "keep_alive": "5m", "options": {"temperature": temperature, "num_predict": num_predict}}
+            "keep_alive": "5m", "options": {"temperature": temperature, "num_predict": num_predict, "num_ctx": NUM_CTX}}
     if system:
         body["system"] = system
     if fmt:

@@ -69,6 +69,9 @@
 #                          install / update redoes it in your current colours. Without this option you are ASKED in a terminal;
 #                          with --yes and nothing saved it is only updated where it is already installed. Arch (mkinitcpio) only
 #   --no-plymouth          leave the boot splash alone (takes nothing out; scripts/halcyon-plymouth.sh remove does that)
+#   --luna / --no-luna     the extra: LUNA, a local AI assistant in Rust (https://github.com/X-netrunner/LUNA-AI), built from the
+#                          commit pinned below (LUNA_REV) into ~/.local/bin/luna. Asked on the first install and with --choose
+#                          (default no), then remembered. Only the program is installed: its daemon is never switched on for you.
 #   --renderer MODE        how the island draws: auto | opengl | vulkan (default auto = picked for this machine each time Halcyon
 #                          starts; OpenGL on integrated graphics, where it measured ~500 MB less RAM than Vulkan at the same power)
 #                            keep     your prompt is not touched at all (Halcyon does not start Starship, and does not edit your starship.toml)
@@ -111,6 +114,10 @@ INSTALL_VLM=false; PICK_VLM_MODEL=""; VLM_ASKED=false                # picture d
 VLM_DEFAULT_MODEL="qwen2.5vl:3b"                                       # the model Notes was tested with (scripts/halcyon-notes.py VLM_DEFAULT)
 PICK_RENDERER=""      # auto | opengl | vulkan (see choose_renderer)
 INSTALL_PLYMOUTH=""; PLYMOUTH_ASKED=false      # the boot splash (see choose_plymouth); "" = not decided yet
+INSTALL_LUNA=false; LUNA_ASKED=false           # the LUNA extra (see choose_extras)
+# LUNA is built from this exact commit, never from whatever is on main: move the pin when a LUNA version is ready for everyone
+LUNA_REPO="https://github.com/X-netrunner/LUNA-AI.git"
+LUNA_REV="9e79a8542a0c05bb882639103dacc425c22c857c"
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 PICK_PROMPT=""; FIRST_INSTALL=false        # your shell prompt: keep | colours | halcyon (see choose_prompt); FIRST_INSTALL: nothing was chosen on this machine yet
@@ -211,6 +218,8 @@ while [[ $# -gt 0 ]]; do
         --renderer=*)       PICK_RENDERER="${1#--renderer=}"; [[ "$PICK_RENDERER" =~ ^(auto|opengl|vulkan)$ ]] || die "--renderer needs auto, opengl or vulkan" ;;
         --plymouth)         INSTALL_PLYMOUTH=true; PLYMOUTH_ASKED=true ;;
         --no-plymouth)      INSTALL_PLYMOUTH=false; PLYMOUTH_ASKED=true ;;
+        --luna)             INSTALL_LUNA=true; LUNA_ASKED=true ;;
+        --no-luna)          INSTALL_LUNA=false; LUNA_ASKED=true ;;
         --choose)           CHOOSE=true ;;
         --no-tune)          SKIP_TUNE=true ;;
         --link)             LINK_CONFIG=true ;;
@@ -539,7 +548,6 @@ map_pkg_for_apt() {
         at-spi2-core)           echo "at-spi2-core" ;;
         wtype)                  echo "wtype" ;;
         qrencode)               echo "qrencode" ;;
-        kdeconnect)             echo "kdeconnect" ;;
         hyprpicker)             echo "" ;;     # not in Debian: the colour picker falls back to slurp + grim
         pacman-contrib)         echo "" ;;     # checkupdates is Arch only
         xdg-utils)              echo "xdg-utils" ;;
@@ -1074,7 +1082,7 @@ saved_choice() { [[ -f "$CHOICES_FILE" ]] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$
 # menu_pick OUTVAR "Title" "default ids" MULTI(0|1) "id|Label|note" ...   -> OUTVAR = the chosen ids (space separated)
 menu_pick() {
     local out=$1 title=$2 def=$3 multi=$4; shift 4
-    local ids=() labels=() notes=() line a b c i ans tok mark picked=() defnames=""
+    local ids=() labels=() notes=() line a b c i ans tok toks=() mark picked=() defnames=""
     for line in "$@"; do IFS='|' read -r a b c <<<"$line"; ids+=("$a"); labels+=("$b"); notes+=("$c"); done
     echo -e "\n  ${CYAN}${BOLD}${title}${RESET}"
     for i in "${!ids[@]}"; do
@@ -1084,15 +1092,16 @@ menu_pick() {
     if [[ "$multi" == "1" ]]; then echo -e "   ${DIM}several are fine: 1,2  (the first one is the default)${RESET}"; fi
     read -rp "  Your choice [Enter = ${defnames}]: " ans || ans=""
     ans="${ans//,/ }"
-    if [[ -z "${ans// /}" ]]; then picked=($def)
+    if [[ -z "${ans// /}" ]]; then read -ra picked <<<"$def"
     else
-        for tok in $ans; do
+        read -ra toks <<<"$ans"
+        for tok in "${toks[@]}"; do
             if [[ "$tok" =~ ^[0-9]+$ ]] && (( tok >= 1 && tok <= ${#ids[@]} )); then picked+=("${ids[$((tok - 1))]}")
             else
                 for i in "${!ids[@]}"; do [[ "${ids[$i]}" == "$tok" ]] && picked+=("$tok"); done
             fi
         done
-        [[ ${#picked[@]} -gt 0 ]] || { echo -e "  ${YELLOW}Not understood: using ${defnames}${RESET}"; picked=($def); }
+        [[ ${#picked[@]} -gt 0 ]] || { echo -e "  ${YELLOW}Not understood: using ${defnames}${RESET}"; read -ra picked <<<"$def"; }
     fi
     # "keep" / "none" stand alone; a single-choice menu takes the first answer only
     for tok in "${picked[@]}"; do [[ "$tok" == keep || "$tok" == none ]] && { picked=("$tok"); break; }; done
@@ -1517,6 +1526,26 @@ choose_plymouth() {
 }
 [[ "$REMOVE_LOGIN" != "true" ]] && choose_plymouth
 
+# ---- extras: other projects by Halcyon's author, offered once (first install, or --choose), default no, then remembered.
+# Only LUNA for now; a project joins this list when it installs cleanly on someone else's machine.
+choose_extras() {
+    local s_l
+    s_l=$(saved_choice LUNA)
+    if [[ "$LUNA_ASKED" != "true" ]]; then
+        if [[ "$AUTO_CONFIRM" != "true" && -t 0 && ( "$CHOOSE" == "true" || -z "$s_l" ) ]]; then
+            echo -e "\n  ${CYAN}${BOLD}Extra: LUNA${RESET}  ${DIM}a local AI assistant (Rust, runs on Ollama): tools, memory, reminders, voice (github.com/X-netrunner/LUNA-AI)${RESET}"
+            echo -e "   ${DIM}builds it from a pinned version into ~/.local/bin/luna (a few minutes of compiling; the build folder, a few GB, is removed afterwards).${RESET}"
+            echo -e "   ${DIM}Its background daemon is NOT switched on: read its README first (it can back up to /dev/sda1 and run updates).${RESET}"
+            if confirm_no "  Install LUNA?"; then INSTALL_LUNA=true; else INSTALL_LUNA=false; fi
+        elif [[ -n "$s_l" ]]; then
+            [[ "$s_l" == yes ]] && INSTALL_LUNA=true || INSTALL_LUNA=false
+        fi
+        LUNA_ASKED=true
+    fi
+    log_info "Extras: LUNA $([[ "$INSTALL_LUNA" == true ]] && echo "yes (built in step 12)" || echo no)"
+}
+[[ "$REMOVE_LOGIN" != "true" ]] && choose_extras
+
 # ---------------------------------------------------------------------------------------------- step 5
 log_step "Step 5: Hyprland and the desktop"
 
@@ -1527,7 +1556,7 @@ if [[ "$PACKAGES" == "true" ]]; then
           qt6-base qt6-declarative qt6-svg qt6-shadertools qt6-wayland qt6-5compat qt6-multimedia qt5-wayland qt6ct kvantum kservice
           imagemagick cava btop fish starship poppler fd ripgrep fzf grim slurp wl-clipboard cliphist fuzzel tesseract tesseract-data-eng
           dmidecode util-linux lsof jq zenity gamemode python python-pillow libnotify
-          hyprpicker qrencode pacman-contrib libpulse wtype kdeconnect
+          hyprpicker qrencode pacman-contrib libpulse wtype
           inter-font ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji adwaita-icon-theme)
     # (the browser, file manager and editor you chose are installed below)
     install_pkgs "${CORE[@]}"
@@ -2275,7 +2304,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
     user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} || true
 elif [[ -n "$PICK_RENDERER" ]]; then
@@ -2287,6 +2316,33 @@ if [[ "$DRY_RUN" != "true" && $EUID -eq 0 ]]; then      # run as root: make sure
     chown -R "$TARGET_UID:$TARGET_GID" "$TARGET_HOME/.local/state/island" "$TARGET_HOME/.cache/island" "$TARGET_HOME/.cache/halcyon-build" \
         "$TARGET_HOME/.config/systemd" "$TARGET_HOME/Pictures/Wallpapers" "$TARGET_HOME/Pictures/Screenshots" 2>/dev/null || true
 fi
+
+# ---- the LUNA extra: the pinned commit, built as you (outside the rice, like the helpers), the program copied to ~/.local/bin.
+# Skipped when that exact version is already installed. The build directory is removed afterwards (it grows to gigabytes).
+install_luna() {
+    local src="$TARGET_HOME/.local/src/LUNA-AI" stamp="$TARGET_HOME/.local/state/island/luna-rev" tgt="$TARGET_HOME/.cache/halcyon-build/luna"
+    if [[ -x "$TARGET_HOME/.local/bin/luna" && "$(cat "$stamp" 2>/dev/null)" == "$LUNA_REV" ]]; then
+        log_success "LUNA: this version is already installed (~/.local/bin/luna)"; return 0
+    fi
+    rust_ok || { warn_later "LUNA was not installed: it needs Rust (sudo pacman -S rust), then ./install.sh --luna"; return 0; }
+    command -v git >/dev/null 2>&1 || install_pkgs git
+    if [[ -d "$src/.git" ]]; then
+        run_as_user_cmd "LUNA: fetching" git -C "$src" fetch --quiet origin || { warn_later "LUNA: could not fetch $LUNA_REPO"; return 0; }
+    else
+        run_as_user_cmd "LUNA: downloading" git clone --quiet "$LUNA_REPO" "$src" || { warn_later "LUNA: could not clone $LUNA_REPO"; return 0; }
+    fi
+    run_as_user_cmd "LUNA: version ${LUNA_REV:0:7}" git -C "$src" -c advice.detachedHead=false checkout --quiet --force "$LUNA_REV" \
+        || { warn_later "LUNA: the pinned version ${LUNA_REV:0:7} is not in $LUNA_REPO"; return 0; }
+    run_as_user_cmd "LUNA: building (a few minutes)" env CARGO_TARGET_DIR="$tgt" cargo build --release --locked --manifest-path "$src/Cargo.toml" \
+        || { warn_later "LUNA did not build (see the log). Try by hand: cd $src && cargo build --release"; return 0; }
+    run_as_user_cmd "LUNA: installing ~/.local/bin/luna" install -Dm755 "$tgt/release/luna" "$TARGET_HOME/.local/bin/luna" || { warn_later "LUNA: could not install the program"; return 0; }
+    if [[ "$DRY_RUN" != "true" ]]; then
+        run_as_user bash -c 'mkdir -p "$(dirname "$1")" && printf "%s\n" "$2" > "$1"' _ "$stamp" "$LUNA_REV" || true
+        run_as_user rm -rf "$tgt" || true
+    fi
+    log_success "LUNA installed: run 'luna' (its README: $src/README.md; the daemon: $src/deploy/luna-daemon.service, off until you enable it)"
+}
+[[ "$INSTALL_LUNA" == "true" ]] && install_luna
 
 # the boot splash, now that the colours are made (scheme/current.lua): rendered in them, then the initramfs is rebuilt
 if [[ "$INSTALL_PLYMOUTH" == "true" ]]; then

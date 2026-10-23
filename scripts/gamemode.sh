@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Gaming mode: on | off | toggle | status.  Run by the island (Gaming chip / Settings / SUPER+F10).
 #   on   performance power profile (Auto power paused), Hyprland animations / blur / shadows / gaps / rounding off,
-#        allow tearing, CPU governor performance, GPU performance mode, Caffeine on, DND on, background helpers stopped.
+#        allow tearing, CPU governor performance, GPU performance mode, Caffeine on, DND on, background helpers stopped,
+#        Ollama's loaded models unloaded (the AI scripts load none while this is on; they keep one 30 min otherwise).
 #   off  power profile, CPU/GPU, Hyprland config restored; Caffeine and DND go back to what they were before (a Caffeine or
 #        DND you had switched on yourself stays on).
 # Edit ~/.config/Halcyon/gamemode.conf to choose what gets stopped:
@@ -17,6 +18,15 @@ STOP_SERVICES=""
 note() { command -v notify-send >/dev/null && ( timeout 3 notify-send -a Halcyon -i applications-games -t 3000 "Gaming mode" "$1" >/dev/null 2>&1 & ); }
 hl() { timeout 4 hyprctl "$@" >/dev/null 2>&1; }
 island() { timeout 4 quickshell ipc -p "$HOME/.config/Halcyon/quickshell/island" call island "$@" >/dev/null 2>&1; }
+# every model Ollama has in memory is let go (keep_alive 0), so its GPU memory is the game's. In the background: never slows `on`.
+ollama_unload() {
+  command -v curl >/dev/null && command -v jq >/dev/null || return 0
+  local h="${OLLAMA_HOST:-127.0.0.1:11434}" m
+  case "$h" in http://*|https://*) ;; *) h="http://$h" ;; esac
+  timeout 3 curl -fsS "$h/api/ps" 2>/dev/null | jq -r '.models[]?.name // empty' 2>/dev/null | while IFS= read -r m; do
+    timeout 10 curl -fsS "$h/api/generate" -d "$(jq -nc --arg m "$m" '{model: $m, keep_alive: 0}')" >/dev/null 2>&1
+  done
+}
 dnd_was_on() { grep -q '"dnd": *true' "$HOME/.local/state/island/settings.json" 2>/dev/null; }
 
 on() {
@@ -75,6 +85,9 @@ on() {
   # 7. Stop background services & kill process list
   for s in $STOP_SERVICES; do systemctl --user stop "$s" 2>/dev/null; done
   for p in $KILL; do pkill -x "$p" 2>/dev/null; done
+
+  # 8. Ollama: the models the AI tools keep loaded hold GPU memory the game needs
+  ( ollama_unload & )
 
   [ -n "$tune_failed" ] && note "On (visuals only): run install.sh again so CPU/GPU boost works without a password" || note "On: CPU/GPU at full speed, turbo on, tearing & VRR allowed, Wi-Fi power save off, helpers paused"
 }

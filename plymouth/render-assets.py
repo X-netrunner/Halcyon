@@ -12,8 +12,8 @@
 #
 #   render-assets.py OUTDIR WIDTH HEIGHT ACCENT ACCENT2 BG TEXT [DIM]     colours as rrggbb
 # Needs python-pillow (the word and the stars) and rsvg-convert from librsvg (the mark).
-import math, os, subprocess, sys, tempfile
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+import math, os, subprocess, sys
+from PIL import Image, ImageDraw, ImageFont
 
 out, W, H = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 hexes = sys.argv[4:8]

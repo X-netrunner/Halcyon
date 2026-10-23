@@ -8,7 +8,6 @@
   halcyon-tools.py snippets list|add|rm|copy|type|pick   text you paste often ({date} {time} {clip} expand)
   halcyon-tools.py windows last|next|prev|pick|list     flip between windows (Alt+Tab)
   halcyon-tools.py mixer list|pick|set|mute    volume per app: mixer set spotify 30 | mixer mute discord
-  halcyon-tools.py phone devices|send|ring|ping|text   KDE Connect: files, clipboard text, find my phone
   halcyon-tools.py zoom in|out|reset|toggle    magnify the whole screen (Hyprland cursor zoom)
   halcyon-tools.py vpn status|list|up|down|toggle      NetworkManager VPN / WireGuard, or Tailscale
 
@@ -652,72 +651,6 @@ def cmd_mixer(args):
     raise Fail("mixer: list | pick | set <app> <level> | mute <app> | unmute <app>")
 
 
-# --------------------------------------------------------------------------------------------- phone (KDE Connect)
-def kde_devices():
-    need("kdeconnect-cli", "pacman -S kdeconnect")
-    rc, out = sh(["kdeconnect-cli", "--list-available", "--id-name-only"])
-    devs = []
-    for line in out.splitlines():
-        parts = line.strip().split(" ", 1)
-        if len(parts) == 2 and re.fullmatch(r"[0-9a-f_]{8,}", parts[0]):
-            devs.append((parts[0], parts[1]))
-    return devs
-
-
-def choose_device(args):
-    """--to <name> picks by name; one phone is used without asking."""
-    devs = kde_devices()
-    if not devs:
-        raise Fail("no phone is connected (open KDE Connect on the phone, same Wi-Fi, and pair it once)")
-    if "--to" in args:
-        want = args[args.index("--to") + 1].lower()
-        for d in devs:
-            if want in d[1].lower():
-                return d
-        raise Fail(f"no phone called '{want}'")
-    i = pick_or_only([d[1] for d in devs], "Phone")
-    if i is None:
-        raise Fail("cancelled")
-    return devs[i]
-
-
-def cmd_phone(args):
-    sub = args[0] if args else "devices"
-    rest = args[1:]
-    if sub == "devices":
-        devs = kde_devices()
-        for _, name in devs:
-            print(name)
-        if not devs:
-            print("no phone reachable: pair it once in the KDE Connect app (phone and computer on the same network)")
-        return 0
-    dev = choose_device(rest)
-    if sub == "send":
-        files = [a for a in rest if os.path.exists(a)]
-        if not files:
-            raise Fail("phone send <file> ...")
-        for f in files:
-            sh(["kdeconnect-cli", "-d", dev[0], "--share", os.path.abspath(f)])
-        done("Sent to " + dev[1], ", ".join(os.path.basename(f) for f in files))
-        return 0
-    if sub == "text":
-        text = " ".join(a for a in rest if a != "--to" and not os.path.exists(a)) or clipboard_text()
-        if not text:
-            raise Fail("phone text <words>   (or copy something first)")
-        sh(["kdeconnect-cli", "-d", dev[0], "--share-text", text])
-        done("Sent to " + dev[1], text[:80])
-        return 0
-    if sub == "ring":
-        sh(["kdeconnect-cli", "-d", dev[0], "--ring"])
-        done("Ringing " + dev[1])
-        return 0
-    if sub == "ping":
-        sh(["kdeconnect-cli", "-d", dev[0], "--ping"])
-        done("Pinged " + dev[1])
-        return 0
-    raise Fail("phone: devices | send <file> | text <words> | ring | ping   (add --to <name> with more than one phone)")
-
-
 # --------------------------------------------------------------------------------------------- zoom
 def zoom_get():
     need("hyprctl")
@@ -829,7 +762,7 @@ def cmd_vpn(args):
 COMMANDS = {
     "colorpick": cmd_colorpick, "color": cmd_colorpick, "measure": cmd_measure, "wifi-qr": cmd_wifi_qr,
     "updates": cmd_updates, "snippets": cmd_snippets, "snippet": cmd_snippets, "windows": cmd_windows,
-    "mixer": cmd_mixer, "phone": cmd_phone, "zoom": cmd_zoom, "vpn": cmd_vpn,
+    "mixer": cmd_mixer, "zoom": cmd_zoom, "vpn": cmd_vpn,
 }
 
 

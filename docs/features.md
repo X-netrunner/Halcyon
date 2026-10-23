@@ -115,7 +115,6 @@ Small tools in one helper (`scripts/halcyon-tools.py`). Each is a `>` command in
 - **Snippets** (Super + Alt + V, `halcyon snippets add|list|rm|copy|type|pick`): texts you paste often, saved in `~/.config/Halcyon/snippets.json`. `{date}`, `{time}` and `{clip}` are filled in. They are typed into the window you were in (`wtype`), else copied and pasted with Ctrl + V. Add one with `halcyon snippets add sig "Best regards, Sam"`, or copy a text and run `halcyon snippets add sig`.
 - **Windows** (Alt + Tab, Alt + Shift + Tab, `halcyon windows last|next|prev|pick|list`): Alt + Tab flips to the previous window, Alt + Shift + Tab opens a list, most recently used first. It is not a held-key popup: one press, one switch.
 - **Volume per app** (`>volume per app`, `halcyon mixer list|set|mute`, or `>do spotify volume 30` / `>do mute firefox`): the volume of one app that plays sound (`pactl`, works with PipeWire).
-- **Phone** (`>send clipboard to phone`, `>find my phone`, `halcyon phone devices|send|text|ring|ping`): KDE Connect, paired once from the phone. With more than one phone, `--to <name>`.
 - **Magnifier** (Super + Alt + Z, `halcyon zoom in|out|reset|toggle`): zooms the whole screen 2x and back (Hyprland's cursor zoom).
 - **VPN** (`>vpn on / off`, `halcyon vpn status|up|down|toggle`): NetworkManager VPN and WireGuard connections, or Tailscale. Toggle turns what is on off, else connects (and asks which with several).
 

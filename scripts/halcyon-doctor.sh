@@ -225,7 +225,6 @@ qrencode|Wi-Fi QR code|qrencode
 checkupdates|update count (halcyon updates)|pacman-contrib
 pactl|volume per app (halcyon mixer)|libpulse
 wtype|snippets typed into the window (without it: copy + Ctrl+V)|wtype
-kdeconnect-cli|phone tools (halcyon phone)|kdeconnect
 fuzzel|menus for snippets, windows, VPN and phones|fuzzel
 nmcli|VPN switch and Wi-Fi QR|networkmanager
 python3|Notes, local AI, calendar import, lyrics, Focus mode|python'

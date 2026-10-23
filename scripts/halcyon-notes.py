@@ -587,7 +587,7 @@ def run_vlm(path, ocr_text=""):
     if ocr_text:
         prompt += "Do not repeat the text in the picture; it was already read as: " + re.sub(r"\s+", " ", ocr_text)[:600]
     body = json.dumps({"model": model, "prompt": prompt, "images": [b64], "stream": False, "keep_alive": 0,
-                       "options": {"temperature": 0, "num_predict": 160}}).encode()
+                       "options": {"temperature": 0, "num_predict": 160, "num_ctx": NUM_CTX}}).encode()
     try:
         import urllib.request, urllib.error
         req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
@@ -604,7 +604,7 @@ def run_vlm(path, ocr_text=""):
 def describe_note(arg):
     cf = read_conf()
     if not ai_enabled():
-        print("[!] AI features are switched off (Settings > AI).")
+        print("[!] " + ai_off_why())
         return False
     if cf["NOTES_VLM"] != "1":
         print("[!] Picture descriptions are off (Settings > Notes, or: notes set NOTES_VLM 1)")
@@ -687,7 +687,7 @@ def _summary_call(text, gist_only=False):
                "so that nothing important is missing. Plain text only: no headings, no bold.")
     prompt = ask + "\n\nText:\n" + text + "\n"
     body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "think": False, "keep_alive": keep_alive(),
-                       "options": {"temperature": 0, "num_predict": 700}}).encode()
+                       "options": {"temperature": 0, "num_predict": 700, "num_ctx": NUM_CTX}}).encode()
     try:
         req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=240) as r:
@@ -743,7 +743,7 @@ def summarise_text(text):
 
 def summary_note(arg):
     if not ai_enabled():
-        print("[!] AI features are switched off (Settings > AI).")
+        print("[!] " + ai_off_why())
         return False
     t = find_note(load_notes(), arg)
     if not t:
@@ -1179,8 +1179,30 @@ def clear_done():
 # Nothing local is deleted and Ollama itself is left running; Halcyon just stops asking any model anything.
 AI_OFF_FLAG = os.path.join(os.path.expanduser("~"), ".local", "state", "island", "ai-off")
 
-def ai_enabled():
+# Gaming mode is on (scripts/gamemode.sh writes this file, and unloads the models): the GPU memory is the game's, so no model is
+# loaded now. Notes are still saved, just without the AI sorting / overview. Only a regular file of ours counts: /dev/shm is
+# writable by every local user.
+GAMING_FLAG = "/dev/shm/halcyon-gamemode"
+
+def gaming():
+    try:
+        st = os.lstat(GAMING_FLAG)
+    except OSError:
+        return False
+    return (st.st_mode & 0o170000) == 0o100000 and st.st_uid == os.getuid()
+
+def ai_switched_on():
     return not os.path.exists(AI_OFF_FLAG)
+
+def ai_enabled():
+    return ai_switched_on() and not gaming()
+
+def ai_off_why():
+    return "Gaming mode is on: the AI is paused so the game keeps the GPU memory." if ai_switched_on() else "AI features are switched off (Settings > AI)."
+
+# The context window every Halcyon AI script asks for: Ollama loads the model again whenever it changes between two requests,
+# so chat, agent, advisor, notes and the brief all use the same one (keep it equal in each of them).
+NUM_CTX = 8192
 
 CONF_DEFAULTS = {"NOTES_SUMMARY": "0", "NOTES_OCR": "1", "NOTES_VLM": "0", "NOTES_VLM_MODEL": "", "NOTES_AI": "0", "NOTES_OVERVIEW": "0", "NOTES_AI_MODE": "ask", "NOTES_NUDGE_HOURS": "3", "NOTES_NUDGE_MAX": "4",
                  "NOTES_NUDGE_FROM": "9", "NOTES_NUDGE_TO": "21", "NOTES_MODEL": "", "NOTES_STT_MODEL": "", "NOTES_STT_LANG": ""}
@@ -1465,7 +1487,7 @@ def ask_model(text):
         f"Note: {text}\n"
     )
     body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "format": "json", "think": False,
-                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 130}}).encode()
+                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 130, "num_ctx": NUM_CTX}}).encode()
     try:
         req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=60) as r:
@@ -1490,7 +1512,7 @@ def summarise_only(text, words=18):
     prompt = (f"Summarise this personal note in one short sentence (at most {words} words). Say what it is about and what it involves. "
               "Do not mention reminders or times. Answer with the sentence only.\n\nNote: " + text + "\n")
     body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "think": False,
-                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 40 + 3 * words}}).encode()
+                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 40 + 3 * words, "num_ctx": NUM_CTX}}).encode()
     try:
         req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=60) as r:
@@ -1703,7 +1725,7 @@ def overview_of(text):
         "points: 2 or 3 short bullets with the most important facts of the note, using its own numbers.\n\n"
         "Note:\n" + text[:4000] + "\n")
     body = json.dumps({"model": model_name(), "prompt": prompt, "stream": False, "format": "json", "think": False,
-                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 220}}).encode()
+                       "keep_alive": keep_alive(), "options": {"temperature": 0, "num_predict": 220, "num_ctx": NUM_CTX}}).encode()
     try:
         req = urllib.request.Request(ollama_host() + "/api/generate", data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=90) as r:
@@ -1956,7 +1978,7 @@ def sort_note(arg, force=False):
     AI line is renewed."""
     conf = read_conf()
     if not ai_enabled():
-        print("[!] The AI is switched off (Settings > Performance > AI features)")
+        print("[!] " + ai_off_why())
         return
     sort_on, ov_on = conf["NOTES_AI"] == "1", conf["NOTES_OVERVIEW"] == "1"
     if not (sort_on or ov_on):
@@ -2295,7 +2317,7 @@ def conf_json():
                       "NOTES_NUDGE_HOURS": c["NOTES_NUDGE_HOURS"], "NOTES_NUDGE_MAX": c["NOTES_NUDGE_MAX"],
                       "NOTES_NUDGE_FROM": c["NOTES_NUDGE_FROM"], "NOTES_NUDGE_TO": c["NOTES_NUDGE_TO"], "NOTES_MODEL": c["NOTES_MODEL"],
                       "NOTES_STT_MODEL": c.get("NOTES_STT_MODEL", ""), "NOTES_STT_LANG": c.get("NOTES_STT_LANG", ""),
-                      "aiEnabled": ai_enabled(), "ollama": ollama_up() if (ai_enabled() and "1" in (c["NOTES_AI"], c["NOTES_OVERVIEW"])) else None, "model": model_name()}))
+                      "aiEnabled": ai_switched_on(), "ollama": ollama_up() if (ai_enabled() and "1" in (c["NOTES_AI"], c["NOTES_OVERVIEW"])) else None, "model": model_name()}))
 
 def set_conf(k, v):
     c = read_conf()

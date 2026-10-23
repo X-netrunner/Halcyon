@@ -45,8 +45,6 @@ complete -c halcyon -n __fish_use_subcommand -a windows -d "flip between open wi
 complete -c halcyon -n "__fish_seen_subcommand_from windows" -a "last next prev pick list" -d "windows"
 complete -c halcyon -n __fish_use_subcommand -a mixer -d "volume per app"
 complete -c halcyon -n "__fish_seen_subcommand_from mixer" -a "list pick set mute unmute" -d "mixer"
-complete -c halcyon -n __fish_use_subcommand -a phone -d "KDE Connect: send, ring, text"
-complete -c halcyon -n "__fish_seen_subcommand_from phone" -a "devices send text ring ping" -d "phone"
 complete -c halcyon -n __fish_use_subcommand -a zoom -d "magnify the whole screen"
 complete -c halcyon -n "__fish_seen_subcommand_from zoom" -a "in out reset toggle" -d "zoom"
 complete -c halcyon -n __fish_use_subcommand -a vpn -d "VPN on / off"
