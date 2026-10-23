@@ -1,0 +1,15 @@
+name: Feature request
+description: An idea for Halcyon
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: What it should do, and the problem it solves for you.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you tried instead?
