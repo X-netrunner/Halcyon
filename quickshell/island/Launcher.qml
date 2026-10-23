@@ -426,7 +426,7 @@ Item {
             var gr = byName ? (gn.indexOf(ga) === 0 ? 4.5 : (gn.indexOf(ga) >= 0 ? 3.5 : 0))
                             : (ga === "" ? 5 : (gn.indexOf(ga) === 0 ? 8 : (gn.indexOf(ga) >= 0 ? 7 : (ga.length > 1 && fuzzy(ga, gn) ? 6 : 0))))
             if (gr === 0) continue
-            if (gm.fav) gr += 10                         // favourites first (the star on the row, or Ctrl+F, toggles it)
+            if (gm.fav) gr += byName ? 0.5 : 10          // favourites first (the star on the row, or Ctrl+F, toggles it); among commands only within their tier
             var why = gm.running ? "Running now" : (gm.status === "attention" ? "Needs attention: " + (gm.statusReason || "see hgl show " + gm.id) : "Enter to play")
             out.push({ c: { id: "game:" + gm.id, name: gm.name || gm.id, desc: why, glyph: 0xF0297, kw: "", cat: "games", fav: !!gm.fav }, r: gr, i: -1000 + gi })
         }
@@ -506,7 +506,9 @@ Item {
                     else if (cq.length > 1 && fuzzy(cq, nm)) r = 1
                     else continue
                 }
-                if (root.cmdFavs[cm.id] === true && !root.cmdGrouped) r += 10
+                // starred: first of all with nothing typed; while you search only above matches of the same strength, so a star that
+                // matches by a keyword ("settings" is one of Game Center's) never beats the command whose name you are typing
+                if (root.cmdFavs[cm.id] === true && !root.cmdGrouped) r += cq === "" ? 10 : 0.5
                 outc.push({ c: cm, r: r, i: c })
             }
             outc = outc.concat(root.gameRows(cq))
