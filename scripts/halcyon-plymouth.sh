@@ -12,6 +12,7 @@
 # as you, not root) at your screen size; copies the theme to /usr/share/plymouth/themes/halcyon; makes it the default; adds the
 # `plymouth` hook to /etc/mkinitcpio.conf after `udev` / `systemd`; adds `quiet splash` to the kernel command line (UKI:
 # /etc/kernel/cmdline, systemd-boot entries, or GRUB); rebuilds the initramfs (mkinitcpio -P).
+# With Settings > Sounds with the splash on, the splash sound plays under it too (see sound_install).
 # Every file it edits is copied to <file>.before-halcyon-plymouth first (once), and the boot options it added are written to
 # /etc/halcyon-plymouth.added, so remove takes out only what install put in.
 set -euo pipefail
@@ -23,6 +24,9 @@ MKCONF=/etc/mkinitcpio.conf
 PARAMS="quiet splash"
 FILM=/usr/lib/halcyon/halcyon-plymouth-film
 DROPIN_UNITS="plymouth-start plymouth-quit plymouth-poweroff plymouth-reboot plymouth-halt plymouth-kexec"
+SOUND_CONF=/etc/halcyon-plymouth.sound
+SOUND_UNIT=/etc/systemd/system/halcyon-boot-sound.service
+WP_DROPIN=/etc/systemd/user/wireplumber.service.d/halcyon-boot-sound.conf
 
 say()  { printf '\033[1;36m::\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
@@ -150,10 +154,62 @@ wait_film() {    # until splash has shown for $1 s, waiting at most $2 s
   n=0; max=$(awk -v m="$2" 'BEGIN { print int(m * 10) }')
   while [ "$n" -lt "$max" ] && awk -v e="$(elapsed)" -v w="$1" 'BEGIN { exit !(e < w) }'; do sleep 0.1; n=$((n + 1)); done
 }
+# ---- the splash sound under Plymouth: straight to ALSA, since PipeWire is not running yet (boot) or any more (shutdown).
+# /etc/halcyon-plymouth.sound names the user; their switch (settings.json), sound files (~/.cache/island/sounds, written by
+# splash-sound.sh) and output (.alsa there: the card and device of their default output) are read as that user, and aplay runs as
+# them too (with the audio group for /dev/snd): nothing of theirs is opened as root.
+who() {          # U, H = the user and their home, or fails
+  U=$(sed -n 's/^user=\([a-z_][a-z0-9_-]*\)$/\1/p' /etc/halcyon-plymouth.sound 2>/dev/null | head -1)
+  [ -n "$U" ] && H=$(getent passwd "$U" | cut -d: -f6) && [ -n "$H" ]
+}
+as_user() {
+  setpriv --reuid="$(id -u "$U")" --regid="$(id -g "$U")" --groups="$(getent group audio | cut -d: -f3)" \
+    env -i HOME="$H" PATH=/usr/bin:/bin "$@"
+}
+user_alsa() { as_user sh -c 'cat "$HOME/.cache/island/sounds/.alsa"' 2>/dev/null | head -1; }
+alsa_dev() {     # plughw:CARD=<id>,DEV=<n>: the output the user listens on, else the first card with a non-HDMI playback device
+  d=$(user_alsa)
+  case "$d" in *[!A-Za-z0-9_,-]*|"") d="" ;; esac
+  if [ -n "$d" ] && [ -d "/proc/asound/${d%,*}" ]; then echo "plughw:CARD=${d%,*},DEV=${d#*,}"; return; fi
+  for c in /proc/asound/card[0-9]*; do
+    for p in "$c"/pcm*p; do
+      [ -r "$p/info" ] || continue
+      grep -qi 'hdmi\|displayport' "$p/info" && continue
+      n=${p##*/pcm}; echo "plughw:CARD=$(cat "$c/id"),DEV=${n%p}"; return
+    done
+  done
+}
+play_sound() {   # $1 = login | shutdown; plays in the foreground, quietly does nothing when the switch is off or nothing is there
+  who || return 0
+  command -v aplay >/dev/null || return 0
+  as_user sh -c '[ "$(jq -r "(.opt // {}).splashSound // false" "$HOME/.local/state/island/settings.json" 2>/dev/null)" = true ]' || return 0
+  f="$H/.cache/island/sounds/$1.wav"
+  dev=$(alsa_dev); [ -n "$dev" ] || return 0
+  as_user aplay -q -D "$dev" "$f" >/dev/null 2>&1
+}
 case "$1" in
   boot)     wait_film 3.2 3.5 ;;
-  shutdown) if [ -e /dev/shm/halcyon-goodbye ]; then plymouth update --status=halcyon-bare 2>/dev/null
-            else wait_film 3.3 3.5; fi ;;
+  shutdown) if [ -e /dev/shm/halcyon-goodbye ]; then plymouth update --status=halcyon-bare 2>/dev/null   # the desktop played it all
+            else
+              play_sound shutdown & s=$!
+              wait_film 3.3 3.5
+              n=0; while kill -0 "$s" 2>/dev/null && [ "$n" -lt 20 ]; do sleep 0.1; n=$((n + 1)); done   # the sound's tail, at most 2 s more
+              kill "$s" 2>/dev/null
+            fi ;;
+  sound-boot)   # halcyon-boot-sound.service: the sound card is up; give the user's card (it comes a moment after HDMI) up to 3 s
+            [ -e /run/plymouth/pid ] || exit 0
+            who || exit 0
+            touch /run/halcyon-boot-sound.playing    # WirePlumber waits for this to go (it would find the card busy)
+            n=0; while [ "$n" -lt 30 ]; do
+              d=$(user_alsa)
+              [ -n "$d" ] && [ -d "/proc/asound/${d%,*}" ] && break
+              [ -z "$d" ] && [ "$n" -ge 5 ] && break
+              sleep 0.1; n=$((n + 1))
+            done
+            sleep 0.3                             # alsa-restore puts the saved volume back as the card appears
+            cut -d' ' -f1 /proc/uptime > /run/halcyon-boot-sound   # the login splash then plays no second one
+            play_sound login
+            rm -f /run/halcyon-boot-sound.playing ;;
 esac
 exit 0
 SH
@@ -171,10 +227,53 @@ SH
   done
   $SUDO systemctl daemon-reload
   say "boot and shutdown wait for the film to finish ($FILM, drop-ins for: $DROPIN_UNITS)"
+  sound_install
+}
+
+# ---- the splash sound under Plymouth (played by the film helper: sound-boot, shutdown)
+# Boot: halcyon-boot-sound.service starts when the sound card appears (about 2 s into the splash) and plays the login sound through
+# ALSA; the login splash then plays none (/run/halcyon-boot-sound). WirePlumber waits until it is done (at most 6 s): it would
+# otherwise find the card busy and could come up with no output. Shutdown: the power-off screen plays the shutdown sound, unless the
+# desktop already played its goodbye. Needs aplay / alsactl (alsa-utils): alsa-restore keeps your volume across boots, so the boot
+# sound is as loud as your desktop was. Off with Settings > Sounds with the splash, like the rest.
+sound_install() {
+  local user; user=$(stat -c %U "$RICE" 2>/dev/null)
+  [[ -n "$user" && "$user" != root ]] || { warn "the splash sound under the boot splash needs the owner of $RICE (not root): skipped"; return 0; }
+  $SUDO pacman -S --needed --noconfirm alsa-utils >/dev/null || { warn "alsa-utils did not install: no sound under the boot splash"; return 0; }
+  printf 'user=%s\n' "$user" | $SUDO tee "$SOUND_CONF" >/dev/null
+  $SUDO tee "$SOUND_UNIT" >/dev/null <<EOF
+[Unit]
+Description=Halcyon: the splash sound under the boot splash
+After=sound.target alsa-restore.service local-fs.target plymouth-start.service
+ConditionPathExists=/run/plymouth/pid
+
+[Service]
+Type=exec
+ExecStart=-$FILM sound-boot
+ExecStopPost=-/usr/bin/rm -f /run/halcyon-boot-sound.playing
+TimeoutStartSec=12
+TimeoutStopSec=2
+
+[Install]
+WantedBy=sound.target
+EOF
+  $SUDO install -d -m 755 "$(dirname "$WP_DROPIN")"
+  printf '[Service]\nExecStartPre=-/bin/sh -c "n=0; while [ -e /run/halcyon-boot-sound.playing ] && [ $$n -lt 60 ]; do sleep 0.1; n=$$((n + 1)); done"\n' \
+    | $SUDO tee "$WP_DROPIN" >/dev/null
+  $SUDO systemctl daemon-reload
+  $SUDO systemctl enable halcyon-boot-sound.service >/dev/null 2>&1 || true
+  $SUDO alsactl store 2>/dev/null || true        # your volume now is what the first boot sound plays at
+  say "splash sound under the boot splash: on when Settings > Sounds with the splash is ($SOUND_UNIT)"
+}
+sound_remove() {
+  $SUDO systemctl disable halcyon-boot-sound.service >/dev/null 2>&1 || true
+  $SUDO rm -f "$SOUND_UNIT" "$SOUND_CONF" "$WP_DROPIN"
+  $SUDO rmdir "$(dirname "$WP_DROPIN")" 2>/dev/null || true
 }
 film_remove() {
   local u
   for u in $DROPIN_UNITS; do $SUDO rm -f "/etc/systemd/system/$u.service.d/halcyon.conf"; $SUDO rmdir "/etc/systemd/system/$u.service.d" 2>/dev/null || true; done
+  sound_remove
   $SUDO rm -f "$FILM"; $SUDO rmdir "$(dirname "$FILM")" 2>/dev/null || true
   $SUDO systemctl daemon-reload
 }
@@ -256,6 +355,8 @@ do_status() {
   if grep -qw splash /proc/cmdline; then echo "this boot:    splash on"; else echo "this boot:    splash off (no 'splash' on the kernel command line)"; fi
   [[ -f "$STATE" ]] && echo "added by us:  $(cat "$STATE")"
   if [[ -x "$FILM" ]]; then echo "film:         boot and shutdown wait for it to finish"; else echo "film:         not set up (boot / shutdown may cut it short: run install)"; fi
+  if [[ -f "$SOUND_UNIT" ]]; then echo "sound:        under the boot splash for $(sed -n 's/^user=//p' "$SOUND_CONF" 2>/dev/null) (when Sounds with the splash is on)"
+  else echo "sound:        not set up (run install)"; fi
   return 0
 }
 
