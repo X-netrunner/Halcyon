@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import QtQuick.Effects
 import QtQuick.Layouts
 import "DeskSpots.js" as DS
@@ -28,6 +29,10 @@ Item {
     signal editDesktop(string which)     // place the widgets right on that screen
 
     readonly property bool wallOn: !opt || opt.deskWall !== false
+    // the live wallpaper replaces the picture on the desktop, so the preview shows it too (the sky itself, or a video's still)
+    readonly property bool liveOn: !!opt && opt.deskLive === "on"
+    readonly property string livePick: (opt && opt.deskLivePick) || "sky"
+    readonly property string liveStill: liveOn && livePick !== "sky" ? Quickshell.env("HOME") + "/.cache/island/live-thumbs/" + Qt.md5(livePick) + ".jpg" : ""
     readonly property real blurAmt: Math.max(0, Math.min(1, (opt && opt.deskBlur !== undefined ? Number(opt.deskBlur) : 0) / 100))
     readonly property string bgKind: (opt && opt.deskBg) || "theme"
     // Dim the wallpaper so the widgets read (the same setting as Settings > Widget builder: opt.widgetDim / widgetDimAmt)
@@ -188,14 +193,19 @@ Item {
                                 id: pvImg
                                 anchors.fill: parent
                                 anchors.margins: -Math.round(root.blurAmt * 56 * scr.k)
-                                visible: root.wallOn && source.toString() !== ""
-                                source: (root.open && root.wallOn && root.wallpaperPath !== "") ? "file://" + encodeURI(root.wallpaperPath).replace(/#/g, "%23").replace(/\?/g, "%3F") : ""
+                                visible: root.wallOn && source.toString() !== "" && !(root.liveOn && root.livePick === "sky")
+                                source: (root.open && root.wallOn && (root.liveStill || root.wallpaperPath) !== "") ? "file://" + encodeURI(root.liveStill || root.wallpaperPath).replace(/#/g, "%23").replace(/\?/g, "%3F") : ""
                                 sourceSize: Qt.size(640, 400)
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
                                 cache: false
                                 layer.enabled: root.blurAmt > 0.001
                                 layer.effect: MultiEffect { blurEnabled: true; blurMax: 64; blur: root.blurAmt; autoPaddingEnabled: false }
+                            }
+                            Loader {
+                                anchors.fill: parent
+                                active: root.open && !root.lockT && root.liveOn && root.livePick === "sky"
+                                sourceComponent: LiveSky { pal: root.pal; showWord: !root.opt || root.opt.deskLiveWord !== false }
                             }
                             // Dim the wallpaper (whole picture), as the desktop draws it (Wallpaper.qml)
                             Rectangle {

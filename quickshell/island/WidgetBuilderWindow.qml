@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import QtQuick.Effects
 import Quickshell.Widgets
 import QtQuick.Layouts
@@ -27,6 +28,10 @@ Item {
     signal targetPicked(string t)
     property string target: "desktop"          // "desktop" or "lock" (Settings wbTarget)
     readonly property bool lockT: target === "lock"
+    // the live wallpaper replaces the picture on the desktop: the preview shows it too (the sky itself, or a video's still)
+    readonly property bool liveOn: !!opt && opt.deskLive === "on"
+    readonly property bool liveSky: liveOn && ((opt && opt.deskLivePick) || "sky") === "sky"
+    readonly property string backPath: liveOn && !liveSky ? Quickshell.env("HOME") + "/.cache/island/live-thumbs/" + Qt.md5(opt.deskLivePick) + ".jpg" : wallpaper
     readonly property string lkey: WD.keyOf(target)          // the settings key of this screen's list
 
     // the newest layout a slider made that the 70 ms timer has not sent yet: every edit starts from it, so a click right after a slider
@@ -338,13 +343,21 @@ Item {
                         anchors.fill: parent; anchors.margins: 1
                         radius: Math.max(0, stage.radius - 1)
                         color: "transparent"
-                        visible: !root.adding && root.wallpaper !== "" && !root.lockT && wallPv.status === Image.Ready && root.pvBack !== "plain"
+                        visible: !root.adding && !root.lockT && root.pvBack !== "plain" && (root.liveSky || (root.backPath !== "" && wallPv.status === Image.Ready))
+                        Loader {
+                            anchors.fill: parent
+                            active: root.open && root.liveSky
+                            sourceComponent: LiveSky { pal: root.pal }
+                            layer.enabled: root.pvBack === "soft"
+                            layer.effect: MultiEffect { blurEnabled: true; blurMax: 48; blur: 0.75; saturation: -0.15; autoPaddingEnabled: false }
+                        }
                         Image {
                             id: wallPv
                             anchors.fill: parent
                             layer.enabled: root.pvBack === "soft"
                             layer.effect: MultiEffect { blurEnabled: true; blurMax: 48; blur: 0.75; saturation: -0.15; autoPaddingEnabled: false }
-                            source: root.wallpaper !== "" && root.open ? "file://" + encodeURI(root.wallpaper).replace(/#/g, "%23").replace(/\?/g, "%3F") : ""
+                            visible: !root.liveSky
+                            source: root.backPath !== "" && root.open && !root.liveSky ? "file://" + encodeURI(root.backPath).replace(/#/g, "%23").replace(/\?/g, "%3F") : ""
                             sourceSize: Qt.size(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)))
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
@@ -361,7 +374,7 @@ Item {
                     // what is behind the preview
                     Row {
                         z: 6
-                        visible: !root.adding && root.wallpaper !== "" && !root.lockT
+                        visible: !root.adding && (root.wallpaper !== "" || root.liveSky) && !root.lockT
                         anchors { top: parent.top; right: parent.right; margins: 12 }
                         spacing: 2
                         Rectangle {
