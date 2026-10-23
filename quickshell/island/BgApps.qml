@@ -56,11 +56,13 @@ Glass {
             Layout.fillWidth: true
             spacing: 8
             Text {
+                Layout.fillWidth: true
+                horizontalAlignment: root.pal.centerTitles ? Text.AlignHCenter : Text.AlignLeft    // Centred titles
+                leftPadding: root.pal.centerTitles ? 28 : 0          // the badge's width on the other side: the middle of the box
                 text: root.pal.cap("BACKGROUND")
                 color: root.pal.muted
                 font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4
             }
-            Item { Layout.fillWidth: true }
             Badge { pal: root.pal; count: root.count; size: 20; soft: true }
         }
 

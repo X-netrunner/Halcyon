@@ -45,8 +45,6 @@ Item {
             font.family: root.pal.uiFont
             font.pixelSize: 12
             wrapMode: Text.Wrap
-            maximumLineCount: 3
-            elide: Text.ElideRight
         }
         // usage bars side by side (one per disk), sharing the full width
         Row {

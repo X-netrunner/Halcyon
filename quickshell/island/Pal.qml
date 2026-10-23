@@ -14,6 +14,9 @@ Scope {
     // differs reads `calm`; the shared pieces (Glass, Chip, ActionChip, Toggle, Slider, Shadow, the stars) switch by themselves.
     property string uiStyle: "new"
     readonly property bool calm: uiStyle !== "legacy"
+    // Settings > Look: explanations / key hints shrink to a "?" dot (Hint.qml), box titles sit in the middle (BoxTitle.qml)
+    property bool hideHints: false
+    property bool centerTitles: false
 
     // ---------- theme ----------
     // `light` flips every surface, line and text colour at once. The wallpaper palette (`hx palette`) is always made for the

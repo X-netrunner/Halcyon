@@ -646,8 +646,8 @@ Scope {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: parent.width - 50                      // what is left of the sidebar after the icon: the lines below wrap instead of running off the edge
                                         spacing: 1
-                                        Text { width: parent.width; elide: Text.ElideRight; text: "Study"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.DemiBold }
-                                        Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; text: "on this computer  ·  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice)); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        Text { width: parent.width; elide: Text.ElideRight; horizontalAlignment: root.pal.centerTitles ? Text.AlignHCenter : Text.AlignLeft; text: "Study"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.DemiBold }
+                                        Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; horizontalAlignment: root.pal.centerTitles ? Text.AlignHCenter : Text.AlignLeft; text: "on this computer  ·  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice)); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                     }
                                 }
 
