@@ -460,6 +460,25 @@ Scope {
     property string phaseText: ""
     property string launchLog: ""           // the end of the game's log, without the noise
     readonly property string launchOut: Quickshell.env("XDG_RUNTIME_DIR") + "/hgl-launch.out"     // shell.qml sends `hgl run` here
+    // a first start's one-time steps, read from the log (only goes forward): -1 not a first start | 0 downloading umu's Steam
+    // Runtime | 1 checking and unpacking it | 2 the game's Windows folder | 3 opening the game
+    property int firstStage: -1
+    property string rtUrl: ""               // where umu downloads the runtime from (its folder), to ask the archive's size once
+    property real dlDone: 0                 // bytes of the runtime on disk so far
+    property real dlTotal: 0                // the archive's size; 0 = not known yet (the bar then just moves)
+    property real dlRate: 0                 // bytes/s, smoothed
+    property real dlAt: 0                   // when dlDone was read (ms)
+    function mb(b) { return (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + " MB" }
+    readonly property string dlLine: {
+        if (dlDone <= 0) return "Connecting to Valve's servers\u2026"
+        var s = mb(dlDone) + (dlTotal > 0 ? " of " + mb(dlTotal) : " so far")
+        if (dlRate > 1024) s += " \u00b7 " + (dlRate / 1048576).toFixed(1) + " MB/s"
+        if (dlTotal > dlDone && dlRate > 1024) {
+            var left = (dlTotal - dlDone) / dlRate
+            s += " \u00b7 " + (left < 90 ? "under a minute" : "about " + Math.round(left / 60) + " min") + " left"
+        }
+        return s
+    }
     function playSel() {
         if (!sel) return
         if (selRunning) { stopRequested(); return }
@@ -468,6 +487,7 @@ Scope {
         phase = "starting"
         phaseText = "Starting " + sel.name + "\u2026"
         launchLog = ""
+        firstStage = -1; rtUrl = ""; dlDone = 0; dlTotal = 0; dlRate = 0; dlAt = 0
         launchRequested(sel.id)
         pollT.restart()
     }
@@ -491,12 +511,45 @@ Scope {
         var g = null
         for (var i = 0; i < games.length; i++) if (games[i].id === launchId) g = games[i]
         var name = g ? g.name : "the game"
-        if (/Downloading steamrt|please wait/i.test(log) && !/ntsync|Executable is|launching with/i.test(log))
-            phaseText = "Downloading the Steam Runtime. First start only: a few minutes"
-        else if (/Upgrading prefix|Creating prefix|wineboot/i.test(log) && !/Executable is|launching with/i.test(log))
-            phaseText = "Setting up " + name + "'s Windows folder. First start only"
-        else if (/Executable is|launching with|ntsync/i.test(log))
-            phaseText = "Opening " + name + "\u2026"
+        // umu says "Downloading steamrt4 (<version>), please wait..." (or "Found '<archive>' in cache, resuming..."),
+        // then "SHA256 is OK", "Verifying integrity of ...", "mtree is OK"
+        var dl = /Downloading (\S+) \(([^)\s]+)\)/.exec(log)
+        if (dl && rtUrl === "") rtUrl = "https://repo.steampowered.com/" + dl[1].replace(/-arm64$/, "") + "/images/" + dl[2] + "/"
+        var opening = /Executable is|launching with|ntsync/i.test(log)
+        var st = -1
+        if (dl || /in cache, resuming|Downloading umu runtime/i.test(log)) st = 0
+        if (/SHA256 is OK|Verifying integrity|mtree is OK/i.test(log)) st = 1
+        if (/Upgrading prefix|Creating prefix|wineboot/i.test(log)) st = 2
+        if (opening && firstStage >= 0) st = 3
+        if (st > firstStage) firstStage = st
+        if (firstStage === 0) phaseText = "Downloading the Steam Runtime. First start only"
+        else if (firstStage === 1) phaseText = "Checking and unpacking the Steam Runtime. First start only"
+        else if (firstStage === 2) phaseText = "Setting up " + name + "'s Windows folder. First start only"
+        else if (opening) phaseText = "Opening " + name + "\u2026"
+    }
+    // the runtime download's progress: the size of umu's .parts file (on /tmp, or under its cache when /tmp is small or it resumes),
+    // against the archive's size on Valve's server (asked once)
+    Timer { interval: 1000; repeat: true; triggeredOnStart: true; running: root.phase === "starting" && root.firstStage === 0; onTriggered: if (!dlProc.running) dlProc.running = true }
+    Process {
+        id: dlProc
+        command: ["sh", "-c", "f=$(find \"${TMPDIR:-/tmp}\" \"${XDG_CACHE_HOME:-$HOME/.cache}/umu\" -maxdepth 2 -name 'SteamLinuxRuntime_*.parts' " +
+                  "-printf '%s %f\\n' 2>/dev/null | sort -n | tail -n 1); echo \"$f\"; a=${f#* }; a=${a%%.tar.xz*}.tar.xz; " +
+                  "[ -n \"$1\" ] && [ -n \"$f\" ] && curl -sIL --max-time 8 \"$1$a\" | tr -d '\\r' | sed -n 's/^[Cc]ontent-[Ll]ength: *//p' | tail -n 1",
+                  "sh", root.dlTotal > 0 ? "" : root.rtUrl]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var l = text.trim().split("\n"), m = /^(\d+) /.exec(l[0] || "")
+                if (!m) return
+                var now = Date.now(), b = Number(m[1])
+                if (root.dlAt > 0 && b >= root.dlDone && now > root.dlAt) {
+                    var r = (b - root.dlDone) * 1000 / (now - root.dlAt)
+                    root.dlRate = root.dlRate > 0 ? root.dlRate * 0.7 + r * 0.3 : r
+                }
+                root.dlDone = b; root.dlAt = now
+                var t = Number(l[1] || 0)
+                if (t > 0) root.dlTotal = t
+            }
+        }
     }
     // the game's window appeared: get out of the way
     Connections {
@@ -1240,6 +1293,119 @@ Scope {
                                                         font.pixelSize: root.pal.tBody
                                                         font.weight: Font.Medium
                                                     }
+                                                }
+                                                // a first start's steps, a star each, joined up to where it is (like the tour's progress)
+                                                Item {
+                                                    id: fsTrack
+                                                    visible: root.phase === "starting" && root.firstStage >= 0
+                                                    width: parent.width
+                                                    height: 34
+                                                    readonly property var names: ["Steam Runtime", "Check", "Windows folder", "Open"]
+                                                    function px(i) { return 5 + i * (width - 10) / 3 }
+                                                    Repeater {
+                                                        model: 3
+                                                        delegate: Rectangle {
+                                                            required property int index
+                                                            x: fsTrack.px(index); y: 5
+                                                            width: fsTrack.px(index + 1) - x; height: 1
+                                                            color: index < root.firstStage ? Qt.alpha(root.pal.accent, 0.7) : Qt.alpha(root.pal.text, 0.12)
+                                                            Behavior on color { ColorAnimation { duration: root.pal.dMed } }
+                                                        }
+                                                    }
+                                                    Repeater {
+                                                        model: 4
+                                                        delegate: Item {
+                                                            id: fsStep
+                                                            required property int index
+                                                            readonly property bool isCur: index === root.firstStage
+                                                            anchors.fill: parent
+                                                            Rectangle {
+                                                                width: fsStep.isCur ? 9 : (index < root.firstStage ? 7 : 5); height: width; radius: width / 2
+                                                                x: fsTrack.px(fsStep.index) - width / 2; y: 5.5 - height / 2
+                                                                color: fsStep.index < root.firstStage ? root.pal.good : (fsStep.isCur ? root.pal.accent : Qt.alpha(root.pal.text, 0.25))
+                                                                scale: fsStep.isCur ? 0.85 + 0.3 * Math.abs(Math.sin(lpulse.tp * Math.PI)) : 1
+                                                                Behavior on width { NumberAnimation { duration: root.pal.dMed } }
+                                                            }
+                                                            Text {
+                                                                y: 16
+                                                                x: Math.max(0, Math.min(fsTrack.width - width, fsTrack.px(fsStep.index) - width / 2))
+                                                                text: fsTrack.names[fsStep.index]
+                                                                color: fsStep.isCur ? root.pal.text : root.pal.muted
+                                                                font.family: root.pal.uiFont
+                                                                font.pixelSize: root.pal.tCap
+                                                                font.weight: fsStep.isCur ? Font.Medium : Font.Normal
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                // the runtime download: a bar that fills (or a light that moves while the size is not known yet)
+                                                Column {
+                                                    visible: root.phase === "starting" && root.firstStage === 0
+                                                    width: parent.width
+                                                    spacing: 6
+                                                    Item {
+                                                        width: parent.width
+                                                        height: 8
+                                                        Rectangle {
+                                                            id: dlTrack
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            width: parent.width; height: 6; radius: 3
+                                                            color: Qt.alpha(root.pal.text, 0.10)
+                                                            clip: true
+                                                            Rectangle {
+                                                                visible: root.dlTotal <= 0
+                                                                width: parent.width * 0.3; height: parent.height; radius: 3
+                                                                x: -width + (parent.width + width) * lpulse.tp
+                                                                color: Qt.alpha(root.pal.accent, 0.7)
+                                                            }
+                                                        }
+                                                        Rectangle {
+                                                            id: dlFill
+                                                            visible: root.dlTotal > 0
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            width: Math.max(height, dlTrack.width * Math.min(1, root.dlDone / Math.max(1, root.dlTotal)))
+                                                            height: 6; radius: 3
+                                                            color: root.pal.accent
+                                                            Behavior on width { NumberAnimation { duration: 900; easing.type: Easing.OutCubic } }
+                                                        }
+                                                        // the bright head of the bar, like the tour's current star
+                                                        Rectangle {
+                                                            visible: dlFill.visible
+                                                            width: 10; height: 10; radius: 5
+                                                            x: dlFill.width - width / 2 - 1; y: -1
+                                                            color: Qt.lighter(root.pal.accent, 1.25)
+                                                            scale: 0.8 + 0.3 * Math.abs(Math.sin(lpulse.tp * Math.PI))
+                                                        }
+                                                    }
+                                                    Row {
+                                                        width: parent.width
+                                                        Text {
+                                                            width: parent.width - pctTxt.width
+                                                            elide: Text.ElideRight
+                                                            text: root.dlLine
+                                                            color: root.pal.muted
+                                                            font.family: root.pal.uiFont
+                                                            font.pixelSize: root.pal.tCap
+                                                        }
+                                                        Text {
+                                                            id: pctTxt
+                                                            visible: root.dlTotal > 0
+                                                            text: Math.min(100, Math.floor(root.dlDone * 100 / Math.max(1, root.dlTotal))) + "%"
+                                                            color: root.pal.text
+                                                            font.family: root.pal.uiFont
+                                                            font.pixelSize: root.pal.tCap
+                                                            font.weight: Font.Medium
+                                                        }
+                                                    }
+                                                }
+                                                Text {
+                                                    width: parent.width
+                                                    visible: root.phase === "starting" && root.firstStage >= 0
+                                                    wrapMode: Text.Wrap
+                                                    text: "Once per PC (the runtime) or per game (its Windows folder). Later starts skip all of this."
+                                                    color: root.pal.muted
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tCap
                                                 }
                                                 Text {
                                                     width: parent.width

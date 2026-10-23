@@ -1,100 +1,124 @@
-# Halcyon - Minimal Custom Hyprland Config
+# Halcyon
 
-Lightweight, minimal, smooth and fast Hyprland setup in Lua, independent of caelestia dots.
+**A complete, highly customizable Hyprland desktop for Arch, built around one floating "island".** It's your bar, launcher, notifications, music, settings and
+game launcher all in one place, with calm, smooth animations. Hyprland is configured in Lua, the island is written in Quickshell, and the
+always-on helpers are written in Rust.
 
-## Layout
-- `hyprland/`, `variables.lua`, `scheme/`: Hyprland config (Lua)
-- `quickshell/`: island bar; the wallpaper layer (`island/Wallpaper.qml`) runs inside the same Quickshell process; the live wallpaper "Halcyon sky" (`island/LiveSky.qml`: the login splash kept as a wallpaper, also a lock screen background)
-- `launch/`: start scripts (`halcyon.sh`, `halcyon-isolated.sh`)
-- `scripts/switch-user.sh` (the lock screen's Switch user button), `scripts/halcyon-settings-io.sh` (export / import your settings as one file) and `scripts/honeypot-digest.sh` (daily honeypot summary), see `changelog.md`
-- `scripts/weekly-sky.py` (your week as stars, `halcyon weekly-sky`), `scripts/splash-sound.sh` (optional splash sounds: calm, spacious swells, generated on the machine) and `scripts/halcyon-plymouth.sh` (boot splash)
-- `scripts/`: app themes (`app-themes.sh`, `app-themes-extra.sh`), cheatsheet, emoji picker, area screenshot, and the toggles (layout, nightlight, touchpad, gestures, power manager, live wallpaper)
-- `src/`: Rust sources for `power-manager` (Auto power), `touchpad-gestures` and `hx` (island data feeds, sysmode status / IDS / dossier); `systemd/`: their user services
-- `sysmode/`: the `sysmode` hardening/decoy-lab CLI plus the honeypot and IDS scripts it launches
+![Halcyon out of the box, with the live Halcyon sky wallpaper](docs/screenshots/desktop.webp)
 
-## Choose your apps (install.sh)
-`./install.sh` asks five short questions the first time (Enter takes the marked choice), and remembers the answers per user in `~/.local/state/island/install-choices.env`, so `update.sh` installs the same things again without asking:
-- **Web browser**: Firefox, Zen, LibreWolf, Floorp, Chromium, Brave, Vivaldi, Google Chrome, qutebrowser (or keep the one you have)
-- **File manager** (several allowed, the first one opens folders with SUPER+E): Thunar, Yazi, Dolphin, Nautilus, Nemo, PCManFM
-- **Code editor** (several allowed, the first one is SUPER+C): VSCodium, Zed, Neovim
-- **sysmode**: the hardening / honeypot lab and its ~10 security tools, or skip it
-- **Safety check** (default yes): a one-command system update, malware / rootkit scan, firewall + audit check and backup (`src/safety-check`). Yes installs clamav, rkhunter, lynis, aide, ufw and rsync plus a root-owned `/usr/local/bin/safety-check`, and **Settings > Backup > Safety check** starts it. No leaves that Settings entry greyed out and disabled. `--safety-check` / `--no-safety-check` skip the question
+<!-- A video or GIF of Halcyon in action can go here -->
 
-No questions: `--browser zen --files yazi,thunar --editor codium,zeditor --no-sysmode --no-safety-check` (see `./install.sh --help`). `--yes` uses the saved choice or the default (keep your browser or Firefox, Thunar, no extra editor, sysmode). `./install.sh --choose` asks again (the first install on a machine asks everything once by itself). What you pick also becomes the default in Settings > Default apps (and the system default for links, folders and text files).
+## What you get
 
-**Your shell prompt.** When the installer finds another prompt setup (your own `~/.config/starship.toml`, Starship started from your shell config, the CachyOS fish prompt, oh-my-posh, powerlevel10k) it asks once: *Keep mine* (Halcyon touches nothing), *My layout, Halcyon colours*, or *Halcyon's prompt* (`--prompt keep|colours|halcyon`). It is remembered, `./install.sh --choose` changes it, and whatever a switch replaces is saved as `starship.toml.before-halcyon` / `starship.toml.halcyon`. The sysmode badge of Halcyon's prompt switches itself off while sysmode is not installed.
+Everything below is how Halcyon looks right after installing, before you change anything.
 
-## Launch
-Halcyon lives in `~/.config/Halcyon`. From a TTY:
-```bash
-~/.config/Halcyon/launch/halcyon.sh
-```
-For a throw-away test session (separate runtime dir): `launch/halcyon-isolated.sh`. Or directly:
-```bash
-HYPRLAND_CONFIG=~/.config/Halcyon Hyprland
-```
+| | |
+|---|---|
+| ![Launcher](docs/screenshots/launcher.webp) | **One search bar for everything.** Tap <kbd>Super</kbd> and use the arrow keys straight away, or start typing. Type `>` for commands (`>settings`, `>gaming`, a game's name), `=` for a calculator, `.` to see every app. |
+| ![Game Center](docs/screenshots/gamecenter.webp) | **Game Center.** Steam games and your own Windows `.exe` games in one library with cover art. It manages Proton versions, checks your system for problems, and switches on gaming mode while you play. The first start shows a download screen with a progress bar. |
+| ![Study Center](docs/screenshots/study.webp) | **Study Center.** Add your PDFs, slides and notes, then ask questions about them or make summaries, quizzes and flashcards, all with a local AI model on your own machine. |
+| ![Calendar](docs/screenshots/calendar.webp) | **Calendar and notes.** Your month, your day's notes and reminders, plus birthdays and holidays. |
+| ![Settings](docs/screenshots/settings.webp) | **Settings that explain themselves.** Every option is searchable. Most of them have a short explanation, and there is a guided tour that shows you around step by step. |
+| ![Settings as a constellation](docs/screenshots/tree.webp) | **Or see everything at once.** The tree view lays out all the settings as one constellation. Too busy for you? Turn the constellations off (Settings > Discover > *Constellations in the boxes*, and *Tree view constellation* under Performance) for the plain look in the other shots. |
+| ![Shortcuts](docs/screenshots/shortcuts.webp) | **Every shortcut in one place.** <kbd>Super</kbd> + <kbd>/</kbd> opens a searchable map of all the key binds, gestures and commands. |
 
-## Rust helpers (the island feeds and sysmode run without Python)
-The helpers the island and sysmode run all the time are written natively in Rust:
-- **`hx`** (`~/.config/Halcyon/bin/hx`): `hx audio | bt | wifi | disk | specs | wsres | palette <img>` (island feeds), `hx status` (sysmode + honeypot status for the quick terminal), `hx dossier [ip]` and `hx ids`.
-- **`recon-deceiver`** (`~/.config/Halcyon/bin/recon-deceiver`): High-performance multi-port honeypot daemon (replaces `recon-deceiver.py`). **It never bans or counter-scans your own side**: the default gateway, your DNS servers and this machine's own addresses are protected automatically (read from the system, refreshed every minute), and `/etc/recon-deceiver.allow` (one address per line, `#` for comments) adds your own, e.g. a NAS or a second laptop. DNS decoy queries arrive over UDP, where the sender address can be forged, so they are answered (at most 50 a second) and logged but never lead to a ban or an nmap scan; only a real TCP connection to a decoy port does. Limits: 256 decoy connections, 3 counter-scans and 256 ufw bans at once; bans are lifted by one timer thread after 10 minutes, and any `recon-deceiver-ban` ufw rule left over from a crash is removed when the daemon starts.
-- **`log-analyst`** (`~/.config/Halcyon/bin/log-analyst`): Real-time IDS signature log analyst daemon (replaces `log-analyst.py`).
-- **`attacker-dossier`** (`~/.config/Halcyon/bin/attacker-dossier`): Attacker log summarizer and intelligence dossier (replaces `attacker-dossier.py`).
-- **`birthday-sync`** (`~/.config/Halcyon/bin/birthday-sync`): reads your Google Birthdays calendar through the Calendar API (read-only login, nothing is written to Google) and fills the "Google Calendar" block of `birthdays.txt`. In the Calendar's setup page press **Connect Google Birthdays** once (needs an OAuth *Desktop app* client JSON saved in `~/Downloads`, with the consent screen set to *In production*), then **Sync Google Birthdays** whenever you add someone.
-- **`hgl`** (`~/.config/Halcyon/bin/hgl`): game launcher engine. One library for Steam (read from its own files) and plain .exe games, Proton runtimes (GE-Proton, Proton-CachyOS) with checksum checks and rollback, a Doctor for Vulkan / 32-bit libraries / umu / gamemode, each game in its own systemd scope, Halcyon's gaming mode switched on and off for you (and restored even if it crashes), crash triage with one-step fixes. The island shows the running game as a pill, rests while it runs (lean mode) and has `>games` / `>game <name>` in the launcher; the **Game Center** window (`>gamecenter`: cover-art library, per-game settings, Proton versions, system check) is the front end. See [docs/games.md](docs/games.md).
-- **`setStaticMac`** (`~/.config/Halcyon/bin/setStaticMac`): Static MAC address manager for iwd and NetworkManager (replaces `setStaticMac.py`).
-- **`power-manager`** and **`touchpad-gestures`**: Native Rust desktop background services.
-Python 3 is still used, on purpose, for features that only run when you use them: Notes (`halcyon-notes.py`), the local AI (`halcyon-chat.py`, `adaptive-advisor.py`, `ai-models.py`, `halcyon-agent.py`), calendar import (`gcal.py`), lyrics (`halcyon-music.py`), the clipboard and screenshot panels (`halcyon-clip.py`, `halcyon-shot.py`), the Study Center (`halcyon-study.py`), Focus mode (`focus.py`), the startup window (`startup-view.py`), timelines (`timeline.py`), safe mode and profiles (`halcyon-fx.py`) and the leak checks (`halcyon-leaks.py`). The island feeds, sysmode and its daemons do not need it.
+There's more: clipboard history, screenshots, notifications and music in the island, a lock screen with widgets, live wallpapers,
+touchpad gestures, focus mode and backups. [Full feature list](docs/features.md).
 
-## Touchpad edge gestures not working?
-`journalctl --user -u touchpad-gestures -e` says why. Usual causes: not in the `input` group (`sudo usermod -aG input $USER`, then log in again), an old binary still installed (re-run `./install.sh`; an old build called `qs -c caelestia ... brightness`, which does nothing without caelestia), or `brightnessctl` / `playerctl` / `wpctl` missing. Left edge up/down = next/previous track (SUPER+ALT+G disables it), right edge up/down = volume, top edge right/left = brightness.
+## Make it yours
 
-## Install in one line (curl)
+Every part has a builder with a live preview, so you can see a change before you keep it.
+
+| | |
+|---|---|
+| ![Bar builder](docs/screenshots/builder-bar.webp) | **Bar builder.** Choose what the island shows and in what order, its size and its style. You can also turn the bar off. |
+| ![Desktop builder](docs/screenshots/builder-desktop.webp) | **Desktop builder.** The wallpaper (a picture, the live sky or a video), the blur and the moving stars. |
+| ![Widget builder](docs/screenshots/builder-widget.webp) | **Widget builder.** Clock, agenda, system stats, now playing, notes and more. Each one has several layouts, and you can save looks of your own. |
+| ![Lock screen builder](docs/screenshots/builder-lock.webp) | **Lock screen builder.** The same idea for the lock screen. |
+| ![Notification builder](docs/screenshots/builder-notif.webp) | **Notification builder.** How notifications look and where they go. |
+
+Here's the same desktop after some changes: widgets on the desktop, and the bar turned off.
+
+![A customised Halcyon desktop](docs/screenshots/custom-desktop.webp)
+
+| ![Your own widgets in the builder](docs/screenshots/custom-builder-widget.webp) | ![Widgets placed on the desktop](docs/screenshots/custom-builder-desktop.webp) |
+|---|---|
+
+## Light on resources
+
+The bar, launcher, notifications, wallpaper (including the live sky), lock screen, widgets and every window you see above run in
+**one Quickshell process**. The always-on helpers (system stats, power, gestures) are small Rust programs, and the Python parts only run while
+you use them.
+
+Measured on a 16 GB laptop:
+
+| | |
+|---|---|
+| The island (the whole Quickshell UI), after boot | about **255 MB** |
+| The island after a long session with many windows opened | about **400 MB** |
+| Its CPU at idle (live sky on, nothing playing) | about **1%** of one core |
+| Its CPU with music playing and the live sky animating | about **4%** of one core |
+| The whole system after boot | about **1.7 GB** used |
+
+**At the lowest settings** (Resource use: Low, Update speed: Low, constellations and tree view effects off, island animations off,
+no live wallpaper or moving stars), the island's idle CPU drops to about **0.5%** of one core. Its memory stays about the same
+(250–330 MB), because these settings cut animation and polling, not what gets loaded.
+
+All of these are in Settings > Performance & memory and Settings > Appearance.
+
+## Install
+
+On Arch (or CachyOS, EndeavourOS, Manjaro...), as your normal user:
+
 ```bash
 curl -fsSL https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh | bash
 ```
 
-That is the `get.sh` of the newest release, not whatever is on the branch today, and it installs that same release (`HALCYON_REF=HEAD` for the unreleased newest, `HALCYON_REF=v1.2.3` to pin). Each release also lists `get.sh` and `install.sh` in `SHA256SUMS`, so you can download and check them first.
-`get.sh` downloads Halcyon with git into `~/.config/Halcyon` (a git checkout, so `update.sh` updates it in place later) and runs `install.sh`; your answers are asked on the terminal even though the script comes through a pipe, and with no terminal at all it runs `--yes`. Options go after `-s --` and reach `install.sh` unchanged: `curl -fsSL <url>/get.sh | bash -s -- --yes --no-sysmode --browser zen`. `--dry-run` downloads to `~/.cache/halcyon-get` and only shows what it would do. If Halcyon is already a git checkout there, `get.sh` hands over to `update.sh`; if it is a plain copy, the newest version is installed over it (the old copy is saved in `~/.config/Halcyon-backups`, your own files are kept). `HALCYON_REPO` / `HALCYON_DIR` point it at a fork / another folder. Run as your normal user, never root.
+It asks a few short questions (browser, file manager, editor, whether you want the optional extras) and asks for your password only when a
+step needs it. Then pick the **Halcyon** session on your login screen. Prefer to read it first? Run `git clone` and `./install.sh --dry-run`.
+The dry run shows every step and changes nothing.
 
-## Install (one script)
-`./install.sh` is the only installer (the separate `glinstall.sh` of the fixed zip is merged into it). Run it as your normal user from the Halcyon folder; it asks for sudo only where needed. Safe to run again.
+**Optional extras you choose at install time:**
+- **sysmode**: a security lab with a honeypot, an intrusion detection system (IDS) and hardening. It's off unless you say yes.
+- **Safety check**: a one-click system update, malware scan and backup.
 
-```
-./install.sh                 asks before the important things
-./install.sh --yes           no questions (fresh machine; update.sh uses this)
-./install.sh --dry-run       show every step, change nothing
-```
+Both run as root. [How it works](docs/how-it-works.md#install-one-script) says exactly what is installed and why it can be trusted.
 
-What it does, in order: checks the machine / user / sudo, installs packages (official repos, the AUR only for the few that need it; an AUR helper is built only if one is really needed), detects GPU drivers and CPU microcode, sets up audio / Bluetooth / network / power services and the `input` + `video` groups, installs Hyprland, Quickshell and the desktop, makes sure a Rust toolchain exists, copies the rice to `~/.config/Halcyon` (the old copy is saved in `~/.config/Halcyon-backups`; your `hypr-user.lua`, `scheme/current.lua` and `gamemode.conf` are never overwritten), builds `hx` / `power-manager` / `touchpad-gestures`, makes `~/.config/hypr/hyprland.lua` load Halcyon, adds a "Halcyon" session to the login screen (or, with no login manager, offers the lock screen as login screen), installs the user services and the boot service for RAM details, installs the root helpers, makes colours from your wallpaper and includes the colour files in your terminals, then checks the result.
+## First steps
 
-Options: `--yes`, `--dry-run`, `--no-packages` (also skips drivers), `--no-drivers`, `--no-aur`, `--upgrade` (a full `pacman -Syu` first; **not** done by default, because it can update the kernel under a running desktop and `update.sh` runs this installer), `--no-sysmode`, `--no-tune`, `--link` (symlink instead of copy, for development: the folder must be writable by you), `--user NAME` (when run as root), `--tty-autostart`, `--lock-login` / `--no-lock-login` / `--remove-lock-login`, `-v`.
+| Key | Does |
+|---|---|
+| <kbd>Super</kbd> | Open the launcher |
+| <kbd>Super</kbd> + <kbd>/</kbd> | All shortcuts |
+| <kbd>Super</kbd> + <kbd>T</kbd> / <kbd>W</kbd> / <kbd>E</kbd> / <kbd>C</kbd> | Terminal / browser / files / code editor |
+| <kbd>Super</kbd> + <kbd>Q</kbd> | Close a window |
+| <kbd>Super</kbd> + <kbd>1</kbd>...<kbd>9</kbd> | Go to a workspace |
+| <kbd>Super</kbd> + <kbd>L</kbd> | Lock |
 
-**Security notes** (what runs as root, and why it can be trusted):
-- `halcyon-tune` (Gaming mode CPU/GPU boost, power-manager switch, Wi-Fi power saving) is copied to `/usr/local/bin` as a **root-owned** file and the sudoers rule names exactly that file and nothing else. It accepts only fixed words (`game-on`, `game-off`, `wifi-ps on|off`, `pm <known manager>`), never a path or free text, and never `source`s a file. Skip it with `--no-tune`.
-- The sudoers rule is written to a root-owned temporary file, validated with `visudo -cf`, and only then moved into place; a rule that fails validation is never installed.
-- `sysmode` runs as root, so the Python scripts it launches are installed as **root-owned** copies in `/usr/local/lib/halcyon/sysmode` (`SCRIPTS_DIR` in `/etc/sysmode.conf`). Before, it ran them from `~/.config/Halcyon/sysmode`, a folder any program running as you could edit. Re-run `./install.sh` after changing those scripts.
-- When run as root, AUR builds get a temporary sudo rule that allows only `/usr/bin/pacman`, removed again when the installer exits.
-- Everything is logged to a private temporary folder (the path is printed at the start and end).
-
-## Prebuilt helpers (no Rust needed)
-When you install a tagged release (`git checkout v1.2.3`, or `HALCYON_REF=v1.2.3` with `get.sh`), `install.sh` downloads the helper binaries from that release's GitHub page, checks each against the release's `SHA256SUMS` (and that no library is missing), and installs them: no Rust toolchain, no compile wait. Anything that cannot be downloaded is compiled as before. The checksum list comes from the same release, so it protects against a broken download, not a compromised release: use `./install.sh --build-from-source` (or `HALCYON_PREBUILT=0`) to run only code you compiled yourself. Maintainers: `git tag v1.2.3 && git push --tags` builds and attaches the binaries (`.github/workflows/release.yml`).
+New here? Open Settings and press **Start** next to *Guided tour*.
 
 ## Updating
-`~/.config/Halcyon/update.sh` asks GitHub (X-netrunner/Halcyon) for the newest version. **Nothing new = nothing is touched.** If there is something new it is pulled (`git pull --rebase --autostash` when `~/.config/Halcyon` is a git checkout, so your own edits stay; otherwise the latest is cloned and installed over it, keeping `hypr-user.lua`, `scheme/current.lua`, `gamemode.conf`), `install.sh --yes` sets it up, and the island + Hyprland reload. `--check` only reports, `--force` re-runs the setup, `--no-packages` / `--no-sysmode` go to `install.sh`. `--changes` lists what is new, the install options of `install.sh` (`--browser`, `--files`, `--editor`, `--music`, `--resources`, `--resource-offset`, `--no-apps`, `--no-tune`, `--no-drivers`, `--no-aur`, `--lock-login` ...) are passed on too, with a value after a space or an `=`, `--rollback` goes back to the version before the last update (git checkouts), `--notify` sends a desktop notification with the result, and `--check` exits with 10 when an update exists. The run is logged in `~/.local/state/halcyon/update.log`, and after the reload the island's log is checked so a QML error shows up straight away.
 
-## Reload, quick keys
-- Settings > **Reload Hyprland** now reloads Hyprland's config (Lua modules are re-read, not served from cache), repaints terminal colours and reloads the island (`quickshell ipc ... call island reload` does the same).
-- Launcher: **Up / Down** = earlier / later searches (kept in `~/.local/state/island/launcher-history.log`), **Left / Right** move the text cursor, **Tab / Shift+Tab** (or Ctrl+N / Ctrl+P) pick the next / previous result, **Ctrl+Up / Ctrl+Down** move a row. In the `>` command list Up / Down still move the selection.
-- Workspaces slide horizontally in the direction you travel (`hyprland/animations.lua`).
-- Profile editor in the tree (E): **Browse** opens a file dialog (zenity, kdialog or yad).
+```bash
+~/.config/Halcyon/update.sh
+```
 
+If there is nothing new, nothing is touched. Your own changes are kept. If something goes wrong, `update.sh --rollback` goes back to the
+previous version.
 
-## More
-- [Features and settings](docs/features.md): island, widgets, lock screen, gestures, sysmode, clipboard, constellations
-- [How it fits together, and why](docs/architecture.md)
-- [Notes from past passes](docs/changes.md)
-- Move your setup to another computer: `scripts/halcyon-settings.sh export` / `import`
-- [Full changelog](changelog.md)
-- Something not working? Run `scripts/halcyon-doctor.sh`
+## Something not working?
 
+Run `~/.config/Halcyon/scripts/halcyon-doctor.sh` and it tells you what's wrong. Games have their own check in Game Center > Doctor.
+Please open an [issue](https://github.com/X-netrunner/Halcyon/issues) with what it says.
+
+## Learn more
+
+- **[How Halcyon works](docs/how-it-works.md)**: the folders, the Rust helpers, everything the installer does, security notes and updates
+- [Why it's built this way](docs/architecture.md) · [Games](docs/games.md) · [Features and settings](docs/features.md) · [Changelog](changelog.md)
+
+## Who made it
+
+Halcyon is written by Srijan ([netrunner](https://github.com/X-netrunner)). I also used [Claude Code](https://claude.com/claude-code)
+to help with optimizations and features along the way.
+
+MIT licensed. See [LICENSE](LICENSE).
