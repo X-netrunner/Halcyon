@@ -45,7 +45,7 @@ if [ -z "${HALCYON_NO_MALLOC_TUNE:-}" ]; then
   export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}" MALLOC_TRIM_THRESHOLD_="${MALLOC_TRIM_THRESHOLD_:-131072}"
 fi
 
-# GPU: ~/.config/Halcyon/gpu-mode = igpu | dgpu (change it with scripts/gpu-mode.sh). dgpu = the NVIDIA GPU draws the desktop.
+# GPU: ~/.config/Halcyon/gpu-mode = igpu | igpu-only | dgpu (change it with scripts/gpu-mode.sh). dgpu = the NVIDIA GPU draws the desktop.
 mode=igpu; [ -s "$RICE/gpu-mode" ] && mode="$(head -n1 "$RICE/gpu-mode")"
 if [ "$mode" = dgpu ] && [ -r /proc/driver/nvidia/version ]; then
   nv=""; others=""
@@ -61,6 +61,22 @@ if [ "$mode" = dgpu ] && [ -r /proc/driver/nvidia/version ]; then
   else echo "GPU mode: dgpu asked for but no NVIDIA card found, using the default GPU" >> "$log"; fi
 elif [ "$mode" = dgpu ]; then
   echo "GPU mode: dgpu asked for but the NVIDIA driver is not loaded, using the default GPU" >> "$log"
+elif [ "$mode" = igpu-only ]; then
+  # Hyprland opens every GPU it finds; holding the NVIDIA one (for its HDMI port) keeps it awake, about 2.5 W at 0 % load.
+  # igpu-only hands Hyprland only the other GPUs: the NVIDIA one sleeps (prime-run still wakes it), its ports stay dark.
+  # An NVIDIA card with a screen connected at login is kept, so a docked laptop never comes up black.
+  keep=""; others=""; nvbusy=0
+  for c in /sys/class/drm/card[0-9]*; do
+    [ -e "$c/device/vendor" ] || continue
+    case "$c" in */card[0-9]*-*) continue ;; esac
+    if [ "$(cat "$c/device/vendor")" = 0x10de ]; then
+      grep -qx connected "$c"/"${c##*/}"-*/status 2>/dev/null && { nvbusy=1; keep="${keep:+$keep:}/dev/dri/${c##*/}"; }
+    else others="${others:+$others:}/dev/dri/${c##*/}"; fi
+  done
+  if [ -n "$others" ]; then
+    export AQ_DRM_DEVICES="$others${keep:+:$keep}"
+    echo "GPU mode: igpu-only (AQ_DRM_DEVICES=$AQ_DRM_DEVICES${keep:+, NVIDIA kept: a screen is on it})" >> "$log"
+  else echo "GPU mode: igpu-only asked for but there is no other GPU, using the default" >> "$log"; fi
 fi
 
 # From the tty1 login (launch/halcyon-login.sh) the console still shows the boot splash: Hyprland's start-up text (its logo and

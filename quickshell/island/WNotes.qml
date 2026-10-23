@@ -31,26 +31,31 @@ WBase {
     function refresh() {
         nowMs = Date.now()
         today = Qt.formatDate(new Date(), "dddd, MMM d")
-        if (!notesProc.running) notesProc.running = true
+        notesFile.reload()
         // the calendar file only changes when it syncs: read it every minute, not every 15 seconds
         if (events && (beat++ % 4 === 0) && !calProc.running) calProc.running = true
     }
     onEventsChanged: if (live) { beat = 0; refresh() }
     Timer { interval: 15000; repeat: true; running: root.live; triggeredOnStart: true; onTriggered: root.refresh() }
 
-    Process {
-        id: notesProc
-        command: ["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "json"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                if (text === root.lastNotes) return
-                try {
-                    var all = JSON.parse(text)
-                    root.notes = all.filter(function (n) { return !n.done }).sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) })
-                    root.lastNotes = text
-                } catch (e) { /* a failed read keeps what is shown instead of blanking the list */ }
-            }
-        }
+    // notes.json is read here, not through `halcyon-notes.py json` (which only prints the same file): no Python start every 15 s.
+    // A change shows at once (watchChanges); the timer's reload also catches a save that replaced the file under the watch.
+    function takeNotes(text) {
+        if (text === root.lastNotes) return
+        try {
+            var all = text.trim() === "" ? [] : JSON.parse(text)
+            if (!Array.isArray(all)) return
+            root.notes = all.filter(function (n) { return !n.done }).sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) })
+            root.lastNotes = text
+        } catch (e) { /* a failed read (a save half written) keeps what is shown instead of blanking the list */ }
+    }
+    FileView {
+        id: notesFile
+        path: root.live ? Quickshell.env("HOME") + "/.local/state/island/notes.json" : ""
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.takeNotes(text())
+        onLoadFailed: err => { if (err === FileViewError.FileNotFound) root.takeNotes("[]") }
     }
     Process {
         id: calProc
