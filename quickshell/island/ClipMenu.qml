@@ -40,10 +40,53 @@ Scope {
     readonly property bool panelBottom: spot.charAt(0) === "b"
     readonly property string script: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-clip.py"
 
-    function show() { search = ""; kindFilter = "all"; note = ""; confirmClear = false; aiItem = null; open = true; load() }
-    function hide() { open = false; confirmClear = false }
+    // ---- where the panel opens: at the mouse pointer (like the Windows clipboard), or on the side of the screen when that is off / unknown
+    property bool atCursor: opt.clipAtCursor !== false
+    property real curX: -1                  // pointer position inside the monitor it is on (logical px); -1 = unknown
+    property real curY: -1
+    property string curScreen: ""           // that monitor's name, so the panel opens on the right screen
+    property bool pending: false            // asked to open, waiting for the pointer position (a few ms)
+    readonly property bool followCursor: atCursor && curX >= 0 && curY >= 0
+
+    function show() {
+        search = ""; kindFilter = "all"; note = ""; confirmClear = false; aiItem = null
+        load()
+        if (atCursor) {
+            curX = -1; curY = -1; pending = true
+            posProc.running = true
+            posGuard.restart()
+        } else open = true
+    }
+    function hide() { pending = false; open = false; confirmClear = false }
     function close() { hide() }
-    function toggle() { if (open) hide(); else show() }
+    function toggle() { if (open || pending) hide(); else show() }
+
+    // hyprctl: the pointer in layout coordinates, minus the monitor it is over (x, y, scale) = the spot inside that monitor
+    Process {
+        id: posProc
+        command: ["python3", "-c",
+            "import json,subprocess as s\n" +
+            "try:\n" +
+            " c=json.loads(s.check_output(['hyprctl','cursorpos','-j'],timeout=2))\n" +
+            " for m in json.loads(s.check_output(['hyprctl','monitors','-j'],timeout=2)):\n" +
+            "  sc=m.get('scale') or 1\n" +
+            "  w=m['width']/sc; h=m['height']/sc\n" +
+            "  if m.get('transform',0)%2: w,h=h,w\n" +
+            "  if m['x']<=c['x']<m['x']+w and m['y']<=c['y']<m['y']+h:\n" +
+            "   print(m['name'],c['x']-m['x'],c['y']-m['y']); break\n" +
+            "except Exception: pass\n"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var p = text.trim().split(" ")
+                if (p.length === 3 && !isNaN(parseFloat(p[1])) && !isNaN(parseFloat(p[2]))) {
+                    root.curScreen = p[0]; root.curX = parseFloat(p[1]); root.curY = parseFloat(p[2])
+                }
+            }
+        }
+        onExited: { posGuard.stop(); if (root.pending) { root.pending = false; root.open = true } }
+    }
+    // safety net: if hyprctl hangs, the panel still opens (on its usual side)
+    Timer { id: posGuard; interval: 600; onTriggered: { if (root.pending) { root.pending = false; root.open = true } } }
 
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
@@ -240,6 +283,13 @@ Scope {
         PanelWindow {
             id: win
             visible: true
+            screen: {
+                if (root.curScreen !== "") {
+                    for (var i = 0; i < Quickshell.screens.length; i++)
+                        if (Quickshell.screens[i].name === root.curScreen) return Quickshell.screens[i]
+                }
+                return null
+            }
             anchors { top: true; bottom: true; left: true; right: true }
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
@@ -264,13 +314,27 @@ Scope {
                     id: panel
                     pal: root.pal
                     width: 480
-                    height: Math.min(qp.height - root.pal.boxTop - root.pal.boxEdge, 560)
+                    height: root.followCursor ? Math.min(qp.height - 24, 560)
+                                              : Math.min(qp.height - root.pal.boxTop - root.pal.boxEdge, 560)
                     radius: root.pal.rXl
                     opacityBody: root.pal.solid ? 1 : 0.92
                     opacity: qp.reveal
-                    x: root.panelRight ? qp.width - width - 22 + (1 - qp.reveal) * width * 0.4
-                                       : 22 - (1 - qp.reveal) * width * 0.4
-                    y: root.panelBottom ? qp.height - height - root.pal.boxEdge : root.pal.boxTop
+                    // at the pointer: its top-left corner on the pointer, flipped to the other side when it would run off the screen, then kept on screen
+                    readonly property real cx: {
+                        var x = root.curX
+                        if (x + width > qp.width - 12) x = root.curX - width
+                        return Math.max(12, Math.min(x, qp.width - width - 12))
+                    }
+                    readonly property real cy: {
+                        var y = root.curY
+                        if (y + height > qp.height - 12) y = root.curY - height
+                        return Math.max(12, Math.min(y, qp.height - height - 12))
+                    }
+                    x: root.followCursor ? cx
+                       : (root.panelRight ? qp.width - width - 22 + (1 - qp.reveal) * width * 0.4
+                                          : 22 - (1 - qp.reveal) * width * 0.4)
+                    y: root.followCursor ? cy + (1 - qp.reveal) * 10
+                       : (root.panelBottom ? qp.height - height - root.pal.boxEdge : root.pal.boxTop)
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
 
                     NoteStars {

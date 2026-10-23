@@ -260,3 +260,32 @@ Not changed: the ~20 s window before the lock appears, and the nmap target rules
 | `quickshell/island/Pal.qml` | **Accent cycling:** every wallpaper colour in the cycle is pulled into the same pastel band as the fixed accent (lightness 0.66-0.78, saturation 0.30-0.58). A dark navy or neon swatch no longer gives a dim or harsh accent while cycling; hues are untouched. |
 
 Not run here: there is no Quickshell in the sandbox, so none of the QML was drawn. `node tests/settings-groups.test.js` passes; the contrast figures were computed with the same formulas.
+
+---
+
+## Update: clipboard at the mouse pointer, Study Center answer labels
+
+**Clipboard (Super + V)** — `quickshell/island/ClipMenu.qml`, `shell.qml`, `Settings.qml`
+- **What:** the clipboard panel now opens where the mouse pointer is (top-left corner on the pointer, flipped to the other side of it near a screen edge, always kept fully on screen) instead of always on one side of the screen. It also opens on the monitor the pointer is on.
+- **How:** on open, one short `python3` call reads `hyprctl cursorpos -j` and `hyprctl monitors -j` and turns the pointer into a spot inside its monitor (scale and rotation handled). The panel opens a few ms later. If `hyprctl` fails or hangs (600 ms guard) it opens on the side as before.
+- **Setting:** Settings > Startup & background > "Clipboard opens at the mouse" (`opt.clipAtCursor`, on by default; off = the old side placement).
+- **Tested:** the pointer-to-monitor logic against a fake `hyprctl` with two monitors (one scaled 1.5). The QML is untested.
+
+**Study Center** — `quickshell/island/StudyCenter.qml`
+- **What:** a line that is only a source label (`[Data Analytics Notes, part 4]`, also when the model wrote it in bold) is now a small accent label above its paragraph instead of a bold heading; citations inside a sentence are smaller and muted. Answers that go file by file are much easier to scan.
+- **Tested:** the formatter (`fmt`) in Node with sample text. The QML is untested.
+
+---
+
+## Update: Study Center layout fixes, favourites for every launcher command
+
+**Study Center** — `quickshell/island/StudyCenter.qml`
+- **Band between the two sections:** the sidebar's square right edge was a second translucent rectangle painted over the first, so the overlap drew a darker strip as wide as the corner radius. The sidebar is now one rounded rectangle, wider than its box and clipped, so the colour is painted once.
+- **Text running off the edge:** the "on this computer · Auto, up to qwen3:8b" line had no width, so it ran to (and past) the sidebar edge. It now has the width left beside the icon and wraps (up to 3 lines).
+- **Add files not centred:** the sidebar column is now exactly the sidebar width minus its padding and the 1 px edge line, and the button is centred in it with a maximum width.
+
+**Favourites for the whole command centre** — `quickshell/island/Launcher.qml`
+- **What:** every `>` command now has the star (it used to be games only). Click it, or press Ctrl + F on the selected row.
+- **Where they show:** a starred command is always listed first in `>` (even if you never use it, and the list grows to fit all of them), and first among the matches while you search. In the grouped `>.` list it stays in its own group (the star still shows).
+- **Stored in:** `~/.local/state/island/cmd-favs.txt`, one command id per line. Games keep using `hgl set <id> fav`.
+- **Tested:** nothing in QML could be run here; the two shell snippets (add without duplicates, remove) are plain `grep`/`mv`.

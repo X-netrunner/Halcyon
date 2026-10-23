@@ -435,9 +435,36 @@ Item {
         id: favProc
         onExited: if (!gamesProc.running) gamesProc.running = true
     }
+    // favourites for every command (not only games): ids in ~/.local/state/island/cmd-favs.txt, one per line. A starred command is listed first
+    // in ">" (always, even if you never use it) and first among the matches while you search; in the grouped ">." list it keeps its group.
+    property var cmdFavs: ({})
+    function isFav(c) { return !!c && (c.id.indexOf("game:") === 0 ? !!c.fav : root.cmdFavs[c.id] === true) }
+    Process {
+        running: true
+        command: ["sh", "-c", "cat ~/.local/state/island/cmd-favs.txt 2>/dev/null"]
+        stdout: SplitParser {
+            onRead: d => {
+                var id = d.trim()
+                if (id) { var f = Object.assign({}, root.cmdFavs); f[id] = true; root.cmdFavs = f }
+            }
+        }
+        onExited: root.refresh()
+    }
+    function toggleCmdFav(c) {
+        var on = root.cmdFavs[c.id] !== true
+        var f = Object.assign({}, root.cmdFavs)
+        if (on) f[c.id] = true; else delete f[c.id]
+        root.cmdFavs = f
+        Quickshell.execDetached(["sh", "-c", on
+            ? "mkdir -p ~/.local/state/island; f=~/.local/state/island/cmd-favs.txt; grep -qxF -- \"$0\" \"$f\" 2>/dev/null || echo \"$0\" >> \"$f\""
+            : "f=~/.local/state/island/cmd-favs.txt; grep -vxF -- \"$0\" \"$f\" > \"$f.tmp\" 2>/dev/null; mv -f \"$f.tmp\" \"$f\" 2>/dev/null; true", c.id])
+        favSel = c.id                                       // the command just starred stays selected while the list re-sorts
+        refresh()
+    }
     function toggleFav(i) {
         var c = cmdResults[i]
-        if (!c || c.id.indexOf("game:") !== 0 || favProc.running) return
+        if (c && c.id.indexOf("game:") !== 0) { toggleCmdFav(c); return }
+        if (!c || favProc.running) return
         for (var k = 0; k < gameList.length; k++)          // flip it here too, so the star answers before hgl does
             if (gameList[k] && "game:" + gameList[k].id === c.id) gameList[k].fav = !c.fav
         favProc.command = [Quickshell.env("HOME") + "/.config/Halcyon/bin/hgl", "set", c.id.substring(5), "fav", c.fav ? "off" : "on"]
@@ -451,7 +478,7 @@ Item {
         if (mode === "cmd") {
             var cq = q0.substring(1).trim().toLowerCase()
             if (cq === ".") cq = ""                          // ">." = everything
-            var outc = [], total = 0
+            var outc = [], total = 0, nfav = 0
             var shortList = cq === "" && !cmdAll && root.cmdCategory === "all"
             for (var c = 0; c < commands.length; c++) {
                 var cm = commands[c]
@@ -460,7 +487,8 @@ Item {
                 total++
                 if (shortList) {                             // used: by how much (always above the core ones); core: in its own order
                     var us = score("cmd:" + cm.id), ci = cmdCore.indexOf(cm.id)
-                    if (cm.id === "games-stop") outc.push({ c: cm, r: 1000, i: c })
+                    if (root.cmdFavs[cm.id] === true) { nfav++; outc.push({ c: cm, r: 2000, i: c }) }          // starred: always first
+                    else if (cm.id === "games-stop") outc.push({ c: cm, r: 1000, i: c })
                     else if (us >= 0.3) outc.push({ c: cm, r: 100 + us, i: c })
                     else if (ci >= 0) outc.push({ c: cm, r: 1 - ci / 100, i: c })
                     continue
@@ -474,11 +502,12 @@ Item {
                     else if (cq.length > 1 && fuzzy(cq, nm)) r = 1
                     else continue
                 }
+                if (root.cmdFavs[cm.id] === true && !root.cmdGrouped) r += 10
                 outc.push({ c: cm, r: r, i: c })
             }
             outc = outc.concat(root.gameRows(cq))
             outc.sort(function (x, y) { return (y.r - x.r) || (root.cmdRank(x.c) - root.cmdRank(y.c)) || (x.i - y.i) })
-            if (shortList && outc.length > cmdShort) outc = outc.slice(0, cmdShort)
+            if (shortList && outc.length > Math.max(cmdShort, nfav)) outc = outc.slice(0, Math.max(cmdShort, nfav))
             cmdTucked = shortList ? Math.max(0, total - outc.length) : 0
             var ncmd = outc.map(function (o) { return o.c })
             infoIdx = -1
@@ -1130,16 +1159,16 @@ Item {
                     y: 0; height: 1
                     color: Qt.alpha(root.pal.accent, 0.22)
                 }
-                // games: the favourite star (favourites are listed first)
+                // the favourite star on every command and game (favourites are listed first; Ctrl + F on the selected row does the same)
                 Text {
                     id: favBtn
-                    readonly property bool isGame: crow.modelData.id.indexOf("game:") === 0
-                    visible: isGame && (crow.modelData.fav || crow.ListView.isCurrentItem)
+                    readonly property bool isFav: root.isFav(crow.modelData)
+                    visible: isFav || crow.ListView.isCurrentItem
                     anchors.right: infoBtn.left
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    text: String.fromCodePoint(crow.modelData.fav ? 0xF04CE : 0xF04D2)
-                    color: crow.modelData.fav ? root.pal.accent : (favMa.containsMouse ? root.pal.text : root.pal.muted)
+                    text: String.fromCodePoint(isFav ? 0xF04CE : 0xF04D2)
+                    color: isFav ? root.pal.accent : (favMa.containsMouse ? root.pal.text : root.pal.muted)
                     font.family: root.pal.font
                     font.pixelSize: 16
                     MouseArea {

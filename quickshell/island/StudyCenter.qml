@@ -219,7 +219,12 @@ Scope {
     function inline(l) {
         return l.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>")
                 .replace(/`([^`]+)`/g, "<span style=\"font-family:'" + pal.mono + "'\">$1</span>")
-                .replace(/\[([^\[\]]{2,90}(?:page|part|slide|image)[^\[\]]{0,20})\]/gi, "<span style=\"color:" + String(pal.muted) + "\">[$1]</span>")
+                .replace(/\[([^\[\]]{2,90}(?:page|part|slide|image)[^\[\]]{0,20})\]/gi, "<span style=\"color:" + String(pal.muted) + "\"><small>[$1]</small></span>")
+    }
+    // a line that is only a source label ("[Notes, part 4]", also when the model bolded it): a small accent label that opens the paragraph under it
+    function srcLabel(l) {
+        var m = /^\s*(?:\*\*|__)?\s*\[([^\[\]]{2,90}(?:page|part|slide|image)[^\[\]]{0,20})\]\s*:?\s*(?:\*\*|__)?\s*$/i.exec(l)
+        return m ? m[1] : ""
     }
     function fmt(t) {
         var lines = esc(t).split("\n"), out = [], list = ""
@@ -231,6 +236,8 @@ Scope {
             if (bu) { open("ul"); out.push("<li>" + inline(bu[1]) + "</li>"); continue }
             if (nu) { open("ol"); out.push("<li>" + inline(nu[1]) + "</li>"); continue }
             close()
+            var sl = srcLabel(l)
+            if (sl !== "") { out.push("<div style=\"margin-top:10px;margin-bottom:1px\"><span style=\"color:" + String(pal.accent) + "\"><small><b>" + sl + "</b></small></span></div>"); continue }
             if (l.trim() === "") { out.push("<div style=\"font-size:6px\">&nbsp;</div>"); continue }
             if (h || (/[^:]{2,60}:\s*$/.test(l) && l.length < 70)) out.push("<div style=\"margin-top:6px\"><b>" + inline(h ? h[1] : l) + "</b></div>")
             else out.push("<div>" + inline(l) + "</div>")
@@ -597,22 +604,30 @@ Scope {
                         Item {
                             Layout.preferredWidth: 286
                             Layout.fillHeight: true
-                            Rectangle {
+                            // only the left corners are round: the right edge meets the content. One shape, wider than the item and clipped, so
+                            // the translucent colour is painted once (a second patch over the right edge made a darker band down the middle)
+                            Item {
                                 anchors.fill: parent
                                 anchors.margins: 1
-                                radius: root.pal.rXl
-                                color: Qt.alpha(root.pal.surface, 0.35)
-                                // only the left corners are round: the right edge meets the content
-                                Rectangle { anchors { top: parent.top; bottom: parent.bottom; right: parent.right } width: parent.radius; color: parent.color }
+                                clip: true
+                                Rectangle {
+                                    width: parent.width + root.pal.rXl
+                                    height: parent.height
+                                    radius: root.pal.rXl
+                                    color: Qt.alpha(root.pal.surface, 0.35)
+                                }
                             }
                             Rectangle { anchors { top: parent.top; bottom: parent.bottom; right: parent.right; topMargin: 24; bottomMargin: 24 } width: 1; color: root.pal.lineSoft }
 
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: 22
+                                anchors.rightMargin: 23                // 22 + the 1 px line on the sidebar's edge
                                 spacing: 16
 
                                 Row {
+                                    Layout.fillWidth: true
+                                    Layout.maximumWidth: 242
                                     spacing: 12
                                     Rectangle {
                                         width: 38; height: 38; radius: 12
@@ -629,9 +644,10 @@ Scope {
                                     }
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - 50                      // what is left of the sidebar after the icon: the lines below wrap instead of running off the edge
                                         spacing: 1
-                                        Text { text: "Study"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.DemiBold }
-                                        Text { text: "on this computer  ·  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice)); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        Text { width: parent.width; elide: Text.ElideRight; text: "Study"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.DemiBold }
+                                        Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; text: "on this computer  ·  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice)); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                     }
                                 }
 
@@ -721,6 +737,8 @@ Scope {
 
                                 PrimaryBtn {
                                     Layout.fillWidth: true
+                                    Layout.maximumWidth: 242
+                                    Layout.alignment: Qt.AlignHCenter
                                     glyph: String.fromCodePoint(0xF0415)
                                     label: "Add files"
                                     onClicked: { root.pickerOpen = true; root.focusRequested("picker") }
