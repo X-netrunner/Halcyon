@@ -1,0 +1,28 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distro, Hyprland version and Halcyon version
+      placeholder: "CachyOS, Hyprland 0.56.2, Halcyon v12.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of ~/.config/Halcyon/scripts/halcyon-doctor.sh
+      render: shell
+  - type: textarea
+    id: log
+    attributes:
+      label: End of the island's log (tail -n 50 ~/.cache/island/quickshell-island.log)
+      render: shell

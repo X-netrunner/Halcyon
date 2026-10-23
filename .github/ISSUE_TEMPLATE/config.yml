@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and showing off your setup
+    url: https://github.com/X-netrunner/Halcyon/discussions
+    about: Ask how something works or share your Halcyon desktop
