@@ -29,24 +29,12 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            ColumnLayout {
-                spacing: 0
-                Text {
-                    text: "Notifications"
-                    color: root.pal.text
-                    font.family: root.pal.uiFont
-                    font.pixelSize: root.pal.tTitle
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    text: root.items.length === 0 ? "You are all caught up"
-                        : root.items.length + (root.items.length === 1 ? " notification" : " notifications") + ((root.notifs && root.notifs.dnd) ? "  ·  muted" : "")
-                    color: root.pal.muted
-                    font.family: root.pal.uiFont
-                    font.pixelSize: root.pal.tCap
-                }
+            BoxTitle {
+                pal: root.pal
+                title: "Notifications"
+                sub: root.items.length === 0 ? "You are all caught up"
+                    : root.items.length + (root.items.length === 1 ? " notification" : " notifications") + ((root.notifs && root.notifs.dnd) ? "  ·  muted" : "")
             }
-            Item { Layout.fillWidth: true }
             Chip {
                 Layout.preferredHeight: 30
                 pal: root.pal

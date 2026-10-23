@@ -39,7 +39,7 @@ The island's own lean mode is described under Phase 2 below.
 - does not touch the 15 s state poll (it keeps the Gaming chip honest) or the notification server.
 Everything comes back when the game ends. By hand: `quickshell ipc -p ~/.config/Halcyon/quickshell/island call island leanset true` (or `false`).
 
-**The pill** (`GamePill.qml`): the game's name, how long it has run, a `lean` mark and a **Stop** button (`hgl stop`). It is a small window on the Top layer at the top of the screen: a fullscreen game covers it, you see it when you leave the game for a moment. It exists only while a game runs.
+**The overlay** (`GamePill.qml`): a tab tucked into the left edge of the screen while a game runs (only a thin sliver shows). Touch it and it slides out with the play time (a red dot while recording); click it for Record, Screenshot, Discord, Mic, Do not disturb, Move (left / right edge, `opt.gamePillSide`) and Stop the game (`hgl stop`). It is on the Overlay layer, so it shows over a fullscreen game, never takes the keyboard, and exists only while a game runs. While a game is fullscreen no notification pops up (they wait in the notification centre) and the screen-edge boxes and the console do not open on hover.
 
 **Launcher commands** (`>` in the launcher, new category **Games**):
 | Type | Does |

@@ -66,14 +66,15 @@ Item {
             Layout.alignment: Qt.AlignVCenter
             spacing: 2
 
-            Text {
+            ScrollText {             // hover: a long song title slides by
                 Layout.fillWidth: true
-                text: root.has ? (root.player.trackTitle || "Unknown") : ""
-                elide: Text.ElideRight
-                color: root.pal.text
-                font.family: root.pal.uiFont
-                font.pixelSize: 17
-                font.weight: Font.DemiBold
+                Text {
+                    text: root.has ? (root.player.trackTitle || "Unknown") : ""
+                    color: root.pal.text
+                    font.family: root.pal.uiFont
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                }
             }
             // the artist, and two small chips that open the lyrics / queue panel (MusicMenu.qml)
             RowLayout {

@@ -576,7 +576,8 @@ Item {
         if (!e) return
         saveHistory(query)
         bumpScore(e.id)
-        Quickshell.execDetached(["sh", "-c", "mkdir -p ~/.local/state/island && echo \"$0\" >> ~/.local/state/island/usage.log", e.id])
+        // usage.log ranks the launcher; launch-times.log ("<unix time> <id>") tells Startup & processes > Unused when an app was last started
+        Quickshell.execDetached(["sh", "-c", "mkdir -p ~/.local/state/island && echo \"$0\" >> ~/.local/state/island/usage.log && echo \"$(date +%s) $0\" >> ~/.local/state/island/launch-times.log", e.id])
         e.execute()
         closeRequested()
     }
@@ -1177,7 +1178,7 @@ Item {
                         anchors.margins: -6
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.toggleFav(crow.index); input.forceActiveFocus() }
+                        onClicked: { input.forceActiveFocus(); root.toggleFav(crow.index) }     // focus first: the list is rebuilt and this row goes
                     }
                 }
                 // right-most: the description button

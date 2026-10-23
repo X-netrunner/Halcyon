@@ -99,7 +99,7 @@ ColumnLayout {
             spacing: 10
             Text {
                 Layout.fillWidth: true
-                elide: Text.ElideRight
+                wrapMode: Text.Wrap
                 text: !am.pull ? "" : am.pulling ? "Downloading " + am.pull.name + "  " + am.pull.pct + " %" : am.pull.error !== "" ? am.pull.name + ": " + am.pull.error : am.pull.name + " is ready and in use"
                 color: (am.pull && !am.pulling && am.pull.error !== "") ? (root && root.pal ? root.pal.bad : "red") : (root && root.pal ? root.pal.text : "#ffffff")
                 font.family: root && root.pal ? root.pal.uiFont : "sans-serif"

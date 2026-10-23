@@ -99,7 +99,8 @@ Item {
 
         // ---- header: title, close
         Text {
-            x: 24; y: 20
+            x: root.pal.centerTitles ? (parent.width - width) / 2 : 24     // Centred titles
+            y: 20
             text: "Choose a profile picture"
             color: root.pal.text
             font.family: root.pal.uiFont
@@ -261,14 +262,15 @@ Item {
             font.pixelSize: 13
         }
 
-        Text {
+        Hint {
+            pal: root.pal
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 14
             text: "click a picture to use it   ·   click a folder to open it   ·   Backspace = up   ·   Esc = cancel"
             color: root.pal.muted
-            font.family: root.pal.uiFont
-            font.pixelSize: 11
+            fontFamily: root.pal.uiFont
+            pixelSize: 11
         }
     }
 }

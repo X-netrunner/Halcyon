@@ -22,14 +22,13 @@ ColumnLayout {
     width: parent ? parent.width : 0
     spacing: 12
 
-    Text {
+    Hint {
+        pal: bb.pal
         Layout.fillWidth: true
         text: "Shape, widgets and padding of the bar. Drag widgets along it to move them, onto the shelf to remove them."
         color: bb.pal.muted
-        font.family: bb.pal.uiFont
-        font.pixelSize: 10
-        lineHeight: 1.3
-        wrapMode: Text.WordWrap
+        fontFamily: bb.pal.uiFont
+        pixelSize: 10
     }
 
     // ---- the shape

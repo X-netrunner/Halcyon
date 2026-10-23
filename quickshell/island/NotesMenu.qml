@@ -508,7 +508,7 @@ Scope {
                         Text {
                             Layout.fillWidth: true
                             text: "Recording voice note"
-                            elide: Text.ElideRight
+                            wrapMode: Text.Wrap
                             color: root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody
@@ -518,7 +518,7 @@ Scope {
                             Layout.fillWidth: true
                             readonly property int secs: Math.max(0, Math.floor((root.nowMs - root.recStart) / 1000))
                             text: Math.floor(secs / 60) + ":" + (secs % 60 < 10 ? "0" : "") + (secs % 60) + "   \u00b7   becomes a note when you stop"
-                            elide: Text.ElideRight
+                            wrapMode: Text.Wrap
                             color: root.pal.muted
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tCap
@@ -627,23 +627,12 @@ Scope {
                             color: root.flash ? root.pal.good : root.pal.accent
                             Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                         }
-                        Text {
-                            text: "New note"
-                            color: root.pal.text
-                            font.family: root.pal.uiFont
-                            font.pixelSize: root.pal.tTitle
-                            font.weight: Font.DemiBold
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            Layout.minimumWidth: 0
-                            horizontalAlignment: Text.AlignRight
-                            elide: Text.ElideRight
-                            text: root.notice !== "" ? root.notice : (root.flash ? "Saved" : (root.notes.length + (root.notes.length === 1 ? " note" : " notes")))
-                            color: root.notice !== "" ? root.pal.bad : (root.flash ? root.pal.good : root.pal.muted)
-                            font.family: root.pal.uiFont
-                            font.pixelSize: root.pal.tCap
-                            font.weight: (root.flash || root.notice !== "") ? Font.Medium : Font.Normal
+                        // the notice (an error) or "Saved" shows whole under the title, not cut off at the right
+                        BoxTitle {
+                            pal: root.pal
+                            title: "New note"
+                            sub: root.notice !== "" ? root.notice : (root.flash ? "Saved" : (root.notes.length + (root.notes.length === 1 ? " note" : " notes")))
+                            subColor: root.notice !== "" ? root.pal.bad : (root.flash ? root.pal.good : root.pal.muted)
                         }
                         RoundBtn {
                             pal: root.pal
@@ -785,13 +774,13 @@ Scope {
                         }
                     }
 
-                    Text {
+                    Hint {
+                        pal: root.pal
                         Layout.fillWidth: true
                         text: "Enter saves   \u00b7   Ctrl + V adds an image, then type its note   \u00b7   Shift + Enter new line   \u00b7   Esc closes"
-                        elide: Text.ElideRight
                         color: Qt.alpha(root.pal.muted, 0.85)
-                        font.family: root.pal.uiFont
-                        font.pixelSize: 10
+                        fontFamily: root.pal.uiFont
+                        pixelSize: 10
                     }
 
                     RowLayout {
@@ -871,20 +860,12 @@ Scope {
                         Layout.fillWidth: true
                         spacing: 10
                         Rectangle { width: 8; height: 8; radius: 4; color: root.pal.accent }
-                        Text {
-                            text: "Notes"
-                            color: root.pal.text
-                            font.family: root.pal.uiFont
-                            font.pixelSize: 18
-                            font.weight: Font.DemiBold
+                        BoxTitle {
+                            pal: root.pal
+                            size: 18
+                            title: "Notes"
+                            sub: root.openCount + " open" + (root.taskCount > 0 ? "   \u00b7   " + root.taskCount + (root.taskCount === 1 ? " task" : " tasks") : "") + (root.doneCount > 0 ? "   \u00b7   " + root.doneCount + " done" : "")
                         }
-                        Text {
-                            text: root.openCount + " open" + (root.taskCount > 0 ? "   \u00b7   " + root.taskCount + (root.taskCount === 1 ? " task" : " tasks") : "") + (root.doneCount > 0 ? "   \u00b7   " + root.doneCount + " done" : "")
-                            color: root.pal.muted
-                            font.family: root.pal.uiFont
-                            font.pixelSize: root.pal.tCap
-                        }
-                        Item { Layout.fillWidth: true }
                         ActionChip {
                             pal: root.pal
                             label: "Organise"
@@ -1450,11 +1431,12 @@ Scope {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        Text {
+                        Hint {
+                            pal: root.pal
                             text: "From a terminal:  notes <text>"
                             color: Qt.alpha(root.pal.muted, 0.85)
-                            font.family: root.pal.uiFont
-                            font.pixelSize: 10
+                            fontFamily: root.pal.uiFont
+                            pixelSize: 10
                         }
                         Item { Layout.fillWidth: true }
                         ActionChip {

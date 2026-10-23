@@ -2118,8 +2118,9 @@ if [[ "$SYSMODE" == "true" ]]; then
         try run_cmd "Installing the sysmode boot service" as_root install -Dm644 "$TARGET_RICE/sysmode/sysmode-daemons.service" /etc/systemd/system/sysmode-daemons.service
         try run_cmd "Reloading systemd" as_root systemctl daemon-reload
         try run_cmd "Enabling sysmode-daemons.service (the honeypot and IDS come back at boot when the mode is stealth)" as_root systemctl enable sysmode-daemons.service
-        # the Cowrie honeypot runs in Docker: the daemon has to be up for `sysmode stealth`
-        if command -v docker >/dev/null 2>&1 && ! unit_enabled docker.service; then try run_cmd "Enabling docker (for the Cowrie honeypot)" as_root systemctl enable --now docker.service; fi
+        # the Cowrie honeypot runs in Docker. docker.socket starts the daemon the moment `sysmode stealth` asks for it, so it does not
+        # sit in memory (~150 MB with containerd) all day for a mode that is mostly off
+        if command -v docker >/dev/null 2>&1 && ! unit_enabled docker.service && ! unit_enabled docker.socket; then try run_cmd "Enabling docker on demand (docker.socket, for the Cowrie honeypot)" as_root systemctl enable docker.socket; fi
     else warn_later "No systemd: sysmode-daemons.service was not enabled."; fi
     # no mode is switched here on purpose: `secure` makes gcc / clang / rustc root-only, `lockdown` disables SSH. You choose.
     if [[ "$DRY_RUN" != "true" ]] && command -v sysmode >/dev/null 2>&1; then

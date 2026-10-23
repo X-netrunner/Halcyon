@@ -368,16 +368,11 @@ Scope {
                                     font.pixelSize: 18
                                 }
                             }
-                            Column {
-                                Layout.fillWidth: true
-                                spacing: 1
-                                Text { text: "Clipboard"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
-                                Text {
-                                    text: root.note !== "" ? root.note : (root.total + (root.total === 1 ? " thing copied" : " things copied") + (root.anyPin ? "  ·  pins stay" : ""))
-                                    color: root.note !== "" ? root.pal.good : root.pal.muted
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tCap
-                                }
+                            BoxTitle {
+                                pal: root.pal
+                                title: "Clipboard"
+                                sub: root.note !== "" ? root.note : (root.total + (root.total === 1 ? " thing copied" : " things copied") + (root.anyPin ? "  ·  pins stay" : ""))
+                                subColor: root.note !== "" ? root.pal.good : root.pal.muted
                             }
                             RoundBtn { pal: root.pal; size: 30; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }
                         }
@@ -523,7 +518,7 @@ Scope {
                                     id: body
                                     y: row.group !== "" ? 26 : 0
                                     width: parent.width
-                                    height: row.hasThumb ? 70 : (txt.lineCount > 1 || row.sub !== "" ? 54 : 44)
+                                    height: row.hasThumb ? 70 : Math.max(44, txtCol.implicitHeight + 16)      // grows with the text (up to 4 lines), no more cut-off paths
 
                                     Rectangle {
                                         anchors.fill: parent
@@ -566,6 +561,7 @@ Scope {
                                     }
 
                                     Column {
+                                        id: txtCol
                                         anchors { left: tile.right; leftMargin: 12; right: acts.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
                                         spacing: 2
                                         Text {
@@ -573,8 +569,8 @@ Scope {
                                             width: parent.width
                                             text: row.kind === "image" ? "Picture" : row.modelData.text
                                             elide: Text.ElideRight
-                                            wrapMode: Text.Wrap
-                                            maximumLineCount: row.sub === "" ? 2 : 1
+                                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                            maximumLineCount: 4                 // a whole path / link; a long pasted text still stops after 4 lines
                                             color: root.pal.text
                                             font.family: row.kind === "code" || row.kind === "path" || row.kind === "colour" ? root.pal.mono : root.pal.uiFont
                                             font.pixelSize: row.kind === "code" || row.kind === "path" ? root.pal.tCap + 1 : root.pal.tBody
@@ -653,8 +649,6 @@ Scope {
                                     id: srcT
                                     anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
                                     text: root.aiItem ? root.aiItem.text : ""
-                                    maximumLineCount: 3
-                                    elide: Text.ElideRight
                                     wrapMode: Text.Wrap
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
@@ -720,13 +714,13 @@ Scope {
                             Layout.fillWidth: true
                             visible: !root.aiItem
                             spacing: 8
-                            Text {
+                            Hint {
+                                pal: root.pal
                                 Layout.fillWidth: true
                                 text: "Enter copies  ·  Tab filters  ·  Esc closes"
-                                elide: Text.ElideRight
                                 color: Qt.alpha(root.pal.muted, 0.8)
-                                font.family: root.pal.uiFont
-                                font.pixelSize: 10
+                                fontFamily: root.pal.uiFont
+                                pixelSize: 10
                             }
                             ActionChip {
                                 pal: root.pal

@@ -142,7 +142,7 @@ WBase {
                     text: modelData === "" ? " " : modelData
                     color: root.txt
                     font.family: root.pal ? root.pal.mono : "monospace"; font.pixelSize: root.fsz
-                    elide: Text.ElideRight
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 }
             }
             WLbl {

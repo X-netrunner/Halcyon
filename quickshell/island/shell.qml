@@ -53,7 +53,7 @@ ShellRoot {
         wpBootNew: false,          // a new random wallpaper at every boot (scripts/wallpaper.sh); off = the one you chose stays
         deskLive: "off",           // off | on : live wallpaper instead of the picture (Wallpaper.qml; Super + Alt + W)
         deskLivePick: "sky",       // which one: "sky" = the Halcyon sky (LiveSky.qml), or a video / GIF path (LiveVideo.qml, scripts/live-wallpapers.sh)
-        gamePillCorner: "tr",      // tr | tl | br | bl : the corner of the game overlay (GamePill.qml; its Move button cycles it)
+        gamePillSide: "l",         // l | r : the screen edge the game overlay tab is tucked into (GamePill.qml; its Move button flips it)
         deskLiveWord: true,        // the word HALCYON under the mark of the live sky
         widgetHalo: true,          // desktop widgets: the faint dark glow behind the words on a busy wallpaper (WidgetHost.qml)
         widgetReadability: 0,      // desktop widgets: percent added to every widget's own Readability (-30 .. 40)
@@ -133,6 +133,7 @@ ShellRoot {
         lockDeskWidgets: null,     // the widgets on the LOCK screen { items: [...] }, same format as deskWidgets (Widget builder > Lock screen; placed with the desktop editor; Lock.qml draws them)
         lockDeskWidgetsOn: true,   // false = none of them are drawn on the lock screen
         aiBriefCard: true,         // the daily brief as a notification, once a day, the first time the desktop is used (scripts/halcyon-ai.py brief)
+        unusedRemind: true,        // once a month: "N things you barely use" (halcyon-ai.py unused --remind; Startup & processes > Unused)
         aiExplain: true,           // a failed Halcyon service or a new island error gets explained by the local AI (halcyon-ai.py explain ... --if-new)
         deskGrid: true, deskGridSize: 40, deskGridSnap: false, deskCenter: true, deskThirds: false, deskSafe: true, deskMeasure: true,   // the desktop editor's helpers (grid, centre, thirds, safe area, measuring)
         barLayout: null,           // the bar builder's layout { left, center, right } (BarLayout.js); null = the default one
@@ -143,6 +144,8 @@ ShellRoot {
         dialogStarStyle: "both",   // moving | constellations | both | none : dialog star style
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
         uiStyle: "new",            // new | legacy : the calm redesign, or the earlier look (Settings > Look > Interface; Pal.calm)
+        hideHints: false,          // explanations and key hints shrink to a "?" dot that shows them on hover (Settings > Look; Pal.hideHints, Hint.qml)
+        centerTitles: false,       // box titles (Notifications, Console, Clipboard ...) sit in the middle of their header (Settings > Look; BoxTitle.qml)
         recKind: "screen",         // screen | audio : what the recorder (Super + Alt + R) records: the screen, or sound only (Settings > Screen & audio recording)
         recAudio: "system",        // none | system | mic | both : the sound that goes with it (system = what you hear, mic = the default microphone)
         limRam: 600,               // manual RAM limit (MB) for background helper warnings
@@ -558,6 +561,8 @@ ShellRoot {
         cycleSecs: root.opt.cycleSecs
         termDrift: root.opt.termDrift
         cyclePaused: root.gaming
+        hideHints: root.opt.hideHints === true
+        centerTitles: root.opt.centerTitles === true
     }
     readonly property var palObj: pal
 
@@ -890,6 +895,7 @@ ShellRoot {
     readonly property string aiHelper: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-ai.py"
     // the morning card: the first time the desktop is used each day (a while after login, or after an unlock), at most once a day
     function briefCard(now) {
+        if (!now && opt.unusedRemind !== false && !gaming) Quickshell.execDetached(["python3", aiHelper, "unused", "--remind"])   // the script keeps it to once a month
         if (!now && (opt.aiBriefCard === false || gaming)) return
         Quickshell.execDetached(now ? ["python3", aiHelper, "brief", "--notify"] : ["python3", aiHelper, "brief", "--notify", "--once"])
     }
@@ -935,6 +941,8 @@ ShellRoot {
         cornerId: (root.boxSpots && root.boxSpots.notif) || "tr"
         dnd: root.dnd
         fsQuiet: root.fsQuiet && root.opt.dndFullscreen !== false
+        gameQuiet: root.gameFs
+        asleep: root.fsQuiet
         edgeOn: !root.dropOn
         clickMode: root.notifClick
         autoHide: root.autoHide
@@ -943,6 +951,9 @@ ShellRoot {
         profileStars: root.profileStars
         onDndRequested: v => root.setDnd(v)
     }
+
+    // a command typed into the console for you, not run (Startup & processes > Unused: remove / turn off): press Enter there
+    function consolePrefill(t) { quickTerm.prefill(t) }
 
     // top-left pop-out terminal (one-shot commands, sysmode switches; shows honeypot status while idle)
     QuickTerm {
@@ -957,6 +968,7 @@ ShellRoot {
         autoHide: root.autoHide
         starData: root.starData
         profileStars: root.profileStars
+        fsActive: root.fsQuiet
     }
 
     // SUPER+ALT+/: every console command as a tree (only when sysmode is set up); a click puts the command in the console
@@ -2406,7 +2418,15 @@ ShellRoot {
     // ---- quiet while a window is fullscreen (a video, a game, a presentation): popups stay away but are still kept in the notification
     // centre; Halcyon's own (timers, reminders) and urgent ones still show. Do not disturb itself is not touched. After a fullscreen /
     // workspace / window-close event it asks Hyprland once what the active window is doing (one short hyprctl call, nothing runs in between).
+    // it is asked whatever Settings > Notifications says: the edge boxes and the console also go to sleep while a window is fullscreen
+    // (touching a screen edge in a game must not slide a box over it); keybinds and the launcher still open them
     property bool fsQuiet: false
+    // a game is fullscreen (one hgl started, or gaming mode is on): not a single popup, they all wait in the notification centre
+    readonly property bool gameFs: fsQuiet && (gameId !== "" || gaming)
+    onFsQuietChanged: if (fsQuiet) {
+        if (corner.hovering && !corner.pinnedOpen) corner.hovering = false
+        if (appsWin.hovering && !appsWin.pinnedOpen) appsWin.hovering = false
+    }
     // the time-of-day grade over the wallpaper right now (Wallpaper.qml: { r, g, b, tint, dim }), or null when it is off: the desktop
     // widgets work out their colours from the picture as it is seen, after this wash (WidgetHost.qml)
     readonly property var todGrade: wallpaperLayer.todOn ? wallpaperLayer.todNow : null
@@ -2418,7 +2438,7 @@ ShellRoot {
             if (n === "fullscreen" || n === "workspacev2" || (n === "closewindow" && root.fsQuiet)) fsT.restart()
         }
     }
-    Timer { id: fsT; interval: 250; onTriggered: if (root.opt.dndFullscreen !== false && !fsProc.running) fsProc.running = true }
+    Timer { id: fsT; interval: 250; onTriggered: if (!fsProc.running) fsProc.running = true }
     Process {
         id: fsProc
         command: ["hyprctl", "-j", "activewindow"]
@@ -2604,6 +2624,7 @@ ShellRoot {
         function desktopedit(): void { root.deskEditTarget = "desktop"; root.deskEditing = !root.deskEditing }
         function lockdesktopedit(): void { root.deskEditTarget = "lock"; root.deskEditing = !root.deskEditing }
         function bar(): void { root.setOpt("barStyle", root.opt.barStyle === "off" ? "island" : "off") }      // the top bar on / off
+        function setopt(key: string, json: string): void { try { root.setOpt(key, JSON.parse(json)) } catch (e) {} }     // any opt.* by hand / from scripts: setopt hideHints true
         function gallery(): void { settingsWin.openGallery() }
         function startup(): void { settingsWin.openStartup() }
         function splash(): void { splashPreview.play() }
@@ -3523,7 +3544,7 @@ ShellRoot {
         // the box shrinking back are ignored for a moment (move out and in again to open it)
         property double blockUntil: 0
         function setHover(on) {
-            if (on) { closeT.stop(); if (!root.utilClick && Date.now() >= blockUntil) hovering = true }
+            if (on) { closeT.stop(); if (!root.utilClick && !root.fsQuiet && Date.now() >= blockUntil) hovering = true }
             else if (!panel.wantsKeys && (!root.utilClick || root.autoHide)) { closeT.interval = 450; closeT.restart() }
         }
         // open it from the launcher / keybind; closes by itself if you don't touch it
@@ -3538,8 +3559,8 @@ ShellRoot {
             anchors.left: corner.atR ? undefined : parent.left
             anchors.bottom: corner.atB ? parent.bottom : undefined
             anchors.top: corner.atB ? undefined : parent.top
-            width: corner.open ? panel.width + pal.boxEdge + 30 : (root.utilClick ? 28 : 12)
-            height: corner.open ? panel.height + pal.boxEdge + 30 : (root.utilClick ? 28 : 12)
+            width: corner.open ? panel.width + pal.boxEdge + 30 : (root.fsQuiet ? 0 : (root.utilClick ? 28 : 12))
+            height: corner.open ? panel.height + pal.boxEdge + 30 : (root.fsQuiet ? 0 : (root.utilClick ? 28 : 12))
             HoverHandler { onHoveredChanged: { corner.zoneHover = hovered; corner.syncHover() } }
             Rectangle {
                 visible: root.utilClick && !corner.open
@@ -3696,7 +3717,7 @@ ShellRoot {
         readonly property real reveal: hovering ? 1 : 0
         property double blockUntil: 0
         function setHover(on) {
-            if (on) { aClose.stop(); if (!root.appsClick && Date.now() >= blockUntil) hovering = true }
+            if (on) { aClose.stop(); if (!root.appsClick && !root.fsQuiet && Date.now() >= blockUntil) hovering = true }
             else if (!root.appsClick || root.autoHide) { aClose.interval = 450; aClose.restart() }
         }
         function pinFor(ms) { hovering = true; pinnedOpen = true; aClose.interval = ms; aClose.restart() }
@@ -3709,8 +3730,8 @@ ShellRoot {
             anchors.left: appsWin.atR ? undefined : parent.left
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
-            width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : (root.appsClick ? 28 : 12)
-            height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : (root.appsClick ? 28 : 12)
+            width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : (root.fsQuiet ? 0 : (root.appsClick ? 28 : 12))
+            height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : (root.fsQuiet ? 0 : (root.appsClick ? 28 : 12))
             HoverHandler { onHoveredChanged: { appsWin.zoneHover = hovered; appsWin.syncHover() } }
             Rectangle {
                 visible: root.appsClick && !appsWin.open
