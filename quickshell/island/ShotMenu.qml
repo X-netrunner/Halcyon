@@ -132,7 +132,7 @@ Scope {
                     height: col.implicitHeight + 40
                     radius: root.pal.rXl
                     opacityBody: root.pal.solid ? 1 : 0.90
-                    border.color: Qt.alpha(root.pal.accent, 0.40)
+                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.40)
                     opacity: qp.reveal
                     x: root.panelRight ? qp.width - width - 22 + (1 - qp.reveal) * width * 0.4
                                        : 22 - (1 - qp.reveal) * width * 0.4

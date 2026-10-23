@@ -5,6 +5,7 @@ Text {
     property var pal
     color: pal.muted
     font.family: pal.uiFont
-    font.pixelSize: 10
-    font.letterSpacing: 0.8
+    font.pixelSize: pal.calm ? 12 : 10
+    font.weight: pal.calm ? Font.Medium : Font.Normal
+    font.letterSpacing: pal.calm ? 0.1 : 0.8
 }

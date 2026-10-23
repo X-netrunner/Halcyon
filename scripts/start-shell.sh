@@ -113,6 +113,9 @@ export MALLOC_ARENA_MAX=2
 export QSG_ATLAS_WIDTH=1024
 export QSG_ATLAS_HEIGHT=1024
 export QSG_RENDER_LOOP="${QSG_RENDER_LOOP:-basic}"
+# Qt's Wayland text-input warns "Trying to enable ... but ... has focus" every time focus moves between the island's text fields:
+# harmless, and it was most of the log (thousands of lines), hiding the real QML errors. Rules you set yourself still apply.
+export QT_LOGGING_RULES="qt.qpa.wayland.textinput.warning=false${QT_LOGGING_RULES:+;$QT_LOGGING_RULES}"
 
 say "using $qs ($("$qs" --version 2>&1 | head -n1)) on $WAYLAND_DISPLAY, QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}, renderer=$QSG_RHI_BACKEND (gpu mode $gpu_mode)"
 [ "$name" = island ] && bash "$RICE/scripts/notif-guard.sh" 2>/dev/null

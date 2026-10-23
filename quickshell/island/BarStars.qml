@@ -7,6 +7,7 @@ import QtQuick
 Item {
     id: root
     property var pal
+    opacity: pal ? pal.decor : 1          // the calm interface keeps the moving stars, softly (Pal.decor)
     property bool active: true
     property int count: 7
     property int loopMs: 90000

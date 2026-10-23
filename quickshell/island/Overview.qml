@@ -1421,7 +1421,7 @@ Item {
         height: 262
         radius: ov.pal.rXl
         color: Qt.alpha(ov.pal.bg, ov.pal.glassSolid)
-        border.width: 1
+        border.width: ov.pal.calm ? 0 : 1
         border.color: ov.pal.line
         opacity: ov.editing ? 1 : 0
         visible: opacity > 0.01

@@ -128,7 +128,7 @@ Scope {
                     anchors.centerIn: parent
                     radius: 22
                     color: root.pal.bg
-                    border.width: 1
+                    border.width: root.pal.calm ? 0 : 1
                     border.color: root.pal.line
                     clip: true
                     MouseArea { anchors.fill: parent; onPressed: mouse => mouse.accepted = true }     // clicks on the card do not close it
@@ -271,7 +271,7 @@ Scope {
                             visible: text !== ""
                             width: tipText.implicitWidth + 20; height: 26; radius: 13
                             color: Qt.alpha(root.pal.surfaceHi, 0.95)
-                            border.width: 1; border.color: root.pal.lineSoft
+                            border.width: root.pal.calm ? 0 : 1; border.color: root.pal.lineSoft
                             Text { id: tipText; anchors.centerIn: parent; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 12 }
                         }
                     }

@@ -12,8 +12,8 @@ Rectangle {
     Layout.fillWidth: true
     implicitHeight: col.implicitHeight + 32
     radius: pal ? pal.rLg : 16
-    color: pal ? Qt.alpha(pal.surface, 0.35) : "transparent"
-    border.width: 1
+    color: !pal ? "transparent" : (pal.calm ? pal.fill : Qt.alpha(pal.surface, 0.35))
+    border.width: pal && pal.calm ? 0 : 1
     border.color: pal ? Qt.alpha(pal.lineSoft, 0.6) : "transparent"
 
     ColumnLayout {

@@ -107,7 +107,13 @@ fetch_online() {
   [ -n "$url" ] || return 1
   mkdir -p "$cache/$c"
   f="$cache/$c/$(basename "$url")"
-  if [ ! -s "$f" ]; then curl -fsSL --max-time 60 -o "$f.part" "$url" 2>/dev/null && mv -f "$f.part" "$f"; fi
+  if [ ! -s "$f" ]; then
+    curl -fsSL --max-time 60 -o "$f.part" "$url" 2>/dev/null || { rm -f "$f.part"; return 1; }
+    # a picture the server sent cut short or damaged ("Corrupt JPEG data" in the island log, a grey band on screen) is thrown away
+    # (decoded in full: a header check passes a cut-off file, and magick says "Premature end of JPEG" yet exits 0, so any output fails)
+    if command -v magick >/dev/null && [ -n "$(magick "$f.part" null: 2>&1 >/dev/null)" ]; then rm -f "$f.part"; return 1; fi
+    mv -f "$f.part" "$f"
+  fi
   [ -s "$f" ] || return 1
   ls -t "$cache"/*/* 2>/dev/null | tail -n +61 | xargs -r rm -f --   # keep the newest 60
   echo "$f"

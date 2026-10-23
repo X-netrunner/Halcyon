@@ -182,7 +182,7 @@ PanelWindow {
             anchors.fill: parent
             radius: notch.cr
             color: notch.fillCol
-            border.width: 1
+            border.width: win.pal.calm ? 0 : 1
             border.color: win.pal.line
             Rectangle {
                 anchors.fill: parent

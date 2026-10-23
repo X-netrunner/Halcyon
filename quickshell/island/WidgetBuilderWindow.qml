@@ -165,7 +165,7 @@ Item {
         height: Math.min(parent.height - 70, 800)
         radius: root.pal.rXl
         opacityBody: root.pal.solid ? 1 : 0.8
-        border.color: Qt.alpha(root.pal.accent, 0.35)
+        border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
         scale: root.open ? 1 : 0.96
         Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         MouseArea { anchors.fill: parent; onPressed: m => { root.forceActiveFocus(); m.accepted = true } }
@@ -209,7 +209,7 @@ Item {
                     Layout.preferredWidth: 260
                     radius: root.pal.rLg
                     color: Qt.alpha(root.pal.bg, 0.35)
-                    border.width: 1; border.color: root.pal.lineTint
+                    border.width: root.pal.calm ? 0 : 1; border.color: root.pal.lineTint
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -262,7 +262,7 @@ Item {
                                             x: rowD.grouped ? 14 : 0; y: rowD.hdr
                                             width: rowD.width - x; height: 44; radius: 12
                                             color: rowD.on ? Qt.alpha(root.pal.accent, 0.18) : (lm.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : Qt.alpha(root.pal.surface, 0.5))
-                                            border.width: 1; border.color: rowD.on ? Qt.alpha(root.pal.accent, 0.5) : (rowD.grouped ? Qt.alpha(rowD.grpCol, 0.35) : root.pal.lineSoft)
+                                            border.width: root.pal.calm ? 0 : 1; border.color: rowD.on ? Qt.alpha(root.pal.accent, 0.5) : (rowD.grouped ? Qt.alpha(rowD.grpCol, 0.35) : root.pal.lineSoft)
                                             Row {
                                                 anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 10
                                                 spacing: 10
@@ -307,7 +307,7 @@ Item {
                     Layout.preferredWidth: 420
                     radius: root.pal.rLg
                     color: Qt.alpha(root.pal.bg, 0.55)
-                    border.width: 1; border.color: root.pal.lineTint
+                    border.width: root.pal.calm ? 0 : 1; border.color: root.pal.lineTint
                     clip: true
                     Rectangle {
                         z: 5
@@ -585,7 +585,7 @@ Item {
                                     visible: root.curLinkTo === ""
                                     width: 240; height: 150; radius: 14
                                     color: Qt.alpha(root.pal.bg, 0.5)
-                                    border.width: 1; border.color: root.pal.lineSoft
+                                    border.width: root.pal.calm ? 0 : 1; border.color: root.pal.lineSoft
                                     Grid {
                                         anchors.fill: parent; anchors.margins: 10
                                         columns: 3; spacing: 6
@@ -836,7 +836,7 @@ Item {
                                             spacing: 4
                                             Chip { pal: root.pal; implicitHeight: 32; label: modelData.name; on: true; onClicked: root.applyStyleLook(modelData.look) }
                                             Rectangle {
-                                                width: 32; height: 32; radius: 16; color: dm.containsMouse ? Qt.alpha(root.pal.bad, 0.3) : Qt.alpha(root.pal.surface, 0.8); border.width: 1; border.color: root.pal.lineSoft
+                                                width: 32; height: 32; radius: 16; color: dm.containsMouse ? Qt.alpha(root.pal.bad, 0.3) : Qt.alpha(root.pal.surface, 0.8); border.width: root.pal.calm ? 0 : 1; border.color: root.pal.lineSoft
                                                 Text { anchors.centerIn: parent; text: "✕"; color: root.pal.text; font.pixelSize: 11 }
                                                 MouseArea { id: dm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.dropStyle(parent.parent.modelData.name) }
                                             }

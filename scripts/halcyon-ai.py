@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """halcyon-ai.py: the small AI helpers of the desktop, one command each. They all ask the same local Ollama model as `ai` and the
 notes (HALCYON_AI_MODEL, else MODEL= in ai-advisor.conf, else qwen2.5:3b-instruct), and they all stop when the master AI switch is
-off (Settings > Performance > AI features). Nothing leaves this machine.
+off (Settings > Performance > AI features). Nothing leaves this machine (`updates` only downloads the public Arch news feed).
 
   halcyon-ai.py ask <question>                  one short answer (the launcher's  >ask ...). A question about Halcyon itself
                                                 ("how do I turn off the constellations") is answered by howto below
@@ -12,8 +12,9 @@ off (Settings > Performance > AI features). Nothing leaves this machine.
   halcyon-ai.py do <phrase> [--dry] [--yes]     plain English to one Halcyon action: "move this window to workspace 3", "gaming mode on"
                                                 (the launcher's  >do ...). Clear phrases are understood without the model. Actions that end
                                                 something (close a window, log out, restart, shut down, sleep) only run with --yes.
-  halcyon-ai.py clip summarise|rewrite|shorter [--id ID] [--tone clear|formal|casual|shorter] [--copy]
-                                                the copied text (or clipboard history entry ID), summarised or rewritten
+  halcyon-ai.py clip summarise|rewrite|shorter|explain [--id ID] [--tone clear|formal|casual|shorter] [--copy]
+                                                the copied text (or clipboard history entry ID), summarised or rewritten; explain:
+                                                a copied error, log line or command in plain words, with the likely fix
   halcyon-ai.py brief [--refresh] [--notify] [--once]
                                                 the daily brief: tasks, notes and the Focus streak in a few lines (desktop widget "Daily
                                                 brief"; --notify --once = the morning card, at most one a day). Works without the model too.
@@ -28,6 +29,14 @@ off (Settings > Performance > AI features). Nothing leaves this machine.
                                                 proposal); --apply carries out the saved proposal (a backup of notes.json is kept first)
   halcyon-ai.py lyrics meaning [--title T --artist A --album B --duration S --url U]
                                                 what the playing song is about
+  halcyon-ai.py updates [--days N] [--notify]   before an Arch update: what is waiting, what of it is risky (kernel, drivers, boot,
+                                                major versions) and the Arch news since your last full upgrade, with what to do by
+                                                hand. The checks work without the model; reading the news downloads archlinux.org's feed.
+  halcyon-ai.py study <file.pdf> [summary|quiz|cards] [--n N] [--note]
+                                                study material: a revision summary, exam questions with answers, or flashcards, only
+                                                from the PDF's own text (--note saves it as a note)
+  halcyon-ai.py commit [--all] [--commit]       a commit message for the staged changes, in the repository's style (--commit opens
+                                                git commit -e with it, so you edit it before it is made)
 
 Every command takes --json: one line {"ok": bool, "text": str, "error": str, ...} for the island. Exit code 0 ok, 1 failed, 2 usage,
 3 AI switched off / Ollama not running.
@@ -193,7 +202,7 @@ def generate(prompt, system="", fmt=None, num_predict=300, temperature=0.2, time
     """One answer from the local model. Raises AiOff when it is switched off / not running, Fail on anything else."""
     need_ai()
     body = {"model": model_name(), "prompt": prompt, "stream": False, "think": False,
-            "keep_alive": "5m", "options": {"temperature": temperature, "num_predict": num_predict, "num_ctx": NUM_CTX}}
+            "keep_alive": "1m" if opt("lazyLoad", True) is not False else "5m", "options": {"temperature": temperature, "num_predict": num_predict, "num_ctx": NUM_CTX}}
     if system:
         body["system"] = system
     if fmt:
@@ -607,12 +616,32 @@ def argval(args, name, default=""):
     return default
 
 
+RISKY_CMD = re.compile(r"\brm\s+-\w*[rf]|\brm\s+(-\S+\s+)*/(usr|etc|boot|var|opt|lib)|pacman\s+-R|\b(yay|paru)\s+-R|--overwrite|--force\b|\bdd\s+if=|\bmkfs|\bwipefs|"
+                       r"chmod\s+-R\s+777|>\s*/etc/|\bsystemctl\s+(mask|disable)\b")
+
+
+def explain_tidy(out):
+    """Plain lines (code fences, backticks and markdown headings out), at most ten; a destructive command that still slipped
+    through gets a warning under it, never silently passed on."""
+    lines = []
+    for l in out.splitlines():
+        if re.match(r"^\s*```", l):
+            continue
+        l = re.sub(r"^#+\s*", "", l).replace("`", "").rstrip()
+        if l.strip():
+            lines.append(l)
+    lines = lines[:10]
+    if any(RISKY_CMD.search(l) for l in lines):
+        lines.append("Careful: a command above removes or overwrites things. Check what it touches first, and do not run it blind.")
+    return "\n".join(lines)
+
+
 def cmd_clip(args):
     what = (args[0] if args else "").lower()
     what = {"summarize": "summarise", "summary": "summarise", "tl;dr": "summarise", "tldr": "summarise",
-            "rewrite": "rewrite", "fix": "rewrite", "summarise": "summarise", "shorter": "shorter"}.get(what, "")
+            "rewrite": "rewrite", "fix": "rewrite", "summarise": "summarise", "shorter": "shorter", "explain": "explain"}.get(what, "")
     if not what:
-        raise Fail("clip summarise | rewrite | shorter")
+        raise Fail("clip summarise | rewrite | shorter | explain")
     if what == "shorter":
         what, args = "rewrite", list(args) + ["--tone", "shorter"]
     text = clip_text(argval(args, "--id"))
@@ -624,6 +653,14 @@ def cmd_clip(args):
                   + ("Answer in one or two sentences." if n < 150 else "Answer with at most five short lines starting with '- '.")
                   + " Keep names, numbers and dates exactly as written. Do not add anything that is not in the text.")
         out = generate(text, system=system, num_predict=260)
+    elif what == "explain":
+        # an error, a log line, a command or a piece of code copied from this machine
+        system = ("The user copied this on their Arch Linux desktop (Hyprland, fish shell): an error message, a log line, a command or "
+                  "code. In plain words say what it means, the most likely cause, and the safest fix. Prefer commands that CHECK "
+                  "first (pacman -Qo <file>, systemctl status, journalctl -b -u <unit>). Never suggest removing packages, deleting "
+                  "files, --overwrite, --force or dd: if one of those is really needed, say what to check before it. Never invent "
+                  "package names or options. At most eight short lines, plain text, no markdown, no code blocks.")
+        out = explain_tidy(generate(text, system=system, num_predict=380, temperature=0.1))
     else:
         tone = (argval(args, "--tone") or "clear").lower()
         how = {"clear": "clearer and easier to read, with grammar and spelling fixed", "formal": "more formal and polite",
@@ -631,7 +668,7 @@ def cmd_clip(args):
         system = (f"Rewrite the text the user gives you to be {how}. Keep its language, meaning, names and numbers. "
                   "Answer with the rewritten text only, no comments.")
         out = generate(text, system=system, num_predict=min(2000, 80 + len(text) // 2), temperature=0.3)
-    out = plain(out) if what == "summarise" else out.strip().strip('"')
+    out = plain(out) if what == "summarise" else (out if what == "explain" else out.strip().strip('"'))
     if not out:
         raise Fail("The model gave no answer.")
     res = {"text": out, "kind": what, "cut": cut}
@@ -1595,9 +1632,354 @@ def cmd_howto(args):
     return howto(q)
 
 
+# ------------------------------------------------------------------------------------------------ updates briefing
+# Before an Arch update: what is waiting, which of it is the kind that breaks a system (kernel, NVIDIA, glibc, systemd, boot, the
+# desktop itself, or a new major version), and the Arch news since your last full upgrade (the "manual intervention" posts are what
+# really breaks Arch installs). The checks are fixed rules and work with the AI off; the model only says, from the news text alone,
+# what to do. Reading the news is a plain download of archlinux.org/feeds/news (nothing of yours is sent).
+NEWS_URL = "https://archlinux.org/feeds/news/"
+PACMAN_LOG = "/var/log/pacman.log"
+CAREFUL = re.compile(r"^(linux(-lts|-zen|-hardened)?|linux-firmware.*|nvidia.*|lib32-nvidia.*|glibc|systemd|mkinitcpio|grub|"
+                     r"systemd-boot.*|mesa|lib32-mesa|hyprland|aquamarine|hyprutils|quickshell|qt6-base|pipewire|wireplumber|"
+                     r"pacman|openssl|python|sudo|pam|cryptsetup|lvm2|btrfs-progs)$")
+
+
+def last_full_upgrade():
+    """Epoch of the last `pacman -Syu` (pacman.log), or 30 days ago when the log cannot be read."""
+    last = None
+    with contextlib.suppress(OSError):
+        with open(PACMAN_LOG, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if "starting full system upgrade" in line:
+                    last = line
+    if last:
+        m = re.match(r"\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)([+-]\d{4})?\]", last)
+        if m:
+            with contextlib.suppress(ValueError):
+                import datetime
+                fmt, s = ("%Y-%m-%dT%H:%M:%S%z", m.group(1) + m.group(2)) if m.group(2) else ("%Y-%m-%dT%H:%M:%S", m.group(1))
+                return datetime.datetime.strptime(s, fmt).timestamp()
+    return time.time() - 30 * 86400
+
+
+def arch_news(since):
+    """[{title, date, text, link}] newer than `since`, newest first; [] without network."""
+    import email.utils
+    import html
+    import xml.etree.ElementTree as ET
+    try:
+        req = urllib.request.Request(NEWS_URL, headers={"User-Agent": "halcyon-ai"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            root = ET.fromstring(r.read(2_000_000))
+    except Exception:
+        return None
+    out = []
+    for it in root.iter("item"):
+        try:
+            when = email.utils.parsedate_to_datetime(it.findtext("pubDate") or "").timestamp()
+        except (TypeError, ValueError):
+            continue
+        if when <= since:
+            continue
+        text = html.unescape(re.sub(r"<[^>]+>", " ", it.findtext("description") or ""))
+        out.append({"title": (it.findtext("title") or "").strip(), "date": time.strftime("%d %b", time.localtime(when)),
+                    "text": re.sub(r"\s+", " ", text).strip()[:3000], "link": (it.findtext("link") or "").strip()})
+    return out
+
+
+def pending_updates():
+    """[(name, old, new)] from checkupdates; None when it cannot be asked."""
+    if not have("checkupdates"):
+        return None
+    code, out = sh(["checkupdates"], timeout=120)
+    if code not in (0, 2):
+        return None
+    rows = []
+    for line in out.splitlines():
+        p = line.split()
+        if len(p) >= 4 and p[2] == "->":
+            rows.append((p[0], p[1], p[3]))
+    return rows
+
+
+def news_packages(title):
+    """The packages a news title is about ("virtualbox-ext-vnc >= 7.2", "php ≥ 8.5 and/or php-legacy ≥ 8.3"): names before >= or ≥."""
+    return {m.lower() for m in re.findall(r"([A-Za-z0-9][A-Za-z0-9+_.-]*)\s*(?:>=|≥)", title)}
+
+
+def installed_packages():
+    code, out = sh(["pacman", "-Qq"], timeout=20)
+    return set(out.split()) if code == 0 else None
+
+
+def major(v):
+    v = v.split(":", 1)[-1]                                  # epoch
+    return re.split(r"[.\-+_]", v, maxsplit=1)[0]
+
+
+def cmd_updates(args):
+    rows = pending_updates()
+    since = last_full_upgrade()
+    days = argval(args, "--days")
+    if days.isdigit():
+        since = time.time() - int(days) * 86400
+    news = arch_news(since)
+    lines = []
+    if rows is None:
+        lines.append("Pending updates: unknown (checkupdates is missing or there is no network; pacman -S pacman-contrib)")
+    elif not rows:
+        lines.append("Pending updates: none from the repositories.")
+    else:
+        careful = [r for r in rows if CAREFUL.match(r[0])]
+        bumps = [r for r in rows if major(r[1]) != major(r[2]) and r not in careful]
+        lines.append(f"Pending updates: {len(rows)} from the repositories.")
+        if careful:
+            lines.append("Worth a look (kernel, drivers, boot, the desktop): "
+                         + ", ".join(f"{n} {o} -> {v}" for n, o, v in careful[:12]) + (" ..." if len(careful) > 12 else ""))
+        if bumps:
+            lines.append("New major versions: " + ", ".join(f"{n} {o} -> {v}" for n, o, v in bumps[:12]) + (" ..." if len(bumps) > 12 else ""))
+        if any(r[0].startswith("linux") and not r[0].startswith("linux-firmware") for r in careful):
+            lines.append("A new kernel: reboot after the update (the running one stays until then).")
+    if news is None:
+        lines.append("Arch news: could not be read (no network?). Check https://archlinux.org/news/ before a big update.")
+    elif not news:
+        lines.append("Arch news: nothing new since " + ("then." if days.isdigit() else "your last full upgrade ")
+                     + time.strftime("(%d %b).", time.localtime(since)))
+    else:
+        lines.append(f"Arch news since {'then' if days.isdigit() else 'your last full upgrade'} ({len(news)}): read these BEFORE updating")
+        have_pk = installed_packages()
+        for n in news:
+            pk = news_packages(n["title"])
+            n["skip"] = sorted(pk) if (pk and have_pk is not None and not (pk & have_pk)) else []
+        advice = {}
+        if ai_enabled():
+            for n in [n for n in news if not n["skip"]][:4]:
+                with contextlib.suppress(AiOff, Fail):
+                    a = generate("Title: " + n["title"] + "\n\n" + n["text"],
+                                 system=("This is an Arch Linux news post. In at most two short lines say whether the user must do "
+                                         "something by hand before or after updating, and exactly what (commands as written in the "
+                                         "post). Use ONLY the post. If nothing is needed, say so."), num_predict=120, temperature=0)
+                    advice[n["title"]] = plain(a)
+        for n in news:
+            lines.append(f"  • {n['date']}  {n['title']}")
+            if n["skip"]:
+                lines.append(f"      not installed here ({', '.join(n['skip'])}): nothing to do")
+                continue
+            if advice.get(n["title"]):
+                lines += ["      " + l for l in advice[n["title"]].splitlines() if l.strip()]
+            lines.append(f"      {n['link']}")
+    text = "\n".join(lines)
+    if "--notify" in args:
+        notify("Before you update", "\n".join(l for l in lines if not l.startswith("      http")), "software-update-available")
+    return {"text": text, "news": len(news or []), "pending": len(rows or [])}
+
+
+# ------------------------------------------------------------------------------------------------ study (PDFs)
+# halcyon-ai.py study <file.pdf> [summary | quiz | cards] [--n N] [--note]
+# The PDF's text (pdftotext) is read in pieces that fit the model's context: each piece is boiled down to its key points, then the
+# points become a summary, exam-style questions with answers, or flashcards. Only what is in the PDF: the model is told not to add.
+# --note saves the result as a note (Super + N). Scanned PDFs (pictures, no text) are not read.
+STUDY_CHUNK = 9000          # characters per piece: about 2500 tokens, room left in NUM_CTX for the instructions and the answer
+STUDY_MAX = 400_000
+
+
+def pdf_text(path):
+    if not have("pdftotext"):
+        raise Fail("pdftotext is not installed (sudo pacman -S poppler)")
+    code, out = sh(["pdftotext", "-enc", "UTF-8", path, "-"], timeout=120)
+    if code != 0:
+        raise Fail(f"could not read {os.path.basename(path)} (is it a PDF?)")
+    text = re.sub(r"[ \t]+", " ", out)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(text) < 200:
+        raise Fail("this PDF has (almost) no text: a scan or pictures. Run it through OCR first (ocrmypdf).")
+    return text[:STUDY_MAX], len(text) > STUDY_MAX
+
+
+def chunks(text, size):
+    out, cur = [], ""
+    for para in text.split("\n\n"):
+        if len(cur) + len(para) > size and cur:
+            out.append(cur)
+            cur = ""
+        while len(para) > size:
+            out.append(para[:size])
+            para = para[size:]
+        cur += para + "\n\n"
+    if cur.strip():
+        out.append(cur)
+    return out
+
+
+def progress(msg):
+    if sys.stderr.isatty():
+        print("\r\033[2K\033[2m" + msg + "\033[0m", end="", file=sys.stderr, flush=True)
+
+
+def key_points(text, title):
+    pieces = chunks(text, STUDY_CHUNK)
+    pts = []
+    for i, p in enumerate(pieces, 1):
+        progress(f"reading {title}: part {i} of {len(pieces)}")
+        pts.append(plain(generate(p, num_predict=380, temperature=0, timeout=180, system=(
+            "These are pages from study material. List its key points: definitions, formulas, steps, facts and examples, one per "
+            "line starting with '- '. Keep exact terms, numbers and formulas as written. Use ONLY this text; skip page headers, "
+            "page numbers and references."))))
+    joined = "\n".join(pts)
+    # too many points for one more pass: boil the points down again, piece by piece
+    while len(joined) > STUDY_CHUNK * 1.5:
+        parts = chunks(joined, STUDY_CHUNK)
+        progress(f"condensing {len(parts)} parts")
+        joined = "\n".join(plain(generate(p, num_predict=380, temperature=0, timeout=180, system=(
+            "Merge these study notes: drop repeats, keep every distinct definition, formula and fact, one per line starting "
+            "with '- '. Do not add anything."))) for p in parts)
+    progress("")
+    return joined
+
+
+def cmd_study(args):
+    files = [a for a in args if a.lower().endswith(".pdf") and os.path.isfile(os.path.expanduser(a))]
+    if not files:
+        raise Fail("study <file.pdf> [summary | quiz | cards] [--n 10] [--note]")
+    need_ai()
+    path = os.path.expanduser(files[0])
+    mode = next((a for a in args if a in ("summary", "summarise", "summarize", "quiz", "cards", "flashcards")), "summary")
+    mode = {"summarise": "summary", "summarize": "summary", "flashcards": "cards"}.get(mode, mode)
+    try:
+        n = max(3, min(30, int(argval(args, "--n", "10"))))
+    except ValueError:
+        n = 10
+    title = os.path.splitext(os.path.basename(path))[0]
+    text, cut = pdf_text(path)
+    head, out = study_make(text, title, mode, n)
+    progress("")
+    text_out = head + ("  (only the first part of a very long PDF was read)" if cut else "") + "\n\n" + out
+    res = {"text": text_out, "kind": mode}
+    if "--note" in args:
+        code, _ = sh([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "halcyon-notes.py"), "add", text_out], timeout=30)
+        res["noted"] = code == 0
+        if code == 0:
+            res["text"] += "\n\n(saved as a note)"
+    return res
+
+
+def study_items(pts, mode, n):
+    """Exam questions (quiz) or flashcards (cards) from key points: [{"q", "a"}], at most n. Also used by halcyon-study.py."""
+    items, seen = [], set()
+    # a small model often stops after one or two: ask again for the rest (three tries), never the same question twice
+    for _ in range(3):
+        want = n - len(items)
+        if want <= 0:
+            break
+        ask = (f"Write {want} different exam questions on this material, each with its answer, as JSON "
+               '{"items": [{"q": "...", "a": "..."}]}. Mix definitions, how / why questions and short calculations where '
+               "there are formulas. Each question must make sense on its own: never say 'the notes' or 'the text'. "
+               "Answers: one to three sentences, ONLY from the material.") if mode == "quiz" else (
+               f"Write {want} different flashcards on this material as JSON " + '{"items": [{"q": "...", "a": "..."}]}. '
+               '"q" is the front: ONE term, or a short question of at most 12 words, ending with "?" when it is a question. '
+               '"a" is the back: its definition or answer in one or two sentences. Never put the answer on the front. '
+               'Never say "the notes". ONLY from the material.')
+        if items:
+            ask += " Do not repeat these: " + "; ".join(i["q"] for i in items)
+        with contextlib.suppress(Fail):
+            d = generate_json(pts, system=ask, num_predict=min(2400, 160 * want))
+            for i in (d.get("items") or []) if isinstance(d, dict) else []:
+                if isinstance(i, dict) and str(i.get("q", "")).strip() and str(i.get("a", "")).strip():
+                    # a small model copies the labels of the instructions: "front: ...", "Q: ...", "Answer: ..."
+                    qq = re.sub(r"^\s*(front|q|question)\s*[:\-]\s*", "", str(i["q"]), flags=re.I).strip()
+                    aa = re.sub(r"^\s*(back|a|answer)\s*[:\-]\s*", "", str(i["a"]), flags=re.I).strip()
+                    k = re.sub(r"\W+", " ", qq.lower()).strip()
+                    if qq and aa and k not in seen:
+                        seen.add(k)
+                        items.append({"q": qq, "a": aa})
+    items = items[:n]
+    if not items:
+        raise Fail("The model gave no questions. Try again, or a bigger model.")
+    return items
+
+
+def study_summary(pts):
+    return plain(generate(pts, num_predict=900, temperature=0.1, timeout=240, system=(
+        "Write a revision summary of these study notes for an exam. Group them under short topic lines ending with ':', each "
+        "followed by its points starting with '- '. Keep exact terms, formulas and numbers. Do not add anything new.")))
+
+
+def study_make(text, title, mode, n):
+    """-> (heading, body) of a summary / quiz / flashcards made from the text."""
+    pts = key_points(text, title)
+    if mode == "summary":
+        progress("writing the summary")
+        return f"Summary: {title}", study_summary(pts)
+    progress("writing the questions" if mode == "quiz" else "writing the flashcards")
+    items = study_items(pts, mode, n)
+    if mode == "quiz":
+        return f"Quiz: {title}", "\n\n".join(f"Q{k}. {i['q']}\n    Answer: {i['a']}" for k, i in enumerate(items, 1))
+    return f"Flashcards: {title}", "\n".join(f"- {i['q']}  ::  {i['a']}" for i in items)
+
+
+# ------------------------------------------------------------------------------------------------ commit message
+# halcyon-ai.py commit [--all] [--commit]: a commit message for what is staged (--all: for every change, when nothing is staged),
+# in the style of the repository's recent messages. --commit opens `git commit -e` with it, so you read and edit it before it is made.
+MAX_DIFF = 14000
+
+
+def git(*a, timeout=15):
+    return sh(["git", *a], timeout=timeout)
+
+
+def tidy_commit(msg):
+    """What a small model adds around a commit message goes: "Subject:" / "What changed:" labels, code fences, backticks, quotes;
+    the body is cut to four lines."""
+    lines = [l.rstrip() for l in re.sub(r"```\w*", "", msg).replace("`", "").splitlines()]
+    lines = [re.sub(r"^\s*(subject|summary|title)\s*:\s*", "", l, flags=re.I) for l in lines]
+    lines = [l for l in lines if not re.match(r"^\s*(what changed|changes|body|description|details)\s*:?\s*$", l, re.I)]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if not lines:
+        return ""
+    subject = lines[0].strip().strip('"').rstrip(".")
+    body = [l for l in lines[1:] if l.strip()][:4]
+    return subject + ("\n\n" + "\n".join(body) if body else "")
+
+
+def cmd_commit(args):
+    code, top = git("rev-parse", "--show-toplevel")
+    if code != 0:
+        raise Fail("not inside a git repository")
+    _, stat = git("diff", "--staged", "--stat")
+    staged = bool(stat.strip())
+    if not staged and "--all" not in args:
+        raise Fail("nothing is staged (git add ...), or use --all for every change")
+    base = ["diff", "--staged"] if staged else ["diff", "HEAD"]
+    _, stat = git(*base, "--stat")
+    _, diff = git(*base, "--unified=2", "--no-color", timeout=30)
+    if not diff.strip():
+        raise Fail("no changes")
+    need_ai()
+    _, log = git("log", "-n", "12", "--format=%s")
+    cut = len(diff) > MAX_DIFF
+    prompt = ("Recent commit subjects in this repository (match their style and language):\n" + log.strip()
+              + "\n\nFiles changed:\n" + stat.strip() + "\n\nThe diff" + (" (cut short)" if cut else "") + ":\n" + diff[:MAX_DIFF])
+    msg = generate(prompt, num_predict=220, temperature=0.2, timeout=180, system=(
+        "Write a git commit message for this diff. First line: the subject, at most 72 characters, written like the recent subjects "
+        "(same casing and tone). Then, only if needed, a blank line and at most four short lines starting with '- '. Name only "
+        "files that appear in 'Files changed'. Describe ONLY what the diff shows. No labels like 'Subject:', no markdown, no "
+        "backticks, no quotes, no 'This commit'."))
+    msg = tidy_commit(msg)
+    if not msg:
+        raise Fail("The model gave no message.")
+    if "--commit" in args:
+        if not staged:
+            raise Fail("--commit needs staged changes (git add ...): nothing was committed")
+        subprocess.call(["git", "commit", "-e", "-m", msg], cwd=top.strip())
+        return {"text": ""}
+    return {"text": msg}
+
+
 # ------------------------------------------------------------------------------------------------ main
 COMMANDS = {"ask": cmd_ask, "howto": cmd_howto, "do": cmd_do, "clip": cmd_clip, "brief": cmd_brief, "explain": cmd_explain,
-            "safety": cmd_safety, "organise": cmd_organise, "organize": cmd_organise, "lyrics": cmd_lyrics}
+            "safety": cmd_safety, "organise": cmd_organise, "organize": cmd_organise, "lyrics": cmd_lyrics,
+            "updates": cmd_updates, "study": cmd_study, "commit": cmd_commit}
 
 
 def main(argv):
