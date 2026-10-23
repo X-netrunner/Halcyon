@@ -407,8 +407,12 @@ def cmd_updates(args):
         helper = next((h for h in ("yay", "paru") if have(h)), "sudo pacman")
         cmd = f"{helper} -Syu" if helper != "sudo pacman" else "sudo pacman -Syu"
         term = os.path.join(CONF, "scripts", "apps.sh")
+        # first the briefing (halcyon-ai.py updates: risky packages, Arch news since the last upgrade), then you decide
+        brief = os.path.join(CONF, "scripts", "halcyon-ai.py")
+        first = (f"python3 '{brief}' updates; echo; printf 'Update now? [Y/n] '; read a; case \"$a\" in n*|N*) exit 0 ;; esac; "
+                 if os.path.exists(brief) else "")
         if os.path.exists(term):
-            subprocess.Popen([term, "run", "terminal", "--", "sh", "-c", cmd + "; echo; read -p 'Done. Press Enter to close.' _"],
+            subprocess.Popen([term, "run", "terminal", "--", "sh", "-c", first + cmd + "; echo; read -p 'Done. Press Enter to close.' _"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return 0
         raise Fail(f"run this in a terminal: {cmd}")

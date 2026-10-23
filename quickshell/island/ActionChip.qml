@@ -24,9 +24,10 @@ Rectangle {
     radius: height / 2
     color: disabled ? Qt.alpha(pal.surface, 0.35)
          : flashing ? Qt.alpha(pal.accent, 0.30)
-         : on ? Qt.alpha(pal.accent, 0.18)
+         : on ? Qt.alpha(pal.accent, pal.calm ? 0.17 : 0.18)
+         : pal.calm ? (ma.containsMouse || ma.pressed ? pal.fillHover : pal.fill)
          : (ma.pressed ? pal.surfaceHi : (ma.containsMouse ? Qt.alpha(pal.surfaceHi, 0.9) : Qt.alpha(pal.surface, 0.8)))
-    border.width: 1
+    border.width: pal.calm && !flashing ? 0 : 1      // calm: no outline at rest (the tick flash still rings)
     border.color: disabled ? Qt.alpha(pal.lineSoft, 0.5) : flashing ? pal.accent : (on ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft)
     scale: ma.pressed && !disabled ? 0.95 : 1
     Behavior on color { ColorAnimation { duration: pal.dFast } }

@@ -17,12 +17,21 @@ Rectangle {
     readonly property real edgeA: pal.light ? 0.90 : 0.20
 
     color: flat ? "transparent" : Qt.alpha(Qt.tint(pal.bg, tint), opacityBody)
-    border.width: flat ? 0 : 1
+    // the calm style draws its own neutral hairline (below), so an accent outline a window asks for does not show there
+    border.width: flat || pal.calm ? 0 : 1
     border.color: pal.lineTint
-
-    // sheen: lighter at the top edge, gone by ~45% height
     Rectangle {
-        visible: !root.flat
+        visible: !root.flat && root.pal.calm
+        anchors.fill: parent
+        radius: root.radius
+        color: "transparent"
+        border.width: 1
+        border.color: root.pal.line
+    }
+
+    // sheen: lighter at the top edge, gone by ~45% height (legacy style; the calm panes are flat)
+    Rectangle {
+        visible: !root.flat && !root.pal.calm
         anchors.fill: parent
         anchors.margins: 1
         radius: Math.max(0, root.radius - 1)
@@ -34,7 +43,7 @@ Rectangle {
 
     // top-edge highlight: a crisp 1px light line that fades out toward the corners, so the pane looks raised
     Rectangle {
-        visible: !root.flat && root.height > 40
+        visible: !root.flat && !root.pal.calm && root.height > 40
         anchors.top: parent.top
         anchors.topMargin: 1
         anchors.left: parent.left
@@ -55,5 +64,9 @@ Rectangle {
         z: -1
         anchors.fill: parent
         radius: root.radius
+        // calm: wider and fainter, the pane floats instead of sitting on a dark edge
+        spread: root.pal.calm ? 28 : 22
+        drop: root.pal.calm ? 10 : 6
+        strength: root.pal.calm ? 0.02 : 0.026
     }
 }

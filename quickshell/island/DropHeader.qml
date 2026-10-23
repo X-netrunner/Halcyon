@@ -84,7 +84,7 @@ Item {
         height: 38
         radius: height / 2
         color: Qt.alpha(root.pal.text, 0.05)
-        border.width: 1
+        border.width: root.pal.calm ? 0 : 1
         border.color: root.pal.line
 
         // the sliding highlight
@@ -95,7 +95,7 @@ Item {
             height: pill.height - root.inset * 2
             radius: height / 2
             border.width: 1
-            border.color: Qt.alpha(root.pal.accent, 0.42)
+            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.42)
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: Qt.alpha(root.pal.accent, 0.28) }

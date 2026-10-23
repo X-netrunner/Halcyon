@@ -17,8 +17,10 @@ Item {
         id: track
         anchors.fill: parent
         radius: height / 2
-        color: root.on ? Qt.alpha(root.pal.accent, 0.88) : (ma.containsMouse ? root.pal.surfaceHi : Qt.alpha(root.pal.surfaceHi, 0.75))
-        border.width: 1
+        color: root.on ? Qt.alpha(root.pal.accent, root.pal.calm ? 0.95 : 0.88)
+             : root.pal.calm ? Qt.alpha(root.pal.text, ma.containsMouse ? 0.20 : 0.14)
+             : (ma.containsMouse ? root.pal.surfaceHi : Qt.alpha(root.pal.surfaceHi, 0.75))
+        border.width: root.pal.calm ? 0 : 1
         border.color: root.on ? root.pal.accent : root.pal.line
         scale: ma.pressed ? 0.95 : 1
         Behavior on color { ColorAnimation { duration: root.pal.dFast } }

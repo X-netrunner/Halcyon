@@ -40,7 +40,7 @@ Scope {
     readonly property bool panelBottom: spot.charAt(0) === "b"
     readonly property string script: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-clip.py"
 
-    function show() { search = ""; note = ""; confirmClear = false; aiItem = null; open = true; load() }
+    function show() { search = ""; kindFilter = "all"; note = ""; confirmClear = false; aiItem = null; open = true; load() }
     function hide() { open = false; confirmClear = false }
     function close() { hide() }
     function toggle() { if (open) hide(); else show() }
@@ -100,7 +100,7 @@ Scope {
 
     function deleteItem(it) { if (it) act(["python3", root.script, "delete", String(it.id)]) }
 
-    // ---- AI on one entry (scripts/halcyon-ai.py clip summarise | rewrite --id ID)
+    // ---- AI on one entry (scripts/halcyon-ai.py clip summarise | rewrite | shorter | explain --id ID; explain: a copied error or log line)
     property var aiItem: null               // the entry the AI view is about (null = the list is shown)
     property string aiKind: ""
     property string aiOut: ""
@@ -144,11 +144,52 @@ Scope {
         watching = true
     }
 
-    readonly property var shown: {
-        var q = search.trim().toLowerCase()
-        if (!q) return items
-        return items.filter(function (e) { return e.image ? "image picture".indexOf(q) >= 0 : (e.text || "").toLowerCase().indexOf(q) >= 0 })
+    // what an entry is: the icon, the colour of its tile and the line under it follow from this
+    property string kindFilter: "all"       // all | text | link | image
+    function kindOf(e) {
+        if (e.image) return "image"
+        var t = String(e.text || "").trim()
+        if (/^(https?:\/\/|www\.)\S+$/i.test(t)) return "link"
+        if (/^#?[0-9a-f]{6}([0-9a-f]{2})?$/i.test(t) || /^#[0-9a-f]{3}$/i.test(t) || /^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(,\s*[\d.]+\s*)?\)$/i.test(t)) return "colour"
+        if (/^(~|\/)[^\s]*$/.test(t) && t.length > 1) return "path"
+        if (/[{};]\s|=>|\bfunction\b|\bdef\b|^\$ |\bsudo\b|\|\s*\w+/.test(t)) return "code"
+        return "text"
     }
+    function kindGlyph(k) {
+        return k === "image" ? 0xF021F : k === "link" ? 0xF0337 : k === "colour" ? 0xF03D8 : k === "path" ? 0xF024B : k === "code" ? 0xF0169 : 0xF09A8
+    }
+    function colourOf(t) {
+        t = String(t).trim()
+        if (/^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(t)) t = "#" + t
+        return t
+    }
+    function subOf(e, k) {
+        if (k === "image") {
+            var t = e.text || ""
+            var a = t.indexOf("binary data"), b = t.lastIndexOf("]]")
+            return "Picture" + ((a >= 0 && b > a) ? "  ·  " + t.substring(a + 11, b).trim() : "")
+        }
+        if (k === "link") { var m = /^(?:https?:\/\/)?(?:www\.)?([^\/?#]+)/i.exec(String(e.text).trim()); return "Link" + (m ? "  ·  " + m[1] : "") }
+        if (k === "colour") return "Colour"
+        if (k === "path") return "Path"
+        if (k === "code") return "Command or code"
+        var n = String(e.text || "").length
+        return n > 120 ? Math.round(n / 5.5) + " words" : ""
+    }
+
+    readonly property var shown: {
+        var q = search.trim().toLowerCase(), f = kindFilter
+        return items.filter(function (e) {
+            var k = root.kindOf(e)
+            if (f === "image" && k !== "image") return false
+            if (f === "link" && k !== "link") return false
+            if (f === "text" && (k === "image" || k === "link")) return false
+            if (!q) return true
+            return e.image ? "image picture".indexOf(q) >= 0 : (e.text || "").toLowerCase().indexOf(q) >= 0
+        })
+    }
+    readonly property bool anyPin: { for (var i = 0; i < items.length; i++) if (items[i].pin === true) return true; return false }
+    readonly property bool anyImage: { for (var i = 0; i < items.length; i++) if (items[i].image) return true; return false }
 
     // what a row says: a picture entry reads "Image  ·  png 800x600" instead of cliphist's [[ binary data ... ]]
     function rowText(e) {
@@ -156,7 +197,42 @@ Scope {
         var t = e.text || ""
         var a = t.indexOf("binary data"), b = t.lastIndexOf("]]")
         var detail = (a >= 0 && b > a) ? t.substring(a + 11, b).trim() : ""
-        return "Image" + (detail !== "" ? "   \u00b7   " + detail : "")
+        return "Image" + (detail !== "" ? "   ·   " + detail : "")
+    }
+
+    // a small heading above a group of rows ("Pinned", "Recent")
+    component GroupLabel: Text {
+        color: root.pal.muted
+        font.family: root.pal.uiFont
+        font.pixelSize: root.pal.calm ? 11 : 10
+        font.weight: Font.DemiBold
+        font.letterSpacing: root.pal.calm ? 0.2 : (1.2)
+        font.capitalization: root.pal.calm ? Font.MixedCase : Font.AllUppercase
+    }
+    // a quiet round icon button that appears on the row under the pointer
+    component RowBtn: Rectangle {
+        id: rb
+        property int glyph: 0
+        property bool lit: false
+        signal clicked()
+        width: 26; height: 26; radius: 13
+        color: rbMa.containsMouse ? Qt.alpha(root.pal.text, 0.10) : "transparent"
+        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Text { anchors.centerIn: parent; text: String.fromCodePoint(rb.glyph); color: rb.lit ? root.pal.accent : (rbMa.containsMouse ? root.pal.text : root.pal.muted); font.family: root.pal.font; font.pixelSize: 14 }
+        MouseArea { id: rbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: rb.clicked() }
+    }
+    component FilterChip: Rectangle {
+        id: fc
+        property string key: ""
+        property string label: ""
+        readonly property bool on: root.kindFilter === key
+        implicitWidth: fcT.implicitWidth + 22
+        implicitHeight: 26
+        radius: 13
+        color: on ? Qt.alpha(root.pal.accent, 0.18) : (fcMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
+        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Text { id: fcT; anchors.centerIn: parent; text: fc.label; color: fc.on ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: fc.on ? Font.DemiBold : Font.Normal }
+        MouseArea { id: fcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.kindFilter = fc.key }
     }
 
     LazyLoader {
@@ -187,11 +263,10 @@ Scope {
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: 520
-                    height: Math.min(qp.height - root.pal.boxTop - root.pal.boxEdge, 520)
+                    width: 480
+                    height: Math.min(qp.height - root.pal.boxTop - root.pal.boxEdge, 560)
                     radius: root.pal.rXl
-                    opacityBody: root.pal.solid ? 1 : 0.90
-                    border.color: Qt.alpha(root.pal.accent, 0.40)
+                    opacityBody: root.pal.solid ? 1 : 0.92
                     opacity: qp.reveal
                     x: root.panelRight ? qp.width - width - 22 + (1 - qp.reveal) * width * 0.4
                                        : 22 - (1 - qp.reveal) * width * 0.4
@@ -204,83 +279,106 @@ Scope {
                         pal: root.pal
                         opt: root.opt
                         running: root.stars && root.open
-                        count: 30
+                        count: 22
+                        opacity: 0.7
                     }
 
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 20
-                        spacing: 12
+                        spacing: 14
 
+                        // ---- header: the clipboard badge, the count (or what just happened), close
                         RowLayout {
                             Layout.fillWidth: true
-                            spacing: 10
+                            spacing: 12
                             Rectangle {
-                                width: 8; height: 8; radius: 4
-                                color: root.note !== "" ? root.pal.good : root.pal.accent
+                                width: 36; height: 36; radius: 12
+                                color: Qt.alpha(root.note !== "" ? root.pal.good : root.pal.accent, 0.15)
                                 Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: String.fromCodePoint(root.note !== "" ? 0xF012C : 0xF0147)
+                                    color: root.note !== "" ? root.pal.good : root.pal.accent
+                                    font.family: root.pal.font
+                                    font.pixelSize: 18
+                                }
                             }
-                            Text {
-                                text: "Clipboard"
-                                color: root.pal.text
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tTitle
-                                font.weight: Font.DemiBold
+                            Column {
+                                Layout.fillWidth: true
+                                spacing: 1
+                                Text { text: "Clipboard"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
+                                Text {
+                                    text: root.note !== "" ? root.note : (root.total + (root.total === 1 ? " thing copied" : " things copied") + (root.anyPin ? "  ·  pins stay" : ""))
+                                    color: root.note !== "" ? root.pal.good : root.pal.muted
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tCap
+                                }
                             }
-                            Item { Layout.fillWidth: true }
-                            Text {
-                                text: root.note !== "" ? root.note : (root.total + (root.total === 1 ? " entry" : " entries"))
-                                color: root.note !== "" ? root.pal.good : root.pal.muted
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tCap
-                                font.weight: root.note !== "" ? Font.Medium : Font.Normal
-                            }
-                            RoundBtn {
-                                pal: root.pal
-                                size: 28
-                                glyph: String.fromCodePoint(0xF0156)
-                                onClicked: root.hide()
-                            }
+                            RoundBtn { pal: root.pal; size: 30; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }
                         }
 
-                        // search
+                        // ---- search, then what kind of entry
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 40
-                            radius: root.pal.rMd
-                            color: Qt.alpha(root.pal.bg, 0.55)
+                            visible: !root.aiItem
+                            radius: 20
+                            color: Qt.alpha(root.pal.surface, 0.7)
                             border.width: 1
-                            border.color: sin.activeFocus ? root.pal.accent : root.pal.lineSoft
+                            border.color: sin.activeFocus ? root.pal.lineFocus : root.pal.lineSoft
                             Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                            Text {
+                                id: sGlyph
+                                x: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: String.fromCodePoint(0xF0349)
+                                color: root.pal.muted
+                                font.family: root.pal.font
+                                font.pixelSize: 15
+                            }
                             TextInput {
                                 id: sin
-                                anchors.fill: parent
-                                anchors.leftMargin: 14
-                                anchors.rightMargin: 14
+                                anchors { fill: parent; leftMargin: 38; rightMargin: 14 }
                                 verticalAlignment: TextInput.AlignVCenter
                                 clip: true
                                 color: root.pal.text
                                 selectionColor: Qt.alpha(root.pal.accent, 0.45)
                                 selectedTextColor: root.pal.text
                                 font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tBody + 1
+                                font.pixelSize: root.pal.tBody
                                 onTextChanged: { root.search = text; list.currentIndex = 0 }
                                 Keys.onPressed: e => {
                                     if (e.key === Qt.Key_Escape) { if (root.aiItem) root.aiItem = null; else root.hide(); e.accepted = true }
                                     else if (root.aiItem) { if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { root.aiCopy(); e.accepted = true } }
                                     else if (e.key === Qt.Key_Down) { if (list.currentIndex < root.shown.length - 1) list.currentIndex++; e.accepted = true }
                                     else if (e.key === Qt.Key_Up) { if (list.currentIndex > 0) list.currentIndex--; e.accepted = true }
+                                    else if (e.key === Qt.Key_Tab) {
+                                        var ks = ["all", "text", "link", "image"]
+                                        root.kindFilter = ks[(ks.indexOf(root.kindFilter) + 1) % ks.length]; e.accepted = true
+                                    }
                                     else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
                                         root.copyItem(root.shown[list.currentIndex]); e.accepted = true
                                     }
                                 }
                                 Text {
+                                    anchors.verticalCenter: parent.verticalCenter
                                     visible: sin.text.length === 0
                                     text: "Search what you copied"
                                     color: root.pal.muted
                                     font: sin.font
                                 }
                             }
+                        }
+                        Row {
+                            Layout.fillWidth: true
+                            Layout.topMargin: -4
+                            spacing: 2
+                            visible: !root.aiItem && root.items.length > 3
+                            FilterChip { key: "all"; label: "All" }
+                            FilterChip { key: "text"; label: "Text" }
+                            FilterChip { key: "link"; label: "Links" }
+                            FilterChip { key: "image"; label: "Pictures"; visible: root.anyImage }
                         }
 
                         // the watchers are off, or the tools are missing: say so instead of an empty list
@@ -290,8 +388,6 @@ Scope {
                             implicitHeight: warnRow.implicitHeight + 20
                             radius: root.pal.rMd
                             color: Qt.alpha(root.pal.warn, 0.10)
-                            border.width: 1
-                            border.color: Qt.alpha(root.pal.warn, 0.35)
                             RowLayout {
                                 id: warnRow
                                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
@@ -315,125 +411,197 @@ Scope {
                             }
                         }
 
-                        // the list
+                        // ---- the list: an icon tile per entry (a swatch for a colour, the picture itself for an image)
                         ListView {
                             id: list
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             visible: root.shown.length > 0 && !root.aiItem
                             clip: true
-                            spacing: 4
+                            spacing: 2
                             model: root.shown
                             currentIndex: 0
                             boundsBehavior: Flickable.StopAtBounds
+                            highlightMoveDuration: 120
                             onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+                            Connections { target: root; function onKindFilterChanged() { list.currentIndex = 0 } }
+                            highlight: Rectangle {
+                                radius: root.pal.rMd
+                                color: Qt.alpha(root.pal.accent, 0.11)
+                            }
 
-                            delegate: Rectangle {
+                            delegate: Item {
                                 id: row
                                 required property var modelData
                                 required property int index
-                                width: ListView.view.width - 8
-                                height: 42
-                                radius: root.pal.rSm
                                 readonly property bool cur: ListView.isCurrentItem
-                                color: rowMa.containsMouse || cur ? Qt.alpha(root.pal.accent, 0.14) : Qt.alpha(root.pal.surface, 0.55)
-                                border.width: 1
-                                border.color: cur ? Qt.alpha(root.pal.accent, 0.45) : root.pal.lineSoft
-                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-
-                                RowLayout {
-                                    anchors { fill: parent; leftMargin: 12; rightMargin: 8 }
-                                    spacing: 10
-                                    Rectangle {
-                                        Layout.preferredWidth: 3
-                                        Layout.preferredHeight: 14
-                                        radius: 1.5
-                                        color: row.modelData.pin === true ? root.pal.accent : (row.modelData.image ? root.pal.accent2 : Qt.alpha(root.pal.muted, 0.5))
-                                    }
-                                    Text {
-                                        visible: row.modelData.pin === true
-                                        text: String.fromCodePoint(0xF0403)
-                                        color: root.pal.accent
-                                        font.family: root.pal.font
-                                        font.pixelSize: 14
-                                    }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.rowText(row.modelData)
-                                        elide: Text.ElideRight
-                                        maximumLineCount: 1
-                                        color: row.modelData.image ? root.pal.accent2 : root.pal.text
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tBody
-                                    }
-                                    RoundBtn {
-                                        visible: !row.modelData.image && (rowMa.containsMouse || row.cur)
-                                        pal: root.pal
-                                        size: 24
-                                        glyph: String.fromCodePoint(0xF0674)
-                                        onClicked: root.aiOpen(row.modelData)
-                                    }
-                                    RoundBtn {
-                                        visible: !row.modelData.image && (rowMa.containsMouse || row.cur)
-                                        pal: root.pal
-                                        size: 24
-                                        glyph: String.fromCodePoint(row.modelData.pin === true ? 0xF0404 : 0xF0403)
-                                        onClicked: root.pinItem(row.modelData)
-                                    }
-                                    RoundBtn {
-                                        visible: rowMa.containsMouse || row.cur
-                                        pal: root.pal
-                                        size: 24
-                                        glyph: String.fromCodePoint(0xF0156)
-                                        onClicked: root.deleteItem(row.modelData)
-                                    }
+                                readonly property string kind: root.kindOf(modelData)
+                                readonly property bool pinned: modelData.pin === true
+                                readonly property bool hasThumb: kind === "image" && (modelData.thumb || "") !== "" && thumbImg.status !== Image.Error
+                                readonly property string sub: pinned ? "Pinned" + (root.subOf(modelData, kind) !== "" ? "  ·  " + root.subOf(modelData, kind) : "") : root.subOf(modelData, kind)
+                                // "Pinned" above the first pin, "Recent" above the first entry after the pins
+                                readonly property string group: {
+                                    if (!root.anyPin || root.search.trim() !== "") return ""
+                                    var prev = index > 0 ? root.shown[index - 1] : null
+                                    if (pinned && !prev) return "Pinned"
+                                    if (!pinned && (!prev || prev.pin === true)) return "Recent"
+                                    return ""
                                 }
-                                MouseArea {
-                                    id: rowMa
-                                    anchors.fill: parent
-                                    anchors.rightMargin: 100           // the AI, pin and delete buttons keep their own clicks
-                                    hoverEnabled: true
-                                    onEntered: list.currentIndex = row.index
-                                    onClicked: root.copyItem(row.modelData)
+                                width: ListView.view.width
+                                height: (group !== "" ? 26 : 0) + body.height
+
+                                GroupLabel {
+                                    visible: row.group !== ""
+                                    x: 6; y: 6
+                                    text: row.group
+                                }
+                                Item {
+                                    id: body
+                                    y: row.group !== "" ? 26 : 0
+                                    width: parent.width
+                                    height: row.hasThumb ? 70 : (txt.lineCount > 1 || row.sub !== "" ? 54 : 44)
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: root.pal.rMd
+                                        color: rowMa.containsMouse && !row.cur ? Qt.alpha(root.pal.text, 0.04) : "transparent"
+                                    }
+
+                                    // the tile: a tinted glyph, the colour itself, or the picture
+                                    Rectangle {
+                                        id: tile
+                                        x: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: row.hasThumb ? 84 : 32
+                                        height: row.hasThumb ? 54 : 32
+                                        radius: row.hasThumb ? root.pal.rSm : 10
+                                        clip: true
+                                        color: row.kind === "colour" ? root.colourOf(row.modelData.text)
+                                             : Qt.alpha(row.kind === "image" ? root.pal.accent2 : (row.pinned ? root.pal.accent : root.pal.text), row.pinned || row.kind === "image" ? 0.16 : 0.07)
+                                        border.width: row.kind === "colour" ? 1 : 0
+                                        border.color: Qt.alpha(root.pal.text, 0.25)
+                                        Text {
+                                            anchors.centerIn: parent
+                                            visible: row.kind !== "colour" && !row.hasThumb
+                                            text: String.fromCodePoint(row.pinned ? 0xF0403 : root.kindGlyph(row.kind))
+                                            color: row.pinned ? root.pal.accent : (row.kind === "image" ? root.pal.accent2 : root.pal.muted)
+                                            font.family: root.pal.font
+                                            font.pixelSize: 15
+                                        }
+                                        Image {
+                                            id: thumbImg
+                                            anchors.fill: parent
+                                            visible: row.hasThumb
+                                            source: row.kind === "image" && (row.modelData.thumb || "") !== "" ? "file://" + row.modelData.thumb : ""
+                                            sourceSize.width: 168
+                                            sourceSize.height: 108
+                                            fillMode: Image.PreserveAspectCrop
+                                            asynchronous: true
+                                            cache: false
+                                        }
+                                    }
+
+                                    Column {
+                                        anchors { left: tile.right; leftMargin: 12; right: acts.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                                        spacing: 2
+                                        Text {
+                                            id: txt
+                                            width: parent.width
+                                            text: row.kind === "image" ? "Picture" : row.modelData.text
+                                            elide: Text.ElideRight
+                                            wrapMode: Text.Wrap
+                                            maximumLineCount: row.sub === "" ? 2 : 1
+                                            color: root.pal.text
+                                            font.family: row.kind === "code" || row.kind === "path" || row.kind === "colour" ? root.pal.mono : root.pal.uiFont
+                                            font.pixelSize: row.kind === "code" || row.kind === "path" ? root.pal.tCap + 1 : root.pal.tBody
+                                        }
+                                        Text {
+                                            visible: row.sub !== ""
+                                            width: parent.width
+                                            text: row.kind === "image" ? row.sub.replace(/^Picture\s*·\s*/, "") : row.sub
+                                            elide: Text.ElideRight
+                                            color: row.pinned ? root.pal.accent : root.pal.muted
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tCap
+                                        }
+                                    }
+
+                                    Row {
+                                        id: acts
+                                        anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                                        spacing: 0
+                                        opacity: rowMa.containsMouse || row.cur ? 1 : 0
+                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                                        RowBtn { visible: !row.modelData.image; glyph: 0xF0674; onClicked: root.aiOpen(row.modelData) }
+                                        RowBtn { visible: !row.modelData.image; glyph: row.pinned ? 0xF0404 : 0xF0403; lit: row.pinned; onClicked: root.pinItem(row.modelData) }
+                                        RowBtn { glyph: 0xF01B4; onClicked: root.deleteItem(row.modelData) }
+                                    }
+                                    MouseArea {
+                                        id: rowMa
+                                        anchors.fill: parent
+                                        anchors.rightMargin: acts.width + 8          // the AI, pin and delete buttons keep their own clicks
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onEntered: list.currentIndex = row.index
+                                        onClicked: root.copyItem(row.modelData)
+                                    }
                                 }
                             }
-
                         }
 
                         // an empty list says why (a sibling of the list, not inside it: a ListView would scroll it)
-                        Text {
+                        Column {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            visible: root.shown.length === 0 && !root.aiItem
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            text: !root.loaded ? "" : (!root.available ? "" : (root.search.trim() !== "" ? "Nothing copied matches that" : "Nothing copied yet"))
-                            color: root.pal.muted
-                            font.family: root.pal.uiFont
-                            font.pixelSize: root.pal.tBody
+                            visible: root.shown.length === 0 && !root.aiItem && root.loaded && root.available
+                            spacing: 6
+                            topPadding: 60
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: String.fromCodePoint(0xF0147)
+                                color: Qt.alpha(root.pal.muted, 0.6)
+                                font.family: root.pal.font
+                                font.pixelSize: 30
+                            }
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: root.search.trim() !== "" || root.kindFilter !== "all" ? "Nothing copied matches that" : "Nothing copied yet"
+                                color: root.pal.muted
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody
+                            }
                         }
 
-                        // ---- the AI view: one entry, three things to do with it, the answer
+                        // ---- the AI view: one entry, what to do with it, the answer
                         ColumnLayout {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             visible: root.aiItem !== null
-                            spacing: 10
-                            Text {
+                            spacing: 12
+                            Rectangle {
                                 Layout.fillWidth: true
-                                text: root.aiItem ? root.aiItem.text : ""
-                                maximumLineCount: 2
-                                elide: Text.ElideRight
-                                wrapMode: Text.Wrap
-                                color: root.pal.muted
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tCap + 1
+                                implicitHeight: srcT.implicitHeight + 20
+                                radius: root.pal.rMd
+                                color: Qt.alpha(root.pal.surface, 0.6)
+                                Text {
+                                    id: srcT
+                                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
+                                    text: root.aiItem ? root.aiItem.text : ""
+                                    maximumLineCount: 3
+                                    elide: Text.ElideRight
+                                    wrapMode: Text.Wrap
+                                    color: root.pal.muted
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tCap + 1
+                                }
                             }
                             Flow {
                                 Layout.fillWidth: true
-                                spacing: 8
+                                spacing: 6
                                 Repeater {
-                                    model: [["summarise", "Summarise"], ["rewrite", "Rewrite clearly"], ["shorter", "Make it shorter"]]
+                                    model: [["summarise", "Summarise"], ["rewrite", "Rewrite clearly"], ["shorter", "Make it shorter"], ["explain", "Explain error"]]
                                     delegate: Chip {
                                         required property var modelData
                                         pal: root.pal; implicitHeight: 30
@@ -443,32 +611,34 @@ Scope {
                                     }
                                 }
                             }
-                            Rectangle {
+                            Item {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                radius: root.pal.rMd
-                                color: Qt.alpha(root.pal.bg, 0.45)
-                                border.width: 1
-                                border.color: !root.aiOk ? Qt.alpha(root.pal.warn, 0.5) : root.pal.lineSoft
-                                Flickable {
-                                    id: aiFlick
-                                    anchors.fill: parent
-                                    anchors.margins: 12
-                                    contentWidth: width
-                                    contentHeight: aiTxt.implicitHeight
-                                    clip: true
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    TextEdit {
-                                        id: aiTxt
-                                        width: aiFlick.width
-                                        readOnly: true
-                                        selectByMouse: true
-                                        wrapMode: TextEdit.Wrap
-                                        text: aiProc.running ? "Asking your local AI…" : (root.aiOut !== "" ? root.aiOut : "Pick what to do with it. The answer comes from your local model; nothing leaves this computer.")
-                                        color: aiProc.running || root.aiOut === "" ? root.pal.muted : (root.aiOk ? root.pal.text : root.pal.warn)
-                                        selectionColor: Qt.alpha(root.pal.accent, 0.45)
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tBody
+                                Row {
+                                    x: 4
+                                    height: parent.height
+                                    spacing: 12
+                                    Rectangle { width: 2; height: Math.min(parent.height, aiTxt.implicitHeight); radius: 1; color: !root.aiOk ? Qt.alpha(root.pal.warn, 0.6) : Qt.alpha(root.pal.accent, 0.45) }
+                                    Flickable {
+                                        id: aiFlick
+                                        width: list.width - 18
+                                        height: parent.height
+                                        contentWidth: width
+                                        contentHeight: aiTxt.implicitHeight
+                                        clip: true
+                                        boundsBehavior: Flickable.StopAtBounds
+                                        TextEdit {
+                                            id: aiTxt
+                                            width: aiFlick.width
+                                            readOnly: true
+                                            selectByMouse: true
+                                            wrapMode: TextEdit.Wrap
+                                            text: aiProc.running ? "Asking your local AI…" : (root.aiOut !== "" ? root.aiOut : "Pick what to do with it. The answer comes from your local model; nothing leaves this computer.")
+                                            color: aiProc.running || root.aiOut === "" ? root.pal.muted : (root.aiOk ? root.pal.text : root.pal.warn)
+                                            selectionColor: Qt.alpha(root.pal.accent, 0.45)
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tBody
+                                        }
                                     }
                                 }
                             }
@@ -481,15 +651,16 @@ Scope {
                             }
                         }
 
+                        // ---- footer: the keys, Clear history
                         RowLayout {
                             Layout.fillWidth: true
                             visible: !root.aiItem
                             spacing: 8
                             Text {
                                 Layout.fillWidth: true
-                                text: "Enter copies   \u00b7   Pin keeps it on top   \u00b7   Esc closes"
+                                text: "Enter copies  ·  Tab filters  ·  Esc closes"
                                 elide: Text.ElideRight
-                                color: Qt.alpha(root.pal.muted, 0.85)
+                                color: Qt.alpha(root.pal.muted, 0.8)
                                 font.family: root.pal.uiFont
                                 font.pixelSize: 10
                             }

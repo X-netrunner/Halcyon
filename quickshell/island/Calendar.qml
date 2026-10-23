@@ -536,7 +536,7 @@ Scope {
         signal clicked()
         width: 32; height: 32; radius: 16
         color: ma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.95) : Qt.alpha(root.pal.surface, 0.8)
-        border.width: 1; border.color: root.pal.line
+        border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
         Behavior on color { ColorAnimation { duration: root.pal.dFast } }
         Text {
             id: gl
@@ -609,7 +609,7 @@ Scope {
                     height: Math.min(parent.height - 60, 640)
                     radius: root.pal.rXl
                     opacityBody: root.pal.glassSolid - 0.02
-                    border.color: Qt.alpha(root.pal.accent, 0.35)
+                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
                     scale: root.open ? 1 : 0.96
                     Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                     MouseArea { anchors.fill: parent }       // swallow clicks
@@ -694,7 +694,7 @@ Scope {
                                 height: 12 + weekHead.height + 6 + 6 * grid.ch + 12
                                 radius: root.pal.rLg
                                 color: Qt.alpha(root.pal.surface, 0.8)
-                                border.width: 1; border.color: root.pal.line
+                                border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
                             }
                             Row {
                                 id: weekHead
@@ -775,11 +775,11 @@ Scope {
                                 height: nextCol.implicitHeight + 28
                                 radius: root.pal.rLg
                                 color: Qt.alpha(root.pal.surface, 0.8)
-                                border.width: 1; border.color: root.pal.line
+                                border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
                                 Column {
                                     id: nextCol
                                     x: 16; y: 14; width: parent.width - 32; spacing: 4
-                                    Text { text: "NEXT UP"; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.2 }
+                                    Text { text: root.pal.cap("NEXT UP"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: Font.Bold; font.letterSpacing: root.pal.calm ? 0.2 : 1.2 }
                                     Text {
                                         width: parent.width
                                         text: root.nextUp ? root.nextUp.title : "Nothing coming up"
@@ -1518,7 +1518,7 @@ Scope {
                                             required property var modelData
                                             width: bCol.width; height: 36; radius: 10
                                             color: Qt.alpha(root.pal.surface, 0.75)
-                                            border.width: 1; border.color: root.pal.line
+                                            border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
                                             RowLayout {
                                                 anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 10
                                                 Text {

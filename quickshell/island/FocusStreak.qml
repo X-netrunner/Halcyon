@@ -135,7 +135,7 @@ Scope {
                     height: Math.min(parent.height - 48, col.implicitHeight + 64)
                     radius: root.pal.rXl
                     opacityBody: root.pal.solid ? 1 : 0.86
-                    border.color: Qt.alpha(root.pal.accent, 0.4)
+                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.4)
                     scale: 0.94 + 0.06 * stage.t
                     opacity: Math.min(1, stage.t * 2)
                     MouseArea { anchors.fill: parent }
@@ -164,7 +164,7 @@ Scope {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
-                                Text { text: "FOCUS STREAK"; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: 12; font.letterSpacing: 2.5; font.weight: Font.DemiBold }
+                                Text { text: root.pal.cap("FOCUS STREAK"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: 12; font.letterSpacing: root.pal.calm ? 0.2 : 2.5; font.weight: Font.DemiBold }
                                 Row {
                                     spacing: 12
                                     Text { id: big; text: Math.round(root.streak * stage.t); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 72; font.weight: Font.Light }
@@ -301,7 +301,7 @@ Scope {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                Text { text: "MILESTONES"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.letterSpacing: 2 }
+                                Text { text: root.pal.cap("MILESTONES"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.letterSpacing: root.pal.calm ? 0.2 : 2 }
                                 Flow {
                                     Layout.fillWidth: true
                                     spacing: 10

@@ -123,8 +123,8 @@ ListView {
                         font.family: list.pal.uiFont
                         font.pixelSize: 11
                         font.weight: Font.Bold
-                        font.letterSpacing: 0.9
-                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: list.pal.calm ? 0.2 : (0.9)
+                        font.capitalization: list.pal.calm ? Font.MixedCase : Font.AllUppercase
                     }
                 }
             }

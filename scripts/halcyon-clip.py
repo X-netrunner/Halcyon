@@ -2,7 +2,8 @@
 """halcyon-clip.py: the data side of the clipboard history panel (>clipboard in the launcher).
 
   halcyon-clip.py json [N]     one line of JSON for the panel: the newest N entries (default 60, at most 300)
-                               {"available": bool, "watching": bool, "total": int, "items": [{"id", "text", "image"}]}
+                               {"available": bool, "watching": bool, "total": int, "items": [{"id", "text", "image", "thumb"}]}
+                               (thumb: a copied picture saved once in ~/.cache/island/clip-thumbs for the preview)
   halcyon-clip.py copy ID      put entry ID back on the clipboard (wl-copy)
   halcyon-clip.py delete ID    forget one entry (a pinned one is unpinned)
   halcyon-clip.py pin ID       keep a text entry on top of the list, even after the history is cleared
@@ -99,6 +100,41 @@ def pin_id(text):
     return "p" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
 
 
+THUMBS = os.path.join(os.path.expanduser("~"), ".cache", "island", "clip-thumbs")
+THUMB_MAX = 12           # pictures previewed per list (the newest ones)
+IMG_KIND = re.compile(r"\b(png|jpe?g|webp|gif|bmp)\b", re.I)
+
+
+def thumb(i, text):
+    """A copied picture, saved once as ~/.cache/island/clip-thumbs/<id>.<ext> (only you can read it) for the panel's preview."""
+    m = IMG_KIND.search(text)
+    ext = (m.group(1).lower() if m else "png").replace("jpeg", "jpg")
+    path = os.path.join(THUMBS, f"{i}.{ext}")
+    if os.path.isfile(path):
+        return path
+    r = run(["cliphist", "decode", i])
+    if r is None or r.returncode != 0 or not r.stdout:
+        return ""
+    try:
+        os.makedirs(THUMBS, mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(r.stdout)
+        return path
+    except OSError:
+        return ""
+
+
+def prune_thumbs(keep):
+    """Previews of pictures that left the history (deleted, cleared) go too."""
+    try:
+        for f in os.listdir(THUMBS):
+            if f.split(".")[0] not in keep:
+                os.remove(os.path.join(THUMBS, f))
+    except OSError:
+        pass
+
+
 def cmd_json(n):
     items = raw_list()
     n = max(1, min(300, n))
@@ -111,6 +147,12 @@ def cmd_json(n):
     heads = set(p["text"][:80] for p in pinned)
     rest = [entry(i, t) for i, t in items[:n]]
     rest = [e for e in rest if e["image"] or e["text"][:80] not in heads]   # a pinned text is not listed twice
+    shown = 0
+    for e in rest:
+        if e["image"] and shown < THUMB_MAX:
+            e["thumb"] = thumb(e["id"], e["text"])
+            shown += 1
+    prune_thumbs({i for i, t in items if IMG.match(t)})
     return {
         "available": have("cliphist") and have("wl-copy"),
         "watching": watching(),
@@ -198,6 +240,7 @@ def cmd_clear():
     if not have("cliphist"):
         return 1, "halcyon-clip: cliphist is not installed"
     r = run(["cliphist", "wipe"])
+    prune_thumbs(set())
     return (0, "history cleared") if r is not None and r.returncode == 0 else (1, "halcyon-clip: could not clear")
 
 

@@ -560,7 +560,7 @@ Scope {
                                     visible: root.index > 0 || btns.chooser
                                     height: 32; radius: 16; width: backText.implicitWidth + 28
                                     color: backMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.95) : Qt.alpha(root.pal.surface, 0.9)
-                                    border.width: 1; border.color: root.pal.line
+                                    border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
                                     Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                     Text { id: backText; anchors.centerIn: parent; text: btns.chooser ? "Everything (" + root.steps.length + ")" : "Back"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                     MouseArea { id: backMa; anchors.fill: parent; hoverEnabled: true; onClicked: btns.chooser ? root.next() : root.back() }

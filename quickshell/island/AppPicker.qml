@@ -106,7 +106,7 @@ ColumnLayout {
         Layout.preferredHeight: root.rows * 34 + 8
         radius: 10
         color: Qt.alpha(root.pal.bg, 0.35)
-        border.width: 1
+        border.width: root.pal.calm ? 0 : 1
         border.color: root.pal.lineSoft
         clip: true
 

@@ -108,7 +108,7 @@ Item {
     readonly property var cmdOrder: [
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
-        "calendar", "notes", "notesall", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
+        "calendar", "notes", "notesall", "study", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "gamecenter", "games", "games-stop",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
@@ -166,6 +166,7 @@ Item {
         { id: "theme", name: "Light / dark theme", desc: "Switch the whole desktop between the dark and the light theme (toggle)", glyph: 0xF0594, kw: "dark light mode appearance colours day night", cat: "desktop" },
         { id: "settings", name: "Settings", desc: "Theme, wallpaper, scrolling, default apps, transparency, motion, gaming", glyph: 0xF0493, kw: "rice options look theme gear config", cat: "system" },
         { id: "extradim", name: "Extra dim display", desc: "Dim screen backlight to minimum (Super + Alt + D)", glyph: 0xF058F, kw: "dim brightness backlight dark night minimum screen", cat: "tools" },
+        { id: "study", name: "Study Center", desc: "Add PDFs, slides, notes or photos of pages and ask questions about them; the answers name the page. Also a revision summary, a quiz and flashcards. All on this computer", glyph: 0xF0474, kw: "study learn pdf notes lecture slides exam revise revision quiz flashcards summary ask questions document book homework", cat: "tools" },
         { id: "gamecenter", name: "Game Center", desc: "Your games with cover art: add a Windows game (.exe), read Steam, Epic and GOG, Proton versions and the system check for games", glyph: 0xF0297, kw: "game games center library add exe import steam epic gog stores proton runtimes doctor check settings launcher", cat: "games" },
         { id: "games", name: "Games", desc: "Your game library: Enter launches. Type  >game  and a name to find one (Steam games and the .exe games you added). Halcyon rests while a game runs", glyph: 0xF0297, kw: "game games play library steam proton launcher", cat: "games" },
         // only listed while a game runs (runningGame)
@@ -198,6 +199,7 @@ Item {
 
     // ---- mode
     readonly property string q0: query.replace(/^\s+/, "")
+    onQ0Changed: favSel = ""
     readonly property string mode: /^>\s*ask\s/i.test(q0) ? "ask" : (/^>\s*do\s/i.test(q0) ? "do" : modeBase)
     readonly property bool aiMode: mode === "ask" || mode === "do"
     readonly property string modeBase: q0.charAt(0) === ">" ? "cmd"
@@ -420,10 +422,28 @@ Item {
             var gn = String(gm.name || gm.id).toLowerCase()
             var gr = ga === "" ? 5 : (gn.indexOf(ga) === 0 ? 8 : (gn.indexOf(ga) >= 0 ? 7 : (ga.length > 1 && fuzzy(ga, gn) ? 6 : 0)))
             if (gr === 0) continue
+            if (gm.fav) gr += 10                         // favourites first (the star on the row, or Ctrl+F, toggles it)
             var why = gm.running ? "Running now" : (gm.status === "attention" ? "Needs attention: " + (gm.statusReason || "see hgl show " + gm.id) : "Enter to play")
-            out.push({ c: { id: "game:" + gm.id, name: gm.name || gm.id, desc: why, glyph: 0xF0297, kw: "", cat: "games" }, r: gr, i: -1000 + gi })
+            out.push({ c: { id: "game:" + gm.id, name: gm.name || gm.id, desc: why, glyph: 0xF0297, kw: "", cat: "games", fav: !!gm.fav }, r: gr, i: -1000 + gi })
         }
         return out
+    }
+
+    // star / unstar a game (hgl set <id> fav on|off); the list is re-read so it moves at once
+    property string favSel: ""             // the game just starred stays selected while the list re-sorts
+    Process {
+        id: favProc
+        onExited: if (!gamesProc.running) gamesProc.running = true
+    }
+    function toggleFav(i) {
+        var c = cmdResults[i]
+        if (!c || c.id.indexOf("game:") !== 0 || favProc.running) return
+        for (var k = 0; k < gameList.length; k++)          // flip it here too, so the star answers before hgl does
+            if (gameList[k] && "game:" + gameList[k].id === c.id) gameList[k].fav = !c.fav
+        favProc.command = [Quickshell.env("HOME") + "/.config/Halcyon/bin/hgl", "set", c.id.substring(5), "fav", c.fav ? "off" : "on"]
+        favProc.running = true
+        favSel = c.id
+        refresh()
     }
 
     function refresh() {
@@ -463,7 +483,9 @@ Item {
             var ncmd = outc.map(function (o) { return o.c })
             infoIdx = -1
             if (!sameList(ncmd, cmdResults)) cmdResults = ncmd
-            cmdList.currentIndex = 0
+            var sel = 0
+            if (favSel !== "") for (var fi = 0; fi < ncmd.length; fi++) if (ncmd[fi].id === favSel) { sel = fi; break }
+            cmdList.currentIndex = sel
             return
         }
         if (mode === "calc" || aiMode) return
@@ -763,6 +785,7 @@ Item {
                         else root.histStep(1)
                         e.accepted = true
                     }
+                    else if (cmd && ctrl && e.key === Qt.Key_F) { root.toggleFav(cmdList.currentIndex); e.accepted = true }
                     else if (nav && plain && e.key === Qt.Key_Right) { grid.moveCurrentIndexRight(); e.accepted = true }
                     else if (nav && plain && e.key === Qt.Key_Left) { grid.moveCurrentIndexLeft(); e.accepted = true }
                     else if (e.key === Qt.Key_Tab || (ctrl && e.key === Qt.Key_N)) {
@@ -903,10 +926,10 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 4
-                    radius: 18
-                    color: Qt.alpha(root.pal.accent, 0.13)
-                    border.width: 1
-                    border.color: Qt.alpha(root.pal.accent, 0.28)
+                    radius: root.pal.calm ? root.pal.rLg : 18
+                    color: Qt.alpha(root.pal.accent, root.pal.calm ? 0.12 : 0.13)
+                    border.width: root.pal.calm ? 0 : 1
+                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.28)
                 }
             }
 
@@ -998,10 +1021,10 @@ Item {
             highlight: Rectangle {
                 width: cmdList.width
                 height: 46
-                radius: 14
-                color: Qt.alpha(root.pal.accent, 0.13)
-                border.width: 1
-                border.color: Qt.alpha(root.pal.accent, 0.28)
+                radius: root.pal.calm ? root.pal.rMd : 14
+                color: Qt.alpha(root.pal.accent, root.pal.calm ? 0.12 : 0.13)
+                border.width: root.pal.calm ? 0 : 1
+                border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.28)
             }
 
             delegate: Item {
@@ -1047,12 +1070,13 @@ Item {
                     radius: 9
                     color: {
                         var cat = crow.modelData.cat
+                        if (root.pal.calm) return "transparent"          // calm: the group is a quiet word, not a coloured badge
                         if (cat === "power") return Qt.alpha(root.pal.accent2, 0.16)
                         if (cat === "tools") return Qt.alpha(root.pal.good || root.pal.accent, 0.16)
                         if (cat === "system") return Qt.alpha(root.pal.warn || root.pal.accent, 0.16)
                         return Qt.alpha(root.pal.accent, 0.12)
                     }
-                    border.width: 1
+                    border.width: root.pal.calm ? 0 : 1
                     border.color: {
                         var cat = crow.modelData.cat
                         if (cat === "power") return Qt.alpha(root.pal.accent2, 0.35)
@@ -1063,13 +1087,14 @@ Item {
                     Text {
                         id: ccatTxt
                         anchors.centerIn: parent
-                        text: (crow.modelData.cat || "cmd").toUpperCase()
+                        text: root.pal.calm ? (crow.modelData.cat || "cmd") : (crow.modelData.cat || "cmd").toUpperCase()
                         font.family: root.pal.uiFont
-                        font.pixelSize: 9
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.6
+                        font.pixelSize: root.pal.calm ? 11 : 9
+                        font.weight: root.pal.calm ? Font.Normal : Font.DemiBold
+                        font.letterSpacing: root.pal.calm ? 0 : 0.6
                         color: {
                             var cat = crow.modelData.cat
+                            if (root.pal.calm) return Qt.alpha(root.pal.muted, 0.8)
                             if (cat === "power") return root.pal.accent2
                             if (cat === "tools") return root.pal.good || root.pal.accent
                             if (cat === "system") return root.pal.warn || root.pal.accent
@@ -1104,6 +1129,27 @@ Item {
                     anchors.leftMargin: 16; anchors.rightMargin: 16
                     y: 0; height: 1
                     color: Qt.alpha(root.pal.accent, 0.22)
+                }
+                // games: the favourite star (favourites are listed first)
+                Text {
+                    id: favBtn
+                    readonly property bool isGame: crow.modelData.id.indexOf("game:") === 0
+                    visible: isGame && (crow.modelData.fav || crow.ListView.isCurrentItem)
+                    anchors.right: infoBtn.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: String.fromCodePoint(crow.modelData.fav ? 0xF04CE : 0xF04D2)
+                    color: crow.modelData.fav ? root.pal.accent : (favMa.containsMouse ? root.pal.text : root.pal.muted)
+                    font.family: root.pal.font
+                    font.pixelSize: 16
+                    MouseArea {
+                        id: favMa
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: { root.toggleFav(crow.index); input.forceActiveFocus() }
+                    }
                 }
                 // right-most: the description button
                 Rectangle {
@@ -1147,7 +1193,7 @@ Item {
             radius: 16
             color: Qt.alpha(root.pal.accent, 0.09)
             border.width: 1
-            border.color: Qt.alpha(root.pal.accent, 0.30)
+            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
             Column {
                 id: infoCol
                 anchors.left: parent.left; anchors.right: parent.right

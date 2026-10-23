@@ -112,7 +112,7 @@ Item {
         height: Math.min(parent.height - 40, 900)
         radius: root.pal.rXl
         opacityBody: root.pal.solid ? 1 : 0.78
-        border.color: Qt.alpha(root.pal.accent, 0.35)
+        border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
         scale: root.open ? 1 : 0.96
         Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         MouseArea { anchors.fill: parent; onPressed: m => { root.forceActiveFocus(); m.accepted = true } }
@@ -158,10 +158,10 @@ Item {
                     Layout.preferredWidth: Math.max(470, Math.round((card.width - 56 - 24) * 0.64))
                     radius: root.pal.rLg
                     color: Qt.alpha(root.pal.bg, 0.55)
-                    border.width: 1
+                    border.width: root.pal.calm ? 0 : 1
                     border.color: root.pal.lineTint
                     clip: true
-                    NbCap { pal: root.pal; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14; text: "LIVE PREVIEW" }
+                    NbCap { pal: root.pal; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14; text: root.pal.cap("LIVE PREVIEW") }
 
                     // the screen, at the real aspect ratio
                     Item {
@@ -178,7 +178,7 @@ Item {
                             radius: 10
                             clip: true
                             color: "#000000"
-                            border.width: 1
+                            border.width: root.pal.calm ? 0 : 1
                             border.color: root.pal.lineTint
 
                             // plain background (wallpaper off)
@@ -369,7 +369,7 @@ Item {
                             spacing: 12
 
                             // ---- wallpaper
-                            NbCap { pal: root.pal; text: "WALLPAPER" }
+                            NbCap { pal: root.pal; text: root.pal.cap("WALLPAPER") }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
@@ -428,7 +428,7 @@ Item {
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                             // ---- stars
-                            NbCap { pal: root.pal; text: "MOVING STARS" }
+                            NbCap { pal: root.pal; text: root.pal.cap("MOVING STARS") }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
@@ -478,7 +478,7 @@ Item {
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                             // ---- the top bar and the widgets
-                            NbCap { pal: root.pal; text: "TOP BAR" }
+                            NbCap { pal: root.pal; text: root.pal.cap("TOP BAR") }
                             ChipRow {
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Bar"
@@ -531,7 +531,7 @@ Item {
                                 }
                             }
                             // ---- how each box opens: its own hover / click, or like the rest (Settings > Edge boxes)
-                            NbCap { pal: root.pal; text: "OPENS ON" }
+                            NbCap { pal: root.pal; text: root.pal.cap("OPENS ON") }
                             Text {
                                 Layout.fillWidth: true
                                 text: "Hover: opens at the corner, closes when you leave. Click: a click on the corner, stays until you click elsewhere. \"Like the rest\" is now " + (root.globalClick ? "click" : "hover") + "."
@@ -568,7 +568,7 @@ Item {
                             spacing: 12
 
                             // ---- background
-                            NbCap { pal: root.pal; text: "BACKGROUND" }
+                            NbCap { pal: root.pal; text: root.pal.cap("BACKGROUND") }
                             ChipRow {
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Background"
@@ -599,7 +599,7 @@ Item {
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                             // ---- constellations and splash
-                            NbCap { pal: root.pal; text: "STARS AND SPLASH" }
+                            NbCap { pal: root.pal; text: root.pal.cap("STARS AND SPLASH") }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
@@ -661,7 +661,7 @@ Item {
 
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
-                            NbCap { pal: root.pal; text: "OTHER USERS" }
+                            NbCap { pal: root.pal; text: root.pal.cap("OTHER USERS") }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10

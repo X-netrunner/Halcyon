@@ -15,9 +15,10 @@ Rectangle {
     implicitHeight: 36
     implicitWidth: content.implicitWidth + padX * 2
     radius: height / 2
-    color: on ? Qt.alpha(pal.accent, 0.18)
+    color: pal.calm ? (on ? Qt.alpha(pal.accent, 0.17) : (ma.pressed ? pal.fillHover : (ma.containsMouse ? pal.fillHover : pal.fill)))
+         : on ? Qt.alpha(pal.accent, 0.18)
                : (ma.pressed ? pal.surfaceHi : (ma.containsMouse ? Qt.alpha(pal.surfaceHi, 0.9) : Qt.alpha(pal.surface, 0.8)))
-    border.width: 1
+    border.width: pal.calm ? 0 : 1          // calm: a soft fill is enough
     border.color: on ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft
     scale: ma.pressed ? 0.97 : 1
     Behavior on color { ColorAnimation { duration: pal.dFast } }
@@ -41,7 +42,7 @@ Rectangle {
             text: root.label
             width: Math.min(implicitWidth, root.maxLabel)
             elide: Text.ElideRight
-            color: root.on ? root.pal.text : Qt.alpha(root.pal.text, 0.78)
+            color: root.on ? (root.pal.calm ? root.pal.accent : root.pal.text) : Qt.alpha(root.pal.text, 0.78)
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tBody
             font.weight: Font.Medium

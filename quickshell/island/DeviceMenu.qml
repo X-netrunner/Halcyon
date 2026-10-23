@@ -37,7 +37,7 @@ Rectangle {
     implicitHeight: col.implicitHeight + 24
     radius: pal.rLg
     color: Qt.alpha(pal.surface, 0.55)
-    border.width: 1
+    border.width: pal.calm ? 0 : 1
     border.color: pal.lineSoft
 
     ColumnLayout {
@@ -174,11 +174,11 @@ Rectangle {
                         Text {
                             visible: row.heading
                             anchors { left: parent.left; leftMargin: 6; bottom: parent.bottom; bottomMargin: 3 }
-                            text: String(row.modelData.section).toUpperCase()
+                            text: String(root.pal.calm ? (row.modelData.section) : (row.modelData.section).toUpperCase())
                             color: root.pal.muted
                             font.family: root.pal.uiFont
-                            font.pixelSize: 9
-                            font.letterSpacing: 1
+                            font.pixelSize: root.pal.calm ? 11 : 9
+                            font.letterSpacing: root.pal.calm ? 0.2 : (1)
                         }
 
                         Rectangle {
@@ -188,7 +188,7 @@ Rectangle {
                             color: row.modelData.active ? Qt.alpha(root.pal.accent, 0.18)
                                  : (ma.containsMouse ? Qt.alpha(root.pal.accent, 0.09) : "transparent")
                             border.width: row.modelData.active ? 1 : 0
-                            border.color: Qt.alpha(root.pal.accent, 0.45)
+                            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.45)
                             Behavior on color { ColorAnimation { duration: 120 } }
 
                             Row {

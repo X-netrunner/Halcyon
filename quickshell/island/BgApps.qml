@@ -56,7 +56,7 @@ Glass {
             Layout.fillWidth: true
             spacing: 8
             Text {
-                text: "BACKGROUND"
+                text: root.pal.cap("BACKGROUND")
                 color: root.pal.muted
                 font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4
             }
@@ -135,7 +135,7 @@ Glass {
                                         anchors.fill: parent
                                         radius: 11
                                         color: Qt.alpha(root.pal.bg, 0.55)
-                                        border.width: 1
+                                        border.width: root.pal.calm ? 0 : 1
                                         border.color: root.pal.lineSoft
                                     }
                                     Image {
@@ -228,7 +228,7 @@ Glass {
                             implicitHeight: menu.implicitHeight + 12
                             radius: root.pal.rMd
                             color: Qt.alpha(root.pal.surface, 0.55)
-                            border.width: 1
+                            border.width: root.pal.calm ? 0 : 1
                             border.color: root.pal.lineSoft
                             TrayMenu {
                                 id: menu

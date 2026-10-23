@@ -141,6 +141,7 @@ ShellRoot {
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsCalendar: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: true,    // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
         dialogStarStyle: "both",   // moving | constellations | both | none : dialog star style
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
+        uiStyle: "new",            // new | legacy : the calm redesign, or the earlier look (Settings > Look > Interface; Pal.calm)
         recKind: "screen",         // screen | audio : what the recorder (Super + Alt + R) records: the screen, or sound only (Settings > Screen & audio recording)
         recAudio: "system",        // none | system | mic | both : the sound that goes with it (system = what you hear, mic = the default microphone)
         limRam: 600,               // manual RAM limit (MB) for background helper warnings
@@ -537,6 +538,7 @@ ShellRoot {
         id: pal
         light: root.theme === "light"
         surfaceStyle: root.opt.surface || "tint"
+        uiStyle: root.opt.uiStyle === "legacy" ? "legacy" : "new"
         glassShift: root.glassShift
         motion: root.lean ? 0 : (root.gaming ? 0.25 : root.motion)
         growth: root.growth
@@ -1026,6 +1028,13 @@ ShellRoot {
         onConsoleRequested: cmd => quickTerm.run(cmd)
     }
 
+    // >study: your PDFs, slides and notes, with questions answered from them, summaries, quizzes and flashcards (StudyCenter.qml,
+    // scripts/halcyon-study.py)
+    StudyCenter {
+        id: studyCenter
+        pal: pal
+    }
+
     // SUPER + CTRL + S, >screenshot: Region / Window / Full screen, then Copy, Save or Both (ShotMenu.qml, scripts/halcyon-shot.py)
     ShotMenu {
         id: shotMenu
@@ -1060,7 +1069,7 @@ ShellRoot {
     // notifs.centerOpen is NOT in this list on purpose: the notification window does not need to raise itself above itself, and the
     // raise() un-maps the window for a moment, which made the box think the pointer had left and close about a second after opening.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
-        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
+        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || studyCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
         || settingsWin.galleryOpen || settingsWin.builderOpen
         || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
@@ -1301,6 +1310,7 @@ ShellRoot {
         if (notesMenu.open) { notesMenu.close(); return true }
         if (clipMenu.open) { clipMenu.close(); return true }
         if (gameCenter.open) { gameCenter.close(); return true }
+        if (studyCenter.open) { studyCenter.hide(); return true }
         if (shotMenu.open) { shotMenu.close(); return true }
         if (musicMenu.open) { musicMenu.close(); return true }
         if (calendar.open) { calendar.hide(); return true }
@@ -1918,6 +1928,7 @@ ShellRoot {
         // game launcher (hgl): `>games` is the quick list in the launcher, the rest opens the Game Center (GameCenter.qml)
         case "games": launcher.openGames(); if (page !== "launcher") { overviewOpen = false; page = "launcher" } break
         case "gamecenter": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggle(); break
+        case "study": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); studyCenter.toggle(); break
         case "games-add": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.showAdd(); break
         case "games-import": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("library"); gameCenter.act([root.hgl, "import", "steam"], "Steam library read"); break
         case "games-doctor": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("doctor"); break
@@ -2442,8 +2453,10 @@ ShellRoot {
         }
     }
     Timer { id: coverT; interval: 300; onTriggered: if (!coverProc.running) coverProc.running = true }
-    Timer { interval: 5000; repeat: true; running: root.deskCoverWatch; triggeredOnStart: true; onTriggered: coverT.restart() }
-    onDeskCoverWatchChanged: if (!deskCoverWatch) deskCovered = false
+    // the 5 s re-check is only for floating windows (dragging or resizing one sends no event); with none on screen it stops
+    property bool coverFloating: true        // true until the first check: that check is what starts the watch
+    Timer { interval: 5000; repeat: true; running: root.deskCoverWatch && root.coverFloating; triggeredOnStart: true; onTriggered: coverT.restart() }
+    onDeskCoverWatchChanged: { if (!deskCoverWatch) deskCovered = false; else coverT.restart() }
     Process {
         id: coverProc
         command: ["sh", "-c", "hyprctl -j monitors; echo; echo @@; hyprctl -j clients"]
@@ -2460,12 +2473,14 @@ ShellRoot {
                         var sc = m.scale || 1, mw = m.width / sc, mh = m.height / sc
                         if (m.transform % 2 === 1) { var tmp = mw; mw = mh; mh = tmp }
                         var ws = [m.activeWorkspace ? m.activeWorkspace.id : -999, m.specialWorkspace ? m.specialWorkspace.id : -999]
-                        var rects = []
+                        var rects = [], floating = false
                         for (var j = 0; j < wins.length; j++) {
                             var c = wins[j]
                             if (!c.mapped || c.hidden || !c.workspace || ws.indexOf(c.workspace.id) < 0) continue
                             rects.push([c.at[0] - m.x, c.at[1] - m.y, c.size[0], c.size[1]])
+                            if (c.floating) floating = true
                         }
+                        root.coverFloating = floating
                         // sample a 24 x 15 grid of the screen: the share of points under some window
                         var hit = 0, tot = 0
                         for (var gy = 0; gy < 15; gy++) for (var gx = 0; gx < 24; gx++) {
@@ -2560,6 +2575,7 @@ ShellRoot {
         function gamingset(on: bool): void { if (root.gaming !== on) root.setGaming(on) }       // set, for `halcyon ai do gaming on`
         function gamestart(id: string, name: string, since: string, lean: bool): void { root.gameStarted(id, name, Number(since), lean) }   // hgl run
         function gameend(): void { root.gameEnded() }                                                                                     // hgl run, when the game is over
+        function study(): void { root.runCommand("study") }                                                                                // the Study Center window (toggle)
         function gamecenter(): void { root.runCommand("gamecenter") }                                                                      // the Game Center window (toggle)
         function gamecenterpage(page: string): void { gameCenter.show(page) }                                                              // library | stores | runtimes | doctor
         function leanset(on: bool): void { root.setLean(on) }                                                                              // by hand: the lean island alone

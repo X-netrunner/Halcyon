@@ -7,7 +7,8 @@ set -l __halcyon_cmds \
     "quick-terminal:pop-out terminal" "overview:workspace tree" "gaming-mode:gaming mode (toggle)" "caffeine:keep the screen awake (toggle)" \
     "lock:lock the screen" "theme:light / dark theme (toggle)" "reload:reload the island and Hyprland" \
     "notes:new-note panel on the side (type, Enter saves)" "notes-all:all notes: search, pin, tick off" \
-    "clipboard:clipboard history panel" "screenshot:screenshot panel" "games:game center (library, Proton versions, doctor)"
+    "clipboard:clipboard history panel" "screenshot:screenshot panel" "games:game center (library, Proton versions, doctor)" \
+    "study:study center: ask your PDFs and notes, summaries, quizzes, flashcards"
 for __e in $__halcyon_cmds
     set -l __p (string split -m1 : $__e)
     complete -c halcyon -n __fish_use_subcommand -a $__p[1] -d $__p[2]
@@ -24,11 +25,15 @@ complete -c halcyon -n __fish_use_subcommand -a music -d "lyrics and queue panel
 complete -c halcyon -n "__fish_seen_subcommand_from music" -a "lyrics queue status" -d "music panel"
 complete -c halcyon -n __fish_use_subcommand -a lyrics -d "print the lyrics of what plays (any player)"
 complete -c halcyon -n __fish_use_subcommand -a queue -d "print what plays next"
-complete -c halcyon -n __fish_use_subcommand -a ai -d "local AI helpers: ask, do, clip, brief, explain, safety, organise, lyrics"
-complete -c halcyon -n "__fish_seen_subcommand_from ai; and not __fish_seen_subcommand_from ask do clip brief explain safety organise lyrics" -a "ask do clip brief explain safety organise lyrics" -d "AI helper"
-complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from clip" -a "summarise rewrite" -d "clipboard text"
+complete -c halcyon -n __fish_use_subcommand -a ai -d "local AI helpers: ask, do, clip, brief, explain, safety, organise, lyrics, updates, study, commit"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and not __fish_seen_subcommand_from ask do clip brief explain safety organise lyrics updates study commit" -a "ask do clip brief explain safety organise lyrics updates study commit" -d "AI helper"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from clip" -a "summarise rewrite shorter explain" -d "clipboard text"
 complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from explain" -a "last island unit show" -d "explain"
 complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from lyrics" -a "meaning" -d "lyrics"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from study" -a "summary quiz cards --note --n" -d "study"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from study" -F -d "PDF"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from commit" -a "--all --commit" -d "commit message"
+complete -c halcyon -n "__fish_seen_subcommand_from ai; and __fish_seen_subcommand_from updates" -a "--days --notify" -d "update briefing"
 # the everyday tools (scripts/halcyon-tools.py)
 complete -c halcyon -n __fish_use_subcommand -a selftest -d "run the CI checks here: syntax, QML, tests, is the island loaded"
 complete -c halcyon -n "__fish_seen_subcommand_from selftest" -a "--quick --rust" -d "quick: only what breaks a login; rust: clippy gate"
@@ -49,3 +54,6 @@ complete -c halcyon -n __fish_use_subcommand -a zoom -d "magnify the whole scree
 complete -c halcyon -n "__fish_seen_subcommand_from zoom" -a "in out reset toggle" -d "zoom"
 complete -c halcyon -n __fish_use_subcommand -a vpn -d "VPN on / off"
 complete -c halcyon -n "__fish_seen_subcommand_from vpn" -a "status list up down toggle" -d "VPN"
+complete -c halcyon -n "__fish_seen_subcommand_from study; and not __fish_seen_subcommand_from add ask list remove make saved open" -a "add ask list remove make open" -d "study library"
+complete -c halcyon -n "__fish_seen_subcommand_from study; and __fish_seen_subcommand_from add" -F -d "file to study"
+complete -c halcyon -n "__fish_seen_subcommand_from study; and __fish_seen_subcommand_from make" -a "summary quiz cards --pages --n --fresh" -d "study material"

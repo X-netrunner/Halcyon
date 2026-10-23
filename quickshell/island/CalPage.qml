@@ -30,7 +30,7 @@ Item {
             Rectangle {
                 width: 26; height: 24; radius: 12
                 color: prevM.containsMouse ? Qt.alpha(pg.pal.surfaceHi, 0.95) : Qt.alpha(pg.pal.surface, 0.8)
-                border.width: 1; border.color: pg.pal.line
+                border.width: pg.pal.calm ? 0 : 1; border.color: pg.pal.line
                 Text { anchors.centerIn: parent; text: "‹"; color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tCap + 4 }
                 MouseArea {
                     id: prevM; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -40,7 +40,7 @@ Item {
             Rectangle {
                 width: 26; height: 24; radius: 12
                 color: nextM.containsMouse ? Qt.alpha(pg.pal.surfaceHi, 0.95) : Qt.alpha(pg.pal.surface, 0.8)
-                border.width: 1; border.color: pg.pal.line
+                border.width: pg.pal.calm ? 0 : 1; border.color: pg.pal.line
                 Text { anchors.centerIn: parent; text: "›"; color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tCap + 4 }
                 MouseArea {
                     id: nextM; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -212,7 +212,7 @@ Item {
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 width: fl2.implicitWidth + 22; height: 26; radius: 13
                 color: fm.containsMouse ? Qt.alpha(pg.pal.surfaceHi, 0.95) : Qt.alpha(pg.pal.surface, 0.8)
-                border.width: 1; border.color: pg.pal.line
+                border.width: pg.pal.calm ? 0 : 1; border.color: pg.pal.line
                 Text { id: fl2; anchors.centerIn: parent; text: "Open full calendar"; color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tCap }
                 MouseArea { id: fm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pg.openFull() }
             }

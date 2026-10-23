@@ -24,7 +24,7 @@ Row {
         width: 26; height: 28; radius: 14
         anchors.verticalCenter: parent.verticalCenter
         color: mma.containsMouse ? Qt.alpha(bb.pal.surfaceHi, 0.9) : Qt.alpha(bb.pal.surface, 0.8)
-        border.width: 1; border.color: bb.pal.lineSoft
+        border.width: bb.pal.calm ? 0 : 1; border.color: bb.pal.lineSoft
         Text { anchors.centerIn: parent; text: "−"; color: bb.pal.text; font.family: bb.pal.uiFont; font.pixelSize: 14 }
         MouseArea { id: mma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: nb.commit(Math.max(0, nb.now() - 1)) }
     }
@@ -65,7 +65,7 @@ Row {
         width: 26; height: 28; radius: 14
         anchors.verticalCenter: parent.verticalCenter
         color: pma.containsMouse ? Qt.alpha(bb.pal.surfaceHi, 0.9) : Qt.alpha(bb.pal.surface, 0.8)
-        border.width: 1; border.color: bb.pal.lineSoft
+        border.width: bb.pal.calm ? 0 : 1; border.color: bb.pal.lineSoft
         Text { anchors.centerIn: parent; text: "+"; color: bb.pal.text; font.family: bb.pal.uiFont; font.pixelSize: 14 }
         MouseArea { id: pma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: nb.commit(Math.min(nb.maxV, nb.now() + 1)) }
     }

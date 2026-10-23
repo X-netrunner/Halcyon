@@ -404,7 +404,7 @@ Item {
 
                     // nine cards are enough: a card only changes picture while it is far off to the side and invisible
                     Repeater {
-                        model: 9
+                        model: root.viewMode === "cascade" ? 9 : 0         // each view builds its cards only while it is the one shown
                         delegate: Item {
                             id: cd
                             required property int index
@@ -585,7 +585,7 @@ Item {
                     id: carousel
                     anchors.fill: parent
                     visible: root.viewMode === "carousel" && root.filteredFiles.length > 0
-                    model: root.filteredFiles
+                    model: root.viewMode === "carousel" ? root.filteredFiles : []
                     pathItemCount: Math.min(root.filteredFiles.length, 5)
                     snapMode: PathView.SnapToItem
                     preferredHighlightBegin: 0.5
@@ -720,7 +720,7 @@ Item {
                     id: grid
                     anchors.fill: parent
                     visible: root.viewMode === "grid" && root.filteredFiles.length > 0
-                    model: root.filteredFiles
+                    model: root.viewMode === "grid" ? root.filteredFiles : []
                     cellWidth: Math.floor(width / Math.max(3, Math.floor(width / 220)))
                     cellHeight: Math.round(cellWidth * 0.65)
                     clip: true

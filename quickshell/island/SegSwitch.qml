@@ -13,7 +13,7 @@ Rectangle {
     implicitWidth: segRow.implicitWidth + 12
     radius: 12
     color: Qt.alpha(pal.bg, 0.6)
-    border.width: 1
+    border.width: pal.calm ? 0 : 1
     border.color: pal.line
 
     Row {

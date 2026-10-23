@@ -498,7 +498,7 @@ Glass {
         }
 
         // power mode
-        Text { text: "POWER MODE"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4; Layout.topMargin: 10; visible: root.shown("Power") }
+        Text { text: root.pal.cap("POWER MODE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.2 : 1.4; Layout.topMargin: 10; visible: root.shown("Power") }
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -601,7 +601,7 @@ Glass {
             radius: root.pal.rLg
             color: Qt.alpha(root.pal.accent, 0.10)
             border.width: 1
-            border.color: Qt.alpha(root.pal.accent, 0.35)
+            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
 
             ColumnLayout {
                 id: runCol

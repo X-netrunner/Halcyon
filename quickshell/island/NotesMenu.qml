@@ -598,7 +598,7 @@ Scope {
                 height: col.implicitHeight + 40
                 radius: root.pal.rXl
                 opacityBody: root.pal.solid ? 1 : 0.90
-                border.color: Qt.alpha(root.pal.accent, 0.40)
+                border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.40)
                 opacity: qp.reveal
                 x: root.panelRight ? qp.width - width - 22 + (1 - qp.reveal) * width * 0.4
                                    : 22 - (1 - qp.reveal) * width * 0.4
@@ -660,7 +660,7 @@ Scope {
                         Layout.preferredHeight: visible ? 120 : 0
                         radius: root.pal.rMd
                         color: Qt.alpha(root.pal.bg, 0.55)
-                        border.width: 1
+                        border.width: root.pal.calm ? 0 : 1
                         border.color: root.pal.lineSoft
                         clip: true
                         Image {
@@ -747,7 +747,7 @@ Scope {
                         spacing: 6
                         visible: root.notes.length > 0
                         Text {
-                            text: "LATEST"
+                            text: root.pal.cap("LATEST")
                             color: Qt.alpha(root.pal.muted, 0.8)
                             font.family: root.pal.uiFont
                             font.pixelSize: 9
@@ -847,7 +847,7 @@ Scope {
                 height: Math.min(parent.height - 80, 700)
                 radius: root.pal.rXl
                 opacityBody: root.pal.solid ? 1 : 0.90
-                border.color: Qt.alpha(root.pal.accent, 0.35)
+                border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
                 opacity: an.reveal
                 scale: 0.96 + 0.04 * an.reveal
                 MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
@@ -1167,7 +1167,7 @@ Scope {
                                         spacing: 4
                                         Text {
                                             visible: !!noteRow.modelData.audio && !!noteRow.modelData.transcript
-                                            text: "TRANSCRIPT"
+                                            text: root.pal.cap("TRANSCRIPT")
                                             color: Qt.alpha(root.pal.muted, 0.75)
                                             font.family: root.pal.uiFont
                                             font.pixelSize: 9

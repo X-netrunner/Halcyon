@@ -125,7 +125,7 @@ Item {
             Rectangle {
                 width: 34; height: 34; radius: 17
                 color: upMa.containsMouse ? Qt.alpha(root.pal.accent, 0.28) : Qt.alpha(root.pal.accent, 0.14)
-                border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.4)
+                border.width: 1; border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.4)
                 Behavior on color { ColorAnimation { duration: 120 } }
                 Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF005D); color: root.pal.text; font.family: root.pal.font; font.pixelSize: 14 }
                 MouseArea { id: upMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.goUp() }
@@ -134,7 +134,7 @@ Item {
                 width: parent.width - 34 - parent.spacing - placeRow.width - parent.spacing
                 height: 34; radius: 17
                 color: root.pal.surface
-                border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.25)
+                border.width: 1; border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.25)
                 Text {
                     anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16
                     verticalAlignment: Text.AlignVCenter

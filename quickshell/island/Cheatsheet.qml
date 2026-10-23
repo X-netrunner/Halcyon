@@ -277,7 +277,7 @@ Scope {
                 height: parent.height - 80
                 radius: root.pal.rXl
                 opacityBody: root.pal.glassSolid - 0.02
-                border.color: Qt.alpha(root.pal.accent, 0.35)
+                border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
                 scale: root.open ? 1 : 0.96
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
@@ -359,7 +359,7 @@ Scope {
                                 radius: 12
                                 color: mi.cur ? Qt.alpha(root.pal.accent, 0.16) : (mma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent")
                                 border.width: mi.cur ? 1 : 0
-                                border.color: Qt.alpha(root.pal.accent, 0.45)
+                                border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.45)
                                 Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                 Text {
                                     anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
@@ -521,12 +521,12 @@ Scope {
                                             }
                                             Text {
                                                 x: root.pagesMode ? 4 : 28; anchors.verticalCenter: parent.verticalCenter
-                                                text: grp.modelData.title.toUpperCase()
+                                                text: (root.pal.calm ? grp.modelData.title : grp.modelData.title.toUpperCase())
                                                 color: root.pal.accent
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 11
                                                 font.weight: Font.DemiBold
-                                                font.letterSpacing: 1.4
+                                                font.letterSpacing: root.pal.calm ? 0.2 : (1.4)
                                             }
                                         }
 
@@ -622,161 +622,165 @@ Scope {
                                                     }
 
                                                     // ---- inline editor
-                                                    Rectangle {
+                                                    Loader {
                                                         id: editor
-                                                        visible: leaf.editing
+                                                        active: leaf.editing         // built only for the row being edited (it was ~200 hidden editors, app list included)
+                                                        visible: active
                                                         x: root.lx; y: 36
                                                         width: leaf.width - root.lx
-                                                        height: edCol.implicitHeight + 24
-                                                        radius: 12
-                                                        color: Qt.alpha(root.pal.surface, 0.95)
-                                                        border.width: 1
-                                                        border.color: Qt.alpha(root.pal.accent, 0.35)
+                                                        sourceComponent: Rectangle {
+                                                            width: editor.width
+                                                            height: edCol.implicitHeight + 24
+                                                            radius: 12
+                                                            color: Qt.alpha(root.pal.surface, 0.95)
+                                                            border.width: 1
+                                                            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
 
-                                                        ColumnLayout {
-                                                            id: edCol
-                                                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
-                                                            spacing: 8
+                                                            ColumnLayout {
+                                                                id: edCol
+                                                                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                                                                spacing: 8
 
-                                                            Field {
-                                                                id: edLabelF
-                                                                pal: root.pal
-                                                                visible: leaf.isCustom
-                                                                Layout.fillWidth: true
-                                                                placeholder: "Name (optional), e.g. Screen recorder"
-                                                                onVisibleChanged: if (visible) text = root.editLabel
-                                                                onTextChanged: root.editLabel = text
-                                                                onAccepted: root.saveEdit()
-                                                                onEscaped: root.cancelEdit()
-                                                            }
-                                                            Field {
-                                                                id: edCmdF
-                                                                pal: root.pal
-                                                                visible: leaf.isCustom
-                                                                Layout.fillWidth: true
-                                                                placeholder: "Command to run, e.g. firefox --private-window"
-                                                                onVisibleChanged: if (visible) text = root.editCmd
-                                                                onTextChanged: root.editCmd = text
-                                                                onAccepted: root.saveEdit()
-                                                                onEscaped: root.cancelEdit()
-                                                            }
-                                                            // the boxes follow what picking an app fills in
-                                                            Connections {
-                                                                target: root
-                                                                function onEditCmdChanged() { if (edCmdF.text !== root.editCmd) edCmdF.text = root.editCmd }
-                                                                function onEditLabelChanged() { if (edLabelF.text !== root.editLabel) edLabelF.text = root.editLabel }
-                                                            }
-                                                            Chip {
-                                                                visible: leaf.isCustom
-                                                                Layout.alignment: Qt.AlignLeft
-                                                                pal: root.pal
-                                                                implicitHeight: 28
-                                                                label: root.pickOpen ? "Hide the app list" : "Pick an app instead of typing"
-                                                                on: root.pickOpen
-                                                                onClicked: root.pickOpen = !root.pickOpen
-                                                            }
-                                                            AppPicker {
-                                                                visible: leaf.isCustom && root.pickOpen
-                                                                Layout.fillWidth: true
-                                                                pal: root.pal
-                                                                placeholder: "Search your apps, click one to use it…"
-                                                                onPicked: app => root.useApp(app)
-                                                            }
-
-                                                            // modifiers + the key
-                                                            Flow {
-                                                                Layout.fillWidth: true
-                                                                spacing: 6
-                                                                Repeater {
-                                                                    model: [ { m: "SUPER", t: "Super" }, { m: "CTRL", t: "Ctrl" }, { m: "ALT", t: "Alt" }, { m: "SHIFT", t: "Shift" } ]
-                                                                    delegate: Chip {
-                                                                        required property var modelData
-                                                                        pal: root.pal
-                                                                        implicitHeight: 30
-                                                                        label: modelData.t
-                                                                        on: !!root.editMods[modelData.m]
-                                                                        onClicked: root.toggleMod(modelData.m)
-                                                                    }
+                                                                Field {
+                                                                    id: edLabelF
+                                                                    pal: root.pal
+                                                                    visible: leaf.isCustom
+                                                                    Layout.fillWidth: true
+                                                                    placeholder: "Name (optional), e.g. Screen recorder"
+                                                                    Component.onCompleted: text = root.editLabel
+                                                                    onTextChanged: root.editLabel = text
+                                                                    onAccepted: root.saveEdit()
+                                                                    onEscaped: root.cancelEdit()
                                                                 }
-                                                                Text { text: "+"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 15; height: 30; verticalAlignment: Text.AlignVCenter }
-                                                                // press-a-key box: click, then press the key
-                                                                Rectangle {
-                                                                    id: capBox
-                                                                    width: 170; height: 30; radius: 15
-                                                                    color: root.capturing ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.9)
-                                                                    border.width: 1
-                                                                    border.color: root.capturing ? root.pal.accent : root.pal.line
-                                                                    focus: root.capturing
-                                                                    Text {
-                                                                        anchors.centerIn: parent
-                                                                        text: root.capturing ? "press a key…" : (root.editKey !== "" ? Binds.parts(root.editKey).join("") : "click, then press a key")
-                                                                        color: root.capturing || root.editKey === "" ? root.pal.muted : root.pal.text
-                                                                        font.family: root.pal.uiFont
-                                                                        font.pixelSize: root.pal.tBody
-                                                                        font.weight: root.editKey !== "" && !root.capturing ? Font.DemiBold : Font.Normal
-                                                                    }
-                                                                    MouseArea {
-                                                                        anchors.fill: parent
-                                                                        onClicked: { root.capturing = true; root.editError = ""; capBox.forceActiveFocus() }
-                                                                    }
-                                                                    Keys.onPressed: e => {
-                                                                        if (!root.capturing) return
-                                                                        if (e.key === Qt.Key_Escape) { root.capturing = false; e.accepted = true; return }
-                                                                        if (Binds.isModifierKey(e.key)) { e.accepted = true; return }
-                                                                        var name = Binds.qtKey(e.key, e.modifiers)
-                                                                        e.accepted = true
-                                                                        if (name === "") { root.editError = "That key can not be used"; return }
-                                                                        root.editKey = name
-                                                                        // modifiers held while pressing it are taken over too
-                                                                        var held = Binds.qtMods(e.modifiers)
-                                                                        var any = false
-                                                                        for (var k in held) any = true
-                                                                        if (any) root.editMods = held
-                                                                        root.capturing = false
-                                                                        root.editError = ""
-                                                                        root.focusReq++
-                                                                    }
+                                                                Field {
+                                                                    id: edCmdF
+                                                                    pal: root.pal
+                                                                    visible: leaf.isCustom
+                                                                    Layout.fillWidth: true
+                                                                    placeholder: "Command to run, e.g. firefox --private-window"
+                                                                    Component.onCompleted: text = root.editCmd
+                                                                    onTextChanged: root.editCmd = text
+                                                                    onAccepted: root.saveEdit()
+                                                                    onEscaped: root.cancelEdit()
                                                                 }
-                                                            }
-
-                                                            Text {
-                                                                visible: root.editError !== ""
-                                                                Layout.fillWidth: true
-                                                                text: root.editError
-                                                                wrapMode: Text.WordWrap
-                                                                color: root.pal.bad
-                                                                font.family: root.pal.uiFont
-                                                                font.pixelSize: root.pal.tCap
-                                                            }
-                                                            Text {
-                                                                Layout.fillWidth: true
-                                                                visible: root.editError === ""
-                                                                text: "Will be: " + (root.editKey !== "" ? Binds.parts(Binds.build(root.editMods, root.editKey)).join(" + ") : "…") + (leaf.isCustom || root.editId === "custom:new" ? "" : "     (default: " + Binds.parts(leaf.modelData.def).join(" + ") + ")")
-                                                                color: root.pal.muted
-                                                                font.family: root.pal.uiFont
-                                                                font.pixelSize: root.pal.tCap
-                                                            }
-
-                                                            Flow {
-                                                                Layout.fillWidth: true
-                                                                spacing: 6
-                                                                Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; on: true; onClicked: root.saveEdit() }
-                                                                Chip {
-                                                                    visible: !leaf.isCustom && root.editId !== "custom:new"
-                                                                    pal: root.pal; implicitHeight: 30; label: "Default"
-                                                                    onClicked: { root.rebind(root.editId, ""); root.cancelEdit() }
-                                                                }
-                                                                Chip {
-                                                                    visible: !leaf.isCustom && root.editId !== "custom:new"
-                                                                    pal: root.pal; implicitHeight: 30; label: "Turn off"
-                                                                    onClicked: { root.rebind(root.editId, "none"); root.cancelEdit() }
+                                                                // the boxes follow what picking an app fills in
+                                                                Connections {
+                                                                    target: root
+                                                                    function onEditCmdChanged() { if (edCmdF.text !== root.editCmd) edCmdF.text = root.editCmd }
+                                                                    function onEditLabelChanged() { if (edLabelF.text !== root.editLabel) edLabelF.text = root.editLabel }
                                                                 }
                                                                 Chip {
                                                                     visible: leaf.isCustom
-                                                                    pal: root.pal; implicitHeight: 30; label: "Delete"
-                                                                    onClicked: { var i = leaf.modelData.custom; root.cancelEdit(); root.customRemoved(i) }
+                                                                    Layout.alignment: Qt.AlignLeft
+                                                                    pal: root.pal
+                                                                    implicitHeight: 28
+                                                                    label: root.pickOpen ? "Hide the app list" : "Pick an app instead of typing"
+                                                                    on: root.pickOpen
+                                                                    onClicked: root.pickOpen = !root.pickOpen
                                                                 }
-                                                                Chip { pal: root.pal; implicitHeight: 30; label: "Cancel"; onClicked: root.cancelEdit() }
+                                                                AppPicker {
+                                                                    visible: leaf.isCustom && root.pickOpen
+                                                                    Layout.fillWidth: true
+                                                                    pal: root.pal
+                                                                    placeholder: "Search your apps, click one to use it…"
+                                                                    onPicked: app => root.useApp(app)
+                                                                }
+
+                                                                // modifiers + the key
+                                                                Flow {
+                                                                    Layout.fillWidth: true
+                                                                    spacing: 6
+                                                                    Repeater {
+                                                                        model: [ { m: "SUPER", t: "Super" }, { m: "CTRL", t: "Ctrl" }, { m: "ALT", t: "Alt" }, { m: "SHIFT", t: "Shift" } ]
+                                                                        delegate: Chip {
+                                                                            required property var modelData
+                                                                            pal: root.pal
+                                                                            implicitHeight: 30
+                                                                            label: modelData.t
+                                                                            on: !!root.editMods[modelData.m]
+                                                                            onClicked: root.toggleMod(modelData.m)
+                                                                        }
+                                                                    }
+                                                                    Text { text: "+"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 15; height: 30; verticalAlignment: Text.AlignVCenter }
+                                                                    // press-a-key box: click, then press the key
+                                                                    Rectangle {
+                                                                        id: capBox
+                                                                        width: 170; height: 30; radius: 15
+                                                                        color: root.capturing ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.9)
+                                                                        border.width: 1
+                                                                        border.color: root.capturing ? root.pal.accent : root.pal.line
+                                                                        focus: root.capturing
+                                                                        Text {
+                                                                            anchors.centerIn: parent
+                                                                            text: root.capturing ? "press a key…" : (root.editKey !== "" ? Binds.parts(root.editKey).join("") : "click, then press a key")
+                                                                            color: root.capturing || root.editKey === "" ? root.pal.muted : root.pal.text
+                                                                            font.family: root.pal.uiFont
+                                                                            font.pixelSize: root.pal.tBody
+                                                                            font.weight: root.editKey !== "" && !root.capturing ? Font.DemiBold : Font.Normal
+                                                                        }
+                                                                        MouseArea {
+                                                                            anchors.fill: parent
+                                                                            onClicked: { root.capturing = true; root.editError = ""; capBox.forceActiveFocus() }
+                                                                        }
+                                                                        Keys.onPressed: e => {
+                                                                            if (!root.capturing) return
+                                                                            if (e.key === Qt.Key_Escape) { root.capturing = false; e.accepted = true; return }
+                                                                            if (Binds.isModifierKey(e.key)) { e.accepted = true; return }
+                                                                            var name = Binds.qtKey(e.key, e.modifiers)
+                                                                            e.accepted = true
+                                                                            if (name === "") { root.editError = "That key can not be used"; return }
+                                                                            root.editKey = name
+                                                                            // modifiers held while pressing it are taken over too
+                                                                            var held = Binds.qtMods(e.modifiers)
+                                                                            var any = false
+                                                                            for (var k in held) any = true
+                                                                            if (any) root.editMods = held
+                                                                            root.capturing = false
+                                                                            root.editError = ""
+                                                                            root.focusReq++
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                Text {
+                                                                    visible: root.editError !== ""
+                                                                    Layout.fillWidth: true
+                                                                    text: root.editError
+                                                                    wrapMode: Text.WordWrap
+                                                                    color: root.pal.bad
+                                                                    font.family: root.pal.uiFont
+                                                                    font.pixelSize: root.pal.tCap
+                                                                }
+                                                                Text {
+                                                                    Layout.fillWidth: true
+                                                                    visible: root.editError === ""
+                                                                    text: "Will be: " + (root.editKey !== "" ? Binds.parts(Binds.build(root.editMods, root.editKey)).join(" + ") : "…") + (leaf.isCustom || root.editId === "custom:new" ? "" : "     (default: " + Binds.parts(leaf.modelData.def).join(" + ") + ")")
+                                                                    color: root.pal.muted
+                                                                    font.family: root.pal.uiFont
+                                                                    font.pixelSize: root.pal.tCap
+                                                                }
+
+                                                                Flow {
+                                                                    Layout.fillWidth: true
+                                                                    spacing: 6
+                                                                    Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; on: true; onClicked: root.saveEdit() }
+                                                                    Chip {
+                                                                        visible: !leaf.isCustom && root.editId !== "custom:new"
+                                                                        pal: root.pal; implicitHeight: 30; label: "Default"
+                                                                        onClicked: { root.rebind(root.editId, ""); root.cancelEdit() }
+                                                                    }
+                                                                    Chip {
+                                                                        visible: !leaf.isCustom && root.editId !== "custom:new"
+                                                                        pal: root.pal; implicitHeight: 30; label: "Turn off"
+                                                                        onClicked: { root.rebind(root.editId, "none"); root.cancelEdit() }
+                                                                    }
+                                                                    Chip {
+                                                                        visible: leaf.isCustom
+                                                                        pal: root.pal; implicitHeight: 30; label: "Delete"
+                                                                        onClicked: { var i = leaf.modelData.custom; root.cancelEdit(); root.customRemoved(i) }
+                                                                    }
+                                                                    Chip { pal: root.pal; implicitHeight: 30; label: "Cancel"; onClicked: root.cancelEdit() }
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -809,120 +813,124 @@ Scope {
                                                     }
                                                 }
                                                 // the editor for a new shortcut reuses the same look as the leaf editor
-                                                Rectangle {
+                                                Loader {
                                                     id: addEditor
-                                                    visible: addLeaf.addEditing
+                                                    active: addLeaf.addEditing
+                                                    visible: active
                                                     x: root.lx; y: 36
                                                     width: leaves.width - root.lx
-                                                    height: newCol.implicitHeight + 24
-                                                    radius: 12
-                                                    color: Qt.alpha(root.pal.surface, 0.95)
-                                                    border.width: 1
-                                                    border.color: Qt.alpha(root.pal.accent, 0.35)
-                                                    ColumnLayout {
-                                                        id: newCol
-                                                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
-                                                        spacing: 8
-                                                        Field {
-                                                            id: newLabelF
-                                                            pal: root.pal
-                                                            Layout.fillWidth: true
-                                                            placeholder: "Name (optional), e.g. Screen recorder"
-                                                            onVisibleChanged: if (visible) text = root.editLabel
-                                                            onTextChanged: root.editLabel = text
-                                                            onAccepted: root.saveEdit()
-                                                            onEscaped: root.cancelEdit()
-                                                        }
-                                                        Field {
-                                                            id: newCmdF
-                                                            pal: root.pal
-                                                            Layout.fillWidth: true
-                                                            placeholder: "Command to run, e.g. firefox --private-window"
-                                                            onVisibleChanged: if (visible) text = root.editCmd
-                                                            onTextChanged: root.editCmd = text
-                                                            onAccepted: root.saveEdit()
-                                                            onEscaped: root.cancelEdit()
-                                                        }
-                                                        // the boxes follow what picking an app fills in
-                                                        Connections {
-                                                            target: root
-                                                            function onEditCmdChanged() { if (newCmdF.text !== root.editCmd) newCmdF.text = root.editCmd }
-                                                            function onEditLabelChanged() { if (newLabelF.text !== root.editLabel) newLabelF.text = root.editLabel }
-                                                        }
-                                                        Chip {
-                                                            Layout.alignment: Qt.AlignLeft
-                                                            pal: root.pal
-                                                            implicitHeight: 28
-                                                            label: root.pickOpen ? "Hide the app list" : "Pick an app instead of typing"
-                                                            on: root.pickOpen
-                                                            onClicked: root.pickOpen = !root.pickOpen
-                                                        }
-                                                        AppPicker {
-                                                            visible: root.pickOpen
-                                                            Layout.fillWidth: true
-                                                            pal: root.pal
-                                                            placeholder: "Search your apps, click one to use it…"
-                                                            onPicked: app => root.useApp(app)
-                                                        }
-                                                        Flow {
-                                                            Layout.fillWidth: true
-                                                            spacing: 6
-                                                            Repeater {
-                                                                model: [ { m: "SUPER", t: "Super" }, { m: "CTRL", t: "Ctrl" }, { m: "ALT", t: "Alt" }, { m: "SHIFT", t: "Shift" } ]
-                                                                delegate: Chip {
-                                                                    required property var modelData
-                                                                    pal: root.pal; implicitHeight: 30
-                                                                    label: modelData.t
-                                                                    on: !!root.editMods[modelData.m]
-                                                                    onClicked: root.toggleMod(modelData.m)
+                                                    sourceComponent: Rectangle {
+                                                        width: addEditor.width
+                                                        height: newCol.implicitHeight + 24
+                                                        radius: 12
+                                                        color: Qt.alpha(root.pal.surface, 0.95)
+                                                        border.width: 1
+                                                        border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
+                                                        ColumnLayout {
+                                                            id: newCol
+                                                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                                                            spacing: 8
+                                                            Field {
+                                                                id: newLabelF
+                                                                pal: root.pal
+                                                                Layout.fillWidth: true
+                                                                placeholder: "Name (optional), e.g. Screen recorder"
+                                                                Component.onCompleted: text = root.editLabel
+                                                                onTextChanged: root.editLabel = text
+                                                                onAccepted: root.saveEdit()
+                                                                onEscaped: root.cancelEdit()
+                                                            }
+                                                            Field {
+                                                                id: newCmdF
+                                                                pal: root.pal
+                                                                Layout.fillWidth: true
+                                                                placeholder: "Command to run, e.g. firefox --private-window"
+                                                                Component.onCompleted: text = root.editCmd
+                                                                onTextChanged: root.editCmd = text
+                                                                onAccepted: root.saveEdit()
+                                                                onEscaped: root.cancelEdit()
+                                                            }
+                                                            // the boxes follow what picking an app fills in
+                                                            Connections {
+                                                                target: root
+                                                                function onEditCmdChanged() { if (newCmdF.text !== root.editCmd) newCmdF.text = root.editCmd }
+                                                                function onEditLabelChanged() { if (newLabelF.text !== root.editLabel) newLabelF.text = root.editLabel }
+                                                            }
+                                                            Chip {
+                                                                Layout.alignment: Qt.AlignLeft
+                                                                pal: root.pal
+                                                                implicitHeight: 28
+                                                                label: root.pickOpen ? "Hide the app list" : "Pick an app instead of typing"
+                                                                on: root.pickOpen
+                                                                onClicked: root.pickOpen = !root.pickOpen
+                                                            }
+                                                            AppPicker {
+                                                                visible: root.pickOpen
+                                                                Layout.fillWidth: true
+                                                                pal: root.pal
+                                                                placeholder: "Search your apps, click one to use it…"
+                                                                onPicked: app => root.useApp(app)
+                                                            }
+                                                            Flow {
+                                                                Layout.fillWidth: true
+                                                                spacing: 6
+                                                                Repeater {
+                                                                    model: [ { m: "SUPER", t: "Super" }, { m: "CTRL", t: "Ctrl" }, { m: "ALT", t: "Alt" }, { m: "SHIFT", t: "Shift" } ]
+                                                                    delegate: Chip {
+                                                                        required property var modelData
+                                                                        pal: root.pal; implicitHeight: 30
+                                                                        label: modelData.t
+                                                                        on: !!root.editMods[modelData.m]
+                                                                        onClicked: root.toggleMod(modelData.m)
+                                                                    }
+                                                                }
+                                                                Text { text: "+"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 15; height: 30; verticalAlignment: Text.AlignVCenter }
+                                                                Rectangle {
+                                                                    id: capBox2
+                                                                    width: 170; height: 30; radius: 15
+                                                                    color: root.capturing ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.9)
+                                                                    border.width: 1
+                                                                    border.color: root.capturing ? root.pal.accent : root.pal.line
+                                                                    focus: root.capturing
+                                                                    Text {
+                                                                        anchors.centerIn: parent
+                                                                        text: root.capturing ? "press a key…" : (root.editKey !== "" ? Binds.parts(root.editKey).join("") : "click, then press a key")
+                                                                        color: root.capturing || root.editKey === "" ? root.pal.muted : root.pal.text
+                                                                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                                                                        font.weight: root.editKey !== "" && !root.capturing ? Font.DemiBold : Font.Normal
+                                                                    }
+                                                                    MouseArea { anchors.fill: parent; onClicked: { root.capturing = true; root.editError = ""; capBox2.forceActiveFocus() } }
+                                                                    Keys.onPressed: e => {
+                                                                        if (!root.capturing) return
+                                                                        if (e.key === Qt.Key_Escape) { root.capturing = false; e.accepted = true; return }
+                                                                        if (Binds.isModifierKey(e.key)) { e.accepted = true; return }
+                                                                        var name = Binds.qtKey(e.key, e.modifiers)
+                                                                        e.accepted = true
+                                                                        if (name === "") { root.editError = "That key can not be used"; return }
+                                                                        root.editKey = name
+                                                                        var held = Binds.qtMods(e.modifiers)
+                                                                        var any = false
+                                                                        for (var k in held) any = true
+                                                                        if (any) root.editMods = held
+                                                                        root.capturing = false
+                                                                        root.editError = ""
+                                                                        root.focusReq++
+                                                                    }
                                                                 }
                                                             }
-                                                            Text { text: "+"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 15; height: 30; verticalAlignment: Text.AlignVCenter }
-                                                            Rectangle {
-                                                                id: capBox2
-                                                                width: 170; height: 30; radius: 15
-                                                                color: root.capturing ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.9)
-                                                                border.width: 1
-                                                                border.color: root.capturing ? root.pal.accent : root.pal.line
-                                                                focus: root.capturing
-                                                                Text {
-                                                                    anchors.centerIn: parent
-                                                                    text: root.capturing ? "press a key…" : (root.editKey !== "" ? Binds.parts(root.editKey).join("") : "click, then press a key")
-                                                                    color: root.capturing || root.editKey === "" ? root.pal.muted : root.pal.text
-                                                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
-                                                                    font.weight: root.editKey !== "" && !root.capturing ? Font.DemiBold : Font.Normal
-                                                                }
-                                                                MouseArea { anchors.fill: parent; onClicked: { root.capturing = true; root.editError = ""; capBox2.forceActiveFocus() } }
-                                                                Keys.onPressed: e => {
-                                                                    if (!root.capturing) return
-                                                                    if (e.key === Qt.Key_Escape) { root.capturing = false; e.accepted = true; return }
-                                                                    if (Binds.isModifierKey(e.key)) { e.accepted = true; return }
-                                                                    var name = Binds.qtKey(e.key, e.modifiers)
-                                                                    e.accepted = true
-                                                                    if (name === "") { root.editError = "That key can not be used"; return }
-                                                                    root.editKey = name
-                                                                    var held = Binds.qtMods(e.modifiers)
-                                                                    var any = false
-                                                                    for (var k in held) any = true
-                                                                    if (any) root.editMods = held
-                                                                    root.capturing = false
-                                                                    root.editError = ""
-                                                                    root.focusReq++
-                                                                }
+                                                            Text {
+                                                                Layout.fillWidth: true
+                                                                text: root.editError !== "" ? root.editError : "Will be: " + (root.editKey !== "" ? Binds.parts(Binds.build(root.editMods, root.editKey)).join(" + ") : "…")
+                                                                wrapMode: Text.WordWrap
+                                                                color: root.editError !== "" ? root.pal.bad : root.pal.muted
+                                                                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                                             }
-                                                        }
-                                                        Text {
-                                                            Layout.fillWidth: true
-                                                            text: root.editError !== "" ? root.editError : "Will be: " + (root.editKey !== "" ? Binds.parts(Binds.build(root.editMods, root.editKey)).join(" + ") : "…")
-                                                            wrapMode: Text.WordWrap
-                                                            color: root.editError !== "" ? root.pal.bad : root.pal.muted
-                                                            font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
-                                                        }
-                                                        Flow {
-                                                            Layout.fillWidth: true
-                                                            spacing: 6
-                                                            Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; on: true; onClicked: root.saveEdit() }
-                                                            Chip { pal: root.pal; implicitHeight: 30; label: "Cancel"; onClicked: root.cancelEdit() }
+                                                            Flow {
+                                                                Layout.fillWidth: true
+                                                                spacing: 6
+                                                                Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; on: true; onClicked: root.saveEdit() }
+                                                                Chip { pal: root.pal; implicitHeight: 30; label: "Cancel"; onClicked: root.cancelEdit() }
+                                                            }
                                                         }
                                                     }
                                                 }

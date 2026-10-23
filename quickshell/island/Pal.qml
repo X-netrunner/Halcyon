@@ -8,6 +8,13 @@ import Quickshell.Io
 Scope {
     id: pal
 
+    // ---------- interface style (Settings > Look > Interface) ----------
+    // "new" (the default): calm, flat frosted panes with one neutral hairline, borderless controls, rounder corners, more air and
+    // quieter decoration. "legacy": the earlier look (sheen and accent outlines on every pane, outlined chips). Everything that
+    // differs reads `calm`; the shared pieces (Glass, Chip, ActionChip, Toggle, Slider, Shadow, the stars) switch by themselves.
+    property string uiStyle: "new"
+    readonly property bool calm: uiStyle !== "legacy"
+
     // ---------- theme ----------
     // `light` flips every surface, line and text colour at once. The wallpaper palette (`hx palette`) is always made for the
     // dark theme, so it is kept in the raw* values below and the light theme is derived from the same hues:
@@ -236,22 +243,25 @@ Scope {
     }
     readonly property real glassBoost: light ? 0 : Math.max(0, Math.min(0.12, (wallLum - 0.45) * 0.45))
     Behavior on wallLum { NumberAnimation { duration: 900; easing.type: Easing.InOutSine } }
-    readonly property real glass: solid ? 1 : (0.80 + glassShift + glassBoost)
+    readonly property real glass: solid ? 1 : ((calm ? 0.85 : 0.80) + glassShift + glassBoost)
     readonly property real glassSolid: solid ? 1 : Math.min(1, 0.94 + glassShift + glassBoost)  // for things that must stay legible over anything (overlays)
     readonly property real glassBar: solid ? 1 : (0.58 + glassShift + glassBoost)      // the top bar at rest: lighter = more wallpaper shows through
     readonly property real glassBarOpen: solid ? 1 : (0.74 + glassShift + glassBoost)  // the bar once it has grown into media / perf / the launcher
     // hairlines are neutral and work with every wallpaper; panels (Glass.qml) add a faint accent tint on top (lineTint)
     readonly property bool matchBox: !light && surfaceStyle === "match"     // box outlines in the accent colour too
-    readonly property color line: matchBox ? Qt.alpha(accent, 0.30) : Qt.alpha(text, 0.09)
-    readonly property color lineTint: Qt.tint(line, Qt.alpha(accent, 0.12))
-    readonly property color lineSoft: matchBox ? Qt.alpha(accent, 0.16) : Qt.alpha(text, 0.05)
+    readonly property color line: matchBox ? Qt.alpha(accent, 0.30) : Qt.alpha(text, calm ? 0.08 : 0.09)
+    readonly property color lineTint: calm && !matchBox ? line : Qt.tint(line, Qt.alpha(accent, 0.12))
+    readonly property color lineSoft: matchBox ? Qt.alpha(accent, 0.16) : Qt.alpha(text, calm ? 0.04 : 0.05)
+    // the calm style's quiet fills: a resting control, and one under the pointer (no outline needed)
+    readonly property color fill: Qt.alpha(text, light ? 0.06 : 0.055)
+    readonly property color fillHover: Qt.alpha(text, light ? 0.10 : 0.095)
     readonly property color lineFocus: Qt.alpha(accent, 0.55)
 
     // ---------- shape (concentric: inner radius = outer radius - padding) ----------
-    readonly property int rSm: 10
-    readonly property int rMd: 14
-    readonly property int rLg: 20
-    readonly property int rXl: 28
+    readonly property int rSm: calm ? 12 : 10
+    readonly property int rMd: calm ? 16 : 14
+    readonly property int rLg: calm ? 22 : 20
+    readonly property int rXl: calm ? 30 : 28
 
     // ---------- space (4px rhythm) ----------
     readonly property int s1: 4
@@ -292,8 +302,12 @@ Scope {
     // size scale: caption / body / title / display
     readonly property int tCap: 11
     readonly property int tBody: 13
-    readonly property int tTitle: 15
-    readonly property int tDisplay: 22
+    readonly property int tTitle: calm ? 16 : 15
+    readonly property int tDisplay: calm ? 24 : 22
+    // a small heading: "POWER MODE" stays as written in the legacy style, the calm one says "Power mode"
+    function cap(t) { t = String(t); return calm ? t.charAt(0) + t.substring(1).toLowerCase() : t }
+    // how strongly the moving stars and constellations show behind dialogs (the calm style keeps them, softly)
+    readonly property real decor: calm ? 0.55 : 1
 
     // ---------- growth ----------
     // the flagship constellations (and the picture one) grow the longer the island has been running: shell.qml sets

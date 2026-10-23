@@ -658,6 +658,7 @@ Scope {
         { id: "look", title: "Look", section: "Appearance", items: [
             { type: "seg", key: "opt:keysStyle", label: "Shortcuts layout", desc: "Tree: every shortcut on a branching tree. Pages: a menu of groups on the left and one group at a time. Same shortcuts in both; the chip in the Shortcuts header switches too.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
             { type: "seg", key: "opt:settingsStyle", label: "Settings layout", desc: "Tree: the branching view. Pages: a menu on the left and one page at a time. Same settings in both.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
+            { type: "seg", key: "opt:uiStyle", label: "Interface", desc: "New: the calm redesign. Flat frosted panes with one quiet outline, softer controls without borders, rounder corners, more room, and the moving stars kept but softer. Legacy: the earlier look, with the glass sheen, accent outlines and outlined buttons. Everything follows at once; switch back any time.", opts: [o("new", "New"), o("legacy", "Legacy")] },
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
             { type: "seg", key: "opt:surface", label: "Box background", desc: "What every box, the bar and this window are filled with. Wallpaper tint: dark, coloured by the wallpaper and a little see-through. Match wallpaper accent: the same, but the boxes and their outlines take the accent colour of the wallpaper clearly (and follow it while the accent cycles). Matte black: dark grey, solid. Pitch black: true black, solid (best on OLED). The little stars and drifting dots turn up their brightness and keep the accent colour so they still show on black. Dark theme only.", opts: [o("tint", "Wallpaper tint"), o("match", "Match accent"), o("matte", "Matte black"), o("black", "Pitch black")], when: "theme=dark" },
             { type: "slider", key: "rounding", label: "Corner rounding", desc: "Window corners", min: 0, max: 28, step: 1, unit: " px", glyph: 0xF0A39 },
@@ -918,7 +919,7 @@ Scope {
                 { id: "opt-adaptive-advisor", btn: "Analyze My Setup", done: "Opening…" },
                 { id: "opt-llm-advisor", btn: "AI / LLM Advisor (Experimental)", done: "Analyzing…" }
             ] },
-            { type: "toggle", key: "opt:lazyLoad", def: true, label: "Aggressive Memory Freeing & Lazy Loading", desc: "Unloads heavy background dialogs (Settings, Cheatsheet, Calendar) when closed and triggers garbage collection to keep Quickshell's resident RAM low. Enabled automatically in Low and Medium resource modes." },
+            { type: "toggle", key: "opt:lazyLoad", def: true, label: "Aggressive Memory Freeing & Lazy Loading", desc: "Frees the memory of a dialog soon after it closes (a garbage collection pass), and lets the local AI model (2 to 3 GB) go 3 minutes after the last answer instead of 30 (1 minute for the small helpers, 10 s for notes). Every dialog builds only the view you are looking at either way. On automatically in Low and Medium resource use." },
             { type: "acts", label: "Live Memory Trimming", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] }
         ] },
         { id: "sysoptions", title: "System preferences & timeouts", section: "System", items: [
@@ -1289,7 +1290,7 @@ Scope {
             // the search box must be focused from in here: `search` is not visible from the root scope (this window is built by a LazyLoader)
             Timer { running: root.open; interval: 80; onTriggered: if (!root.galleryOpen) search.forceActiveFocus() }
 
-            Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.40) }
+            Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, root.pal.calm ? 0.55 : 0.40) }
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
 
             Glass {
@@ -1300,7 +1301,7 @@ Scope {
                 height: parent.height - 80
                 radius: root.pal.rXl
                 opacityBody: root.pal.solid ? 1 : (root.opt.settingsGlass !== undefined ? root.opt.settingsGlass : 0.72)
-                border.color: Qt.alpha(root.pal.accent, 0.35)
+                border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
                 scale: root.open ? 1 : 0.96
                 Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 MouseArea { anchors.fill: parent }   // swallow clicks
@@ -1407,7 +1408,7 @@ Scope {
                         width: 190
                         anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
                         opacity: root.query === "" ? 1 : 0.45
-                        Rectangle { x: 5; y: 14; width: 1; height: navCol.height - 28; color: Qt.alpha(root.pal.accent, 0.4) }
+                        Rectangle { visible: !root.pal.calm; x: 5; y: 14; width: 1; height: navCol.height - 28; color: Qt.alpha(root.pal.accent, 0.4) }
                         Column {
                             id: navCol
                             width: parent.width
@@ -1418,8 +1419,17 @@ Scope {
                                     required property var modelData
                                     readonly property bool cur: root.query === "" && root.page === navItem.modelData.id
                                     width: navCol.width
-                                    height: 40
+                                    height: root.pal.calm ? 38 : 40
+                                    // calm: a soft pill under the current page instead of the trunk and its dots
                                     Rectangle {
+                                        visible: root.pal.calm
+                                        anchors { fill: parent; topMargin: 2; bottomMargin: 2; rightMargin: 14 }
+                                        radius: height / 2
+                                        color: navItem.cur ? Qt.alpha(root.pal.accent, 0.15) : (navMa.containsMouse ? root.pal.fill : "transparent")
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    }
+                                    Rectangle {
+                                        visible: !root.pal.calm
                                         x: 1; anchors.verticalCenter: parent.verticalCenter
                                         width: 9; height: 9; radius: 4.5
                                         color: navItem.cur ? root.pal.accent : root.pal.bg
@@ -1427,9 +1437,9 @@ Scope {
                                         Rectangle { visible: navItem.cur; anchors.centerIn: parent; width: 17; height: 17; radius: 8.5; color: "transparent"; border.width: 4; border.color: Qt.alpha(root.pal.accent, 0.2) }
                                     }
                                     Text {
-                                        x: 28; anchors.verticalCenter: parent.verticalCenter
+                                        x: root.pal.calm ? 16 : 28; anchors.verticalCenter: parent.verticalCenter
                                         text: navItem.modelData.id
-                                        color: navItem.cur ? root.pal.text : (navMa.containsMouse ? root.pal.text : root.pal.muted)
+                                        color: navItem.cur ? (root.pal.calm ? root.pal.accent : root.pal.text) : (navMa.containsMouse ? root.pal.text : root.pal.muted)
                                         font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1
                                         font.weight: navItem.cur ? Font.Medium : Font.Normal
                                     }
@@ -1483,7 +1493,7 @@ Scope {
                             }
 
                             Repeater {
-                                model: root.pageGroupsNow
+                                model: root.pagesMode ? root.pageGroupsNow : []
                                 delegate: Column {
                                     id: pg
                                     required property var modelData
@@ -1492,15 +1502,15 @@ Scope {
                                     spacing: 10
                                     Text {
                                         leftPadding: 4
-                                        text: pg.modelData.title.toUpperCase() + (root.query !== "" ? "   \u00b7   " + root.pageOf(pg.modelData.id) : "")
-                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 1.6
+                                        text: (root.pal.calm ? pg.modelData.title : pg.modelData.title.toUpperCase()) + (root.query !== "" ? "   \u00b7   " + root.pageOf(pg.modelData.id) : "")
+                                        color: root.pal.calm ? Qt.alpha(root.pal.text, 0.72) : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 13 : 11; font.weight: root.pal.calm ? Font.Medium : Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.2 : (1.6)
                                     }
                                     Rectangle {
                                         width: pg.width
                                         height: rowsCol.height
-                                        radius: 16
-                                        color: Qt.alpha(root.pal.surface, 0.55)
-                                        border.width: 1; border.color: root.pal.lineSoft
+                                        color: root.pal.calm ? root.pal.fill : Qt.alpha(root.pal.surface, 0.55)
+                                        radius: root.pal.calm ? root.pal.rLg : 16
+                                        border.width: root.pal.calm ? 0 : 1; border.color: root.pal.lineSoft
                                         clip: true
                                         Column {
                                             id: rowsCol
@@ -1520,7 +1530,7 @@ Scope {
                                                     readonly property bool shortSeg: pr.m.type === "seg" && pr.m.opts.length <= 3 && pr.m.opts.every(function (x) { return String(x.t).length <= 14 })
                                                     readonly property bool side: pr.m.type === "toggle" || pr.m.type === "tool" || pr.m.type === "action" || pr.m.type === "slider" || pr.shortSeg
                                                     width: rowsCol.width
-                                                    height: body.implicitHeight + 28
+                                                    height: body.implicitHeight + (root.pal.calm ? 34 : 28)
 
                                                     Rectangle { visible: pr.index > 0; x: 18; width: parent.width - 36; height: 1; color: root.pal.lineSoft }
                                                     Rectangle { anchors.fill: parent; color: prMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.35) : "transparent" }
@@ -1550,8 +1560,8 @@ Scope {
                                                                     spacing: 8
                                                                     Text {
                                                                         Layout.maximumWidth: Math.max(60, body.width - 120)
-                                                                        text: pr.m.type === "divider" ? (pr.m.label || "").toUpperCase() : (pr.m.label || "")
-                                                                        color: pr.m.type === "divider" ? root.pal.muted : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: pr.m.type === "divider" ? 11 : root.pal.tBody + 1; font.weight: pr.m.type === "divider" ? Font.DemiBold : Font.Medium; font.letterSpacing: pr.m.type === "divider" ? 1.6 : 0; wrapMode: Text.WordWrap
+                                                                        text: pr.m.type === "divider" ? (root.pal.calm ? (pr.m.label || "") : (pr.m.label || "").toUpperCase()) : (pr.m.label || "")
+                                                                        color: pr.m.type === "divider" ? root.pal.muted : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: pr.m.type === "divider" ? 11 : root.pal.tBody + 1; font.weight: pr.m.type === "divider" ? Font.DemiBold : Font.Medium; font.letterSpacing: root.pal.calm ? 0.2 : (pr.m.type === "divider" ? 1.6 : 0); wrapMode: Text.WordWrap
                                                                     }
                                                                     Rectangle {
                                                                         visible: pr.longDesc
@@ -1747,7 +1757,7 @@ Scope {
 
                         // pulses that run down the branches
                         property real tt: 0
-                        NumberAnimation on tt { from: 0; to: 1; duration: 3600; loops: Animation.Infinite; running: root.open && root.pal.motion > 0.3 && !root.scrolling }
+                        NumberAnimation on tt { from: 0; to: 1; duration: 3600; loops: Animation.Infinite; running: root.open && !root.pagesMode && root.pal.motion > 0.3 && !root.scrolling }
 
                         // ---- root node
                         Rectangle {
@@ -1800,7 +1810,7 @@ Scope {
                         // ---- the columns of branches
                         Repeater {
                             id: colRep
-                            model: root.columns
+                            model: root.pagesMode ? [] : root.columns        // the hidden view builds nothing (it was every row of every page, twice)
                             delegate: Column {
                                 id: col
                                 required property var modelData
@@ -1846,12 +1856,12 @@ Scope {
                                             Text {
                                                 id: groupTitle
                                                 x: 28; anchors.verticalCenter: parent.verticalCenter
-                                                text: grp.modelData.title.toUpperCase()
+                                                text: (root.pal.calm ? grp.modelData.title : grp.modelData.title.toUpperCase())
                                                 color: root.pal.accent
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 12
                                                 font.weight: Font.DemiBold
-                                                font.letterSpacing: 1.6
+                                                font.letterSpacing: root.pal.calm ? 0.2 : (1.6)
                                             }
                                             Text {
                                                 x: 28 + groupTitle.implicitWidth + 12; anchors.verticalCenter: parent.verticalCenter
@@ -1941,11 +1951,11 @@ Scope {
                                                                         spacing: 8
                                                                         Text {
                                                                             Layout.maximumWidth: Math.max(60, content.width - 140)
-                                                                            text: leaf.m.type === "divider" ? (leaf.m.label || "").toUpperCase() : (leaf.m.label || "")
+                                                                            text: leaf.m.type === "divider" ? (root.pal.calm ? (leaf.m.label || "") : (leaf.m.label || "").toUpperCase()) : (leaf.m.label || "")
                                                                             color: leaf.m.type === "divider" ? root.pal.muted : root.pal.text
                                                                             font.family: root.pal.uiFont
                                                                             font.pixelSize: leaf.m.type === "divider" ? 11 : root.pal.tBody
-                                                                            font.letterSpacing: leaf.m.type === "divider" ? 1.6 : 0
+                                                                            font.letterSpacing: root.pal.calm ? 0.2 : (leaf.m.type === "divider" ? 1.6 : 0)
                                                                             font.weight: leaf.m.type === "divider" ? Font.DemiBold : Font.Medium
                                                                             wrapMode: Text.WordWrap
                                                                         }

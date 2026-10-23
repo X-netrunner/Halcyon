@@ -9,6 +9,7 @@ import QtQuick
 Item {
     id: root
     property var pal
+    opacity: pal ? pal.decor : 1          // the calm interface keeps the moving stars, softly (Pal.decor)
     property var opt: ({})                  // the island's settings (root.opt in shell.qml); only the deskStar* keys are read
     property bool running: true
     property int count: 44

@@ -32,7 +32,7 @@ Library
   hgl list [--json]                       games, last played first
   hgl show <id> [--json]                  one game's profile
   hgl add <game.exe> [--name N] [--proton V] [--prefix DIR] [--args STR] [--umu-id ID] [--wayland] [--no-icon]
-  hgl set <id> <key> <value>              name exe proton prefix args wrappers gamescope wayland lean debug umu_id cover env.NAME
+  hgl set <id> <key> <value>              name exe proton prefix args wrappers gamescope wayland lean debug fav umu_id cover env.NAME
   hgl remove <id> [--prefix]              forget a game (--prefix also deletes its Wine prefix)
   hgl import steam                        read the Steam library (appmanifests, cover art)
   hgl import epic                         add the games legendary has installed
@@ -224,7 +224,7 @@ fn game_json(g: &Game, status: (&str, &str), running: bool, known: &str) -> Stri
     let env: Vec<String> = g.env.iter().map(|(k, v)| format!("{}:{}", json_str(k), json_str(v))).collect();
     let cover = if !g.cover.is_empty() && Path::new(&g.cover).is_file() { g.cover.as_str() } else { "" };
     format!(
-        "{{\"id\":{},\"name\":{},\"source\":{},\"exe\":{},\"appid\":{},\"proton\":{},\"prefix\":{},\"args\":{},\"wrappers\":[{}],\"gamescope\":{},\"wayland\":{},\"lean\":{},\"debug\":{},\"umuId\":{},\"env\":{{{}}},\"cover\":{},\"lastPlayed\":{},\"playtime\":{},\"lastExit\":{},\"status\":{},\"statusReason\":{},\"running\":{},\"known\":{}}}",
+        "{{\"id\":{},\"name\":{},\"source\":{},\"exe\":{},\"appid\":{},\"proton\":{},\"prefix\":{},\"args\":{},\"wrappers\":[{}],\"gamescope\":{},\"wayland\":{},\"lean\":{},\"debug\":{},\"fav\":{},\"umuId\":{},\"env\":{{{}}},\"cover\":{},\"lastPlayed\":{},\"playtime\":{},\"lastExit\":{},\"status\":{},\"statusReason\":{},\"running\":{},\"known\":{}}}",
         json_str(&g.id),
         json_str(&g.name),
         json_str(&g.source),
@@ -238,6 +238,7 @@ fn game_json(g: &Game, status: (&str, &str), running: bool, known: &str) -> Stri
         g.wayland,
         g.lean,
         g.debug,
+        g.fav,
         json_str(&g.umu_id),
         env.join(","),
         json_str(cover),
@@ -277,7 +278,7 @@ fn cmd_list(rest: &[String]) -> Result<i32, String> {
     for g in &games {
         let (st, why) = game_status(g, &cfg, have_umu, have_rt);
         let when = if g.last_played == 0 { "never".to_string() } else { format!("{} ago", fmt_duration(now().saturating_sub(g.last_played))) };
-        let flag = if running.as_deref() == Some(g.id.as_str()) { " [running]" } else { "" };
+        let flag = if running.as_deref() == Some(g.id.as_str()) { " [running]" } else if g.fav { " [fav]" } else { "" };
         let note = if st == "attention" { format!("  ! {why}") } else { String::new() };
         println!("{:<28} {:<7} {:<26} played {:>9}  last {}{}{}", g.id, g.source, g.name, fmt_duration(g.playtime), when, flag, note);
     }

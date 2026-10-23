@@ -23,6 +23,8 @@ pub struct Game {
     pub wayland: bool,
     pub lean: bool,
     pub debug: bool,
+    /// favourite: listed first (Game Center, `>game` in the launcher)
+    pub fav: bool,
     pub cover: String,
     pub last_played: u64,
     pub playtime: u64,
@@ -72,6 +74,7 @@ impl Game {
                 "wayland" => g.wayland = parse_bool(&v).unwrap_or(false),
                 "lean" => g.lean = parse_bool(&v).unwrap_or(true),
                 "debug" => g.debug = parse_bool(&v).unwrap_or(false),
+                "fav" => g.fav = parse_bool(&v).unwrap_or(false),
                 "cover" => g.cover = v,
                 "last_played" => g.last_played = v.parse().unwrap_or(0),
                 "playtime" => g.playtime = v.parse().unwrap_or(0),
@@ -105,6 +108,9 @@ impl Game {
         s.push_str(&format!("wayland={}\n", self.wayland as u8));
         s.push_str(&format!("lean={}\n", self.lean as u8));
         s.push_str(&format!("debug={}\n", self.debug as u8));
+        if self.fav {
+            s.push_str("fav=1\n");
+        }
         s.push_str(&format!("last_played={}\n", self.last_played));
         s.push_str(&format!("playtime={}\n", self.playtime));
         if let Some(c) = self.last_exit {
@@ -185,6 +191,7 @@ impl Game {
             "wayland" => self.wayland = b()?,
             "lean" => self.lean = b()?,
             "debug" => self.debug = b()?,
+            "fav" => self.fav = b()?,
             "wrappers" => {
                 let list: Vec<String> = val.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
                 for w in &list {
@@ -235,10 +242,10 @@ pub fn list_ids() -> Vec<String> {
     ids
 }
 
-/// Last played first, then by name.
+/// Favourites first, then last played, then by name.
 pub fn all_games() -> Vec<Game> {
     let mut v: Vec<Game> = list_ids().iter().filter_map(|id| Game::load(id).ok()).collect();
-    v.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    v.sort_by(|a, b| b.fav.cmp(&a.fav).then_with(|| b.last_played.cmp(&a.last_played).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))));
     v
 }
 
@@ -314,7 +321,9 @@ mod tests {
         assert_eq!(h.exe, "/games/Hades/Hades.exe");
         assert_eq!(h.env, vec![("DXVK_HUD".to_string(), "fps".to_string())]);
         assert_eq!(h.wrappers, vec!["gamemode", "mangohud"]);
-        assert!(h.wayland && h.lean);
+        assert!(h.wayland && h.lean && !h.fav);
+        g.set("fav", "on").unwrap_or(());
+        assert!(Game::parse("hades", &g.serialize()).fav);
         assert_eq!(h.unknown, vec![("future_key".to_string(), "x".to_string())]);
     }
 

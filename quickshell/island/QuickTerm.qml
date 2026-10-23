@@ -798,7 +798,7 @@ Scope {
                 height: compCol.implicitHeight + 12
                 radius: root.pal.rSm
                 color: Qt.alpha(root.pal.surface, 0.97)
-                border.width: 1
+                border.width: root.pal.calm ? 0 : 1
                 border.color: root.pal.line
                 Column {
                     id: compCol
