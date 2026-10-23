@@ -595,8 +595,8 @@ Scope {
         font.family: root.pal.uiFont
         font.pixelSize: root.pal.tCap
         font.weight: Font.DemiBold
-        font.letterSpacing: 0.8
-        font.capitalization: Font.AllUppercase
+        font.letterSpacing: root.pal.calm ? 0.2 : (0.8)
+        font.capitalization: root.pal.calm ? Font.MixedCase : Font.AllUppercase
     }
 
     // ================================================================ the window
@@ -648,7 +648,7 @@ Scope {
                     height: Math.min(740, qp.height - 80)
                     radius: root.pal.rXl
                     opacityBody: 0.97
-                    border.color: Qt.alpha(root.pal.accent, 0.30)
+                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                     anchors.centerIn: parent
                     opacity: qp.reveal
                     scale: 0.97 + 0.03 * qp.reveal
@@ -716,7 +716,7 @@ Scope {
                                 height: 40
                                 radius: 20
                                 color: Qt.alpha(root.pal.surface, 0.8)
-                                border.width: 1
+                                border.width: root.pal.calm ? 0 : 1
                                 border.color: root.pal.lineSoft
                                 Row {
                                     id: tabRow
@@ -823,7 +823,7 @@ Scope {
                                     radius: root.pal.rLg
                                     color: Qt.alpha(root.pal.accent, 0.07)
                                     border.width: 1
-                                    border.color: Qt.alpha(root.pal.accent, 0.30)
+                                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                                     RowLayout {
                                         anchors { fill: parent; leftMargin: 14; rightMargin: 12 }
                                         spacing: 10
@@ -1045,6 +1045,27 @@ Scope {
                                                 }
                                                 onDoubleClicked: { grid.currentIndex = cell.index; root.selId = cell.modelData.id; root.playSel() }
                                             }
+                                            // favourite: always shown when starred, on hover otherwise (favourites come first here and in >game)
+                                            Rectangle {
+                                                anchors { right: parent.right; top: parent.top; margins: 8; rightMargin: cardMa.containsMouse || favMa.containsMouse ? 48 : 8 }
+                                                width: 30; height: 30; radius: 15
+                                                visible: cell.modelData.fav || cardMa.containsMouse || favMa.containsMouse
+                                                color: Qt.alpha(root.pal.bg, favMa.containsMouse ? 0.92 : 0.72)
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: String.fromCodePoint(cell.modelData.fav ? 0xF04CE : 0xF04D2)
+                                                    color: cell.modelData.fav ? root.pal.accent : root.pal.text
+                                                    font.family: root.pal.font
+                                                    font.pixelSize: 15
+                                                }
+                                                MouseArea {
+                                                    id: favMa
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: root.act([root.hgl, "set", cell.modelData.id, "fav", cell.modelData.fav ? "off" : "on"], "")
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1064,7 +1085,7 @@ Scope {
                                             width: 76; height: 76; radius: 24
                                             color: Qt.alpha(root.pal.accent, 0.12)
                                             border.width: 1
-                                            border.color: Qt.alpha(root.pal.accent, 0.3)
+                                            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.3)
                                             Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF0297); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 38 }
                                         }
                                         Text {
@@ -1271,7 +1292,7 @@ Scope {
                                             radius: root.pal.rMd
                                             color: Qt.alpha(root.pal.accent, 0.08)
                                             border.width: 1
-                                            border.color: Qt.alpha(root.pal.accent, 0.30)
+                                            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                                             Text {
                                                 id: knownTxt
                                                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
@@ -1367,7 +1388,7 @@ Scope {
                                             radius: root.pal.rMd
                                             color: Qt.alpha(root.pal.accent, 0.07)
                                             border.width: 1
-                                            border.color: Qt.alpha(root.pal.accent, 0.25)
+                                            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.25)
                                             Column {
                                                 id: sugCol
                                                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
@@ -1771,7 +1792,7 @@ Scope {
                                                     visible: root.logOpen
                                                     radius: root.pal.rSm
                                                     color: Qt.alpha(root.pal.bg, 0.6)
-                                                    border.width: 1
+                                                    border.width: root.pal.calm ? 0 : 1
                                                     border.color: root.pal.lineSoft
                                                     Flickable {
                                                         id: logFlick
@@ -1933,7 +1954,7 @@ Scope {
                                     Layout.fillHeight: true
                                     radius: root.pal.rLg
                                     color: Qt.alpha(root.pal.surface, 0.55)
-                                    border.width: 1
+                                    border.width: root.pal.calm ? 0 : 1
                                     border.color: root.pal.lineSoft
                                     ColumnLayout {
                                         anchors.fill: parent
@@ -1996,7 +2017,7 @@ Scope {
                                     Layout.fillHeight: true
                                     radius: root.pal.rLg
                                     color: Qt.alpha(root.pal.surface, 0.55)
-                                    border.width: 1
+                                    border.width: root.pal.calm ? 0 : 1
                                     border.color: root.pal.lineSoft
                                     ColumnLayout {
                                         anchors.fill: parent
@@ -2121,7 +2142,7 @@ Scope {
                                     height: implicitHeight
                                     radius: root.pal.rMd
                                     color: Qt.alpha(root.pal.surface, 0.7)
-                                    border.width: 1
+                                    border.width: root.pal.calm ? 0 : 1
                                     border.color: root.pal.lineSoft
                                     Rectangle {
                                         id: cdot

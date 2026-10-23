@@ -11,6 +11,7 @@ import Quickshell.Io
 //   "Look in subfolders" lists every .exe below the folder (find, 6 levels, hidden folders and Windows system folders skipped),
 //   because a game's program is often a few folders down (Binaries/Win64/...). Uninstallers and redistributables sink to the bottom.
 // Use:  ExePicker { anchors.fill: parent; pal: pal; onPicked: path => ...; onCancelled: ... }  then  openAt(pathOrFolder)
+// Other files: set exts (["pdf", "docx", ...]), noun ("file") and title; the Study Center picks its documents with it.
 Item {
     id: root
 
@@ -20,6 +21,10 @@ Item {
     property bool deep: false               // listing every .exe below folderPath instead of the folder itself
     property string filter: ""
     property int cur: 0
+    property var exts: ["exe"]              // the extensions that can be picked (lower case, no dot)
+    property string noun: ".exe"            // what the texts call them
+    property string title: "Choose the game"
+    property int fileGlyph: 0xF0297         // the icon of a file row (a gamepad for games)
     signal picked(string path)
     signal cancelled()
 
@@ -45,9 +50,10 @@ Item {
         return p
     }
     function pretty(path) { return path.indexOf(home) === 0 ? "~" + path.substring(home.length) : path }
-    function isExe(name) { return /\.exe$/i.test(name) }
+    function isExe(name) { var m = /\.([^./]+)$/.exec(String(name)); return !!m && exts.indexOf(m[1].toLowerCase()) >= 0 }
     // uninstallers, redistributables, crash reporters: still pickable, listed last and dimmed
     function isHelper(name) {
+        if (exts.indexOf("exe") < 0) return false
         return /^(unins\d*|uninstall.*|vc_?redist.*|vcredist.*|dxsetup|dxwebsetup|directx.*|dotnet.*|physx.*|oalinst|ue\dprereqsetup.*|.*crash.*|.*setup.*|.*installer.*|.*redist.*|cefprocess|notification_helper|easyanticheat.*)\.exe$/i.test(name)
     }
 
@@ -64,7 +70,7 @@ Item {
     function goUp() { if (folderPath !== "/") go(parentOf(folderPath)) }
     function lookInside() {
         deep = true; cur = 0; found = []
-        deepProc.command = ["sh", "-c", "timeout 10 find \"$1\" -mindepth 1 -maxdepth 6 \\( -name '.*' -o -iname windows -o -iname node_modules \\) -prune -o -type f -iname '*.exe' -print 2>/dev/null | head -n 400", "sh", folderPath]
+        deepProc.command = ["sh", "-c", "timeout 10 find \"$1\" -mindepth 1 -maxdepth 6 \\( -name '.*' -o -iname windows -o -iname node_modules \\) -prune -o -type f \\( " + exts.map(function (x) { return "-iname '*." + x + "'" }).join(" -o ") + " \\) -print 2>/dev/null | head -n 400", "sh", folderPath]
         deepProc.running = true
     }
     function choose(row) {
@@ -88,7 +94,7 @@ Item {
     FolderListModel {
         id: fm
         folder: root.open && !root.deep ? root.urlOf(root.folderPath) : ""
-        nameFilters: ["*.exe"]
+        nameFilters: root.exts.map(function (x) { return "*." + x })
         caseSensitive: false
         showDirs: true
         showDirsFirst: true
@@ -165,7 +171,7 @@ Item {
         radius: root.pal.rXl
         color: Qt.alpha(root.pal.bg, 0.98)
         border.width: 1
-        border.color: Qt.alpha(root.pal.accent, 0.35)
+        border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
         scale: root.open ? 1 : 0.97
         Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         MouseArea { anchors.fill: parent }       // clicks on the card itself do not cancel
@@ -184,7 +190,7 @@ Item {
                 spacing: 4
                 Text {
                     Layout.bottomMargin: 8
-                    text: "Choose the game"
+                    text: root.title
                     color: root.pal.text
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tTitle + 1
@@ -292,7 +298,7 @@ Item {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: fin.text.length === 0
-                                text: root.deep ? "Filter the .exe files found" : "Filter this folder, or type a path"
+                                text: root.deep ? "Filter the " + root.noun + " files found" : "Filter this folder, or type a path"
                                 color: root.pal.muted
                                 font: fin.font
                             }
@@ -331,7 +337,7 @@ Item {
                         Text {
                             id: rg
                             anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
-                            text: String.fromCodePoint(row.modelData.dir ? 0xF024B : 0xF0297)
+                            text: String.fromCodePoint(row.modelData.dir ? 0xF024B : root.fileGlyph)
                             color: row.modelData.dir ? Qt.alpha(root.pal.accent, 0.75) : root.pal.accent
                             font.family: root.pal.font
                             font.pixelSize: 17
@@ -368,8 +374,8 @@ Item {
                             width: parent.width
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.Wrap
-                            text: root.deep ? (deepProc.running ? "Looking through the subfolders" : "No .exe below this folder")
-                                            : (root.filter !== "" ? "Nothing here matches that" : "No .exe files or folders here")
+                            text: root.deep ? (deepProc.running ? "Looking through the subfolders" : "No " + root.noun + " files below this folder")
+                                            : (root.filter !== "" ? "Nothing here matches that" : "No " + root.noun + " files or folders here")
                             color: root.pal.muted
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody
@@ -385,10 +391,10 @@ Item {
                     radius: root.pal.rMd
                     color: hintMa.containsMouse ? Qt.alpha(root.pal.accent, 0.16) : Qt.alpha(root.pal.accent, 0.08)
                     border.width: 1
-                    border.color: Qt.alpha(root.pal.accent, 0.3)
+                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.3)
                     Text {
                         anchors.centerIn: parent
-                        text: "No .exe in this folder.  Look in its subfolders"
+                        text: "No " + root.noun + " files in this folder.  Look in its subfolders"
                         color: root.pal.text
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.tBody

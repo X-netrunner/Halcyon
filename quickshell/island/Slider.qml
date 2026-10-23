@@ -51,16 +51,16 @@ Item {
         Rectangle {
             id: track
             width: parent.width
-            height: 10
-            radius: 5
+            height: root.pal.calm ? 6 : 10
+            radius: height / 2
             anchors.verticalCenter: parent.verticalCenter
-            color: root.pal.surface
-            border.width: 1
+            color: root.pal.calm ? Qt.alpha(root.pal.text, 0.10) : root.pal.surface
+            border.width: root.pal.calm ? 0 : 1
             border.color: root.pal.lineSoft
             Rectangle {
-                width: Math.max(10, parent.width * Math.min(1, Math.max(0, root.shown)))
+                width: Math.max(parent.height, parent.width * Math.min(1, Math.max(0, root.shown)))
                 height: parent.height
-                radius: 5
+                radius: height / 2
                 color: root.dimmed ? Qt.alpha(root.pal.muted, 0.7) : root.pal.accent
                 Behavior on width { enabled: !root.dragging; NumberAnimation { duration: root.pal.dFast; easing.type: Easing.OutCubic } }
             }

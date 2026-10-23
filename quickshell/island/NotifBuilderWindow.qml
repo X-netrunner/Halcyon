@@ -84,7 +84,7 @@ Item {
         height: Math.min(parent.height - 80, 800)
         radius: root.pal.rXl
         opacityBody: root.pal.solid ? 1 : 0.78
-        border.color: Qt.alpha(root.pal.accent, 0.35)
+        border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
         scale: root.open ? 1 : 0.96
         Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         MouseArea { anchors.fill: parent; onPressed: m => { root.forceActiveFocus(); m.accepted = true } }
@@ -123,10 +123,10 @@ Item {
                     Layout.preferredWidth: Math.max(440, root.cur.width + 56)
                     radius: root.pal.rLg
                     color: Qt.alpha(root.pal.bg, 0.55)
-                    border.width: 1
+                    border.width: root.pal.calm ? 0 : 1
                     border.color: root.pal.lineTint
                     clip: true
-                    NbCap { pal: root.pal; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14; text: "LIVE PREVIEW" }
+                    NbCap { pal: root.pal; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14; text: root.pal.cap("LIVE PREVIEW") }
 
                     NotifSurface {
                         id: pv
@@ -167,7 +167,7 @@ Item {
                         spacing: 12
 
                         // look
-                        NbCap { pal: root.pal; text: "LOOK OF THE LIST" }
+                        NbCap { pal: root.pal; text: root.pal.cap("LOOK OF THE LIST") }
                         Row {
                             spacing: 8
                             Chip { pal: root.pal; implicitHeight: 30; label: "Stack"; on: root.look === "stack"; onClicked: root.lookChosen("stack") }
@@ -218,7 +218,7 @@ Item {
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // constellations
-                        NbCap { pal: root.pal; text: "CONSTELLATIONS AND STARS" }
+                        NbCap { pal: root.pal; text: root.pal.cap("CONSTELLATIONS AND STARS") }
                         Text {
                             visible: !root.stars
                             Layout.fillWidth: true
@@ -241,7 +241,7 @@ Item {
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // spacing and shape
-                        NbCap { pal: root.pal; text: "SPACING AND SHAPE" }
+                        NbCap { pal: root.pal; text: root.pal.cap("SPACING AND SHAPE") }
                         NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Padding"; from: 8; to: 36; value: root.cur.pad; onPicked: v => root.edited(NL.edit(root.cur, "pad", v)) }
                         NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Between parts"; from: 4; to: 28; value: root.cur.gap; onPicked: v => root.edited(NL.edit(root.cur, "gap", v)) }
                         NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Between notifications"; from: 2; to: 24; value: root.cur.rowGap; onPicked: v => root.edited(NL.edit(root.cur, "rowGap", v)) }
@@ -251,7 +251,7 @@ Item {
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // place on the screen
-                        NbCap { pal: root.pal; text: "WHERE IT SITS ON THE SCREEN" }
+                        NbCap { pal: root.pal; text: root.pal.cap("WHERE IT SITS ON THE SCREEN") }
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 16
@@ -262,7 +262,7 @@ Item {
                                 Layout.preferredHeight: 99
                                 radius: 6
                                 color: Qt.alpha(root.pal.bg, 0.7)
-                                border.width: 1
+                                border.width: root.pal.calm ? 0 : 1
                                 border.color: root.pal.line
                                 readonly property real sc: width / 1920
                                 readonly property real bh: Math.min(height - 8, pv.height * sc)

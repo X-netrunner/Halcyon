@@ -429,7 +429,7 @@ Item {
         height: Math.min(parent.height - 80, 780)
         radius: root.pal.rXl
         opacityBody: root.pal.solid ? 1 : 0.78
-        border.color: Qt.alpha(root.pal.accent, 0.35)
+        border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
         scale: root.open ? 1 : 0.96
         Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
 
@@ -465,7 +465,7 @@ Item {
                 Layout.preferredHeight: Math.round(root.barH * root.zoom) + (root.isl ? 72 : 60)
                 radius: root.pal.rLg
                 color: Qt.alpha(root.pal.bg, 0.55)
-                border.width: 1
+                border.width: root.pal.calm ? 0 : 1
                 border.color: root.pal.lineTint
                 clip: true
 
@@ -500,7 +500,7 @@ Item {
                             anchors.fill: parent
                             radius: root.cornR
                             color: Qt.alpha(root.pal.surface, 0.9)
-                            border.width: 1
+                            border.width: root.pal.calm ? 0 : 1
                             border.color: root.pal.line
                         }
                         Shape {
@@ -624,14 +624,14 @@ Item {
                     implicitHeight: styleCol.implicitHeight + 40
                     radius: root.pal.rMd
                     color: Qt.alpha(root.pal.surface, 0.35)
-                    border.width: 1
+                    border.width: root.pal.calm ? 0 : 1
                     border.color: root.pal.line
                     Column {
                         id: styleCol
                         x: 22; y: 20
                         width: parent.width - 44
                         spacing: 14
-                        Text { text: "STYLE"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 0.8 }
+                        Text { text: root.pal.cap("STYLE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.2 : 0.8 }
                         Row {
                             spacing: 10
                             Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Shape"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
@@ -652,14 +652,14 @@ Item {
                     implicitHeight: balCol.implicitHeight + 40
                     radius: root.pal.rMd
                     color: Qt.alpha(root.pal.surface, 0.35)
-                    border.width: 1
+                    border.width: root.pal.calm ? 0 : 1
                     border.color: root.pal.line
                     Column {
                         id: balCol
                         x: 22; y: 20
                         width: parent.width - 44
                         spacing: 12
-                        Text { text: "BALANCE"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 0.8 }
+                        Text { text: root.pal.cap("BALANCE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.2 : 0.8 }
                         Text {
                             width: parent.width
                             elide: Text.ElideRight

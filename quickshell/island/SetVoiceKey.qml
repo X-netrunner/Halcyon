@@ -99,7 +99,7 @@ ColumnLayout {
             visible: !vk.isDefault
             height: 30; radius: 15; width: resetTxt.implicitWidth + 28
             color: resetMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 1) : Qt.alpha(root.pal.surface, 0.8)
-            border.width: 1; border.color: root.pal.line
+            border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
             Text {
                 id: resetTxt
                 anchors.centerIn: parent
@@ -112,7 +112,7 @@ ColumnLayout {
             visible: !vk.isOff
             height: 30; radius: 15; width: offTxt.implicitWidth + 28
             color: offMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 1) : Qt.alpha(root.pal.surface, 0.8)
-            border.width: 1; border.color: root.pal.line
+            border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
             Text {
                 id: offTxt
                 anchors.centerIn: parent

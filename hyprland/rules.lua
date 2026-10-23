@@ -39,6 +39,14 @@ local glass = {
     ["island-keys"] = 0.25,
     ["island-cmds"] = 0.25,
     ["island-notes"] = 0.25,
+    -- these exist only while open too; they were missing, so they drew with no frosted glass behind them
+    ["island-clipboard"] = 0.25,
+    ["island-music"] = 0.25,
+    ["island-shot"] = 0.25,
+    ["island-games"] = 0.25,
+    ["island-study"] = 0.25,
+    ["island-display"] = 0.25,
+    ["island-wifiqr"] = 0.25,
 }
 for ns, a in pairs(glass) do
     hl.layer_rule({ match = { namespace = ns }, blur = true, ignore_alpha = a })
