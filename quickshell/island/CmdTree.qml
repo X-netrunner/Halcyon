@@ -158,7 +158,7 @@ Scope {
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 26 }
                         spacing: 14
                         Text { text: String.fromCodePoint(0xF0489); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
-                        Text { text: "Console commands"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
+                        BoxTitle { pal: root.pal; size: 20; overlay: true; title: "Console commands" }
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.maximumWidth: 420
@@ -405,9 +405,7 @@ Scope {
                                                                     Layout.alignment: Qt.AlignVCenter
                                                                     text: leaf.modelData.desc
                                                                     wrapMode: Text.WordWrap
-                                                                    maximumLineCount: 2
                                                                     lineHeight: 1.15
-                                                                    elide: Text.ElideRight
                                                                     color: root.pal.muted
                                                                     font.family: root.pal.uiFont
                                                                     font.pixelSize: root.pal.tBody

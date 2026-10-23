@@ -256,24 +256,11 @@ Scope {
                                 }
                             }
 
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 2
-
-                                Text {
-                                    text: "Display & Projector Manager"
-                                    font.family: root.pal ? root.pal.uiFont : "Sans Serif"
-                                    font.pixelSize: 18
-                                    font.weight: Font.DemiBold
-                                    color: root.pal ? root.pal.text : "#dcdde8"
-                                }
-
-                                Text {
-                                    text: root.monitorInfo
-                                    font.family: root.pal ? root.pal.uiFont : "Sans Serif"
-                                    font.pixelSize: 12
-                                    color: root.pal ? root.pal.muted : "#9496a8"
-                                }
+                            BoxTitle {
+                                pal: root.pal
+                                size: 18
+                                title: "Display & Projector Manager"
+                                sub: root.monitorInfo
                             }
 
                             // Close Button
@@ -397,7 +384,7 @@ Scope {
                                             font.family: root.pal ? root.pal.uiFont : "Sans Serif"
                                             font.pixelSize: 11
                                             color: root.pal ? root.pal.muted : "#9496a8"
-                                            elide: Text.ElideRight
+                                            wrapMode: Text.Wrap
                                             Layout.fillWidth: true
                                         }
                                     }
@@ -442,10 +429,11 @@ Scope {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 18
 
-                            Text {
+                            Hint {
+                                pal: root.pal
                                 text: "↑↓ / Tab navigate • Enter / Click select • Esc close • Hotkeys: 1-6 or M, R, L, P, O, A"
-                                font.family: root.pal ? root.pal.uiFont : "Sans Serif"
-                                font.pixelSize: 11
+                                fontFamily: root.pal ? root.pal.uiFont : "Sans Serif"
+                                pixelSize: 11
                                 color: root.pal ? root.pal.muted : "#9496a8"
                                 Layout.fillWidth: true
                             }

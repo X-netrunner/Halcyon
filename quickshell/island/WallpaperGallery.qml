@@ -172,24 +172,35 @@ Item {
                         color: root.pal ? root.pal.accent : "#8aadf4"
                         anchors.verticalCenter: parent.verticalCenter
                     }
-                    Text {
-                        text: "Wallpaper Gallery"
-                        font.family: root.pal ? root.pal.uiFont : "Inter"
-                        font.pixelSize: 18
-                        font.weight: Font.DemiBold
-                        color: root.pal ? root.pal.text : "#ffffff"
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: "(" + root.filteredFiles.length + (root.filteredFiles.length !== (root.wp.files ? root.wp.files.length : 0) ? " of " + (root.wp.files ? root.wp.files.length : 0) : "") + ")"
-                        font.family: root.pal ? root.pal.uiFont : "Inter"
-                        font.pixelSize: 13
-                        color: root.pal ? root.pal.muted : "#888888"
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
                 }
 
-                Item { Layout.fillWidth: true }
+                // the title and the count fill the free space; Centred titles puts them in the middle of the whole header
+                Item {
+                    id: galTitle
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
+                    implicitHeight: galRow.implicitHeight
+                    Row {
+                        id: galRow
+                        spacing: 10
+                        x: root.pal && root.pal.centerTitles ? Math.max(0, Math.min(galTitle.width - width, galTitle.parent.width / 2 - galTitle.x - width / 2)) : 0
+                        Text {
+                            text: "Wallpaper Gallery"
+                            font.family: root.pal ? root.pal.uiFont : "Inter"
+                            font.pixelSize: 18
+                            font.weight: Font.DemiBold
+                            color: root.pal ? root.pal.text : "#ffffff"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "(" + root.filteredFiles.length + (root.filteredFiles.length !== (root.wp.files ? root.wp.files.length : 0) ? " of " + (root.wp.files ? root.wp.files.length : 0) : "") + ")"
+                            font.family: root.pal ? root.pal.uiFont : "Inter"
+                            font.pixelSize: 13
+                            color: root.pal ? root.pal.muted : "#888888"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                }
 
                 // Search Bar
                 Rectangle {

@@ -190,6 +190,7 @@ Item {
                 spacing: 4
                 Text {
                     Layout.bottomMargin: 8
+                    Layout.alignment: root.pal.centerTitles ? Qt.AlignHCenter : Qt.AlignLeft     // Centred titles: the middle of the side column
                     text: root.title
                     color: root.pal.text
                     font.family: root.pal.uiFont
@@ -219,13 +220,13 @@ Item {
                     }
                 }
                 Item { Layout.fillHeight: true }
-                Text {
+                Hint {
+                    pal: root.pal
                     Layout.fillWidth: true
-                    wrapMode: Text.Wrap
                     text: "Enter opens  ·  Backspace goes up  ·  Esc cancels"
                     color: Qt.alpha(root.pal.muted, 0.8)
-                    font.family: root.pal.uiFont
-                    font.pixelSize: root.pal.tCap
+                    fontFamily: root.pal.uiFont
+                    pixelSize: root.pal.tCap
                 }
             }
 
@@ -361,7 +362,7 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.cur = row.index; root.choose(row.modelData); fin.forceActiveFocus() }
+                            onClicked: { fin.forceActiveFocus(); root.cur = row.index; root.choose(row.modelData) }     // focus first: choosing can rebuild the list (this row goes)
                         }
                     }
 

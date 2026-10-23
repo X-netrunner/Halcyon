@@ -499,7 +499,9 @@ Scope {
         return rows
     }
 
+    property bool fsActive: false           // the focused window is fullscreen (shell.qml asks Hyprland; the workspace flag below can lag)
     readonly property bool wsHasFullscreen: {
+        if (fsActive) return true
         var w = Hyprland.workspaces.values
         for (var i = 0; i < w.length; i++) {
             if (w[i].focused && (w[i].hasfullscreen || w[i].hasFullscreen)) return true
@@ -524,7 +526,10 @@ Scope {
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-term"
-        WlrLayershell.layer: WlrLayer.Top
+        // opened from a keybind / another window (run, prefill): over everything. It used to open UNDER the window that sent the
+        // command (Startup & processes, Settings), and once it held the keyboard that window took no clicks: only Super + Q got out.
+        // Opened by hovering the corner it stays on Top (changing the layer re-maps the surface, which would re-send enter / leave).
+        WlrLayershell.layer: root.pinned ? WlrLayer.Overlay : WlrLayer.Top
         // Exclusive while the pointer is over the console (Hyprland's follow_mouse would otherwise hand the keyboard to the
         // terminal beside it); the moment the pointer leaves it is on-demand again, so clicking another window just works
         // ...and while you are typing (text in the line, or answering a running command): the pointer drifting off the box must not
@@ -627,6 +632,9 @@ Scope {
                 height: 20
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
+                    // Centred titles: in the middle (the "running" line takes the middle while a command runs)
+                    x: root.pal.centerTitles ? (parent.width - width) / 2 : 0
+                    visible: !(root.pal.centerTitles && root.busy)
                     text: "❯ halcyon"
                     color: root.pal.accent
                     font.family: root.mono
@@ -775,7 +783,7 @@ Scope {
                             leftPadding: 14
                             text: ln.t === "" ? " " : ln.t
                             textFormat: Text.PlainText
-                            elide: Text.ElideRight
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                             color: ln.tone === "bad" ? root.pal.bad : ln.tone === "warn" ? root.pal.warn : ln.tone === "ask" ? root.pal.accent
                                  : (ln.k === "info" ? Qt.lighter(root.pal.muted, 1.35) : "#d7dae0")
                             font.family: root.mono

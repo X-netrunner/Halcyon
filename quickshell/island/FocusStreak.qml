@@ -164,7 +164,7 @@ Scope {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
-                                Text { text: root.pal.cap("FOCUS STREAK"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: 12; font.letterSpacing: root.pal.calm ? 0.2 : 2.5; font.weight: Font.DemiBold }
+                                Text { Layout.alignment: root.pal.centerTitles ? Qt.AlignHCenter : Qt.AlignLeft; text: root.pal.cap("FOCUS STREAK"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: 12; font.letterSpacing: root.pal.calm ? 0.2 : 2.5; font.weight: Font.DemiBold }
                                 Row {
                                     spacing: 12
                                     Text { id: big; text: Math.round(root.streak * stage.t); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 72; font.weight: Font.Light }
@@ -213,7 +213,7 @@ Scope {
                             spacing: 10
                             ActionChip { pal: root.pal; glyph: String.fromCodePoint(root.fst.on ? 0xF04DB : 0xF040A); label: root.fst.on ? "Stop the session" : "Start focusing"; on: !root.fst.on; onClicked: if (root.env) root.env.focusToggle() }
                             ActionChip { visible: root.fst.on; pal: root.pal; glyph: String.fromCodePoint(root.fst.paused ? 0xF040A : 0xF03E4); label: root.fst.paused ? "Resume" : "Pause"; onClicked: if (root.env) root.env.focusRun([root.fst.paused ? "resume" : "pause"]) }
-                            Text { Layout.fillWidth: true; text: "Space starts or stops   ·   Esc closes"; color: Qt.alpha(root.pal.muted, 0.8); font.family: root.pal.uiFont; font.pixelSize: 11; horizontalAlignment: Text.AlignRight }
+                            Hint { pal: root.pal; Layout.fillWidth: true; text: "Space starts or stops   ·   Esc closes"; color: Qt.alpha(root.pal.muted, 0.8); fontFamily: root.pal.uiFont; pixelSize: 11; horizontalAlignment: Text.AlignRight }
                         }
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }

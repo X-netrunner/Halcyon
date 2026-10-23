@@ -322,8 +322,8 @@ Scope {
                             Layout.fillWidth: true
                             visible: text !== ""
                             text: root.subject
-                            elide: Text.ElideRight
-                            maximumLineCount: 1
+                            horizontalAlignment: root.pal.centerTitles ? Text.AlignHCenter : Text.AlignLeft
+                            wrapMode: Text.Wrap
                             color: root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tTitle
@@ -493,13 +493,13 @@ Scope {
                             Item { Layout.fillHeight: true }
                         }
 
-                        Text {
+                        Hint {
+                            pal: root.pal
                             Layout.fillWidth: true
                             text: "Tab switches   \u00b7   Up / Down scroll   \u00b7   R reads again   \u00b7   Esc closes"
-                            elide: Text.ElideRight
                             color: Qt.alpha(root.pal.muted, 0.85)
-                            font.family: root.pal.uiFont
-                            font.pixelSize: 10
+                            fontFamily: root.pal.uiFont
+                            pixelSize: 10
                         }
                     }
                 }

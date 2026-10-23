@@ -127,14 +127,15 @@ Item {
                 Layout.fillWidth: true
                 spacing: 14
                 Rectangle { Layout.alignment: Qt.AlignVCenter; width: 8; height: 8; radius: 4; color: root.pal.accent }
-                Column {
+                BoxTitle {
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: 2
-                    Text { text: root.lockT ? "Lock screen builder" : "Desktop builder"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Text { text: root.lockT ? "The picture on the left is your lock screen: its background, and outlines where the clock and the password box sit. Everything else is on the right."
-                                            : "The picture on the left is your screen: click a box, then the corner it should open from. Everything else is on the right."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    pal: root.pal
+                    size: 20
+                    subIsHint: true
+                    title: root.lockT ? "Lock screen builder" : "Desktop builder"
+                    sub: root.lockT ? "The picture on the left is your lock screen: its background, and outlines where the clock and the password box sit. Everything else is on the right."
+                                            : "The picture on the left is your screen: click a box, then the corner it should open from. Everything else is on the right."
                 }
-                Item { Layout.fillWidth: true }
                 ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
             }
 
@@ -602,10 +603,11 @@ Item {
                             }
                             // ---- how each box opens: its own hover / click, or like the rest (Settings > Edge boxes)
                             NbCap { pal: root.pal; text: root.pal.cap("OPENS ON") }
-                            Text {
+                            Hint {
+                                pal: root.pal
                                 Layout.fillWidth: true
                                 text: "Hover: opens at the corner, closes when you leave. Click: a click on the corner, stays until you click elsewhere. \"Like the rest\" is now " + (root.globalClick ? "click" : "hover") + "."
-                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
+                                color: root.pal.muted; fontFamily: root.pal.uiFont; pixelSize: 10
                             }
                             Repeater {
                                 model: DS.order

@@ -99,13 +99,14 @@ Item {
                 Layout.fillWidth: true
                 spacing: 14
                 Rectangle { Layout.alignment: Qt.AlignVCenter; width: 8; height: 8; radius: 4; color: root.pal.accent }
-                Column {
+                BoxTitle {
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: 2
-                    Text { text: "Notification box builder"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Text { text: "The box on the left is the real one. Change anything on the right."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    pal: root.pal
+                    size: 20
+                    subIsHint: true
+                    title: "Notification box builder"
+                    sub: "The box on the left is the real one. Change anything on the right."
                 }
-                Item { Layout.fillWidth: true }
                 ActionChip { pal: root.pal; label: "Restore sample"; doneLabel: "Restored"; onClicked: { root.removed = ({}); root.sampleDnd = false } }
                 ActionChip { pal: root.pal; label: "Reset the box"; doneLabel: "Reset"; onClicked: root.edited(NL.defaults()) }
                 ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
