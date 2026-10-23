@@ -104,6 +104,7 @@ ShellRoot {
         todOn: false,              // time-of-day wallpaper: a soft colour grade over the wallpaper that follows the sun (TimeOfDay.js, Wallpaper.qml); Settings > Splash, sky & time of day
         todStrength: 60,           // 0 .. 100 : how strong that grade is (100 = full dusk orange / deep night blue)
         splash: true,              // the login splash (Splash.qml: moving stars + the Halcyon sparkle) plays on the lock screen when it is also the login screen; Settings > Power & lock
+        clipAtCursor: true,        // ON by default. Super + V opens the clipboard panel at the mouse pointer (like Windows); off = on the side of the screen
         lockSwitch: false,         // OFF by default. On = the lock screen has a "Switch user" button (other logged-in users, or a login screen for someone else)
         limMode: "manual",         // manual | auto : Settings > Performance > Limits. auto = the RAM / CPU limits are learned from your own use (startup-view.py adapt-sample, every 5 min)
         resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
