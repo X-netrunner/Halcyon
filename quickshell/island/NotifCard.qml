@@ -197,9 +197,7 @@ Item {
                     font.family: card.pal.uiFont
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
-                    elide: Text.ElideRight
                     wrapMode: Text.Wrap
-                    maximumLineCount: hov.hovered ? 4 : 2
                 }
                 Text {
                     id: nbody0
@@ -212,16 +210,6 @@ Item {
                     font.pixelSize: 13
                     lineHeight: 1.12
                     wrapMode: Text.Wrap
-                    maximumLineCount: hov.hovered ? 80 : 3          // hover shows the whole message
-                    elide: Text.ElideRight
-                }
-                Text {
-                    Layout.fillWidth: true
-                    visible: !hov.hovered && nbody0.truncated
-                    text: "hover to read all"
-                    color: Qt.alpha(card.pal.muted, 0.9)
-                    font.family: card.pal.uiFont
-                    font.pixelSize: 10
                 }
                 RowLayout {
                     visible: card.extraActions.length > 0
@@ -234,7 +222,7 @@ Item {
                             pal: card.pal
                             label: modelData.text
                             maxLabel: 110
-                            onClicked: { modelData.invoke(); card.close(false) }
+                            onClicked: { modelData.invoke(); if (typeof card !== "undefined" && card) card.close(false) }     // the action can remove the card itself first
                         }
                     }
                 }

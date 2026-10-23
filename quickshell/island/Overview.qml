@@ -1036,14 +1036,15 @@ Item {
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
-                        Text {
+                        ScrollText {             // hover: the whole title slides by
                             width: parent.width
-                            elide: Text.ElideRight
-                            text: nd.d.label
-                            color: ov.pal.text
-                            font.family: ov.pal.uiFont
-                            font.pixelSize: 16
-                            font.weight: Font.DemiBold
+                            Text {
+                                text: nd.d.label
+                                color: ov.pal.text
+                                font.family: ov.pal.uiFont
+                                font.pixelSize: 16
+                                font.weight: Font.DemiBold
+                            }
                         }
                         Text {
                             width: parent.width
@@ -1116,14 +1117,15 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: parent.width - 33
                         spacing: 0
-                        Text {
+                        ScrollText {             // hover: the whole title slides by
                             width: parent.width
-                            elide: Text.ElideRight
-                            text: nd.d.label
-                            color: nd.d.focused ? nd.tint : ov.pal.text
-                            font.family: ov.pal.uiFont
-                            font.pixelSize: 12
-                            font.weight: nd.d.focused ? Font.DemiBold : Font.Normal
+                            Text {
+                                text: nd.d.label
+                                color: nd.d.focused ? nd.tint : ov.pal.text
+                                font.family: ov.pal.uiFont
+                                font.pixelSize: 12
+                                font.weight: nd.d.focused ? Font.DemiBold : Font.Normal
+                            }
                         }
                         Text {
                             visible: nd.height > 30 && nd.d.sub !== ""
@@ -1266,10 +1268,12 @@ Item {
 
     // ---- header
     Column {
-        x: 40
+        id: ovHead
+        x: ov.pal.centerTitles ? (parent.width - width) / 2 : 40          // Centred titles: in the middle, both lines centred
         y: 34
         spacing: 2
         Text {
+            x: ov.pal.centerTitles ? (ovHead.width - width) / 2 : 0
             text: "Overview"
             color: ov.pal.text
             font.family: ov.pal.uiFont
@@ -1277,6 +1281,7 @@ Item {
             font.weight: Font.DemiBold
         }
         Text {
+            x: ov.pal.centerTitles ? (ovHead.width - width) / 2 : 0
             text: ov.plural(ov.wsCount, "workspace") + " · " + ov.plural(ov.winCount, "window") + " · " + ov.hostName
                   + (ov.totalRes !== "" ? "  ·  apps use " + ov.totalRes : "")
             color: ov.pal.muted

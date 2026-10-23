@@ -13,6 +13,9 @@ import Quickshell.Io
 //
 //   Health:         Halcyon as a whole (its own parts together) against the RAM and CPU limits from Settings > Performance & memory; when it is
 //                   over, the likely causes and what to do about each one (buttons where one click is safe).
+//   Unused:         what you barely use: programs not opened for a while, Flatpak apps and background services (docker,
+//                   tailscaled ...), with a verdict from the local AI (`halcyon-ai.py unused`). Nothing is removed here: the button
+//                   types the command into the console, you press Enter there.
 //   Every column title and caption has a small "?": hover it for what the word means (no explanation text at the bottom any more).
 //
 // The data comes from scripts/startup-view.py, polled every 5 s ONLY while the window is open; when it closes the numbers are
@@ -28,12 +31,41 @@ Item {
     property bool adaptive: false        // Settings > Performance & memory > Limits: Adaptive. The limits are then learned by startup-view.py (adapt-sample), see effRam / effCpu
     signal closed()
     signal presetPicked(string mode)     // the Health tab's "Switch to Low / Medium resource use" button (Settings applies it)
+    signal consoleRequested(string cmd)  // the Unused tab's Remove / Turn off: the command is typed into the console, not run
 
     readonly property string script: Quickshell.env("HOME") + "/.config/Halcyon/scripts/startup-view.py"
     readonly property var empty: ({ items: [], procs: [], suggest: [], ncpu: 1, n_procs: 0, session_mb: 0, startup_mb: 0, total_mb: 0, avail_mb: 0, health: ({ findings: [] }) })
     property var info: empty
     property bool loaded: false
-    property string tab: "startup"            // startup | procs | health | tips
+    property string tab: "startup"            // startup | procs | health | tips | unused
+
+    // ---- Unused: halcyon-ai.py unused (cached for a day there; Scan again = --refresh). Only read while this tab is open.
+    readonly property string aiScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-ai.py"
+    property var unused: null                 // { items, summary, ai_note, at, days }
+    property int unusedDays: 14
+    property bool unusedFresh: false          // the next scan ignores the cache
+    property string unusedErr: ""
+    function scanUnused(fresh) {
+        if (unusedProc.running) return
+        unusedFresh = fresh === true
+        unusedErr = ""
+        unusedProc.running = true
+    }
+    onUnusedDaysChanged: if (tab === "unused") scanUnused(false)
+    Process {
+        id: unusedProc
+        command: ["python3", root.aiScript, "unused", "--json", "--days", String(root.unusedDays)].concat(root.unusedFresh ? ["--refresh"] : [])
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var d = JSON.parse(text)
+                    if (d.items) root.unused = d
+                    else root.unusedErr = d.error || "The scan did not finish."
+                } catch (e) { root.unusedErr = "The scan did not finish." }
+            }
+        }
+    }
+    function verdictTone(v) { return v === "remove" ? root.pal.good : v === "keep" ? root.pal.muted : root.pal.warn }
     property string filter: "all"             // startup tab: all | running | off
     property string sortBy: "mem"             // processes tab: mem | cpu
     property var busyIds: ({})
@@ -115,7 +147,7 @@ Item {
         tipText = item.tip; tipCx = a.x; tipTop = a.y; tipBottom = b.y
         tipItem = item
     }
-    onTabChanged: tipItem = null
+    onTabChanged: { tipItem = null; if (tab === "unused" && unused === null) scanUnused(false) }
 
     // ---------------------------------------------------------------- numbers
     function fmt(mb) {
@@ -329,7 +361,7 @@ Item {
     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
     onOpenChanged: {
         if (open) { note = ""; Qt.callLater(function () { root.forceActiveFocus() }) }
-        else { info = empty; hist = []; loaded = false; busyIds = ({}); cpuMemo = ({}); cpuStreak = 0; tipItem = null; query = ""; searchInput.text = "" }       // let go of the numbers: nothing is kept while it is closed
+        else { unused = null; unusedErr = ""; info = empty; hist = []; loaded = false; busyIds = ({}); cpuMemo = ({}); cpuStreak = 0; tipItem = null; query = ""; searchInput.text = "" }       // let go of the numbers: nothing is kept while it is closed
     }
     Component.onCompleted: if (open) Qt.callLater(function () { root.forceActiveFocus() })
     Keys.onPressed: function (e) {
@@ -339,7 +371,7 @@ Item {
             e.accepted = true
         }
         else if (e.key === Qt.Key_Slash && !searchInput.activeFocus) { searchInput.forceActiveFocus(); e.accepted = true }
-        else if (e.key === Qt.Key_Tab) { root.tab = root.tab === "startup" ? "procs" : root.tab === "procs" ? "health" : root.tab === "health" ? "tips" : "startup"; e.accepted = true }
+        else if (e.key === Qt.Key_Tab) { root.tab = root.tab === "startup" ? "procs" : root.tab === "procs" ? "health" : root.tab === "health" ? "tips" : root.tab === "tips" ? "unused" : "startup"; e.accepted = true }
         else if (e.key === Qt.Key_F5) { root.refresh(); e.accepted = true }
     }
 
@@ -368,7 +400,8 @@ Item {
             anchors.margins: 28
             spacing: 14
 
-            // ---- header: the gallery's: icon, title, search, switch, round buttons
+            // ---- header: icon, title (centred with Settings > Look > Centred titles), round buttons; under it the views and the search.
+            // Two rows: the five views, the search and the title did not fit one row and pushed everything past the card's edge.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
@@ -378,17 +411,26 @@ Item {
                     font.family: root.pal.font; font.pixelSize: 22
                     color: root.pal.accent
                 }
-                Column {
+                BoxTitle {
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: 1
-                    Text { text: "Startup & processes"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold }
-                    Text {
-                        text: root.loaded ? (root.info.items.length + " startup items, " + root.runningCount + " running  ·  " + root.info.n_procs + " processes of yours") : "Reading what is running…"
-                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
-                    }
+                    pal: root.pal
+                    size: 18
+                    title: "Startup & processes"
+                    sub: root.loaded ? (root.info.items.length + " startup items, " + root.runningCount + " running  ·  " + root.info.n_procs + " processes of yours") : "Reading what is running…"
+                }
+                RoundIcon { pal: root.pal; glyph: "\uf021"; onClicked: root.tab === "unused" ? root.scanUnused(true) : root.refresh() }
+                RoundIcon { pal: root.pal; glyph: "✕"; onClicked: root.closed() }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                SegSwitch {
+                    pal: root.pal
+                    options: [ { k: "startup", t: "Startup" }, { k: "procs", t: "Processes" }, { k: "health", t: "Health" + (root.overAny ? "  !" : "") }, { k: "tips", t: "Suggestions" + (root.shownTips.length > 0 ? "  " + root.shownTips.length : "") }, { k: "unused", t: "Unused" } ]
+                    current: root.tab
+                    onPicked: k => root.tab = k
                 }
                 Item { Layout.fillWidth: true }
-
                 Rectangle {
                     visible: root.tab === "startup" || root.tab === "procs"
                     Layout.preferredWidth: 230
@@ -429,14 +471,6 @@ Item {
                         }
                     }
                 }
-                SegSwitch {
-                    pal: root.pal
-                    options: [ { k: "startup", t: "Startup" }, { k: "procs", t: "Processes" }, { k: "health", t: "Health" + (root.overAny ? "  !" : "") }, { k: "tips", t: "Suggestions" + (root.shownTips.length > 0 ? "  " + root.shownTips.length : "") } ]
-                    current: root.tab
-                    onPicked: k => root.tab = k
-                }
-                RoundIcon { pal: root.pal; glyph: "\uf021"; onClicked: root.refresh() }
-                RoundIcon { pal: root.pal; glyph: "✕"; onClicked: root.closed() }
             }
 
             // ---- memory: where it all is, in one bar
@@ -511,6 +545,16 @@ Item {
                 Q { visible: root.tab === "health"; tip: "Halcyon = its own parts together (Hyprland, the island with its helpers, the daemons). The limits are in Settings > Performance & memory. RAM is checked on every reading; CPU is only flagged after two readings in a row over the limit, so one short burst does not raise an alarm. The causes below are likely ones, worked out from your settings and what each part is doing, not certainties." }
                 Text { visible: root.tab === "tips"; text: "Startup items that are not earning their place"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
                 Q { visible: root.tab === "tips"; tip: "Safe to turn off: this machine has nothing for it to do. Worth a look: it may be useful to you, only you can tell. Nothing is turned off until you press Turn off. Keep hides a suggestion for good. Startup items change at the next login." }
+                Text { visible: root.tab === "unused"; text: "What you barely use"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                Q { visible: root.tab === "unused"; tip: "Programs count as used when they were started (their last access time) or their settings / data folders changed; the launcher's start count is shown too. Services: what starts with the system or runs now, with the memory it holds. Halcyon's own parts and the core of the system are never listed. The verdict comes from the local AI (rules when it is off). Remove / Turn off only types the command into the console: press Enter there to run it." }
+                Text { visible: root.tab === "unused"; text: "Not used for"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                SegSwitch {
+                    pal: root.pal
+                    visible: root.tab === "unused"
+                    options: [ { k: "7", t: "7 days" }, { k: "14", t: "14 days" }, { k: "30", t: "30 days" }, { k: "90", t: "90 days" } ]
+                    current: String(root.unusedDays)
+                    onPicked: k => root.unusedDays = Number(k)
+                }
                 SegSwitch {
                     pal: root.pal
                     visible: root.tab === "startup"
@@ -779,7 +823,7 @@ Item {
                         readonly property bool safe: model.level === "safe"
                         readonly property color tone: safe ? root.pal.good : root.pal.warn
                         width: ListView.view ? ListView.view.width - 8 : 0
-                        height: 88
+                        height: Math.max(88, tcol.implicitHeight + 20)     // a long reason makes the row taller instead of spilling out of it
                         radius: root.pal.rLg
                         color: tipHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.75)
                         border.width: 1
@@ -799,6 +843,7 @@ Item {
                             anchors.leftMargin: 28; anchors.rightMargin: 16; anchors.topMargin: 10; anchors.bottomMargin: 10
                             spacing: 16
                             ColumnLayout {
+                                id: tcol
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignVCenter
                                 spacing: 5
@@ -821,8 +866,6 @@ Item {
                                     Layout.fillWidth: true
                                     text: trow.model.why
                                     wrapMode: Text.WordWrap
-                                    maximumLineCount: 3
-                                    elide: Text.ElideRight
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1
                                 }
@@ -838,6 +881,128 @@ Item {
                             Chip { Layout.alignment: Qt.AlignVCenter; pal: root.pal; maxLabel: 1000; implicitHeight: 32; label: "Turn off"; on: true; onClicked: root.turnOff(trow.model.id) }
                             Chip { Layout.alignment: Qt.AlignVCenter; pal: root.pal; maxLabel: 1000; implicitHeight: 32; label: "Keep"; onClicked: root.keepTip(trow.model.id) }
                         }
+                    }
+                }
+
+                // ---- unused: programs, Flatpak apps and services you barely use
+                ListView {
+                    id: unusedList
+                    anchors.fill: parent
+                    visible: root.tab === "unused" && root.unused !== null && !unusedProc.running
+                    clip: true
+                    spacing: 8
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: root.unused ? root.unused.items : []
+                    header: Column {
+                        width: ListView.view ? ListView.view.width - 8 : 0
+                        bottomPadding: 10
+                        spacing: 4
+                        Text { width: parent.width; wrapMode: Text.Wrap; text: root.unused ? root.unused.summary : ""; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                        Text {
+                            width: parent.width; wrapMode: Text.Wrap
+                            visible: text !== ""
+                            text: root.unused && root.unused.ai_note ? "Verdicts by fixed rules: " + root.unused.ai_note : ""
+                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                        }
+                    }
+                    delegate: Rectangle {
+                        id: urow
+                        required property var modelData
+                        readonly property color tone: root.verdictTone(modelData.verdict)
+                        readonly property bool svc: modelData.kind === "service" || modelData.kind === "user service"
+                        width: ListView.view ? ListView.view.width - 8 : 0
+                        height: ucol.implicitHeight + 22
+                        radius: root.pal.rLg
+                        color: uHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.75)
+                        border.width: 1
+                        border.color: uHover.hovered ? Qt.alpha(root.pal.accent, 0.3) : root.pal.lineSoft
+                        HoverHandler { id: uHover }
+                        Rectangle {
+                            anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                            anchors.margins: 12
+                            width: 3; radius: 1.5
+                            color: urow.tone
+                        }
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 28; anchors.rightMargin: 16; anchors.topMargin: 11; anchors.bottomMargin: 11
+                            spacing: 16
+                            ColumnLayout {
+                                id: ucol
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 5
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Text { text: urow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                    Rectangle {
+                                        implicitWidth: vTxt.implicitWidth + 16; implicitHeight: 18; radius: 9
+                                        color: Qt.alpha(urow.tone, 0.16)
+                                        Text {
+                                            id: vTxt
+                                            anchors.centerIn: parent
+                                            text: urow.modelData.on_demand ? "ON DEMAND" : urow.modelData.verdict === "remove" ? (urow.svc ? "TURN OFF" : "REMOVE") : urow.modelData.verdict === "keep" ? "KEEP" : "YOUR CALL"
+                                            color: urow.tone
+                                            font.family: root.pal.uiFont; font.pixelSize: 9; font.weight: Font.DemiBold; font.letterSpacing: 1
+                                        }
+                                    }
+                                    Text { text: urow.modelData.kind + (urow.modelData.launches ? "  ·  started " + urow.modelData.launches + "× from the launcher" : ""); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; topPadding: 2 }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: !urow.svc && urow.modelData.desc !== "" && urow.modelData.desc !== urow.modelData.name
+                                    text: urow.modelData.desc
+                                    wrapMode: Text.Wrap
+                                    color: Qt.alpha(root.pal.text, 0.8)
+                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: urow.modelData.why
+                                    wrapMode: Text.Wrap
+                                    color: root.pal.muted
+                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1
+                                }
+                            }
+                            Column {
+                                Layout.alignment: Qt.AlignVCenter
+                                Layout.preferredWidth: 78
+                                readonly property real mb: urow.svc ? (urow.modelData.running ? (urow.modelData.mem_mb || 0) : 0) : (urow.modelData.size_mb || 0)
+                                visible: mb >= 1
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: "−" + root.fmt(parent.mb); color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: urow.svc ? "memory" : "disk"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
+                            }
+                            Chip {
+                                Layout.alignment: Qt.AlignVCenter
+                                pal: root.pal; maxLabel: 1000; implicitHeight: 32
+                                label: urow.modelData.on_demand ? "Start on demand" : urow.svc ? "Turn off" : "Remove"
+                                on: urow.modelData.verdict === "remove"
+                                onClicked: {
+                                    root.consoleRequested(urow.modelData.cmd)
+                                    root.note = "In the console: " + urow.modelData.cmd + "   (press Enter there to run it)"
+                                }
+                            }
+                        }
+                    }
+                }
+                Column {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - 40, 520)
+                    visible: root.tab === "unused" && (unusedProc.running || root.unused === null || (root.unused.items || []).length === 0)
+                    spacing: 6
+                    Text {
+                        width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
+                        text: unusedProc.running ? "Looking through your programs and services, then asking the AI…"
+                            : root.unusedErr !== "" ? root.unusedErr
+                            : root.unused ? root.unused.summary : ""
+                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                    }
+                    Text {
+                        width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
+                        visible: unusedProc.running
+                        text: "Usually 10 to 30 seconds (instant when the last scan is less than a day old). The list is kept for a day; the refresh button scans again."
+                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                     }
                 }
 
@@ -1118,7 +1283,7 @@ Item {
                 }
                 Text {
                     anchors.centerIn: parent
-                    visible: !root.loaded
+                    visible: !root.loaded && root.tab !== "unused"
                     text: "Reading what is running…"
                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                 }
@@ -1132,7 +1297,7 @@ Item {
                 color: root.pal.accent
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tCap
-                elide: Text.ElideRight
+                wrapMode: Text.Wrap
             }
         }
 

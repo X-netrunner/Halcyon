@@ -204,8 +204,7 @@ Item {
                     font.family: row.pal.uiFont
                     font.pixelSize: row.pal.tBody + 2
                     font.weight: Font.DemiBold
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
+                    wrapMode: Text.Wrap
                 }
                 Text {
                     Layout.fillWidth: true
@@ -217,8 +216,6 @@ Item {
                     font.pixelSize: row.pal.tBody
                     lineHeight: 1.1
                     wrapMode: Text.Wrap
-                    maximumLineCount: 3
-                    elide: Text.ElideRight
                 }
                 RowLayout {
                     visible: row.extraActions.length > 0
@@ -232,7 +229,7 @@ Item {
                             label: modelData.text
                             maxLabel: 100
                             Layout.preferredHeight: 30
-                            onClicked: { modelData.invoke(); row.dismissRequested() }
+                            onClicked: { modelData.invoke(); if (typeof row !== "undefined" && row) row.dismissRequested() }     // the action can remove the row itself first
                         }
                     }
                 }

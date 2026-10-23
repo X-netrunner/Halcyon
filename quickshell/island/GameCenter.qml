@@ -660,11 +660,15 @@ Scope {
                         spacing: 18
 
                         // ---- header: badge + title + state on the left, the tabs in the middle, close on the right
+                        // Centred titles: the badge and title in the middle on top, the tabs on a line under them
                         Item {
+                            id: gcHead
+                            readonly property bool centred: root.pal.centerTitles
                             Layout.fillWidth: true
-                            implicitHeight: 42
+                            implicitHeight: centred ? 42 + 50 : 42
                             Row {
-                                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                                x: gcHead.centred ? (parent.width - width) / 2 : 0
+                                y: gcHead.centred ? 0 : (parent.height - height) / 2
                                 spacing: 12
                                 Rectangle {
                                     width: 40; height: 40; radius: 13
@@ -690,6 +694,7 @@ Scope {
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: 1
                                     Text {
+                                        x: gcHead.centred ? (parent.width - width) / 2 : 0
                                         text: "Game Center"
                                         color: root.pal.text
                                         font.family: root.pal.uiFont
@@ -697,8 +702,10 @@ Scope {
                                         font.weight: Font.DemiBold
                                     }
                                     Text {
-                                        width: Math.min(implicitWidth, tabs.x - 70)
-                                        elide: Text.ElideRight
+                                        width: Math.min(implicitWidth, gcHead.centred ? gcHead.width - 120 : tabs.x - 70)
+                                        x: gcHead.centred ? (parent.width - width) / 2 : 0
+                                        horizontalAlignment: gcHead.centred ? Text.AlignHCenter : Text.AlignLeft
+                                        wrapMode: Text.Wrap
                                         text: root.note !== "" ? root.note
                                             : (root.busy ? "Working. Big downloads can take a few minutes"
                                             : (root.runningId !== "" ? "A game is running"
@@ -711,7 +718,8 @@ Scope {
                             }
                             Rectangle {
                                 id: tabs
-                                anchors.centerIn: parent
+                                x: (parent.width - width) / 2
+                                y: gcHead.centred ? parent.height - height : (parent.height - height) / 2
                                 width: tabRow.implicitWidth + 8
                                 height: 40
                                 radius: 20
@@ -1134,7 +1142,8 @@ Scope {
                                     anchors.fill: parent
                                     clip: true
                                     contentWidth: width
-                                    contentHeight: dcol.implicitHeight + 16
+                                    // dcol starts under the cover: without dcol.y the last rows (Wayland mode, Remove) could not be scrolled to
+                                    contentHeight: dcol.y + dcol.implicitHeight + 18
                                     boundsBehavior: Flickable.StopAtBounds
 
                                     // the cover, faded into the drawer, with the name over it
@@ -1176,7 +1185,7 @@ Scope {
                                             }
                                             Text {
                                                 width: parent.width
-                                                elide: Text.ElideRight
+                                                wrapMode: Text.Wrap
                                                 text: root.sel ? root.srcLabel(root.sel.source) + "  ·  " + root.fmtTime(root.sel.playtime) + "  ·  played " + root.fmtAgo(root.sel.lastPlayed) : ""
                                                 color: root.pal.muted
                                                 font.family: root.pal.uiFont
@@ -1632,7 +1641,7 @@ Scope {
                                                         Layout.fillWidth: true
                                                         spacing: 1
                                                         Text { text: modelData.t; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
-                                                        Text { width: parent.width; wrapMode: Text.Wrap; text: modelData.d; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                                        Hint { pal: root.pal; width: parent.width; text: modelData.d }
                                                     }
                                                     Toggle { pal: root.pal; on: root.toggleOn(modelData); busy: root.busy; onToggled: root.flip(modelData) }
                                                 }
@@ -1815,23 +1824,34 @@ Scope {
                                                     }
                                                 }
                                             }
-
-                                            // remove
-                                            ActionChip {
-                                                pal: root.pal
-                                                implicitHeight: 32
-                                                label: root.confirmRemove ? "Click again to remove" : "Remove from library"
-                                                on: root.confirmRemove
-                                                disabled: root.selRunning
-                                                onClicked: {
-                                                    if (!root.confirmRemove) { root.confirmRemove = true; removeT.restart(); return }
-                                                    root.confirmRemove = false
-                                                    if (root.sel) root.act([root.hgl, "remove", root.sel.id], "Removed from the library")
-                                                }
-                                            }
-                                            Timer { id: removeT; interval: 4000; onTriggered: root.confirmRemove = false }
                                         }
+
+                                        // remove: always at the bottom of the drawer, not folded into Advanced (two clicks; the game's files stay)
+                                        ActionChip {
+                                            pal: root.pal
+                                            implicitHeight: 32
+                                            label: root.confirmRemove ? "Click again to remove" : "Remove from library"
+                                            on: root.confirmRemove
+                                            disabled: root.selRunning
+                                            onClicked: {
+                                                if (!root.confirmRemove) { root.confirmRemove = true; removeT.restart(); return }
+                                                root.confirmRemove = false
+                                                if (root.sel) root.act([root.hgl, "remove", root.sel.id], "Removed from the library")
+                                            }
+                                        }
+                                        Timer { id: removeT; interval: 4000; onTriggered: root.confirmRemove = false }
                                     }
+                                }
+                                // where you are in the drawer: shows only when it is taller than the window
+                                Rectangle {
+                                    visible: dflick.contentHeight > dflick.height + 1
+                                    x: parent.width - 6
+                                    y: 8 + dflick.visibleArea.yPosition * (parent.height - 16)
+                                    width: 3
+                                    height: Math.max(24, dflick.visibleArea.heightRatio * (parent.height - 16))
+                                    radius: 1.5
+                                    color: Qt.alpha(root.pal.text, dflick.moving ? 0.35 : 0.16)
+                                    Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                                 Rectangle { anchors.fill: parent; radius: drawer.radius; color: "transparent"; border.width: 1; border.color: root.pal.lineSoft }
                             }

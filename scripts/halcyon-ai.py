@@ -35,6 +35,14 @@ off (Settings > Performance > AI features). Nothing leaves this machine (`update
   halcyon-ai.py study <file.pdf> [summary|quiz|cards] [--n N] [--note]
                                                 study material: a revision summary, exam questions with answers, or flashcards, only
                                                 from the PDF's own text (--note saves it as a note)
+  halcyon-ai.py unused [--refresh] [--no-ai] [--days N] [--remind]
+                                                what you barely use: programs not opened for N days (default 30, from when each
+                                                one was last started), Flatpak apps, and background services (yours and the
+                                                system's, e.g. tailscaled, docker) with what they cost. The model gives each a
+                                                verdict (remove / maybe / keep) and a reason; nothing is removed, each item has
+                                                its command. Halcyon's own packages and the core system are never listed.
+                                                Cached for a day (--refresh scans again). --remind: the monthly
+                                                notification (at most every 30 days; Settings toggle "Monthly unused-apps reminder").
   halcyon-ai.py commit [--all] [--commit]       a commit message for the staged changes, in the repository's style (--commit opens
                                                 git commit -e with it, so you edit it before it is made)
 
@@ -1979,10 +1987,312 @@ def cmd_commit(args):
     return {"text": msg}
 
 
+# ------------------------------------------------------------------------------------------------ unused
+# What you barely use: programs, Flatpak apps and background services, with the evidence (when it was last opened, how often the
+# launcher started it, what a service costs while it runs). The facts come from fixed rules; the model only gives each one a
+# verdict and a short reason. Halcyon's own packages and the core of the system are never listed. Nothing is removed here:
+# every item carries the command, and the island puts it in the console for you to run.
+UNUSED_CACHE = os.path.join(CACHE, "unused.json")
+PACDB = "/var/lib/pacman/local"
+CORE_UNITS = re.compile(r"^(systemd-|dbus|getty@|user@|polkit|NetworkManager|wpa_supplicant|iwd|udisks2|upower|power-profiles|rtkit|"
+                        r"accounts-daemon|halcyon|sysmode|nvidia-|asus|pipewire|wireplumber|xdg-|gvfs|at-spi|dconf|gnome-keyring|"
+                        r"ufw|firewalld|fstrim|ydotool|ollama|getty|systemd|lvm2|dm-|cryptsetup|plymouth|sddm|gdm|greetd|seatd|"
+                        r"thermald|tlp|auto-cpufreq|ModemManager|bluetooth|cups-browsed|p11-kit|gcr-|obex|xdg|grub|reflector|"
+                        r"gpg-agent|keyboxd|dirmngr|flatpak-|evolution-|tracker|goa-|gvfs|xdg-permission|wayland|hypr|uwsm)", re.I)
+CORE_PKGS = re.compile(r"^(base|base-devel|linux(-lts|-zen|-hardened)?(-headers)?|linux-firmware.*|.*-firmware|.*-ucode|grub|efibootmgr|"
+                       r"systemd.*|sudo|pacman.*|mkinitcpio|dracut|nvidia.*|mesa|vulkan-.*|lib32-.*|.*-utils|networkmanager|iwd|"
+                       r"pipewire.*|wireplumber|hyprland.*|quickshell.*|xdg-desktop-portal.*|qt[56]-.*|gtk[34]|python|rust|git|"
+                       r"paru.*|yay.*|man-db|man-pages|texinfo|nano|vim|neovim|zram-generator|plymouth|fish|bash|zsh)$")
+
+
+def sho(argv, timeout=8):
+    """Only the output of sh() ("" when the program is missing or fails)."""
+    return sh(argv, timeout=timeout)[1]
+
+
+def halcyon_pkgs():
+    """Every package name install.sh can install (install_pkgs lines and the arrays it passes): kept off the list."""
+    names = set()
+    try:
+        text = open(os.path.join(RICE, "install.sh"), encoding="utf-8", errors="replace").read()
+    except OSError:
+        return names
+    chunks = re.findall(r"^\s*install_pkgs\b([^\n]*)", text, re.M) + re.findall(r"\b[A-Z_]+=\(([^)]*)\)", text)
+    for c in chunks:
+        for w in re.split(r"[\s\"']+", c.split("#")[0]):
+            if re.fullmatch(r"[a-z0-9][a-z0-9+._-]+", w):
+                names.add(w)
+    return names
+
+
+def pacdb():
+    """{name: {desc, size, installed, files}} for the installed packages, read straight from pacman's database."""
+    out = {}
+    with contextlib.suppress(OSError):
+        for d in os.listdir(PACDB):
+            base = os.path.join(PACDB, d)
+            try:
+                desc = open(os.path.join(base, "desc"), encoding="utf-8", errors="replace").read()
+            except OSError:
+                continue
+            f = dict(re.findall(r"%([A-Z]+)%\n([^\n]*)", desc))
+            if "NAME" not in f:
+                continue
+            out[f["NAME"]] = {"desc": f.get("DESC", ""), "size": int(f.get("SIZE", "0") or 0), "installed": int(f.get("INSTALLDATE", "0") or 0), "dir": base}
+    return out
+
+
+def pkg_files(dirpath):
+    try:
+        text = open(os.path.join(dirpath, "files"), encoding="utf-8", errors="replace").read()
+    except OSError:
+        return []
+    return ["/" + l for l in text.split("%FILES%", 1)[-1].split("\n") if l and not l.endswith("/") and not l.startswith("%")]
+
+
+def first_installed():
+    """{name: unix time} of each package's first install (pacman.log): an update resets the program's access time, this does not."""
+    first = {}
+    with contextlib.suppress(OSError):
+        for l in open("/var/log/pacman.log", encoding="utf-8", errors="replace"):
+            m = re.match(r"\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)([+-]\d{4})?\] \[ALPM\] installed (\S+) ", l)
+            if m and m.group(3) not in first:
+                with contextlib.suppress(ValueError):
+                    first[m.group(3)] = time.mktime(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S"))
+    return first
+
+
+def own_traces(names):
+    """The newest change in the folders an app writes while you use it (~/.config/<app>, ~/.local/share/<app>, ~/.cache/<app>)."""
+    last = 0
+    for n in names:
+        for base in (".config", ".local/share", ".cache", ".var/app"):
+            for v in {n, n.lower(), n.capitalize()}:
+                with contextlib.suppress(OSError):
+                    last = max(last, os.stat(os.path.join(HOME, base, v)).st_mtime)
+    return last
+
+
+def launch_times():
+    """{desktop id: unix time of the newest start from the launcher} (launch-times.log, written since the launcher logs times)."""
+    t = {}
+    with contextlib.suppress(OSError):
+        for l in open(os.path.join(STATE, "launch-times.log"), encoding="utf-8", errors="replace"):
+            p = l.split(None, 1)
+            if len(p) == 2 and p[0].isdigit():
+                t[p[1].strip().lower()] = max(t.get(p[1].strip().lower(), 0), int(p[0]))
+    return t
+
+
+def launches():
+    """The launcher's start counts (usage.log: one desktop id per launch; no dates)."""
+    n = {}
+    with contextlib.suppress(OSError):
+        for l in open(os.path.join(STATE, "usage.log"), encoding="utf-8", errors="replace"):
+            l = l.strip()
+            if l and not l.startswith("cmd:"):
+                n[l.lower()] = n.get(l.lower(), 0) + 1
+    return n
+
+
+def unused_facts(days=30):
+    now = time.time()
+    db, mine, runs, ran_at = pacdb(), halcyon_pkgs(), launches(), launch_times()
+    explicit = set(sho(["pacman", "-Qetq"], timeout=20).split())      # installed on purpose, nothing needs them
+    items = []
+    first = first_installed()
+    for name in sorted(explicit):
+        p = db.get(name)
+        if not p or name in mine or CORE_PKGS.match(name):
+            continue
+        files = pkg_files(p["dir"])
+        for sub in db:                                      # a split package (vlc = vlc-cli + vlc-gui-qt ...): its programs live in the parts
+            if sub.startswith(name + "-") and sub not in explicit:
+                files += [f for f in pkg_files(db[sub]["dir"]) if f.startswith("/usr/bin/")]
+        bins = [f for f in files if f.startswith("/usr/bin/")]
+        apps = [os.path.basename(f)[:-8].lower() for f in files if f.startswith("/usr/share/applications/") and f.endswith(".desktop")]
+        if not bins and not apps:
+            continue                                        # fonts, themes, libraries: nothing to "open", no usage to read
+        last = 0
+        for b in bins:
+            with contextlib.suppress(OSError):
+                last = max(last, os.stat(b).st_atime)
+        if last <= p["installed"] + 300:                    # not started since it was installed / last updated (relatime: once a day at most)
+            last = 0
+        last = max(last, own_traces([name] + apps), *[ran_at.get(a, 0) for a in apps + [name.lower()]])   # settings / data changed, or started from the launcher
+        n = sum(runs.get(a, 0) for a in apps) + runs.get(name.lower(), 0)
+        since = min(first.get(name, p["installed"]), p["installed"])
+        idle = (now - (last or since)) / 86400
+        if idle < days:
+            continue
+        items.append({"id": "pkg:" + name, "kind": "package", "name": name, "desc": p["desc"], "size_mb": round(p["size"] / 1048576),
+                      "last": int(last) or None, "since": int(since), "idle_days": int(idle), "launches": n,
+                      "cmd": "sudo pacman -Rns " + name})
+    # Flatpak apps: their data folder is touched whenever they run
+    for line in sho(["flatpak", "list", "--app", "--columns=application,name"], timeout=20).splitlines() if have("flatpak") else []:
+        parts = line.split("\t")
+        if not parts or not parts[0]:
+            continue
+        app = parts[0]
+        d = os.path.join(HOME, ".var", "app", app)
+        last = os.stat(d).st_mtime if os.path.isdir(d) else 0
+        idle = (now - last) / 86400 if last else 9999
+        if idle < days:
+            continue
+        items.append({"id": "flatpak:" + app, "kind": "flatpak", "name": parts[1] if len(parts) > 1 else app, "desc": app, "size_mb": None,
+                      "last": int(last) or None, "since": None, "idle_days": int(min(idle, 9999)), "launches": runs.get(app.lower(), 0),
+                      "cmd": "flatpak uninstall " + app})
+    # background services (system and yours) that start by themselves or run now
+    for user in (False, True):
+        base = ["systemctl"] + (["--user"] if user else [])
+        names = set(sho(base + ["list-unit-files", "--type=service", "--state=enabled", "--no-legend", "--plain"], timeout=20).split()[0::3])
+        names |= set(l.split()[0] for l in sho(base + ["list-units", "--type=service", "--state=running", "--no-legend", "--plain"], timeout=20).splitlines() if l.strip())
+        names = sorted(n for n in names if n.endswith(".service") and "@" not in n and not CORE_UNITS.match(n))
+        if not names:
+            continue
+        # services that also come as a .socket can run on demand: the socket listens, the daemon starts at the first use
+        sockets = set(sho(base + ["list-unit-files", "--type=socket", "--no-legend", "--plain"], timeout=20).split()[0::3])
+        show = sho(base + ["show", "-p", "Id,Description,ActiveState,UnitFileState,MemoryCurrent,CPUUsageNSec,ActiveEnterTimestampMonotonic,FragmentPath"] + names, timeout=20)
+        for block in show.split("\n\n"):
+            f = dict(l.split("=", 1) for l in block.splitlines() if "=" in l)
+            if not f.get("Id"):
+                continue
+            owner = sho(["pacman", "-Qoq", f.get("FragmentPath", "")], timeout=10).strip() if f.get("FragmentPath", "").startswith("/usr/") else ""
+            if owner in ("systemd", "dbus", "dbus-broker", "polkit", "networkmanager", "pipewire", "wireplumber", "bluez"):
+                continue
+            if "/Halcyon/" in f.get("FragmentPath", "") or f.get("Description", "").startswith("Halcyon"):
+                continue                                    # Halcyon's own (power manager, gestures ...): Settings switches those
+            mem = int(f["MemoryCurrent"]) if f.get("MemoryCurrent", "").isdigit() else 0
+            cpu = int(f["CPUUsageNSec"]) if f.get("CPUUsageNSec", "").isdigit() else 0
+            running = f.get("ActiveState") == "active"
+            unit = f["Id"]
+            sock = unit[:-8] + ".socket"
+            sc = "systemctl --user" if user else "sudo systemctl"
+            on_demand = sock in sockets and running
+            items.append({"id": ("user:" if user else "svc:") + unit, "on_demand": on_demand, "kind": "user service" if user else "service", "name": unit[:-8],
+                          "desc": f.get("Description", ""), "running": running, "enabled": f.get("UnitFileState") == "enabled",
+                          "mem_mb": round(mem / 1048576) if mem < 1 << 50 else 0, "cpu_s": round(cpu / 1e9) if cpu < 1 << 62 else 0,
+                          "package": owner, "halcyon": owner in mine,
+                          "cmd": (f"{sc} disable --now {unit} && {sc} enable --now {sock}" if on_demand else f"{sc} disable --now {unit}")})
+    return items
+
+
+def unused_rules(it):
+    """The verdict without the model."""
+    if it["kind"] in ("service", "user service"):
+        mem = it.get("mem_mb") or 0
+        what = it["desc"] or it["name"]
+        extra = " Halcyon installed it for sysmode's honeypot: off, that part of sysmode stops working." if it.get("halcyon") else ""
+        if it.get("on_demand"):
+            return "remove", (f"Runs all the time ({mem} MB now) for: {what}. It can start on demand instead: the button keeps it "
+                              f"available but it only runs (and uses memory) while something needs it.")
+        if it.get("running"):
+            return "maybe", f"Runs all the time ({mem} MB now) for: {what}. Turn it off if you do not use that.{extra}"
+        return "maybe", f"Starts with the system ({what}) but is not running now. Turn it off if you do not use it."
+    when = (f"no sign of use since it was installed {it['idle_days']} days ago" if not it.get("last")
+            else f"not used for {it['idle_days']} days")
+    if it.get("launches"):
+        when += f" (the launcher started it {it['launches']}× at some point; older starts have no date)"
+    verdict = "remove" if it["idle_days"] >= 90 and not it.get("launches") else "maybe"
+    size = f", {it['size_mb']} MB" if it.get("size_mb") else ""
+    return verdict, f"{when[:1].upper()}{when[1:]}{size}."
+
+
+def unused_ai(items):
+    """{id: (verdict, what it is for)} from the model. It is only asked what each thing is and whether to keep it: the evidence in
+    the reason is always the measured one (a small model asked for a whole reason made up facts and copied the example)."""
+    lines = []
+    for n, it in enumerate(items, 1):
+        if it["kind"] in ("service", "user service"):
+            lines.append(f"{n}. background service {it['name']}: {it['desc']} ({'running' if it.get('running') else 'not running'}, "
+                         f"{it.get('mem_mb', 0)} MB RAM" + (", can start on demand instead" if it.get("on_demand") else "") + ")")
+        else:
+            lines.append(f"{n}. {it['kind']} {it['name']}: {it['desc']} (not used for {it['idle_days']} days"
+                         + (f"; but started {it['launches']} times from the launcher at an unknown time" if it.get("launches") else "") + ")")
+    system = ("Someone wants to tidy their Arch Linux desktop. For each numbered item say what it is for in 3 to 8 plain words, and a "
+              "verdict: remove (an app or service most people can drop when they do not use it), maybe (they might still want it), "
+              "keep (other things need it: drivers, network, sound, login, the desktop). Judge each item only by its own line. "
+              'Answer JSON: {"items":[{"n":1,"for":"...","verdict":"remove|maybe|keep"}]}')
+    out = generate_json("\n".join(lines), system=system, num_predict=40 * len(items) + 80)
+    by = {}
+    for r in out.get("items", []) if isinstance(out, dict) else []:
+        with contextlib.suppress(TypeError, ValueError, KeyError):
+            it = items[int(r["n"]) - 1]
+            if r.get("verdict") in ("remove", "maybe", "keep"):
+                by[it["id"]] = (r["verdict"], str(r.get("for", "")).strip().rstrip("."))
+    return by
+
+
+UNUSED_REMIND = os.path.join(STATE, "unused-remind")
+
+
+def cmd_unused(args):
+    """unused [--refresh] [--no-ai] [--days N] [--remind]: the list, cached for a day (the scan and the model take a while).
+    --remind (the island, once a day): at most once every 30 days, a notification when something has not been used for 30 days."""
+    if "--remind" in args:
+        with contextlib.suppress(OSError, ValueError):
+            if time.time() - float(open(UNUSED_REMIND).read().strip() or 0) < 30 * 86400:
+                return {"text": ""}
+        res = cmd_unused(["--refresh", "--days", "30"])
+        with contextlib.suppress(OSError):
+            os.makedirs(STATE, exist_ok=True)
+            open(UNUSED_REMIND, "w").write(str(int(time.time())))
+        worth = [it for it in res["items"] if it["verdict"] != "keep"]
+        if worth:
+            names = ", ".join(it["name"] for it in worth[:4]) + (" …" if len(worth) > 4 else "")
+            notify(f"{len(worth)} things you barely use", f"{names}. See the list in Startup & processes > Unused (>startup).", "edit-clear-all")
+        return {"text": res["summary"]}
+    days = int(argval(args, "--days", "30") or 30)
+    if "--refresh" not in args:
+        with contextlib.suppress(OSError, ValueError):
+            c = json.load(open(UNUSED_CACHE, encoding="utf-8"))
+            if time.time() - c.get("at", 0) < 86400 and c.get("days") == days:
+                return c
+    items = unused_facts(days)
+    # the stalest and biggest first; the model only sees the first 30
+    items.sort(key=lambda it: (it["kind"] in ("service", "user service") and not it.get("running"), -(it.get("idle_days") or 0) - (it.get("mem_mb") or 0)))
+    for it in items:
+        it["verdict"], it["why"] = unused_rules(it)
+        it["by"] = "rules"
+    ai_note = ""
+    if "--no-ai" not in args and items:
+        try:
+            by = unused_ai(items[:30])
+            for it in items:
+                if it["id"] in by:
+                    it["verdict"], what = by[it["id"]]
+                    if it.get("on_demand"):
+                        it["verdict"] = "remove"                 # on demand keeps it working: always a safe change
+                    if it["verdict"] == "remove" and it.get("launches"):
+                        it["verdict"] = "maybe"                  # started from the launcher at some point: only you can tell
+                    echo = it["name"].lower() in what.lower() or (it["desc"] and it["desc"][:24].lower() in what.lower())
+                    if what and not echo:                        # a model that only repeats the line adds nothing
+                        it["what"] = what[:1].upper() + what[1:]
+                        it["why"] = it["what"] + ". " + it["why"]
+                    it["by"] = "ai"
+        except (AiOff, Fail) as e:
+            ai_note = str(e)
+    order = {"remove": 0, "maybe": 1, "keep": 2}
+    items.sort(key=lambda it: order.get(it["verdict"], 1))
+    n = sum(1 for it in items if it["verdict"] == "remove")
+    disk = sum(it.get("size_mb") or 0 for it in items if it["verdict"] != "keep")
+    ram = sum(it.get("mem_mb") or 0 for it in items if it["verdict"] != "keep" and it.get("running"))
+    frees = " and ".join(x for x in (f"{disk} MB of disk" if disk else "", f"{ram} MB of memory" if ram else "") if x)
+    summary = (f"{len(items)} things you barely use" + (f", {n} likely safe to remove" if n else "")
+               + (f". Acting on the ones not marked keep frees about {frees}" if frees else "") + "."
+               if items else f"Nothing unused: everything was used in the last {days} days.")
+    text = "\n".join(f"[{it['verdict']}] {it['name']} ({it['kind']}): {it['why']}\n    {it['cmd']}" for it in items)
+    res = {"items": items, "summary": summary, "ai_note": ai_note, "at": int(time.time()), "days": days, "text": summary + ("\n\n" + text if text else "")}
+    with contextlib.suppress(OSError):
+        os.makedirs(CACHE, exist_ok=True)
+        json.dump(res, open(UNUSED_CACHE, "w", encoding="utf-8"))
+    return res
+
+
 # ------------------------------------------------------------------------------------------------ main
 COMMANDS = {"ask": cmd_ask, "howto": cmd_howto, "do": cmd_do, "clip": cmd_clip, "brief": cmd_brief, "explain": cmd_explain,
             "safety": cmd_safety, "organise": cmd_organise, "organize": cmd_organise, "lyrics": cmd_lyrics,
-            "updates": cmd_updates, "study": cmd_study, "commit": cmd_commit}
+            "updates": cmd_updates, "study": cmd_study, "commit": cmd_commit, "unused": cmd_unused}
 
 
 def main(argv):

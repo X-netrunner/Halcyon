@@ -174,14 +174,7 @@ Scope {
                             Layout.fillWidth: true
                             spacing: 10
                             Rectangle { width: 8; height: 8; radius: 4; color: root.pal.accent }
-                            Text {
-                                text: "Screenshot"
-                                color: root.pal.text
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tTitle
-                                font.weight: Font.DemiBold
-                            }
-                            Item { Layout.fillWidth: true }
+                            BoxTitle { pal: root.pal; title: "Screenshot" }
                             RoundBtn {
                                 pal: root.pal
                                 size: 28
@@ -326,13 +319,13 @@ Scope {
                             font.pixelSize: root.pal.tCap
                         }
 
-                        Text {
+                        Hint {
+                            pal: root.pal
                             text: "R  W  F  pick   \u00b7   C  S  B  T  copy / save / both / text   \u00b7   Esc closes   \u00b7   Super + Shift + S still drags a region at once"
                             Layout.fillWidth: true
-                            elide: Text.ElideRight
                             color: Qt.alpha(root.pal.muted, 0.85)
-                            font.family: root.pal.uiFont
-                            font.pixelSize: 10
+                            fontFamily: root.pal.uiFont
+                            pixelSize: 10
                         }
                     }
                 }

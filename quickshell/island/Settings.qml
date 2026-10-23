@@ -659,6 +659,8 @@ Scope {
             { type: "seg", key: "opt:keysStyle", label: "Shortcuts layout", desc: "Tree: every shortcut on a branching tree. Pages: a menu of groups on the left and one group at a time. Same shortcuts in both; the chip in the Shortcuts header switches too.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
             { type: "seg", key: "opt:settingsStyle", label: "Settings layout", desc: "Tree: the branching view. Pages: a menu on the left and one page at a time. Same settings in both.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
             { type: "seg", key: "opt:uiStyle", label: "Interface", desc: "New: the calm redesign. Flat frosted panes with one quiet outline, softer controls without borders, rounder corners, more room, and the moving stars kept but softer. Legacy: the earlier look, with the glass sheen, accent outlines and outlined buttons. Everything follows at once; switch back any time.", opts: [o("new", "New"), o("legacy", "Legacy")] },
+            { type: "toggle", key: "opt:hideHints", label: "Hide explanations", desc: "Once you know your way around: the explanations under settings, the key hints at the bottom of the boxes and the help lines in widgets shrink to a small ? on the side. Hover it (or click it here) to read them again." },
+            { type: "toggle", key: "opt:centerTitles", label: "Centred titles", desc: "Box titles (Notifications, Console, Clipboard, Notes, Settings ...) sit in the middle of their header instead of on the left." },
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
             { type: "seg", key: "opt:surface", label: "Box background", desc: "What every box, the bar and this window are filled with. Wallpaper tint: dark, coloured by the wallpaper and a little see-through. Match wallpaper accent: the same, but the boxes and their outlines take the accent colour of the wallpaper clearly (and follow it while the accent cycles). Matte black: dark grey, solid. Pitch black: true black, solid (best on OLED). The little stars and drifting dots turn up their brightness and keep the accent colour so they still show on black. Dark theme only.", opts: [o("tint", "Wallpaper tint"), o("match", "Match accent"), o("matte", "Matte black"), o("black", "Pitch black")], when: "theme=dark" },
             { type: "slider", key: "rounding", label: "Corner rounding", desc: "Window corners", min: 0, max: 28, step: 1, unit: " px", glyph: 0xF0A39 },
@@ -845,6 +847,7 @@ Scope {
             { type: "toggle", key: "ai:enabled", def: true, label: "AI features", desc: "The master switch for everything that asks a local AI model: the notes overview, task sorting and Organise, the `ai` chat, >ask and >do in the launcher, the clipboard and lyrics helpers, the error explainer, the AI / LLM advisor and the model list below. Off: none of it runs and nothing asks Ollama anything; your notes, settings and downloaded models stay as they are. Ollama itself is not stopped (other programs may use it)." },
             { type: "custom", name: "aiModel", when: "ai:enabled=true", label: "AI advisor model" },
             { type: "toggle", key: "opt:aiBriefCard", def: true, label: "Daily brief card", desc: "Once a day, the first time you use the desktop, a notification sums up your tasks (what is overdue and due today), your notes and your Focus streak. The local AI words it; with AI off it is written plainly from the same facts. The same brief is a desktop widget too (Widget builder > Daily brief). Terminal: halcyon ai brief." },
+            { type: "toggle", key: "opt:unusedRemind", def: true, label: "Monthly unused-apps reminder", desc: "Once a month, a notification when there are programs or background services you have not used for 30 days (Startup & processes > Unused has the list). Nothing is removed by itself." },
             { type: "toggle", key: "opt:aiExplain", def: true, when: "ai:enabled=true", label: "Explain errors", desc: "When a Halcyon service fails, or the island logs a new QML error, the local AI reads the log (and the code at that line) and a notification says what went wrong and the likely fix. Each error is explained once. Nothing leaves this computer. Any time: halcyon ai explain last, and halcyon ai explain show for the full last answer." },
         ] },
         { id: "mouse", title: "Mouse & touchpad", section: "Input & power", items: [
@@ -1339,7 +1342,7 @@ Scope {
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 36 }
                     spacing: 16
                     Text { text: String.fromCodePoint(0xF0493); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
-                    Text { text: "Settings"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
+                    BoxTitle { pal: root.pal; size: 20; overlay: true; title: "Settings" }
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.maximumWidth: 380
@@ -1525,8 +1528,9 @@ Scope {
                                                     readonly property var m: pr.modelData
                                                     readonly property bool off: root.isOff(pr.m)
                                                     readonly property string descText: root.descOf(pr.m)
-                                                    readonly property bool longDesc: descText.length > 80
+                                                    readonly property bool longDesc: root.pal.hideHints && descText !== ""        // Hide explanations: folded behind the ? (hover peeks, click keeps it open)
                                                     property bool descOpen: false
+                                                    property bool descPeek: false
                                                     readonly property bool child: pr.m.when !== undefined && root.query === ""      // depends on the row above: a short branch
                                                     readonly property bool shortSeg: pr.m.type === "seg" && pr.m.opts.length <= 3 && pr.m.opts.every(function (x) { return String(x.t).length <= 14 })
                                                     readonly property bool side: pr.m.type === "toggle" || pr.m.type === "tool" || pr.m.type === "action" || pr.m.type === "slider" || pr.shortSeg
@@ -1570,16 +1574,15 @@ Scope {
                                                                         color: pr.descOpen ? Qt.alpha(root.pal.accent, 0.22) : "transparent"
                                                                         border.width: 1; border.color: pr.descOpen ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
                                                                         Text { anchors.centerIn: parent; text: "?"; color: pr.descOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
-                                                                        MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: pr.descOpen = !pr.descOpen }
+                                                                        MouseArea { anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onContainsMouseChanged: pr.descPeek = containsMouse; onClicked: pr.descOpen = !pr.descOpen }
                                                                     }
                                                                     Item { Layout.fillWidth: true }
                                                                 }
                                                                 Text {
                                                                     Layout.fillWidth: true
-                                                                    visible: text !== ""
+                                                                    // always the whole text; Hide explanations folds it behind the ? (shown while it is hovered or clicked open)
+                                                                    visible: text !== "" && (!pr.longDesc || pr.descOpen || pr.descPeek || (pr.m.dis !== undefined && disMa.containsMouse))
                                                                     text: (pr.m.dis !== undefined && disMa.containsMouse) ? pr.m.dis : pr.descText
-                                                                    maximumLineCount: pr.longDesc && !pr.descOpen ? 1 : 100
-                                                                    elide: pr.longDesc && !pr.descOpen ? Text.ElideRight : Text.ElideNone
                                                                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 12; lineHeight: 1.25; wrapMode: Text.WordWrap
                                                                     MouseArea { anchors.fill: parent; enabled: pr.longDesc; cursorShape: Qt.PointingHandCursor; onClicked: pr.descOpen = !pr.descOpen }
                                                                 }
@@ -1912,8 +1915,9 @@ Scope {
                                                         readonly property bool inline: m.type === "toggle" || m.type === "tool" || m.type === "action"
                                                         // the description as one line; the full text opens with the small "?" (or a click on the line)
                                                         readonly property string descText: root.descOf(leaf.m)
-                                                        readonly property bool longDesc: descText.length > 80
+                                                        readonly property bool longDesc: root.pal.hideHints && descText !== ""        // Hide explanations: folded behind the ? (hover peeks, click keeps it open)
                                                         property bool descOpen: false
+                                                        property bool descPeek: false
                                                         width: leaves.width
                                                         height: Math.max(56, content.implicitHeight + 32)
 
@@ -1968,16 +1972,15 @@ Scope {
                                                                             border.width: 1
                                                                             border.color: leaf.descOpen ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
                                                                             Text { anchors.centerIn: parent; text: "?"; color: leaf.descOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
-                                                                            MouseArea { id: qMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: leaf.descOpen = !leaf.descOpen }
+                                                                            MouseArea { id: qMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onContainsMouseChanged: leaf.descPeek = containsMouse; onClicked: leaf.descOpen = !leaf.descOpen }
                                                                         }
                                                                         Item { Layout.fillWidth: true }
                                                                     }
                                                                     Text {
                                                                         Layout.fillWidth: true
-                                                                        visible: text !== ""
+                                                                        // always the whole text; Hide explanations folds it behind the ? (shown while it is hovered or clicked open)
+                                                                        visible: text !== "" && (!leaf.longDesc || leaf.descOpen || leaf.descPeek || (leaf.m.dis !== undefined && leafDisMa.containsMouse))
                                                                         text: (leaf.m.dis !== undefined && leafDisMa.containsMouse) ? leaf.m.dis : leaf.descText
-                                                                        maximumLineCount: leaf.longDesc && !leaf.descOpen ? 1 : 100
-                                                                        elide: leaf.longDesc && !leaf.descOpen ? Text.ElideRight : Text.ElideNone
                                                                         color: root.pal.muted
                                                                         font.family: root.pal.uiFont
                                                                         font.pixelSize: 11
@@ -2307,6 +2310,8 @@ Scope {
                 open: root.startupOpen && swin.shown
                 onClosed: root.startupOpen = false
                 onPresetPicked: m => root.change("opt:resMode", m)
+                // like the Game Center: this window closes first (it holds the keyboard), then the console opens with the command
+                onConsoleRequested: cmd => { root.startupOpen = false; if (root.env && typeof root.env.consolePrefill === "function") root.env.consolePrefill(cmd) }
             }
         }
     }

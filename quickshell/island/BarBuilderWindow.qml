@@ -447,13 +447,14 @@ Item {
                 Layout.fillWidth: true
                 spacing: 14
                 Rectangle { Layout.alignment: Qt.AlignVCenter; width: 8; height: 8; radius: 4; color: root.pal.accent }
-                Column {
+                BoxTitle {
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: 2
-                    Text { text: "Bar builder"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Text { text: "Drag widgets along the bar to arrange them."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    pal: root.pal
+                    size: 20
+                    subIsHint: true
+                    title: "Bar builder"
+                    sub: "Drag widgets along the bar to arrange them."
                 }
-                Item { Layout.fillWidth: true }
                 ActionChip { pal: root.pal; label: "Reset layout"; doneLabel: "Reset"; onClicked: root.edited(BL.defaults()) }
                 ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
             }
@@ -694,14 +695,14 @@ Item {
                         }
                         Rectangle { width: parent.width; height: 1; color: root.pal.lineSoft }
                         // the picked widget
-                        Text {
+                        Hint {
+                            pal: root.pal
                             visible: root.sel === ""
                             width: parent.width
                             text: "Click a widget on the bar to give it its own padding."
                             color: root.pal.muted
-                            font.family: root.pal.uiFont
-                            font.pixelSize: root.pal.tCap
-                            font.italic: true
+                            fontFamily: root.pal.uiFont
+                            pixelSize: root.pal.tCap
                         }
                         Flow {
                             visible: root.sel !== ""
@@ -768,7 +769,7 @@ Item {
                 color: root.pal.muted
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tCap
-                elide: Text.ElideRight
+                wrapMode: Text.Wrap
             }
         }
 

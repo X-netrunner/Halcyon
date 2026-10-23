@@ -184,11 +184,13 @@ Item {
                 Layout.fillWidth: true
                 spacing: 14
                 Rectangle { Layout.alignment: Qt.AlignVCenter; width: 8; height: 8; radius: 4; color: root.pal.accent }
-                Column {
+                BoxTitle {
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: 2
-                    Text { text: "Widget builder"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Text { text: root.lockT ? "Your lock screen's widgets. Nothing on them can be clicked while it is locked." : "Pick a widget on the left, shape it on the right."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    pal: root.pal
+                    size: 20
+                    subIsHint: true
+                    title: "Widget builder"
+                    sub: root.lockT ? "Your lock screen's widgets. Nothing on them can be clicked while it is locked." : "Pick a widget on the left, shape it on the right."
                 }
                 SegSwitch {
                     Layout.alignment: Qt.AlignVCenter
@@ -197,7 +199,6 @@ Item {
                     current: root.target
                     onPicked: k => root.targetPicked(k)
                 }
-                Item { Layout.fillWidth: true }
                 ActionChip { pal: root.pal; label: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"; onClicked: root.editOnDesktop(root.target) }
                 ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
             }

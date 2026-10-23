@@ -48,14 +48,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            Text {
-                text: root.title
-                color: root.pal.text
-                font.family: root.pal.uiFont
-                font.pixelSize: pal.tBody
-                font.weight: Font.DemiBold
-            }
-            Item { Layout.fillWidth: true }
+            BoxTitle { pal: root.pal; size: root.pal.tBody; title: root.title }
             Row {
                 visible: root.scanning
                 spacing: 5
@@ -174,7 +167,7 @@ Rectangle {
                         Text {
                             visible: row.heading
                             anchors { left: parent.left; leftMargin: 6; bottom: parent.bottom; bottomMargin: 3 }
-                            text: String(root.pal.calm ? (row.modelData.section) : (row.modelData.section).toUpperCase())
+                            text: root.pal.calm ? String(row.modelData.section || "") : String(row.modelData.section || "").toUpperCase()     // ordinary rows have no section
                             color: root.pal.muted
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.calm ? 11 : 9

@@ -272,6 +272,10 @@ EOF
 
 start_cowrie() {
     command -v docker >/dev/null 2>&1 || { echo "[!] docker not available; keeping banner decoy on port 22"; return 1; }
+    # docker runs on demand (docker.socket starts it on this first call); with neither the socket nor the service enabled, start it
+    if ! docker info >/dev/null 2>&1; then
+        systemctl start docker.service >/dev/null 2>&1 || true
+    fi
     if ! docker info >/dev/null 2>&1; then
         echo "[!] docker daemon not running; keeping banner decoy on port 22"
         return 1

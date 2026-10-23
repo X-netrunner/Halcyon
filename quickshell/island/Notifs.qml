@@ -35,6 +35,8 @@ Scope {
     property int critSecs: 30               // Settings > Notifications > "Urgent popups": seconds before an urgent popup hides itself (0 = waits for a click)
     property bool dnd: false
     property bool fsQuiet: false            // a window is fullscreen (shell.qml): popups stay quiet like Do not disturb, but Halcyon's own and urgent ones show
+    property bool gameQuiet: false          // a game is fullscreen (shell.qml): no popup at all, not even Halcyon's own or urgent ones; all still go to the centre
+    property bool asleep: false             // a window is fullscreen (shell.qml): the edge strip ignores the pointer, so the centre never slides over it
     property var layout: null               // opt.notifLayout: the notification box builder's layout (NotifLayout.js)
     readonly property var cfg: NL.normalize(layout)
     property string look: "stack"           // Settings > Panels & notifications > Notification style: stack | timeline | grouped
@@ -153,11 +155,13 @@ Scope {
     //   after closing, the strip ignores the pointer for a short while (lockT)
     function setHover(on) {
         if (!edgeOn) return
+        if (on && asleep) return
         if (!on && cycling) return          // the window is being re-mapped by raise(): that is not the pointer leaving
         if (on) { closeT.stop(); if (!clickMode && !centerOpen && !lockT.running) openT.restart() }
         else { openT.stop(); if (centerOpen && (!clickMode || autoHide)) { closeT.interval = 700; closeT.restart() } }
     }
     onEdgeOnChanged: if (!edgeOn) { openT.stop(); closeT.stop(); centerOpen = false }
+    onAsleepChanged: if (asleep) { openT.stop(); closeT.stop(); centerOpen = false }
     function toggleCenter() {
         if (!edgeOn) return
         if (centerOpen) { closeT.stop(); centerOpen = false }
@@ -176,12 +180,13 @@ Scope {
     onCenterOpenChanged: { if (centerOpen) { unread = 0; hideToasts() } else { openT.stop(); lockT.restart() } }
     onDndChanged: if (dnd) hideToasts()
     onFsQuietChanged: if (fsQuiet) hideToasts()
+    onGameQuietChanged: if (gameQuiet) hideToasts()
 
     // ---------- a new notification ----------
     function add(n) {
         var critical = n.urgency === NotificationUrgency.Critical
         var quiet = dnd || (fsQuiet && n.appName !== "Halcyon")
-        var toast = !centerOpen && (!quiet || critical)
+        var toast = !centerOpen && !gameQuiet && (!quiet || critical)
         var keep = true                          // transient ones are stored too
 
         if (!keep && !toast) { n.dismiss(); return }
@@ -293,8 +298,8 @@ Scope {
             anchors.bottom: root.atB ? parent.bottom : undefined
             anchors.topMargin: root.corner ? 0 : (root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
             anchors.bottomMargin: root.corner ? 0 : (!root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
-            width: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 22) : (root.clickMode ? 16 : 12)
-            height: !root.edgeOn ? 0 : root.corner ? (root.clickMode ? 28 : 22) : 260
+            width: !root.edgeOn || root.asleep ? 0 : root.corner ? (root.clickMode ? 28 : 22) : (root.clickMode ? 16 : 12)
+            height: !root.edgeOn || root.asleep ? 0 : root.corner ? (root.clickMode ? 28 : 22) : 260
             clickMode: root.clickMode
             onHoverChanged: on => root.setHover(on)
             onTapped: root.toggleCenter()

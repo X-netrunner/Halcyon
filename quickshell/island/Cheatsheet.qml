@@ -291,7 +291,7 @@ Scope {
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 26 }
                     spacing: 14
                     Text { text: String.fromCodePoint(0xF030C); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
-                    Text { text: "Shortcuts"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold }
+                    BoxTitle { pal: root.pal; size: 20; overlay: true; title: "Shortcuts" }
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.maximumWidth: 420

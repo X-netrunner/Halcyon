@@ -11,6 +11,7 @@ WBase {
 
     readonly property bool events: opt("events", false) === true
     readonly property bool addRow: opt("add", true) === true
+    readonly property bool quietHints: !!(pal && pal.hideHints)     // Settings > Look > Hide explanations: no "Super + N ..." line, the add row is just a small +
     function dueOf(ts) {                       // "18:00" today, "Tomorrow 09:00", "20 Oct 14:30"
         var d = new Date(ts * 1000), t0 = new Date(); t0.setHours(0, 0, 0, 0)
         var day = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - t0.getTime()) / 86400000)
@@ -153,19 +154,19 @@ WBase {
                             onClicked: { Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-notes.py", "done", modelData.id]); root.lastNotes = ""; root.refresh() }
                         }
                     }
-                    WLbl { id: ln; b: root; width: parent.width - root.sz(20); color: modelData.kind === "task" ? (modelData.overdue ? Qt.tint(root.fg, Qt.alpha("#ff6b6b", 0.35)) : root.fg) : root.fg; text: modelData.t; elide: Text.ElideRight; font.pixelSize: root.sz(12); anchors.verticalCenter: parent.verticalCenter }
+                    WLbl { id: ln; b: root; width: parent.width - root.sz(20); color: modelData.kind === "task" ? (modelData.overdue ? Qt.tint(root.fg, Qt.alpha("#ff6b6b", 0.35)) : root.fg) : root.fg; text: modelData.t; wrapMode: Text.Wrap; font.pixelSize: root.sz(12); anchors.verticalCenter: parent.verticalCenter }
                 }
             }
         }
         Rectangle {      // opens the real new-note panel; nothing is typed in the widget
             visible: root.addRow
-            width: parent.width
+            width: root.quietHints ? height : parent.width
             height: addTxt.implicitHeight + root.sz(10)
             radius: root.sz(10)
             color: addMa.containsMouse ? Qt.alpha(root.accent, 0.18) : Qt.alpha(root.fg, 0.05)
             border.width: 1
             border.color: Qt.alpha(root.accent, addMa.containsMouse ? 0.5 : 0.22)
-            WLbl { id: addTxt; b: root; anchors.centerIn: parent; text: "+  Add a note"; color: root.accent; font.pixelSize: root.sz(11) }
+            WLbl { id: addTxt; b: root; anchors.centerIn: parent; text: root.quietHints ? "+" : "+  Add a note"; color: root.accent; font.pixelSize: root.sz(11) }
             MouseArea {
                 id: addMa
                 anchors.fill: parent
@@ -176,6 +177,6 @@ WBase {
             }
         }
         WLbl { b: root; visible: root.hiddenCount > 0; text: "+" + root.hiddenCount + " more"; color: root.dim; font.pixelSize: root.sz(10) }
-        WLbl { b: root; visible: root.lines.length === 0; width: parent.width; text: "Nothing to show. Super + N adds a note."; color: root.dim; font.pixelSize: root.sz(11); wrapMode: Text.WordWrap }
+        WLbl { b: root; visible: root.lines.length === 0; width: parent.width; text: root.quietHints ? "Nothing to show" : "Nothing to show. Super + N adds a note."; color: root.dim; font.pixelSize: root.sz(11); wrapMode: Text.WordWrap }
     }
 }

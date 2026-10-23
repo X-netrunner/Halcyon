@@ -155,7 +155,7 @@ ColumnLayout {
                 Text {
                     Layout.fillWidth: true
                     text: root.cmd !== "" ? "Now: " + root.cmd : "Pick the app to open"
-                    elide: Text.ElideRight
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                     color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                 }
                 Loader {

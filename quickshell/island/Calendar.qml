@@ -618,12 +618,21 @@ Scope {
                     BarStars { anchors.fill: parent; anchors.margins: 12; pal: root.pal; count: root.flyCount; loopMs: root.flyLoop; sizeScale: 1.3; active: root.open; visible: root.open && root.flyCount > 0 }
 
                     // ---------------- header
+                    // Centred titles: the month goes on its own line in the middle, above the buttons (the row has no free middle)
+                    Text {
+                        visible: root.pal.centerTitles
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: 22
+                        text: root.ready ? Qt.formatDate(new Date(root.viewY, root.viewM, 1), "MMMM yyyy") : "Calendar"
+                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                    }
                     RowLayout {
                         id: head
-                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 24 }
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 24; topMargin: root.pal.centerTitles ? 60 : 24 }
                         spacing: 10
                         Text { text: String.fromCodePoint(0xF00ED); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
                         Text {
+                            visible: !root.pal.centerTitles
                             text: root.ready ? Qt.formatDate(new Date(root.viewY, root.viewM, 1), "MMMM yyyy") : "Calendar"
                             color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
                             Layout.preferredWidth: 175
@@ -784,14 +793,14 @@ Scope {
                                         width: parent.width
                                         text: root.nextUp ? root.nextUp.title : "Nothing coming up"
                                         color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
+                                        wrapMode: Text.Wrap
                                     }
                                     Text {
                                         width: parent.width
                                         visible: !!root.nextUp
                                         text: root.nextUp ? root.rel(root.nextUp) + (root.nextUp.loc ? "  ·  " + root.nextUp.loc : "") : ""
                                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
-                                        elide: Text.ElideRight
+                                        wrapMode: Text.Wrap
                                     }
                                 }
                             }

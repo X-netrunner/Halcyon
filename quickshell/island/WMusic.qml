@@ -101,7 +101,7 @@ WBase {
                 width: root.lw - root.sz(96) - root.sz(16)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: root.sz(2)
-                WLbl { b: root; width: parent.width; text: root.has ? (root.pl.trackTitle || "Unknown") : "Nothing playing"; elide: Text.ElideRight; font.pixelSize: root.sz(17); font.weight: Font.DemiBold }
+                ScrollText { width: parent.width; WLbl { b: root; text: root.has ? (root.pl.trackTitle || "Unknown") : "Nothing playing"; font.pixelSize: root.sz(17); font.weight: Font.DemiBold } }
                 WLbl { b: root; width: parent.width; text: root.has ? (root.pl.trackArtist || "") : "Start some music"; elide: Text.ElideRight; color: root.dim; font.pixelSize: root.sz(13) }
                 Loader { visible: root.showBar; width: parent.width; sourceComponent: progressC }
                 Loader { visible: root.showBtn; sourceComponent: btnRow }
@@ -122,7 +122,7 @@ WBase {
                 width: root.lw - root.sz(46) - root.sz(12) - (root.showBtn ? root.sz(52) : 0)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 1
-                WLbl { b: root; width: parent.width; text: root.has ? (root.pl.trackTitle || "Unknown") : "Nothing playing"; elide: Text.ElideRight; font.pixelSize: root.sz(14); font.weight: Font.DemiBold }
+                ScrollText { width: parent.width; WLbl { b: root; text: root.has ? (root.pl.trackTitle || "Unknown") : "Nothing playing"; font.pixelSize: root.sz(14); font.weight: Font.DemiBold } }
                 WLbl { b: root; width: parent.width; text: root.has ? (root.pl.trackArtist || "") : ""; elide: Text.ElideRight; color: root.dim; font.pixelSize: root.sz(12) }
             }
             Rectangle {
@@ -149,7 +149,7 @@ WBase {
             Column {
                 anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: root.sz(12)
                 spacing: 0
-                WLbl { b: root; width: parent.width; text: root.has ? (root.pl.trackTitle || "Unknown") : "Nothing playing"; elide: Text.ElideRight; color: "white"; font.pixelSize: root.sz(15); font.weight: Font.DemiBold }
+                ScrollText { width: parent.width; WLbl { b: root; text: root.has ? (root.pl.trackTitle || "Unknown") : "Nothing playing"; color: "white"; font.pixelSize: root.sz(15); font.weight: Font.DemiBold } }
                 WLbl { b: root; width: parent.width; text: root.has ? (root.pl.trackArtist || "") : ""; elide: Text.ElideRight; color: Qt.rgba(1, 1, 1, 0.75); font.pixelSize: root.sz(12) }
             }
             Rectangle { anchors.left: parent.left; anchors.bottom: parent.bottom; height: 3; width: parent.width * root.frac; color: root.accent; visible: root.showBar }

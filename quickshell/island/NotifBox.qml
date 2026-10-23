@@ -97,24 +97,12 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                ColumnLayout {
-                    spacing: 0
-                    Text {
-                        text: "Notifications"
-                        color: box.pal.text
-                        font.family: box.pal.uiFont
-                        font.pixelSize: box.pal.tTitle
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        text: box.history.length === 0 ? "You are all caught up"
-                            : box.history.length + (box.history.length === 1 ? " notification" : " notifications") + (box.dnd ? "  ·  muted" : "")
-                        color: box.pal.muted
-                        font.family: box.pal.uiFont
-                        font.pixelSize: box.pal.tCap
-                    }
+                BoxTitle {
+                    pal: box.pal
+                    title: "Notifications"
+                    sub: box.history.length === 0 ? "You are all caught up"
+                        : box.history.length + (box.history.length === 1 ? " notification" : " notifications") + (box.dnd ? "  ·  muted" : "")
                 }
-                Item { Layout.fillWidth: true }
                 Chip {
                     Layout.preferredHeight: 30
                     pal: box.pal

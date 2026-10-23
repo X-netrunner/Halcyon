@@ -2,11 +2,13 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 
-// The "now playing" overlay for the game launcher (hgl). While a game runs it is a small chip in a corner of the screen (the game
-// glyph and how long it has been running, a red dot while recording) that fades back after a few seconds so it stays out of the
-// way. A click opens it: Record, Screenshot, Discord (open it to go live / share the game in a call), Mic, Do not disturb,
-// Move (to the next corner, remembered as opt.gamePillCorner) and Stop. It closes again after a while without the pointer on it,
-// or on a click on its header. It never takes the keyboard (the game keeps it) and is click-through outside the chip / panel.
+// The "now playing" overlay for the game launcher (hgl), like the Xbox game bar's tab. While a game runs it is a tab tucked into
+// the left (or right) edge of the screen: only a thin sliver shows. Touch it and the chip slides out (the game glyph and how long
+// it has been running, a red dot while recording); it tucks back in once the pointer leaves. A click opens it: Record, Screenshot,
+// Discord (open it to go live / share the game in a call), Mic, Do not disturb, Move (to the other edge, remembered as
+// opt.gamePillSide) and Stop. It closes again after a while without the pointer on it, or on a click on its header. It sits on the
+// Overlay layer so it is there over a fullscreen game too, never takes the keyboard (the game keeps it) and is click-through
+// outside the tab / panel.
 // shell.qml feeds it from `island gamestart / gameend` (IPC, called by `hgl run`); Stop asks shell.qml to run `hgl stop`.
 // No game running = no window at all (LazyLoader), so it costs nothing when you are not playing.
 Scope {
@@ -21,9 +23,7 @@ Scope {
     property bool expanded: false
     signal stopRequested()
 
-    readonly property string corner: (env && env.opt && env.opt.gamePillCorner) || "tr"     // tr | tl | br | bl
-    readonly property bool top: corner.charAt(0) === "t"
-    readonly property bool right: corner.charAt(1) === "r"
+    readonly property bool right: !!(env && env.opt && env.opt.gamePillSide === "r")     // l (default) | r
     readonly property bool recording: !!(env && env.isRecording)
     readonly property bool micMuted: !!(env && env.micMuted)
     readonly property bool dnd: !!(env && env.dnd)
@@ -38,9 +38,8 @@ Scope {
         function p(n) { return (n < 10 ? "0" : "") + n }
         return h > 0 ? h + ":" + p(m) + ":" + p(r) : p(m) + ":" + p(r)
     }
-    function nextCorner() {
-        var order = ["tr", "br", "bl", "tl"]
-        if (env && typeof env.setOpt === "function") env.setOpt("gamePillCorner", order[(order.indexOf(corner) + 1) % 4])
+    function otherSide() {
+        if (env && typeof env.setOpt === "function") env.setOpt("gamePillSide", right ? "l" : "r")
     }
     function act(id) {
         switch (id) {
@@ -55,7 +54,7 @@ Scope {
             break
         case "mic": Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]); break
         case "dnd": if (env) env.setDnd(!env.dnd); break
-        case "move": nextCorner(); break
+        case "move": otherSide(); break
         case "stop": root.expanded = false; root.stopRequested(); break
         }
     }
@@ -64,14 +63,13 @@ Scope {
         active: root.running && root.enabled
         PanelWindow {
             id: win
-            anchors { top: root.top; bottom: !root.top; left: !root.right; right: root.right }
-            margins { top: 52; bottom: 18; left: 18; right: 18 }
-            implicitWidth: 300
-            implicitHeight: 260
+            // the whole height of the edge, fixed size: the tab and the panel move inside it, the mask keeps the rest click-through
+            anchors { top: true; bottom: true; left: !root.right; right: root.right }
+            implicitWidth: 300 + 12
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.namespace: "island-game"
-            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             mask: Region { item: root.expanded ? panel : chip }
 
@@ -80,29 +78,62 @@ Scope {
                 interval: 1000; repeat: true; running: true; triggeredOnStart: true
                 onTriggered: root.nowSecs = Date.now() / 1000
             }
-            // the chip fades back after 4 s; the open panel closes after 8 s without the pointer on it
-            property bool awake: true
-            Timer { id: sleepT; interval: 4000; running: true; onTriggered: win.awake = false }
+            // out = the chip has slid out of the edge. It shows for a few seconds when the game starts (so you know where it is),
+            // then tucks in; touching the sliver brings it out after a short moment (a pointer flicking past does not), and it
+            // tucks back in a little after the pointer has left. The open panel closes after 8 s without the pointer on it.
+            property bool out: true
+            Timer { id: tuckT; interval: 4000; running: true; onTriggered: if (!chipHover.hovered) win.out = false }
+            Timer { id: peekT; interval: 180; onTriggered: if (chipHover.hovered) win.out = true }
             Timer { id: closeT; interval: 8000; running: root.expanded && !panelHover.hovered; onTriggered: root.expanded = false }
+            // the panel closed (its header, Stop, the 8 s timer): the tab tucks back in soon after
+            Connections {
+                target: root
+                function onExpandedChanged() { if (!root.expanded) { tuckT.interval = 1200; tuckT.restart() } }
+            }
+            readonly property int sliver: 5           // what is left of the tab on screen while it is tucked in
+            readonly property int tabY: Math.round(height * 0.3)
 
-            // ---- the chip
+            // ---- the tab (the chip, tucked into the edge)
             Glass {
                 id: chip
                 visible: !root.expanded
                 pal: root.pal
-                height: 34
-                radius: 17
-                width: chipRow.implicitWidth + 24
-                x: root.right ? win.width - width : 0
-                y: root.top ? 0 : win.height - height
+                height: 38
+                radius: 12
+                width: chipRow.implicitWidth + 30
+                readonly property real shown: win.out ? width : win.sliver
+                x: root.right ? win.width - shown : shown - width
+                Behavior on x { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                y: win.tabY
                 opacityBody: root.pal.glassSolid
-                opacity: win.awake || chipHover.hovered || root.recording ? 1 : 0.4
-                Behavior on opacity { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
-                HoverHandler { id: chipHover; onHoveredChanged: if (hovered) { win.awake = true; sleepT.restart() } }
+                opacity: win.out ? 1 : 0.55
+                Behavior on opacity { NumberAnimation { duration: 220 } }
+                HoverHandler {
+                    id: chipHover
+                    onHoveredChanged: {
+                        if (hovered) { tuckT.stop(); if (!win.out) peekT.restart() }
+                        else { peekT.stop(); tuckT.interval = 700; tuckT.restart() }
+                    }
+                }
+                // the sliver: an accent line along the screen edge (red while recording) so the tab can be found
+                Rectangle {
+                    x: root.right ? 1 : parent.width - width - 1
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 3
+                    height: parent.height - 14
+                    radius: 1.5
+                    color: root.recording ? "#e5484d" : root.pal.accent
+                    opacity: win.out ? 0 : 0.9
+                    Behavior on opacity { NumberAnimation { duration: 180 } }
+                }
                 Row {
                     id: chipRow
                     anchors.centerIn: parent
+                    // keeps clear of the screen edge side, where the rounded end is hidden
+                    anchors.horizontalCenterOffset: root.right ? -3 : 3
                     spacing: 7
+                    opacity: win.out ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 180 } }
                     Rectangle {
                         visible: root.recording
                         anchors.verticalCenter: parent.verticalCenter
@@ -123,7 +154,7 @@ Scope {
                         font.pixelSize: 12
                     }
                 }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.expanded = true }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { win.out = true; root.expanded = true } }
             }
 
             // ---- the open panel
@@ -131,11 +162,12 @@ Scope {
                 id: panel
                 visible: root.expanded
                 pal: root.pal
-                width: win.width
+                width: 300
                 height: col.implicitHeight + 24
                 radius: 18
-                x: 0
-                y: root.top ? 0 : win.height - height
+                // next to the edge, level with the tab (kept on screen)
+                x: root.right ? win.width - width - 12 : 12
+                y: Math.max(12, Math.min(win.tabY - 12, win.height - height - 12))
                 opacityBody: root.pal.glassSolid
                 HoverHandler { id: panelHover }
 
