@@ -68,14 +68,17 @@ All of these are in Settings > Performance & memory and Settings > Appearance.
 
 ## Install
 
-On Arch (or CachyOS, EndeavourOS, Manjaro...), as your normal user:
+**Requirements:** an Arch-based distro (Arch, CachyOS, EndeavourOS, Manjaro...) and Hyprland 0.56 or newer (the config is written in
+Lua). Developed and tested on Arch with Hyprland 0.56.2. The installer also has a Debian/Ubuntu path, but it is less tested.
+
+As your normal user:
 
 ```bash
 curl -fsSL https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh | bash
 ```
 
 It asks a few short questions (browser, file manager, editor, whether you want the optional extras) and asks for your password only when a
-step needs it. Then pick the **Halcyon** session on your login screen. Prefer to read it first? Run `git clone` and `./install.sh --dry-run`.
+step needs it. If you already have a Halcyon folder, the old copy is backed up to `~/.config/Halcyon-backups` first. Then pick the **Halcyon** session on your login screen. Prefer to read it first? Run `git clone` and `./install.sh --dry-run`.
 The dry run shows every step and changes nothing.
 
 **Optional extras you choose at install time:**
@@ -109,7 +112,8 @@ previous version.
 ## Something not working?
 
 Run `~/.config/Halcyon/scripts/halcyon-doctor.sh` and it tells you what's wrong. Games have their own check in Game Center > Doctor.
-Please open an [issue](https://github.com/X-netrunner/Halcyon/issues) with what it says.
+Please open an [issue](https://github.com/X-netrunner/Halcyon/issues/new/choose) with what it says. Questions and screenshots of
+your setup are welcome in [Discussions](https://github.com/X-netrunner/Halcyon/discussions). Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Learn more
 
