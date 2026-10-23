@@ -8,6 +8,11 @@ always-on helpers are written in Rust.
 
 <!-- A video or GIF of Halcyon in action can go here -->
 
+
+https://github.com/user-attachments/assets/3d7ee31b-4e79-46b0-b3ed-76e93069f8ec
+
+
+
 ## What you get
 
 Everything below is how Halcyon looks right after installing, before you change anything.
