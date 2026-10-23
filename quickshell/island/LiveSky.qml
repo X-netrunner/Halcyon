@@ -201,6 +201,9 @@ Item {
             y: parent.height / 2 + root.markRadius * 0.98 - height / 2
             onPaint: {
                 var ctx = getContext("2d")
+                // the context keeps its transform between paints: start from none, or every repaint (colours, size) shifted the
+                // star again and left the old one behind (a clipped corner next to it)
+                ctx.setTransform(1, 0, 0, 1, 0, 0)
                 ctx.clearRect(0, 0, width, height)
                 var rv = root.markRadius * 0.15, rh = root.markRadius * 0.13, c = Math.min(rv, rh) * 0.12
                 ctx.translate(width / 2, height / 2)
