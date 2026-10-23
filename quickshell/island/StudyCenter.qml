@@ -17,6 +17,7 @@ Scope {
     property bool open: false
     property string tab: "ask"              // ask | summary | quiz | cards
     signal focusRequested(string what)      // the window's own fields take the keyboard (ids inside the LazyLoader are not reachable)
+    signal consoleRequested(string cmd)     // a model download runs in the pop-out console (it shows the progress)
 
     readonly property string script: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-study.py"
     readonly property var exts: ["pdf", "docx", "pptx", "odt", "odp", "epub", "md", "markdown", "txt", "rst", "org", "tex", "csv",
@@ -38,7 +39,75 @@ Scope {
     property bool noteBad: false
 
     // ---- ask
-    property var msgs: []                   // { role: "you" | "ai", text, sources: [], live: bool, bad: bool }
+    property var msgs: []                   // { role: "you" | "ai", text, sources: [], live, bad, model, secs, why, route, think }
+    property int askSecs: 0                 // how long the answer being written has taken so far
+    Timer { interval: 1000; repeat: true; running: root.asking; onTriggered: root.askSecs++ }
+
+    // ---- the Study Center's own model (halcyon-study.py models / use): Auto routes each question, or one you pick
+    property var models: []
+    property var suggest: []
+    property string choice: "auto"
+    property string reason: "auto"          // step-by-step thinking: auto | always | never
+    property string prefer: "balanced"      // what Auto favours: balanced | quality | speed
+    property string autoFast: ""
+    property string autoDeep: ""
+    property real vram: 0
+    property real ram: 0
+    property bool modelsOk: true
+    property bool modelsOpen: false
+    readonly property string choiceLabel: choice === "auto" ? "Auto" : shortName(choice)
+    function shortName(n) { n = String(n || ""); n = n.replace(/:latest$/, ""); var i = n.lastIndexOf("/"); return i >= 0 ? n.substring(i + 1) : n }
+    function loadModels() { if (!modelsProc.running) modelsProc.running = true }
+    Process {
+        id: modelsProc
+        command: ["python3", root.script, "models", "--json"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var o = JSON.parse(text)
+                    root.modelsOk = o.ok !== false
+                    root.models = o.models || []
+                    root.suggest = o.suggest || []
+                    root.choice = o.choice || "auto"
+                    root.reason = o.reason || "auto"
+                    root.prefer = o.prefer || "balanced"
+                    root.autoFast = o.auto ? (o.auto.fast || "") : ""
+                    root.autoDeep = o.auto ? (o.auto.deep || "") : ""
+                    root.vram = o.vram || 0
+                    root.ram = o.ram || 0
+                } catch (e) {}
+            }
+        }
+    }
+    Process { id: useProc; onExited: root.loadModels() }
+    function useModel(args) {
+        if (useProc.running) return
+        useProc.command = ["python3", script, "use"].concat(args)
+        useProc.running = true
+    }
+    function pickModel(n) { choice = n; useModel([n]) }
+    function setReason(r) { reason = r; useModel(["--reason", r]) }
+    function setPrefer(p) { prefer = p; useModel(["--prefer", p]) }
+    function pull(n) { hide(); consoleRequested("ollama pull " + n) }
+
+    // ---- the saved conversation: shown again when the window opens
+    Process {
+        id: chatProc
+        command: ["python3", root.script, "chat", "--json"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (root.msgs.length > 0 || root.asking) return
+                try {
+                    var t = JSON.parse(text).turns || [], m = []
+                    for (var i = 0; i < t.length; i++) {
+                        m.push({ role: "you", text: t[i].q })
+                        m.push({ role: "ai", text: t[i].a || "", sources: t[i].sources || [], live: false, bad: false, model: t[i].model || "", secs: t[i].secs || 0, why: "", route: "", think: "" })
+                    }
+                    root.msgs = m
+                } catch (e) {}
+            }
+        }
+    }
     property string status: ""              // "looking through your files" ...
 
     // ---- summary / quiz / cards: the last result per tab
@@ -49,6 +118,50 @@ Scope {
     property int cardIdx: 0
     property bool cardBack: false
     property var shown: ({})                // quiz: the answers turned over (index -> true)
+    property var grades: ({})               // quiz: your own answers, marked (index -> { verdict, feedback })
+    property int gradingIdx: -1
+    property var known: ({})                // flashcards you knew (index -> true): they leave the round
+    readonly property int knownCount: { var n = 0; for (var k in known) if (known[k]) n++; return n }
+    function grade(i, mine) {
+        var it = made.quiz ? made.quiz.items[i] : null
+        if (!it || String(mine).trim() === "" || gradeProc.running) return
+        gradingIdx = i
+        gradeProc.command = ["python3", script, "grade", "--json", "--q", it.q, "--key", it.a, "--mine", String(mine)]
+        gradeProc.running = true
+    }
+    Process {
+        id: gradeProc
+        stdout: SplitParser {
+            onRead: d => {
+                var o = null
+                try { o = JSON.parse(d) } catch (e) { return }
+                var c = {}
+                for (var k in root.grades) c[k] = root.grades[k]
+                if (o.type === "graded") c[root.gradingIdx] = { verdict: o.verdict, feedback: o.feedback }
+                else if (o.type === "error") c[root.gradingIdx] = { verdict: "error", feedback: o.error }
+                root.grades = c
+            }
+        }
+        onExited: root.gradingIdx = -1
+    }
+    // the next card you do not know yet (wrapping round); -1 when you know them all
+    function nextCard(step) {
+        var it = made.cards ? made.cards.items : []
+        for (var d = 1; d <= it.length; d++) {
+            var j = ((cardIdx + step * d) % it.length + it.length) % it.length
+            if (!known[j]) return j
+        }
+        return -1
+    }
+    function markCard(knew) {
+        var c = {}
+        for (var k in known) c[k] = known[k]
+        if (knew) c[cardIdx] = true
+        known = c
+        var n = nextCard(1)
+        cardBack = false
+        if (n >= 0) cardIdx = n
+    }
 
     readonly property bool asking: askProc.running
     readonly property bool making: makeProc.running
@@ -59,9 +172,11 @@ Scope {
         open = true
         note = ""
         reload()
+        loadModels()
+        if (msgs.length === 0 && !chatProc.running) chatProc.running = true
         if (tab !== "ask") loadSaved()
     }
-    function hide() { open = false; pickerOpen = false; confirmRm = "" }
+    function hide() { open = false; pickerOpen = false; confirmRm = ""; modelsOpen = false }
     function toggle() { if (open) hide(); else show("") }
     function setTab(t) {
         tab = t
@@ -187,17 +302,20 @@ Scope {
     Timer { id: rmT; interval: 400; onTriggered: root.reload() }
     function openDoc(id, page) { Quickshell.execDetached(["python3", script, "open", id].concat(page ? [String(page)] : [])) }
 
-    function ask(q) {
+    // model: "" = Auto / the picked one, "best" = the best model (the "Ask the best model" link under a quick answer)
+    function ask(q, model) {
         q = String(q || "").trim()
         if (q === "" || asking) return
         if (docs.length === 0) { flash("Add a file first: the answers come from your files", true); return }
         var hist = []
         for (var i = 0; i + 1 < msgs.length; i++)
-            if (msgs[i].role === "you" && msgs[i + 1].role === "ai" && !msgs[i + 1].bad) hist.push({ q: msgs[i].text, a: msgs[i + 1].text })
+            if (msgs[i].role === "you" && msgs[i + 1].role === "ai" && !msgs[i + 1].bad) hist.push({ q: msgs[i].text, a: msgs[i + 1].text, model: msgs[i + 1].model || "" })
         hist = hist.slice(-3)
-        msgs = msgs.concat([{ role: "you", text: q }, { role: "ai", text: "", sources: [], live: true, bad: false }])
+        msgs = msgs.concat([{ role: "you", text: q }, { role: "ai", text: "", sources: [], live: true, bad: false, model: "", secs: 0, why: "", route: "", think: "" }])
         status = "looking through your files"
-        askProc.command = ["python3", script, "ask", "--json"].concat(docArgs()).concat(["--history", JSON.stringify(hist), "--", q])
+        askSecs = 0
+        askProc.command = ["python3", script, "ask", "--json"].concat(docArgs()).concat(["--history", JSON.stringify(hist)])
+                          .concat(model ? ["--model", model] : []).concat(["--", q])
         askProc.running = true
     }
     function stopAsk() { if (askProc.running) askProc.signal(15) }
@@ -223,6 +341,10 @@ Scope {
                 if (o.type === "progress") root.status = o.msg
                 else if (o.type === "sources") root.patchLast(function (c) { c.sources = o.sources })
                 else if (o.type === "tok") { root.status = ""; root.pend += o.t; if (!flushT.running) flushT.start() }
+                else if (o.type === "model") root.patchLast(function (c) { c.model = o.model; c.why = o.why; c.route = o.route })
+                else if (o.type === "think") { root.status = "thinking it through"; root.patchLast(function (c) { c.think += o.t }) }
+                else if (o.type === "reset") { root.pend = ""; root.patchLast(function (c) { c.text = o.text }) }
+                else if (o.type === "done") root.patchLast(function (c) { c.secs = o.secs || root.askSecs })
                 else if (o.type === "error") { root.flushPend(); root.patchLast(function (c) { c.text = (c.text ? c.text + "\n\n" : "") + o.error; c.bad = true }) }
             }
         }
@@ -232,7 +354,7 @@ Scope {
             root.patchLast(function (c) { c.live = false; if (c.text === "") { c.text = "Stopped."; c.bad = true } })
         }
     }
-    function clearChat() { if (!asking) msgs = [] }
+    function clearChat() { if (asking) return; msgs = []; Quickshell.execDetached(["python3", script, "chat", "--clear"]) }
 
     function make(fresh) {
         if (making || docs.length === 0) return
@@ -249,8 +371,8 @@ Scope {
         var c = { summary: made.summary, quiz: made.quiz, cards: made.cards }
         c[mode] = o
         made = c
-        if (mode === "cards") { cardIdx = 0; cardBack = false }
-        if (mode === "quiz") shown = ({})
+        if (mode === "cards") { cardIdx = 0; cardBack = false; known = ({}) }
+        if (mode === "quiz") { shown = ({}); grades = ({}) }
     }
     Process {
         id: makeProc
@@ -435,10 +557,10 @@ Scope {
                 Behavior on reveal { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Component.onCompleted: { ready = true; Qt.callLater(function () { if (root.tab === "ask") askIn.forceActiveFocus(); else qp.forceActiveFocus() }) }
                 Keys.onPressed: e => {
-                    if (e.key === Qt.Key_Escape) { if (root.pickerOpen) root.pickerOpen = false; else root.hide(); e.accepted = true }
+                    if (e.key === Qt.Key_Escape) { if (root.pickerOpen) root.pickerOpen = false; else if (root.modelsOpen) root.modelsOpen = false; else root.hide(); e.accepted = true }
                     else if (root.tab === "cards" && root.made.cards && (e.key === Qt.Key_Right || e.key === Qt.Key_Left)) {
-                        var n = root.made.cards.items.length
-                        root.cardIdx = (root.cardIdx + (e.key === Qt.Key_Right ? 1 : n - 1)) % n
+                        var nx = root.nextCard(e.key === Qt.Key_Right ? 1 : -1)
+                        if (nx >= 0) root.cardIdx = nx
                         root.cardBack = false
                         e.accepted = true
                     }
@@ -509,7 +631,7 @@ Scope {
                                         anchors.verticalCenter: parent.verticalCenter
                                         spacing: 1
                                         Text { text: "Study"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.DemiBold }
-                                        Text { text: "on this computer" + (root.model !== "" ? "  ·  " + root.model : ""); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        Text { text: "on this computer  ·  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice)); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                     }
                                 }
 
@@ -623,8 +745,25 @@ Scope {
                                 TabBtn { label: "Quiz"; key: "quiz" }
                                 TabBtn { label: "Flashcards"; key: "cards" }
                                 Item { Layout.fillWidth: true }
+                                // the model: Auto (smart routing) or the one picked; a click opens the model sheet
+                                Rectangle {
+                                    implicitWidth: mcRow.implicitWidth + 24
+                                    implicitHeight: 30
+                                    radius: 15
+                                    color: root.modelsOpen ? Qt.alpha(root.pal.accent, 0.16) : (mcMa.containsMouse ? root.pal.fillHover : root.pal.fill)
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Row {
+                                        id: mcRow
+                                        anchors.centerIn: parent
+                                        spacing: 7
+                                        Text { anchors.verticalCenter: parent.verticalCenter; text: String.fromCodePoint(0xF06A9); color: root.modelsOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.font; font.pixelSize: 14 }
+                                        Text { anchors.verticalCenter: parent.verticalCenter; text: root.choiceLabel; color: root.modelsOpen ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.Medium }
+                                        Text { anchors.verticalCenter: parent.verticalCenter; text: String.fromCodePoint(root.modelsOpen ? 0xF0143 : 0xF0140); color: root.pal.muted; font.family: root.pal.font; font.pixelSize: 13 }
+                                    }
+                                    MouseArea { id: mcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.modelsOpen = !root.modelsOpen; if (root.modelsOpen) root.loadModels() } }
+                                }
                                 Text {
-                                    Layout.maximumWidth: 380
+                                    Layout.maximumWidth: 320
                                     elide: Text.ElideRight
                                     text: root.note !== "" ? root.note : "About " + root.scopeText
                                     color: root.note !== "" ? (root.noteBad ? root.pal.bad : root.pal.accent) : root.pal.muted
@@ -685,6 +824,7 @@ Scope {
                                         required property int index
                                         readonly property bool you: modelData.role === "you"
                                         property bool allSrc: false
+                                        property bool showThink: false
                                         width: chat.width
                                         height: you ? youBox.height : aiCol.height
                                         // your question: a soft bubble on the right
@@ -704,7 +844,10 @@ Scope {
                                             visible: !mrow.you
                                             width: Math.min(parent.width, 760)
                                             spacing: 10
-                                            Working { visible: mrow.modelData.live === true && mrow.modelData.text === ""; text: root.status !== "" ? root.status : "thinking" }
+                                            Working {
+                                                visible: mrow.modelData.live === true && mrow.modelData.text === ""
+                                                text: (root.status !== "" ? root.status.replace(/ (with|using) \S+$/, "") : "thinking") + (mrow.modelData.model ? "  \u00b7  " + root.shortName(mrow.modelData.model) : "") + (root.askSecs > 2 ? "  \u00b7  " + root.askSecs + " s" : "")
+                                            }
                                             Row {
                                                 spacing: 14
                                                 visible: mrow.modelData.text !== ""
@@ -739,6 +882,42 @@ Scope {
                                                 LinkBtn { label: "Copy"; glyph: String.fromCodePoint(0xF018F); onClicked: root.copy(mrow.modelData.text) }
                                                 LinkBtn { label: "Save as note"; glyph: String.fromCodePoint(0xF0F8C); onClicked: root.saveNote(mrow.modelData.text) }
                                             }
+                                            // which model wrote it, and how long it took; a quick answer can be asked again of the best model
+                                            Row {
+                                                leftPadding: 16
+                                                spacing: 4
+                                                visible: !mrow.modelData.live && !mrow.modelData.bad && (mrow.modelData.model || "") !== ""
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: root.shortName(mrow.modelData.model) + (mrow.modelData.secs ? "  \u00b7  " + mrow.modelData.secs + " s" : "") + (mrow.modelData.why ? "  \u00b7  " + mrow.modelData.why : "")
+                                                    color: Qt.alpha(root.pal.muted, 0.8)
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tCap
+                                                    rightPadding: 6
+                                                }
+                                                LinkBtn {
+                                                    visible: mrow.modelData.route === "quick" && root.autoDeep !== "" && root.autoDeep !== mrow.modelData.model && mrow.index === root.msgs.length - 1
+                                                    label: "Ask the best model"
+                                                    glyph: String.fromCodePoint(0xF0674)
+                                                    onClicked: root.ask(root.msgs[mrow.index - 1].text, "best")
+                                                }
+                                                LinkBtn {
+                                                    visible: (mrow.modelData.think || "") !== ""
+                                                    label: mrow.showThink ? "Hide the reasoning" : "Show the reasoning"
+                                                    onClicked: mrow.showThink = !mrow.showThink
+                                                }
+                                            }
+                                            Text {
+                                                visible: mrow.showThink
+                                                width: parent.width
+                                                leftPadding: 16
+                                                wrapMode: Text.Wrap
+                                                text: mrow.modelData.think || ""
+                                                color: root.pal.muted
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap + 1
+                                                lineHeight: 1.3
+                                            }
                                         }
                                     }
                                 }
@@ -765,7 +944,7 @@ Scope {
                                             if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && !(e.modifiers & Qt.ShiftModifier)) {
                                                 if (!root.asking && text.trim() !== "") { root.ask(text); text = "" }
                                                 e.accepted = true
-                                            } else if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true }
+                                            } else if (e.key === Qt.Key_Escape) { if (root.modelsOpen) root.modelsOpen = false; else root.hide(); e.accepted = true }
                                         }
                                         Text {
                                             anchors.verticalCenter: parent.verticalCenter
@@ -948,6 +1127,55 @@ Scope {
                                                 font.pixelSize: qrow.open ? root.pal.tBody : root.pal.tCap + 1
                                                 lineHeight: 1.3
                                             }
+                                            // try it yourself: type an answer, Enter, and the model marks it
+                                            Rectangle {
+                                                x: 26
+                                                width: parent.width - 26
+                                                height: 36
+                                                radius: 18
+                                                color: root.pal.calm ? root.pal.fill : Qt.alpha(root.pal.bg, 0.45)
+                                                border.width: mineIn.activeFocus ? 1 : 0
+                                                border.color: root.pal.lineFocus
+                                                TextInput {
+                                                    id: mineIn
+                                                    anchors { left: parent.left; right: chk.left; verticalCenter: parent.verticalCenter; leftMargin: 14; rightMargin: 8 }
+                                                    clip: true
+                                                    color: root.pal.text
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tCap + 1
+                                                    selectionColor: Qt.alpha(root.pal.accent, 0.4)
+                                                    onAccepted: root.grade(qrow.index, text)
+                                                    Keys.onEscapePressed: { if (text !== "") text = ""; else focus = false }
+                                                    Text { anchors.verticalCenter: parent.verticalCenter; visible: mineIn.text.length === 0; text: "Your answer, then Enter: it gets marked"; color: Qt.alpha(root.pal.muted, 0.85); font: mineIn.font }
+                                                }
+                                                LinkBtn {
+                                                    id: chk
+                                                    anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
+                                                    visible: mineIn.text.trim() !== ""
+                                                    label: root.gradingIdx === qrow.index ? "Marking\u2026" : "Check"
+                                                    onClicked: root.grade(qrow.index, mineIn.text)
+                                                }
+                                            }
+                                            Row {
+                                                x: 26
+                                                width: parent.width - 26
+                                                spacing: 10
+                                                readonly property var g: root.grades[qrow.index] || null
+                                                visible: g !== null
+                                                Text {
+                                                    text: !parent.g ? "" : (parent.g.verdict === "right" ? "\u2713  Right" : (parent.g.verdict === "partly" ? "\u2248  Partly" : (parent.g.verdict === "error" ? "" : "\u2715  Not quite")))
+                                                    color: !parent.g ? root.pal.muted : (parent.g.verdict === "right" ? root.pal.good : (parent.g.verdict === "partly" ? root.pal.warn : root.pal.bad))
+                                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.DemiBold
+                                                }
+                                                Text {
+                                                    width: parent.width - 100
+                                                    wrapMode: Text.Wrap
+                                                    text: parent.g ? parent.g.feedback : ""
+                                                    color: parent.g && parent.g.verdict === "error" ? root.pal.bad : root.pal.text
+                                                    opacity: 0.85
+                                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; lineHeight: 1.25
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1014,12 +1242,38 @@ Scope {
                                         }
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.cardBack = !root.cardBack }
                                     }
+                                    // turned over: did you know it? Known cards leave the round, the others come back
                                     Row {
-                                        anchors { top: card.bottom; topMargin: 20; horizontalCenter: parent.horizontalCenter }
+                                        id: judgeRow
+                                        anchors { top: card.bottom; topMargin: 16; horizontalCenter: parent.horizontalCenter }
+                                        spacing: 10
+                                        opacity: root.cardBack ? 1 : 0
+                                        visible: opacity > 0.01
+                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                                        ActionChip { pal: root.pal; implicitHeight: 34; glyph: String.fromCodePoint(0xF0450); label: "Again"; onClicked: root.markCard(false) }
+                                        ActionChip { pal: root.pal; implicitHeight: 34; glyph: String.fromCodePoint(0xF012C); label: "Knew it"; on: true; onClicked: root.markCard(true) }
+                                    }
+                                    // all known: a quiet well done
+                                    Rectangle {
+                                        anchors.fill: card
+                                        radius: card.radius
+                                        visible: root.made.cards && root.knownCount >= root.made.cards.items.length && root.made.cards.items.length > 0
+                                        color: Qt.alpha(root.pal.bg, 0.94)
+                                        MouseArea { anchors.fill: parent }
+                                        Column {
+                                            anchors.centerIn: parent
+                                            spacing: 12
+                                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: String.fromCodePoint(0xF04CE); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 34 }
+                                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "You knew all " + (root.made.cards ? root.made.cards.items.length : 0); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
+                                            ActionChip { anchors.horizontalCenter: parent.horizontalCenter; pal: root.pal; label: "Go round again"; onClicked: { root.known = ({}); root.cardIdx = 0; root.cardBack = false } }
+                                        }
+                                    }
+                                    Row {
+                                        anchors { top: judgeRow.bottom; topMargin: 14; horizontalCenter: parent.horizontalCenter }
                                         spacing: 14
-                                        RoundBtn { pal: root.pal; size: 34; glyph: String.fromCodePoint(0xF0141); onClicked: { var n = root.made.cards.items.length; root.cardIdx = (root.cardIdx + n - 1) % n; root.cardBack = false } }
-                                        Text { anchors.verticalCenter: parent.verticalCenter; text: (root.cardIdx + 1) + " / " + (root.made.cards ? root.made.cards.items.length : 0); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
-                                        RoundBtn { pal: root.pal; size: 34; glyph: String.fromCodePoint(0xF0142); onClicked: { root.cardIdx = (root.cardIdx + 1) % root.made.cards.items.length; root.cardBack = false } }
+                                        RoundBtn { pal: root.pal; size: 34; glyph: String.fromCodePoint(0xF0141); onClicked: { var n = root.nextCard(-1); if (n >= 0) root.cardIdx = n; root.cardBack = false } }
+                                        Text { anchors.verticalCenter: parent.verticalCenter; text: (root.cardIdx + 1) + " / " + (root.made.cards ? root.made.cards.items.length : 0) + (root.knownCount > 0 ? "  \u00b7  " + root.knownCount + " known" : ""); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                        RoundBtn { pal: root.pal; size: 34; glyph: String.fromCodePoint(0xF0142); onClicked: { var n = root.nextCard(1); if (n >= 0) root.cardIdx = n; root.cardBack = false } }
                                         LinkBtn {
                                             anchors.verticalCenter: parent.verticalCenter
                                             label: "Shuffle"; glyph: String.fromCodePoint(0xF049D)
@@ -1029,10 +1283,172 @@ Scope {
                                                 var c = {}
                                                 for (var k in root.made.cards) c[k] = root.made.cards[k]
                                                 c.items = it
-                                                root.setMade("cards", c)
+                                                root.setMade("cards", c)          // (a shuffle also starts the round again)
                                             }
                                         }
                                         LinkBtn { anchors.verticalCenter: parent.verticalCenter; label: "Save as note"; glyph: String.fromCodePoint(0xF0F8C); onClicked: root.saveNote(root.made.cards.text) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ---- the model sheet: Auto and how it routes, every installed model with how it runs here, what to download
+                    MouseArea { anchors.fill: parent; visible: root.modelsOpen; onClicked: root.modelsOpen = false }
+                    Glass {
+                        id: sheet
+                        pal: root.pal
+                        visible: opacity > 0.01
+                        opacity: root.modelsOpen ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                        anchors { top: parent.top; right: parent.right; bottom: parent.bottom; topMargin: 70; rightMargin: 24; bottomMargin: 24 }
+                        width: 440
+                        radius: root.pal.rLg
+                        opacityBody: 0.98
+                        MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
+                        Flickable {
+                            id: shF
+                            anchors.fill: parent
+                            anchors.margins: 20
+                            clip: true
+                            contentHeight: shCol.height
+                            boundsBehavior: Flickable.StopAtBounds
+                            Column {
+                                id: shCol
+                                width: shF.width
+                                spacing: 14
+                                Column {
+                                    width: parent.width
+                                    spacing: 3
+                                    Text { text: "Model for studying"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
+                                    Text {
+                                        width: parent.width; wrapMode: Text.Wrap
+                                        text: (root.vram > 0 ? root.vram + " GB graphics memory, " : "No graphics memory found, ") + root.ram + " GB RAM. Only the Study Center uses this; the rest of Halcyon keeps its own model."
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; lineHeight: 1.25
+                                    }
+                                }
+                                Text { visible: !root.modelsOk; width: parent.width; wrapMode: Text.Wrap; text: "Ollama is not running, so the models cannot be listed. Start it with: systemctl --user start ollama"; color: root.pal.warn; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+
+                                // Auto
+                                Rectangle {
+                                    width: parent.width
+                                    height: autoCol.height + 24
+                                    radius: root.pal.rMd
+                                    color: root.choice === "auto" ? Qt.alpha(root.pal.accent, 0.14) : (autoMa.containsMouse ? root.pal.fillHover : root.pal.fill)
+                                    MouseArea { id: autoMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.pickModel("auto") }
+                                    Column {
+                                        id: autoCol
+                                        x: 14; y: 12
+                                        width: parent.width - 28
+                                        spacing: 4
+                                        Text { text: "Auto  \u00b7  smart routing" + (root.choice === "auto" ? "   \u2713" : ""); color: root.choice === "auto" ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                                        Text {
+                                            width: parent.width; wrapMode: Text.Wrap; lineHeight: 1.25
+                                            text: root.autoDeep === "" ? "No model to route to yet." : (root.autoFast === root.autoDeep
+                                                ? "Every question goes to " + root.shortName(root.autoDeep) + "."
+                                                : "Quick lookups go to " + root.shortName(root.autoFast) + " (seconds). Explanations, reasoning, summaries, quizzes and cards go to " + root.shortName(root.autoDeep) + ". A follow-up stays with the model of the conversation.")
+                                            color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1
+                                        }
+                                    }
+                                }
+                                // what Auto favours
+                                Column {
+                                    width: parent.width
+                                    spacing: 6
+                                    Text { text: "Auto favours"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                    Row {
+                                        spacing: 6
+                                        Repeater {
+                                            model: [["balanced", "Balance"], ["quality", "Best answers"], ["speed", "Speed"]]
+                                            delegate: Chip { required property var modelData; pal: root.pal; implicitHeight: 30; label: modelData[1]; on: root.prefer === modelData[0]; onClicked: root.setPrefer(modelData[0]) }
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width; wrapMode: Text.Wrap
+                                        text: root.prefer === "quality" ? "The best model you have, even when an answer takes a few minutes." : (root.prefer === "speed" ? "Only models that answer within seconds." : "A slow model only when it is clearly better.")
+                                        color: Qt.alpha(root.pal.muted, 0.85); font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                    }
+                                }
+                                // step-by-step thinking
+                                Column {
+                                    width: parent.width
+                                    spacing: 6
+                                    Text { text: "Think step by step"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                    Row {
+                                        spacing: 6
+                                        Repeater {
+                                            model: [["auto", "For maths and proofs"], ["always", "Always"], ["never", "Never"]]
+                                            delegate: Chip { required property var modelData; pal: root.pal; implicitHeight: 30; label: modelData[1]; on: root.reason === modelData[0]; onClicked: root.setReason(modelData[0]) }
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width; wrapMode: Text.Wrap
+                                        text: "Models that can think (qwen3) work the answer out first: better for calculations, slower. The reasoning stays hidden under the answer."
+                                        color: Qt.alpha(root.pal.muted, 0.85); font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                    }
+                                }
+
+                                Text { text: "Installed"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; topPadding: 4 }
+                                Repeater {
+                                    model: root.models
+                                    delegate: Rectangle {
+                                        id: mr
+                                        required property var modelData
+                                        readonly property bool on: root.choice === modelData.name
+                                        width: shCol.width
+                                        height: mrCol.height + 20
+                                        radius: root.pal.rMd
+                                        opacity: modelData.usable ? 1 : 0.45
+                                        color: on ? Qt.alpha(root.pal.accent, 0.14) : (mrMa.containsMouse && modelData.usable ? root.pal.fillHover : "transparent")
+                                        MouseArea { id: mrMa; anchors.fill: parent; hoverEnabled: true; enabled: mr.modelData.usable; cursorShape: Qt.PointingHandCursor; onClicked: root.pickModel(mr.modelData.name) }
+                                        Column {
+                                            id: mrCol
+                                            x: 14; y: 10
+                                            width: parent.width - 28
+                                            spacing: 4
+                                            Row {
+                                                width: parent.width
+                                                spacing: 8
+                                                Text { width: Math.min(implicitWidth, parent.width - 150); elide: Text.ElideRight; text: root.shortName(mr.modelData.name) + (mr.on ? "  \u2713" : ""); color: mr.on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
+                                                // quality as five soft dots
+                                                Row {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    spacing: 3
+                                                    Repeater { model: 5; delegate: Rectangle { required property int index; width: 6; height: 6; radius: 3; color: index < Math.round(mr.modelData.quality / 2) ? root.pal.accent : Qt.alpha(root.pal.text, 0.14) } }
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: mr.modelData.name === root.autoDeep ? "Auto: explanations" : (mr.modelData.name === root.autoFast ? "Auto: lookups" : "")
+                                                    color: root.pal.accent2; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                                }
+                                            }
+                                            Text {
+                                                width: parent.width; wrapMode: Text.Wrap
+                                                text: mr.modelData.size + " GB  \u00b7  " + mr.modelData.speedNote + "\n" + mr.modelData.note
+                                                color: mr.modelData.speed === "fast" ? root.pal.muted : (mr.modelData.speed === "slow" ? Qt.alpha(root.pal.warn, 0.9) : root.pal.muted)
+                                                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; lineHeight: 1.25
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Text { visible: root.suggest.length > 0; text: "Worth downloading"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; topPadding: 4 }
+                                Repeater {
+                                    model: root.suggest
+                                    delegate: Item {
+                                        id: sg
+                                        required property var modelData
+                                        width: shCol.width
+                                        height: sgCol.height + 16
+                                        Column {
+                                            id: sgCol
+                                            x: 14; y: 8
+                                            width: parent.width - 120
+                                            spacing: 3
+                                            Text { text: sg.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
+                                            Text { width: parent.width; wrapMode: Text.Wrap; text: sg.modelData.size + " GB  \u00b7  " + sg.modelData.speedNote + "\n" + sg.modelData.note; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; lineHeight: 1.25 }
+                                        }
+                                        ActionChip { anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter } pal: root.pal; implicitHeight: 30; label: "Download"; onClicked: root.pull(sg.modelData.name) }
                                     }
                                 }
                             }

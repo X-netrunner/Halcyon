@@ -1033,6 +1033,7 @@ ShellRoot {
     StudyCenter {
         id: studyCenter
         pal: pal
+        onConsoleRequested: cmd => quickTerm.run(cmd)
     }
 
     // SUPER + CTRL + S, >screenshot: Region / Window / Full screen, then Copy, Save or Both (ShotMenu.qml, scripts/halcyon-shot.py)
