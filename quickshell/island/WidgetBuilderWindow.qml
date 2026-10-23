@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Effects
+import Quickshell.Widgets
 import QtQuick.Layouts
 import "WidgetData.js" as WD
 
@@ -17,6 +19,8 @@ Item {
     property bool open: false
     property var opt: ({})
     property string wallpaper: ""              // the wallpaper on screen: the preview shows the widget over it (dimmed like the desktop)
+    // behind the preview: wall (the wallpaper as the desktop shows it) | soft (blurred and darker, so the widget reads) | plain
+    readonly property string pvBack: (opt && opt.wbPreviewBack) || "soft"
     signal changed(string key, var value)
     signal closed()
     signal editOnDesktop(string which)         // which = "desktop" or "lock": the screen to place the widgets on
@@ -327,13 +331,18 @@ Item {
                             GradientStop { position: 1; color: Qt.alpha(root.pal.accent2, 0.06) }
                         }
                     }
-                    Item {
+                    // (rounded like the box it sits in; Softened blurs and darkens it so the widget stands out, and the
+                    //  colours you are matching still show through; Plain leaves the picture out)
+                    ClippingRectangle {
                         anchors.fill: parent; anchors.margins: 1
-                        visible: !root.adding && root.wallpaper !== "" && !root.lockT && wallPv.status === Image.Ready
-                        clip: true
+                        radius: Math.max(0, stage.radius - 1)
+                        color: "transparent"
+                        visible: !root.adding && root.wallpaper !== "" && !root.lockT && wallPv.status === Image.Ready && root.pvBack !== "plain"
                         Image {
                             id: wallPv
                             anchors.fill: parent
+                            layer.enabled: root.pvBack === "soft"
+                            layer.effect: MultiEffect { blurEnabled: true; blurMax: 48; blur: 0.75; saturation: -0.15; autoPaddingEnabled: false }
                             source: root.wallpaper !== "" && root.open ? "file://" + encodeURI(root.wallpaper).replace(/#/g, "%23").replace(/\?/g, "%3F") : ""
                             sourceSize: Qt.size(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)))
                             fillMode: Image.PreserveAspectCrop
@@ -344,7 +353,36 @@ Item {
                             anchors.fill: parent
                             color: "black"
                             readonly property string mode: (root.opt && root.opt.widgetDim) || "wall"
-                            opacity: mode === "off" ? 0.08 : Math.max(0.1, Math.min(0.8, root.opt && root.opt.widgetDimAmt !== undefined ? Number(root.opt.widgetDimAmt) : 0.35))
+                            opacity: (mode === "off" ? 0.08 : Math.max(0.1, Math.min(0.8, root.opt && root.opt.widgetDimAmt !== undefined ? Number(root.opt.widgetDimAmt) : 0.35)))
+                                     + (root.pvBack === "soft" ? 0.22 : 0)
+                        }
+                    }
+                    // what is behind the preview
+                    Row {
+                        z: 6
+                        visible: !root.adding && root.wallpaper !== "" && !root.lockT
+                        anchors { top: parent.top; right: parent.right; margins: 12 }
+                        spacing: 2
+                        Rectangle {
+                            width: pbRow.implicitWidth + 8; height: 30; radius: 15
+                            color: Qt.alpha(root.pal.bg, 0.72)
+                            Row {
+                                id: pbRow
+                                anchors.centerIn: parent
+                                spacing: 2
+                                Repeater {
+                                    model: [["wall", "Wallpaper"], ["soft", "Softened"], ["plain", "Plain"]]
+                                    delegate: Rectangle {
+                                        id: pbB
+                                        required property var modelData
+                                        readonly property bool on: root.pvBack === modelData[0]
+                                        width: pbT.implicitWidth + 20; height: 24; radius: 12
+                                        color: on ? Qt.alpha(root.pal.accent, 0.22) : (pbMa.containsMouse ? Qt.alpha(root.pal.text, 0.08) : "transparent")
+                                        Text { id: pbT; anchors.centerIn: parent; text: pbB.modelData[1]; color: pbB.on ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: pbB.on ? Font.DemiBold : Font.Normal }
+                                        MouseArea { id: pbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.changed("wbPreviewBack", pbB.modelData[0]) }
+                                    }
+                                }
+                            }
                         }
                     }
                     Item {

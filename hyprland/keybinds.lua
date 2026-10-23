@@ -135,7 +135,8 @@ bind("shotarea", "SUPER + SHIFT + S", hl.dsp.exec_cmd(home .. "/.config/Halcyon/
 bind("shotpanel", "SUPER + CTRL + S", hl.dsp.exec_cmd(ipc .. "screenshot"))   -- the screenshot panel: Region / Window / Full screen, then Copy / Save / Both
 
 -- Clipboard
-bind("clipboard", "SUPER + V", hl.dsp.exec_cmd("cliphist list | fuzzel -d | cliphist decode | wl-copy"))
+-- the island's clipboard panel (search, pins, pictures, AI); if the island is not running, the plain fuzzel list as before
+bind("clipboard", "SUPER + V", hl.dsp.exec_cmd(ipc .. "clipboard || (cliphist list | fuzzel -d | cliphist decode | wl-copy)"))
 
 -- Cheatsheet: searchable list of every bind / gesture / sysmode command (also ">keybinds" in the launcher)
 bind("cheatsheet", "SUPER + slash", hl.dsp.exec_cmd(ipc .. "cheatsheet"))

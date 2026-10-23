@@ -135,14 +135,6 @@ Item {
                                             : "The picture on the left is your screen: click a box, then the corner it should open from. Everything else is on the right."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                 }
                 Item { Layout.fillWidth: true }
-                SegSwitch {
-                    Layout.alignment: Qt.AlignVCenter
-                    pal: root.pal
-                    options: [{ k: "desktop", t: "Desktop" }, { k: "lock", t: "Lock screen" }]
-                    current: root.target
-                    onPicked: k => { root.pick = ""; root.flushLive(); root.targetPicked(k) }
-                }
-                ActionChip { pal: root.pal; label: root.lockT ? "Reset the lock screen" : "Reset the desktop"; doneLabel: "Reset"; onClicked: root.lockT ? root.resetLock() : root.resetAll() }
                 ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
             }
 
@@ -161,13 +153,11 @@ Item {
                     border.width: root.pal.calm ? 0 : 1
                     border.color: root.pal.lineTint
                     clip: true
-                    NbCap { pal: root.pal; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14; text: root.pal.cap("LIVE PREVIEW") }
-
-                    // the screen, at the real aspect ratio
+                    // the screen, at the real aspect ratio (as big as it can be with the dock below it)
                     Item {
                         id: scr
                         readonly property real ratio: Math.max(0.5, root.width) / Math.max(0.5, root.height)
-                        width: Math.max(40, Math.min(stage.width - 32, (stage.height - 96) * ratio))
+                        width: Math.max(40, Math.min(stage.width - 32, (stage.height - dock.implicitHeight - 96) * ratio))
                         height: width / ratio
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: 16
@@ -343,6 +333,86 @@ Item {
                         font.pixelSize: 11
                         lineHeight: 1.25
                         wrapMode: Text.WordWrap
+                    }
+
+                    // ---- under the picture: which screen you are building, its main switches, and what to do next
+                    Column {
+                        id: dock
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 }
+                        spacing: 14
+                        Row {
+                            width: parent.width
+                            spacing: 8
+                            Text { text: root.pal.cap("LIVE PREVIEW"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.1 : 0.8 }
+                            Text { text: Math.round(root.width) + " \u00d7 " + Math.round(root.height); color: Qt.alpha(root.pal.muted, 0.75); font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                        }
+                        // Desktop | Lock screen as two cards
+                        Row {
+                            width: parent.width
+                            spacing: 10
+                            Repeater {
+                                model: [{ k: "desktop", t: "Desktop", g: 0xF0379, d: "Wallpaper, stars, widgets and where the boxes open" },
+                                        { k: "lock", t: "Lock screen", g: 0xF033E, d: "Background, its own widgets, stars and the splash" }]
+                                delegate: Rectangle {
+                                    id: tc
+                                    required property var modelData
+                                    readonly property bool on: root.target === modelData.k
+                                    width: (dock.width - 10) / 2
+                                    height: 62
+                                    radius: root.pal.rMd
+                                    color: on ? Qt.alpha(root.pal.accent, 0.15) : (tcMa.containsMouse ? root.pal.fillHover : root.pal.fill)
+                                    border.width: root.pal.calm ? 0 : 1
+                                    border.color: on ? Qt.alpha(root.pal.accent, 0.45) : root.pal.lineSoft
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Text {
+                                        id: tcG
+                                        x: 16; anchors.verticalCenter: parent.verticalCenter
+                                        text: String.fromCodePoint(tc.modelData.g)
+                                        color: tc.on ? root.pal.accent : root.pal.muted
+                                        font.family: root.pal.font; font.pixelSize: 22
+                                    }
+                                    Column {
+                                        anchors { left: tcG.right; leftMargin: 14; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                        spacing: 2
+                                        Text { text: tc.modelData.t; color: tc.on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                        Text { width: parent.width; elide: Text.ElideRight; text: tc.modelData.d; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                    }
+                                    MouseArea { id: tcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (!tc.on) { root.pick = ""; root.flushLive(); root.targetPicked(tc.modelData.k) } }
+                                }
+                            }
+                        }
+                        // the switches you reach for most, for the screen picked above (the rest is on the right)
+                        Flow {
+                            width: parent.width
+                            spacing: 8
+                            Repeater {
+                                model: root.lockT
+                                    ? [{ t: "Wallpaper behind it", on: root.lockWall, k: "lockBg", v: root.lockWall ? "solid" : "wallpaper" },
+                                       { t: "Its own widgets", on: root.lockOwnOn, k: "lockDeskWidgetsOn", v: !root.lockOwnOn },
+                                       { t: "Stars", on: root.flag("starsLock", true), k: "starsLock", v: !root.flag("starsLock", true) },
+                                       { t: "Unlock splash", on: root.flag("splashUnlock", true), k: "splashUnlock", v: !root.flag("splashUnlock", true) }]
+                                    : [{ t: "Wallpaper", on: root.wallOn, k: "deskWall", v: !root.wallOn },
+                                       { t: "Moving stars", on: root.starsOn, k: "deskStars", v: !root.starsOn },
+                                       { t: "Widgets", on: root.flag("deskWidgetsOn", true), k: "deskWidgetsOn", v: !root.flag("deskWidgetsOn", true) },
+                                       { t: "Top bar", on: root.barStyle !== "off", k: "barStyle", v: root.barStyle === "off" ? "island" : "off" }]
+                                delegate: Chip {
+                                    required property var modelData
+                                    pal: root.pal
+                                    implicitHeight: 32
+                                    glyph: String.fromCodePoint(modelData.on ? 0xF012C : 0xF0156)
+                                    label: modelData.t
+                                    on: modelData.on
+                                    onClicked: root.put(modelData.k, modelData.v)
+                                }
+                            }
+                        }
+                        Flow {
+                            width: parent.width
+                            spacing: 8
+                            ActionChip { pal: root.pal; implicitHeight: 32; label: "Open the widget builder"; on: true; onClicked: root.openWidgets(root.lockT ? "lock" : "desktop") }
+                            ActionChip { pal: root.pal; implicitHeight: 32; label: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"; onClicked: root.editDesktop(root.lockT ? "lock" : "desktop") }
+                            ActionChip { pal: root.pal; implicitHeight: 32; label: root.lockT ? "Reset the lock screen" : "Reset the desktop"; doneLabel: "Reset"; onClicked: root.lockT ? root.resetLock() : root.resetAll() }
+                        }
                     }
                 }
 
