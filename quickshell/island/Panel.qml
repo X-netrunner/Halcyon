@@ -344,7 +344,8 @@ Glass {
                 Layout.fillWidth: true
                 visible: root.chargeLimit > 0 && root.shown("Charge")
                 pal: root.pal
-                maxLabel: 62
+                maxLabel: 90                     // "Limit 80%" is wider than the 62 px the other tiles use (it was cut to "Limit 80...")
+                padX: 12
                 glyph: String.fromCodePoint(0xF0079)
                 label: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Limit " + root.chargeLimit + "%" : "Charge"
                 on: root.chargeLimit > 0 && root.chargeLimit < 100

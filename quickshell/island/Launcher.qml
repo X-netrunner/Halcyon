@@ -168,7 +168,7 @@ Item {
         { id: "extradim", name: "Extra dim display", desc: "Dim screen backlight to minimum (Super + Alt + D)", glyph: 0xF058F, kw: "dim brightness backlight dark night minimum screen", cat: "tools" },
         { id: "study", name: "Study Center", desc: "Add PDFs, slides, notes or photos of pages and ask questions about them; the answers name the page. Also a revision summary, a quiz and flashcards. All on this computer", glyph: 0xF0474, kw: "study learn pdf notes lecture slides exam revise revision quiz flashcards summary ask questions document book homework", cat: "tools" },
         { id: "gamecenter", name: "Game Center", desc: "Your games with cover art: add a Windows game (.exe), read Steam, Epic and GOG, Proton versions and the system check for games", glyph: 0xF0297, kw: "game games center library add exe import steam epic gog stores proton runtimes doctor check settings launcher", cat: "games" },
-        { id: "games", name: "Games", desc: "Your game library: Enter launches. Type  >game  and a name to find one (Steam games and the .exe games you added). Halcyon rests while a game runs", glyph: 0xF0297, kw: "game games play library steam proton launcher", cat: "games" },
+        { id: "games", name: "Games", desc: "Your game library: Enter launches. Type  >  and its name (or  >game  for the list) to find one (Steam games and the .exe games you added). Halcyon rests while a game runs", glyph: 0xF0297, kw: "game games play library steam proton launcher", cat: "games" },
         // only listed while a game runs (runningGame)
         { id: "games-stop", name: "Stop the game", desc: "Stop the running game completely (no leftover wine processes); Halcyon goes back to normal", glyph: 0xF04DB, kw: "game stop quit kill close running", cat: "games" },
         { id: "power", name: "Power options", desc: "Lock, sleep, log out, restart, shut down", glyph: 0xF0425, kw: "session", cat: "power" },
@@ -395,11 +395,12 @@ Item {
         return (bad || pos !== toks.length) ? NaN : out
     }
 
-    // ---- >games / >game <name>: the game library (hgl list --json) as extra rows in the commands list; Enter runs the game ("game:<id>")
+    // ---- >games / >game <name>: the game library (hgl list --json) as extra rows in the commands list; Enter runs the game ("game:<id>").
+    // ">" and a game's name (">cyberpunk") finds it too, among the commands
     readonly property bool gameQuery: mode === "cmd" && /^>\s*games?(\s|$)/i.test(q0)
     readonly property string gameArg: gameQuery ? q0.replace(/^>\s*games?\s*/i, "").trim() : ""
     property var gameList: []
-    onGameQueryChanged: if (gameQuery && !gamesProc.running) gamesProc.running = true      // read the library each time you start typing it
+    onModeChanged: if (mode === "cmd" && !gamesProc.running) gamesProc.running = true      // read the library each time you start typing ">"
     Process {
         id: gamesProc
         command: [Quickshell.env("HOME") + "/.config/Halcyon/bin/hgl", "list", "--json"]
@@ -408,19 +409,22 @@ Item {
                 var l = []
                 try { l = JSON.parse(text) } catch (e) { l = [] }
                 root.gameList = Array.isArray(l) ? l : []
-                if (root.gameQuery) root.refresh()
+                if (root.mode === "cmd") root.refresh()
             }
         }
     }
     function gameRows(cq) {
         var out = []
-        if (!gameQuery || (cmdCategory !== "all" && cmdCategory !== "games")) return out
-        var ga = gameArg.toLowerCase()
+        if (cmdCategory !== "all" && cmdCategory !== "games") return out
+        var byName = !gameQuery                          // ">" and a name: only games whose name has it, ranked in between the commands
+        if (byName && cq.length < 2) return out
+        var ga = (byName ? cq : gameArg).toLowerCase()
         for (var gi = 0; gi < gameList.length; gi++) {
             var gm = gameList[gi]
             if (!gm || !gm.id) continue
             var gn = String(gm.name || gm.id).toLowerCase()
-            var gr = ga === "" ? 5 : (gn.indexOf(ga) === 0 ? 8 : (gn.indexOf(ga) >= 0 ? 7 : (ga.length > 1 && fuzzy(ga, gn) ? 6 : 0)))
+            var gr = byName ? (gn.indexOf(ga) === 0 ? 4.5 : (gn.indexOf(ga) >= 0 ? 3.5 : 0))
+                            : (ga === "" ? 5 : (gn.indexOf(ga) === 0 ? 8 : (gn.indexOf(ga) >= 0 ? 7 : (ga.length > 1 && fuzzy(ga, gn) ? 6 : 0))))
             if (gr === 0) continue
             if (gm.fav) gr += 10                         // favourites first (the star on the row, or Ctrl+F, toggles it)
             var why = gm.running ? "Running now" : (gm.status === "attention" ? "Needs attention: " + (gm.statusReason || "see hgl show " + gm.id) : "Enter to play")
@@ -699,6 +703,7 @@ Item {
             histIdx = -1; histDraft = ""
             // rebuilding the grid while the island starts to grow is what made opening choppy: only do it when it is needed
             if (had !== "" || dirty) refresh()
+            else grid.currentIndex = 0             // the arrows start from the first app
             Qt.callLater(function () { input.forceActiveFocus() })
             if (pendingQuery !== "") Qt.callLater(applyPending)
         }
@@ -790,19 +795,21 @@ Item {
                 clip: true
                 onTextChanged: { root.query = text; root.pendingConfirm = ""; if (!root.histBusy) root.histIdx = -1; root.refresh() }
 
-                // Up / Down / Left / Right: with something typed they walk through the apps; with the box empty, Up / Down are older / newer
-                // searches (in the command list Up / Down move the selection) and Left / Right move the text cursor
-                // Tab / Shift+Tab (or Ctrl+N / Ctrl+P): next / previous result;  Ctrl+Up / Ctrl+Down: a row up / down
+                // Up / Down / Left / Right walk through the apps as soon as the bar opens (in the command list Up / Down move the selection)
+                // Ctrl+Up / Ctrl+Down with the box empty: older / newer searches (then plain Up / Down keep paging until you type)
+                // Tab / Shift+Tab (or Ctrl+N / Ctrl+P): next / previous result;  Ctrl+Up / Ctrl+Down with something typed: a row up / down
                 Keys.onPressed: e => {
                     var cmd = root.mode === "cmd", calc = root.mode === "calc"
                     var ctrl = (e.modifiers & Qt.ControlModifier) !== 0
-                    // once something is typed (and you are not paging through old searches), the arrow keys walk through the apps:
+                    // unless you are paging through old searches, the arrow keys walk through the apps from the moment the bar opens:
                     // Up / Down a row, Left / Right one app. Shift / Alt + Left / Right and Ctrl + Left / Right still move the text cursor.
-                    var nav = root.gridMode && root.results.length > 0 && root.query !== "" && root.histIdx === -1
+                    var nav = root.gridMode && root.results.length > 0 && root.histIdx === -1
+                    var hist = root.query === "" || root.histIdx !== -1
                     var plain = (e.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier)) === 0
                     if (e.key === Qt.Key_Escape) { if (root.infoIdx >= 0) root.infoIdx = -1; else root.closeRequested(); e.accepted = true }
                     else if (e.key === Qt.Key_Down) {
                         if (cmd) { cmdList.incrementCurrentIndex(); root.pendingConfirm = "" }
+                        else if (ctrl && hist) root.histStep(-1)
                         else if (ctrl) { if (!calc) grid.moveCurrentIndexDown() }
                         else if (nav) grid.moveCurrentIndexDown()
                         else root.histStep(-1)
@@ -810,6 +817,7 @@ Item {
                     }
                     else if (e.key === Qt.Key_Up) {
                         if (cmd) { cmdList.decrementCurrentIndex(); root.pendingConfirm = "" }
+                        else if (ctrl && hist) root.histStep(1)
                         else if (ctrl) { if (!calc) grid.moveCurrentIndexUp() }
                         else if (nav) grid.moveCurrentIndexUp()
                         else root.histStep(1)
