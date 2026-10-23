@@ -225,7 +225,10 @@ def generate(prompt, system="", fmt=None, num_predict=300, temperature=0.2, time
         raise Fail("The model took too long to answer.")
     except ValueError:
         raise Fail("Ollama's answer could not be read.")
-    return re.sub(r"<think>.*?</think>", "", out.get("response", ""), flags=re.S).strip()
+    resp = re.sub(r"<think>.*?</think>", "", out.get("response", ""), flags=re.S)
+    if "</think>" in resp:            # a model that thinks even when told not to (qwen3:4b) only closes the block
+        resp = resp.split("</think>")[-1]
+    return resp.strip()
 
 
 def generate_json(prompt, system="", num_predict=400):
