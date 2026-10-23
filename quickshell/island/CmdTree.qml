@@ -144,7 +144,7 @@ Scope {
                     height: parent.height - 80
                     radius: root.pal.rXl
                     opacityBody: root.pal.glassSolid - 0.02
-                    border.color: Qt.alpha(root.pal.accent, 0.35)
+                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
                     scale: root.open ? 1 : 0.96
                     Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                     MouseArea { anchors.fill: parent }   // swallow clicks
@@ -332,12 +332,12 @@ Scope {
                                                 }
                                                 Text {
                                                     x: 28; anchors.verticalCenter: parent.verticalCenter
-                                                    text: grp.modelData.title.toUpperCase()
+                                                    text: (root.pal.calm ? grp.modelData.title : grp.modelData.title.toUpperCase())
                                                     color: root.pal.accent
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: 12
                                                     font.weight: Font.DemiBold
-                                                    font.letterSpacing: 1.6
+                                                    font.letterSpacing: root.pal.calm ? 0.2 : (1.6)
                                                 }
                                             }
 

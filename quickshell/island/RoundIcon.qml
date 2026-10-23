@@ -11,7 +11,7 @@ Rectangle {
     implicitHeight: 32
     radius: 16
     color: ma.containsMouse ? Qt.alpha(pal.accent, 0.2) : Qt.alpha(pal.bg, 0.5)
-    border.width: 1
+    border.width: pal.calm ? 0 : 1
     border.color: pal.line
     Behavior on color { ColorAnimation { duration: ri.pal.dFast } }
 

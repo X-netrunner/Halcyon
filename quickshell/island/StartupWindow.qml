@@ -49,7 +49,7 @@ Item {
     readonly property int ncpu: Math.max(1, info.ncpu || 1)
     readonly property var shownTips: info.suggest || []                 // the search box: filters whichever list is showing
 
-    component Cap: Text { color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.2 }
+    component Cap: Text { color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: root.pal.calm ? Font.Medium : Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.1 : 1.2 }
     component Q: HelpTip { id: q; pal: root.pal; onHoveredChanged: root.setTip(q, hovered) }
     // a column title with its "?" ; alignRight = the text sits at the right edge (number columns)
     component Head: Item {
@@ -357,7 +357,7 @@ Item {
         height: Math.min(parent.height - 80, 780)
         radius: root.pal.rXl
         opacityBody: root.pal.solid ? 1 : 0.78
-        border.color: Qt.alpha(root.pal.accent, 0.35)
+        border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
         scale: root.open ? 1 : 0.96
         Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
 
@@ -446,7 +446,7 @@ Item {
                 implicitHeight: 86
                 radius: root.pal.rLg
                 color: Qt.alpha(root.pal.bg, 0.55)
-                border.width: 1
+                border.width: root.pal.calm ? 0 : 1
                 border.color: root.pal.lineTint
                 readonly property real total: Math.max(1, root.info.total_mb)
                 readonly property real startup: Math.min(root.info.startup_mb, root.info.session_mb)
@@ -905,7 +905,7 @@ Item {
                             height: 36 + 120 + 16 + (root.growers.length > 0 ? 24 + root.growers.length * 20 : 24) + 16
                             radius: root.pal.rLg
                             color: Qt.alpha(root.pal.bg, 0.55)
-                            border.width: 1
+                            border.width: root.pal.calm ? 0 : 1
                             border.color: root.pal.lineTint
                             ColumnLayout {
                                 anchors.fill: parent
@@ -913,7 +913,7 @@ Item {
                                 spacing: 8
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Text { text: "MEMORY OVER TIME"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 1.2 }
+                                    Text { text: root.pal.cap("MEMORY OVER TIME"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.2 : 1.2 }
                                     Item { Layout.fillWidth: true }
                                     Text {
                                         text: root.hist.length < 2 ? "collecting…" : "last " + Math.max(1, Math.round(root.hist.length * 5 / 60)) + " min, one point every 5 s"
@@ -956,7 +956,7 @@ Item {
                                 }
                                 Text {
                                     visible: root.growers.length > 0
-                                    text: "GREW MOST SINCE THIS WINDOW OPENED"
+                                    text: root.pal.cap("GREW MOST SINCE THIS WINDOW OPENED")
                                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 1.2
                                 }
                                 Repeater {
@@ -986,7 +986,7 @@ Item {
                                 height: fcol.implicitHeight + 28
                                 radius: root.pal.rLg
                                 color: Qt.alpha(root.pal.surface, 0.75)
-                                border.width: 1
+                                border.width: root.pal.calm ? 0 : 1
                                 border.color: root.pal.lineSoft
                                 Rectangle {
                                     anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
@@ -1029,7 +1029,7 @@ Item {
                                         wrapMode: Text.WordWrap
                                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                     }
-                                    Cap { topPadding: 2; text: "LIKELY CAUSES" }
+                                    Cap { topPadding: 2; text: root.pal.cap("LIKELY CAUSES") }
                                     Repeater {
                                         model: fcard.causes
                                         delegate: Row {
@@ -1040,7 +1040,7 @@ Item {
                                             Text { width: parent.width - 16; text: parent.modelData; wrapMode: Text.WordWrap; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
                                         }
                                     }
-                                    Cap { visible: fcard.actions.length > 0; topPadding: 4; text: "WHAT YOU CAN DO" }
+                                    Cap { visible: fcard.actions.length > 0; topPadding: 4; text: root.pal.cap("WHAT YOU CAN DO") }
                                     Repeater {
                                         model: fcard.actions
                                         delegate: Item {

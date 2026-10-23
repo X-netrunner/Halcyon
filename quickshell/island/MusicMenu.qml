@@ -239,7 +239,7 @@ Scope {
                     height: Math.min(qp.height - root.pal.boxTop - root.pal.boxEdge, 620)
                     radius: root.pal.rXl
                     opacityBody: root.pal.solid ? 1 : 0.90
-                    border.color: Qt.alpha(root.pal.accent, 0.40)
+                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.40)
                     opacity: qp.reveal
                     x: root.panelRight ? qp.width - width - 22 + (1 - qp.reveal) * width * 0.4
                                        : 22 - (1 - qp.reveal) * width * 0.4
@@ -409,7 +409,7 @@ Scope {
                                 height: 46
                                 radius: root.pal.rSm
                                 color: Qt.alpha(root.pal.surface, 0.55)
-                                border.width: 1
+                                border.width: root.pal.calm ? 0 : 1
                                 border.color: root.pal.lineSoft
                                 RowLayout {
                                     anchors { fill: parent; leftMargin: 12; rightMargin: 12 }

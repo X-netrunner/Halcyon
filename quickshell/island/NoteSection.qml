@@ -20,11 +20,11 @@ ColumnLayout {
     spacing: 4
 
     Text {
-        text: sec.label.toUpperCase()
+        text: (sec.pal.calm ? sec.label : sec.label.toUpperCase())
         color: Qt.alpha(sec.pal.muted, 0.75)
         font.family: sec.pal.uiFont
-        font.pixelSize: 9
-        font.letterSpacing: 1.3
+        font.pixelSize: sec.pal.calm ? 11 : 9
+        font.letterSpacing: sec.pal.calm ? 0.2 : (1.3)
         font.weight: Font.Medium
     }
     Text {

@@ -16,7 +16,7 @@ Item {
         id: tile
         width: 36; height: 36; radius: root.pal.rMd - 2
         color: Qt.alpha(root.pal.accent, 0.12)
-        border.width: 1
+        border.width: root.pal.calm ? 0 : 1
         border.color: root.pal.line
         Text {
             anchors.centerIn: parent
@@ -32,11 +32,11 @@ Item {
         anchors { left: tile.right; leftMargin: 12; right: parent.right; top: parent.top }
         spacing: 1
         Text {
-            text: root.label.toUpperCase()
+            text: (root.pal.calm ? root.label : root.label.toUpperCase())
             color: root.pal.muted
             font.family: root.pal.uiFont
-            font.pixelSize: 9
-            font.letterSpacing: 1.1
+            font.pixelSize: root.pal.calm ? 11 : 9
+            font.letterSpacing: root.pal.calm ? 0.2 : (1.1)
         }
         Text {
             width: parent.width

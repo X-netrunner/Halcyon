@@ -383,7 +383,7 @@ Scope {
                                                 border.color: Qt.alpha(root.pal ? root.pal.good : "#8fcfa0", 0.5)
                                                 Text {
                                                     anchors.centerIn: parent
-                                                    text: "ACTIVE"
+                                                    text: root.pal.cap("ACTIVE")
                                                     font.family: root.pal ? root.pal.uiFont : "Sans Serif"
                                                     font.pixelSize: 9
                                                     font.weight: Font.Bold

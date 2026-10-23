@@ -36,7 +36,15 @@ CHAT_URL = "http://127.0.0.1:11434/api/chat"
 # The context window every Halcyon AI script asks for: Ollama loads the model again whenever it changes between two requests,
 # so chat, agent, advisor, notes and the brief all use the same one (keep it equal in each of them).
 NUM_CTX = 8192
-KEEP_ALIVE = "30m"            # halcyon-chat.py sets 0 for a question asked while Gaming mode is on
+def _lazy_mem():
+    """Settings > Performance > Aggressive Memory Freeing (on by default in Low / Medium resource use)."""
+    try:
+        with open(os.path.expanduser("~/.local/state/island/settings.json"), encoding="utf-8") as f:
+            return (json.load(f).get("opt") or {}).get("lazyLoad", True) is not False
+    except (OSError, ValueError, AttributeError):
+        return True
+# how long Ollama keeps the model (2-3 GB) in memory after an answer: 3 minutes with Aggressive Memory Freeing, else 30
+KEEP_ALIVE = "3m" if _lazy_mem() else "30m"            # halcyon-chat.py sets 0 for a question asked while Gaming mode is on
 MAX_STEPS = 8
 MAX_RESULT_CHARS = 3000
 
