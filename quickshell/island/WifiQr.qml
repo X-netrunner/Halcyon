@@ -48,7 +48,7 @@ Scope {
                 height: col.implicitHeight + 48
                 radius: root.pal.rXl
                 color: Qt.alpha(root.pal.bg, 0.98)
-                border.width: 1
+                border.width: root.pal.bw
                 border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
                 MouseArea { anchors.fill: parent; onClicked: root.hide() }
 

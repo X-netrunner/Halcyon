@@ -61,7 +61,7 @@ ColumnLayout {
             Layout.preferredHeight: 34
             radius: 17
             color: root.unfolded ? Qt.alpha(root.pal.accent, 0.14) : (btnMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.8))
-            border.width: 1
+            border.width: root.pal.zen && !(root.unfolded) ? 0 : 1
             border.color: root.unfolded ? Qt.alpha(root.pal.accent, 0.4) : root.pal.lineSoft
             Behavior on color { ColorAnimation { duration: root.pal.dFast } }
             Text {
@@ -180,7 +180,7 @@ ColumnLayout {
                 spacing: 10
                 Rectangle {
                     Layout.fillWidth: true; Layout.preferredHeight: 34; radius: 17
-                    color: Qt.alpha(root.pal.bg, 0.5); border.width: 1
+                    color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.5); border.width: root.pal.zen && !cmdIn.activeFocus ? 0 : 1
                     border.color: cmdIn.activeFocus ? root.pal.accent : root.pal.lineSoft
                     TextInput {
                         id: cmdIn
@@ -198,7 +198,7 @@ ColumnLayout {
                         }
                     }
                 }
-                Chip { pal: root.pal; maxLabel: 1000; label: "Save"; on: true; onClicked: root.chosen("cmd", cmdIn.text.trim()) }
+                Chip { pal: root.pal; maxLabel: 1000; label: "Save"; primary: true; onClicked: root.chosen("cmd", cmdIn.text.trim()) }
             }
         }
       }

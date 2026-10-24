@@ -29,6 +29,7 @@ Scope {
     signal launchRequested(string id)
     signal stopRequested()
     signal consoleRequested(string cmd)
+    property bool consoleOpen: false        // the pop-out console has the keyboard (shell.qml)
     signal focusRequested(string what)      // the window's own fields take the keyboard (ids inside the LazyLoader are not reachable from here)
 
     // ---- state
@@ -387,7 +388,7 @@ Scope {
         if (!sel) return
         act([hgl, "set", sel.id, key, val], okNote || "")
     }
-    function runInConsole(cmd) { hide(); consoleRequested(cmd) }
+    function runInConsole(cmd) { consoleRequested(cmd) }        // the window stays; the console opens over it
 
     // the text boxes of the drawer keep what you type while the list refreshes: they are only filled when the game changes
     property string argsSeed: ""
@@ -663,7 +664,8 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.namespace: "island-games"
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            // while the console is up (a command this window sent) it has the keyboard; this window stays open behind it
+            WlrLayershell.keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
 
@@ -716,7 +718,7 @@ Scope {
                         // Centred titles: the badge and title in the middle on top, the tabs on a line under them
                         Item {
                             id: gcHead
-                            readonly property bool centred: root.pal.centerTitles
+                            readonly property bool centred: root.pal.centred
                             Layout.fillWidth: true
                             implicitHeight: centred ? 42 + 50 : 42
                             Row {
@@ -724,9 +726,10 @@ Scope {
                                 y: gcHead.centred ? 0 : (parent.height - height) / 2
                                 spacing: 12
                                 Rectangle {
+                                    visible: !root.pal.zen          // the new style: no icon tile in the header
                                     width: 40; height: 40; radius: 13
                                     color: Qt.alpha(root.noteBad ? root.pal.bad : root.pal.accent, 0.16)
-                                    border.width: 1
+                                    border.width: root.pal.bw
                                     border.color: Qt.alpha(root.noteBad ? root.pal.bad : root.pal.accent, 0.35)
                                     Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                     Text {
@@ -776,7 +779,7 @@ Scope {
                                 width: tabRow.implicitWidth + 8
                                 height: 40
                                 radius: 20
-                                color: Qt.alpha(root.pal.surface, 0.8)
+                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.8))
                                 border.width: root.pal.calm ? 0 : 1
                                 border.color: root.pal.lineSoft
                                 Row {
@@ -804,16 +807,17 @@ Scope {
                                 Layout.fillHeight: true
                                 spacing: 12
 
-                                // search, store filter, Read Steam, Add game
+                                // search, store filter, refresh, add
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 8
+                                    z: 10                       // the store drop-down opens over the covers
+                                    spacing: 12
                                     Rectangle {
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 38
                                         radius: 19
-                                        color: Qt.alpha(root.pal.surface, 0.8)
-                                        border.width: 1
+                                        color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.8))
+                                        border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                                         border.color: sin.activeFocus ? Qt.alpha(root.pal.accent, 0.7) : root.pal.lineSoft
                                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
                                         Text {
@@ -853,27 +857,60 @@ Scope {
                                             }
                                         }
                                     }
-                                    Chip { pal: root.pal; implicitHeight: 38; visible: root.sources.length > 1; label: "All"; on: root.filter === "all"; onClicked: root.filter = "all" }
-                                    Repeater {
-                                        model: root.sources.length > 1 ? root.sources : []
-                                        delegate: Chip {
-                                            required property var modelData
-                                            pal: root.pal
-                                            implicitHeight: 38
-                                            label: root.srcLabel(modelData)
-                                            on: root.filter === modelData
-                                            onClicked: root.filter = modelData
-                                        }
-                                    }
-                                    ActionChip {
+                                    // which store: one quiet drop-down instead of a chip per store (it took the row's room)
+                                    Chip {
+                                        id: srcPick
+                                        visible: root.sources.length > 1
                                         pal: root.pal
                                         implicitHeight: 38
+                                        label: (root.filter === "all" ? "All games" : root.srcLabel(root.filter)) + "   ▾"
+                                        on: srcMenu.visible
+                                        onClicked: srcMenu.visible = !srcMenu.visible
+                                        Rectangle {
+                                            id: srcMenu
+                                            visible: false
+                                            z: 50
+                                            y: parent.height + 6
+                                            anchors.right: parent.right
+                                            width: Math.max(parent.width, 150)
+                                            height: srcCol.implicitHeight + 12
+                                            radius: root.pal.rMd
+                                            color: root.pal.surfaceHi
+                                            border.width: 1; border.color: root.pal.line
+                                            Column {
+                                                id: srcCol
+                                                x: 6; y: 6
+                                                width: parent.width - 12
+                                                Repeater {
+                                                    model: ["all"].concat(root.sources)
+                                                    delegate: Rectangle {
+                                                        id: srcRow
+                                                        required property var modelData
+                                                        width: srcCol.width; height: 34; radius: height / 2
+                                                        color: root.filter === modelData ? root.pal.chosenFill : (srcMa.containsMouse ? root.pal.fill : "transparent")
+                                                        Text {
+                                                            x: 14; anchors.verticalCenter: parent.verticalCenter
+                                                            text: srcRow.modelData === "all" ? "All games" : root.srcLabel(srcRow.modelData)
+                                                            color: root.filter === srcRow.modelData ? root.pal.chosenText : root.pal.text
+                                                            font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                                                        }
+                                                        MouseArea { id: srcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.filter = srcRow.modelData; srcMenu.visible = false } }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // read the stores again / add a game: icons only (the library's state says what is going on)
+                                    Chip {
+                                        pal: root.pal
+                                        implicitHeight: 38
+                                        padX: 12
                                         glyph: String.fromCodePoint(0xF0450)
-                                        label: "Refresh"
-                                        disabled: root.busy
+                                        enabled: !root.busy
+                                        opacity: root.busy ? 0.45 : 1
                                         onClicked: root.refreshLibrary()
                                     }
-                                    PrimaryBtn { glyph: String.fromCodePoint(0xF0415); label: "Add game"; onClicked: root.browseExe() }
+                                    RoundBtn { pal: root.pal; primary: true; size: 38; glyph: String.fromCodePoint(0xF0415); onClicked: root.browseExe() }
                                 }
 
                                 // the .exe that was picked (or pasted): name it, add it
@@ -883,7 +920,7 @@ Scope {
                                     implicitHeight: 64
                                     radius: root.pal.rLg
                                     color: Qt.alpha(root.pal.accent, 0.07)
-                                    border.width: 1
+                                    border.width: root.pal.bw
                                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                                     RowLayout {
                                         anchors { fill: parent; leftMargin: 14; rightMargin: 12 }
@@ -898,8 +935,8 @@ Scope {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: 38
                                             radius: root.pal.rSm
-                                            color: Qt.alpha(root.pal.bg, 0.55)
-                                            border.width: 1
+                                            color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: root.pal.zen && !addPathIn.activeFocus ? 0 : 1
                                             border.color: addPathIn.activeFocus ? Qt.alpha(root.pal.accent, 0.7) : root.pal.lineSoft
                                             TextInput {
                                                 id: addPathIn
@@ -922,8 +959,8 @@ Scope {
                                             Layout.preferredWidth: 220
                                             Layout.preferredHeight: 38
                                             radius: root.pal.rSm
-                                            color: Qt.alpha(root.pal.bg, 0.55)
-                                            border.width: 1
+                                            color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: root.pal.zen && !addNameIn.activeFocus ? 0 : 1
                                             border.color: addNameIn.activeFocus ? Qt.alpha(root.pal.accent, 0.7) : root.pal.lineSoft
                                             TextInput {
                                                 id: addNameIn
@@ -980,7 +1017,7 @@ Scope {
                                             anchors.fill: parent
                                             anchors.margins: 7
                                             radius: root.pal.rLg
-                                            color: Qt.alpha(root.pal.surface, 0.9)
+                                            color: root.pal.box(Qt.alpha(root.pal.surface, 0.9))
                                             scale: cardMa.pressed ? 0.97 : (cardMa.containsMouse ? 1.02 : 1)
                                             z: cardMa.containsMouse ? 2 : 0
                                             Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
@@ -1091,8 +1128,9 @@ Scope {
                                                 anchors.fill: parent
                                                 radius: card.radius
                                                 color: "transparent"
-                                                border.width: cell.cur ? 2 : 1
-                                                border.color: cell.cur ? root.pal.accent : (cardMa.containsMouse ? Qt.alpha(root.pal.accent, 0.4) : root.pal.lineSoft)
+                                                // new: only the chosen game is ringed, softly; the rest have no edge
+                                                border.width: cell.cur ? 2 : root.pal.bw
+                                                border.color: cell.cur ? Qt.alpha(root.pal.accent, root.pal.zen ? 0.75 : 1) : (cardMa.containsMouse ? Qt.alpha(root.pal.accent, 0.4) : root.pal.lineSoft)
                                                 Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
                                             }
                                             MouseArea {
@@ -1145,7 +1183,7 @@ Scope {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             width: 76; height: 76; radius: 24
                                             color: Qt.alpha(root.pal.accent, 0.12)
-                                            border.width: 1
+                                            border.width: root.pal.bw
                                             border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.3)
                                             Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF0297); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 38 }
                                         }
@@ -1188,7 +1226,7 @@ Scope {
                                 Layout.fillHeight: true
                                 visible: root.sel !== null
                                 radius: root.pal.rLg
-                                color: Qt.alpha(root.pal.surface, 0.55)
+                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
 
                                 Flickable {
                                     id: dflick
@@ -1466,7 +1504,7 @@ Scope {
                                             implicitHeight: knownTxt.implicitHeight + 20
                                             radius: root.pal.rMd
                                             color: Qt.alpha(root.pal.accent, 0.08)
-                                            border.width: 1
+                                            border.width: root.pal.bw
                                             border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                                             Text {
                                                 id: knownTxt
@@ -1562,7 +1600,7 @@ Scope {
                                             implicitHeight: sugCol.implicitHeight + 24
                                             radius: root.pal.rMd
                                             color: Qt.alpha(root.pal.accent, 0.07)
-                                            border.width: 1
+                                            border.width: root.pal.bw
                                             border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.25)
                                             Column {
                                                 id: sugCol
@@ -1693,7 +1731,7 @@ Scope {
                                                 height: 38
                                                 radius: root.pal.rSm
                                                 color: protonMa.containsMouse ? Qt.alpha(root.pal.bg, 0.7) : Qt.alpha(root.pal.bg, 0.5)
-                                                border.width: 1
+                                                border.width: root.pal.zen && !(root.protonOpen) ? 0 : 1
                                                 border.color: root.protonOpen ? root.pal.accent : root.pal.lineSoft
                                                 Text {
                                                     id: protonLbl
@@ -1844,8 +1882,8 @@ Scope {
                                                     width: parent.width
                                                     height: 36
                                                     radius: root.pal.rSm
-                                                    color: Qt.alpha(root.pal.bg, 0.55)
-                                                    border.width: 1
+                                                    color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                                    border.width: root.pal.zen && !argsIn.activeFocus ? 0 : 1
                                                     border.color: argsIn.activeFocus ? root.pal.accent : root.pal.lineSoft
                                                     TextInput {
                                                         id: argsIn
@@ -1898,8 +1936,8 @@ Scope {
                                                         Layout.preferredWidth: 110
                                                         Layout.preferredHeight: 32
                                                         radius: root.pal.rSm
-                                                        color: Qt.alpha(root.pal.bg, 0.55)
-                                                        border.width: 1
+                                                        color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                                        border.width: root.pal.zen && !envName.activeFocus ? 0 : 1
                                                         border.color: envName.activeFocus ? root.pal.accent : root.pal.lineSoft
                                                         TextInput {
                                                             id: envName
@@ -1920,8 +1958,8 @@ Scope {
                                                         Layout.fillWidth: true
                                                         Layout.preferredHeight: 32
                                                         radius: root.pal.rSm
-                                                        color: Qt.alpha(root.pal.bg, 0.55)
-                                                        border.width: 1
+                                                        color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                                        border.width: root.pal.zen && !envVal.activeFocus ? 0 : 1
                                                         border.color: envVal.activeFocus ? root.pal.accent : root.pal.lineSoft
                                                         TextInput {
                                                             id: envVal
@@ -2019,7 +2057,7 @@ Scope {
                                     color: Qt.alpha(root.pal.text, dflick.moving ? 0.35 : 0.16)
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
-                                Rectangle { anchors.fill: parent; radius: drawer.radius; color: "transparent"; border.width: 1; border.color: root.pal.lineSoft }
+                                Rectangle { anchors.fill: parent; radius: drawer.radius; color: "transparent"; border.width: root.pal.bw; border.color: root.pal.lineSoft }
                             }
                         }
 
@@ -2066,8 +2104,8 @@ Scope {
                                     width: ListView.view.width
                                     height: 54
                                     radius: root.pal.rMd
-                                    color: Qt.alpha(root.pal.surface, 0.7)
-                                    border.width: 1
+                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.7))
+                                    border.width: root.pal.zen && !(modelData["default"]) ? 0 : 1
                                     border.color: modelData["default"] ? Qt.alpha(root.pal.accent, 0.45) : root.pal.lineSoft
                                     RowLayout {
                                         anchors { fill: parent; leftMargin: 16; rightMargin: 12 }
@@ -2139,7 +2177,7 @@ Scope {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     radius: root.pal.rLg
-                                    color: Qt.alpha(root.pal.surface, 0.55)
+                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
                                     border.width: root.pal.calm ? 0 : 1
                                     border.color: root.pal.lineSoft
                                     ColumnLayout {
@@ -2202,7 +2240,7 @@ Scope {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     radius: root.pal.rLg
-                                    color: Qt.alpha(root.pal.surface, 0.55)
+                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
                                     border.width: root.pal.calm ? 0 : 1
                                     border.color: root.pal.lineSoft
                                     ColumnLayout {
@@ -2233,8 +2271,8 @@ Scope {
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: 34
                                                 radius: root.pal.rSm
-                                                color: Qt.alpha(root.pal.bg, 0.55)
-                                                border.width: 1
+                                                color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                                border.width: root.pal.zen && !gogIn.activeFocus ? 0 : 1
                                                 border.color: gogIn.activeFocus ? root.pal.accent : root.pal.lineSoft
                                                 TextInput {
                                                     id: gogIn
@@ -2327,7 +2365,7 @@ Scope {
                                     implicitHeight: ccol.implicitHeight + 20
                                     height: implicitHeight
                                     radius: root.pal.rMd
-                                    color: Qt.alpha(root.pal.surface, 0.7)
+                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.7))
                                     border.width: root.pal.calm ? 0 : 1
                                     border.color: root.pal.lineSoft
                                     Rectangle {

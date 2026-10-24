@@ -3,7 +3,7 @@ import QtQuick.Layouts
 
 // A box's or window's title and the small line under it (Notifications · "3 notifications", Settings, Bar builder ...).
 // Normally it sits on the left and fills the free space of its header row. With Settings > Look > Centred titles
-// (pal.centerTitles) each line is centred on the middle of the whole row, as far as the buttons beside it allow.
+// (pal.centred) each line is centred on the middle of the whole row, as far as the buttons beside it allow.
 // overlay: true (headers with a search box after the title): when centred the title leaves the row's flow and sits exactly in
 // the middle of the row, so the search box moves up next to the icon instead of pushing the title aside.
 Item {
@@ -17,7 +17,7 @@ Item {
     property color titleColor: pal.text
     property bool overlay: false
     property bool subIsHint: false          // the small line is an explanation: Settings > Look > Hide explanations hides it
-    readonly property bool centred: !!(pal && pal.centerTitles)
+    readonly property bool centred: !!(pal && pal.centred)
     readonly property bool lifted: centred && overlay
 
     Layout.fillWidth: !overlay        // an overlay title keeps its own width in the row (the search box after it fills)

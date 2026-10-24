@@ -20,6 +20,10 @@ Scope {
     property var starData: null
     property bool profileStars: true
     property bool open: false
+    // the window stays a moment after it closes, so its fade-out plays (it used to vanish at once)
+    property bool linger: false
+    Connections { target: root; function onOpenChanged() { if (!root.open) { root.linger = true; lingerT.restart() } } }
+    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
     property bool consoleOpen: false
     property bool available: false        // sysmode is installed
     property string query: ""
@@ -114,7 +118,7 @@ Scope {
     readonly property int totalCount: { var n = 0; for (var g = 0; g < groups.length; g++) n += groups[g].items.length; return n }
 
     LazyLoader {
-        active: root.open
+        active: root.open || root.linger
         PanelWindow {
             id: win
             visible: true
@@ -157,21 +161,29 @@ Scope {
                         id: head
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 26 }
                         spacing: 14
-                        Text { text: String.fromCodePoint(0xF0489); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
-                        BoxTitle { pal: root.pal; size: 20; overlay: true; title: "Console commands" }
+                        Text { visible: !root.pal.zen; text: String.fromCodePoint(0xF0489); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
+                        BoxTitle { pal: root.pal; size: 20; title: "Console commands" }
+                        RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
+                    }
+
+                    // ---------------- the bottom bar: the search (the title bar stays clean)
+                    RowLayout {
+                        id: foot
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 26 }
+                        spacing: 12
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.maximumWidth: 420
-                            implicitHeight: 34
-                            radius: 17
-                            color: Qt.alpha(root.pal.bg, 0.55)
-                            border.width: 1
+                            Layout.maximumWidth: 560
+                            implicitHeight: 38
+                            radius: 19
+                            color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                            border.width: root.pal.zen && !search.activeFocus ? 0 : 1
                             border.color: search.activeFocus ? root.pal.lineFocus : root.pal.line
                             Text {
                                 anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
                                 visible: search.text === ""
-                                text: String.fromCodePoint(0xF0349) + "  search commands"
-                                color: root.pal.muted; font.family: root.pal.font; font.pixelSize: root.pal.tBody
+                                text: root.pal.zen ? "Search commands" : String.fromCodePoint(0xF0349) + "  search commands"
+                                color: root.pal.muted; font.family: root.pal.zen ? root.pal.uiFont : root.pal.font; font.pixelSize: root.pal.tBody
                             }
                             TextInput {
                                 id: search
@@ -188,17 +200,17 @@ Scope {
                             }
                         }
                         Text {
+                            visible: !(root.pal.zen && root.pal.hideHints)
                             text: root.shownCount + " shown  ·  click one to put it in the console"
                             color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                         }
                         Item { Layout.fillWidth: true }
-                        RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
                     }
 
                     // ---------------- the tree
                     Flickable {
                         id: scroll
-                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 26; topMargin: 18 }
+                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: foot.top; margins: 26; topMargin: 18; bottomMargin: 16 }
                         contentWidth: width
                         contentHeight: tree.height + 12
                         clip: true

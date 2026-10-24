@@ -64,8 +64,8 @@ ColumnLayout {
         Rectangle {
             Layout.fillWidth: true
             height: 36; radius: 18
-            color: Qt.alpha(root.pal.surface, 0.8)
-            border.width: 1
+            color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.8))
+            border.width: root.pal.zen && !fcIn.activeFocus ? 0 : 1
             border.color: fcIn.activeFocus ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
             TextInput {
                 id: fcIn

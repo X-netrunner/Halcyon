@@ -8,7 +8,9 @@ Item {
     property string tip: ""
     readonly property bool hovered: hh.hovered
 
-    implicitWidth: 15
+    // the new style with Hide explanations: no "?" at all (ask > explains)
+    visible: !(pal && pal.zen && pal.hideHints)
+    implicitWidth: visible ? 15 : 0
     implicitHeight: 15
 
     Rectangle {
@@ -16,7 +18,7 @@ Item {
         radius: width / 2
         color: h.hovered ? Qt.alpha(h.pal.accent, 0.22) : "transparent"
         border.width: 1
-        border.color: h.hovered ? h.pal.accent : Qt.alpha(h.pal.muted, 0.7)
+        border.color: h.hovered ? h.pal.accent : Qt.alpha(h.pal.muted, 0.7)   // (only shown in the styles that keep the ?)
         Behavior on color { ColorAnimation { duration: h.pal.dFast } }
         Behavior on border.color { ColorAnimation { duration: h.pal.dFast } }
         Text {

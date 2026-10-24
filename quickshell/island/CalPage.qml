@@ -88,8 +88,8 @@ Item {
                     width: 34; height: 38
                     Rectangle {
                         anchors.centerIn: parent; width: 30; height: 32; radius: 10
-                        color: cell.isSel ? Qt.alpha(pg.pal.accent, 0.22) : (cm.containsMouse ? Qt.alpha(pg.pal.surfaceHi, 0.7) : "transparent")
-                        border.width: cell.isSel ? 1.5 : (cell.isToday ? 1 : 0)
+                        color: cell.isSel ? (pg.pal.zen ? pg.pal.chosenFill : Qt.alpha(pg.pal.accent, 0.22)) : (cm.containsMouse ? (pg.pal.zen ? pg.pal.fillHover : Qt.alpha(pg.pal.surfaceHi, 0.7)) : "transparent")
+                        border.width: pg.pal.zen ? 0 : cell.isSel ? 1.5 : (cell.isToday ? 1 : 0)      // new: a fill marks the chosen day, the accent number marks today
                         border.color: cell.isSel ? pg.pal.accent : Qt.alpha(pg.pal.accent, 0.6)
                     }
                     Text {

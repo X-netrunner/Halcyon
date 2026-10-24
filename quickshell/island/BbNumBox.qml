@@ -31,8 +31,8 @@ Row {
     Rectangle {
         width: 76; height: 28; radius: 14
         anchors.verticalCenter: parent.verticalCenter
-        color: Qt.alpha(bb.pal.surface, 0.8)
-        border.width: 1
+        color: bb.pal.zen ? bb.pal.field : Qt.alpha(bb.pal.surface, 0.8)
+        border.width: bb.pal.zen && !fld.activeFocus ? 0 : 1
         border.color: fld.activeFocus ? bb.pal.accent : Qt.alpha(bb.pal.accent, nb.value === null ? 0.25 : 0.45)
         TextInput {
             id: fld
