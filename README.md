@@ -8,10 +8,7 @@ always-on helpers are written in Rust.
 
 <!-- A video or GIF of Halcyon in action can go here -->
 
-
-https://github.com/user-attachments/assets/3d7ee31b-4e79-46b0-b3ed-76e93069f8ec
-
-
+https://github.com/user-attachments/assets/6951fca1-d9d2-4b6d-9731-57c10fa497c4
 
 ## What you get
 
