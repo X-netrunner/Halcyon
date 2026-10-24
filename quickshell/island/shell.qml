@@ -351,7 +351,7 @@ ShellRoot {
     property string page: "home"
     // ai-firewall installed? (install.sh --firewall ai) Its launcher commands are only listed then; checked once at start
     property bool fwInstalled: false
-    Process { running: true; command: ["test", "-x", "/usr/local/bin/ai-firewall"]; onExited: code => root.fwInstalled = code === 0 }
+    Process { running: true; command: ["sh", "-c", "command -v ai-firewall >/dev/null"]; onExited: code => root.fwInstalled = code === 0 }
 
     // ---- Settings > Bar style > Drag the bar down: the utilities box (and the notifications) hang from the bar as two more pages, "util" and "notif"
     readonly property string dropMode: (opt.dropDown === "stack" || opt.dropDown === "side") ? opt.dropDown : "off"
@@ -655,10 +655,11 @@ ShellRoot {
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
             else if (id === "fw-page") root.page = "fw"
-            else if (id === "fw-top" || id === "fw-ask" || id === "fw-doctor" || id === "fw-config") {
+            else if (id === "fw-center") root.runCommand("firewall")
+            else if (id === "fw-doctor") quickTerm.run("sudo ai-firewall doctor --fix")          // in the console: sudo and its [y/N] questions are answered there
+            else if (id === "fw-top" || id === "fw-ask" || id === "fw-config") {                  // full-screen programs: a real terminal
                 var fwCmd = id === "fw-top" ? "sudo ai-firewall top"
                           : id === "fw-ask" ? "sudo ai-firewall top --ask"
-                          : id === "fw-doctor" ? "sudo ai-firewall doctor --fix; echo; read -n1 -r -p 'Press any key to close '"
                           : "sudoedit /etc/ai-firewall/config.toml"
                 Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", fwCmd])
             }
@@ -1055,6 +1056,13 @@ ShellRoot {
 
     // >study: your PDFs, slides and notes, with questions answered from them, summaries, quizzes and flashcards (StudyCenter.qml,
     // scripts/halcyon-study.py)
+    // Firewall Center (>firewall): ai-firewall's status, bans, rules, feeds, history and its assistant (FwCenter.qml)
+    FwCenter {
+        id: fwCenter
+        pal: pal
+        onConsoleRequested: cmd => quickTerm.run(cmd)
+    }
+
     StudyCenter {
         id: studyCenter
         pal: pal
@@ -1922,7 +1930,8 @@ ShellRoot {
             return
         }
         switch (id) {
-        case "firewall": Qt.callLater(() => { root.page = "fw" }); return      // after the launcher's own close (which sets home)
+        case "firewall": if (studyCenter.open) studyCenter.hide(); if (gameCenter.open) gameCenter.hide(); fwCenter.toggle(); break
+        case "firewall-page": Qt.callLater(() => { root.page = "fw" }); return      // after the launcher's own close (which sets home)
         case "firewall-dashboard": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", "sudo ai-firewall top"]); break
         case "wallpaper": randomWallpaper(); break
         case "wallpaper-back": wallpaperLayer.back(); break
@@ -2610,6 +2619,7 @@ ShellRoot {
         function media(): void { root.page = "media" }
         function perf(): void { root.page = "perf" }
         function firewall(): void { root.page = root.page === "fw" ? "home" : "fw" }      // ai-firewall status page (FwPage.qml)
+        function firewallcenter(): void { root.runCommand("firewall") }                   // the Firewall Center window (FwCenter.qml)
         function panel(): void { if (!root.dropShow("util")) corner.pinFor(6000) }
         function autohide(): void { root.setAutoHide(!root.autoHide) }
         function barstyle(): void { root.runCommand("barstyle") }
@@ -3135,6 +3145,7 @@ ShellRoot {
                 FwPage {
                     anchors.fill: parent
                     pal: pal
+                    onConsoleRequested: cmd => { root.page = "home"; quickTerm.run(cmd) }
                     active: root.page === "fw"
                     opacity: root.page === "fw" ? 1 : 0
                     visible: opacity > 0.01
