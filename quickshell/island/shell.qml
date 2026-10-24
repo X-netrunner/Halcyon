@@ -557,6 +557,7 @@ ShellRoot {
         treeConstSize: (root.opt.treeConstSize || 30) / 100
         treeDots: root.opt.treeDots || "load"
         branchShader: root.branchShaderUrl
+        skyShader: root.skyShaderUrl
         accentMode: root.opt.accentMode
         cycleSecs: root.opt.cycleSecs
         termDrift: root.opt.termDrift
@@ -2107,6 +2108,13 @@ ShellRoot {
         running: true
         command: ["bash", root.cfg + "/island/scripts/build-shader.sh"]
         stdout: StdioCollector { onStreamFinished: { var p = text.trim(); if (p !== "") root.branchShaderUrl = "file://" + p } }
+    }
+    // the Halcyon sky's glow (sky.frag, LiveSky.qml), built the same way; empty = LiveSky paints it on a Canvas instead
+    property string skyShaderUrl: ""
+    Process {
+        running: true
+        command: ["bash", root.cfg + "/island/scripts/build-shader.sh", "sky"]
+        stdout: StdioCollector { onStreamFinished: { var p = text.trim(); if (p !== "") root.skyShaderUrl = "file://" + p } }
     }
     Process {
         id: gamingProc
