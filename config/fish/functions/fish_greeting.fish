@@ -97,7 +97,13 @@ function fish_greeting
 
     # sysmode: read the mode file directly (cyber = old name of relaxed, hacking = old name of stealth)
     set -l mode "N/A"
-    if test "$in_kali" = 0
+    # sysmode not chosen at install (SYSMODE="no") or not installed: nothing to report
+    set -l no_sysmode 0
+    command -q sysmode; or test -x /usr/local/bin/sysmode; or set no_sysmode 1
+    command grep -qx 'SYSMODE="no"' "$HOME/.local/state/island/install-choices.env" 2>/dev/null; and set no_sysmode 1
+    if test "$in_kali" = 0 -a "$no_sysmode" = 1
+        set mode -
+    else if test "$in_kali" = 0
         set -l sm
         test -r /etc/sysmode.mode; and read -l sm </etc/sysmode.mode
         switch "$sm"
