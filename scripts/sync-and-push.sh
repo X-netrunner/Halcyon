@@ -181,15 +181,18 @@ list_repos() {
 # ---------------------------------------------------------------------------
 # menu
 # ---------------------------------------------------------------------------
-printf '%sHalcyon checkouts found:%s\n\n' "$B" "$R"
-mapfile -t CANDIDATES < <(discover)
-if [ "${#CANDIDATES[@]}" -eq 0 ]; then
-    die "no Halcyon git checkout found (looked in ~, /opt, /srv, /workspace)."
+# --repo (push firewall / push luna) names the checkout itself: no Halcyon menu then
+if [ -z "$REPO" ] || [ "$LIST" = 1 ]; then
+    printf '%sHalcyon checkouts found:%s\n\n' "$B" "$R"
+    mapfile -t CANDIDATES < <(discover)
+    if [ "${#CANDIDATES[@]}" -eq 0 ]; then
+        die "no Halcyon git checkout found (looked in ~, /opt, /srv, /workspace)."
+    fi
+    # stable order: real working trees first, caches last, then by path
+    mapfile -t CANDIDATES < <(printf '%s\n' "${CANDIDATES[@]}" | awk '{print (index($0,"/.cache/")?"1":"0") "\t" $0}' | sort -k1,1 -k2,2 | cut -f2-)
+    list_repos
+    echo
 fi
-# stable order: real working trees first, caches last, then by path
-mapfile -t CANDIDATES < <(printf '%s\n' "${CANDIDATES[@]}" | awk '{print (index($0,"/.cache/")?"1":"0") "\t" $0}' | sort -k1,1 -k2,2 | cut -f2-)
-list_repos
-echo
 
 if [ "$LIST" = 1 ]; then exit 0; fi
 
