@@ -12,7 +12,7 @@ const EXTERNAL = new Set(`AnimatedImage Binding MediaPlayer VideoOutput Behavior
   IpcHandler Item LazyLoader LinearGradient ListModel ListView Loader MouseArea MultiEffect NotificationServer NumberAnimation PamContext
   PanelWindow ParallelAnimation Path PathAngleArc PathArc PathAttribute PathCubic PathLine PathSvg PathView PauseAnimation Process
   QsMenuOpener QtObject RadialGradient Rectangle Region Repeater RotationAnimator Row RowLayout Scope ScriptAction ScriptModel
-  SequentialAnimation ShaderEffect Shape ShapePath ShellRoot Shortcut SplitParser StdioCollector SystemClock TapHandler Text TextEdit
+  SequentialAnimation ShaderEffect ShaderEffectSource Shape ShapePath ShellRoot Shortcut SplitParser StdioCollector SystemClock TapHandler Text TextEdit
   TextInput TextMetrics Timer Transition Translate WheelHandler WlSessionLock WlSessionLockSurface
   PropertyAnimation SmoothedAnimation SpringAnimation OpacityAnimator ScaleAnimator XAnimator YAnimator Rotation Scale State
   PropertyChanges AnchorChanges StackView SwipeView Window FloatingWindow PopupWindow Variants TextArea TextField Label Button
