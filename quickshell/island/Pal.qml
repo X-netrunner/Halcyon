@@ -335,6 +335,8 @@ Scope {
     // (a small shader, branchShader = the compiled .qsb, "" until it is ready); false = the old Shape paths (CPU)
     property bool gpuLines: true
     property string branchShader: ""
+    // the Halcyon sky's dithered glow (sky.frag compiled, LiveSky.qml); "" = the Canvas gradients
+    property string skyShader: ""
     property string lastRawPalette: ""
 
     // ---------- motion ----------
