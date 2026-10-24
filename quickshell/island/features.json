@@ -15,8 +15,8 @@
   "features": [
     { "id": "hello", "core": true, "title": "Welcome to Halcyon",
       "body": "A quick look around, about a minute. The screen goes dim except for the part we are talking about, and you can poke at it. Esc skips the tour at any time; replay it with >tour." },
-    { "id": "newlook", "quick": true, "title": "A calmer look",
-      "body": "Halcyon has a new interface: flat frosted panes with one quiet outline, softer buttons without borders, rounder corners, more room, and the moving stars kept but softer. Prefer the earlier look? Settings > Appearance > Look > Interface: Legacy brings it back, and New returns to this one." },
+    { "id": "quietlook", "quick": true, "title": "A quieter look",
+      "body": "One soft pane, no outlines inside it, pill buttons, the main action in solid accent, and no explanations in the way: ask > in the search bar when you want to know what something does. Prefer the earlier look? Settings > Appearance > Look > Interface: Legacy is the previous calm look, Classic the original." },
     { "id": "island", "quick": true, "core": true, "target": "bar", "title": "The island",
       "body": "Workspaces, the clock, music bars and your Wi-Fi, Bluetooth and battery in one pill. It changes size with what it shows, and so does the spotlight. Click a number to change workspace; scroll over it to move through them." },
     { "id": "launcher", "quick": true, "try": { "check": "launcher", "say": "Tap the Super key on its own (the one with the Windows logo)." }, "core": true, "target": "bar", "demo": "launcher", "keys": ["SUPER"], "title": "One search bar for everything",

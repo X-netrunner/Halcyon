@@ -76,8 +76,8 @@ ColumnLayout {
         Layout.fillWidth: true
         implicitHeight: 30
         radius: 10
-        color: Qt.alpha(root.pal.bg, 0.55)
-        border.width: 1
+        color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+        border.width: root.pal.zen && !apIn.activeFocus ? 0 : 1
         border.color: apIn.activeFocus ? root.pal.lineFocus : root.pal.line
         Text {
             anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter

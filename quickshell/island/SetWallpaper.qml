@@ -18,7 +18,7 @@ ColumnLayout {
         Timer { id: wpFetchSoon; interval: 450; onTriggered: root.action("wallpaper") }       // the flag file is written first
         Rectangle {
             Layout.fillWidth: true; Layout.preferredHeight: 36; radius: 18
-            color: Qt.alpha(root.pal.bg, 0.5); border.width: 1; border.color: wpQueryIn.activeFocus ? root.pal.accent : root.pal.lineSoft
+            color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.5); border.width: root.pal.zen && !wpQueryIn.activeFocus ? 0 : 1; border.color: wpQueryIn.activeFocus ? root.pal.accent : root.pal.lineSoft
             TextInput {
                 id: wpQueryIn
                 anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14

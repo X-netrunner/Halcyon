@@ -94,22 +94,15 @@ Item {
             anchors.margins: 32
             spacing: 18
 
-            // ---- header
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 14
-                Rectangle { Layout.alignment: Qt.AlignVCenter; width: 8; height: 8; radius: 4; color: root.pal.accent }
-                BoxTitle {
-                    Layout.alignment: Qt.AlignVCenter
-                    pal: root.pal
-                    size: 20
-                    subIsHint: true
-                    title: "Notification box builder"
-                    sub: "The box on the left is the real one. Change anything on the right."
-                }
-                ActionChip { pal: root.pal; label: "Restore sample"; doneLabel: "Restored"; onClicked: { root.removed = ({}); root.sampleDnd = false } }
-                ActionChip { pal: root.pal; label: "Reset the box"; doneLabel: "Reset"; onClicked: root.edited(NL.defaults()) }
-                ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
+            // ---- header (WinHeader: the same in every window)
+            WinHeader {
+                pal: root.pal
+                title: "Notification box builder"
+                leading: [
+                    ActionChip { pal: root.pal; label: "Restore sample"; doneLabel: "Restored"; onClicked: { root.removed = ({}); root.sampleDnd = false } },
+                    ActionChip { pal: root.pal; label: "Reset the box"; doneLabel: "Reset"; onClicked: root.edited(NL.defaults()) }
+                ]
+                onClosed: root.closed()
             }
 
             RowLayout {
@@ -179,7 +172,7 @@ Item {
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // parts
-                        NbCap { pal: root.pal; text: "PARTS OF THE BOX, TOP TO BOTTOM" }
+                        NbCap { pal: root.pal; text: root.pal.cap("PARTS OF THE BOX, TOP TO BOTTOM") }
                         // one row per part; a row sits at its place in the order and slides there when the arrows move it
                         Item {
                             id: partsBox

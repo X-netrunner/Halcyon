@@ -57,7 +57,7 @@ ColumnLayout {
                 spacing: 10
                 Rectangle {
                     Layout.preferredWidth: 150; Layout.preferredHeight: 36; radius: 18
-                    color: Qt.alpha(root.pal.bg, 0.5); border.width: 1; border.color: webName.activeFocus ? root.pal.accent : root.pal.lineSoft
+                    color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.5); border.width: root.pal.zen && !webName.activeFocus ? 0 : 1; border.color: webName.activeFocus ? root.pal.accent : root.pal.lineSoft
                     TextInput {
                         id: webName
                         anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
@@ -69,7 +69,7 @@ ColumnLayout {
                 }
                 Rectangle {
                     Layout.fillWidth: true; Layout.preferredHeight: 36; radius: 18
-                    color: Qt.alpha(root.pal.bg, 0.5); border.width: 1; border.color: webUrl.activeFocus ? root.pal.accent : root.pal.lineSoft
+                    color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.5); border.width: root.pal.zen && !webUrl.activeFocus ? 0 : 1; border.color: webUrl.activeFocus ? root.pal.accent : root.pal.lineSoft
                     TextInput {
                         id: webUrl
                         anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14

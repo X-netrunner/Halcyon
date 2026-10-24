@@ -35,8 +35,8 @@ Rectangle {
 
     height: col.implicitHeight + 28
     radius: pal.rMd + 4
-    color: Qt.alpha(pal.surface, 0.66)
-    border.width: 1
+    color: pal.zen ? pal.fill : Qt.alpha(pal.surface, 0.66)
+    border.width: pal.zen && !critical ? 0 : 1
     border.color: critical ? Qt.alpha(pal.bad, 0.5) : pal.lineSoft
 
     HoverHandler { id: ghov }

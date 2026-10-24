@@ -75,8 +75,8 @@ ShellRoot {
         surface: "tint",           // tint | match | matte | black : the box background (Settings > Look > Box background); matte / black are solid and need the dark theme
         dropDown: "side",          // off | stack | side : drag the bar down for the utilities box (stack: drag again for the notifications; side: notifications beside it)
         osdHold: 1700,             // ms the volume / brightness bar stays
-        keysStyle: "tree",         // tree | pages : the layout of the Shortcuts cheatsheet (the chip in its header, or Settings > Look > Shortcuts layout)
-        settingsStyle: "tree",     // tree | pages : the layout of the Settings window (both stay; Settings > Look > Settings layout)
+        keysStyle: "pages",        // tree | pages : the layout of the Shortcuts cheatsheet (the chip in its header, or Settings > Look > Shortcuts layout)
+        settingsStyle: "pages",    // tree | pages : the layout of the Settings window (both stay; Settings > Look > Settings layout)
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
         critSecs: 30,              // seconds an urgent popup stays before it hides itself (0 = until clicked); it stays in the centre either way
         notifSpot: "edge",         // edge | corner : where the notification centre is opened from: a strip on the right edge, or the top-right corner
@@ -139,13 +139,12 @@ ShellRoot {
         barLayout: null,           // the bar builder's layout { left, center, right } (BarLayout.js); null = the default one
         notchCombo: true, islCombo: true, islSpacing: "compact",   // Wi-Fi + Bluetooth + battery as ONE round icon (StatusRing.qml); off = three separate icons
         bgWhere: "bar",            // corner | bar : where the number of background apps is shown (the box itself always opens bottom-left)
-        stars: true,               // constellations in the boxes: off = none anywhere; the ones below switch single boxes
-        starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsCalendar: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: true,    // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
-        dialogStarStyle: "both",   // moving | constellations | both | none : dialog star style
+        stars: false,              // constellations in the boxes: off (the default; the Overview keeps its own, treeConst) = none anywhere; the ones below switch single boxes
+        starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsCalendar: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: false,   // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
+        dialogStarStyle: "none",   // moving | constellations | both | none : dialog star style (none by default: quiet, clean boxes)
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
-        uiStyle: "new",            // new | legacy : the calm redesign, or the earlier look (Settings > Look > Interface; Pal.calm)
-        hideHints: false,          // explanations and key hints shrink to a "?" dot that shows them on hover (Settings > Look; Pal.hideHints, Hint.qml)
-        centerTitles: false,       // box titles (Notifications, Console, Clipboard ...) sit in the middle of their header (Settings > Look; BoxTitle.qml)
+        uiStyle: "new",            // new | legacy | classic : the quiet redesign, the first calm look, the original (Settings > Look > Interface; Pal.zen / Pal.calm)
+        hideHints: true,           // explanations and key hints shrink to a "?" dot that shows them on hover (Settings > Look; Pal.hideHints, Hint.qml)
         recKind: "screen",         // screen | audio : what the recorder (Super + Alt + R) records: the screen, or sound only (Settings > Screen & audio recording)
         recAudio: "system",        // none | system | mic | both : the sound that goes with it (system = what you hear, mic = the default microphone)
         limRam: 600,               // manual RAM limit (MB) for background helper warnings
@@ -237,10 +236,10 @@ ShellRoot {
         low:    { opt: { perf: "low",    fps: 30, lines: "gpu", stars: false, starsBar: false, dialogStarStyle: "moving", accentMode: "fixed", termDrift: false, clockSeconds: false, viz: "light", lazyLoad: true },
                   blur: false, shadows: false, hyprAnim: false, motion: 0.5, profileStars: false, notifHistoryMax: 10, notifMax: 3,
                   hy: { blurSize: 4, blurPasses: 1, resizeAnim: false } },
-        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", stars: true, starsBar: false, dialogStarStyle: "both", viz: "full", lazyLoad: true },
+        medium: { opt: { perf: "medium", fps: 60, lines: "gpu", viz: "full", lazyLoad: true },        // the stars are your choice (Settings > Stars), not the preset's
                   blur: true,  shadows: false, hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 20, notifMax: 5,
                   hy: { blurSize: 5, blurPasses: 2, resizeAnim: true } },
-        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", stars: true, starsBar: true, dialogStarStyle: "both", viz: "full", lazyLoad: false },
+        high:   { opt: { perf: "high",   fps: 0,  lines: "gpu", viz: "full", lazyLoad: false },
                   blur: true,  shadows: true,  hyprAnim: true,  motion: 1,   profileStars: true,  notifHistoryMax: 30, notifMax: 5,
                   hy: { blurSize: 7, blurPasses: 3, resizeAnim: true } }
     })
@@ -545,7 +544,7 @@ ShellRoot {
         id: pal
         light: root.theme === "light"
         surfaceStyle: root.opt.surface || "tint"
-        uiStyle: root.opt.uiStyle === "legacy" ? "legacy" : "new"
+        uiStyle: root.opt.uiStyle === "legacy" || root.opt.uiStyle === "classic" ? root.opt.uiStyle : "new"
         glassShift: root.glassShift
         motion: root.lean ? 0 : (root.gaming ? 0.25 : root.motion)
         growth: root.growth
@@ -565,8 +564,7 @@ ShellRoot {
         cycleSecs: root.opt.cycleSecs
         termDrift: root.opt.termDrift
         cyclePaused: root.gaming
-        hideHints: root.opt.hideHints === true
-        centerTitles: root.opt.centerTitles === true
+        hideHints: root.opt.hideHints !== false
     }
     readonly property var palObj: pal
 
@@ -1047,6 +1045,7 @@ ShellRoot {
     GameCenter {
         id: gameCenter
         pal: pal
+        consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
         hgl: root.hgl
         runningId: root.gameId
         onLaunchRequested: id => root.gameLaunch(id)
@@ -1060,12 +1059,14 @@ ShellRoot {
     FwCenter {
         id: fwCenter
         pal: pal
+        consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
         onConsoleRequested: cmd => quickTerm.run(cmd)
     }
 
     StudyCenter {
         id: studyCenter
         pal: pal
+        consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
         onConsoleRequested: cmd => quickTerm.run(cmd)
     }
 
@@ -1346,6 +1347,8 @@ ShellRoot {
         if (clipMenu.open) { clipMenu.close(); return true }
         if (gameCenter.open) { gameCenter.close(); return true }
         if (studyCenter.open) { studyCenter.hide(); return true }
+        if (fwCenter.open) { fwCenter.hide(); return true }
+        if (focusStreak.open) { focusStreak.hide(); return true }
         if (shotMenu.open) { shotMenu.close(); return true }
         if (musicMenu.open) { musicMenu.close(); return true }
         if (calendar.open) { calendar.hide(); return true }

@@ -10,6 +10,7 @@ Rectangle {
     property string label: ""
     property string doneLabel: ""      // what it says for a moment after the click ("" = the same label, with a tick)
     property bool on: false
+    property bool primary: false       // the window's main action (Done ...): solid accent in the new style
     property bool disabled: false      // greyed out: no hover, no click (e.g. a tool that was not installed)
     property bool flashing: false
     property int maxLabel: 1000
@@ -22,13 +23,16 @@ Rectangle {
     implicitWidth: glyphW + labelNatural + 32
     clip: true
     radius: height / 2
+    readonly property bool solid: primary && pal.zen && !disabled
     color: disabled ? Qt.alpha(pal.surface, 0.35)
+         : solid ? (ma.containsMouse || flashing ? Qt.lighter(pal.primary, 1.08) : pal.primary)
          : flashing ? Qt.alpha(pal.accent, 0.30)
-         : on ? Qt.alpha(pal.accent, pal.calm ? 0.17 : 0.18)
+         : pal.zen ? ((on || primary) ? pal.chosenFill : (ma.containsMouse || ma.pressed ? pal.fillHover : pal.fill))
+         : (on || primary) ? Qt.alpha(pal.accent, pal.calm ? 0.17 : 0.18)
          : pal.calm ? (ma.containsMouse || ma.pressed ? pal.fillHover : pal.fill)
          : (ma.pressed ? pal.surfaceHi : (ma.containsMouse ? Qt.alpha(pal.surfaceHi, 0.9) : Qt.alpha(pal.surface, 0.8)))
-    border.width: pal.calm && !flashing ? 0 : 1      // calm: no outline at rest (the tick flash still rings)
-    border.color: disabled ? Qt.alpha(pal.lineSoft, 0.5) : flashing ? pal.accent : (on ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft)
+    border.width: pal.zen || (pal.calm && !flashing) ? 0 : 1      // calm: no outline at rest (the tick flash still rings); new: never
+    border.color: disabled ? Qt.alpha(pal.lineSoft, 0.5) : flashing ? pal.accent : ((on || primary) ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft)
     scale: ma.pressed && !disabled ? 0.95 : 1
     Behavior on color { ColorAnimation { duration: pal.dFast } }
     Behavior on border.color { ColorAnimation { duration: pal.dFast } }
@@ -44,7 +48,7 @@ Rectangle {
             id: glyphText
             visible: root.flashing || root.glyph !== ""
             text: root.flashing ? "✓" : root.glyph
-            color: root.flashing || root.on ? root.pal.accent : root.pal.muted
+            color: root.solid ? root.pal.primaryText : root.flashing || root.on || root.primary ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : root.pal.muted
             font.family: root.flashing ? root.pal.uiFont : root.pal.font
             font.pixelSize: root.flashing ? 14 : 15
             font.weight: Font.Bold
@@ -55,7 +59,8 @@ Rectangle {
             text: root.flashing && root.doneLabel !== "" ? root.doneLabel : root.label
             width: Math.max(0, Math.min(implicitWidth, root.maxLabel, root.width - 32 - root.glyphW))
             elide: Text.ElideRight
-            color: root.disabled ? Qt.alpha(root.pal.muted, 0.55) : (root.flashing || root.on ? root.pal.text : Qt.alpha(root.pal.text, 0.78))
+            color: root.disabled ? Qt.alpha(root.pal.muted, 0.55) : root.solid ? root.pal.primaryText
+                 : (root.flashing || root.on || root.primary ? (root.pal.zen ? root.pal.chosenText : root.pal.text) : Qt.alpha(root.pal.text, root.pal.zen ? 0.86 : 0.78))
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tBody
             font.weight: Font.Medium

@@ -14,6 +14,10 @@ Scope {
     property var pal
     property string sysmode: ""
     property bool open: false
+    // the window stays a moment after it closes, so its fade-out plays (it used to vanish at once)
+    property bool linger: false
+    Connections { target: root; function onOpenChanged() { if (!root.open) { root.linger = true; lingerT.restart() } } }
+    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
     property bool consoleOpen: false
 
     // state (owned by shell.qml)
@@ -658,9 +662,8 @@ Scope {
         { id: "look", title: "Look", section: "Appearance", items: [
             { type: "seg", key: "opt:keysStyle", label: "Shortcuts layout", desc: "Tree: every shortcut on a branching tree. Pages: a menu of groups on the left and one group at a time. Same shortcuts in both; the chip in the Shortcuts header switches too.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
             { type: "seg", key: "opt:settingsStyle", label: "Settings layout", desc: "Tree: the branching view. Pages: a menu on the left and one page at a time. Same settings in both.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
-            { type: "seg", key: "opt:uiStyle", label: "Interface", desc: "New: the calm redesign. Flat frosted panes with one quiet outline, softer controls without borders, rounder corners, more room, and the moving stars kept but softer. Legacy: the earlier look, with the glass sheen, accent outlines and outlined buttons. Everything follows at once; switch back any time.", opts: [o("new", "New"), o("legacy", "Legacy")] },
+            { type: "seg", key: "opt:uiStyle", label: "Interface", desc: "New: one quiet pane, no outlines, pill buttons, the main action in solid accent and no explanations (ask > instead). Legacy: the first calm look, with a hairline around every box. Classic: the original, with the glass sheen and accent outlines.", opts: [o("new", "New"), o("legacy", "Legacy"), o("classic", "Classic")] },
             { type: "toggle", key: "opt:hideHints", label: "Hide explanations", desc: "Once you know your way around: the explanations under settings, the key hints at the bottom of the boxes and the help lines in widgets shrink to a small ? on the side. Hover it (or click it here) to read them again." },
-            { type: "toggle", key: "opt:centerTitles", label: "Centred titles", desc: "Box titles (Notifications, Console, Clipboard, Notes, Settings ...) sit in the middle of their header instead of on the left." },
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
             { type: "seg", key: "opt:surface", label: "Box background", desc: "What every box, the bar and this window are filled with. Wallpaper tint: dark, coloured by the wallpaper and a little see-through. Match wallpaper accent: the same, but the boxes and their outlines take the accent colour of the wallpaper clearly (and follow it while the accent cycles). Matte black: dark grey, solid. Pitch black: true black, solid (best on OLED). The little stars and drifting dots turn up their brightness and keep the accent colour so they still show on black. Dark theme only.", opts: [o("tint", "Wallpaper tint"), o("match", "Match accent"), o("matte", "Matte black"), o("black", "Pitch black")], when: "theme=dark" },
             { type: "slider", key: "rounding", label: "Corner rounding", desc: "Window corners", min: 0, max: 28, step: 1, unit: " px", glyph: 0xF0A39 },
@@ -1280,7 +1283,7 @@ Scope {
 
     // ======================================================================== the window
     LazyLoader {
-        active: root.open
+        active: root.open || root.linger
         PanelWindow {
             id: win
             visible: true
@@ -1348,21 +1351,21 @@ Scope {
                     id: head
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 36 }
                     spacing: 16
-                    Text { text: String.fromCodePoint(0xF0493); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
+                    Text { visible: !root.pal.zen; text: String.fromCodePoint(0xF0493); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
                     BoxTitle { pal: root.pal; size: 20; overlay: true; title: "Settings" }
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.maximumWidth: 380
-                        implicitHeight: 34
-                        radius: 17
-                        color: Qt.alpha(root.pal.bg, 0.55)
-                        border.width: 1
+                        implicitHeight: root.pal.zen ? 38 : 34
+                        radius: height / 2
+                        color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                        border.width: root.pal.zen ? 0 : 1
                         border.color: search.activeFocus ? root.pal.lineFocus : root.pal.line
                         Text {
                             anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
                             visible: search.text === ""
-                            text: String.fromCodePoint(0xF0349) + "  search settings"
-                            color: root.pal.muted; font.family: root.pal.font; font.pixelSize: root.pal.tBody
+                            text: root.pal.zen ? "Search settings" : String.fromCodePoint(0xF0349) + "  search settings"
+                            color: root.pal.muted; font.family: root.pal.zen ? root.pal.uiFont : root.pal.font; font.pixelSize: root.pal.tBody
                         }
                         TextInput {
                             id: search
@@ -1378,7 +1381,7 @@ Scope {
                             Keys.onEscapePressed: { if (text !== "") text = ""; else root.hide() }
                         }
                     }
-                    Text { text: root.shownCount + " settings"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    Text { visible: !root.pal.zen || root.query !== ""; text: root.shownCount + " settings"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                     Item { Layout.fillWidth: true }
                     SChip { pal: root.pal; label: root.advAll ? "Advanced: shown" : "Advanced: hidden"; on: root.advAll; onClicked: root.advAll = !root.advAll }
                     SChip { pal: root.pal; label: root.pagesMode ? "Tree view" : "Pages view"; onClicked: root.setting("opt:settingsStyle", root.pagesMode ? "tree" : "pages") }
@@ -1436,7 +1439,7 @@ Scope {
                                         visible: root.pal.calm
                                         anchors { fill: parent; topMargin: 2; bottomMargin: 2; rightMargin: 14 }
                                         radius: height / 2
-                                        color: navItem.cur ? Qt.alpha(root.pal.accent, 0.15) : (navMa.containsMouse ? root.pal.fill : "transparent")
+                                        color: navItem.cur ? root.pal.chosenFill : (navMa.containsMouse ? root.pal.fill : "transparent")
                                         Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                     }
                                     Rectangle {
@@ -1450,7 +1453,7 @@ Scope {
                                     Text {
                                         x: root.pal.calm ? 16 : 28; anchors.verticalCenter: parent.verticalCenter
                                         text: navItem.modelData.id
-                                        color: navItem.cur ? (root.pal.calm ? root.pal.accent : root.pal.text) : (navMa.containsMouse ? root.pal.text : root.pal.muted)
+                                        color: navItem.cur ? (root.pal.zen ? root.pal.chosenText : root.pal.calm ? root.pal.accent : root.pal.text) : (navMa.containsMouse ? root.pal.text : (root.pal.zen ? Qt.alpha(root.pal.text, 0.78) : root.pal.muted))
                                         font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1
                                         font.weight: navItem.cur ? Font.Medium : Font.Normal
                                     }
@@ -1494,11 +1497,13 @@ Scope {
                             spacing: 0
                             Text {
                                 text: root.query === "" ? root.page : "Search results"
+                                bottomPadding: root.pal.zen && root.pal.hideHints && root.query === "" ? 22 : 0
                                 color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.DemiBold
                             }
                             Text {
                                 width: parent.width
                                 topPadding: 6; bottomPadding: 22
+                                visible: !(root.pal.zen && root.pal.hideHints && root.query === "")
                                 text: root.query === "" ? root.pageInfo(root.page).sub + "  Rarely used options sit behind Advanced." : root.shownCount + " settings match, from every page."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; wrapMode: Text.WordWrap
                             }
@@ -1514,12 +1519,12 @@ Scope {
                                     Text {
                                         leftPadding: 4
                                         text: (root.pal.calm ? pg.modelData.title : pg.modelData.title.toUpperCase()) + (root.query !== "" ? "   \u00b7   " + root.pageOf(pg.modelData.id) : "")
-                                        color: root.pal.calm ? Qt.alpha(root.pal.text, 0.72) : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 13 : 11; font.weight: root.pal.calm ? Font.Medium : Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.2 : (1.6)
+                                        color: root.pal.zen ? root.pal.muted : root.pal.calm ? Qt.alpha(root.pal.text, 0.72) : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.zen ? 12 : root.pal.calm ? 13 : 11; font.weight: root.pal.calm ? Font.Medium : Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.2 : (1.6)
                                     }
                                     Rectangle {
                                         width: pg.width
                                         height: rowsCol.height
-                                        color: root.pal.calm ? root.pal.fill : Qt.alpha(root.pal.surface, 0.55)
+                                        color: root.pal.zen ? root.pal.group : root.pal.calm ? root.pal.fill : Qt.alpha(root.pal.surface, 0.55)
                                         radius: root.pal.calm ? root.pal.rLg : 16
                                         border.width: root.pal.calm ? 0 : 1; border.color: root.pal.lineSoft
                                         clip: true
@@ -1542,7 +1547,7 @@ Scope {
                                                     readonly property bool shortSeg: pr.m.type === "seg" && pr.m.opts.length <= 3 && pr.m.opts.every(function (x) { return String(x.t).length <= 14 })
                                                     readonly property bool side: pr.m.type === "toggle" || pr.m.type === "tool" || pr.m.type === "action" || pr.m.type === "slider" || pr.shortSeg
                                                     width: rowsCol.width
-                                                    height: body.implicitHeight + (root.pal.calm ? 34 : 28)
+                                                    height: body.implicitHeight + (root.pal.zen ? 36 : root.pal.calm ? 34 : 28)
 
                                                     Rectangle { visible: pr.index > 0; x: 18; width: parent.width - 36; height: 1; color: root.pal.lineSoft }
                                                     Rectangle { anchors.fill: parent; color: prMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.35) : "transparent" }
@@ -1576,7 +1581,7 @@ Scope {
                                                                         color: pr.m.type === "divider" ? root.pal.muted : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: pr.m.type === "divider" ? 11 : root.pal.tBody + 1; font.weight: pr.m.type === "divider" ? Font.DemiBold : Font.Medium; font.letterSpacing: root.pal.calm ? 0.2 : (pr.m.type === "divider" ? 1.6 : 0); wrapMode: Text.WordWrap
                                                                     }
                                                                     Rectangle {
-                                                                        visible: pr.longDesc
+                                                                        visible: pr.longDesc && !root.pal.zen       // the new style: no ? at all (ask > instead)
                                                                         Layout.preferredWidth: 18; Layout.preferredHeight: 18; radius: 9
                                                                         color: pr.descOpen ? Qt.alpha(root.pal.accent, 0.22) : "transparent"
                                                                         border.width: 1; border.color: pr.descOpen ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
@@ -1972,11 +1977,11 @@ Scope {
                                                                             wrapMode: Text.WordWrap
                                                                         }
                                                                         Rectangle {
-                                                                            visible: leaf.longDesc
+                                                                            visible: leaf.longDesc && !root.pal.zen
                                                                             Layout.preferredWidth: 18; Layout.preferredHeight: 18
                                                                             radius: 9
                                                                             color: leaf.descOpen ? Qt.alpha(root.pal.accent, 0.22) : (qMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.9) : "transparent")
-                                                                            border.width: 1
+                                                                            border.width: root.pal.zen && !(leaf.descOpen) ? 0 : 1
                                                                             border.color: leaf.descOpen ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
                                                                             Text { anchors.centerIn: parent; text: "?"; color: leaf.descOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
                                                                             MouseArea { id: qMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onContainsMouseChanged: leaf.descPeek = containsMouse; onClicked: leaf.descOpen = !leaf.descOpen }

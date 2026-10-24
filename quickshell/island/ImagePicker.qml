@@ -90,7 +90,7 @@ Item {
         height: Math.min(parent.height - 120, 580)
         radius: root.pal ? root.pal.rXl : 28
         color: Qt.alpha(root.pal ? root.pal.bg : "black", root.pal ? root.pal.glassSolid : 0.95)
-        border.width: 1
+        border.width: root.pal && root.pal.zen ? 0 : 1
         border.color: root.pal ? root.pal.line : "#22ffffff"
         scale: root.open ? 1 : 0.97
         Behavior on scale { NumberAnimation { duration: root.pal ? root.pal.dSlow : 520; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal ? root.pal.curve : [0.22, 1, 0.36, 1, 1, 1] } }
@@ -99,7 +99,7 @@ Item {
 
         // ---- header: title, close
         Text {
-            x: root.pal.centerTitles ? (parent.width - width) / 2 : 24     // Centred titles
+            x: root.pal.centred ? (parent.width - width) / 2 : 24     // Centred titles
             y: 20
             text: "Choose a profile picture"
             color: root.pal.text
@@ -126,7 +126,7 @@ Item {
             Rectangle {
                 width: 34; height: 34; radius: 17
                 color: upMa.containsMouse ? Qt.alpha(root.pal.accent, 0.28) : Qt.alpha(root.pal.accent, 0.14)
-                border.width: 1; border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.4)
+                border.width: root.pal.bw; border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.4)
                 Behavior on color { ColorAnimation { duration: 120 } }
                 Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF005D); color: root.pal.text; font.family: root.pal.font; font.pixelSize: 14 }
                 MouseArea { id: upMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.goUp() }
@@ -135,7 +135,7 @@ Item {
                 width: parent.width - 34 - parent.spacing - placeRow.width - parent.spacing
                 height: 34; radius: 17
                 color: root.pal.surface
-                border.width: 1; border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.25)
+                border.width: root.pal.bw; border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.25)
                 Text {
                     anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16
                     verticalAlignment: Text.AlignVCenter

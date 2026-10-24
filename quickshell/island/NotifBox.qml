@@ -172,7 +172,7 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: 52
                     width: 76; height: 76; radius: 28
-                    color: Qt.alpha(box.pal.surface, 0.97)
+                    color: box.pal.box(Qt.alpha(box.pal.surface, 0.97))
                     border.width: 1.5
                     border.color: Qt.alpha(box.dnd ? box.pal.muted : box.pal.accent, 0.7)
                     Rectangle {

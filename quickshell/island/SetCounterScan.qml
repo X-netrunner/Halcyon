@@ -100,7 +100,7 @@ ColumnLayout {
             Layout.fillWidth: true
             height: 36; radius: 18
             color: Qt.alpha(cs.root.pal.surface, 0.8)
-            border.width: 1
+            border.width: root.pal.zen && !pwIn.activeFocus ? 0 : 1
             border.color: pwIn.activeFocus ? Qt.alpha(cs.root.pal.accent, 0.5) : cs.root.pal.lineSoft
             TextInput {
                 id: pwIn

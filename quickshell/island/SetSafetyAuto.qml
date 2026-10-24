@@ -115,8 +115,8 @@ ColumnLayout {
             id: pwBox
             Layout.fillWidth: true
             height: 36; radius: 18
-            color: Qt.alpha(root.pal.surface, 0.8)
-            border.width: 1
+            color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.8))
+            border.width: root.pal.zen && !pwIn.activeFocus ? 0 : 1
             border.color: pwIn.activeFocus ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
             TextInput {
                 id: pwIn
@@ -138,7 +138,7 @@ ColumnLayout {
                 }
             }
         }
-        SChip { pal: root.pal; label: sa.busy ? "Working…" : (sa.wanted === "off" ? "Turn off" : (sa.isOn ? "Apply" : "Turn on")); on: true; onClicked: sa.go() }
+        SChip { pal: root.pal; label: sa.busy ? "Working…" : (sa.wanted === "off" ? "Turn off" : (sa.isOn ? "Apply" : "Turn on")); primary: true; onClicked: sa.go() }
         SChip { pal: root.pal; label: "Cancel"; onClicked: { sa.wanted = ""; pwIn.text = ""; sa.msg = ""; sa.every = sa.isOn ? String(root.remind.auto.every) : "30" } }
     }
     Text {

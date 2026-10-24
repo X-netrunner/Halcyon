@@ -79,7 +79,7 @@ ColumnLayout {
                             implicitHeight: 20
                             radius: 5
                             color: Qt.alpha(dv.pal.text, 0.07)
-                            border.width: 1
+                            border.width: dv.pal.bw
                             border.color: Qt.alpha(dv.pal.text, 0.12)
                             Text { id: kt; anchors.centerIn: parent; text: modelData; color: dv.pal.muted; font.family: dv.pal.mono || dv.pal.font; font.pixelSize: 10 }
                         }
@@ -95,6 +95,8 @@ ColumnLayout {
                 }
                 Text {
                     Layout.fillWidth: true
+                    // the new style lists the titles only; a click opens the whole text
+                    visible: row.expanded || !(dv.pal.zen && dv.pal.hideHints)
                     wrapMode: Text.WordWrap
                     text: row.expanded ? row.modelData.body : dv.lead(row.modelData.body)
                     color: dv.pal.muted

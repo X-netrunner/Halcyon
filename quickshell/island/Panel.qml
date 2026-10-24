@@ -601,7 +601,7 @@ Glass {
             implicitHeight: runCol.implicitHeight + 24
             radius: root.pal.rLg
             color: Qt.alpha(root.pal.accent, 0.10)
-            border.width: 1
+            border.width: root.pal.bw
             border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
 
             ColumnLayout {

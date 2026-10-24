@@ -18,6 +18,7 @@ Scope {
     property string tab: "ask"              // ask | summary | quiz | cards
     signal focusRequested(string what)      // the window's own fields take the keyboard (ids inside the LazyLoader are not reachable)
     signal consoleRequested(string cmd)     // a model download runs in the pop-out console (it shows the progress)
+    property bool consoleOpen: false        // the pop-out console has the keyboard (shell.qml)
 
     readonly property string script: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-study.py"
     readonly property var exts: ["pdf", "docx", "pptx", "odt", "odp", "epub", "md", "markdown", "txt", "rst", "org", "tex", "csv",
@@ -88,7 +89,7 @@ Scope {
     function pickModel(n) { choice = n; useModel([n]) }
     function setReason(r) { reason = r; useModel(["--reason", r]) }
     function setPrefer(p) { prefer = p; useModel(["--prefer", p]) }
-    function pull(n) { hide(); consoleRequested("ollama pull " + n) }
+    function pull(n) { consoleRequested("ollama pull " + n) }    // the window stays; the console opens over it
 
     // ---- the saved conversation: shown again when the window opens
     Process {
@@ -499,7 +500,7 @@ Scope {
         implicitHeight: 24
         radius: 12
         color: scMa.containsMouse ? Qt.alpha(root.pal.accent, 0.16) : Qt.alpha(root.pal.surface, 0.7)
-        border.width: 1
+        border.width: root.pal.zen && !(scMa.containsMouse) ? 0 : 1
         border.color: scMa.containsMouse ? Qt.alpha(root.pal.accent, 0.4) : root.pal.lineSoft
         Text {
             id: scTxt
@@ -550,7 +551,8 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.namespace: "island-study"
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            // while the console is up (a command this window sent) it has the keyboard; this window stays open behind it
+            WlrLayershell.keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
 
@@ -614,7 +616,7 @@ Scope {
                                     width: parent.width + root.pal.rXl
                                     height: parent.height
                                     radius: root.pal.rXl
-                                    color: Qt.alpha(root.pal.surface, 0.35)
+                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.35))
                                 }
                             }
                             Rectangle { anchors { top: parent.top; bottom: parent.bottom; right: parent.right; topMargin: 24; bottomMargin: 24 } width: 1; color: root.pal.lineSoft }
@@ -630,6 +632,7 @@ Scope {
                                     Layout.maximumWidth: 242
                                     spacing: 12
                                     Rectangle {
+                                        visible: !root.pal.zen          // the new style: no icon tile in the header
                                         width: 38; height: 38; radius: 12
                                         color: Qt.alpha(root.pal.accent, 0.14)
                                         Text {
@@ -646,8 +649,8 @@ Scope {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: parent.width - 50                      // what is left of the sidebar after the icon: the lines below wrap instead of running off the edge
                                         spacing: 1
-                                        Text { width: parent.width; elide: Text.ElideRight; horizontalAlignment: root.pal.centerTitles ? Text.AlignHCenter : Text.AlignLeft; text: "Study"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.DemiBold }
-                                        Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; horizontalAlignment: root.pal.centerTitles ? Text.AlignHCenter : Text.AlignLeft; text: "on this computer  ·  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice)); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        Text { width: parent.width; elide: Text.ElideRight; horizontalAlignment: root.pal.centred ? Text.AlignHCenter : Text.AlignLeft; text: "Study"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.DemiBold }
+                                        Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; horizontalAlignment: root.pal.centred ? Text.AlignHCenter : Text.AlignLeft; text: "on this computer  ·  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice)); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                     }
                                 }
 
@@ -817,7 +820,7 @@ Scope {
                                                 required property string modelData
                                                 width: sugT.implicitWidth + 26; height: 32; radius: 16
                                                 color: sugMa.containsMouse ? Qt.alpha(root.pal.accent, 0.14) : Qt.alpha(root.pal.surface, 0.7)
-                                                border.width: 1
+                                                border.width: root.pal.zen && !(sugMa.containsMouse) ? 0 : 1
                                                 border.color: sugMa.containsMouse ? Qt.alpha(root.pal.accent, 0.35) : root.pal.lineSoft
                                                 Text { id: sugT; anchors.centerIn: parent; text: sug.modelData; color: sugMa.containsMouse ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
                                                 MouseArea { id: sugMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.ask(sug.modelData) }
@@ -946,8 +949,8 @@ Scope {
                                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                                     height: Math.max(50, askIn.contentHeight + 28)
                                     radius: 25
-                                    color: Qt.alpha(root.pal.surface, 0.75)
-                                    border.width: 1
+                                    color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.75))
+                                    border.width: root.pal.zen && !askIn.activeFocus ? 0 : 1
                                     border.color: askIn.activeFocus ? root.pal.lineFocus : root.pal.line
                                     Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
                                     TextEdit {
@@ -1007,8 +1010,8 @@ Scope {
                                 // pages: "3-9" = only those (handy for a chapter of a long book)
                                 Rectangle {
                                     implicitWidth: 120; implicitHeight: 34; radius: 17
-                                    color: Qt.alpha(root.pal.surface, 0.7)
-                                    border.width: 1
+                                    color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.7))
+                                    border.width: root.pal.zen && !pgIn.activeFocus ? 0 : 1
                                     border.color: pgIn.activeFocus ? root.pal.lineFocus : root.pal.lineSoft
                                     TextInput {
                                         id: pgIn
@@ -1212,7 +1215,7 @@ Scope {
                                         height: Math.min(320, parent.height - 110)
                                         radius: root.pal.rXl
                                         color: root.cardBack ? Qt.alpha(root.pal.accent, 0.12) : Qt.alpha(root.pal.surface, 0.8)
-                                        border.width: 1
+                                        border.width: root.pal.zen && !(root.cardBack) ? 0 : 1
                                         border.color: root.cardBack ? Qt.alpha(root.pal.accent, 0.35) : root.pal.lineSoft
                                         Behavior on color { ColorAnimation { duration: root.pal.dMed } }
                                         transform: Rotation {

@@ -16,11 +16,12 @@ Item {
     property int horizontalAlignment: Text.AlignLeft
     property bool alignRight: false         // folded: the "?" sits at the right end of the line instead of the left
     readonly property bool folded: !!(pal && pal.hideHints)
+    readonly property bool gone: folded && !!pal.zen        // the new style: no "?" either, the line is simply not there (ask > explains)
 
-    visible: text !== ""
+    visible: text !== "" && !gone
     Layout.fillWidth: true
-    implicitWidth: folded ? 16 : full.implicitWidth
-    implicitHeight: folded ? 16 : full.implicitHeight
+    implicitWidth: gone ? 0 : folded ? 16 : full.implicitWidth
+    implicitHeight: gone ? 0 : folded ? 16 : full.implicitHeight
 
     Text {
         id: full
@@ -56,7 +57,7 @@ Item {
 
     // the bubble: only exists while the "?" is hovered
     LazyLoader {
-        active: h.folded && dotHover.hovered
+        active: h.folded && !h.gone && dotHover.hovered
         PopupWindow {
             anchor.item: dot
             anchor.rect.x: dot.width + 6
@@ -69,7 +70,7 @@ Item {
                 anchors.fill: parent
                 radius: 10
                 color: h.pal.surfaceHi
-                border.width: 1
+                border.width: h.pal.bw
                 border.color: h.pal.lineSoft
                 Text {
                     id: tipTxt

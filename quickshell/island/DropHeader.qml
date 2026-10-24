@@ -94,7 +94,7 @@ Item {
             width: root.tabW
             height: pill.height - root.inset * 2
             radius: height / 2
-            border.width: 1
+            border.width: root.pal.bw
             border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.42)
             gradient: Gradient {
                 orientation: Gradient.Horizontal

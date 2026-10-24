@@ -184,28 +184,18 @@ Item {
             anchors.margins: 30
             spacing: 18
 
-            // ---- header
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 14
-                Rectangle { Layout.alignment: Qt.AlignVCenter; width: 8; height: 8; radius: 4; color: root.pal.accent }
-                BoxTitle {
-                    Layout.alignment: Qt.AlignVCenter
-                    pal: root.pal
-                    size: 20
-                    subIsHint: true
-                    title: "Widget builder"
-                    sub: root.lockT ? "Your lock screen's widgets. Nothing on them can be clicked while it is locked." : "Pick a widget on the left, shape it on the right."
-                }
-                SegSwitch {
-                    Layout.alignment: Qt.AlignVCenter
+            // ---- header (WinHeader: the same in every window)
+            WinHeader {
+                pal: root.pal
+                title: "Widget builder"
+                leading: [ SegSwitch {
                     pal: root.pal
                     options: [{ k: "desktop", t: "Desktop" }, { k: "lock", t: "Lock screen" }]
                     current: root.target
                     onPicked: k => root.targetPicked(k)
-                }
-                ActionChip { pal: root.pal; label: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"; onClicked: root.editOnDesktop(root.target) }
-                ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
+                } ]
+                trailing: [ ActionChip { pal: root.pal; label: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"; onClicked: root.editOnDesktop(root.target) } ]
+                onClosed: root.closed()
             }
 
             RowLayout {
@@ -292,7 +282,7 @@ Item {
                         }
                         // The column is only ~222 px wide: "Add a widget" + Copy + Remove on one line squeezed the first
                         // button to ~46 px and its label spilled out. So: Add on its own line, Copy / Remove share the next.
-                        ActionChip { Layout.fillWidth: true; pal: root.pal; label: root.adding ? "Back" : "Add a widget"; on: !root.adding; onClicked: root.adding = !root.adding }
+                        ActionChip { Layout.fillWidth: true; pal: root.pal; label: root.adding ? "Back" : "Add a widget"; primary: !root.adding; onClicked: root.adding = !root.adding }
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
@@ -453,7 +443,7 @@ Item {
                                     visible: kinds.length > 0
                                     width: cat.width
                                     spacing: 8
-                                    NbCap { pal: root.pal; text: modelData[1].toUpperCase() }
+                                    NbCap { pal: root.pal; text: root.pal.cap(modelData[1]) }
                                     Flow {
                                         width: parent.width
                                         spacing: 8

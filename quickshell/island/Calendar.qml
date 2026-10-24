@@ -22,6 +22,12 @@ Scope {
     property var starData: null
     property bool profileStars: true
     property bool open: false
+    property bool monthPick: false          // the month picker under the title is open
+    property int pickYear: 2026             // the year it shows
+    // the window stays a moment after it closes, so its fade-out plays (it used to vanish at once)
+    property bool linger: false
+    Connections { target: root; function onOpenChanged() { if (!root.open) { root.linger = true; lingerT.restart() } } }
+    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
     property bool consoleOpen: false
 
     // Switches from Settings > Calendar (shell.qml passes them in)
@@ -34,7 +40,7 @@ Scope {
     property bool tasksAll: false            // every event counts as a task (otherwise only the ones you flag)
 
     function show() { if (enabled) open = true }
-    function hide() { open = false }
+    function hide() { open = false; monthPick = false }
     // the bar page opened: bring the data up to date the way opening the full window does
     function refresh() {
         if (!enabled) return
@@ -566,7 +572,7 @@ Scope {
     }
 
     LazyLoader {
-        active: root.open
+        active: root.open || root.linger
         PanelWindow {
             id: win
             visible: true
@@ -584,6 +590,7 @@ Scope {
                 Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
                 focus: root.open
                 Keys.onPressed: e => {
+                    if (e.key === Qt.Key_Escape && root.monthPick) { root.monthPick = false; e.accepted = true; return }
                     if (e.key === Qt.Key_Escape) { if (root.bdayModalOpen) root.bdayModalOpen = false; else if (root.holidayModalOpen) root.holidayModalOpen = false; else if (root.setupOpen && root.cfg.configured) root.setupOpen = false; else root.hide(); e.accepted = true; return }
                     if (!root.ready) return
                     if (e.key === Qt.Key_Left) root.gotoDay(root.addDays(root.sel, -1))
@@ -612,37 +619,124 @@ Scope {
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
                     scale: root.open ? 1 : 0.96
                     Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-                    MouseArea { anchors.fill: parent }       // swallow clicks
+                    MouseArea { anchors.fill: parent; onClicked: root.monthPick = false }       // swallow clicks (a click beside the month picker closes it)
 
                     Backdrop { visible: root.open && root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 12; dotAlpha: 2.6; dotDrift: 16; artStrength: !root.constellation ? 0 : ((root.bdayModalOpen || root.holidayModalOpen || root.setupOpen) ? 0.12 : 0.30); artFit: 0.85 }
                     BarStars { anchors.fill: parent; anchors.margins: 12; pal: root.pal; count: root.flyCount; loopMs: root.flyLoop; sizeScale: 1.3; active: root.open; visible: root.open && root.flyCount > 0 }
 
                     // ---------------- header
                     // Centred titles: the month goes on its own line in the middle, above the buttons (the row has no free middle)
-                    Text {
-                        visible: root.pal.centerTitles
+                    // the month: its name with a small ▾; a click opens the month picker under it
+                    Row {
+                        id: monthTitle
+                        visible: root.pal.centred
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: 22
-                        text: root.ready ? Qt.formatDate(new Date(root.viewY, root.viewM, 1), "MMMM yyyy") : "Calendar"
-                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                        spacing: 8
+                        readonly property bool hot: titleMa.containsMouse || root.monthPick
+                        Text {
+                            text: root.ready ? Qt.formatDate(new Date(root.viewY, root.viewM, 1), "MMMM yyyy") : "Calendar"
+                            color: monthTitle.hot && root.pal.zen ? root.pal.chosenText : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                        }
+                        Text {
+                            visible: root.pal.zen && root.ready
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "▾"
+                            rotation: root.monthPick ? 180 : 0
+                            Behavior on rotation { NumberAnimation { duration: root.pal.dFast } }
+                            color: monthTitle.hot ? root.pal.chosenText : root.pal.muted
+                            font.family: root.pal.uiFont; font.pixelSize: 14
+                        }
+                    }
+                    MouseArea {
+                        id: titleMa
+                        visible: monthTitle.visible
+                        x: monthTitle.x - 10; y: monthTitle.y - 4; width: monthTitle.width + 20; height: monthTitle.height + 8
+                        enabled: root.pal.zen && root.ready && !root.holidayModalOpen && !root.bdayModalOpen
+                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                        onClicked: { root.pickYear = root.viewY; root.monthPick = !root.monthPick }
+                    }
+                    // the month picker: the year with arrows, its twelve months, and Today
+                    Rectangle {
+                        id: monthMenu
+                        z: 30
+                        visible: opacity > 0.01
+                        opacity: root.monthPick ? 1 : 0
+                        scale: root.monthPick ? 1 : 0.96
+                        transformOrigin: Item.Top
+                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                        Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: monthTitle.y + monthTitle.height + 10
+                        width: 300
+                        height: mmCol.implicitHeight + 28
+                        radius: root.pal.rLg
+                        color: root.pal.surfaceHi
+                        border.width: 1; border.color: root.pal.line
+                        MouseArea { anchors.fill: parent }        // clicks stay inside
+                        Column {
+                            id: mmCol
+                            x: 14; y: 14
+                            width: parent.width - 28
+                            spacing: 10
+                            Item {
+                                width: parent.width; height: 30
+                                IconBtn { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; glyph: "‹"; onClicked: root.pickYear-- }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: root.pickYear
+                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 2; font.weight: Font.DemiBold
+                                }
+                                IconBtn { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; glyph: "›"; onClicked: root.pickYear++ }
+                            }
+                            Grid {
+                                columns: 4
+                                spacing: 4
+                                Repeater {
+                                    model: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                                    delegate: Rectangle {
+                                        id: mcell
+                                        required property string modelData
+                                        required property int index
+                                        readonly property bool shown: root.pickYear === root.viewY && root.viewM === index
+                                        readonly property bool now: root.pickYear === root.today.getFullYear() && root.today.getMonth() === index
+                                        width: (mmCol.width - 12) / 4; height: 36; radius: 18
+                                        color: shown ? root.pal.chosenFill : (mcMa.containsMouse ? root.pal.fillHover : "transparent")
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: mcell.modelData
+                                            color: mcell.shown ? root.pal.chosenText : (mcell.now ? root.pal.accent : root.pal.text)
+                                            font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                                            font.weight: mcell.shown || mcell.now ? Font.DemiBold : Font.Normal
+                                        }
+                                        MouseArea {
+                                            id: mcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                            onClicked: { root.moveMonth((root.pickYear - root.viewY) * 12 + mcell.index - root.viewM); root.monthPick = false }
+                                        }
+                                    }
+                                }
+                            }
+                            Pill { anchors.horizontalCenter: parent.horizontalCenter; label: "Today"; height: 30; width: 90; onClicked: { root.gotoDay(new Date()); root.monthPick = false } }
+                        }
                     }
                     RowLayout {
                         id: head
-                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 24; topMargin: root.pal.centerTitles ? 60 : 24 }
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 24; topMargin: root.pal.centred ? 60 : 24 }
                         spacing: 10
-                        Text { text: String.fromCodePoint(0xF00ED); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
+                        Text { visible: !root.pal.zen; text: String.fromCodePoint(0xF00ED); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
                         Text {
-                            visible: !root.pal.centerTitles
+                            visible: !root.pal.centred
                             text: root.ready ? Qt.formatDate(new Date(root.viewY, root.viewM, 1), "MMMM yyyy") : "Calendar"
                             color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
                             Layout.preferredWidth: 175
                             Layout.minimumWidth: 175
                             Layout.maximumWidth: 175
                         }
-                        IconBtn { opacity: (root.ready && !root.holidayModalOpen && !root.bdayModalOpen) ? 1 : 0; enabled: root.ready && !root.holidayModalOpen && !root.bdayModalOpen; glyph: "‹"; onClicked: root.moveMonth(-1) }
-                        IconBtn { opacity: (root.ready && !root.holidayModalOpen && !root.bdayModalOpen) ? 1 : 0; enabled: root.ready && !root.holidayModalOpen && !root.bdayModalOpen; glyph: "›"; onClicked: root.moveMonth(1) }
-                        Pill { opacity: (root.ready && !root.holidayModalOpen && !root.bdayModalOpen) ? 1 : 0; enabled: root.ready && !root.holidayModalOpen && !root.bdayModalOpen; label: "Today"; height: 30; width: 72; onClicked: root.gotoDay(new Date()) }
+                        IconBtn { visible: !root.pal.zen; opacity: (root.ready && !root.holidayModalOpen && !root.bdayModalOpen) ? 1 : 0; enabled: root.ready && !root.holidayModalOpen && !root.bdayModalOpen; glyph: "‹"; onClicked: root.moveMonth(-1) }
+                        IconBtn { visible: !root.pal.zen; opacity: (root.ready && !root.holidayModalOpen && !root.bdayModalOpen) ? 1 : 0; enabled: root.ready && !root.holidayModalOpen && !root.bdayModalOpen; glyph: "›"; onClicked: root.moveMonth(1) }
                         Pill {
+                            visible: !root.pal.zen || root.bdayModalOpen          // new style: opened from the calendar's settings (the gear)
                             label: root.bdayModalOpen ? "Back" : ("Birthdays" + (root.bdayList.length > 0 ? " (" + root.bdayList.length + ")" : ""))
                             primary: root.bdayModalOpen
                             height: 30
@@ -658,6 +752,7 @@ Scope {
                             }
                         }
                         Pill {
+                            visible: !root.pal.zen || root.holidayModalOpen
                             label: root.holidayModalOpen ? "Back" : "Holidays"
                             primary: root.holidayModalOpen
                             height: 30
@@ -675,10 +770,12 @@ Scope {
                         Text {
                             visible: root.cfg.configured && !root.holidayModalOpen && !root.bdayModalOpen
                             text: root.syncing ? "syncing..." : (root.cfg.error ? "offline · " + root.ago(root.cfg.synced) : root.ago(root.cfg.synced))
-                            color: root.cfg.error && !root.syncing ? root.pal.accent2 : root.pal.muted
+                            color: root.cfg.error && !root.syncing ? root.pal.accent2 : (syncMa.containsMouse ? root.pal.text : root.pal.muted)
                             font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                            // the new style has no refresh button: a click on "synced ... ago" syncs now
+                            MouseArea { id: syncMa; anchors.fill: parent; anchors.margins: -6; enabled: root.pal.zen; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.sync() }
                         }
-                        IconBtn { visible: root.cfg.configured && !root.holidayModalOpen && !root.bdayModalOpen; glyph: String.fromCodePoint(0xF04E6); spin: root.syncing; onClicked: root.sync() }
+                        IconBtn { visible: !root.pal.zen && root.cfg.configured && !root.holidayModalOpen && !root.bdayModalOpen; glyph: String.fromCodePoint(0xF04E6); spin: root.syncing; onClicked: root.sync() }
                         IconBtn { visible: root.cfg.configured && !root.holidayModalOpen && !root.bdayModalOpen; glyph: String.fromCodePoint(0xF0493); onClicked: { root.setupMsg = ""; root.holidayModalOpen = false; root.bdayModalOpen = false; root.setupOpen = !root.setupOpen } }
                         IconBtn { glyph: "✕"; onClicked: root.hide() }
                     }
@@ -695,6 +792,18 @@ Scope {
                             width: 388                  // 7 columns of 52 + 12 padding on each side
                             anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
 
+                            // scroll over the month: down = the next month, up = the last one (a touchpad's small steps add up to one)
+                            property real wheelAcc: 0
+                            WheelHandler {
+                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                onWheel: e => {
+                                    var d = e.pixelDelta.y !== 0 ? e.pixelDelta.y / 60 : e.angleDelta.y / 120
+                                    left.wheelAcc += d
+                                    if (Math.abs(left.wheelAcc) >= 1) { root.moveMonth(left.wheelAcc > 0 ? -1 : 1); left.wheelAcc = 0 }
+                                    e.accepted = true
+                                }
+                            }
+
                             // the month sits in its own padded card; the weekday names and the days share one column width (52),
                             // so each name is centred exactly over its day
                             Rectangle {
@@ -702,7 +811,7 @@ Scope {
                                 anchors { left: parent.left; right: parent.right; top: parent.top }
                                 height: 12 + weekHead.height + 6 + 6 * grid.ch + 12
                                 radius: root.pal.rLg
-                                color: Qt.alpha(root.pal.surface, 0.8)
+                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.8))
                                 border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
                             }
                             Row {
@@ -743,8 +852,8 @@ Scope {
                                         Rectangle {
                                             anchors.centerIn: parent
                                             width: 40; height: 40; radius: 12
-                                            color: cell.isSel ? Qt.alpha(root.pal.accent, 0.22) : (cm.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.7) : "transparent")
-                                            border.width: cell.isSel ? 1.5 : (cell.isToday ? 1 : 0)
+                                            color: cell.isSel ? (root.pal.zen ? root.pal.chosenFill : Qt.alpha(root.pal.accent, 0.22)) : (cm.containsMouse ? (root.pal.zen ? root.pal.fillHover : Qt.alpha(root.pal.surfaceHi, 0.7)) : "transparent")
+                                            border.width: root.pal.zen ? 0 : cell.isSel ? 1.5 : (cell.isToday ? 1 : 0)      // new: a fill marks the chosen day, the accent number marks today
                                             border.color: cell.isSel ? root.pal.accent : Qt.alpha(root.pal.accent, 0.6)
                                             Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                         }
@@ -778,12 +887,15 @@ Scope {
                                 }
                             }
 
-                            // next up
+                            // next up: right under the month in the new style (no gap in the middle), at the bottom before
                             Rectangle {
-                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                anchors { left: parent.left; right: parent.right }
+                                anchors.top: root.pal.zen ? monthCard.bottom : undefined
+                                anchors.topMargin: 14
+                                anchors.bottom: root.pal.zen ? undefined : parent.bottom
                                 height: nextCol.implicitHeight + 28
                                 radius: root.pal.rLg
-                                color: Qt.alpha(root.pal.surface, 0.8)
+                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.8))
                                 border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
                                 Column {
                                     id: nextCol
@@ -864,7 +976,7 @@ Scope {
                                             height: rc.implicitHeight + 24
                                             radius: root.pal.rMd
                                             color: live ? Qt.alpha(root.pal.accent, 0.14) : Qt.alpha(root.pal.surface, 0.75)
-                                            border.width: 1
+                                            border.width: root.pal.zen && !(live) ? 0 : 1
                                             border.color: live ? Qt.alpha(root.pal.accent, 0.6) : root.pal.line
                                             opacity: past ? 0.55 : 1
                                             Rectangle {
@@ -942,6 +1054,13 @@ Scope {
                                     text: root.busyOnly ? "Reconnect your calendar" : (root.cfg.configured ? "Your calendar" : "Connect Google Calendar")
                                     color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
                                 }
+                                // the new style keeps the header to the months: birthdays and holidays are managed from here
+                                Row {
+                                    visible: root.pal.zen && root.cfg.configured
+                                    spacing: 8; topPadding: 6; bottomPadding: 10
+                                    Pill { label: "Birthdays" + (root.bdayList.length > 0 ? " (" + root.bdayList.length + ")" : ""); height: 30; width: 136; onClicked: { root.bdayModalMsg = ""; root.setupOpen = false; root.holidayModalOpen = false; root.bdayModalOpen = true; root.loadBdayList() } }
+                                    Pill { label: "Holidays"; height: 30; width: 110; onClicked: { root.holidayModalMsg = ""; root.setupOpen = false; root.bdayModalOpen = false; root.holidayModalOpen = true } }
+                                }
                                 Text {
                                     width: parent.width; bottomPadding: 10
                                     wrapMode: Text.WordWrap
@@ -980,8 +1099,8 @@ Scope {
                                     width: parent.width; spacing: 8
                                     Rectangle {
                                         width: parent.width - 100; height: 38; radius: 19
-                                        color: Qt.alpha(root.pal.bg, 0.55)
-                                        border.width: 1; border.color: urlIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                        color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                        border.width: root.pal.zen && !urlIn.activeFocus ? 0 : 1; border.color: urlIn.activeFocus ? root.pal.lineFocus : root.pal.line
                                         Text {
                                             anchors.left: parent.left; anchors.leftMargin: 16; anchors.verticalCenter: parent.verticalCenter
                                             visible: urlIn.text === ""
@@ -1238,8 +1357,8 @@ Scope {
                                         width: parent.width; spacing: 8
                                         Rectangle {
                                             Layout.preferredWidth: 140; height: 38; radius: 19
-                                            color: Qt.alpha(root.pal.bg, 0.55)
-                                            border.width: 1; border.color: hDateIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                            color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: root.pal.zen && !hDateIn.activeFocus ? 0 : 1; border.color: hDateIn.activeFocus ? root.pal.lineFocus : root.pal.line
                                             Text {
                                                 anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
                                                 visible: hDateIn.text === ""
@@ -1257,8 +1376,8 @@ Scope {
                                         }
                                         Rectangle {
                                             Layout.fillWidth: true; height: 38; radius: 19
-                                            color: Qt.alpha(root.pal.bg, 0.55)
-                                            border.width: 1; border.color: hNameIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                            color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: root.pal.zen && !hNameIn.activeFocus ? 0 : 1; border.color: hNameIn.activeFocus ? root.pal.lineFocus : root.pal.line
                                             Text {
                                                 anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
                                                 visible: hNameIn.text === ""
@@ -1443,8 +1562,8 @@ Scope {
                                         width: parent.width; spacing: 8
                                         Rectangle {
                                             Layout.preferredWidth: 165; height: 38; radius: 19
-                                            color: Qt.alpha(root.pal.bg, 0.55)
-                                            border.width: 1; border.color: bDateIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                            color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: root.pal.zen && !bDateIn.activeFocus ? 0 : 1; border.color: bDateIn.activeFocus ? root.pal.lineFocus : root.pal.line
                                             Text {
                                                 anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
                                                 visible: bDateIn.text === ""
@@ -1462,8 +1581,8 @@ Scope {
                                         }
                                         Rectangle {
                                             Layout.fillWidth: true; height: 38; radius: 19
-                                            color: Qt.alpha(root.pal.bg, 0.55)
-                                            border.width: 1; border.color: bNameIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                            color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                            border.width: root.pal.zen && !bNameIn.activeFocus ? 0 : 1; border.color: bNameIn.activeFocus ? root.pal.lineFocus : root.pal.line
                                             Text {
                                                 anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
                                                 visible: bNameIn.text === ""
@@ -1526,7 +1645,7 @@ Scope {
                                         delegate: Rectangle {
                                             required property var modelData
                                             width: bCol.width; height: 36; radius: 10
-                                            color: Qt.alpha(root.pal.surface, 0.75)
+                                            color: root.pal.box(Qt.alpha(root.pal.surface, 0.75))
                                             border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
                                             RowLayout {
                                                 anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 10

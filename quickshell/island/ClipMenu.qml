@@ -357,6 +357,7 @@ Scope {
                             Layout.fillWidth: true
                             spacing: 12
                             Rectangle {
+                                visible: !root.pal.zen          // the new style: no icon tile in the header
                                 width: 36; height: 36; radius: 12
                                 color: Qt.alpha(root.note !== "" ? root.pal.good : root.pal.accent, 0.15)
                                 Behavior on color { ColorAnimation { duration: root.pal.dFast } }
@@ -383,8 +384,8 @@ Scope {
                             Layout.preferredHeight: 40
                             visible: !root.aiItem
                             radius: 20
-                            color: Qt.alpha(root.pal.surface, 0.7)
-                            border.width: 1
+                            color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.7))
+                            border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                             border.color: sin.activeFocus ? root.pal.lineFocus : root.pal.lineSoft
                             Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
                             Text {
@@ -644,7 +645,7 @@ Scope {
                                 Layout.fillWidth: true
                                 implicitHeight: srcT.implicitHeight + 20
                                 radius: root.pal.rMd
-                                color: Qt.alpha(root.pal.surface, 0.6)
+                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.6))
                                 Text {
                                     id: srcT
                                     anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }

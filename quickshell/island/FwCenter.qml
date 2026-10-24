@@ -23,9 +23,12 @@ Scope {
     property bool open: false
     property string tab: "overview"            // overview | bans | rules | feeds | history | ask
     signal consoleRequested(string cmd)        // shell.qml runs it in the pop-out console
+    property bool consoleOpen: false        // the pop-out console has the keyboard (shell.qml)
 
     readonly property string scripts: Quickshell.env("HOME") + "/.config/Halcyon/scripts"
+    // a terminal is an app window: it can not show above this overlay, so the window steps aside for it (the console does not need that)
     function inTerminal(cmd) {
+        hide()
         Quickshell.execDetached(["bash", scripts + "/apps.sh", "term-exec", "bash", "-c", cmd])
     }
     // `sudo ai-firewall <args>` in the console. Only plain words reach the shell: everything here is built from the daemon's
@@ -33,8 +36,7 @@ Scope {
     function sudoThen(args) {
         args = String(args).trim()
         if (!/^[A-Za-z0-9 ._:\/-]+$/.test(args)) return
-        hide()
-        consoleRequested("sudo ai-firewall " + args)
+        consoleRequested("sudo ai-firewall " + args)           // the window stays; the console opens over it
     }
 
     // ---- status (re-read every 2 s while open: the daemon replaces the file, which a watch would lose)
@@ -171,7 +173,8 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.namespace: "island-firewall"
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            // while the console is up (a command this window sent) it has the keyboard; this window stays open behind it
+            WlrLayershell.keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
             MouseArea { anchors.fill: parent; onClicked: root.hide() }
 
@@ -199,6 +202,7 @@ Scope {
                     opacity: qp.reveal
                     scale: 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
+                    RoundBtn { z: 5; anchors { top: parent.top; right: parent.right; margins: 24 } pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
 
                     RowLayout {
                         anchors.fill: parent
@@ -212,9 +216,10 @@ Scope {
                                 anchors.fill: parent
                                 anchors.margins: 1
                                 clip: true
-                                Rectangle { width: parent.width + root.pal.rXl; height: parent.height; radius: root.pal.rXl; color: Qt.alpha(root.pal.surface, 0.35) }
+                                // the new style: no tinted side panel, the menu sits on the pane like the one in Settings
+                                Rectangle { visible: !root.pal.zen; width: parent.width + root.pal.rXl; height: parent.height; radius: root.pal.rXl; color: Qt.alpha(root.pal.surface, 0.35) }
                             }
-                            Rectangle { anchors { top: parent.top; bottom: parent.bottom; right: parent.right; topMargin: 24; bottomMargin: 24 } width: 1; color: root.pal.lineSoft }
+                            Rectangle { visible: !root.pal.zen; anchors { top: parent.top; bottom: parent.bottom; right: parent.right; topMargin: 24; bottomMargin: 24 } width: 1; color: root.pal.lineSoft }
 
                             ColumnLayout {
                                 anchors.fill: parent
@@ -225,6 +230,7 @@ Scope {
                                 Row {
                                     spacing: 12
                                     Rectangle {
+                                        visible: !root.pal.zen          // no icon tile in the header
                                         width: 42; height: 42; radius: 13
                                         color: Qt.alpha(root.stateColor, 0.15)
                                         Text {
@@ -238,9 +244,11 @@ Scope {
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
                                         spacing: 1
-                                        Text { text: "Firewall"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
+                                        Text { leftPadding: root.pal.zen ? 16 : 0; text: "Firewall"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
                                         Text {
-                                            text: !root.st ? "not running" : !root.alive ? "not responding" : root.st.mode === "enforce" ? "protecting" : "monitoring only"
+                                            text: (!root.st ? "not running" : !root.alive ? "not responding" : root.st.mode === "enforce" ? "protecting" : "monitoring only")
+                                                + (root.st ? "  ·  up " + root.dur(root.st.updated_unix - root.st.started_unix) : "")
+                                            leftPadding: root.pal.zen ? 16 : 0
                                             color: root.stateColor
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tCap
@@ -264,19 +272,19 @@ Scope {
                                         readonly property bool on: root.tab === modelData.id
                                         Layout.fillWidth: true
                                         implicitHeight: 38
-                                        radius: 12
-                                        color: on ? Qt.alpha(root.pal.accent, 0.16) : (tabMa.containsMouse ? root.pal.fillHover : "transparent")
+                                        radius: root.pal.zen ? height / 2 : 12
+                                        color: on ? (root.pal.zen ? root.pal.chosenFill : Qt.alpha(root.pal.accent, 0.16)) : (tabMa.containsMouse ? root.pal.fill : "transparent")
                                         Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                         Row {
-                                            anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                                            anchors { left: parent.left; leftMargin: root.pal.zen ? 16 : 12; verticalCenter: parent.verticalCenter }
                                             spacing: 12
-                                            Text { text: String.fromCodePoint(tabRow.modelData.glyph); color: tabRow.on ? root.pal.accent : root.pal.muted; font.family: root.pal.font; font.pixelSize: 16; anchors.verticalCenter: parent.verticalCenter }
+                                            Text { visible: !root.pal.zen; text: String.fromCodePoint(tabRow.modelData.glyph); color: tabRow.on ? root.pal.accent : root.pal.muted; font.family: root.pal.font; font.pixelSize: 16; anchors.verticalCenter: parent.verticalCenter }
                                             Text {
                                                 text: tabRow.modelData.label + (tabRow.modelData.id === "bans" && root.bans.length > 0 ? "  " + root.bans.length : "")
-                                                color: tabRow.on ? root.pal.text : root.pal.muted
+                                                color: tabRow.on ? (root.pal.zen ? root.pal.chosenText : root.pal.text) : (root.pal.zen ? Qt.alpha(root.pal.text, 0.78) : root.pal.muted)
                                                 font.family: root.pal.uiFont
-                                                font.pixelSize: root.pal.tBody
-                                                font.weight: tabRow.on ? Font.DemiBold : Font.Normal
+                                                font.pixelSize: root.pal.zen ? root.pal.tBody + 1 : root.pal.tBody
+                                                font.weight: tabRow.on ? (root.pal.zen ? Font.Medium : Font.DemiBold) : Font.Normal
                                                 anchors.verticalCenter: parent.verticalCenter
                                             }
                                         }
@@ -285,12 +293,12 @@ Scope {
                                 }
                                 Item { Layout.fillHeight: true }
 
+                                // (the interface and profile line moved to the top of Overview, the state and uptime under the name)
                                 Text {
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
-                                    visible: root.st !== null
-                                    text: root.st ? ((root.st.interface || "no uplink") + " · " + (root.st.xdp_mode || "-") + " XDP\n"
-                                        + "profile: " + (root.st.profile || "default") + "\nup " + root.dur(root.st.updated_unix - root.st.started_unix)
+                                    visible: false
+                                    text: root.st ? ((root.st.interface || "no uplink") + " · " + (root.st.xdp_mode || "-") + " XDP · " + (root.st.profile || "default") + " profile"
                                         + (root.st.attaches > 1 ? " · healed " + (root.st.attaches - 1) + "×" : "")) : ""
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
@@ -303,7 +311,7 @@ Scope {
                                     visible: root.st === null
                                     pal: root.pal
                                     label: "Start the firewall"
-                                    onClicked: { root.hide(); root.consoleRequested("sudo systemctl start ai-firewall") }
+                                    onClicked: root.consoleRequested("sudo systemctl start ai-firewall")
                                 }
                             }
                         }
@@ -320,7 +328,16 @@ Scope {
                                 spacing: 16
                                 visible: root.tab === "overview"
 
-                                Text { text: "Overview"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold }
+                                Column {
+                                    spacing: 2
+                                    Text { text: "Overview"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold }
+                                    Text {
+                                        visible: root.st !== null
+                                        text: root.st ? ((root.st.interface || "no uplink") + "  ·  " + (root.st.xdp_mode || "-") + " XDP  ·  " + (root.st.profile || "default") + " profile"
+                                            + (root.st.attaches > 1 ? "  ·  healed " + (root.st.attaches - 1) + "×" : "")) : ""
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
+                                    }
+                                }
 
                                 // the config file is broken: say so, the last config that worked is what applies
                                 Rectangle {
@@ -362,13 +379,13 @@ Scope {
                                             Layout.preferredWidth: 1
                                             implicitHeight: 76
                                             radius: root.pal.rLg
-                                            color: root.pal.calm ? root.pal.fill : Qt.alpha(root.pal.surface, 0.8)
+                                            color: root.pal.calm ? root.pal.box(root.pal.fill) : Qt.alpha(root.pal.surface, 0.8)
                                             Column {
                                                 anchors { left: parent.left; leftMargin: 18; right: parent.right; verticalCenter: parent.verticalCenter }
                                                 spacing: 3
                                                 Row {
                                                     spacing: 8
-                                                    Text { id: tv; text: tile.modelData.v; color: tile.modelData.c; font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.DemiBold }
+                                                    Text { id: tv; text: tile.modelData.v; color: root.pal.zen ? root.pal.text : tile.modelData.c; font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.DemiBold }
                                                     Text { anchors.baseline: tv.baseline; text: tile.modelData.sub; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                                 }
                                                 Text { text: tile.modelData.label; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
@@ -382,7 +399,7 @@ Scope {
                                     Layout.fillWidth: true
                                     implicitHeight: 170
                                     radius: root.pal.rLg
-                                    color: root.pal.calm ? root.pal.fill : Qt.alpha(root.pal.surface, 0.8)
+                                    color: root.pal.calm ? root.pal.box(root.pal.fill) : Qt.alpha(root.pal.surface, 0.8)
                                     Text {
                                         anchors { left: parent.left; top: parent.top; margins: 14 }
                                         text: "Dropped per second · last 3 minutes"
@@ -450,6 +467,7 @@ Scope {
 
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.rightMargin: 52          // room for the window's ✕ in the corner
                                     Text { text: "Bans"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold; Layout.fillWidth: true }
                                     InputPill {
                                         id: banIn
@@ -478,7 +496,7 @@ Scope {
                                         width: ListView.view.width
                                         implicitHeight: 52
                                         radius: root.pal.rMd
-                                        color: root.pal.calm ? root.pal.fill : Qt.alpha(root.pal.surface, 0.8)
+                                        color: root.pal.calm ? root.pal.box(root.pal.fill) : Qt.alpha(root.pal.surface, 0.8)
                                         RowLayout {
                                             anchors { fill: parent; leftMargin: 16; rightMargin: 10 }
                                             spacing: 14
@@ -512,10 +530,12 @@ Scope {
 
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.rightMargin: 52          // room for the window's ✕ in the corner
                                     Text { text: "Rules"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold; Layout.fillWidth: true }
                                     ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF03EB); label: "Edit config"; onClicked: root.inTerminal("sudoedit /etc/ai-firewall/config.toml") }
                                 }
                                 Text {
+                                    visible: !(root.pal.zen && root.pal.hideHints)
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
                                     text: "Nothing gets in unless a port is open below; everything you start yourself can always go out. Changes to the config apply within 3 seconds."
@@ -582,10 +602,12 @@ Scope {
 
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.rightMargin: 52          // room for the window's ✕ in the corner
                                     Text { text: "Feeds"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold; Layout.fillWidth: true }
                                     ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0450); label: "Refresh now"; onClicked: root.sudoThen("feeds --refresh") }
                                 }
                                 Text {
+                                    visible: !(root.pal.zen && root.pal.hideHints)
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
                                     text: "Public lists of networks known for attacks, spam and hijacking. Everything from them is dropped before it reaches anything else. Private and LAN ranges are always taken out of the lists. Pick lists in the config ([feeds])."
@@ -601,7 +623,7 @@ Scope {
                                         Layout.fillWidth: true
                                         implicitHeight: 60
                                         radius: root.pal.rMd
-                                        color: root.pal.calm ? root.pal.fill : Qt.alpha(root.pal.surface, 0.8)
+                                        color: root.pal.calm ? root.pal.box(root.pal.fill) : Qt.alpha(root.pal.surface, 0.8)
                                         RowLayout {
                                             anchors { fill: parent; leftMargin: 18; rightMargin: 18 }
                                             spacing: 14
@@ -672,6 +694,7 @@ Scope {
 
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.rightMargin: 52          // room for the window's ✕ in the corner
                                     Text { text: "Ask & doctor"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold; Layout.fillWidth: true }
                                     ActionChip { pal: root.pal; label: doctorProc.running ? "Checking…" : "Check again"; onClicked: if (!doctorProc.running) doctorProc.running = true }
                                     ActionChip { pal: root.pal; label: "Full check (admin)"; onClicked: root.sudoThen("doctor --fix") }

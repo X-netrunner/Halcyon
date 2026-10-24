@@ -59,7 +59,7 @@ ColumnLayout {
             Layout.preferredWidth: 220
             height: 34; radius: 17
             color: vk.capturing ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.9)
-            border.width: 1
+            border.width: root.pal.zen && !(vk.capturing) ? 0 : 1
             border.color: vk.capturing ? root.pal.accent : root.pal.line
             focus: vk.capturing
             Text {

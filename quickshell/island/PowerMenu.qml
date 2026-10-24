@@ -16,6 +16,10 @@ Scope {
     property bool profileStars: true
     property bool blurOn: true             // the compositor blurs what is behind (Resource use: Low turns blur off); without it the dim is stronger
     property bool open: false
+    // the window stays a moment after it closes, so its fade-out plays (it used to vanish at once)
+    property bool linger: false
+    Connections { target: root; function onOpenChanged() { if (!root.open) { root.linger = true; lingerT.restart() } } }
+    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
     property string pending: ""
     signal session(string action)
 
@@ -38,7 +42,7 @@ Scope {
     ]
 
     LazyLoader {
-        active: root.open
+        active: root.open || root.linger
         PanelWindow {
             id: win
             visible: true
@@ -98,15 +102,17 @@ Scope {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 scale: ma.pressed ? 0.95 : (hot ? 1.06 : 1)
                                 Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-                                color: sure ? Qt.alpha(root.pal.accent, 0.30) : Qt.alpha(root.pal.surface, 0.95)
-                                border.width: 1.5
+                                // new: soft tiles, the one under the pointer lifts into the accent wash; "sure?" is solid accent
+                                color: root.pal.zen ? (sure ? root.pal.primary : hot ? root.pal.chosenFill : Qt.alpha(root.pal.text, 0.07))
+                                     : sure ? Qt.alpha(root.pal.accent, 0.30) : Qt.alpha(root.pal.surface, 0.95)
+                                border.width: root.pal.zen ? 0 : 1.5
                                 border.color: Qt.alpha(root.pal.accent, hot ? 0.95 : 0.35)
                                 Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                 Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
                                 Text {
                                     anchors.centerIn: parent
                                     text: String.fromCodePoint(modelData.glyph)
-                                    color: hot ? root.pal.accent : root.pal.text
+                                    color: root.pal.zen && sure ? root.pal.primaryText : hot ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : root.pal.text
                                     font.family: root.pal.font
                                     font.pixelSize: 36
                                 }

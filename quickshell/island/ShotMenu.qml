@@ -173,7 +173,7 @@ Scope {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
-                            Rectangle { width: 8; height: 8; radius: 4; color: root.pal.accent }
+                            Rectangle { visible: !root.pal.zen; width: 8; height: 8; radius: 4; color: root.pal.accent }
                             BoxTitle { pal: root.pal; title: "Screenshot" }
                             RoundBtn {
                                 pal: root.pal
@@ -199,7 +199,7 @@ Scope {
                                     radius: root.pal.rMd
                                     opacity: ok ? 1 : 0.4
                                     color: cma.containsMouse && ok ? Qt.alpha(root.pal.accent, 0.16) : Qt.alpha(root.pal.surface, 0.7)
-                                    border.width: 1
+                                    border.width: root.pal.zen && !(cma.containsMouse && ok) ? 0 : 1
                                     border.color: cma.containsMouse && ok ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
                                     scale: cma.pressed && ok ? 0.97 : 1
                                     Behavior on color { ColorAnimation { duration: root.pal.dFast } }

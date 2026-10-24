@@ -322,7 +322,7 @@ Scope {
                             Layout.fillWidth: true
                             visible: text !== ""
                             text: root.subject
-                            horizontalAlignment: root.pal.centerTitles ? Text.AlignHCenter : Text.AlignLeft
+                            horizontalAlignment: root.pal.centred ? Text.AlignHCenter : Text.AlignLeft
                             wrapMode: Text.Wrap
                             color: root.pal.text
                             font.family: root.pal.uiFont
@@ -408,7 +408,7 @@ Scope {
                                 width: ListView.view.width - 8
                                 height: 46
                                 radius: root.pal.rSm
-                                color: Qt.alpha(root.pal.surface, 0.55)
+                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
                                 border.width: root.pal.calm ? 0 : 1
                                 border.color: root.pal.lineSoft
                                 RowLayout {

@@ -95,7 +95,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: hd.alignRight ? parent.right : undefined
             anchors.left: hd.alignRight ? undefined : parent.left
-            Cap { anchors.verticalCenter: parent.verticalCenter; text: hd.label }
+            Cap { anchors.verticalCenter: parent.verticalCenter; text: root.pal.capOf(hd.label) }
             Q { anchors.verticalCenter: parent.verticalCenter; tip: hd.tip }
         }
     }
@@ -105,7 +105,7 @@ Item {
         property string label: ""
         property string tip: ""
         spacing: 5
-        Cap { anchors.verticalCenter: parent.verticalCenter; text: tt.label }
+        Cap { anchors.verticalCenter: parent.verticalCenter; text: root.pal.capOf(tt.label) }
         Q { anchors.verticalCenter: parent.verticalCenter; tip: tt.tip }
     }
 
@@ -119,7 +119,7 @@ Item {
         property real limit: 1
         property color tone: root.pal.good
         implicitHeight: 38
-        Cap { anchors.left: parent.left; anchors.top: parent.top; text: mt.label }
+        Cap { anchors.left: parent.left; anchors.top: parent.top; text: root.pal.capOf(mt.label) }
         Text {
             anchors.right: parent.right; anchors.top: parent.top
             text: mt.valueText + "   of limit " + mt.limitText
@@ -406,6 +406,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 12
                 Text {
+                    visible: !root.pal.zen
                     Layout.alignment: Qt.AlignVCenter
                     text: String.fromCodePoint(0xF035B)
                     font.family: root.pal.font; font.pixelSize: 22
@@ -436,8 +437,8 @@ Item {
                     Layout.preferredWidth: 230
                     Layout.preferredHeight: 34
                     radius: 12
-                    color: Qt.alpha(root.pal.bg, 0.6)
-                    border.width: 1
+                    color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.6)
+                    border.width: root.pal.zen && !searchInput.activeFocus ? 0 : 1
                     border.color: searchInput.activeFocus ? root.pal.accent : root.pal.line
                     Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
                     RowLayout {
@@ -635,7 +636,7 @@ Item {
                         height: 56
                         radius: root.pal.rMd
                         color: rowHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, row.running ? 0.75 : 0.45)
-                        border.width: 1
+                        border.width: root.pal.zen && !(rowHover.hovered) ? 0 : 1
                         border.color: rowHover.hovered ? Qt.alpha(root.pal.accent, 0.3) : root.pal.lineSoft
                         Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
@@ -744,7 +745,7 @@ Item {
                         height: 48
                         radius: root.pal.rMd
                         color: procHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.6)
-                        border.width: 1
+                        border.width: root.pal.zen && !(procHover.hovered) ? 0 : 1
                         border.color: procHover.hovered ? Qt.alpha(root.pal.accent, 0.3) : root.pal.lineSoft
                         Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
@@ -826,7 +827,7 @@ Item {
                         height: Math.max(88, tcol.implicitHeight + 20)     // a long reason makes the row taller instead of spilling out of it
                         radius: root.pal.rLg
                         color: tipHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.75)
-                        border.width: 1
+                        border.width: root.pal.zen && !(tipHover.hovered) ? 0 : 1
                         border.color: tipHover.hovered ? Qt.alpha(root.pal.accent, 0.3) : root.pal.lineSoft
                         Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
@@ -856,9 +857,9 @@ Item {
                                         Text {
                                             id: pillText
                                             anchors.centerIn: parent
-                                            text: trow.safe ? "SAFE TO TURN OFF" : "WORTH A LOOK"
+                                            text: root.pal.capOf(trow.safe ? "SAFE TO TURN OFF" : "WORTH A LOOK")
                                             color: trow.tone
-                                            font.family: root.pal.uiFont; font.pixelSize: 9; font.weight: Font.DemiBold; font.letterSpacing: 1
+                                            font.family: root.pal.uiFont; font.pixelSize: root.pal.zen ? 11 : 9; font.weight: root.pal.zen ? Font.Medium : Font.DemiBold; font.letterSpacing: root.pal.zen ? 0 : 1
                                         }
                                     }
                                 }
@@ -914,7 +915,7 @@ Item {
                         height: ucol.implicitHeight + 22
                         radius: root.pal.rLg
                         color: uHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.75)
-                        border.width: 1
+                        border.width: root.pal.zen && !(uHover.hovered) ? 0 : 1
                         border.color: uHover.hovered ? Qt.alpha(root.pal.accent, 0.3) : root.pal.lineSoft
                         HoverHandler { id: uHover }
                         Rectangle {
@@ -1025,7 +1026,7 @@ Item {
                             height: 158
                             radius: root.pal.rLg
                             color: Qt.alpha(root.pal.bg, 0.55)
-                            border.width: 1
+                            border.width: root.pal.zen && !(root.loaded && root.healthState !== "ok") ? 0 : 1
                             border.color: root.loaded && root.healthState !== "ok" ? Qt.alpha(root.healthTone, 0.5) : root.pal.lineTint
                             ColumnLayout {
                                 anchors.fill: parent
@@ -1122,7 +1123,7 @@ Item {
                                 Text {
                                     visible: root.growers.length > 0
                                     text: root.pal.cap("GREW MOST SINCE THIS WINDOW OPENED")
-                                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 1.2
+                                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.zen ? 12 : 10; font.letterSpacing: root.pal.zen ? 0 : 1.2
                                 }
                                 Repeater {
                                     model: root.growers
@@ -1137,7 +1138,7 @@ Item {
                             }
                         }
 
-                        Cap { visible: root.shownFindings.length > 0; leftPadding: 4; text: "WHY, AND WHAT YOU CAN DO" }
+                        Cap { visible: root.shownFindings.length > 0; leftPadding: 4; text: root.pal.capOf("WHY, AND WHAT YOU CAN DO") }
 
                         Repeater {
                             model: findModel
@@ -1150,7 +1151,7 @@ Item {
                                 width: healthCol.width
                                 height: fcol.implicitHeight + 28
                                 radius: root.pal.rLg
-                                color: Qt.alpha(root.pal.surface, 0.75)
+                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.75))
                                 border.width: root.pal.calm ? 0 : 1
                                 border.color: root.pal.lineSoft
                                 Rectangle {

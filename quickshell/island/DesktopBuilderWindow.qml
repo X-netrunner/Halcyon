@@ -127,21 +127,11 @@ Item {
             anchors.margins: 28
             spacing: 14
 
-            // ---- header
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 14
-                Rectangle { Layout.alignment: Qt.AlignVCenter; width: 8; height: 8; radius: 4; color: root.pal.accent }
-                BoxTitle {
-                    Layout.alignment: Qt.AlignVCenter
-                    pal: root.pal
-                    size: 20
-                    subIsHint: true
-                    title: root.lockT ? "Lock screen builder" : "Desktop builder"
-                    sub: root.lockT ? "The picture on the left is your lock screen: its background, and outlines where the clock and the password box sit. Everything else is on the right."
-                                            : "The picture on the left is your screen: click a box, then the corner it should open from. Everything else is on the right."
-                }
-                ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
+            // ---- header (WinHeader: the same in every window)
+            WinHeader {
+                pal: root.pal
+                title: root.lockT ? "Lock screen builder" : "Desktop builder"
+                onClosed: root.closed()
             }
 
             RowLayout {
@@ -337,7 +327,8 @@ Item {
                         anchors.top: scr.bottom
                         anchors.topMargin: 12
                         anchors.leftMargin: 20; anchors.rightMargin: 20
-                        text: root.lockT ? "Your lock screen widgets are drawn as boxes where they sit. \"Place them on the lock screen\" (right) moves and resizes the real ones. The boxes of the desktop (notifications, utilities ...) do not open on a locked screen."
+                        // the new style says only what to do next while you are moving a box
+                        text: root.pal.zen && root.pal.hideHints && root.pick === "" ? "" : root.lockT ? "Your lock screen widgets are drawn as boxes where they sit. \"Place them on the lock screen\" (right) moves and resizes the real ones. The boxes of the desktop (notifications, utilities ...) do not open on a locked screen."
                               : (root.pick !== "" ? ("Now click the corner for " + DS.names[root.pick] + ". Esc cancels.") : "Click a box, then click the corner you want it to open from. A box dropped on a taken corner swaps places with it.")
                         color: root.pick !== "" && !root.lockT ? root.pal.accent : root.pal.muted
                         font.family: root.pal.uiFont
@@ -386,7 +377,7 @@ Item {
                                         anchors { left: tcG.right; leftMargin: 14; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                                         spacing: 2
                                         Text { text: tc.modelData.t; color: tc.on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
-                                        Text { width: parent.width; elide: Text.ElideRight; text: tc.modelData.d; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        Text { visible: !(root.pal.zen && root.pal.hideHints); width: parent.width; elide: Text.ElideRight; text: tc.modelData.d; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                     }
                                     MouseArea { id: tcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (!tc.on) { root.pick = ""; root.flushLive(); root.targetPicked(tc.modelData.k) } }
                                 }
@@ -459,7 +450,7 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                visible: !root.wallOn
+                                visible: !(root.pal.zen && root.pal.hideHints) && (!root.wallOn)
                                 text: "Off frees its memory. Colours still follow the last wallpaper."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
@@ -472,7 +463,7 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                visible: root.wallOn && root.blurAmt > 0
+                                visible: !(root.pal.zen && root.pal.hideHints) && (root.wallOn && root.blurAmt > 0)
                                 text: "Uses the GPU only when the picture changes. Keep it low on a weak GPU."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
@@ -493,7 +484,7 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                visible: root.wallOn
+                                visible: !(root.pal.zen && root.pal.hideHints) && (root.wallOn)
                                 text: root.dimMode === "off" ? "Widgets choose their colours from the picture as it is." : "Keeps the widgets readable on light or busy wallpapers; their text colour follows the dim."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
@@ -519,6 +510,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: "They stand still in Gaming mode."
+                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             ColumnLayout {
@@ -570,15 +562,17 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: root.barStyle === "off" ? "No bar. The launcher (Super tap), the media and performance pages and every box still open from the top edge, so put the clock, workspaces and stats on the desktop as widgets." : "Switch the bar off once your desktop widgets do its job."
+                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
 
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
-                            NbCap { pal: root.pal; text: "WIDGETS  ·  " + root.wlayout.items.length }
+                            NbCap { pal: root.pal; text: root.pal.cap("WIDGETS  ·  " + root.wlayout.items.length) }
                             Text {
                                 Layout.fillWidth: true
                                 text: "\"Place them on the desktop\" lets you drag the real widgets right on the screen (the wheel resizes them). The Widget builder changes how each one looks and links widgets together, for example the visualizer to the song title."
+                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             Flow {
@@ -591,10 +585,11 @@ Item {
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                             // ---- where the boxes open
-                            NbCap { pal: root.pal; text: "ACTIVATION ZONES  ·  WHERE THE BOXES OPEN" }
+                            NbCap { pal: root.pal; text: root.pal.cap("ACTIVATION ZONES  ·  WHERE THE BOXES OPEN") }
                             Text {
                                 Layout.fillWidth: true
                                 text: "Pick the corner each box opens from. Taking a used corner swaps the two."
+                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             Repeater {
@@ -675,6 +670,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: root.lockWall ? "Your current wallpaper, blurred, behind the clock and the password box. Tint is how much of the theme colour covers it (0 % = the wallpaper as it is). It is only loaded while the screen is locked." : "The plain colour of your theme."
+                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
 
@@ -711,7 +707,7 @@ Item {
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                             // ---- widgets: the built-in row and your own
-                            NbCap { pal: root.pal; text: "WIDGETS  ·  " + root.lockLayout.items.length }
+                            NbCap { pal: root.pal; text: root.pal.cap("WIDGETS  ·  " + root.lockLayout.items.length) }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
@@ -721,6 +717,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: "Built and placed the same way as the desktop ones: \"Place them on the lock screen\" lets you drag them right on the screen (the wheel resizes them), the Widget builder changes how each one looks. Every desktop widget is offered there; nothing on them can be clicked or run while it is locked (the music buttons stay), and the ones that show private things are marked."
+                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             Flow {
@@ -738,6 +735,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: "The notification count is only the number, never what they say."
+                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
 
@@ -753,6 +751,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: "Switch to another user. This session stays locked."
+                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                         }

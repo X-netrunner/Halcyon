@@ -5,11 +5,15 @@ import Quickshell.Wayland
 import Quickshell.Io
 
 // SUPER + P -> Halcyon Display & Projector Manager
-// Native Quickshell modal styled with Halcyon glass cards and moving stars.
+// The same window header as everywhere else and one row per mode (keys: the letter, or 1-6).
 Scope {
     id: root
     property var pal
     property bool open: false
+    // the window stays a moment after it closes, so its fade-out plays (it used to vanish at once)
+    property bool linger: false
+    Connections { target: root; function onOpenChanged() { if (!root.open) { root.linger = true; lingerT.restart() } } }
+    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
     property int selectedIndex: 0
     property string activeMode: "auto"
     property string monitorInfo: "Detecting displays..."
@@ -91,8 +95,8 @@ Scope {
             num: "1",
             key: Qt.Key_M,
             numKey: Qt.Key_1,
-            badge: "M / 1",
-            title: "Mirror Screen (Projector Clone)",
+            badge: "M",
+            title: "Mirror",
             desc: "Duplicate your screen onto an external projector, TV, or monitor for presentations.",
             icon: "󰍺"
         },
@@ -101,8 +105,8 @@ Scope {
             num: "2",
             key: Qt.Key_R,
             numKey: Qt.Key_2,
-            badge: "R / 2",
-            title: "Extend Right",
+            badge: "R",
+            title: "Extend to the right",
             desc: "Dual monitor workspace with external display positioned to the right.",
             icon: "󰍹"
         },
@@ -111,8 +115,8 @@ Scope {
             num: "3",
             key: Qt.Key_L,
             numKey: Qt.Key_3,
-            badge: "L / 3",
-            title: "Extend Left",
+            badge: "L",
+            title: "Extend to the left",
             desc: "Dual monitor workspace with external display positioned to the left.",
             icon: "󰍹"
         },
@@ -121,8 +125,8 @@ Scope {
             num: "4",
             key: Qt.Key_P,
             numKey: Qt.Key_4,
-            badge: "P / 4",
-            title: "Projector / External Only",
+            badge: "P",
+            title: "Second screen only",
             desc: "Laptop screen turns off. Video outputs exclusively to the projector/monitor.",
             icon: "󰍺"
         },
@@ -131,8 +135,8 @@ Scope {
             num: "5",
             key: Qt.Key_O,
             numKey: Qt.Key_5,
-            badge: "O / 5",
-            title: "Laptop Screen Only",
+            badge: "O",
+            title: "Laptop screen only",
             desc: "Turn off external projector / display and keep only the built-in laptop screen.",
             icon: "󰌢"
         },
@@ -141,15 +145,15 @@ Scope {
             num: "6",
             key: Qt.Key_A,
             numKey: Qt.Key_6,
-            badge: "A / 6",
-            title: "Auto-Detect & Reset",
+            badge: "A",
+            title: "Automatic",
             desc: "Restore default auto-detected resolutions and layout for all connected displays.",
             icon: "󰑐"
         }
     ]
 
     LazyLoader {
-        active: root.open
+        active: root.open || root.linger
         PanelWindow {
             id: win
             visible: true
@@ -196,246 +200,124 @@ Scope {
                 // Dimmed backdrop
                 Rectangle {
                     anchors.fill: parent
-                    color: Qt.alpha(root.pal ? root.pal.bg : "#0f0f14", 0.55)
+                    color: Qt.alpha(root.pal.bg, root.pal.calm ? 0.55 : 0.45)
                     MouseArea { anchors.fill: parent; onClicked: root.hide() }
                 }
 
-                // Center Card
-                Rectangle {
+                // the card: the same header as every window, then one row per mode. Its height follows the rows (it was a fixed
+                // 580 px with a ListView that collapsed to one cut-off row).
+                Glass {
                     id: card
+                    pal: root.pal
                     anchors.centerIn: parent
-                    width: 660
-                    height: 580
-                    radius: root.pal ? root.pal.rXl : 28
-                    color: Qt.alpha(root.pal ? root.pal.surface : "#1a1d28", root.pal && root.pal.solid ? 1 : 0.88)
-                    border.width: 1.5
-                    border.color: Qt.alpha(root.pal ? root.pal.accent : "#9aa9d4", 0.35)
-                    scale: root.open ? 1 : 0.95
-                    Behavior on scale { NumberAnimation { duration: root.pal ? root.pal.dSlow : 240; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal ? root.pal.curve : [0.16, 1, 0.3, 1] } }
-                    clip: true
-                    MouseArea { anchors.fill: parent } // swallow click
-
-                    // Moving Stars drifting in background (Halcyon signature)
-                    BarStars {
-                        z: 1
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        pal: root.pal
-                        count: 14
-                        loopMs: 120000
-                        sizeScale: 1.35
-                        active: root.open
-                        visible: root.open
-                    }
+                    width: 560
+                    height: cardCol.implicitHeight + 56
+                    radius: root.pal.rXl
+                    opacityBody: root.pal.solid ? 1 : 0.94
+                    scale: root.open ? 1 : 0.96
+                    Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                    MouseArea { anchors.fill: parent } // swallow clicks
 
                     ColumnLayout {
-                        z: 2
-                        anchors.fill: parent
-                        anchors.margins: 28
-                        spacing: 16
+                        id: cardCol
+                        x: 28; y: 28
+                        width: card.width - 56
+                        spacing: 18
 
-                        // Header
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 14
-
-                            Rectangle {
-                                width: 44
-                                height: 44
-                                radius: root.pal ? root.pal.rMd : 14
-                                color: Qt.alpha(root.pal ? root.pal.accent : "#9aa9d4", 0.16)
-                                border.width: 1
-                                border.color: Qt.alpha(root.pal ? root.pal.accent : "#9aa9d4", 0.35)
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "󰍹"
-                                    font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"
-                                    font.pixelSize: 22
-                                    color: root.pal ? root.pal.accent : "#9aa9d4"
-                                }
-                            }
-
-                            BoxTitle {
-                                pal: root.pal
-                                size: 18
-                                title: "Display & Projector Manager"
-                                sub: root.monitorInfo
-                            }
-
-                            // Close Button
-                            Rectangle {
-                                width: 32
-                                height: 32
-                                radius: 16
-                                color: closeMa.containsMouse ? Qt.alpha(root.pal ? root.pal.accent : "#9aa9d4", 0.2) : "transparent"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "✕"
-                                    font.pixelSize: 13
-                                    font.family: root.pal ? root.pal.uiFont : "Sans Serif"
-                                    color: root.pal ? root.pal.muted : "#9496a8"
-                                }
-                                MouseArea {
-                                    id: closeMa
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    onClicked: root.hide()
-                                }
-                            }
+                        WinHeader {
+                            pal: root.pal
+                            title: "Displays"
+                            sub: root.externalMon !== "" ? root.internalMon + "  +  " + root.externalMon : (root.internalMon !== "" ? root.internalMon + " only" : "")
+                            onClosed: root.hide()
                         }
 
-                        // Divider
                         Rectangle {
                             Layout.fillWidth: true
-                            height: 1
-                            color: Qt.alpha(root.pal ? root.pal.accent : "#9aa9d4", 0.14)
-                        }
-
-                        // Options list
-                        ListView {
-                            id: listView
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            spacing: 8
-                            clip: true
-                            model: root.items
-                            boundsBehavior: Flickable.StopAtBounds
-
-                            delegate: Rectangle {
-                                id: optRow
-                                required property var modelData
-                                required property int index
-                                readonly property bool isSelected: index === root.selectedIndex
-                                readonly property bool isActive: root.activeMode === modelData.id
-                                readonly property bool hovered: itemMa.containsMouse
-
-                                width: listView.width
-                                height: 58
-                                radius: root.pal ? root.pal.rMd : 14
-                                color: isSelected
-                                    ? Qt.alpha(root.pal ? root.pal.accent : "#9aa9d4", 0.22)
-                                    : (hovered
-                                        ? Qt.alpha(root.pal ? root.pal.surfaceHi : "#272b3d", 0.7)
-                                        : Qt.alpha(root.pal ? root.pal.bg : "#14161f", 0.45))
-                                border.width: isSelected || isActive ? 1.5 : 1
-                                border.color: isActive
-                                    ? (root.pal ? root.pal.good : "#8fcfa0")
-                                    : (isSelected
-                                        ? Qt.alpha(root.pal ? root.pal.accent : "#9aa9d4", 0.8)
-                                        : Qt.alpha(root.pal ? root.pal.line : "#272b3d", 0.35))
-
-                                Behavior on color { ColorAnimation { duration: 120 } }
-                                Behavior on border.color { ColorAnimation { duration: 120 } }
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 16
-                                    anchors.rightMargin: 16
-                                    spacing: 14
-
-                                    // Icon
-                                    Text {
-                                        text: modelData.icon
-                                        font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"
-                                        font.pixelSize: 22
-                                        color: isActive
-                                            ? (root.pal ? root.pal.good : "#8fcfa0")
-                                            : (isSelected ? (root.pal ? root.pal.accent : "#9aa9d4") : (root.pal ? root.pal.text : "#dcdde8"))
-                                    }
-
-                                    // Title & Desc
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 2
+                            implicitHeight: rowsCol.implicitHeight + 8
+                            radius: root.pal.rLg
+                            color: root.pal.box(Qt.alpha(root.pal.surface, 0.5))
+                            Column {
+                                id: rowsCol
+                                x: 4; y: 4
+                                width: parent.width - 8
+                                Repeater {
+                                    model: root.items
+                                    delegate: Rectangle {
+                                        id: optRow
+                                        required property var modelData
+                                        required property int index
+                                        readonly property bool isSelected: index === root.selectedIndex
+                                        readonly property bool isActive: root.activeMode === modelData.id
+                                        // without a second screen only "Laptop screen only" and "Auto" can do anything
+                                        readonly property bool usable: root.externalMon !== "" || modelData.id === "internal-only" || modelData.id === "auto"
+                                        readonly property bool showDesc: !(root.pal.hideHints && root.pal.zen)
+                                        width: rowsCol.width
+                                        height: showDesc ? 64 : 52
+                                        radius: root.pal.rMd
+                                        opacity: usable ? 1 : 0.4
+                                        color: isSelected && usable ? root.pal.chosenFill : "transparent"
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
 
                                         RowLayout {
-                                            spacing: 8
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 16
+                                            anchors.rightMargin: 14
+                                            spacing: 14
                                             Text {
-                                                text: modelData.title
-                                                font.family: root.pal ? root.pal.uiFont : "Sans Serif"
-                                                font.pixelSize: 13
-                                                font.weight: isSelected ? Font.DemiBold : Font.Medium
-                                                color: root.pal ? root.pal.text : "#dcdde8"
+                                                text: optRow.modelData.icon
+                                                font.family: root.pal.font
+                                                font.pixelSize: 20
+                                                color: optRow.isActive ? root.pal.good : (optRow.isSelected ? root.pal.chosenText : root.pal.muted)
                                             }
-
-                                            // Active Badge
-                                            Rectangle {
-                                                visible: isActive
-                                                width: 52
-                                                height: 18
-                                                radius: 9
-                                                color: Qt.alpha(root.pal ? root.pal.good : "#8fcfa0", 0.2)
-                                                border.width: 1
-                                                border.color: Qt.alpha(root.pal ? root.pal.good : "#8fcfa0", 0.5)
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 2
+                                                RowLayout {
+                                                    Layout.fillWidth: true          // (a layout is only as wide as its widest child would like otherwise)
+                                                    spacing: 8
+                                                    Text {
+                                                        text: optRow.modelData.title
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tBody + 1
+                                                        font.weight: Font.Medium
+                                                        color: optRow.isSelected ? root.pal.chosenText : root.pal.text
+                                                    }
+                                                    Text {
+                                                        visible: optRow.isActive
+                                                        text: "· in use"
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tCap
+                                                        color: root.pal.good
+                                                    }
+                                                    Item { Layout.fillWidth: true }
+                                                }
                                                 Text {
-                                                    anchors.centerIn: parent
-                                                    text: root.pal.cap("ACTIVE")
-                                                    font.family: root.pal ? root.pal.uiFont : "Sans Serif"
-                                                    font.pixelSize: 9
-                                                    font.weight: Font.Bold
-                                                    color: root.pal ? root.pal.good : "#8fcfa0"
+                                                    visible: optRow.showDesc
+                                                    Layout.fillWidth: true
+                                                    text: optRow.usable ? optRow.modelData.desc : "Connect a second screen first."
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tCap
+                                                    color: root.pal.muted
+                                                    elide: Text.ElideRight
                                                 }
                                             }
+                                            Text {
+                                                text: optRow.modelData.badge
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap
+                                                color: root.pal.muted
+                                            }
                                         }
-
-                                        Text {
-                                            text: modelData.desc
-                                            font.family: root.pal ? root.pal.uiFont : "Sans Serif"
-                                            font.pixelSize: 11
-                                            color: root.pal ? root.pal.muted : "#9496a8"
-                                            wrapMode: Text.Wrap
-                                            Layout.fillWidth: true
-                                        }
-                                    }
-
-                                    // Key badge
-                                    Rectangle {
-                                        width: 44
-                                        height: 24
-                                        radius: 6
-                                        color: isSelected
-                                            ? Qt.alpha(root.pal ? root.pal.accent : "#9aa9d4", 0.3)
-                                            : Qt.alpha(root.pal ? root.pal.surface : "#1e2130", 0.8)
-                                        border.width: 1
-                                        border.color: Qt.alpha(root.pal ? root.pal.accent : "#9aa9d4", 0.35)
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: modelData.badge
-                                            font.family: root.pal ? root.pal.mono : "JetBrainsMono Nerd Font"
-                                            font.pixelSize: 10
-                                            font.weight: Font.Bold
-                                            color: root.pal ? root.pal.accent : "#9aa9d4"
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            enabled: optRow.usable
+                                            cursorShape: Qt.PointingHandCursor
+                                            onPositionChanged: root.selectedIndex = optRow.index
+                                            onClicked: root.apply(optRow.modelData.id)
                                         }
                                     }
                                 }
-
-                                MouseArea {
-                                    id: itemMa
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    onPositionChanged: { root.selectedIndex = index }
-                                    onClicked: {
-                                        root.selectedIndex = index
-                                        root.apply(modelData.id)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Footer hint
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 18
-
-                            Hint {
-                                pal: root.pal
-                                text: "↑↓ / Tab navigate • Enter / Click select • Esc close • Hotkeys: 1-6 or M, R, L, P, O, A"
-                                fontFamily: root.pal ? root.pal.uiFont : "Sans Serif"
-                                pixelSize: 11
-                                color: root.pal ? root.pal.muted : "#9496a8"
-                                Layout.fillWidth: true
                             }
                         }
                     }

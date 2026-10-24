@@ -57,8 +57,8 @@ Glass {
             spacing: 8
             Text {
                 Layout.fillWidth: true
-                horizontalAlignment: root.pal.centerTitles ? Text.AlignHCenter : Text.AlignLeft    // Centred titles
-                leftPadding: root.pal.centerTitles ? 28 : 0          // the badge's width on the other side: the middle of the box
+                horizontalAlignment: root.pal.centred ? Text.AlignHCenter : Text.AlignLeft    // Centred titles
+                leftPadding: root.pal.centred ? 28 : 0          // the badge's width on the other side: the middle of the box
                 text: root.pal.cap("BACKGROUND")
                 color: root.pal.muted
                 font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4
@@ -115,7 +115,7 @@ Glass {
                             implicitHeight: 60
                             radius: root.pal.rMd
                             color: Qt.alpha(root.pal.surface, hov.containsMouse ? 0.95 : 0.8)
-                            border.width: 1
+                            border.width: root.pal.zen && !(appRow.showMenu) ? 0 : 1
                             border.color: appRow.showMenu ? Qt.alpha(root.pal.accent, 0.40) : root.pal.lineSoft
                             Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                             Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
@@ -200,7 +200,7 @@ Glass {
                                     Layout.preferredWidth: 28; Layout.preferredHeight: 28
                                     radius: 14
                                     color: appRow.showMenu ? Qt.alpha(root.pal.accent, 0.18) : (moreMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.8))
-                                    border.width: 1
+                                    border.width: root.pal.zen && !(appRow.showMenu) ? 0 : 1
                                     border.color: appRow.showMenu ? Qt.alpha(root.pal.accent, 0.40) : root.pal.lineSoft
                                     scale: moreMa.pressed ? 0.95 : 1
                                     Behavior on color { ColorAnimation { duration: root.pal.dFast } }
@@ -229,7 +229,7 @@ Glass {
                             Layout.fillWidth: true
                             implicitHeight: menu.implicitHeight + 12
                             radius: root.pal.rMd
-                            color: Qt.alpha(root.pal.surface, 0.55)
+                            color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
                             border.width: root.pal.calm ? 0 : 1
                             border.color: root.pal.lineSoft
                             TrayMenu {

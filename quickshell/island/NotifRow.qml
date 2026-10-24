@@ -87,8 +87,10 @@ Item {
         width: row.width
         height: content.implicitHeight + 28
         radius: row.pal.rMd + 2
-        color: hov.hovered ? Qt.alpha(row.pal.surfaceHi, 0.92) : Qt.alpha(row.pal.surface, 0.66)
-        border.width: 1
+        color: row.pal.zen ? (hov.hovered ? row.pal.fillHover : row.pal.fill)
+             : hov.hovered ? Qt.alpha(row.pal.surfaceHi, 0.92) : Qt.alpha(row.pal.surface, 0.66)
+        // new: no outline, only a critical one is ringed (and the short flash when it arrives)
+        border.width: row.pal.zen && !row.critical && row.flash < 0.02 ? 0 : 1
         border.color: row.critical ? Qt.alpha(row.pal.bad, 0.5)
                     : Qt.rgba(row.pal.accent.r, row.pal.accent.g, row.pal.accent.b, 0.06 + 0.45 * row.flash)
         Behavior on color { ColorAnimation { duration: row.pal.dFast } }
@@ -99,7 +101,7 @@ Item {
             radius: parent.radius
             gradient: Gradient {
                 orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Qt.alpha(row.tone, (hov.hovered ? 0.10 : 0.05) + 0.12 * row.flash) }
+                GradientStop { position: 0.0; color: Qt.alpha(row.tone, (row.pal.zen ? 0 : hov.hovered ? 0.10 : 0.05) + 0.12 * row.flash) }
                 GradientStop { position: 0.6; color: "transparent" }
             }
         }
@@ -108,7 +110,8 @@ Item {
             x: 7; y: 14
             width: 3; height: parent.height - 28; radius: 1.5
             color: row.tone
-            opacity: row.critical ? 0.95 : 0.30 + 0.60 * row.flash
+            visible: !row.pal.zen || row.critical || row.flash > 0.02      // new: only an urgent one keeps its edge
+            opacity: row.critical ? 0.95 : (row.pal.zen ? 0 : 0.30) + 0.60 * row.flash
         }
 
         HoverHandler { id: hov }

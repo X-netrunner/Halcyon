@@ -164,7 +164,7 @@ Scope {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
-                                Text { Layout.alignment: root.pal.centerTitles ? Qt.AlignHCenter : Qt.AlignLeft; text: root.pal.cap("FOCUS STREAK"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: 12; font.letterSpacing: root.pal.calm ? 0.2 : 2.5; font.weight: Font.DemiBold }
+                                Text { Layout.alignment: root.pal.centred ? Qt.AlignHCenter : Qt.AlignLeft; text: root.pal.cap("FOCUS STREAK"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: 12; font.letterSpacing: root.pal.calm ? 0.2 : 2.5; font.weight: Font.DemiBold }
                                 Row {
                                     spacing: 12
                                     Text { id: big; text: Math.round(root.streak * stage.t); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 72; font.weight: Font.Light }
@@ -219,7 +219,8 @@ Scope {
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // ---- the last 14 days
-                        Text { text: "THE LAST 14 DAYS"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.letterSpacing: 2 }
+                        // (the goal is said here: written at the end of the line it sat on top of today's bar)
+                        Text { text: root.pal.capOf("THE LAST 14 DAYS") + "   ·   goal " + root.goal + " min a day, the faint line"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.zen ? 12 : 11; font.letterSpacing: root.pal.zen ? 0 : 2 }
                         Item {
                             id: plot
                             Layout.fillWidth: true
@@ -237,18 +238,30 @@ Scope {
                                     Rectangle {
                                         width: Math.max(4, plot.slot - 10); anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.bottom: parent.bottom; anchors.bottomMargin: 18
-                                        height: Math.max(3, (plot.height - 34) * bar.modelData.m / root.peak * bar.grow)
+                                        height: Math.max(3, (plot.height - 46) * bar.modelData.m / root.peak * bar.grow)
                                         radius: 4
-                                        color: bar.modelData.m >= root.goal ? root.pal.accent : (bar.modelData.m > 0 ? Qt.alpha(root.pal.accent, 0.4) : Qt.alpha(root.pal.text, 0.08))
+                                        color: bar.modelData.m >= root.goal ? (bm.containsMouse ? Qt.lighter(root.pal.accent, 1.12) : root.pal.accent)
+                                             : (bar.modelData.m > 0 ? Qt.alpha(root.pal.accent, bm.containsMouse ? 0.6 : 0.4) : Qt.alpha(root.pal.text, bm.containsMouse ? 0.16 : 0.08))
                                         border.width: bar.modelData.today ? 1 : 0; border.color: root.pal.text
                                     }
                                     Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; text: bar.modelData.day; color: bar.modelData.today ? root.pal.text : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11 }
-                                    Text {
+                                    // what the hovered day was: a small bubble ABOVE the bar (the bare text used to sit on top of the
+                                    // accent bar, the same colour family, and could not be read)
+                                    z: bm.containsMouse ? 10 : 0
+                                    // always in the same place, the top of the chart (the bars leave 28 px free for it), so it never covers a bar
+                                    Rectangle {
+                                        visible: bm.containsMouse
                                         anchors.horizontalCenter: parent.horizontalCenter
-                                        y: plot.height - 22 - (plot.height - 34) * bar.modelData.m / root.peak * bar.grow
-                                        visible: bm.containsMouse && bar.modelData.m > 0
-                                        text: bar.modelData.m + " min"
-                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 11
+                                        y: 0
+                                        width: Math.max(52, tipT.implicitWidth + 20); height: 22; radius: 11
+                                        color: root.pal.surfaceHi
+                                        border.width: 1; border.color: root.pal.line
+                                        Text {
+                                            id: tipT
+                                            anchors.centerIn: parent
+                                            text: bar.modelData.m > 0 ? bar.modelData.m + " min" : "none"
+                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.Medium
+                                        }
                                     }
                                     MouseArea { id: bm; anchors.fill: parent; hoverEnabled: true }
                                 }
@@ -256,13 +269,8 @@ Scope {
                             // the goal line
                             Rectangle {
                                 width: parent.width; height: 1
-                                y: plot.height - 18 - (plot.height - 34) * root.goal / root.peak
+                                y: plot.height - 18 - (plot.height - 46) * root.goal / root.peak
                                 color: root.pal.muted; opacity: 0.45
-                            }
-                            Text {
-                                anchors.right: parent.right
-                                y: plot.height - 32 - (plot.height - 34) * root.goal / root.peak
-                                text: root.goal + " min goal"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
                             }
                         }
 
@@ -272,7 +280,7 @@ Scope {
                             spacing: 32
                             ColumnLayout {
                                 spacing: 8
-                                Text { text: "12 WEEKS"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.letterSpacing: 2 }
+                                Text { text: root.pal.capOf("12 WEEKS"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.zen ? 12 : 11; font.letterSpacing: root.pal.zen ? 0 : 2 }
                                 Row {
                                     spacing: 4
                                     Repeater {
