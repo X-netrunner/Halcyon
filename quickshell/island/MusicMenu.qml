@@ -30,6 +30,7 @@ Scope {
     property string title: ""               // what the media page shows (only used to notice a song change)
     property string artist: ""
     property string album: ""
+    property var player: null               // the MPRIS player (shell.qml): its position follows the song for synced lyrics
     property real duration: 0               // seconds, 0 = unknown (helps pick the right version of a song)
     property string fileUrl: ""             // file:// address of the song when the player plays a local file (for a .lrc next to it)
     property bool open: false
@@ -47,6 +48,21 @@ Scope {
     property bool queLoaded: false
     property bool lyrStale: true            // the song changed since it was read
     property bool queStale: true
+    // synced lyrics (halcyon-music.py answers `times` beside `lines`): the line that is sung now, from the player's position
+    readonly property bool lyrSynced: lyr.ok && !!lyr.times && lyr.lines && lyr.times.length === lyr.lines.length && lyr.lines.length > 1
+    property int lyrCur: -1
+    Timer {
+        interval: 250; repeat: true
+        running: root.open && root.tab === "lyrics" && root.lyrSynced && root.player !== null && root.player.isPlaying
+        onTriggered: {
+            root.player.positionChanged()
+            var t = root.lyr.times, now = root.player.position, lo = 0, hi = t.length - 1
+            if (now < t[0]) { root.lyrCur = -1; return }
+            while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (t[mid] <= now) lo = mid; else hi = mid - 1 }
+            if (lo !== root.lyrCur) root.lyrCur = lo
+        }
+    }
+    onLyrChanged: lyrCur = -1
     property var lyrCache: ({})             // trackKey -> a good (or "no lyrics") answer; the last few songs
     property var lyrOrder: []
 
@@ -195,6 +211,12 @@ Scope {
         }
     }
     readonly property var cur: tab === "lyrics" ? lyr : que
+    // ncspot's own queue view (the island can only show what ncspot last saved): jump there, or start ncspot in a terminal
+    function openNcspot() {
+        Quickshell.execDetached(["sh", "-c", "python3 \"$1\" ncspot 'focus queue' || TERM_CLASS=halcyon-music bash \"$2\" term-exec ncspot", "sh", root.script,
+                                 Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh"])
+        if (!root.que.running) root.hide()          // a new terminal opens under this box
+    }
     // the song the answer is about (the script's own words, so a mismatch with the media page is visible)
     readonly property string subject: {
         if (tab === "lyrics") return (lyr.title || "") + (lyr.artist ? "   \u00b7   " + lyr.artist : "")
@@ -203,7 +225,7 @@ Scope {
     }
     readonly property string counter: {
         if (busy) return "Reading ..."
-        if (tab === "lyrics") return lyr.ok ? lyr.lines.filter(function (l) { return l !== "" }).length + " lines" + (lyr.source ? "   \u00b7   " + ({ lrclib: "LRCLIB", ovh: "lyrics.ovh", local: "local file", spotify: "Spotify" }[lyr.source] || lyr.source) : "") : ""
+        if (tab === "lyrics") return lyr.ok ? lyr.lines.filter(function (l) { return l !== "" }).length + " lines" + (lyr.source ? "   \u00b7   " + ({ lrclib: "LRCLIB", ovh: "lyrics.ovh", local: "local file", spotify: "Spotify" }[lyr.source] || lyr.source) : "") + (lyr.approx ? "   \u00b7   timing estimated" : "") : ""
         return que.ok ? (que.total + (que.total === 1 ? " song next" : " songs next")) : ""
     }
 
@@ -367,27 +389,49 @@ Scope {
                             }
                         }
 
+                        // the words: every line centred; with time stamps the sung line is lit and kept in the middle, the
+                        // others fade with their distance from it (no time stamps: all lines, evenly, to scroll through)
                         ListView {
                             id: lyrList
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             visible: root.tab === "lyrics" && root.lyrLoaded && root.lyr.ok && root.aiView === ""
                             clip: true
-                            spacing: 4
+                            spacing: 6
                             model: root.tab === "lyrics" && root.lyr.ok ? root.lyr.lines : []
                             boundsBehavior: Flickable.StopAtBounds
+                            interactive: !root.lyrSynced
+                            currentIndex: root.lyrSynced ? Math.max(0, root.lyrCur) : -1
+                            highlightRangeMode: root.lyrSynced ? ListView.StrictlyEnforceRange : ListView.NoHighlightRange
+                            preferredHighlightBegin: height / 2 - 24
+                            preferredHighlightEnd: height / 2 + 24
+                            highlightMoveDuration: 560
+                            highlightMoveVelocity: -1
                             // a new song starts at the top
                             onModelChanged: contentY = 0
                             delegate: Text {
+                                id: lyrRow
                                 required property var modelData
+                                required property int index
+                                readonly property int dist: Math.abs(index - root.lyrCur)
+                                readonly property bool sung: root.lyrSynced && index === root.lyrCur
                                 width: ListView.view.width - 12
+                                x: 6
                                 height: modelData === "" ? 12 : implicitHeight
-                                text: modelData
+                                text: modelData === "" && sung ? "\u266A" : modelData
                                 wrapMode: Text.Wrap
-                                color: root.pal.text
+                                horizontalAlignment: Text.AlignHCenter
+                                color: sung ? root.pal.text : (root.lyrSynced ? root.pal.muted : root.pal.text)
+                                // the spotlight: full on the sung line, then softer line by line
+                                opacity: !root.lyrSynced ? 0.92 : (root.lyrCur < 0 ? Math.max(0.15, 0.6 - 0.12 * index) : (sung ? 1 : Math.max(0.12, 0.62 - 0.14 * dist)))
+                                scale: sung ? 1.06 : 1
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tTitle + 1
+                                font.weight: sung ? Font.DemiBold : Font.Normal
                                 lineHeight: 1.1
+                                Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+                                Behavior on scale { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+                                Behavior on color { ColorAnimation { duration: 300 } }
                             }
                         }
 
@@ -452,6 +496,29 @@ Scope {
                                         font.pixelSize: root.pal.tCap
                                     }
                                 }
+                            }
+                        }
+
+                        // ncspot: its queue comes from what it last saved (it shares no live queue), so say so, and offer its own view
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: root.tab === "queue" && root.queLoaded && root.que.source === "ncspot" && (root.que.ok || root.que.running === false)
+                            spacing: 10
+                            Text {
+                                Layout.fillWidth: true
+                                visible: root.que.ok && (root.que.message || "") !== ""
+                                text: root.que.message || ""
+                                wrapMode: Text.Wrap
+                                color: root.pal.muted
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tCap
+                            }
+                            Item { Layout.fillWidth: true; visible: !(root.que.ok && (root.que.message || "") !== "") }
+                            ActionChip {
+                                pal: root.pal
+                                implicitHeight: 30
+                                label: root.que.running ? "Open in ncspot" : "Start ncspot"
+                                onClicked: root.openNcspot()
                             }
                         }
 

@@ -1097,6 +1097,7 @@ ShellRoot {
         album: root.player ? (root.player.trackAlbum || "") : ""
         duration: root.player && root.player.length > 0 ? root.player.length : 0        // seconds (MPRIS length)
         fileUrl: root.player && root.player.metadata ? String(root.player.metadata["xesam:url"] || "") : ""
+        player: root.player             // its position lights the line being sung
     }
 
     // Notifications are on top of every window, big ones included. Those open on the same layer and later = above, so whenever one

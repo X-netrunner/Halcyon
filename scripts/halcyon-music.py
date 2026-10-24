@@ -5,6 +5,7 @@
                                    lyrics of the song that plays (any player: the panel passes what MPRIS says)
   halcyon-music.py source [auto|local|lrclib|ovh|spotify]   which lyrics source to use (no argument: show it)
   halcyon-music.py queue [json] [N]  what plays next (default 30, at most 100)
+  halcyon-music.py ncspot [CMD]    send an ncspot command to the running ncspot (default "focus queue")
   halcyon-music.py status          plain text: is spotify_player installed, how new, can it do lyrics / queue
 
 With `json` (what the panel uses) the answer is ONE line of JSON, always, also when something is wrong:
@@ -35,6 +36,7 @@ once more when the song changes). Nothing is stored: no cache, no file, no log.
 """
 import json
 import os
+import time
 import re
 import subprocess
 import sys
@@ -245,37 +247,74 @@ def lyrics_local(meta):
     return None
 
 
+def _norm(t):
+    """lower case, letters and digits only: 'K/DA' ~ 'kda', 'NEVER GOING BACK' ~ 'nevergoingback'."""
+    return re.sub(r"[^0-9a-z]+", "", (t or "").lower())
+
+
 def lyrics_lrclib(meta):
-    """-> ("ok", lines) | ("none", None) | ("net", None) | None (not enough to ask with)."""
+    """-> ("ok", lines[, times]) | ("none", None) | ("net", None) | None (not enough to ask with).
+
+    LRCLIB is asked several ways, because each misses songs the others find: the exact /get (with the album, then without it:
+    the album or the length often differ by a second), the field search (track + artist), and the free search (q = "title
+    artist"), which finds names like K/DA that the field search does not. A candidate WITH time stamps beats one without, then
+    the closest length, so the lyrics widget gets the synced version whenever the site has one."""
     title, artist = clean_title(meta.get("title")), first_artist(meta.get("artist"))
     if not title:
         return None
-    q = {"track_name": title, "artist_name": artist}
+    dur = meta.get("duration") or 0
+    cands, seen, net_ok = [], set(), False
+
+    def add(d):
+        for x in (d if isinstance(d, list) else [d]):
+            if isinstance(x, dict) and (x.get("syncedLyrics") or x.get("plainLyrics") or x.get("instrumental")):
+                k = x.get("id") or (x.get("trackName"), x.get("artistName"), x.get("duration"))
+                if k not in seen:
+                    seen.add(k)
+                    cands.append(x)
+
+    def ask(path, q):
+        nonlocal net_ok
+        url = "%s/%s?%s" % (LRCLIB, path, urllib.parse.urlencode(q))
+        st, d = http_json(url)
+        if st in (429, 502, 503, 504):              # "the server is busy, retry in a moment": once, after a moment
+            time.sleep(1.5)
+            st, d = http_json(url)
+        if st is not None and st < 500 and st != 429:
+            net_ok = True
+        if st == 200 and d is not None:
+            add(d)
+        return st
+
+    base = {"track_name": title, "artist_name": artist}
+    if dur:
+        base["duration"] = str(int(round(dur)))
     if meta.get("album"):
-        q["album_name"] = meta["album"]
-    if meta.get("duration"):
-        q["duration"] = str(int(meta["duration"]))
-    st, d = http_json("%s/get?%s" % (LRCLIB, urllib.parse.urlencode(q)))
-    if st is None:
+        ask("get", dict(base, album_name=meta["album"]))
+    if not any(c.get("syncedLyrics") for c in cands):
+        ask("get", base)
+    if not any(c.get("syncedLyrics") for c in cands):
+        ask("search", {"track_name": title, "artist_name": artist})
+    if not any(c.get("syncedLyrics") for c in cands):
+        ask("search", {"q": (title + " " + artist).strip()})
+    if not cands and not net_ok:
         return "net", None
-    cands = [d] if st == 200 and isinstance(d, dict) else []
-    if not cands:                                     # not an exact match: let the site search
-        st2, d2 = http_json("%s/search?%s" % (LRCLIB, urllib.parse.urlencode({"track_name": title, "artist_name": artist})))
-        if st2 is None:
-            return "net", None
-        if isinstance(d2, list):
-            cands = [x for x in d2 if isinstance(x, dict)]
-            dur = meta.get("duration")
-            if dur:                                  # the closest length first: the same song, not a live version
-                cands.sort(key=lambda x: abs((x.get("duration") or 0) - dur))
-    for c in cands:
+
+    # keep the ones that really are this song (same title, the artist named), then: synced first, the closest length first
+    nt, na = _norm(title), _norm(artist)
+    def same(c):
+        ct = _norm(clean_title(c.get("trackName") or ""))
+        ca = _norm(c.get("artistName") or "")
+        return (ct == nt or (nt and nt in ct) or (ct and ct in nt)) and (not na or na in ca or ca in na)
+    good = [c for c in cands if same(c)] or cands
+    good.sort(key=lambda c: (0 if c.get("syncedLyrics") else 1, abs((c.get("duration") or dur) - dur) if dur else 0))
+    for c in good:
         if c.get("instrumental"):
             return "none", None
         sy = tidy_synced(c.get("syncedLyrics") or "")      # with times: the lyrics widget lights the line that plays
         if sy:
             return "ok", sy[0], sy[1]
-        text = c.get("plainLyrics") or c.get("syncedLyrics") or ""
-        lines = tidy(text)
+        lines = tidy(c.get("plainLyrics") or c.get("syncedLyrics") or "")
         if lines:
             return "ok", lines
     return "none", None
@@ -290,7 +329,8 @@ def lyrics_ovh(meta):
         return "net", None
     if st == 200 and isinstance(d, dict):
         lines = tidy(d.get("lyrics") or "")
-        if lines:
+        # a miss comes back as a French "sorry, we do not have these lyrics yet" text, not as a 404: never show that
+        if lines and not re.search(r"nous n'avons pas encore les paroles|d[ée]sol[ée]", " ".join(lines[:2]), re.I) and len(lines) >= 3:
             return "ok", lines
     return "none", None
 
@@ -343,6 +383,20 @@ def meta_from_mpris():
     return {k: v for k, v in (("title", f[0]), ("artist", f[1]), ("album", f[2]), ("duration", dur), ("url", f[4])) if v}
 
 
+def estimate_times(lines, duration):
+    """Plain lyrics only (no site has time stamps for the song): a start time per line, spread over the song by how long each
+    line is (a long line takes longer to sing), leaving a short intro and outro. A guess, marked `approx`, never stored."""
+    if duration < 30 or len(lines) < 4:
+        return None
+    w = [0.6 if not ln.strip() else 1.0 + len(ln.strip()) / 28.0 for ln in lines]
+    start, end = duration * 0.07, duration * 0.95
+    total, t, out = sum(w), start, []
+    for x in w:
+        out.append(round(t, 2))
+        t += (end - start) * x / total
+    return out
+
+
 def get_lyrics(meta=None, source=None):
     """Try the chosen source (auto: local, lrclib, ovh, spotify_player) and answer with the first that has the song."""
     meta = meta or {}
@@ -369,6 +423,11 @@ def get_lyrics(meta=None, source=None):
             out = {"ok": True, "state": "ok", "message": "", **dict(base, source=name, lines=r[1])}
             if len(r) > 2 and r[2]:
                 out["times"] = r[2]            # seconds, one per line (synced lyrics only)
+            elif meta.get("duration"):
+                est = estimate_times(r[1], float(meta["duration"]))
+                if est:
+                    out["times"] = est         # no time stamps anywhere: an even guess, so a line can still be lit
+                    out["approx"] = True       # (the panel and the widget say "timing estimated")
             return out
         if r[0] == "net":
             net_down = True
@@ -420,7 +479,209 @@ def item_of(o):
     return {"title": title[:200], "artist": artist[:200], "ms": ms, "kind": kind}
 
 
+# ------------------------------------------------------------------ ncspot
+# ncspot (the other terminal Spotify client) has no queue in MPRIS and no "list the queue" command, but it has two things:
+#   its socket ($XDG_RUNTIME_DIR/ncspot/ncspot.sock): the song that plays, as JSON, the moment you connect; it also takes ncspot
+#     commands ("focus queue", "next" ...), one per line
+#   userstate.cbor in its config folder: the whole queue and where in it you are, written by ncspot when it closes
+# So the queue tab shows the live song and the queue as ncspot last saved it (marked as such while ncspot runs: songs you
+# queued since then are only in ncspot itself, which "Open in ncspot" jumps to).
+def ncspot_sock():
+    """ncspot.sock in ncspot's runtime folder (a second ncspot names its own ncspot.<pid>.sock): the first one there, "" when none."""
+    import glob
+    d = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid(), "ncspot")
+    socks = sorted(glob.glob(os.path.join(d, "ncspot*.sock")), key=lambda p: (p != os.path.join(d, "ncspot.sock"), p))
+    return socks[0] if socks else ""
+
+
+def ncspot_running():
+    try:
+        return subprocess.run(["pgrep", "-x", "ncspot"], capture_output=True, timeout=2).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def ncspot_mpris_now():
+    """What ncspot plays, from MPRIS (playerctl -p ncspot), for when its socket is not there."""
+    if not which("playerctl"):
+        return None
+    try:
+        r = subprocess.run(["playerctl", "-p", "ncspot", "metadata", "--format", "{{title}}\t{{artist}}\t{{mpris:trackid}}"],
+                           capture_output=True, timeout=2, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    f = (r.stdout.decode("utf-8", "replace").rstrip("\n").split("\t") + ["", "", ""])[:3]
+    if r.returncode != 0 or not f[0]:
+        return None
+    tid = f[2].rsplit("/", 1)[-1] if f[2] else ""
+    return {"title": f[0], "artist": f[1], "id": tid}
+
+
+def ncspot_send(line, read=False):
+    """Send one command to a running ncspot (or just read its status); the status dict, True, or None when it is not running."""
+    import socket
+    path = ncspot_sock()
+    if not path:
+        return None
+    try:
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        c.settimeout(1.5)
+        c.connect(path)
+    except OSError:
+        return None
+    try:
+        if line:
+            c.sendall((line.strip() + "\n").encode())
+        if not read:
+            return True
+        buf = b""
+        while b"\n" not in buf and len(buf) < 200000:
+            part = c.recv(65536)
+            if not part:
+                break
+            buf += part
+        try:
+            return json.loads(buf.split(b"\n")[0].decode("utf-8", "replace"))
+        except ValueError:
+            return {}
+    except OSError:
+        return {} if read else None
+    finally:
+        c.close()
+
+
+def cbor(data):
+    """A small CBOR reader (what ncspot's userstate.cbor uses): maps, arrays, text, numbers, true / false / null."""
+    pos = 0
+
+    def item():
+        nonlocal pos
+        b = data[pos]; pos += 1
+        major, info = b >> 5, b & 31
+        if info < 24:
+            n = info
+        elif info in (24, 25, 26, 27):
+            k = 1 << (info - 24)
+            n = int.from_bytes(data[pos:pos + k], "big"); pos += k
+        elif info == 31:
+            n = None
+        else:
+            raise ValueError("cbor")
+        if major == 0:
+            return n
+        if major == 1:
+            return -1 - n
+        if major in (2, 3):
+            if n is None:
+                parts = []
+                while data[pos] != 0xFF:
+                    parts.append(item())
+                pos += 1
+                v = b"".join(p if isinstance(p, bytes) else p.encode() for p in parts)
+            else:
+                v = data[pos:pos + n]; pos += n
+            return v.decode("utf-8", "replace") if major == 3 else v
+        if major == 4:
+            out = []
+            if n is None:
+                while data[pos] != 0xFF:
+                    out.append(item())
+                pos += 1
+            else:
+                for _ in range(n):
+                    out.append(item())
+            return out
+        if major == 5:
+            out = {}
+            if n is None:
+                while data[pos] != 0xFF:
+                    k = item(); out[k] = item()
+                pos += 1
+            else:
+                for _ in range(n):
+                    k = item(); out[k] = item()
+            return out
+        if major == 6:
+            return item()
+        if major == 7:
+            return {20: False, 21: True, 22: None, 23: None}.get(info, n)
+        raise ValueError("cbor")
+    return item()
+
+
+def ncspot_item(p):
+    """{title, artist, ms, kind} from one queue entry of ncspot ({"Track": {...}} or {"Episode": {...}})."""
+    if not isinstance(p, dict) or not p:
+        return None
+    kind, o = next(iter(p.items()))
+    if not isinstance(o, dict):
+        return None
+    title = str(o.get("title") or o.get("name") or "").strip()
+    if not title:
+        return None
+    arts = o.get("artists")
+    artist = ", ".join(str(a) for a in arts) if isinstance(arts, list) else str(o.get("publisher") or "")
+    ms = o.get("duration") if isinstance(o.get("duration"), int) else 0
+    return {"title": title[:200], "artist": artist[:200], "ms": max(0, ms), "kind": "episode" if kind == "Episode" else "track",
+            "id": str(o.get("id") or "")}
+
+
+def ncspot_queue(limit):
+    live = ncspot_send("", read=True)                  # None: no socket to talk to
+    if live is None and ncspot_running():
+        live = {}                                      # it runs, its socket is not there: what plays comes from MPRIS
+    now = None
+    if live == {}:
+        now = ncspot_mpris_now()
+    if isinstance(live, dict) and isinstance(live.get("playable"), dict):
+        pl = live["playable"]
+        arts = pl.get("artists")
+        now = {"title": str(pl.get("title") or ""), "artist": ", ".join(arts) if isinstance(arts, list) else "", "id": str(pl.get("id") or "")}
+    items, cur = [], None
+    try:
+        with open(os.path.join(os.path.expanduser("~/.config/ncspot"), "userstate.cbor"), "rb") as f:
+            st = cbor(f.read())
+        qs = st.get("queuestate") or {}
+        items = [x for x in (ncspot_item(p) for p in (qs.get("queue") or [])) if x]
+        cur = qs.get("current_track")
+    except (OSError, ValueError, IndexError, AttributeError, TypeError):
+        pass
+    # what comes after the song that plays (found by its id when ncspot runs, else where ncspot stopped)
+    at = None
+    if now and now["id"]:
+        at = next((i for i, x in enumerate(items) if x["id"] == now["id"]), None)
+    if at is None and isinstance(cur, int):
+        at = cur
+    nxt = items[at + 1:] if at is not None else items
+    if now is None and at is not None and at < len(items):
+        now = items[at]
+    if live is None and not items:
+        return None
+    for x in nxt:
+        x.pop("id", None)
+    msg = ""
+    if live is not None and nxt:
+        msg = "As ncspot last saved it: songs queued since then are in ncspot."
+    elif live is not None and not nxt:
+        msg = "ncspot shares its queue when it closes; open it in ncspot to see what is next."
+    return {"ok": True, "state": "ok", "message": msg, "source": "ncspot", "running": live is not None,
+            "now": now and {"title": now["title"], "artist": now["artist"]}, "total": len(nxt), "items": nxt[:limit]}
+
+
 def get_queue(limit=QUEUE_DEFAULT):
+    """ncspot when it runs (or when spotify_player is not installed and ncspot has a saved queue), else spotify_player."""
+    limit = max(1, min(QUEUE_MAX, limit))
+    if ncspot_sock() or ncspot_running() or (binary() is None and which("ncspot")):
+        d = ncspot_queue(limit)
+        if d is not None:
+            return d
+        if binary() is None:
+            return fail("idle", "ncspot is not running. Start it and play something: its queue shows here.",
+                        {"now": None, "total": 0, "items": [], "source": "ncspot", "running": False})
+    return get_queue_spotify_player(limit)
+
+
+def get_queue_spotify_player(limit=QUEUE_DEFAULT):
     limit = max(1, min(QUEUE_MAX, limit))
     rc, out, err = run(["get", "key", "queue"])
     if rc != 0:
@@ -554,6 +815,8 @@ def main(argv):
         return print_queue(d)
     if cmd == "status":
         return status()
+    if cmd == "ncspot":                       # halcyon-music.py ncspot "focus queue": a command to the running ncspot
+        return 0 if ncspot_send(" ".join(rest) or "focus queue") else 1
     print("halcyon-music.py: unknown command '%s' (lyrics | queue | source | status)" % cmd, file=sys.stderr)
     return 2
 

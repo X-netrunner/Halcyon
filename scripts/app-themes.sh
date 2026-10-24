@@ -6,6 +6,8 @@
 #   micro     ~/.config/micro/colorschemes/halcyon.micro  (no background colour: the terminal's own blur / opacity shows through)
 #   Spotify   ~/.config/spicetify/Themes/halcyon  (spicetify; needs `spicetify apply`, which --now / --setup do)
 #   spotify-player  ~/.config/spotify-player/theme.toml (the terminal Spotify client; re-read every time it starts)
+#   ncspot    the HALCYON NCSPOT THEME block at the end of ~/.config/ncspot/config.toml (the other terminal Spotify client;
+#             `:reload` in ncspot or the next start picks it up). No background: the terminal's own blur shows through.
 #   Discord   Vesktop / Vencord theme file halcyon.theme.css (stock Discord cannot be themed: Vesktop is installed for that)
 #   fish      static (config/fish/halcyon.fish uses the terminal's ANSI names, so it follows the wallpaper on its own)
 #   + scripts/app-themes-extra.sh: VSCodium / Code - OSS / VS Code / Cursor, Zed, Firefox / Zen / LibreWolf / Floorp, Qt apps (Dolphin, Kate)
@@ -428,6 +430,41 @@ spotify_player_theme() {
     echo "visualization = { low = \"$cyan\", mid = \"$acc\", high = \"$acc2\" }"
     echo "$E"
   } > "$f.tmp" && mv "$f.tmp" "$f" && log "spotify-player: theme written (accent $acc)"
+  return 0
+}
+
+# ================================================================== ncspot
+# The [theme] table of ~/.config/ncspot/config.toml, as a marked block at the end of the file (your own settings above it are
+# kept). The background, the playing line's background, the status bar and the command line are left out on purpose: ncspot then
+# uses the terminal's default, so foot's blur / opacity shows through. A [theme] of your own (outside the block) wins: then the
+# block is not written at all, so the file never has two.
+ncspot_theme() {
+  have ncspot || return 0
+  local d="$HOME/.config/ncspot" f B="# >>> HALCYON NCSPOT THEME >>>" E="# <<< HALCYON NCSPOT THEME <<<"
+  f="$d/config.toml"; mkdir -p "$d"; [ -f "$f" ] || : > "$f"
+  if strip_block "$f" "$B" "$E" | grep -q '^\[theme\]'; then log "ncspot: a [theme] of your own is in config.toml: left alone"; return 0; fi
+  {
+    strip_block "$f" "$B" "$E"
+    echo "$B"
+    echo "# written by scripts/app-themes.sh from the wallpaper colours: do not edit this block (it is rewritten)"
+    echo "[theme]"
+    echo "primary = \"$fg\""
+    echo "secondary = \"$mut\""
+    echo "title = \"$acc\""
+    echo "playing = \"$acc\""
+    echo "playing_selected = \"$bg\""
+    echo "highlight = \"$bg\""
+    echo "highlight_bg = \"$acc\""
+    echo "highlight_inactive_bg = \"$hi\""
+    echo "statusbar = \"$acc\""
+    echo "statusbar_progress = \"$acc\""
+    echo "statusbar_progress_bg = \"$hi\""
+    echo "cmdline = \"$fg\""
+    echo "search_match = \"$acc2\""
+    echo "error = \"$fg\""
+    echo "error_bg = \"$red\""
+    echo "$E"
+  } > "$f.tmp" && mv "$f.tmp" "$f" && log "ncspot: theme written (accent $acc)"
   return 0
 }
 
@@ -862,6 +899,18 @@ ensure_choices() {
     fi
     echo "   spotify-player: theme halcyon"
   fi
+  # ncspot: the look that goes with the theme, once, into a config that has no settings of its own yet (top-level keys have
+  # to come before any [table], so they are only written when the file is still empty apart from the theme block)
+  if have ncspot; then
+    f="$HOME/.config/ncspot/config.toml"; mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
+    if ! strip_block "$f" "# >>> HALCYON NCSPOT THEME >>>" "# <<< HALCYON NCSPOT THEME <<<" | grep -q '[^[:space:]]'; then
+      { printf '%s\n' '# Halcyon defaults (written once, yours to change)' 'use_nerdfont = true' 'notify = true' \
+          'statusbar_format = "%artists  ·  %title"' 'library_tabs = ["tracks", "albums", "artists", "playlists", "browse"]' \
+          'cover_max_scale = 2' '' '[track_format]' 'left = "%title"' 'center = "%artists"' 'right = "%album  %duration"' \
+          '' '[notification_format]' 'title = "%title"' 'body = "%artists  ·  %album"' ''; cat "$f"; } > "$f.new" && mv "$f.new" "$f"
+      echo "   ncspot: Halcyon defaults"
+    fi
+  fi
   # Vesktop / Vencord: enable the theme
   if command -v jq >/dev/null 2>&1; then
     for base in "$HOME/.config/vesktop" "$HOME/.config/Vencord"; do
@@ -880,7 +929,7 @@ ensure_choices() {
 starship_adopt
 starship_sysmode_migrate
 starship_sysmode_sync
-starship_theme; fish_theme; btop_theme; micro_theme; yazi_theme; spotify_player_theme; spotify_theme; discord_theme
+starship_theme; fish_theme; btop_theme; micro_theme; yazi_theme; spotify_player_theme; ncspot_theme; spotify_theme; discord_theme
 if declare -F editors_theme >/dev/null; then editors_theme; browser_theme; qt_theme; fi
 ensure_choices >/dev/null          # after the files exist (Vesktop needs its theme file first)
 have btop && pkill -USR2 -x btop 2>/dev/null     # a running btop re-reads its config and theme
