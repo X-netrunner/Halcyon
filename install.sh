@@ -2344,6 +2344,13 @@ aifw_build() {
     [[ -x "$AIFW_BUILT" && -f "$AIFW_UNIT" ]]
 }
 aifw_install() {
+    if [[ -x /usr/bin/ai-firewall ]]; then          # installed as a package (packaging/arch/PKGBUILD): pacman keeps it updated
+        if command -v ufw >/dev/null 2>&1; then as_root ufw --force disable >/dev/null 2>&1 || true; fi
+        as_root systemctl disable --now ufw.service firewalld.service >/dev/null 2>&1 || true
+        try run_cmd "ai-firewall (package): starting" as_root systemctl enable --now ai-firewall.service
+        log_success "ai-firewall (installed as a package) is guarding this machine: >firewall in the launcher"
+        return 0
+    fi
     if ! aifw_build; then
         if [[ -x /usr/local/bin/ai-firewall ]]; then
             warn_later "ai-firewall could not be updated (see the log), so the installed version stays in charge. Retry: ./install.sh --firewall ai"
@@ -2369,8 +2376,8 @@ aifw_install() {
 ufw_install() {
     [[ "$PACKAGES" == "true" ]] && install_pkgs ufw
     command -v ufw >/dev/null 2>&1 || { warn_later "ufw is not installed, so no firewall was set up"; return 0; }
-    if [[ -x /usr/local/bin/ai-firewall ]]; then
-        as_root /usr/local/bin/ai-firewall off >/dev/null 2>&1 || true
+    if command -v ai-firewall >/dev/null 2>&1; then
+        as_root ai-firewall off >/dev/null 2>&1 || true
         as_root systemctl disable ai-firewall.service >/dev/null 2>&1 || true
     fi
     as_root ufw default deny incoming >/dev/null || true
@@ -2584,7 +2591,7 @@ echo -e "  ${MAGENTA}Super + Q${RESET}         Close window      ${MAGENTA}Super
 echo -e "  ${MAGENTA}Super + /${RESET}         All shortcuts     ${MAGENTA}Super + L${RESET}         Lock screen"
 echo -e "  ${MAGENTA}Super + Ctrl + ←/→${RESET}  Previous / next workspace (a new one after the last)"
 [[ "$SAFETY" == "true" ]] && echo -e "  ${MAGENTA}Settings > Backup${RESET}   Safety check (update, malware / rootkit scan, firewall, backup)"
-[[ -x /usr/local/bin/ai-firewall && "${PICK_FIREWALL:-ai}" == "ai" ]] && echo -e "  ${MAGENTA}>firewall${RESET}           ai-firewall: the island page (launcher), its dashboard:  sudo ai-firewall top"
+command -v ai-firewall >/dev/null 2>&1 && [[ "${PICK_FIREWALL:-ai}" == "ai" ]] && echo -e "  ${MAGENTA}>firewall${RESET}           ai-firewall: the Firewall Center (launcher), or in a terminal:  sudo ai-firewall top"
 echo
 echo -e "${DIM}Update later: ~/.config/Halcyon/update.sh     ·     Settings: from the island     ·     Log of this run: ${LOG_FILE}${RESET}"
 echo

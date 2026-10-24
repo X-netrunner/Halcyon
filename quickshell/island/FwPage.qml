@@ -5,12 +5,13 @@ import Quickshell
 import Quickshell.Io
 
 // The firewall page: what ai-firewall is doing right now. Reads the status file the daemon rewrites every 3 s
-// (/run/ai-firewall/status.json, world-readable), only while the page is open. Changes go through a terminal
-// (sudo ai-firewall ...), so the island itself never needs root.
+// (/run/ai-firewall/status.json, world-readable), only while the page is open. Changes run in the pop-out console
+// (sudo asks for the password there), so the island itself never needs root; the dashboard opens a terminal.
 Item {
     id: root
     property var pal
     property bool active: false
+    signal consoleRequested(string cmd)       // shell.qml runs it in the pop-out console
 
     property var st: null               // the parsed status, null = daemon not running
     property double readAt: 0
@@ -138,7 +139,7 @@ Item {
                     { v: root.st ? root.count(root.st.passed) : "–", sub: Math.round(root.passRate) + "/s", label: "passed", c: root.pal.good },
                     { v: root.st ? root.count(root.st.dropped_policy) : "–", sub: Math.round(root.dropRate) + "/s dropped", label: "blocked by policy", c: root.pal.warn },
                     { v: root.st ? root.count(root.st.dropped_blocklist) : "–", sub: root.bans.length + " banned", label: "from banned sources", c: root.pal.bad },
-                    { v: root.st ? String(root.st.tracked_sources) : "–", sub: root.st && root.st.udp_strict ? "UDP tracked" : "", label: "sources watched", c: root.pal.accent2 }
+                    { v: root.st ? root.count(root.st.dropped_feed || 0) : "–", sub: root.count(root.st ? (root.st.feed_networks || 0) : 0) + " listed", label: "from blocklists", c: root.pal.accent2 }
                 ]
                 delegate: Rectangle {
                     id: tile
@@ -194,7 +195,7 @@ Item {
                             color: unbanMa.containsMouse ? root.pal.accent : root.pal.muted
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tCap
-                            MouseArea { id: unbanMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.inTerminal("sudo ai-firewall unban " + banRow.modelData.ip + "; sleep 1") }
+                            MouseArea { id: unbanMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.consoleRequested("sudo ai-firewall unban " + String(banRow.modelData.ip).replace(/[^0-9a-fA-F:.\/]/g, "")) }
                         }
                     }
                 }
@@ -233,20 +234,21 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
+            ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0565); label: "Firewall Center"; onClicked: Quickshell.execDetached(["quickshell", "-p", Quickshell.shellDir, "ipc", "call", "island", "firewallcenter"]) }
             ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0128); label: "Dashboard"; onClicked: root.inTerminal("sudo ai-firewall top") }
             ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0B79); label: "Ask"; onClicked: root.inTerminal("sudo ai-firewall top --ask") }
             ActionChip {
                 pal: root.pal
                 glyph: String.fromCodePoint(0xF0F8B)
                 label: "Doctor"
-                onClicked: root.inTerminal("sudo ai-firewall doctor --fix; echo; read -n1 -r -p 'Press any key to close '")
+                onClicked: root.consoleRequested("sudo ai-firewall doctor --fix")
             }
             Item { Layout.fillWidth: true }
             ActionChip {
                 visible: root.st === null
                 pal: root.pal
                 label: "Start"
-                onClicked: root.inTerminal("sudo systemctl start ai-firewall; sleep 1")
+                onClicked: root.consoleRequested("sudo systemctl start ai-firewall")
             }
         }
     }
