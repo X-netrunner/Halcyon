@@ -23,29 +23,21 @@ Item {
     readonly property real cy: height * 0.45
     readonly property real maxR: Math.sqrt(width * width + height * height) / 2
     readonly property real markRadius: Math.min(width, height) * 0.11
+    // sky.frag (compiled by shell.qml): the glows in full precision, dithered, so they show no colour bands. "" = the Canvas paints them
+    readonly property string shader: pal && pal.skyShader !== undefined ? pal.skyShader : ""
+    readonly property real glowR: Math.max(width, height) * 0.62
 
     // ---- the stage: the theme's background with a soft glow of the accent around the middle (painted once)
-    // the background, the glow and the still field of faint stars are ONE picture (one full-screen texture to put on screen per frame)
+    // the background, the glow and the still field of faint stars are ONE picture (one full-screen texture to put on screen per frame).
+    // With the shader the Canvas holds only the still stars and the shader lays them over the glow it works out itself: an 8-bit
+    // canvas has only a handful of steps across such faint gradients, which showed as rings.
     Canvas {
         id: tintCv
         anchors.fill: parent
         onPaint: {
             var ctx = getContext("2d")
-            ctx.fillStyle = root.pal ? root.pal.bg : "#14161f"
-            ctx.fillRect(0, 0, width, height)
-            var tr = Math.max(width, height) * 0.62
-            var g = ctx.createRadialGradient(root.cx, root.cy, 0, root.cx, root.cy, tr)
-            g.addColorStop(0, Qt.rgba(root.a1.r, root.a1.g, root.a1.b, 0.17))
-            g.addColorStop(0.55, Qt.rgba(root.a2.r, root.a2.g, root.a2.b, 0.05))
-            g.addColorStop(1, Qt.rgba(root.a2.r, root.a2.g, root.a2.b, 0))
-            ctx.fillStyle = g
-            ctx.fillRect(0, 0, width, height)
-            // a little darker towards the corners, like the splash's veil
-            var v = ctx.createRadialGradient(root.cx, root.cy, tr * 0.5, root.cx, root.cy, root.maxR * 1.1)
-            v.addColorStop(0, "rgba(0,0,0,0)")
-            v.addColorStop(1, "rgba(0,0,0,0.35)")
-            ctx.fillStyle = v
-            ctx.fillRect(0, 0, width, height)
+            ctx.clearRect(0, 0, width, height)
+            if (root.shader === "") root.paintGlow(ctx, width, height)
             // a still field of faint stars (the same hash every time, so they never jump)
             var n = Math.round(width * height / 9000)
             for (var i = 0; i < n; i++) {
@@ -57,6 +49,44 @@ Item {
                 ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill()
             }
         }
+    }
+    ShaderEffect {
+        anchors.fill: parent
+        visible: root.shader !== ""
+        fragmentShader: root.shader
+        property color bg: root.pal ? root.pal.bg : "#14161f"
+        property color c1: root.a1
+        property color c2: root.a2
+        property real bgA: 1
+        property real a0: 0.17
+        property real aMid: 0.05
+        property real mid: 0.55
+        property point center: Qt.point(root.cx, root.cy)
+        property real radius: root.glowR
+        property real vigIn: root.glowR * 0.5
+        property real vigOut: root.maxR * 1.1
+        property real vigA: 0.35
+        property real useStars: 1
+        property point dim: Qt.point(width, height)
+        property var stars: ShaderEffectSource { id: starsSrc; sourceItem: tintCv; hideSource: root.shader !== "" }
+    }
+    // the Canvas version of the glow (no shader): the theme background, the accent glow, darker corners
+    function paintGlow(ctx, width, height) {
+        ctx.fillStyle = root.pal ? root.pal.bg : "#14161f"
+        ctx.fillRect(0, 0, width, height)
+        var tr = root.glowR
+        var g = ctx.createRadialGradient(root.cx, root.cy, 0, root.cx, root.cy, tr)
+        g.addColorStop(0, Qt.rgba(root.a1.r, root.a1.g, root.a1.b, 0.17))
+        g.addColorStop(0.55, Qt.rgba(root.a2.r, root.a2.g, root.a2.b, 0.05))
+        g.addColorStop(1, Qt.rgba(root.a2.r, root.a2.g, root.a2.b, 0))
+        ctx.fillStyle = g
+        ctx.fillRect(0, 0, width, height)
+        // a little darker towards the corners, like the splash's veil
+        var v = ctx.createRadialGradient(root.cx, root.cy, tr * 0.5, root.cx, root.cy, root.maxR * 1.1)
+        v.addColorStop(0, "rgba(0,0,0,0)")
+        v.addColorStop(1, "rgba(0,0,0,0.35)")
+        ctx.fillStyle = v
+        ctx.fillRect(0, 0, width, height)
     }
 
     // ---- the stars
@@ -126,10 +156,32 @@ Item {
         x: root.cx - width / 2
         y: root.cy - height / 2
 
-        // the halo: painted once, breathes slowly
+        // the halo: painted once, breathes slowly (the shader's dithered glow when there is one, the Canvas otherwise)
+        ShaderEffect {
+            anchors.fill: parent
+            visible: root.shader !== ""
+            fragmentShader: root.shader
+            property color bg: "black"
+            property color c1: root.a1
+            property color c2: root.a2
+            property real bgA: 0
+            property real a0: 0.42
+            property real aMid: 0.14
+            property real mid: 0.5
+            property point center: Qt.point(width / 2, height / 2)
+            property real radius: root.markRadius * 1.8
+            property real vigIn: 0
+            property real vigOut: 1
+            property real vigA: 0
+            property real useStars: 0
+            property point dim: Qt.point(width, height)
+            property var stars: starsSrc           // not drawn (useStars 0), but every sampler needs a texture
+            scale: halo.scale
+        }
         Canvas {
             id: halo
             anchors.fill: parent
+            visible: root.shader === ""
             onPaint: {
                 var ctx = getContext("2d")
                 ctx.clearRect(0, 0, width, height)
@@ -241,4 +293,5 @@ Item {
     onA1Changed: repaint()
     onA2Changed: repaint()
     onInkChanged: repaint()
+    onShaderChanged: tintCv.requestPaint()
 }
