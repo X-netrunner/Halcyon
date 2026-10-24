@@ -21,7 +21,7 @@ Everything below is how Halcyon looks right after installing, before you change 
 | ![Study Center](docs/screenshots/study.webp) | **Study Center.** Add your PDFs, slides and notes, then ask questions about them or make summaries, quizzes and flashcards, all with a local AI model on your own machine. |
 | ![Calendar](docs/screenshots/calendar.webp) | **Calendar and notes.** Your month, your day's notes and reminders, plus birthdays and holidays. |
 | ![Settings](docs/screenshots/settings.webp) | **Settings that explain themselves.** Every option is searchable. Most of them have a short explanation, and there is a guided tour that shows you around step by step. |
-| ![Settings as a constellation](docs/screenshots/tree.webp) | **Or see everything at once.** The tree view lays out all the settings as one constellation. Too busy for you? Turn the constellations off (Settings > Discover > *Constellations in the boxes*, and *Tree view constellation* under Performance) for the plain look in the other shots. |
+| ![Overview](docs/screenshots/tree.webp) | **Overview.** <kbd>Super</kbd> + <kbd>Tab</kbd> shows every workspace and window as one constellation: click one to go there, drag a window onto another workspace. Halcyon's own CPU and memory use sit in the corner. |
 | ![Shortcuts](docs/screenshots/shortcuts.webp) | **Every shortcut in one place.** <kbd>Super</kbd> + <kbd>/</kbd> opens a searchable map of all the key binds, gestures and commands. |
 
 There's more: clipboard history, screenshots, notifications and music in the island, a lock screen with widgets, live wallpapers,
