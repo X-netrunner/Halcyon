@@ -265,7 +265,26 @@ fn main() {
     // 4. Firewall
     section("4/7 — Firewall Status");
     notify("4/7 — Firewall Status", "normal", &real_user);
-    if command_exists("ufw") {
+    // Halcyon's ai-firewall when it is installed (install.sh --firewall ai): its service conflicts with ufw's, so
+    // "re-enabling" ufw here would switch ai-firewall off
+    if std::path::Path::new("/usr/local/bin/ai-firewall").exists() {
+        println!("{}", "  [EXEC] Running: systemctl is-active ai-firewall".bold().yellow());
+        let active = Command::new("systemctl")
+            .args(["is-active", "--quiet", "ai-firewall"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        let state = if active { "active" } else { "inactive" };
+        println!("    {}", format!("Status: {state}").dimmed());
+        write_to_log(&format!("ai-firewall status: Status: {state}"));
+        if active {
+            log_success("Firewall is active (ai-firewall)");
+        } else {
+            log_error("Firewall is INACTIVE. Starting ai-firewall...");
+            notify("⚠ Firewall was OFF — restarting ai-firewall!", "critical", &real_user);
+            run_command("systemctl", &["start", "ai-firewall"]);
+        }
+    } else if command_exists("ufw") {
         println!("{}", "  [EXEC] Running: ufw status".bold().yellow());
         let status = match Command::new("ufw").arg("status").output() {
             Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
@@ -287,7 +306,7 @@ fn main() {
             log_success("Firewall is active");
         }
     } else {
-        log_warn("UFW not installed");
+        log_warn("No firewall installed (./install.sh --firewall ai, or ufw)");
     }
 
     // 5. Lynis

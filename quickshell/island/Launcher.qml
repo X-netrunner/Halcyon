@@ -102,11 +102,12 @@ Item {
 
     property string cmdCategory: "all"
     property string runningGame: ""       // the game that runs now (shell.qml): "Stop the game" is only listed then
+    property bool firewallInstalled: false // ai-firewall is installed (shell.qml): its two commands are only listed then
     property int infoIdx: -1              // the command row whose description popup is open (-1 = none)
     // the order of the command list: groups first, then this order inside each group (anything not listed goes last)
     readonly property var catOrder: ["system", "desktop", "tools", "games", "power"]
     readonly property var cmdOrder: [
-        "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
+        "settings", "display", "printer", "wifi", "bluetooth", "firewall", "firewall-dashboard", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
         "calendar", "notes", "notesall", "study", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "gamecenter", "games", "games-stop",
@@ -150,6 +151,8 @@ Item {
         { id: "tool-mixer", name: "Volume per app", desc: "Choose an app that plays sound and set its own volume, or mute it. In a terminal: halcyon mixer set spotify 30", glyph: 0xF057E, kw: "volume mixer app per application spotify discord sound audio mute", cat: "tools" },
         { id: "tool-zoom", name: "Magnifier", desc: "Zoom the whole screen in and out (Super + Alt + Z toggles 2x); good for small text and for checking pixels", glyph: 0xF0349, kw: "zoom magnifier magnify screen enlarge accessibility lens", cat: "tools" },
         { id: "tool-vpn", name: "VPN on / off", desc: "Switch your VPN (NetworkManager, WireGuard or Tailscale) on or off; with several it asks which", glyph: 0xF0582, kw: "vpn wireguard tailscale network tunnel privacy openvpn", cat: "tools" },
+        { id: "firewall", name: "Firewall", desc: "ai-firewall's page: whether it is protecting, what it blocked, who is banned, with Dashboard / Ask / Doctor buttons", glyph: 0xF0565, kw: "firewall ai-firewall ufw security network ports blocked banned bans attack scan protect shield", cat: "system" },
+        { id: "firewall-dashboard", name: "Firewall dashboard", desc: "The live firewall dashboard in a terminal: counters, a drops graph, bans and detections; press a to ask it what's wrong", glyph: 0xF0128, kw: "firewall dashboard ai-firewall top monitor network traffic bans ask doctor", cat: "system" },
         { id: "tour", name: "Guided tour", desc: "Replay the walkthrough of the island, its panels and shortcuts", glyph: 0xF02D6, kw: "tutorial help intro welcome walkthrough onboarding whats new release notes learn", cat: "system" },
         { id: "barbuilder", name: "Bar builder", desc: "Drag widgets into the left, middle and right of your own bar", glyph: 0xF0208, kw: "bar custom widgets layout drag drop builder edit", cat: "desktop" },
         { id: "widgetbuilder", name: "Widget builder", desc: "Desktop widgets (clock, system usage, music, visualizer, focus streak ...): pick a layout and a look for each", glyph: 0xF0208, kw: "widgets desktop clock battery wifi stats cpu music visualizer focus streak weather style look design builder customise", cat: "desktop" },
@@ -488,6 +491,7 @@ Item {
                 var cm = commands[c]
                 if (root.cmdCategory !== "all" && cm.cat !== root.cmdCategory) continue
                 if (cm.id === "games-stop" && root.runningGame === "") continue
+                if ((cm.id === "firewall" || cm.id === "firewall-dashboard") && !root.firewallInstalled) continue
                 total++
                 if (shortList) {                             // used: by how much (always above the core ones); core: in its own order
                     var us = score("cmd:" + cm.id), ci = cmdCore.indexOf(cm.id)
