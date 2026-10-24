@@ -461,7 +461,7 @@ Scope {
                                 spacing: 8
                                 Text {
                                     width: parent.width
-                                    text: root.waiting ? "YOUR TURN  ·  " + (root.step && root.step.try ? root.step.try.say : "")
+                                    text: root.waiting ? (root.pal.zen ? "Your turn  ·  " : "YOUR TURN  ·  ") + (root.step && root.step.try ? root.step.try.say : "")
                                                        : "✦  +1 star. That's exactly it."
                                     color: root.waiting ? root.pal.text : root.pal.good
                                     font.family: root.pal.uiFont
@@ -605,7 +605,7 @@ Scope {
                         Rectangle {
                             height: 26; radius: 7
                             width: capText.implicitWidth + 18
-                            color: Qt.alpha(root.pal.surface, 0.95)
+                            color: root.pal.box(Qt.alpha(root.pal.surface, 0.95))
                             border.width: 1
                             border.color: Qt.alpha(root.pal.text, 0.18)
                             Rectangle {          // the lower edge of the key

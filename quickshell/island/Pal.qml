@@ -9,14 +9,20 @@ Scope {
     id: pal
 
     // ---------- interface style (Settings > Look > Interface) ----------
-    // "new" (the default): calm, flat frosted panes with one neutral hairline, borderless controls, rounder corners, more air and
-    // quieter decoration. "legacy": the earlier look (sheen and accent outlines on every pane, outlined chips). Everything that
-    // differs reads `calm`; the shared pieces (Glass, Chip, ActionChip, Toggle, Slider, Shadow, the stars) switch by themselves.
+    // "new" (the default): the quiet redesign. One soft pane, no outlines inside it: groups are a faint fill, buttons are pills,
+    // the active choice is an accent wash and the one main action (Done, Play ...) is solid accent. No explanations (> ask).
+    // "legacy": the first calm look (flat frosted panes with a hairline on every box, borderless controls).
+    // "classic": the original look (sheen and accent outlines on every pane, outlined chips).
+    // `calm` = not classic (legacy and new share it), `zen` = new only. The shared pieces (Glass, Chip, ActionChip, Toggle,
+    // Slider, Hint, BoxTitle, Shadow, the stars) switch by themselves.
     property string uiStyle: "new"
-    readonly property bool calm: uiStyle !== "legacy"
-    // Settings > Look: explanations / key hints shrink to a "?" dot (Hint.qml), box titles sit in the middle (BoxTitle.qml)
-    property bool hideHints: false
-    property bool centerTitles: false
+    readonly property bool calm: uiStyle !== "classic"
+    readonly property bool zen: uiStyle === "new"
+    // Settings > Look: explanations / key hints shrink to a "?" dot (Hint.qml; the new style hides them completely),
+    // box titles sit in the middle (BoxTitle.qml)
+    property bool hideHints: true
+    // every title sits in the middle of its header, in every style (the Centred titles switch is gone: one rule everywhere)
+    readonly property bool centred: true
 
     // ---------- theme ----------
     // `light` flips every surface, line and text colour at once. The wallpaper palette (`hx palette`) is always made for the
@@ -246,25 +252,39 @@ Scope {
     }
     readonly property real glassBoost: light ? 0 : Math.max(0, Math.min(0.12, (wallLum - 0.45) * 0.45))
     Behavior on wallLum { NumberAnimation { duration: 900; easing.type: Easing.InOutSine } }
-    readonly property real glass: solid ? 1 : ((calm ? 0.85 : 0.80) + glassShift + glassBoost)
+    readonly property real glass: solid ? 1 : ((zen ? 0.90 : calm ? 0.85 : 0.80) + glassShift + glassBoost)
     readonly property real glassSolid: solid ? 1 : Math.min(1, 0.94 + glassShift + glassBoost)  // for things that must stay legible over anything (overlays)
     readonly property real glassBar: solid ? 1 : (0.58 + glassShift + glassBoost)      // the top bar at rest: lighter = more wallpaper shows through
     readonly property real glassBarOpen: solid ? 1 : (0.74 + glassShift + glassBoost)  // the bar once it has grown into media / perf / the launcher
     // hairlines are neutral and work with every wallpaper; panels (Glass.qml) add a faint accent tint on top (lineTint)
     readonly property bool matchBox: !light && surfaceStyle === "match"     // box outlines in the accent colour too
-    readonly property color line: matchBox ? Qt.alpha(accent, 0.30) : Qt.alpha(text, calm ? 0.08 : 0.09)
+    readonly property color line: matchBox ? Qt.alpha(accent, 0.30) : Qt.alpha(text, zen ? 0.065 : calm ? 0.08 : 0.09)
     readonly property color lineTint: calm && !matchBox ? line : Qt.tint(line, Qt.alpha(accent, 0.12))
     readonly property color lineSoft: matchBox ? Qt.alpha(accent, 0.16) : Qt.alpha(text, calm ? 0.04 : 0.05)
     // the calm style's quiet fills: a resting control, and one under the pointer (no outline needed)
     readonly property color fill: Qt.alpha(text, light ? 0.06 : 0.055)
     readonly property color fillHover: Qt.alpha(text, light ? 0.10 : 0.095)
     readonly property color lineFocus: Qt.alpha(accent, 0.55)
+    // the new style's pieces: a group of rows / a card inside a pane (a faint fill instead of an outline), a field (search box),
+    // the chosen option (accent wash + a lighter accent label) and the one main action of a window (solid accent, dark label)
+    readonly property color group: Qt.alpha(text, light ? 0.045 : 0.032)
+    readonly property color field: Qt.alpha(text, light ? 0.07 : 0.05)
+    readonly property color chosenFill: Qt.alpha(accent, light ? 0.16 : 0.16)
+    readonly property color chosenText: light ? accent : Qt.tint(accent, Qt.alpha("#ffffff", 0.30))
+    readonly property color primary: accent
+    readonly property color primaryText: light ? "#ffffff" : Qt.hsla(hueOf(accent, 0.62), 0.30, 0.10, 1)
+    // an outline the earlier styles draw around a box: none in the new style (a fill marks it instead)
+    readonly property int bw: zen ? 0 : 1
+    // a box's fill: the new style's faint group fill, or what the earlier styles used there (`was`)
+    function box(was) { return zen ? group : was }
+    // a small caption: "Power mode" in the new style, as given otherwise
+    function capOf(t) { return zen ? cap(t) : t }
 
     // ---------- shape (concentric: inner radius = outer radius - padding) ----------
     readonly property int rSm: calm ? 12 : 10
     readonly property int rMd: calm ? 16 : 14
-    readonly property int rLg: calm ? 22 : 20
-    readonly property int rXl: calm ? 30 : 28
+    readonly property int rLg: zen ? 20 : calm ? 22 : 20
+    readonly property int rXl: zen ? 28 : calm ? 30 : 28
 
     // ---------- space (4px rhythm) ----------
     readonly property int s1: 4
@@ -305,12 +325,24 @@ Scope {
     // size scale: caption / body / title / display
     readonly property int tCap: 11
     readonly property int tBody: 13
-    readonly property int tTitle: calm ? 16 : 15
+    readonly property int tTitle: zen ? 18 : calm ? 16 : 15
     readonly property int tDisplay: calm ? 24 : 22
     // a small heading: "POWER MODE" stays as written in the legacy style, the calm one says "Power mode"
-    function cap(t) { t = String(t); return calm ? t.charAt(0) + t.substring(1).toLowerCase() : t }
+    // (short words people only know in capitals stay that way: CPU, GPU, RAM, AI ...)
+    readonly property var acronyms: ["CPU", "GPU", "RAM", "AI", "PSS", "BT", "DND", "VPN", "IP", "OSD", "USB", "PDF", "GTK", "QT", "SSH", "UI", "PIN"]
+    function cap(t) {
+        t = String(t)
+        if (!calm) return t
+        var acr = acronyms
+        return t.split(" ").map(function (w, i) {
+            var bare = w.replace(/[^A-Za-z]/g, "")
+            if (acr.indexOf(bare) >= 0) return w
+            w = w.toLowerCase()
+            return i === 0 ? w.charAt(0).toUpperCase() + w.substring(1) : w
+        }).join(" ")
+    }
     // how strongly the moving stars and constellations show behind dialogs (the calm style keeps them, softly)
-    readonly property real decor: calm ? 0.55 : 1
+    readonly property real decor: zen ? 0.35 : calm ? 0.55 : 1
 
     // ---------- growth ----------
     // the flagship constellations (and the picture one) grow the longer the island has been running: shell.qml sets

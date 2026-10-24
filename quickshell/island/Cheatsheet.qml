@@ -22,6 +22,10 @@ Scope {
     property var starData: null
     property bool profileStars: true
     property bool open: false
+    // the window stays a moment after it closes, so its fade-out plays (it used to vanish at once)
+    property bool linger: false
+    Connections { target: root; function onOpenChanged() { if (!root.open) { root.linger = true; lingerT.restart() } } }
+    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
     property bool consoleOpen: false
     property string style: "tree"        // tree | pages (opt.keysStyle, owned by shell.qml)
     readonly property bool pagesMode: style === "pages"
@@ -107,7 +111,10 @@ Scope {
 
     // ---------------------------------------------------------------- the tree data (rebuilt when the search or a shortcut changes)
     property string query: ""
-    readonly property int colCount: pagesMode ? 1 : (typeof card !== "undefined" && card) ? (card.width >= 1180 ? 3 : (card.width >= 780 ? 2 : 1)) : 2
+    // the new style's pages: taller rows on a soft fill, and a long page in two columns on a wide window (it was one tight list)
+    readonly property bool roomy: pal.zen && pagesMode
+    property real cardW: 0
+    readonly property int colCount: pagesMode ? (roomy && cardW >= 1000 ? 2 : 1) : (cardW > 0 ? (cardW >= 1180 ? 3 : (cardW >= 780 ? 2 : 1)) : 2)
 
     function visibleGroups() {
         var q = query.toLowerCase().trim()
@@ -156,7 +163,17 @@ Scope {
         if (pagesMode) {
             var one = []
             for (var q = 0; q < groupsNow.length; q++) if (query.trim() !== "" || groupsNow[q].id === curPage) one.push(groupsNow[q])
-            return [one]
+            if (colCount < 2) return [one]
+            if (one.length === 1) {
+                // one page: its rows split in two halves side by side (the second half keeps the "add your own" row)
+                var g0 = one[0], half = Math.ceil(g0.items.length / 2)
+                if (g0.items.length < 6) return [one]
+                return [[{ id: g0.id, title: g0.title, items: g0.items.slice(0, half), custom: false }],
+                        [{ id: g0.id, title: g0.title, items: g0.items.slice(half), custom: g0.custom }]]
+            }
+            var pc = [[], []], ph = [0, 0]
+            for (var k = 0; k < one.length; k++) { var b = ph[0] <= ph[1] ? 0 : 1; pc[b].push(one[k]); ph[b] += one[k].items.length + 2 }
+            return pc
         }
         var n = colCount || 2, cols = [], hs = []
         for (var i = 0; i < n; i++) { cols.push([]); hs.push(0) }
@@ -219,8 +236,8 @@ Scope {
         signal escaped()
         implicitHeight: 30
         radius: 10
-        color: Qt.alpha(fld.pal.bg, 0.55)
-        border.width: 1
+        color: fld.pal.zen ? fld.pal.field : Qt.alpha(fld.pal.bg, 0.55)
+        border.width: fld.pal.zen && !inp.activeFocus ? 0 : 1
         border.color: inp.activeFocus ? fld.pal.lineFocus : fld.pal.line
         Text {
             anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter
@@ -243,7 +260,7 @@ Scope {
     }
 
     LazyLoader {
-        active: root.open
+        active: root.open || root.linger
         PanelWindow {
             id: win
             visible: true
@@ -275,6 +292,9 @@ Scope {
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 80, 1360)
                 height: parent.height - 80
+                // the root scope can not see `card` (it lives in a LazyLoader): the column count reads this instead
+                onWidthChanged: root.cardW = width
+                Component.onCompleted: root.cardW = width
                 radius: root.pal.rXl
                 opacityBody: root.pal.glassSolid - 0.02
                 border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
@@ -285,26 +305,34 @@ Scope {
                 Backdrop { visible: root.open && root.stars; anchors.fill: parent; anchors.margins: 12; pal: root.pal; mode: root.sysmode; avatarStars: root.starData; profileStars: root.profileStars; dots: 14; artStrength: 0.6; artFit: 0.85; paused: root.typing }
                 BarStars { anchors.fill: parent; anchors.margins: 12; pal: root.pal; count: root.flyCount; loopMs: root.flyLoop; sizeScale: 1.3; active: root.open; visible: root.open && root.flyCount > 0 }
 
-                // ---------------- header: title, search, close
+                // ---------------- header: just the title and the close
                 RowLayout {
                     id: head
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 26 }
                     spacing: 14
-                    Text { text: String.fromCodePoint(0xF030C); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
-                    BoxTitle { pal: root.pal; size: 20; overlay: true; title: "Shortcuts" }
+                    Text { visible: !root.pal.zen; text: String.fromCodePoint(0xF030C); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
+                    BoxTitle { pal: root.pal; size: 20; title: "Shortcuts" }
+                    RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
+                }
+
+                // ---------------- the bottom bar: the search and the view switch (the title bar stays clean)
+                RowLayout {
+                    id: foot
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 26 }
+                    spacing: 12
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.maximumWidth: 420
-                        implicitHeight: 34
-                        radius: 17
-                        color: Qt.alpha(root.pal.bg, 0.55)
-                        border.width: 1
+                        Layout.maximumWidth: 560
+                        implicitHeight: 38
+                        radius: 19
+                        color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                        border.width: root.pal.zen && !search.activeFocus ? 0 : 1
                         border.color: search.activeFocus ? root.pal.lineFocus : root.pal.line
                         Text {
                             anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
                             visible: search.text === ""
-                            text: String.fromCodePoint(0xF0349) + "  search shortcuts"
-                            color: root.pal.muted; font.family: root.pal.font; font.pixelSize: root.pal.tBody
+                            text: root.pal.zen ? "Search shortcuts" : String.fromCodePoint(0xF0349) + "  search shortcuts"
+                            color: root.pal.muted; font.family: root.pal.zen ? root.pal.uiFont : root.pal.font; font.pixelSize: root.pal.tBody
                         }
                         TextInput {
                             id: search
@@ -326,19 +354,19 @@ Scope {
                         }
                     }
                     Text {
+                        visible: !root.pal.zen
                         text: root.shownCount + " shown  ·  click one to change it"
                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                     }
                     Item { Layout.fillWidth: true }
-                    Chip { pal: root.pal; implicitHeight: 30; label: root.pagesMode ? "Tree view" : "Pages view"; onClicked: root.styleChosen(root.pagesMode ? "tree" : "pages") }
-                    RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
+                    Chip { pal: root.pal; implicitHeight: 34; label: root.pagesMode ? "Tree view" : "Pages view"; onClicked: root.styleChosen(root.pagesMode ? "tree" : "pages") }
                 }
 
                 // ---------------- pages layout: the menu of groups
                 Flickable {
                     id: menu
                     visible: root.pagesMode
-                    anchors { left: parent.left; top: head.bottom; bottom: parent.bottom; margins: 26; topMargin: 18; bottomMargin: 26 }
+                    anchors { left: parent.left; top: head.bottom; bottom: foot.top; margins: 26; topMargin: 18; bottomMargin: 16 }
                     width: 210
                     contentWidth: width
                     contentHeight: menuCol.height
@@ -388,7 +416,7 @@ Scope {
                 // ---------------- the tree (tree layout) / the list of the page (pages layout)
                 Flickable {
                     id: scroll
-                    anchors { left: root.pagesMode ? menu.right : parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 26; topMargin: 18; leftMargin: root.pagesMode ? 22 : 26 }
+                    anchors { left: root.pagesMode ? menu.right : parent.left; right: parent.right; top: head.bottom; bottom: foot.top; margins: 26; topMargin: 18; bottomMargin: 16; leftMargin: root.pagesMode ? 22 : 26 }
                     contentWidth: width
                     contentHeight: tree.height + 12
                     clip: true
@@ -550,7 +578,7 @@ Scope {
                                                     readonly property bool isBind: leaf.modelData.kind === "bind"
                                                     readonly property bool off: leaf.modelData.keys === "none"
                                                     width: leaves.width
-                                                    height: 32 + (leaf.editing ? editor.height + 8 : 0)
+                                                    height: (root.roomy ? 48 : 32) + (leaf.editing ? editor.height + 8 : 0)
 
                                                     // sub-trunk + elbow
                                                     Rectangle { visible: !root.pagesMode; x: 34; y: 0; width: 1; height: leaf.lastLeaf ? 16 : leaf.height; color: Qt.alpha(root.pal.accent, 0.28) }
@@ -564,17 +592,18 @@ Scope {
                                                     // row: label on the left, keycaps on the right
                                                     Rectangle {
                                                         id: rowBg
-                                                        x: root.lx; y: 1
+                                                        x: root.lx; y: root.roomy ? 3 : 1
                                                         width: leaf.width - root.lx
-                                                        height: 30
-                                                        radius: 9
-                                                        color: leaf.editing ? Qt.alpha(root.pal.accent, 0.12) : (ma.containsMouse && leaf.modelData.editable ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent")
+                                                        height: root.roomy ? 42 : 30
+                                                        radius: root.roomy ? root.pal.rMd : 9
+                                                        color: leaf.editing ? Qt.alpha(root.pal.accent, 0.12)
+                                                             : (ma.containsMouse && leaf.modelData.editable ? (root.roomy ? root.pal.fillHover : Qt.alpha(root.pal.surfaceHi, 0.8)) : (root.roomy ? root.pal.group : "transparent"))
                                                         Behavior on color { ColorAnimation { duration: root.pal.dFast } }
 
                                                         Row {
                                                             id: keyRow
                                                             anchors.right: parent.right
-                                                            anchors.rightMargin: 8
+                                                            anchors.rightMargin: root.roomy ? 14 : 8
                                                             anchors.verticalCenter: parent.verticalCenter
                                                             spacing: 4
                                                             Repeater {
@@ -589,7 +618,7 @@ Scope {
                                                             }
                                                         }
                                                         RowLayout {
-                                                            anchors.left: parent.left; anchors.leftMargin: 8
+                                                            anchors.left: parent.left; anchors.leftMargin: root.roomy ? 16 : 8
                                                             anchors.right: keyRow.left; anchors.rightMargin: 12
                                                             anchors.verticalCenter: parent.verticalCenter
                                                             spacing: 8
@@ -599,7 +628,7 @@ Scope {
                                                                 elide: Text.ElideRight
                                                                 color: leaf.off ? root.pal.muted : root.pal.text
                                                                 font.family: root.pal.uiFont
-                                                                font.pixelSize: root.pal.tBody
+                                                                font.pixelSize: root.roomy ? root.pal.tBody + 1 : root.pal.tBody
                                                             }
                                                             Text {
                                                                 visible: leaf.isCustom
@@ -626,14 +655,14 @@ Scope {
                                                         id: editor
                                                         active: leaf.editing         // built only for the row being edited (it was ~200 hidden editors, app list included)
                                                         visible: active
-                                                        x: root.lx; y: 36
+                                                        x: root.lx; y: root.roomy ? 50 : 36
                                                         width: leaf.width - root.lx
                                                         sourceComponent: Rectangle {
                                                             width: editor.width
                                                             height: edCol.implicitHeight + 24
                                                             radius: 12
-                                                            color: Qt.alpha(root.pal.surface, 0.95)
-                                                            border.width: 1
+                                                            color: root.pal.box(Qt.alpha(root.pal.surface, 0.95))
+                                                            border.width: root.pal.bw
                                                             border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
 
                                                             ColumnLayout {
@@ -707,7 +736,7 @@ Scope {
                                                                         id: capBox
                                                                         width: 170; height: 30; radius: 15
                                                                         color: root.capturing ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.9)
-                                                                        border.width: 1
+                                                                        border.width: root.pal.zen && !(root.capturing) ? 0 : 1
                                                                         border.color: root.capturing ? root.pal.accent : root.pal.line
                                                                         focus: root.capturing
                                                                         Text {
@@ -763,7 +792,7 @@ Scope {
                                                                 Flow {
                                                                     Layout.fillWidth: true
                                                                     spacing: 6
-                                                                    Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; on: true; onClicked: root.saveEdit() }
+                                                                    Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; primary: true; onClicked: root.saveEdit() }
                                                                     Chip {
                                                                         visible: !leaf.isCustom && root.editId !== "custom:new"
                                                                         pal: root.pal; implicitHeight: 30; label: "Default"
@@ -823,8 +852,8 @@ Scope {
                                                         width: addEditor.width
                                                         height: newCol.implicitHeight + 24
                                                         radius: 12
-                                                        color: Qt.alpha(root.pal.surface, 0.95)
-                                                        border.width: 1
+                                                        color: root.pal.box(Qt.alpha(root.pal.surface, 0.95))
+                                                        border.width: root.pal.bw
                                                         border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
                                                         ColumnLayout {
                                                             id: newCol
@@ -889,7 +918,7 @@ Scope {
                                                                     id: capBox2
                                                                     width: 170; height: 30; radius: 15
                                                                     color: root.capturing ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.9)
-                                                                    border.width: 1
+                                                                    border.width: root.pal.zen && !(root.capturing) ? 0 : 1
                                                                     border.color: root.capturing ? root.pal.accent : root.pal.line
                                                                     focus: root.capturing
                                                                     Text {
@@ -928,7 +957,7 @@ Scope {
                                                             Flow {
                                                                 Layout.fillWidth: true
                                                                 spacing: 6
-                                                                Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; on: true; onClicked: root.saveEdit() }
+                                                                Chip { pal: root.pal; implicitHeight: 30; label: "Save  (Enter)"; primary: true; onClicked: root.saveEdit() }
                                                                 Chip { pal: root.pal; implicitHeight: 30; label: "Cancel"; onClicked: root.cancelEdit() }
                                                             }
                                                         }

@@ -32,7 +32,7 @@ ColumnLayout {
             }
             Rectangle {
                 Layout.fillWidth: true; Layout.preferredHeight: 36; radius: 18
-                color: Qt.alpha(root.pal.bg, 0.5); border.width: 1; border.color: spIn.activeFocus ? root.pal.accent : root.pal.lineSoft
+                color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.5); border.width: root.pal.zen && !spIn.activeFocus ? 0 : 1; border.color: spIn.activeFocus ? root.pal.accent : root.pal.lineSoft
                 TextInput {
                     id: spIn
                     anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14

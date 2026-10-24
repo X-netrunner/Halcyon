@@ -25,7 +25,7 @@ Rectangle {
         anchors.fill: parent
         radius: root.radius
         color: "transparent"
-        border.width: 1
+        border.width: 1             // the pane keeps its one hairline in every calm style; only what is inside it loses outlines
         border.color: root.pal.line
     }
 
@@ -65,8 +65,9 @@ Rectangle {
         anchors.fill: parent
         radius: root.radius
         // calm: wider and fainter, the pane floats instead of sitting on a dark edge
-        spread: root.pal.calm ? 28 : 22
-        drop: root.pal.calm ? 10 : 6
-        strength: root.pal.calm ? 0.02 : 0.026
+        // new: wide, soft and a little deeper, the one pane floats over the wallpaper
+        spread: root.pal.zen ? 34 : root.pal.calm ? 28 : 22
+        drop: root.pal.zen ? 14 : root.pal.calm ? 10 : 6
+        strength: root.pal.zen ? 0.024 : root.pal.calm ? 0.02 : 0.026
     }
 }

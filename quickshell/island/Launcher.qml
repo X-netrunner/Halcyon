@@ -215,12 +215,65 @@ Item {
     readonly property int rows: mode === "all" ? Math.max(1, Math.min(4, Math.ceil(results.length / 6)))
                               : (query.trim() === "" ? 2 : Math.max(1, Math.min(3, Math.ceil(results.length / 6))))
     readonly property real wantedWidth: gridMode ? 680 : 540
+    readonly property int searchH: pal.zen ? 52 : 46
+    readonly property int footH: pal.zen && mode === "cmd" ? 22 : 16          // the new style puts the command groups down there
     readonly property real wantedHeight: {
-        // margins 36 + search 46 + header 14 + footer 16 + 4 gaps of 12 = 160 + content
-        if (mode === "calc") return 36 + 46 + 12 + 64
-        if (aiMode) return 36 + 46 + 12 + Math.max(64, aiBox.implicitHeight) + 12 + 16
-        if (mode === "cmd") return 160 + Math.max(1, Math.min(7, cmdResults.length)) * 46 + (infoIdx >= 0 && cmdResults[infoIdx] ? infoBox.height + 12 : 0)
-        return 160 + (results.length === 0 ? 40 : rows * 92)
+        // margins 36 + search + header 14 + footer + 4 gaps of 12 = base + content
+        var base = 36 + searchH + 14 + footH + 48
+        if (mode === "calc") return 36 + searchH + 12 + 64
+        if (aiMode) return 36 + searchH + 12 + Math.max(64, aiBox.implicitHeight) + 12 + 16
+        if (mode === "cmd") return base + Math.max(1, Math.min(7, cmdResults.length)) * 46 + (infoIdx >= 0 && cmdResults[infoIdx] ? infoBox.height + 12 : 0)
+        return base + (results.length === 0 ? 40 : rows * (pal.zen ? 96 : 92))
+    }
+
+    // the command groups (All / Desktop / System ...): beside "Commands" in the earlier styles, under the list in the new one
+    // (nothing button-like sits above the results there)
+    component CatTabs: Row {
+        spacing: 5
+        Repeater {
+            model: [
+                { id: "all", label: "All" },
+                { id: "desktop", label: "Desktop" },
+                { id: "system", label: "System" },
+                { id: "tools", label: "Tools" },
+                { id: "games", label: "Games" },
+                { id: "power", label: "Power" }
+            ]
+            delegate: Rectangle {
+                required property var modelData
+                readonly property bool activeCat: root.cmdCategory === modelData.id
+                height: root.pal.zen ? 22 : 20
+                width: catText.implicitWidth + (root.pal.zen ? 20 : 16)
+                radius: height / 2
+                color: activeCat ? (root.pal.zen ? root.pal.chosenFill : Qt.alpha(root.pal.accent, 0.20)) : (catMa.containsMouse ? Qt.alpha(root.pal.text, 0.08) : Qt.alpha(root.pal.text, root.pal.zen ? 0.04 : 0.03))
+                border.width: root.pal.bw
+                border.color: activeCat ? Qt.alpha(root.pal.accent, 0.45) : Qt.alpha(root.pal.lineSoft, 0.4)
+                Behavior on color { ColorAnimation { duration: 120 } }
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                Text {
+                    id: catText
+                    anchors.centerIn: parent
+                    text: modelData.label
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.zen ? 11 : 10
+                    font.weight: activeCat ? Font.DemiBold : Font.Normal
+                    color: activeCat ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : (catMa.containsMouse ? root.pal.text : root.pal.muted)
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                }
+
+                MouseArea {
+                    id: catMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.cmdCategory = modelData.id
+                        root.refresh()
+                    }
+                }
+            }
+        }
     }
 
     // ---- usage ranking (decayed launch count, log in ~/.local/state/island/usage.log)
@@ -513,6 +566,9 @@ Item {
                 // starred: first of all with nothing typed; while you search only above matches of the same strength, so a star that
                 // matches by a keyword ("settings" is one of Game Center's) never beats the command whose name you are typing
                 if (root.cmdFavs[cm.id] === true && !root.cmdGrouped) r += cq === "" ? 10 : 0.5
+                // ">game": the games come in as rows of 5 (starred ones 15). A command called "Game ..." (Game Center) goes above the
+                // unstarred games, and a starred one above every game: the star means "this first"
+                if (root.gameQuery && r >= 4) r = root.cmdFavs[cm.id] === true ? 20 : 5.5
                 outc.push({ c: cm, r: r, i: c })
             }
             outc = outc.concat(root.gameRows(cq))
@@ -749,10 +805,11 @@ Item {
         Rectangle {
             id: bar
             Layout.fillWidth: true
-            Layout.preferredHeight: 46
-            radius: 23
-            color: Qt.alpha(root.pal.surface, 0.85)
-            border.width: 1
+            Layout.preferredHeight: root.pal.zen ? 52 : 46
+            radius: height / 2
+            // new: a soft pill, no outline and no glow
+            color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.surface, 0.85)
+            border.width: root.pal.bw
             border.color: input.activeFocus ? root.pal.lineFocus : root.pal.line
             Behavior on border.color { ColorAnimation { duration: 180 } }
 
@@ -764,16 +821,16 @@ Item {
                 color: "transparent"
                 border.width: 4
                 border.color: root.pal.accent
-                opacity: input.activeFocus ? 0.07 : 0
+                opacity: input.activeFocus && !root.pal.zen ? 0.07 : 0
                 Behavior on opacity { NumberAnimation { duration: 240 } }
             }
 
             Text {
                 id: mag
-                x: 18
+                x: root.pal.zen ? 22 : 18
                 anchors.verticalCenter: parent.verticalCenter
+                color: root.pal.zen ? root.pal.muted : root.pal.accent
                 text: String.fromCodePoint(root.aiMode ? (root.mode === "do" ? 0xF06A9 : 0xF0B79) : (root.mode === "cmd" ? 0xF0493 : (root.mode === "calc" ? 0xF00EB : (root.mode === "all" ? 0xF003B : 0xF0349))))
-                color: root.pal.accent
                 font.family: root.pal.font
                 font.pixelSize: 18
             }
@@ -781,10 +838,10 @@ Item {
                 visible: input.text === ""
                 anchors.left: input.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Search apps…"
+                text: root.pal.zen ? "Search apps, commands, files" : "Search apps…"
                 color: root.pal.muted
                 font.family: root.pal.uiFont
-                font.pixelSize: 15
+                font.pixelSize: root.pal.zen ? 16 : 15
             }
             TextInput {
                 id: input
@@ -797,7 +854,7 @@ Item {
                 selectionColor: root.pal.accent
                 selectedTextColor: root.pal.bg
                 font.family: root.pal.uiFont
-                font.pixelSize: 15
+                font.pixelSize: root.pal.zen ? 16 : 15
                 clip: true
                 onTextChanged: { root.query = text; root.pendingConfirm = ""; if (!root.histBusy) root.histIdx = -1; root.refresh() }
 
@@ -859,17 +916,19 @@ Item {
                 height: 24
                 width: badgeTxt.implicitWidth + 20
                 radius: 12
-                color: Qt.alpha(root.pal.accent, 0.14)
+                // new: just the word, quietly ("Apps"), as the mode is a fact and not a button
+                color: root.pal.zen ? "transparent" : Qt.alpha(root.pal.accent, 0.14)
                 Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
                 Text {
                     id: badgeTxt
                     anchors.centerIn: parent
-                    text: root.mode === "ask" ? "ask" : (root.mode === "do" ? "do" : (root.mode === "cmd" ? "commands" : (root.mode === "calc" ? "calculator" : (root.mode === "all" ? "all apps" : "apps"))))
-                    color: root.pal.accent
+                    readonly property string word: root.mode === "ask" ? "ask" : (root.mode === "do" ? "do" : (root.mode === "cmd" ? "commands" : (root.mode === "calc" ? "calculator" : (root.mode === "all" ? "all apps" : "apps"))))
+                    text: root.pal.zen ? root.pal.cap(word) : word
+                    color: root.pal.zen ? root.pal.muted : root.pal.accent
                     font.family: root.pal.uiFont
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                    font.letterSpacing: 0.4
+                    font.pixelSize: root.pal.zen ? 12 : 11
+                    font.weight: root.pal.zen ? Font.Normal : Font.Medium
+                    font.letterSpacing: root.pal.zen ? 0 : 0.4
                 }
             }
         }
@@ -883,68 +942,26 @@ Item {
             spacing: 8
 
             Text {
-                text: root.mode === "cmd" ? "COMMANDS"
+                // the new style: the label sits in the middle, over the middle of the apps
+                Layout.fillWidth: root.pal.zen
+                horizontalAlignment: root.pal.zen ? Text.AlignHCenter : Text.AlignLeft
+                readonly property string word: root.mode === "cmd" ? "COMMANDS"
                     : root.mode === "all" ? "ALL APPS · " + root.results.length
                     : (root.query === "" ? "MOST USED" : "RESULTS")
+                text: root.pal.zen ? root.pal.cap(word) : word
                 color: root.pal.muted
                 font.family: root.pal.uiFont
-                font.pixelSize: 10
-                font.weight: Font.DemiBold
-                font.letterSpacing: 1.4
+                font.pixelSize: root.pal.zen ? 12 : 10
+                font.weight: root.pal.zen ? Font.Normal : Font.DemiBold
+                font.letterSpacing: root.pal.zen ? 0 : 1.4
                 Layout.alignment: Qt.AlignVCenter
             }
 
-            Item { Layout.fillWidth: true }
+            Item { visible: !root.pal.zen; Layout.fillWidth: true }
 
-            Row {
-                visible: root.mode === "cmd"
-                spacing: 5
+            CatTabs {
+                visible: root.mode === "cmd" && !root.pal.zen
                 Layout.alignment: Qt.AlignVCenter
-
-                Repeater {
-                    model: [
-                        { id: "all", label: "All" },
-                        { id: "desktop", label: "Desktop" },
-                        { id: "system", label: "System" },
-                        { id: "tools", label: "Tools" },
-                        { id: "games", label: "Games" },
-                        { id: "power", label: "Power" }
-                    ]
-                    delegate: Rectangle {
-                        required property var modelData
-                        readonly property bool activeCat: root.cmdCategory === modelData.id
-                        height: 20
-                        width: catText.implicitWidth + 16
-                        radius: 10
-                        color: activeCat ? Qt.alpha(root.pal.accent, 0.20) : (catMa.containsMouse ? Qt.alpha(root.pal.text, 0.08) : Qt.alpha(root.pal.text, 0.03))
-                        border.width: 1
-                        border.color: activeCat ? Qt.alpha(root.pal.accent, 0.45) : Qt.alpha(root.pal.lineSoft, 0.4)
-                        Behavior on color { ColorAnimation { duration: 120 } }
-                        Behavior on border.color { ColorAnimation { duration: 120 } }
-
-                        Text {
-                            id: catText
-                            anchors.centerIn: parent
-                            text: modelData.label
-                            font.family: root.pal.uiFont
-                            font.pixelSize: 10
-                            font.weight: activeCat ? Font.DemiBold : Font.Normal
-                            color: activeCat ? root.pal.accent : (catMa.containsMouse ? root.pal.text : root.pal.muted)
-                            Behavior on color { ColorAnimation { duration: 120 } }
-                        }
-
-                        MouseArea {
-                            id: catMa
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                root.cmdCategory = modelData.id
-                                root.refresh()
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -956,7 +973,7 @@ Item {
             Layout.fillHeight: true
             clip: true
             cellWidth: Math.floor(width / 6)
-            cellHeight: 92
+            cellHeight: root.pal.zen ? 96 : 92
             model: root.results
             boundsBehavior: Flickable.StopAtBounds
             highlightFollowsCurrentItem: true
@@ -970,8 +987,8 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 4
-                    radius: root.pal.calm ? root.pal.rLg : 18
-                    color: Qt.alpha(root.pal.accent, root.pal.calm ? 0.12 : 0.13)
+                    radius: root.pal.zen ? 18 : root.pal.calm ? root.pal.rLg : 18
+                    color: root.pal.zen ? Qt.alpha(root.pal.text, 0.07) : Qt.alpha(root.pal.accent, root.pal.calm ? 0.12 : 0.13)
                     border.width: root.pal.calm ? 0 : 1
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.28)
                 }
@@ -999,15 +1016,15 @@ Item {
 
                 Column {
                     anchors.centerIn: parent
-                    spacing: 7
+                    spacing: root.pal.zen ? 9 : 7
                     scale: ma.pressed ? 0.94 : 1
                     Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
 
                     Image {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: 42
-                        height: 42
-                        sourceSize: Qt.size(84, 84)
+                        width: root.pal.zen ? 44 : 42
+                        height: width
+                        sourceSize: Qt.size(88, 88)
                         source: root.iconFor(cell.modelData)
                         asynchronous: true
                         smooth: true
@@ -1019,10 +1036,10 @@ Item {
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight
                         text: cell.modelData.name
-                        color: cell.cur ? root.pal.text : Qt.alpha(root.pal.text, 0.78)
+                        color: cell.cur ? root.pal.text : Qt.alpha(root.pal.text, root.pal.zen ? 0.8 : 0.78)
                         font.family: root.pal.uiFont
-                        font.pixelSize: 11
-                        font.weight: cell.cur ? Font.DemiBold : Font.Medium
+                        font.pixelSize: root.pal.zen ? 12 : 11
+                        font.weight: cell.cur && !root.pal.zen ? Font.DemiBold : Font.Medium
                         Behavior on color { ColorAnimation { duration: 140 } }
                     }
                 }
@@ -1066,7 +1083,7 @@ Item {
                 width: cmdList.width
                 height: 46
                 radius: root.pal.calm ? root.pal.rMd : 14
-                color: Qt.alpha(root.pal.accent, root.pal.calm ? 0.12 : 0.13)
+                color: root.pal.zen ? Qt.alpha(root.pal.text, 0.07) : Qt.alpha(root.pal.accent, root.pal.calm ? 0.12 : 0.13)
                 border.width: root.pal.calm ? 0 : 1
                 border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.28)
             }
@@ -1089,7 +1106,7 @@ Item {
                     x: 16
                     anchors.verticalCenter: parent.verticalCenter
                     text: String.fromCodePoint(crow.modelData.glyph)
-                    color: root.pal.accent
+                    color: root.pal.zen && !crow.ListView.isCurrentItem ? root.pal.muted : root.pal.accent
                     font.family: root.pal.font
                     font.pixelSize: 18
                 }
@@ -1172,7 +1189,7 @@ Item {
                     anchors.left: parent.left; anchors.right: parent.right
                     anchors.leftMargin: 16; anchors.rightMargin: 16
                     y: 0; height: 1
-                    color: Qt.alpha(root.pal.accent, 0.22)
+                    color: root.pal.zen ? root.pal.lineSoft : Qt.alpha(root.pal.accent, 0.22)
                 }
                 // the favourite star on every command and game (favourites are listed first; Ctrl + F on the selected row does the same)
                 Text {
@@ -1198,14 +1215,15 @@ Item {
                 // right-most: the description button
                 Rectangle {
                     id: infoBtn
-                    visible: (crow.modelData.desc || "") !== ""
+                    // new style: only on the row you are on (the description is there when you want it, not on every line)
+                    visible: (crow.modelData.desc || "") !== "" && (!root.pal.zen || crow.ListView.isCurrentItem || openNow)
                     readonly property bool openNow: root.infoIdx === crow.index
                     anchors.right: parent.right
                     anchors.rightMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
                     width: 24; height: 24; radius: 12
                     color: openNow ? Qt.alpha(root.pal.accent, 0.25) : (infoMa.containsMouse ? Qt.alpha(root.pal.text, 0.10) : "transparent")
-                    border.width: 1
+                    border.width: root.pal.zen && !openNow ? 0 : 1
                     border.color: openNow ? Qt.alpha(root.pal.accent, 0.55) : Qt.alpha(root.pal.lineSoft, 0.6)
                     Behavior on color { ColorAnimation { duration: 120 } }
                     Text {
@@ -1235,8 +1253,8 @@ Item {
             Layout.preferredHeight: visible ? height : 0
             height: infoCol.implicitHeight + 24
             radius: 16
-            color: Qt.alpha(root.pal.accent, 0.09)
-            border.width: 1
+            color: root.pal.zen ? root.pal.group : Qt.alpha(root.pal.accent, 0.09)
+            border.width: root.pal.bw
             border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
             Column {
                 id: infoCol
@@ -1335,8 +1353,23 @@ Item {
         }
 
         // ---------- footer hints ----------
+        CatTabs {
+            visible: root.pal.zen && root.mode === "cmd"
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredHeight: 22
+        }
+        // the new style: one quiet line, as in the prototype
+        Text {
+            visible: root.pal.zen && root.mode !== "calc" && root.mode !== "cmd" && !root.aiMode
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredHeight: 16
+            text: "Enter to open   ·   > commands   ·   = calculate   ·   . all apps"
+            color: root.pal.muted
+            font.family: root.pal.uiFont
+            font.pixelSize: 11
+        }
         Row {
-            visible: root.mode !== "calc" && !root.aiMode
+            visible: !root.pal.zen && root.mode !== "calc" && !root.aiMode
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredHeight: 16
             spacing: 18

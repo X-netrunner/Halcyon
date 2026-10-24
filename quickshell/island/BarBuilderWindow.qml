@@ -426,7 +426,8 @@ Item {
         pal: root.pal
         anchors.centerIn: parent
         width: Math.min(parent.width - 120, 1040)
-        height: Math.min(parent.height - 80, 780)
+        // as tall as what is in it (it used to be a fixed 780 px with half-empty panels)
+        height: Math.min(parent.height - 80, bbCol.implicitHeight + 72)
         radius: root.pal.rXl
         opacityBody: root.pal.solid ? 1 : 0.78
         border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
@@ -438,25 +439,17 @@ Item {
 
 
         ColumnLayout {
+            id: bbCol
             anchors.fill: parent
             anchors.margins: 36
             spacing: 20
 
-            // ---- header
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 14
-                Rectangle { Layout.alignment: Qt.AlignVCenter; width: 8; height: 8; radius: 4; color: root.pal.accent }
-                BoxTitle {
-                    Layout.alignment: Qt.AlignVCenter
-                    pal: root.pal
-                    size: 20
-                    subIsHint: true
-                    title: "Bar builder"
-                    sub: "Drag widgets along the bar to arrange them."
-                }
-                ActionChip { pal: root.pal; label: "Reset layout"; doneLabel: "Reset"; onClicked: root.edited(BL.defaults()) }
-                ActionChip { pal: root.pal; label: "Done"; on: true; onClicked: root.closed() }
+            // ---- header (WinHeader: the same in every window)
+            WinHeader {
+                pal: root.pal
+                title: "Bar builder"
+                leading: [ ActionChip { pal: root.pal; label: "Reset layout"; doneLabel: "Reset"; onClicked: root.edited(BL.defaults()) } ]
+                onClosed: root.closed()
             }
 
             // ---- the bar, as it looks on the screen
@@ -474,8 +467,8 @@ Item {
                 Rectangle { visible: !root.isl; anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; height: 2; color: Qt.alpha(root.pal.accent, 0.35) }
                 Text {
                     anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14
-                    font.letterSpacing: 0.8
-                    text: "PREVIEW  ×" + root.zoom.toFixed(1)
+                    font.letterSpacing: root.pal.zen ? 0 : 0.8
+                    text: (root.pal.zen ? "Preview  ×" : "PREVIEW  ×") + root.zoom.toFixed(1)
                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
                 }
 
@@ -500,7 +493,7 @@ Item {
                             visible: root.isl
                             anchors.fill: parent
                             radius: root.cornR
-                            color: Qt.alpha(root.pal.surface, 0.9)
+                            color: root.pal.box(Qt.alpha(root.pal.surface, 0.9))
                             border.width: root.pal.calm ? 0 : 1
                             border.color: root.pal.line
                         }
@@ -624,7 +617,7 @@ Item {
                     Layout.fillHeight: true
                     implicitHeight: styleCol.implicitHeight + 40
                     radius: root.pal.rMd
-                    color: Qt.alpha(root.pal.surface, 0.35)
+                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.35))
                     border.width: root.pal.calm ? 0 : 1
                     border.color: root.pal.line
                     Column {
@@ -652,7 +645,7 @@ Item {
                     Layout.fillHeight: true
                     implicitHeight: balCol.implicitHeight + 40
                     radius: root.pal.rMd
-                    color: Qt.alpha(root.pal.surface, 0.35)
+                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.35))
                     border.width: root.pal.calm ? 0 : 1
                     border.color: root.pal.line
                     Column {
@@ -744,7 +737,7 @@ Item {
                     Row {
                         spacing: 10
                         Text { text: "Not on the bar"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
-                        Text { text: root.dragId !== "" && root.dragFrom !== "tray" ? "drop here to take it off" : "drag one up to the bar"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                        Text { visible: !(root.pal.zen && root.pal.hideHints) || (root.dragId !== "" && root.dragFrom !== "tray"); text: root.dragId !== "" && root.dragFrom !== "tray" ? "drop here to take it off" : "drag one up to the bar"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
                     }
                     Flow {
                         width: parent.width
@@ -765,7 +758,8 @@ Item {
             // ---- what the widget under the pointer does
             Text {
                 Layout.fillWidth: true
-                text: root.hint !== "" ? root.hint : "Right-click a widget to take it off. The middle always stays centred."
+                // the new style: only what the widget under the pointer does, nothing at rest
+                text: root.hint !== "" ? root.hint : (root.pal.zen && root.pal.hideHints ? "" : "Right-click a widget to take it off. The middle always stays centred.")
                 color: root.pal.muted
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tCap

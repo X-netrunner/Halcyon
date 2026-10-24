@@ -19,7 +19,7 @@ Rectangle {
     radius: height / 2
     opacity: carried ? 0.28 : 1
     color: hot ? Qt.alpha(bb.pal.surfaceHi, 0.9) : Qt.alpha(bb.pal.surface, 0.8)
-    border.width: 1
+    border.width: bb.pal.zen && !(hot) ? 0 : 1
     border.color: hot ? Qt.alpha(bb.pal.accent, 0.7) : bb.pal.lineSoft
     Behavior on color { ColorAnimation { duration: bb.pal.dFast } }
     Behavior on border.color { ColorAnimation { duration: bb.pal.dFast } }
