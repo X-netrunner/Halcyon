@@ -394,7 +394,7 @@ Scope {
                     // the picture's own rim glows with the same flare as the constellation
                     Rectangle {
                         anchors.fill: parent; radius: width / 2
-                        color: Qt.alpha(root.pal.surface, 0.9)
+                        color: root.pal.box(Qt.alpha(root.pal.surface, 0.9))
                         border.width: 2
                         border.color: Qt.alpha(root.failure !== "" ? root.pal.bad : root.pal.accent, 0.55 + 0.45 * root.energy)
                     }
@@ -440,7 +440,7 @@ Scope {
                     id: pill
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 340; height: 48; radius: height / 2
-                    color: Qt.alpha(root.pal.surface, 0.85)
+                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.85))
                     border.width: 1
                     border.color: root.failure !== "" ? root.pal.bad : (input.activeFocus ? root.pal.lineFocus : root.pal.line)
                     Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
@@ -586,8 +586,8 @@ Scope {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 64
                 width: 380; height: 64; radius: 18
-                color: Qt.alpha(root.pal.surface, 0.8)
-                border.width: 1
+                color: root.pal.box(Qt.alpha(root.pal.surface, 0.8))
+                border.width: root.pal.bw
                 border.color: root.pal.line
                 opacity: surf.appear
                 Column {
@@ -656,8 +656,8 @@ Scope {
                         width: 230
                         height: swList.height + 16
                         radius: 14
-                        color: Qt.alpha(root.pal.surface, 0.92)
-                        border.width: 1
+                        color: root.pal.box(Qt.alpha(root.pal.surface, 0.92))
+                        border.width: root.pal.bw
                         border.color: root.pal.line
                         Column {
                             id: swList
@@ -698,7 +698,7 @@ Scope {
                     Rectangle {
                         width: 124; height: 34; radius: 17
                         color: swChipMa.containsMouse || root.switchOpen ? Qt.alpha(root.pal.accent, 0.22) : Qt.alpha(root.pal.surface, 0.7)
-                        border.width: 1
+                        border.width: root.pal.bw
                         border.color: root.pal.line
                         Text {
                             anchors.centerIn: parent
@@ -723,12 +723,12 @@ Scope {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 36
                 visible: root.sysmode !== ""
-                text: "SYSMODE · " + root.sysmode.toUpperCase()
+                text: root.pal.zen ? "Sysmode · " + root.sysmode : "SYSMODE · " + root.sysmode.toUpperCase()
                 color: Qt.alpha(root.pal.accent, 0.7)
                 font.family: root.pal.uiFont
-                font.pixelSize: 10
-                font.weight: Font.DemiBold
-                font.letterSpacing: 2
+                font.pixelSize: root.pal.zen ? 12 : 10
+                font.weight: root.pal.zen ? Font.Medium : Font.DemiBold
+                font.letterSpacing: root.pal.zen ? 0.2 : 2
             }
 
             // ---- the login splash: above everything, on this locked surface; typing or a click skips it

@@ -4,6 +4,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Wayland
 import QtQuick.Effects
+import Quickshell.Widgets
 
 // WallpaperGallery: A sleek, interactive wallpaper selector inspired by Tide-island
 // - Live search query filtering
@@ -166,6 +167,7 @@ Item {
                     spacing: 10
                     Layout.alignment: Qt.AlignVCenter
                     Text {
+                        visible: !(root.pal && root.pal.zen)
                         text: String.fromCodePoint(0xF024B) // Picture icon
                         font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"
                         font.pixelSize: 20
@@ -183,7 +185,7 @@ Item {
                     Row {
                         id: galRow
                         spacing: 10
-                        x: root.pal && root.pal.centerTitles ? Math.max(0, Math.min(galTitle.width - width, galTitle.parent.width / 2 - galTitle.x - width / 2)) : 0
+                        x: root.pal && root.pal.centred ? Math.max(0, Math.min(galTitle.width - width, galTitle.parent.width / 2 - galTitle.x - width / 2)) : 0
                         Text {
                             text: "Wallpaper Gallery"
                             font.family: root.pal ? root.pal.uiFont : "Inter"
@@ -208,7 +210,7 @@ Item {
                     Layout.preferredHeight: 34
                     radius: 12
                     color: Qt.alpha(root.pal ? root.pal.bg : "#10121c", 0.6)
-                    border.width: 1
+                    border.width: root.pal.zen && !searchInput.activeFocus ? 0 : 1
                     border.color: searchInput.activeFocus ? (root.pal ? root.pal.accent : "#8aadf4") : (root.pal ? root.pal.line : "#22ffffff")
 
                     RowLayout {
@@ -273,7 +275,7 @@ Item {
                     Layout.preferredHeight: 34
                     radius: 12
                     color: Qt.alpha(root.pal ? root.pal.bg : "#10121c", 0.6)
-                    border.width: 1
+                    border.width: root.pal && root.pal.zen ? 0 : 1
                     border.color: root.pal ? root.pal.line : "#22ffffff"
 
                     Row {
@@ -312,7 +314,7 @@ Item {
                     Layout.preferredHeight: 32
                     radius: 16
                     color: closeMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.bg, 0.5)
-                    border.width: 1
+                    border.width: root.pal && root.pal.zen ? 0 : 1
                     border.color: root.pal ? root.pal.line : "#22ffffff"
 
                     Text {
@@ -645,7 +647,8 @@ Item {
                         readonly property bool isCurrent: root.wp.current === cDelegate.modelData.path
                         readonly property bool isSelected: carousel.currentIndex === cDelegate.index
 
-                        Rectangle {
+                        // the picture is cut to the rounded card (a plain Rectangle only rounds its own fill: the corners showed)
+                        ClippingRectangle {
                             anchors.fill: parent
                             radius: root.pal ? root.pal.rLg : 16
                             color: root.pal ? root.pal.surface : "#1e2130"
@@ -746,7 +749,8 @@ Item {
 
                         readonly property bool isCurrent: root.wp.current === gDelegate.modelData.path
 
-                        Rectangle {
+                        // the picture is cut to the rounded card (a plain Rectangle only rounds its own fill: the corners showed)
+                        ClippingRectangle {
                             anchors.fill: parent
                             anchors.margins: 8
                             radius: root.pal ? root.pal.rMd : 12
@@ -846,7 +850,7 @@ Item {
                         width: randRow.implicitWidth + 20
                         radius: 10
                         color: randMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.7)
-                        border.width: 1
+                        border.width: root.pal && root.pal.zen ? 0 : 1
                         border.color: root.pal ? root.pal.line : "#22ffffff"
 
                         Row {
@@ -870,7 +874,7 @@ Item {
                         width: wpBackRow.implicitWidth + 20
                         radius: 10
                         color: wpBackMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.7)
-                        border.width: 1
+                        border.width: root.pal && root.pal.zen ? 0 : 1
                         border.color: root.pal ? root.pal.line : "#22ffffff"
 
                         Row {
@@ -894,7 +898,7 @@ Item {
                         width: wpKeepRow.implicitWidth + 20
                         radius: 10
                         color: wpKeepMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.7)
-                        border.width: 1
+                        border.width: root.pal && root.pal.zen ? 0 : 1
                         border.color: root.pal ? root.pal.line : "#22ffffff"
 
                         Row {
@@ -918,7 +922,7 @@ Item {
                         width: addRow.implicitWidth + 20
                         radius: 10
                         color: addMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.7)
-                        border.width: 1
+                        border.width: root.pal && root.pal.zen ? 0 : 1
                         border.color: root.pal ? root.pal.line : "#22ffffff"
 
                         Row {
@@ -942,7 +946,7 @@ Item {
                         width: openRow.implicitWidth + 20
                         radius: 10
                         color: openMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : Qt.alpha(root.pal.surfaceHi, 0.7)
-                        border.width: 1
+                        border.width: root.pal && root.pal.zen ? 0 : 1
                         border.color: root.pal ? root.pal.line : "#22ffffff"
 
                         Row {

@@ -144,7 +144,7 @@ PanelWindow {
                             visible: kinds.length > 0
                             width: shelf.width
                             spacing: 6
-                            NbCap { pal: win.pal; text: modelData[1].toUpperCase() }
+                            NbCap { pal: win.pal; text: win.pal.cap(modelData[1]) }
                             Flow {
                                 width: parent.width
                                 spacing: 8
@@ -280,9 +280,9 @@ PanelWindow {
                     Text { anchors.centerIn: parent; text: "?"; color: win.helpOpen ? win.pal.accent : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.Bold }
                     MouseArea { id: hq; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.helpOpen = !win.helpOpen }
                 }
-                ActionChip { pal: win.pal; label: win.adding ? "Close" : "Add a widget"; on: !win.adding; onClicked: win.adding = !win.adding }
+                ActionChip { pal: win.pal; label: win.adding ? "Close" : "Add a widget"; primary: !win.adding; onClicked: win.adding = !win.adding }
                 ActionChip { pal: win.pal; label: "Widget builder"; onClicked: win.openWidget(win.sel) }
-                ActionChip { pal: win.pal; label: "Done"; on: true; onClicked: win.done() }
+                ActionChip { pal: win.pal; label: "Done"; primary: true; onClicked: win.done() }
             }
         }
     }

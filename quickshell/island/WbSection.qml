@@ -12,7 +12,7 @@ Rectangle {
     Layout.fillWidth: true
     implicitHeight: col.implicitHeight + 32
     radius: pal ? pal.rLg : 16
-    color: !pal ? "transparent" : (pal.calm ? pal.fill : Qt.alpha(pal.surface, 0.35))
+    color: !pal ? "transparent" : (pal.zen ? pal.group : pal.calm ? pal.fill : Qt.alpha(pal.surface, 0.35))
     border.width: pal && pal.calm ? 0 : 1
     border.color: pal ? Qt.alpha(pal.lineSoft, 0.6) : "transparent"
 
@@ -26,7 +26,7 @@ Rectangle {
             visible: sec.title !== ""
             spacing: 3
             Text { text: sec.title; color: sec.pal.text; font.family: sec.pal.uiFont; font.pixelSize: sec.pal.tBody + 1; font.weight: Font.DemiBold }
-            Text { visible: sec.sub !== ""; width: parent.width; text: sec.sub; color: sec.pal.muted; font.family: sec.pal.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap; lineHeight: 1.2 }
+            Text { visible: sec.sub !== "" && !(sec.pal.zen && sec.pal.hideHints); width: parent.width; text: sec.sub; color: sec.pal.muted; font.family: sec.pal.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap; lineHeight: 1.2 }
         }
         ColumnLayout {
             id: body

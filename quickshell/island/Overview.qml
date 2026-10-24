@@ -1249,7 +1249,7 @@ Item {
         height: 34
         width: toastTxt.implicitWidth + 36
         radius: height / 2
-        color: Qt.alpha(ov.pal.surface, 0.92)
+        color: ov.pal.box(Qt.alpha(ov.pal.surface, 0.92))
         border.width: 1
         border.color: Qt.alpha(ov.pal.accent, 0.4)
         opacity: ov.toast !== "" ? 1 : 0
@@ -1269,11 +1269,11 @@ Item {
     // ---- header
     Column {
         id: ovHead
-        x: ov.pal.centerTitles ? (parent.width - width) / 2 : 40          // Centred titles: in the middle, both lines centred
+        x: ov.pal.centred ? (parent.width - width) / 2 : 40          // Centred titles: in the middle, both lines centred
         y: 34
         spacing: 2
         Text {
-            x: ov.pal.centerTitles ? (ovHead.width - width) / 2 : 0
+            x: ov.pal.centred ? (ovHead.width - width) / 2 : 0
             text: "Overview"
             color: ov.pal.text
             font.family: ov.pal.uiFont
@@ -1281,7 +1281,7 @@ Item {
             font.weight: Font.DemiBold
         }
         Text {
-            x: ov.pal.centerTitles ? (ovHead.width - width) / 2 : 0
+            x: ov.pal.centred ? (ovHead.width - width) / 2 : 0
             text: ov.plural(ov.wsCount, "workspace") + " · " + ov.plural(ov.winCount, "window") + " · " + ov.hostName
                   + (ov.totalRes !== "" ? "  ·  apps use " + ov.totalRes : "")
             color: ov.pal.muted
@@ -1459,7 +1459,7 @@ Item {
             Rectangle {
                 width: parent.width; height: 38; radius: 19
                 color: ov.pal.surface
-                border.width: 1
+                border.width: ov.pal.zen && !nameIn.activeFocus ? 0 : 1
                 border.color: nameIn.activeFocus ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.25)
                 Behavior on border.color { ColorAnimation { duration: 140 } }
                 TextInput {
@@ -1487,7 +1487,7 @@ Item {
                 Rectangle {
                     width: parent.width - 86 - parent.spacing; height: 38; radius: 19
                     color: ov.pal.surface
-                    border.width: 1
+                    border.width: ov.pal.zen && !avIn.activeFocus ? 0 : 1
                     border.color: avIn.activeFocus ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.25)
                     Behavior on border.color { ColorAnimation { duration: 140 } }
                     TextInput {

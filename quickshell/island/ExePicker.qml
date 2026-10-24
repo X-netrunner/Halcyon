@@ -170,7 +170,7 @@ Item {
         height: Math.min(parent.height - 80, 560)
         radius: root.pal.rXl
         color: Qt.alpha(root.pal.bg, 0.98)
-        border.width: 1
+        border.width: root.pal.bw
         border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
         scale: root.open ? 1 : 0.97
         Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
@@ -190,7 +190,7 @@ Item {
                 spacing: 4
                 Text {
                     Layout.bottomMargin: 8
-                    Layout.alignment: root.pal.centerTitles ? Qt.AlignHCenter : Qt.AlignLeft     // Centred titles: the middle of the side column
+                    Layout.alignment: root.pal.centred ? Qt.AlignHCenter : Qt.AlignLeft     // Centred titles: the middle of the side column
                     text: root.title
                     color: root.pal.text
                     font.family: root.pal.uiFont
@@ -261,8 +261,8 @@ Item {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 36
                         radius: 18
-                        color: Qt.alpha(root.pal.surface, 0.8)
-                        border.width: 1
+                        color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.8))
+                        border.width: root.pal.zen && !fin.activeFocus ? 0 : 1
                         border.color: fin.activeFocus ? Qt.alpha(root.pal.accent, 0.7) : root.pal.lineSoft
                         Text {
                             id: fGlyph
@@ -391,7 +391,7 @@ Item {
                     implicitHeight: 44
                     radius: root.pal.rMd
                     color: hintMa.containsMouse ? Qt.alpha(root.pal.accent, 0.16) : Qt.alpha(root.pal.accent, 0.08)
-                    border.width: 1
+                    border.width: root.pal.bw
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.3)
                     Text {
                         anchors.centerIn: parent

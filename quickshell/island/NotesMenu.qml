@@ -34,9 +34,10 @@ Scope {
     readonly property bool panelBottom: spot.charAt(0) === "b"
 
     function show() { mode = "quick"; flash = false; open = true; loadNotes() }
-    function showAll() { mode = "all"; search = ""; filter = "all"; orgOpen = false; open = true; loadNotes() }
+    function showAll() { mode = "all"; search = ""; filter = "all"; orgOpen = false; composing = false; open = true; loadNotes() }
     function openAll() { mode = "all"; search = ""; filter = "all"; loadNotes() }      // from the panel: stays open, becomes the list
-    function hide() { dropStaged(); open = false; flash = false }
+    function hide() { dropStaged(); open = false; flash = false; composing = false }
+    property bool composing: false          // the full list's + : a writing box under the list (the list stays open)
     function close() { hide() }
     function toggle() { if (open) hide(); else show() }
     function toggleAll() { if (open && mode === "all") hide(); else showAll() }
@@ -623,6 +624,7 @@ Scope {
                         Layout.fillWidth: true
                         spacing: 10
                         Rectangle {
+                            visible: !root.pal.zen || root.flash        // new: only the "saved" blink, no ornament at rest
                             width: 8; height: 8; radius: 4
                             color: root.flash ? root.pal.good : root.pal.accent
                             Behavior on color { ColorAnimation { duration: root.pal.dFast } }
@@ -676,8 +678,8 @@ Scope {
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.max(88, Math.min(190, qin.contentHeight + 28))
                         radius: root.pal.rMd
-                        color: Qt.alpha(root.pal.bg, 0.55)
-                        border.width: 1
+                        color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                        border.width: root.pal.zen && !qin.activeFocus ? 0 : 1
                         border.color: qin.activeFocus ? root.pal.accent : root.pal.lineSoft
                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
 
@@ -832,8 +834,10 @@ Scope {
                 id: card
                 pal: root.pal
                 anchors.centerIn: parent
+                anchors.verticalCenterOffset: root.composing ? -(composer.height + 12) / 2 : 0
+                Behavior on anchors.verticalCenterOffset { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 width: Math.min(parent.width - 80, 700)
-                height: Math.min(parent.height - 80, 700)
+                height: Math.min(parent.height - 80 - (root.composing ? composer.height + 12 : 0), 700)
                 radius: root.pal.rXl
                 opacityBody: root.pal.solid ? 1 : 0.90
                 border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
@@ -859,27 +863,14 @@ Scope {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 10
-                        Rectangle { width: 8; height: 8; radius: 4; color: root.pal.accent }
+                        Rectangle { visible: !root.pal.zen; width: 8; height: 8; radius: 4; color: root.pal.accent }
                         BoxTitle {
                             pal: root.pal
                             size: 18
                             title: "Notes"
                             sub: root.openCount + " open" + (root.taskCount > 0 ? "   \u00b7   " + root.taskCount + (root.taskCount === 1 ? " task" : " tasks") : "") + (root.doneCount > 0 ? "   \u00b7   " + root.doneCount + " done" : "")
                         }
-                        ActionChip {
-                            pal: root.pal
-                            label: "Organise"
-                            implicitHeight: 30
-                            visible: root.notes.length >= 2
-                            on: root.orgOpen
-                            onClicked: root.orgOpen ? (root.orgOpen = false) : root.organise()
-                        }
-                        ActionChip {
-                            pal: root.pal
-                            label: "New note"
-                            implicitHeight: 30
-                            onClicked: root.show()
-                        }
+                        // (Organise, New note and Clear completed sit together at the bottom left, so the top stays quiet)
                         RoundBtn {
                             pal: root.pal
                             size: 30
@@ -893,8 +884,8 @@ Scope {
                         Layout.fillWidth: true
                         height: 38
                         radius: root.pal.rMd
-                        color: Qt.alpha(root.pal.bg, 0.55)
-                        border.width: 1
+                        color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                        border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                         border.color: sin.activeFocus ? root.pal.accent : root.pal.lineSoft
                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
                         TextInput {
@@ -952,7 +943,7 @@ Scope {
                                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.Wrap
                                 }
                                 Item { Layout.fillWidth: true; visible: !root.orgChanges }
-                                ActionChip { pal: root.pal; label: "Apply"; doneLabel: "Applied"; on: true; implicitHeight: 28; visible: root.orgChanges; disabled: orgProc.running; onClicked: root.organiseApply() }
+                                ActionChip { pal: root.pal; label: "Apply"; doneLabel: "Applied"; primary: true; implicitHeight: 28; visible: root.orgChanges; disabled: orgProc.running; onClicked: root.organiseApply() }
                                 ActionChip { pal: root.pal; label: root.orgChanges ? "Not now" : "Close"; implicitHeight: 28; onClicked: root.orgOpen = false }
                             }
                         }
@@ -979,7 +970,7 @@ Scope {
                                 height: 28
                                 radius: 14
                                 color: on ? Qt.alpha(root.pal.accent, 0.18) : (fma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.7))
-                                border.width: 1
+                                border.width: root.pal.zen && !(on) ? 0 : 1
                                 border.color: on ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
                                 Behavior on color { ColorAnimation { duration: root.pal.dFast } }
                                 Text {
@@ -1024,7 +1015,7 @@ Scope {
                             height: Math.max(58, noteCol.implicitHeight + 32)
                             radius: root.pal.rMd
                             color: modelData.pinned ? Qt.alpha(root.pal.accent, 0.11) : Qt.alpha(root.pal.bg, 0.5)
-                            border.width: 1
+                            border.width: root.pal.zen && !(modelData.pinned) ? 0 : 1
                             border.color: modelData.pinned ? Qt.alpha(root.pal.accent, 0.40) : root.pal.lineSoft
                             clip: true
                             HoverHandler { id: rowHover }
@@ -1097,8 +1088,8 @@ Scope {
                                         Layout.preferredHeight: 34
                                         clip: true
                                         radius: 17
-                                        color: Qt.alpha(root.pal.surface, 0.75)
-                                        border.width: 1
+                                        color: root.pal.box(Qt.alpha(root.pal.surface, 0.75))
+                                        border.width: root.pal.zen && !((root.playingAudioId === noteRow.modelData.id)) ? 0 : 1
                                         border.color: (root.playingAudioId === noteRow.modelData.id) ? root.pal.accent : root.pal.lineSoft
                                         RowLayout {
                                             anchors.fill: parent
@@ -1211,7 +1202,7 @@ Scope {
                                         radius: root.pal.rSm
                                         clip: true
                                         color: Qt.alpha(root.pal.bg, 0.45)
-                                        border.width: 1
+                                        border.width: root.pal.zen && !(imgMa.containsMouse) ? 0 : 1
                                         border.color: imgMa.containsMouse ? root.pal.accent : root.pal.lineSoft
                                         Image {
                                             anchors.fill: parent
@@ -1431,20 +1422,77 @@ Scope {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
+                        ActionChip {
+                            pal: root.pal
+                            label: "Organise"
+                            implicitHeight: 32
+                            visible: root.notes.length >= 2
+                            on: root.orgOpen
+                            onClicked: root.orgOpen ? (root.orgOpen = false) : root.organise()
+                        }
+                        ActionChip {
+                            pal: root.pal
+                            label: "Clear completed"
+                            implicitHeight: 32
+                            visible: root.doneCount > 0
+                            onClicked: root.act(["clear"])
+                        }
+                        Item { Layout.fillWidth: true }
                         Hint {
                             pal: root.pal
+                            Layout.fillWidth: false
                             text: "From a terminal:  notes <text>"
                             color: Qt.alpha(root.pal.muted, 0.85)
                             fontFamily: root.pal.uiFont
                             pixelSize: 10
                         }
-                        Item { Layout.fillWidth: true }
-                        ActionChip {
-                            pal: root.pal
-                            label: "Clear completed"
-                            implicitHeight: 30
-                            visible: root.doneCount > 0
-                            onClicked: root.act(["clear"])
+                        // a new note: the writing box opens right under this window, the list stays
+                        RoundBtn { pal: root.pal; primary: true; size: 32; glyph: root.composing ? "✕" : "+"; onClicked: root.composing = !root.composing }
+                    }
+                }
+            }
+
+            // the + of the list: write a note here, right under the list (Enter saves it and the box goes back in, Esc closes it)
+            Glass {
+                id: composer
+                pal: root.pal
+                visible: opacity > 0.01
+                width: card.width
+                height: 64
+                anchors.horizontalCenter: card.horizontalCenter
+                anchors.top: card.bottom
+                anchors.topMargin: 12
+                radius: root.pal.rXl
+                opacityBody: root.pal.solid ? 1 : 0.92
+                opacity: root.composing ? an.reveal : 0
+                Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
+                MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
+                onVisibleChanged: if (visible && root.composing) Qt.callLater(function () { cin.forceActiveFocus() })
+                Rectangle {
+                    anchors { fill: parent; margins: 12 }
+                    radius: height / 2
+                    color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                    border.width: root.pal.zen && !cin.activeFocus ? 0 : 1
+                    border.color: cin.activeFocus ? root.pal.accent : root.pal.lineSoft
+                    TextInput {
+                        id: cin
+                        anchors { fill: parent; leftMargin: 18; rightMargin: 18 }
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        color: root.pal.text
+                        selectionColor: Qt.alpha(root.pal.accent, 0.4)
+                        font.family: root.pal.uiFont
+                        font.pixelSize: root.pal.tBody + 1
+                        // saved: the box goes back in and the list has the keyboard again
+                        Keys.onReturnPressed: { if (root.addNote(text)) { text = ""; root.composing = false; sin.forceActiveFocus() } }
+                        Keys.onEnterPressed: { if (root.addNote(text)) { text = ""; root.composing = false; sin.forceActiveFocus() } }
+                        Keys.onEscapePressed: { text = ""; root.composing = false; sin.forceActiveFocus() }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: cin.text === ""
+                            text: "A new note, then Enter"
+                            color: root.pal.muted
+                            font: cin.font
                         }
                     }
                 }

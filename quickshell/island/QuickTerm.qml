@@ -633,8 +633,8 @@ Scope {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     // Centred titles: in the middle (the "running" line takes the middle while a command runs)
-                    x: root.pal.centerTitles ? (parent.width - width) / 2 : 0
-                    visible: !(root.pal.centerTitles && root.busy)
+                    x: root.pal.centred ? (parent.width - width) / 2 : 0
+                    visible: !(root.pal.centred && root.busy)
                     text: "❯ halcyon"
                     color: root.pal.accent
                     font.family: root.mono
@@ -805,7 +805,7 @@ Scope {
                 width: Math.min(parent.width - 40, compCol.implicitWidth + 16)
                 height: compCol.implicitHeight + 12
                 radius: root.pal.rSm
-                color: Qt.alpha(root.pal.surface, 0.97)
+                color: root.pal.box(Qt.alpha(root.pal.surface, 0.97))
                 border.width: root.pal.calm ? 0 : 1
                 border.color: root.pal.line
                 Column {
