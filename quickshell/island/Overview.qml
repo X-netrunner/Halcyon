@@ -614,7 +614,6 @@ Item {
         if (e.key === Qt.Key_Escape && ov.dragState === "drag") { ov.cancelDrag(); e.accepted = true }
         else if (e.key === Qt.Key_Escape || e.key === Qt.Key_Q) { ov.closeRequested(); e.accepted = true }
         else if (e.key === Qt.Key_S) { ov.compactToggled(!ov.compactSpecial); e.accepted = true }
-        else if (e.key === Qt.Key_E || e.key === Qt.Key_P) { ov.editing = true; e.accepted = true }
     }
 
     // full-screen dim behind the tree. The compositor no longer blurs this layer (memory saving), so it is nearly solid:
@@ -1280,22 +1279,14 @@ Item {
             font.pixelSize: 22
             font.weight: Font.DemiBold
         }
-        Text {
-            x: ov.pal.centred ? (ovHead.width - width) / 2 : 0
-            text: ov.plural(ov.wsCount, "workspace") + " · " + ov.plural(ov.winCount, "window") + " · " + ov.hostName
-                  + (ov.totalRes !== "" ? "  ·  apps use " + ov.totalRes : "")
-            color: ov.pal.muted
-            font.family: ov.pal.uiFont
-            font.pixelSize: 12
-        }
     }
 
 
-    // ---- Halcyon's own footprint, under the header on the left: just a few quiet lines, a faint star for each bullet.
+    // ---- Halcyon's own footprint, top left (level with the title): just a few quiet lines, a faint star for each bullet
     Column {
         id: halCard
         x: 40
-        y: 34 + 54
+        y: 34
         width: 240
         spacing: 1
         opacity: ov.open ? 1 : 0
@@ -1339,71 +1330,44 @@ Item {
         y: 36
         spacing: 10
 
-        // compact specials toggle
-        Rectangle {
-            height: 34
-            width: tglRow.implicitWidth + 28
-            radius: 17
-            color: Qt.alpha(ov.pal.surface, tglMa.containsMouse ? 1 : 0.85)
-            border.width: 1
-            border.color: Qt.alpha(ov.pal.accent2, 0.35)
-            Behavior on color { ColorAnimation { duration: 140 } }
-            Row {
-                id: tglRow
-                anchors.centerIn: parent
-                spacing: 10
+        // compact special workspaces: one button that glows while it is on (S toggles it too)
+        // (Edit profile moved to Settings > Appearance > Profile)
+        Item {
+            width: tglBtn.width; height: tglBtn.height
+            Rectangle {
+                anchors.fill: tglBtn
+                anchors.margins: -5
+                radius: height / 2
+                color: ov.pal.accent
+                opacity: ov.compactSpecial ? 0.16 : 0
+                Behavior on opacity { NumberAnimation { duration: 220 } }
+            }
+            Rectangle {
+                id: tglBtn
+                height: 34
+                width: tglTxt.implicitWidth + 32
+                radius: 17
+                color: ov.compactSpecial ? Qt.alpha(ov.pal.accent, tglMa.containsMouse ? 0.30 : 0.22)
+                                         : (tglMa.containsMouse ? ov.pal.fillHover : ov.pal.fill)
+                border.width: ov.compactSpecial ? 1 : 0
+                border.color: Qt.alpha(ov.pal.accent, 0.55)
+                Behavior on color { ColorAnimation { duration: 160 } }
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Compact special workspaces"
-                    color: ov.pal.text
+                    id: tglTxt
+                    anchors.centerIn: parent
+                    text: "Compact specials"
+                    color: ov.compactSpecial ? ov.pal.chosenText : ov.pal.muted
                     font.family: ov.pal.uiFont
                     font.pixelSize: 12
+                    font.weight: ov.compactSpecial ? Font.DemiBold : Font.Normal
                 }
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 34; height: 18; radius: 9
-                    color: ov.compactSpecial ? ov.pal.accent2 : Qt.alpha(ov.pal.muted, 0.35)
-                    Behavior on color { ColorAnimation { duration: 160 } }
-                    Rectangle {
-                        y: 2
-                        x: ov.compactSpecial ? parent.width - width - 2 : 2
-                        width: 14; height: 14; radius: 7
-                        color: ov.pal.bg
-                        Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                    }
+                MouseArea {
+                    id: tglMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: ov.compactToggled(!ov.compactSpecial)
                 }
-            }
-            MouseArea {
-                id: tglMa
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: ov.compactToggled(!ov.compactSpecial)
-            }
-        }
-
-        Rectangle {
-            height: 34
-            width: edTxt.implicitWidth + 28
-            radius: 17
-            color: Qt.alpha(ov.pal.surface, edMa.containsMouse ? 1 : 0.85)
-            border.width: 1
-            border.color: Qt.alpha(ov.pal.accent, 0.35)
-            Behavior on color { ColorAnimation { duration: 140 } }
-            Text {
-                id: edTxt
-                anchors.centerIn: parent
-                text: String.fromCodePoint(0xF03EB) + "  Edit profile"
-                color: ov.pal.text
-                font.family: ov.pal.font
-                font.pixelSize: 12
-            }
-            MouseArea {
-                id: edMa
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: ov.editing = true
             }
         }
     }
@@ -1412,7 +1376,8 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 26
-        text: "Esc close"
+        text: ov.plural(ov.wsCount, "workspace") + "  ·  " + ov.plural(ov.winCount, "window") + "  ·  " + ov.hostName
+              + (ov.totalRes !== "" ? "  ·  apps use " + ov.totalRes : "")
         color: ov.pal.muted
         font.family: ov.pal.uiFont
         font.pixelSize: 11
