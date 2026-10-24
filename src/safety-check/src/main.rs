@@ -267,7 +267,7 @@ fn main() {
     notify("4/7 — Firewall Status", "normal", &real_user);
     // Halcyon's ai-firewall when it is installed (install.sh --firewall ai): its service conflicts with ufw's, so
     // "re-enabling" ufw here would switch ai-firewall off
-    if std::path::Path::new("/usr/local/bin/ai-firewall").exists() {
+    if command_exists("ai-firewall") {
         println!("{}", "  [EXEC] Running: systemctl is-active ai-firewall".bold().yellow());
         let active = Command::new("systemctl")
             .args(["is-active", "--quiet", "ai-firewall"])
