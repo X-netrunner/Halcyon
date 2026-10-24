@@ -491,17 +491,42 @@ fi
 # a leftover temporary sudo rule from a run that was killed halfway
 [[ -e /etc/sudoers.d/99-halcyon-installer-tmp ]] && as_root rm -f /etc/sudoers.d/99-halcyon-installer-tmp
 
+# your saved answers (see "your choices" below); defined here so the summary shows them instead of the defaults
+CHOICES_FILE="$TARGET_HOME/.local/state/island/install-choices.env"
+saved_choice() { [[ -f "$CHOICES_FILE" ]] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$CHOICES_FILE" | tail -n1 || true; }
+# what the summary should say for a yes/no extra: yes | no | ask (the menu below decides)
+planned_choice() {    # $1 = value now, $2 = decided on the command line, $3 = saved key
+    local saved
+    [[ "$2" == "true" || "$PACKAGES" != "true" ]] && { echo "$1"; return; }    # --no-packages: the menu and saved answers are skipped
+    saved=$(saved_choice "$3")
+    if [[ "$CHOOSE" == "true" || -z "$saved" ]]; then
+        [[ "$PACKAGES" == "true" && "$AUTO_CONFIRM" != "true" && -t 0 ]] && echo ask || echo "$1"
+    else [[ "$saved" == yes ]] && echo true || echo false; fi
+}
+
 if [[ "$DRY_RUN" != "true" ]]; then
+    plan_sysmode=$(planned_choice "$SYSMODE" "$SYSMODE_ASKED" SYSMODE)
+    plan_safety=$(planned_choice "$SAFETY" "$SAFETY_ASKED" SAFETY_CHECK)
+    plan_firewall="$PICK_FIREWALL"
+    [[ -z "$plan_firewall" && "$CHOOSE" != "true" && "$PACKAGES" == "true" ]] && plan_firewall=$(saved_choice FIREWALL)
+    [[ -z "$plan_firewall" && "$PACKAGES" == "true" && "$AUTO_CONFIRM" != "true" && -t 0 ]] && plan_firewall=ask
     echo
     echo -e "${BOLD}This will:${RESET}"
     [[ "$PACKAGES" == "true" ]] && echo "  - install missing packages with ${PKG_MGR:-package manager}$([[ "$PKG_MGR" == "pacman" ]] && echo " (and a few optional ones from the AUR)")"
     echo "  - copy Halcyon to ${TARGET_RICE} (an older copy is saved in ~/.config/Halcyon-backups)"
     echo "  - build the Rust helpers, set up the Hyprland entry, the login-screen session and the user services"
     [[ "$SKIP_TUNE" != "true" ]] && echo "  - install halcyon-tune and ONE sudo rule so Gaming mode / power manager / Wi-Fi power saving work without a password prompt"
-    [[ "$SYSMODE" == "true" ]]   && echo "  - install the sysmode hardening CLI and its boot service"
-    [[ "$SAFETY" == "true" ]]    && echo "  - install the safety check (ClamAV, rkhunter, lynis, AIDE, rsync) and add it to Settings > Backup"
-    case "$PICK_FIREWALL" in
+    case "$plan_sysmode" in
+        true) echo "  - install the sysmode hardening CLI and its boot service" ;;
+        ask)  echo "  - ask whether to install sysmode (the hardening CLI and its boot service)" ;;
+    esac
+    case "$plan_safety" in
+        true) echo "  - install the safety check (ClamAV, rkhunter, lynis, AIDE, rsync) and add it to Settings > Backup" ;;
+        ask)  echo "  - ask whether to add the safety check (ClamAV, rkhunter, lynis, AIDE, rsync)" ;;
+    esac
+    case "$plan_firewall" in
         ufw)  echo "  - set up ufw as the firewall (deny incoming, allow outgoing)" ;;
+        ask)  echo "  - ask which firewall to use (ai-firewall, ufw or none)" ;;
         none) ;;
         *)    echo "  - build and start ai-firewall (Halcyon's firewall) and add it to the island and Settings > Firewall" ;;
     esac
@@ -1095,9 +1120,7 @@ elif [[ ${#HAVE_GROUPS[@]} -gt 0 ]]; then log_success "$TARGET_USER is already i
 # Browser, file manager, code editor and sysmode are YOUR choice: a short menu (once), then remembered per user in
 # ~/.local/state/island/install-choices.env so update.sh installs the same things again without asking.
 # Order of precedence: option on the command line > the menu (terminal, no --yes) > what was saved > the default.
-CHOICES_FILE="$TARGET_HOME/.local/state/island/install-choices.env"
 have_any() { local c; for c in "$@"; do command -v "$c" >/dev/null 2>&1 && return 0; done; return 1; }
-saved_choice() { [[ -f "$CHOICES_FILE" ]] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$CHOICES_FILE" | tail -n1 || true; }
 
 # menu_pick OUTVAR "Title" "default ids" MULTI(0|1) "id|Label|note" ...   -> OUTVAR = the chosen ids (space separated)
 menu_pick() {
