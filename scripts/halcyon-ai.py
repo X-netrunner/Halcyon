@@ -257,6 +257,10 @@ def cmd_ask(args):
         hits = help_search(q)
         if hits and hits[0][0] >= HOWTO_MIN:
             return howto(q, hits)
+    if FIREWALL_Q.search(q) and shutil.which("ai-firewall"):
+        fw = firewall_ask(q)
+        if fw:
+            return fw
     ans = generate(q, system=(
         "You answer quick questions typed into a desktop launcher. Answer in one or two short sentences of plain text: no markdown, "
         "no lists, no preamble. If it is a calculation or a fact, give the result first. If you are not sure, say so briefly."),
@@ -265,6 +269,28 @@ def cmd_ask(args):
     if not ans:
         raise Fail("The model gave no answer.")
     return {"text": ans}
+
+
+# network trouble goes to ai-firewall's own assistant: it answers from live facts (its doctor checks, status, log) instead of
+# guessing, and only suggests commands from its fixed list. Plain questions that merely mention the internet still match, which is fine:
+# its answer is about this machine. Without ai-firewall the general model answers as before.
+FIREWALL_Q = re.compile(r"\b(firewall|blocked|banned|unban|ports?|vm|vms|virtual machine|libvirt|docker|containers?|ssh|dns|"
+                        r"no internet|internet (is )?(down|not working|broken)|can'?t (connect|reach)|network (is )?(down|broken|not working))\b", re.I)
+
+
+def firewall_ask(q):
+    try:
+        r = subprocess.run(["ai-firewall", "ask", q], capture_output=True, text=True, timeout=150)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0 or not r.stdout.strip():
+        return None
+    answer, _, suggested = r.stdout.partition("\nsuggested:")
+    text = " ".join(plain(answer).split())
+    cmds = [line.split("#")[0].strip() for line in suggested.splitlines() if line.strip().startswith("sudo ai-firewall")]
+    if cmds:
+        text += "  Suggested: " + "  |  ".join(cmds)
+    return {"text": text} if text else None
 
 
 # ------------------------------------------------------------------------------------------------ do: plain English -> one action
@@ -1244,7 +1270,7 @@ SEC_RE = re.compile(r"^(\d)/7 \u2014 (.+)$")
 TOOL_OF = {"1": "update", "2": "clamav", "3": "rkhunter", "4": "firewall", "5": "lynis", "6": "aide", "7": "backup"}
 TOOL_LABEL = {"update": "System update", "clamav": "ClamAV", "rkhunter": "rkhunter", "firewall": "Firewall", "lynis": "Lynis",
               "aide": "AIDE", "backup": "Backup"}
-PREFIX = re.compile(r"^(?:rkhunter stderr|rkhunter|AIDE stderr|AIDE|ufw status): ?")
+PREFIX = re.compile(r"^(?:rkhunter stderr|rkhunter|AIDE stderr|AIDE|ufw status|ai-firewall status): ?")
 
 # (tool, regex on the finding, verdict, why, how to check). "ok" = known harmless noise; "verify" = usually harmless, confirm it once;
 # a finding that matches nothing is "look". Order matters: the first match wins, so the dangerous patterns come first.
@@ -1282,7 +1308,7 @@ SAFETY_RULES = [
     ("aide", r"^/(usr|opt)/", "verify",
      "expected after a system update; unexpected if you did not update", "pacman -Qo THE_PATH && pacman -Qkk $(pacman -Qqo THE_PATH)"),
     ("firewall", r"INACTIVE", "verify", "the firewall was off and the check switched it back on; find out why it was off",
-     "systemctl is-enabled ufw; sudo ufw status verbose"),
+     "ai-firewall status || sudo ufw status verbose; journalctl -u ai-firewall -u ufw -n 20"),
     ("backup", r"not found|skipped|not connected|Failed to mount|not ext4", "verify",
      "not a security problem, but this time there is no backup", "plug in the backup disk and run the check again"),
 ]

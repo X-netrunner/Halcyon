@@ -69,6 +69,14 @@
 #                          install / update redoes it in your current colours. Without this option you are ASKED in a terminal;
 #                          with --yes and nothing saved it is only updated where it is already installed. Arch (mkinitcpio) only
 #   --no-plymouth          leave the boot splash alone (takes nothing out; scripts/halcyon-plymouth.sh remove does that)
+#   --firewall MODE        which firewall guards this machine: ai | ufw | none
+#                            ai    Halcyon's ai-firewall: a self-healing eBPF/XDP firewall that bans scanners by itself, with
+#                                  a page in the island and a dashboard (needs rustup nightly + bpf-linker to build; if it can't
+#                                  be built, ufw is set up instead so the machine is never left open)
+#                            ufw   the classic: deny incoming, allow outgoing
+#                            none  leave the firewall alone (nothing is installed or removed)
+#                          Asked on the first install and with --choose (default ai), then remembered. The source is
+#                          AIFW_REPO / AIFW_REV below, or a local checkout: AIFW_SRC=~/Projects/ai-firewall ./install.sh
 #   --luna / --no-luna     the extra: LUNA, a local AI assistant in Rust (https://github.com/X-netrunner/LUNA-AI), built from the
 #                          commit pinned below (LUNA_REV) into ~/.local/bin/luna. Asked on the first install and with --choose
 #                          (default no), then remembered. Only the program is installed: its daemon is never switched on for you.
@@ -115,6 +123,11 @@ VLM_DEFAULT_MODEL="qwen2.5vl:3b"                                       # the mod
 PICK_RENDERER=""      # auto | opengl | vulkan (see choose_renderer)
 INSTALL_PLYMOUTH=""; PLYMOUTH_ASKED=false      # the boot splash (see choose_plymouth); "" = not decided yet
 INSTALL_LUNA=false; LUNA_ASKED=false           # the LUNA extra (see choose_extras)
+PICK_FIREWALL=""                               # ai | ufw | none (see choose_apps); "" = not decided yet
+# ai-firewall source: a local checkout wins (AIFW_SRC), else this repository at AIFW_REV ("" = its default branch)
+AIFW_REPO="${AIFW_REPO:-https://github.com/X-netrunner/ai-firewall.git}"
+AIFW_REV="${AIFW_REV:-}"
+AIFW_SRC="${AIFW_SRC:-}"
 # LUNA is built from this exact commit, never from whatever is on main: move the pin when a LUNA version is ready for everyone
 LUNA_REPO="https://github.com/X-netrunner/LUNA-AI.git"
 LUNA_REV="9e79a8542a0c05bb882639103dacc425c22c857c"
@@ -218,6 +231,8 @@ while [[ $# -gt 0 ]]; do
         --renderer=*)       PICK_RENDERER="${1#--renderer=}"; [[ "$PICK_RENDERER" =~ ^(auto|opengl|vulkan)$ ]] || die "--renderer needs auto, opengl or vulkan" ;;
         --plymouth)         INSTALL_PLYMOUTH=true; PLYMOUTH_ASKED=true ;;
         --no-plymouth)      INSTALL_PLYMOUTH=false; PLYMOUTH_ASKED=true ;;
+        --firewall)         shift; PICK_FIREWALL="${1:-}"; [[ "$PICK_FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none (see --help)" ;;
+        --firewall=*)       PICK_FIREWALL="${1#--firewall=}"; [[ "$PICK_FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none (see --help)" ;;
         --luna)             INSTALL_LUNA=true; LUNA_ASKED=true ;;
         --no-luna)          INSTALL_LUNA=false; LUNA_ASKED=true ;;
         --choose)           CHOOSE=true ;;
@@ -484,7 +499,12 @@ if [[ "$DRY_RUN" != "true" ]]; then
     echo "  - build the Rust helpers, set up the Hyprland entry, the login-screen session and the user services"
     [[ "$SKIP_TUNE" != "true" ]] && echo "  - install halcyon-tune and ONE sudo rule so Gaming mode / power manager / Wi-Fi power saving work without a password prompt"
     [[ "$SYSMODE" == "true" ]]   && echo "  - install the sysmode hardening CLI and its boot service"
-    [[ "$SAFETY" == "true" ]]    && echo "  - install the safety check (ClamAV, rkhunter, lynis, AIDE, ufw, rsync) and add it to Settings > Backup"
+    [[ "$SAFETY" == "true" ]]    && echo "  - install the safety check (ClamAV, rkhunter, lynis, AIDE, rsync) and add it to Settings > Backup"
+    case "$PICK_FIREWALL" in
+        ufw)  echo "  - set up ufw as the firewall (deny incoming, allow outgoing)" ;;
+        none) ;;
+        *)    echo "  - build and start ai-firewall (Halcyon's firewall) and add it to the island and Settings > Firewall" ;;
+    esac
     confirm "Go ahead?" || { echo "Nothing was changed."; exit 0; }
 fi
 
@@ -1178,19 +1198,22 @@ detect_hardware_tier() {
 }
 
 choose_apps() {
-    local interactive=false have_b have_e s_b s_f s_e s_m s_s s_c s_l s_lm s_w s_wm s_v s_vm ask_b=false ask_f=false ask_e=false ask_m=false ask_s=false ask_c=false ask_l=false ask_w=false ask_v=false id kind
+    local interactive=false have_b have_e s_b s_f s_e s_m s_s s_c s_l s_lm s_w s_wm s_v s_vm s_fw ask_b=false ask_f=false ask_e=false ask_m=false ask_s=false ask_c=false ask_l=false ask_w=false ask_v=false ask_fw=false id kind
     local flag_b="$PICK_BROWSER" flag_f="$PICK_FILES" flag_e="$PICK_EDITOR" flag_m="$PICK_MUSIC"      # given on the command line
     [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
     s_b=$(saved_choice BROWSER); s_f=$(saved_choice FILES); s_e=$(saved_choice EDITOR); s_m=$(saved_choice MUSIC); s_s=$(saved_choice SYSMODE); s_c=$(saved_choice SAFETY_CHECK)
     s_l=$(saved_choice LLM); s_lm=$(saved_choice LLM_MODEL)
     s_w=$(saved_choice WHISPER); s_wm=$(saved_choice WHISPER_MODEL)
     s_v=$(saved_choice VLM); s_vm=$(saved_choice VLM_MODEL)
+    s_fw=$(saved_choice FIREWALL)
     have_any firefox chromium google-chrome-stable brave vivaldi-stable zen-browser librewolf floorp qutebrowser && have_b=true || have_b=false
     have_any codium code code-oss cursor zeditor zed subl kate nvim && have_e=true || have_e=false
     # saved sysmode answer (only when nothing on the command line decided it)
     [[ "$SYSMODE_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_s" ]] && { [[ "$s_s" == yes ]] && SYSMODE=true || SYSMODE=false; SYSMODE_ASKED=true; }
     # saved safety-check answer (same rule: the command line wins, --choose asks again)
     [[ "$SAFETY_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_c" ]] && { [[ "$s_c" == yes ]] && SAFETY=true || SAFETY=false; SAFETY_ASKED=true; }
+    # saved firewall answer (the command line wins, --choose asks again)
+    [[ -z "$PICK_FIREWALL" && "$CHOOSE" != "true" && -n "$s_fw" ]] && PICK_FIREWALL="$s_fw"
     # saved LLM answer
     [[ "$LLM_ASKED" != "true" && "$CHOOSE" != "true" && -n "$s_l" ]] && { [[ "$s_l" == yes ]] && INSTALL_LLM=true || INSTALL_LLM=false; PICK_LLM_MODEL="${s_lm:-$(detect_hardware_tier | cut -d'|' -f6)}"; LLM_ASKED=true; }
 
@@ -1206,10 +1229,11 @@ choose_apps() {
         [[ -z "$PICK_MUSIC"   && ( "$CHOOSE" == "true" || -z "$s_m" ) && "$INSTALL_APPS" == "true" ]] && ask_m=true
         [[ "$SYSMODE_ASKED" != "true" ]] && ask_s=true
         [[ "$SAFETY_ASKED" != "true" ]] && ask_c=true
+        [[ -z "$PICK_FIREWALL" ]] && ask_fw=true
         [[ "$LLM_ASKED" != "true" ]] && ask_l=true
         [[ "$WHISPER_ASKED" != "true" ]] && ask_w=true
         [[ "$VLM_ASKED" != "true" ]] && ask_v=true
-        if [[ "$ask_b$ask_f$ask_e$ask_m$ask_s$ask_c$ask_l$ask_w$ask_v" == *true* ]]; then
+        if [[ "$ask_b$ask_f$ask_e$ask_m$ask_s$ask_c$ask_fw$ask_l$ask_w$ask_v" == *true* ]]; then
             echo -e "\n${BOLD}Make it yours${RESET} ${DIM}(Enter takes the marked choice; ./install.sh --choose asks again later)${RESET}"
         fi
     fi
@@ -1246,10 +1270,17 @@ choose_apps() {
     # ---- safety check (default YES; say no and it is not installed, and its Settings entry is greyed out)
     if [[ "$ask_c" == "true" ]]; then
         echo -e "\n  ${CYAN}${BOLD}Safety check${RESET}  ${DIM}one command that updates the system, scans for malware and rootkits, checks the firewall, audits and can back up to a disk${RESET}"
-        echo -e "   ${DIM}installs clamav, rkhunter, lynis, aide, ufw and rsync, and adds \"Safety check\" to Settings > Backup. Enter = yes. Say no and that entry stays greyed out and disabled.${RESET}"
+        echo -e "   ${DIM}installs clamav, rkhunter, lynis, aide and rsync, and adds \"Safety check\" to Settings > Backup. Enter = yes. Say no and that entry stays greyed out and disabled.${RESET}"
         if confirm "  Add the safety check?"; then SAFETY=true; else SAFETY=false; fi
         SAFETY_ASKED=true
     fi
+    # ---- firewall (default: Halcyon's ai-firewall; say none and Settings > Firewall stays greyed out)
+    if [[ "$ask_fw" == "true" ]]; then
+        menu_pick PICK_FIREWALL "Firewall" "ai" 0 \
+            "ai|ai-firewall|Halcyon's: self-healing, bans scanners by itself, island page + dashboard (builds a few minutes)" \
+            "ufw|ufw|the classic: deny incoming, allow outgoing" \
+            "none|None|leave the firewall alone"
+    elif [[ -z "$PICK_FIREWALL" ]]; then PICK_FIREWALL="${s_fw:-ai}"; fi
     # ---- local AI advisor (Ollama)
     if [[ "$ask_l" == "true" ]]; then
         local hw_data IFS='|'
@@ -1338,7 +1369,7 @@ choose_apps() {
     # SUPER+M opens the first music player you picked; spotify itself is left to the automatic choice (spotify or spotify-launcher, whichever got installed)
     [[ ( -n "$flag_m" || "$ask_m" == true ) && "${PICK_MUSIC%% *}" == spotify-player ]] && APPLY_PICKS+=("music=spotify-player")
     id="${PICK_EDITOR%% *}"; [[ ( -n "$flag_e" || "$ask_e" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("editor=$(apps_id editor "$id")")
-    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)  ai-advisor=$([[ "$INSTALL_LLM" == true ]] && echo "$PICK_LLM_MODEL" || echo no)  whisper=$([[ "$INSTALL_WHISPER" == true ]] && echo "$PICK_WHISPER_MODEL" || echo no)  vision-model=$([[ "$INSTALL_VLM" == true ]] && echo "$PICK_VLM_MODEL" || echo no)"
+    log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)  firewall=${PICK_FIREWALL:-ai}  ai-advisor=$([[ "$INSTALL_LLM" == true ]] && echo "$PICK_LLM_MODEL" || echo no)  whisper=$([[ "$INSTALL_WHISPER" == true ]] && echo "$PICK_WHISPER_MODEL" || echo no)  vision-model=$([[ "$INSTALL_VLM" == true ]] && echo "$PICK_VLM_MODEL" || echo no)"
 }
 if [[ "$PACKAGES" == "true" && "$REMOVE_LOGIN" != "true" ]]; then choose_apps
 else PICK_BROWSER="${PICK_BROWSER:-keep}"; PICK_FILES="${PICK_FILES:-none}"; PICK_EDITOR="${PICK_EDITOR:-none}"; PICK_MUSIC="${PICK_MUSIC:-none}"; INSTALL_LLM="${INSTALL_LLM:-false}"; PICK_LLM_MODEL="${PICK_LLM_MODEL:-none}"; [[ "$INSTALL_WHISPER" == "true" && -z "$PICK_WHISPER_MODEL" ]] && PICK_WHISPER_MODEL=base; [[ "$INSTALL_VLM" == "true" && -z "$PICK_VLM_MODEL" ]] && PICK_VLM_MODEL="$VLM_DEFAULT_MODEL"; fi
@@ -2265,8 +2296,8 @@ fi
 # as you can change what you later start with sudo. Settings greys the entry out when /usr/local/bin/safety-check is missing.
 if [[ "$SAFETY" == "true" ]]; then
     if [[ "$PACKAGES" == "true" ]]; then
-        log_info "The safety check uses: clamav rkhunter lynis aide ufw rsync libnotify"
-        install_pkgs clamav rkhunter lynis aide ufw rsync libnotify
+        log_info "The safety check uses: clamav rkhunter lynis aide rsync libnotify (and checks whichever firewall you picked)"
+        install_pkgs clamav rkhunter lynis aide rsync libnotify
     fi
     if [[ "$DRY_RUN" == "true" ]] || [[ -f "$BIN_DIR/safety-check" ]]; then
         try run_cmd "Installing /usr/local/bin/safety-check (root-owned)" as_root install -Dm755 -o root -g root "$BIN_DIR/safety-check" /usr/local/bin/safety-check
@@ -2278,6 +2309,84 @@ elif [[ "$SAFETY_ASKED" == "true" && "$PACKAGES" == "true" && "$DRY_RUN" != "tru
     try run_cmd "Removing /usr/local/bin/safety-check (you chose no safety check)" as_root rm -f /usr/local/bin/safety-check
 else
     log_info "Safety check skipped: its entry in Settings > Backup stays greyed out (add it later: ./install.sh --safety-check)."
+fi
+
+# ---- firewall: ai-firewall (Halcyon's), ufw, or leave it alone
+# Exactly one of the two runs: ai-firewall's service conflicts with ufw's, and each branch switches the other one off.
+aifw_build() {
+    local src="$AIFW_SRC" tgt="$TARGET_HOME/.cache/halcyon-build/ai-firewall"
+    if [[ -z "$src" ]]; then
+        src="$TARGET_HOME/.local/src/ai-firewall"
+        command -v git >/dev/null 2>&1 || install_pkgs git
+        if [[ -d "$src/.git" ]]; then
+            run_as_user_cmd "ai-firewall: fetching" git -C "$src" fetch --quiet origin || return 1
+        else
+            run_as_user_cmd "ai-firewall: downloading" git clone --quiet "$AIFW_REPO" "$src" || return 1
+        fi
+        if [[ -n "$AIFW_REV" ]]; then
+            run_as_user_cmd "ai-firewall: version ${AIFW_REV:0:7}" git -C "$src" -c advice.detachedHead=false checkout --quiet --force "$AIFW_REV" || return 1
+        else
+            run_as_user_cmd "ai-firewall: latest version" git -C "$src" pull --quiet --ff-only || return 1
+        fi
+    fi
+    [[ -f "$src/Cargo.toml" ]] || return 1
+    # the eBPF half needs nightly with rust-src, and bpf-linker
+    if ! run_as_user rustup toolchain list 2>/dev/null | grep -q '^nightly'; then
+        run_as_user bash -c 'command -v rustup' >/dev/null 2>&1 || return 1
+        run_as_user_cmd "ai-firewall: Rust nightly (for the eBPF half)" rustup toolchain install nightly --component rust-src --profile minimal || return 1
+    fi
+    if ! run_as_user bash -c 'PATH="$HOME/.local/bin:$PATH"; command -v bpf-linker' >/dev/null 2>&1; then
+        run_as_user_cmd "ai-firewall: bpf-linker (a few minutes)" cargo install --locked bpf-linker || return 1
+    fi
+    run_as_user_cmd "ai-firewall: building (a few minutes)" env PATH="$TARGET_HOME/.cargo/bin:$TARGET_HOME/.local/bin:$PATH" CARGO_TARGET_DIR="$tgt" \
+        cargo +nightly build --release --locked --manifest-path "$src/Cargo.toml" -p ai-firewall || return 1
+    AIFW_BUILT="$tgt/release/ai-firewall"; AIFW_UNIT="$src/packaging/ai-firewall.service"
+    [[ -x "$AIFW_BUILT" && -f "$AIFW_UNIT" ]]
+}
+aifw_install() {
+    if ! aifw_build; then
+        if [[ -x /usr/local/bin/ai-firewall ]]; then
+            warn_later "ai-firewall could not be updated (see the log), so the installed version stays in charge. Retry: ./install.sh --firewall ai"
+            as_root systemctl enable --now ai-firewall.service >/dev/null 2>&1 || true
+            return 0
+        fi
+        warn_later "ai-firewall could not be built (it needs rustup with nightly + rust-src, and bpf-linker; see the log). ufw was set up instead. Retry: ./install.sh --firewall ai"
+        ufw_install
+        return 0
+    fi
+    run_cmd "ai-firewall: installing /usr/local/bin/ai-firewall" as_root install -Dm755 -o root -g root "$AIFW_BUILT" /usr/local/bin/ai-firewall || { warn_later "ai-firewall: could not install the program"; return 0; }
+    run_cmd "ai-firewall: installing its service" as_root install -Dm644 "$AIFW_UNIT" /etc/systemd/system/ai-firewall.service || true
+    if [[ "$DRY_RUN" != "true" && ! -f /etc/ai-firewall/config.toml ]]; then
+        /usr/local/bin/ai-firewall default-config | as_root install -Dm644 /dev/stdin /etc/ai-firewall/config.toml || true
+    fi
+    if command -v ufw >/dev/null 2>&1; then as_root ufw --force disable >/dev/null 2>&1 || true; fi
+    as_root systemctl disable --now ufw.service firewalld.service >/dev/null 2>&1 || true
+    as_root systemctl daemon-reload || true
+    try run_cmd "ai-firewall: starting (it replaces ufw)" as_root systemctl enable --now ai-firewall.service
+    as_root systemctl restart ai-firewall.service >/dev/null 2>&1 || true      # pick up a new build; filtering never stops (pinned links)
+    log_success "ai-firewall is guarding this machine: the island page (>firewall in the launcher), Settings > Firewall, or  sudo ai-firewall top"
+}
+ufw_install() {
+    [[ "$PACKAGES" == "true" ]] && install_pkgs ufw
+    command -v ufw >/dev/null 2>&1 || { warn_later "ufw is not installed, so no firewall was set up"; return 0; }
+    if [[ -x /usr/local/bin/ai-firewall ]]; then
+        as_root /usr/local/bin/ai-firewall off >/dev/null 2>&1 || true
+        as_root systemctl disable ai-firewall.service >/dev/null 2>&1 || true
+    fi
+    as_root ufw default deny incoming >/dev/null || true
+    as_root ufw default allow outgoing >/dev/null || true
+    try run_cmd "ufw: switching on" as_root ufw --force enable
+    as_root systemctl enable ufw.service >/dev/null 2>&1 || true
+    log_success "ufw is the firewall (deny incoming, allow outgoing)"
+}
+if [[ "$DRY_RUN" == "true" ]]; then
+    log_info "Firewall: ${PICK_FIREWALL:-ai} (dry run: nothing changed)"
+else
+    case "${PICK_FIREWALL:-ai}" in
+        ai)   aifw_install ;;
+        ufw)  ufw_install ;;
+        none) log_info "Firewall: left alone (Settings > Firewall stays greyed out; add one later: ./install.sh --firewall ai)" ;;
+    esac
 fi
 
 # ---------------------------------------------------------------------------------------------- step 12
@@ -2305,7 +2414,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "FIREWALL=${PICK_FIREWALL:-ai}" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
     user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} || true
 elif [[ -n "$PICK_RENDERER" ]]; then
@@ -2475,6 +2584,7 @@ echo -e "  ${MAGENTA}Super + Q${RESET}         Close window      ${MAGENTA}Super
 echo -e "  ${MAGENTA}Super + /${RESET}         All shortcuts     ${MAGENTA}Super + L${RESET}         Lock screen"
 echo -e "  ${MAGENTA}Super + Ctrl + ←/→${RESET}  Previous / next workspace (a new one after the last)"
 [[ "$SAFETY" == "true" ]] && echo -e "  ${MAGENTA}Settings > Backup${RESET}   Safety check (update, malware / rootkit scan, firewall, backup)"
+[[ -x /usr/local/bin/ai-firewall && "${PICK_FIREWALL:-ai}" == "ai" ]] && echo -e "  ${MAGENTA}>firewall${RESET}           ai-firewall: the island page (launcher), its dashboard:  sudo ai-firewall top"
 echo
 echo -e "${DIM}Update later: ~/.config/Halcyon/update.sh     ·     Settings: from the island     ·     Log of this run: ${LOG_FILE}${RESET}"
 echo
