@@ -16,7 +16,7 @@
 #    3  graphics drivers + CPU microcode: NVIDIA (open / legacy, by GPU generation), Intel, AMD, hybrid laptops (detected)
 #    4  audio (+ firmware), Bluetooth, network, power services, input / video groups
 #    5  Hyprland, Quickshell and the desktop packages + YOUR apps: you pick the web browser, the file manager (Thunar, Yazi,
-#       Dolphin, ...), the code editor (VSCodium, Zed, ...) and whether to install sysmode and the safety check; plus foot, Discord and the music player(s) you pick (Spotify, spotify-player)
+#       Dolphin, ...), the code editor (VSCodium, Zed, ...) and whether to install sysmode and the safety check; plus foot, Discord and the music player(s) you pick (Spotify, spotify-player, ncspot)
 #    6  Rust toolchain (for the helpers below)
 #    7  copies the rice to ~/.config/Halcyon (an older copy is backed up; your hypr-user.lua, scheme/current.lua and
 #       gamemode.conf are kept)
@@ -47,7 +47,7 @@
 #   --browser ID           firefox | zen | librewolf | floorp | chromium | brave | vivaldi | chrome | qutebrowser | keep
 #   --files ID[,ID]        thunar | yazi | dolphin | nautilus | nemo | pcmanfm | none   (the first one opens folders: SUPER+E)
 #   --editor ID[,ID]       codium | zeditor | neovim | none                              (the first one is SUPER+C)
-#   --music ID[,ID]        spotify | spotify-player | none                               (the first one is SUPER+M; several are fine)
+#   --music ID[,ID]        spotify | spotify-player | ncspot | none                              (the first one is SUPER+M; several are fine)
 #   --sysmode              install sysmode without asking (--no-sysmode: skip it)
 #   --safety-check         install the safety check (system update, malware / rootkit scan, firewall, audit, backup) without asking
 #                          (--no-safety-check: skip it; its entry in Settings > Backup is then greyed out and disabled)
@@ -1136,11 +1136,12 @@ files_pkgs()   { case "$1" in thunar) echo thunar thunar-archive-plugin thunar-v
                   nautilus) echo nautilus gvfs gvfs-mtp file-roller ;; nemo) echo nemo nemo-fileroller gvfs gvfs-mtp ;; pcmanfm) echo pcmanfm-gtk3 gvfs gvfs-mtp ;; esac; }
 editor_pkgs()  { case "$1" in codium) echo vscodium-bin ;; zeditor) echo zed ;; neovim) echo neovim ;; esac; }
 # Spotify: the official client through spotify-launcher (AUR 'spotify' only when that package does not exist), + spicetify to theme it.
-# spotify-player: Spotify in the terminal (needs Premium), themed by scripts/app-themes.sh.
+# spotify-player / ncspot: Spotify in the terminal (both need Premium), themed by scripts/app-themes.sh. ncspot's queue shows in the
+# island's Queue tab (scripts/halcyon-music.py reads what ncspot shares).
 music_pkgs()   { case "$1" in
                   spotify) if ! pkg_missing spotify || ! pkg_missing spotify-launcher; then echo spicetify-cli
                            elif [[ "$PKG_MGR" == "pacman" ]] && pacman -Si spotify-launcher >/dev/null 2>&1; then echo spotify-launcher spicetify-cli; else echo spotify spicetify-cli; fi ;;
-                  spotify-player) echo spotify-player ;; esac; }
+                  spotify-player) echo spotify-player ;; ncspot) echo ncspot ;; esac; }
 choice_bin()   { case "$1:$2" in
                   browser:zen) echo zen-browser ;; browser:chrome) echo google-chrome-stable ;; browser:vivaldi) echo vivaldi-stable ;;
                   files:pcmanfm) echo pcmanfm ;; editor:neovim) echo nvim ;; music:spotify-player) echo spotify_player ;; music:spotify) echo spotify-launcher ;; *) echo "$2" ;; esac; }
@@ -1258,7 +1259,8 @@ choose_apps() {
     # ---- music player(s): several are fine (the first one is what SUPER+M opens)
     if [[ "$ask_m" == "true" ]]; then
         menu_pick PICK_MUSIC "Music player" "spotify" 1 "spotify|Spotify|the official client (spotify-launcher), themed with spicetify" \
-            "spotify-player|spotify-player|Spotify in the terminal, themed by Halcyon (needs Premium)" "none|None|I have one / skip"
+            "spotify-player|spotify-player|Spotify in the terminal, themed by Halcyon (needs Premium)" \
+            "ncspot|ncspot|light and fast Spotify in the terminal, themed by Halcyon, its queue in the island (needs Premium)" "none|None|I have one / skip"
     elif [[ -z "$PICK_MUSIC" ]]; then PICK_MUSIC="${s_m:-$([[ "$INSTALL_APPS" == true ]] && echo spotify || echo none)}"; fi
     # ---- sysmode
     if [[ "$ask_s" == "true" ]]; then
@@ -1367,7 +1369,7 @@ choose_apps() {
     [[ ( -n "$flag_b" || "$ask_b" == true ) && "$PICK_BROWSER" != keep ]] && APPLY_PICKS+=("browser=$PICK_BROWSER")
     id="${PICK_FILES%% *}";  [[ ( -n "$flag_f" || "$ask_f" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("files=$id")
     # SUPER+M opens the first music player you picked; spotify itself is left to the automatic choice (spotify or spotify-launcher, whichever got installed)
-    [[ ( -n "$flag_m" || "$ask_m" == true ) && "${PICK_MUSIC%% *}" == spotify-player ]] && APPLY_PICKS+=("music=spotify-player")
+    [[ ( -n "$flag_m" || "$ask_m" == true ) && ( "${PICK_MUSIC%% *}" == spotify-player || "${PICK_MUSIC%% *}" == ncspot ) ]] && APPLY_PICKS+=("music=${PICK_MUSIC%% *}")
     id="${PICK_EDITOR%% *}"; [[ ( -n "$flag_e" || "$ask_e" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("editor=$(apps_id editor "$id")")
     log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)  firewall=${PICK_FIREWALL:-ai}  ai-advisor=$([[ "$INSTALL_LLM" == true ]] && echo "$PICK_LLM_MODEL" || echo no)  whisper=$([[ "$INSTALL_WHISPER" == true ]] && echo "$PICK_WHISPER_MODEL" || echo no)  vision-model=$([[ "$INSTALL_VLM" == true ]] && echo "$PICK_VLM_MODEL" || echo no)"
 }
