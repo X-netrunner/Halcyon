@@ -145,12 +145,14 @@ starship_sysmode_sync() {
   [ -f "$f" ] && grep -qF "halcyon-sysmode-badge" "$f" 2>/dev/null || return 0
   [ "$(prompt_choice)" = keep ] && return 0
   if [ -x /usr/local/bin/sysmode ] || have sysmode; then want=on; else want=off; fi
+  # you said no to sysmode at install (a copy left from before may still be there): no badge either
+  grep -qx 'SYSMODE="no"' "$HOME/.local/state/island/install-choices.env" 2>/dev/null && want=off
   awk -v want="$want" '
     /^\[/ { intab = ($0 == "[custom.sysmode]"); print; if (intab && want == "off") print "disabled = true"; next }
     intab && /^[[:space:]]*disabled[[:space:]]*=/ { next }
     { print }' "$f" > "$f.new" 2>/dev/null || { rm -f "$f.new"; return 0; }
   if cmp -s "$f" "$f.new"; then rm -f "$f.new"
-  else mv "$f.new" "$f" && echo "   starship: sysmode badge $([ "$want" = on ] && echo 'on (sysmode is installed)' || echo 'off (sysmode is not installed: nothing is checked before every prompt)')"; fi
+  else mv "$f.new" "$f" && echo "   starship: sysmode badge $([ "$want" = on ] && echo 'on (sysmode is installed)' || echo 'off (sysmode is not installed or not chosen: nothing is checked before every prompt)')"; fi
 }
 starship_theme() {
   local f="$HOME/.config/starship.toml" B="# >>> HALCYON STARSHIP PALETTE >>>" E="# <<< HALCYON STARSHIP PALETTE <<<"
