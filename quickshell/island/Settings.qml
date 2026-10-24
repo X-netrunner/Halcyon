@@ -961,7 +961,12 @@ Scope {
         ]).concat(root.remindRows("SAFETY", "Remind me to run the safety check", "Same, for the safety check (by hand or automatic, either counts as done).", "safety")).concat([
             { type: "custom", name: "safetyAuto" },
             { type: "custom", name: "counterScan", when: "sysmode=stealth|hacking", label: "Counter-scan attackers (nmap)", desc: "stealth mode only: scan back whoever probes the decoys. Once on it stays on until you turn it off." }
-        ]) }
+        ]) },
+        { id: "firewall", title: "Firewall", section: "System", items: [
+            { type: "acts", needs: "firewall", label: "ai-firewall", desc: "Halcyon's firewall: incoming connections are refused unless you open a port, and anything that scans or floods this machine is banned for a while (longer each time). Status page: the island page (also >firewall in the launcher). Dashboard: live counters, bans and detections in a terminal. Ask: ask it why something on the network doesn't work.", btns: [{ id: "fw-page", btn: "Status page", done: "", close: true }, { id: "fw-top", btn: "Dashboard", done: "Opening…" }, { id: "fw-ask", btn: "Ask", done: "Opening…" }] },
+            { type: "action", needs: "firewall", id: "fw-doctor", label: "Network doctor", btn: "Check the network", done: "Opening…", desc: "Checks the firewall, the internet, DNS and VM / container networking, and offers a fix for each problem it can solve (you confirm each one). Opens a terminal; asks for your admin password." },
+            { type: "action", adv: true, needs: "firewall", id: "fw-config", label: "Firewall config", btn: "Edit config", done: "", desc: "/etc/ai-firewall/config.toml: open ports, ping, trusted and blocked addresses, how quickly it bans, the assistant's model. Saved changes apply within 3 seconds; a broken edit is ignored and the last good config stays." }
+        ] }
     ]
 
     // ---- reading and formatting values
@@ -1009,7 +1014,9 @@ Scope {
     function descOf(m) {
         if (m.dis !== undefined) return "Turned off"
         var off = isOff(m)
-        return off ? "Not installed, so this is switched off. Add it with ./install.sh --safety-check (or ./install.sh --choose and answer yes), then open Settings again."
+        return off ? (m.needs === "firewall"
+                ? "ai-firewall is not installed, so this is switched off. Add it with ./install.sh --firewall ai (or ./install.sh --choose), then open Settings again."
+                : "Not installed, so this is switched off. Add it with ./install.sh --safety-check (or ./install.sh --choose and answer yes), then open Settings again.")
             : (m.key === "nightlight" && !root.tools.nightlightOk) ? "hyprsunset is not installed (pacman -S hyprsunset / apt install hyprsunset)"
             : (m.key === "st:NM_APPLET" && root.startup.has && !root.startup.has.nm) ? "nm-applet is not installed (pacman -S network-manager-applet / apt install network-manager-gnome)"
             : (m.key === "st:BLUEMAN" && root.startup.has && !root.startup.has.blueman) ? "blueman is not installed (pacman -S blueman / apt install blueman)"
@@ -1080,7 +1087,7 @@ Scope {
         { id: "Input & power", sub: "Mouse, touchpad, gestures, mouse buttons, keyboard, power and the lock screen.", groups: ["mouse", "keyboard", "gestures", "mousebtn", "power"] },
         { id: "Performance", sub: "Profiles, safe mode, speed, memory limits, the tree view and suggestions.", groups: ["performance", "treeview", "profiles", "suggestions"] },
         { id: "System", sub: "Preferences, timeouts, login manager, startup and apps.", groups: ["sysoptions", "startup", "apps"] },
-        { id: "Backup", sub: "Backups, restore and the safety check.", groups: ["backup"] }
+        { id: "Backup", sub: "Backups, restore, the safety check and the firewall.", groups: ["backup", "firewall"] }
     ]
     property string page: "Discover"
     function pageOf(gid) { for (var i = 0; i < pages.length; i++) if (pages[i].groups.indexOf(gid) >= 0) return pages[i].id; return "Appearance" }

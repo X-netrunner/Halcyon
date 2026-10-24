@@ -349,6 +349,9 @@ ShellRoot {
     // ---------- state ----------
     // media | home | perf | launcher
     property string page: "home"
+    // ai-firewall installed? (install.sh --firewall ai) Its launcher commands are only listed then; checked once at start
+    property bool fwInstalled: false
+    Process { running: true; command: ["test", "-x", "/usr/local/bin/ai-firewall"]; onExited: code => root.fwInstalled = code === 0 }
 
     // ---- Settings > Bar style > Drag the bar down: the utilities box (and the notifications) hang from the bar as two more pages, "util" and "notif"
     readonly property string dropMode: (opt.dropDown === "stack" || opt.dropDown === "side") ? opt.dropDown : "off"
@@ -651,6 +654,14 @@ ShellRoot {
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
+            else if (id === "fw-page") root.page = "fw"
+            else if (id === "fw-top" || id === "fw-ask" || id === "fw-doctor" || id === "fw-config") {
+                var fwCmd = id === "fw-top" ? "sudo ai-firewall top"
+                          : id === "fw-ask" ? "sudo ai-firewall top --ask"
+                          : id === "fw-doctor" ? "sudo ai-firewall doctor --fix; echo; read -n1 -r -p 'Press any key to close '"
+                          : "sudoedit /etc/ai-firewall/config.toml"
+                Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", fwCmd])
+            }
             else if (id === "fx-safe-on") root.fxRun(["safe-mode", "on"])
             else if (id === "fx-safe-off") root.fxRun(["safe-mode", "back"])
             else if (id === "adapt-reset") Quickshell.execDetached([Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "adapt-reset"])
@@ -1146,7 +1157,7 @@ ShellRoot {
             root.tourAuto()
         }
     }
-    function tourPlan(mode) { return TourData.plan(mode, tourCur, tourSeenFile, { sysmode: cmdTree.available }) }
+    function tourPlan(mode) { return TourData.plan(mode, tourCur, tourSeenFile, { sysmode: cmdTree.available, firewall: root.fwInstalled }) }
     function tourAuto() {
         if (!tourCur) return
         var plan = tourPlan(tourMode)
@@ -1168,8 +1179,8 @@ ShellRoot {
     // hover timers elsewhere would otherwise fold a page or box back by themselves.
     readonly property var tourBigDemos: ["cheat", "cmds", "tree", "settings", "calendar"]
     function tourApply(name) {
-        if (name === "perf" || name === "media" || name === "launcher") { if (page !== name) page = name }
-        else if (page === "perf" || page === "media" || page === "launcher") page = "home"
+        if (name === "perf" || name === "media" || name === "launcher" || name === "fw") { if (page !== name) page = name }
+        else if (page === "perf" || page === "media" || page === "launcher" || page === "fw") page = "home"
         if (!dropOn) {
             if (name === "corner") corner.pinFor(600000)
             else if (corner.hovering) corner.hovering = false
@@ -1194,6 +1205,7 @@ ShellRoot {
         case "launcher": return page === "launcher"
         case "media": return page === "media"
         case "perf": return page === "perf"
+        case "fw": return page === "fw"
         case "notifs": return notifs.centerOpen || (dropOn && (page === "notif" || (dropSide && page === "util")))
         case "term": return quickTerm.open
         case "cheat": return cheat.open
@@ -1231,7 +1243,7 @@ ShellRoot {
     }
     function tourRect(name, sw, sh) {
         switch (name) {
-        case "bar": case "perf": case "media": return tourBarRect()          // pages are the island itself, grown
+        case "bar": case "perf": case "media": case "fw": return tourBarRect()          // pages are the island itself, grown
         case "corner":
             if (dropOn) return null
             return { x: corner.atR ? sw - pal.boxEdge - panel.width : pal.boxEdge,
@@ -1910,6 +1922,8 @@ ShellRoot {
             return
         }
         switch (id) {
+        case "firewall": Qt.callLater(() => { root.page = "fw" }); return      // after the launcher's own close (which sets home)
+        case "firewall-dashboard": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", "sudo ai-firewall top"]); break
         case "wallpaper": randomWallpaper(); break
         case "wallpaper-back": wallpaperLayer.back(); break
         case "wallpaper-keep": wallpaperLayer.keep(); break
@@ -2595,6 +2609,7 @@ ShellRoot {
         function home(): void { root.page = "home" }
         function media(): void { root.page = "media" }
         function perf(): void { root.page = "perf" }
+        function firewall(): void { root.page = root.page === "fw" ? "home" : "fw" }      // ai-firewall status page (FwPage.qml)
         function panel(): void { if (!root.dropShow("util")) corner.pinFor(6000) }
         function autohide(): void { root.setAutoHide(!root.autoHide) }
         function barstyle(): void { root.runCommand("barstyle") }
@@ -2914,6 +2929,7 @@ ShellRoot {
             width: root.page === "home" ? (root.notchStyle ? root.notchBodyW : home.implicitWidth + root.padSet.x)
                  : root.page === "media" ? 500
                  : root.page === "perf" ? 720
+                 : root.page === "fw" ? 720
                  : root.page === "cal" ? 660
                  : root.page === "util" ? root.dropW
                  : root.page === "notif" ? root.dropNotifW
@@ -2921,6 +2937,7 @@ ShellRoot {
             height: root.page === "home" ? (root.notchStyle ? root.notchBarH : root.padSet.h)
                   : (root.page === "media" ? 156
                   : root.page === "perf" ? 316
+                  : root.page === "fw" ? 330
                   : root.page === "cal" ? 356
                   : root.page === "util" ? root.dropH
                   : root.page === "notif" ? root.dropNotifH
@@ -2960,7 +2977,7 @@ ShellRoot {
                     var l = root.opt.scrollLinger !== undefined ? root.opt.scrollLinger : 3000
                     return root.scrollOpened ? Math.max(c, l) : c
                 }
-                running: (root.opt.pageClose === 0 ? false : ((root.page === "media" || root.page === "perf" || (root.page === "cal" && island.calArmed) || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open))
+                running: (root.opt.pageClose === 0 ? false : ((root.page === "media" || root.page === "perf" || root.page === "fw" || (root.page === "cal" && island.calArmed) || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open))
                 onTriggered: { root.page = "home"; root.hoverOpened = false; root.scrollOpened = false }
             }
 
@@ -3112,6 +3129,16 @@ ShellRoot {
                     onToggleBt: root.toggleBt()
                     onSetProfile: p => root.setProfile(p)
                     onSetAuto: root.setAuto()
+                }
+
+                // ---- the firewall page (`qs ipc call island firewall`): what ai-firewall is doing right now
+                FwPage {
+                    anchors.fill: parent
+                    pal: pal
+                    active: root.page === "fw"
+                    opacity: root.page === "fw" ? 1 : 0
+                    visible: opacity > 0.01
+                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
                 }
 
                 // ---- the calendar page: the bar clock drops it out of the bar (Settings > Calendar > Clock click)
@@ -3327,6 +3354,7 @@ ShellRoot {
                 height: launcher.wantedHeight - 44
                 pal: pal
                 runningGame: root.gameId
+                firewallInstalled: root.fwInstalled
                 active: root.page === "launcher"
                 opacity: root.page === "launcher" ? 1 : 0
                 visible: opacity > 0.01

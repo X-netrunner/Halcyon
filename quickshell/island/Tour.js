@@ -4,10 +4,11 @@
 //   mode "fresh"  : first install, or `>tour` replay      -> every entry
 //   mode "legacy" : existing user, never saw a tour        -> entries that are not "core"
 //   mode "seen"   : the user has a copy of features.json   -> entries that are new in the current file, or whose rev went up
-// cur / seen are the parsed features.json files; env = { sysmode: bool }.
+// cur / seen are the parsed features.json files; env = { sysmode: bool, firewall: bool }.
 
 function usable(f, env) {
     if (f.only === "sysmode" && !env.sysmode) return false
+    if (f.only === "firewall" && !env.firewall) return false      // ai-firewall was not picked (install.sh --firewall)
     return true
 }
 

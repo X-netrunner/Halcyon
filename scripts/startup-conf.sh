@@ -35,7 +35,7 @@ write_conf() {   # rewrite our keys, keep any other line the user added
 
 case "${1:-list}" in
   list)
-    nm=false; bl=false; hp=false; gn=false; kd=false; nv=false; sf=false
+    nm=false; bl=false; hp=false; gn=false; kd=false; nv=false; sf=false; fw=false
     have nm-applet && nm=true
     have blueman-applet && bl=true
     exists /usr/lib/hyprpolkitagent/hyprpolkitagent && hp=true
@@ -43,10 +43,11 @@ case "${1:-list}" in
     exists /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 && kd=true
     [ -r /proc/driver/nvidia/version ] && nv=true
     [ -x /usr/local/bin/safety-check ] && sf=true      # the optional safety check (install.sh asks): Settings greys its entry out without it
+    [ -x /usr/local/bin/ai-firewall ] && fw=true       # ai-firewall (install.sh --firewall ai): Settings > Firewall greys out without it
     case "$PORTAL" in demand) ;; *) PORTAL=login ;; esac
-    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","CLIPBOARD":%s,"GESTURES":%s,"AUDIO_FOCUS":%s,"AUDIO_RESUME":%s,"AUDIO_DELAY":"%s","PORTAL":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s,"safety":%s}}\n' \
+    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","CLIPBOARD":%s,"GESTURES":%s,"AUDIO_FOCUS":%s,"AUDIO_RESUME":%s,"AUDIO_DELAY":"%s","PORTAL":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s,"safety":%s,"firewall":%s}}\n' \
       "$([ "$NM_APPLET" = 1 ] && echo true || echo false)" "$([ "$BLUEMAN" = 1 ] && echo true || echo false)" \
-      "$POLKIT" "$(gpu_now)" "$(files_now)" "$([ "$CLIPBOARD" = 1 ] && echo true || echo false)" "$([ "$GESTURES" = 1 ] && echo true || echo false)" "$([ "$AUDIO_FOCUS" = 1 ] && echo true || echo false)" "$([ "$AUDIO_RESUME" = 1 ] && echo true || echo false)" "$AUDIO_DELAY" "$PORTAL" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv" "$sf"
+      "$POLKIT" "$(gpu_now)" "$(files_now)" "$([ "$CLIPBOARD" = 1 ] && echo true || echo false)" "$([ "$GESTURES" = 1 ] && echo true || echo false)" "$([ "$AUDIO_FOCUS" = 1 ] && echo true || echo false)" "$([ "$AUDIO_RESUME" = 1 ] && echo true || echo false)" "$AUDIO_DELAY" "$PORTAL" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv" "$sf" "$fw"
     ;;
   set)
     key="$2"; val="$3"

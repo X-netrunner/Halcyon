@@ -95,6 +95,13 @@ rep, key, _ = run(sec(7, "Backup to External Drive") + "[10:00:02] ⚠ Device /d
 check("skipped backup -> verify", key, "verify")
 rep, key, _ = run(sec(4, "Firewall Status") + "[10:00:04] ufw status: Status: inactive\n[10:00:04] ⚠ Firewall is INACTIVE. Enabling...\n" + CLEAN)
 check("firewall was off -> verify", key, "verify")
+# ai-firewall in place of ufw (install.sh --firewall ai): same verdicts, its own log line
+AIFW = CLEAN.replace("ufw status: Status: active\n[10:00:04] ✓ Firewall is active", "ai-firewall status: Status: active\n[10:00:04] ✓ Firewall is active (ai-firewall)")
+rep, key, items = run(AIFW)
+check("ai-firewall active -> good", key, "good")
+check("ai-firewall active is counted", "firewall active" in rep, True)
+rep, key, _ = run(sec(4, "Firewall Status") + "[10:00:04] ai-firewall status: Status: inactive\n[10:00:04] ⚠ Firewall is INACTIVE. Starting ai-firewall...\n" + CLEAN)
+check("ai-firewall was off -> verify", key, "verify")
 
 # a tool that is not installed means that part was not checked: say so, do not claim a full pass
 rep, key, _ = run(sec(3, "rkhunter Rootkit Check") + "[10:00:02] ! rkhunter not installed\n" + CLEAN)
