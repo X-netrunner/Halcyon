@@ -46,7 +46,7 @@ editors=(
 )
 # music players
 musics=(
-  "spotify|Spotify|spotify|spotify.desktop|0" "spotify-launcher|Spotify (launcher)|spotify-launcher||0" "spotify-player|Spotify Player (terminal)|spotify_player||1" "strawberry|Strawberry|strawberry|org.strawberrymusicplayer.strawberry.desktop|0"
+  "spotify|Spotify|spotify|spotify.desktop|0" "spotify-launcher|Spotify (launcher)|spotify-launcher||0" "spotify-player|Spotify Player (terminal)|spotify_player||1" "ncspot|ncspot (terminal)|ncspot||1" "strawberry|Strawberry|strawberry|org.strawberrymusicplayer.strawberry.desktop|0"
   "rhythmbox|Rhythmbox|rhythmbox|org.gnome.Rhythmbox3.desktop|0" "lollypop|Lollypop|lollypop|org.gnome.Lollypop.desktop|0" "amberol|Amberol|amberol|io.bassi.Amberol.desktop|0"
   "elisa|Elisa|elisa|org.kde.elisa.desktop|0" "clementine|Clementine|clementine|org.clementine_player.Clementine.desktop|0" "deadbeef|DeaDBeeF|deadbeef|deadbeef.desktop|0"
   "youtube-music|YouTube Music|youtube-music||0" "pear-desktop|Pear Desktop|pear-desktop||0" "feishin|Feishin|feishin||0"
