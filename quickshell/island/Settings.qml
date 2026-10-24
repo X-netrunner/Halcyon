@@ -19,6 +19,11 @@ Scope {
     Connections { target: root; function onOpenChanged() { if (!root.open) { root.linger = true; lingerT.restart() } } }
     Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
     property bool consoleOpen: false
+    // the island's own picture picker over the Settings window (SetProfile's Browse): browseImage(start, function (path) {})
+    property bool imgPickOpen: false
+    property string imgPickStart: ""
+    property var imgPickCb: null
+    function browseImage(start, cb) { imgPickStart = start; imgPickCb = cb; imgPickOpen = true }
 
     // state (owned by shell.qml)
     property bool autoHide: false
@@ -623,6 +628,7 @@ Scope {
         case "focusApps": return cFocusApps
         case "dayClock": return cDayClock
         case "wallClock": return cWallClock
+        case "profile": return cProfile
         case "liveWalls": return cLiveWalls
         case "focusClock": return cFocusClock
         case "safetyAuto": return cSafetyAuto
@@ -671,6 +677,9 @@ Scope {
             { type: "slider", adv: true, key: "hy:borderSize", def: 2, label: "Border width", min: 0, max: 6, step: 1, unit: " px" },
             { type: "toggle", key: "opt:accentBorder", label: "Accent colour on the focused window", desc: "A thin border in the wallpaper's accent colour around the window you are using. Off = the neutral white hairline." },
             { type: "action", adv: true, id: "reset-look", label: "Look values", btn: "Back to the config files", done: "Reset", desc: "Forgets every window / look value changed here; hyprland/*.lua rules again." }
+        ] },
+        { id: "profile", title: "Profile", section: "Appearance", items: [
+            { type: "custom", name: "profile", label: "Profile", btn: "name avatar picture face profile overview constellation" }
         ] },
         { id: "colours", title: "Colours & night light", section: "Appearance", items: [
             { type: "custom", name: "swatches" },
@@ -1080,7 +1089,7 @@ Scope {
     // every group sits on exactly ONE page (tests/settings-groups.test.js checks it); the pages follow the section tabs of the tree
     readonly property var pages: [
         { id: "Discover", sub: "The settings you use most, everything Halcyon can do, and the guided tour.", groups: ["often", "discover"] },
-        { id: "Appearance", sub: "Look, colours, wallpaper, transparency and motion.", groups: ["look", "colours", "wallpaper", "glass", "motion"] },
+        { id: "Appearance", sub: "Look, your profile, colours, wallpaper, transparency and motion.", groups: ["look", "profile", "colours", "wallpaper", "glass", "motion"] },
         { id: "Stars & splash", sub: "Constellations, the splash, the weekly sky, time of day and the terminal greeting.", groups: ["growth", "signature", "greeting"] },
         { id: "Bar", sub: "The bar, how it behaves, and the clock.", groups: ["bar", "barbehave", "clock"] },
         { id: "Panels", sub: "Notifications, the edge boxes, the volume bar and the utilities box.", groups: ["notifications", "osd", "utilbox"] },
@@ -1184,7 +1193,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 5 : t.name === "counterScan" ? 6 : t.name === "dayClock" ? 13 : t.name === "wallClock" ? 5 : t.name === "liveWalls" ? 7 : t.name === "focusClock" ? 6 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : t.name === "discover" ? 30 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 5 : t.name === "counterScan" ? 6 : t.name === "dayClock" ? 13 : t.name === "wallClock" ? 5 : t.name === "profile" ? 6 : t.name === "liveWalls" ? 7 : t.name === "focusClock" ? 6 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : t.name === "discover" ? 30 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -1251,6 +1260,8 @@ Scope {
     // Wallpaper timeline (top of Settings > Wallpaper): when the picture last changed. wallpaper.sh saves the time when it really
     // changes (wallpaper-changed); an install from before that has no file yet, and then the date of the wallpaper state file is used.
     Component { id: cWallClock; SetWallClock { root: settingsScope } }
+    // the name and picture of the Overview's laptop node (it was the Overview's own "Edit profile" card)
+    Component { id: cProfile; SetProfile { root: settingsScope } }
     Component { id: cLiveWalls; SetLiveWall { root: settingsScope } }
 
     // Focus streak timeline (top of Settings > Focus mode): days in a row you reached the goal, against your best streak. The goal is
@@ -1299,6 +1310,18 @@ Scope {
             anchors.fill: parent
             opacity: root.open ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+            // the picture picker of Settings > Profile, over everything in this window
+            Loader {
+                z: 100
+                anchors.fill: parent
+                active: root.imgPickOpen
+                sourceComponent: ImagePicker {
+                    pal: root.pal
+                    Component.onCompleted: openAt(root.imgPickStart)
+                    onPicked: path => { if (root.imgPickCb) root.imgPickCb(path); root.imgPickOpen = false }
+                    onCancelled: root.imgPickOpen = false
+                }
+            }
             focus: root.open
             Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true } }
             // the search box must be focused from in here: `search` is not visible from the root scope (this window is built by a LazyLoader)
