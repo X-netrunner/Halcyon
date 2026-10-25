@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-// A timeline for "how long since the last time" and "how long until the next one" (Settings > Backup & safety).
+// A timeline for "how long since the last time" and "how long until the next one" (Settings > Backup and Security).
 //   last  o==========@----|----|----|----o  due
 //                    today
 // The rail is the whole interval. The filled part is the time that has passed, the marker is today, the ring on the right is

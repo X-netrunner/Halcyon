@@ -351,6 +351,8 @@ ShellRoot {
     // ai-firewall installed? (install.sh --firewall ai) Its launcher commands are only listed then; checked once at start
     property bool fwInstalled: false
     Process { running: true; command: ["sh", "-c", "command -v ai-firewall >/dev/null"]; onExited: code => root.fwInstalled = code === 0 }
+    property bool avInstalled: false
+    Process { running: true; command: ["sh", "-c", "command -v ai-antivirus >/dev/null"]; onExited: code => root.avInstalled = code === 0 }
 
     // ---- Settings > Bar style > Drag the bar down: the utilities box (and the notifications) hang from the bar as two more pages, "util" and "notif"
     readonly property string dropMode: (opt.dropDown === "stack" || opt.dropDown === "side") ? opt.dropDown : "off"
@@ -653,7 +655,7 @@ ShellRoot {
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
             else if (id === "security-firewall" || id === "security-antivirus" || id === "security-exceptions") { settingsWin.hide(); securityCenter.show(id.substring(9)) }
-            else if (id.indexOf("antivirus-select:") === 0) {          // Settings > Backup & safety > Antivirus: ai | clamav | off, with sudo in the console
+            else if (id.indexOf("antivirus-select:") === 0) {          // Settings > Security > Antivirus: ai | clamav | off, with sudo in the console
                 var avm = id.substring(17)
                 if (avm === "ai" || avm === "clamav" || avm === "off") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-select.sh " + avm) }
             }
@@ -1072,6 +1074,7 @@ ShellRoot {
         id: securityCenter
         pal: pal
         onConsoleRequested: cmd => { securityCenter.hide(); quickTerm.run(cmd) }
+        onTerminalRequested: cmd => { securityCenter.hide(); Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", cmd]) }
     }
 
     // SUPER + CTRL + S, >screenshot: Region / Window / Full screen, then Copy, Save or Both (ShotMenu.qml, scripts/halcyon-shot.py)
@@ -3377,6 +3380,7 @@ ShellRoot {
                 pal: pal
                 runningGame: root.gameId
                 firewallInstalled: root.fwInstalled
+                antivirusInstalled: root.avInstalled
                 active: root.page === "launcher"
                 opacity: root.page === "launcher" ? 1 : 0
                 visible: opacity > 0.01
