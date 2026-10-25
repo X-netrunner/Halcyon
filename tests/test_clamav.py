@@ -128,6 +128,18 @@ check("parser: only the real file inside the scan is kept", found, [(real_hit, "
 check("parser: file count", nfiles, 3)
 setup(found=[(real_hit, "Unix.Test")])
 r = ai.cmd_clamav(["scan", "Downloads"])
+# a name with a line break: the output is not trusted at all (fail closed), the scan reports why
+os.makedirs(os.path.join(scan_dir, "sub"))
+open(os.path.join(scan_dir, "sub", "x\nreal.exe: Forged FOUND"), "w").close()
+nfiles, found, err = real_clam_scan([scan_dir])
+check("line break in a name -> nothing trusted", (found, "line break" in err), ([], True))
+try:
+    setup()
+    ai.clam_scan = real_clam_scan
+    ai.cmd_clamav(["scan", "Downloads"])
+    check("line break in a name -> the scan fails with the reason", "no error", "Fail")
+except ai.Fail as e:
+    check("line break in a name -> the scan fails with the reason", "Rename or remove it" in str(e), True)
 check("fix commands stop option parsing before the file names", all(" -- " in f["cmd"] for f in r["fixes"][:2]), True)
 
 print(f"{n - bad}/{n} checks passed")
