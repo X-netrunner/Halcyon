@@ -6,8 +6,6 @@ always-on helpers are written in Rust.
 
 ![Halcyon out of the box, with the live Halcyon sky wallpaper](docs/screenshots/desktop.webp)
 
-<!-- A video or GIF of Halcyon in action can go here -->
-
 https://github.com/user-attachments/assets/6951fca1-d9d2-4b6d-9731-57c10fa497c4
 
 ## What you get
