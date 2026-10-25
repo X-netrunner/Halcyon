@@ -50,7 +50,7 @@
 #   --music ID[,ID]        spotify | spotify-player | ncspot | none                              (the first one is SUPER+M; several are fine)
 #   --sysmode              install sysmode without asking (--no-sysmode: skip it)
 #   --safety-check         install the safety check (system update, malware / rootkit scan, firewall, audit, backup) without asking
-#                          (--no-safety-check: skip it; its entry in Settings > Backup is then greyed out and disabled)
+#                          (--no-safety-check: skip it; its entry in Settings > Security is then greyed out and disabled)
 #   --llm[=MODEL]          install Ollama & local AI performance advisor (auto-detects hardware tier or specifies model)
 #   --no-llm               skip Ollama & local AI performance advisor
 #   --whisper[=MODEL]      install speech-to-text for voice notes: whisper.cpp + a model (tiny | base | small; default base). Without this option
@@ -89,8 +89,9 @@
 #                          asked once, then remembered; --no-antivirus after it was installed removes the package (its config is kept).
 #                          The firewall and the antivirus are independent: either one can be on without the other.
 #                          (--synapse / --no-synapse still work: Synapse was its old name.)
-#   SECURITY_MODEL=NAME    the local model the firewall and antivirus assistants use (default qwen3.5:4b, ~3.3 GB, pulled when
-#                          Ollama is installed and either module is on); SECURITY_MODEL=none skips the download.
+#   SECURITY_MODEL=NAME    the local model the firewall and antivirus assistants use. Default: the best qwen3.5 size for this laptop
+#                          (0.8b / 2b / 4b / 9b by GPU memory or RAM), suggested on a first install with a menu to change it, remembered,
+#                          pulled when Ollama is installed and either module is on; SECURITY_MODEL=none skips the download.
 #   --renderer MODE       how the island draws: auto | opengl | vulkan (default auto = picked for this machine each time Halcyon
 #                          starts; OpenGL on integrated graphics, where it measured ~500 MB less RAM than Vulkan at the same power)
 #                            keep     your prompt is not touched at all (Halcyon does not start Starship, and does not edit your starship.toml)
@@ -148,7 +149,7 @@ INSTALL_AV=false; AV_ASKED=false                # the ai-antivirus extra
 AIFW_SRC="${AIFW_SRC:-}"; AIFW_REPO="${AIFW_REPO:-}"; AIFW_REV="${AIFW_REV:-}"                  # where ai-firewall is built from
 AV_SRC="${AV_SRC:-${SYNAPSE_SRC:-}}"; AV_REPO="${AV_REPO:-${SYNAPSE_REPO:-}}"; AV_REV="${AV_REV:-${SYNAPSE_REV:-}}" # where ai-antivirus is built from
 [[ -n "$AV_SRC" || -n "$AV_REPO" ]] || AV_REPO="https://github.com/X-netrunner/ai-antivirus"   # nothing given: clone it into ~/.local/src/ai-antivirus
-SECURITY_MODEL="${SECURITY_MODEL:-qwen3.5:4b}"   # the assistants' local model (fits a 6 GB GPU)
+SECURITY_MODEL="${SECURITY_MODEL:-}"   # the assistants' local model: empty = the one that fits this laptop (security_model_for_hardware), asked on a first install
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 PICK_PROMPT=""; FIRST_INSTALL=false        # your shell prompt: keep | colours | halcyon (see choose_prompt); FIRST_INSTALL: nothing was chosen on this machine yet
@@ -551,7 +552,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
         ask)  echo "  - ask whether to install sysmode (the hardening CLI and its boot service)" ;;
     esac
     case "$plan_safety" in
-        true) echo "  - install the safety check (ClamAV, rkhunter, lynis, AIDE, rsync) and add it to Settings > Backup" ;;
+        true) echo "  - install the safety check (ClamAV, rkhunter, lynis, AIDE, rsync) and add it to Settings > Security" ;;
         ask)  echo "  - ask whether to add the safety check (ClamAV, rkhunter, lynis, AIDE, rsync)" ;;
     esac
     case "$plan_firewall" in
@@ -1325,7 +1326,7 @@ choose_apps() {
     # ---- safety check (default YES; say no and it is not installed, and its Settings entry is greyed out)
     if [[ "$ask_c" == "true" ]]; then
         echo -e "\n  ${CYAN}${BOLD}Safety check${RESET}  ${DIM}one command that updates the system, scans for malware and rootkits, checks the firewall, audits and can back up to a disk${RESET}"
-        echo -e "   ${DIM}installs clamav, rkhunter, lynis, aide and rsync, and adds \"Safety check\" to Settings > Backup. Enter = yes. Say no and that entry stays greyed out and disabled.${RESET}"
+        echo -e "   ${DIM}installs clamav, rkhunter, lynis, aide and rsync, and adds \"Safety check\" to Settings > Security. Enter = yes. Say no and that entry stays greyed out and disabled.${RESET}"
         if confirm "  Add the safety check?"; then SAFETY=true; else SAFETY=false; fi
         SAFETY_ASKED=true
     fi
@@ -1632,6 +1633,19 @@ choose_extras() {
 }
 [[ "$REMOVE_LOGIN" != "true" ]] && choose_extras
 
+# The qwen3.5 size the security assistants should use here: the GPU's memory when it has a big enough NVIDIA card, else RAM and threads.
+# qwen3.5 download sizes: 0.8b 1.2 GB, 2b 2.7 GB, 4b 3.3 GB, 9b 6.6 GB.
+security_model_for_hardware() {
+    local hw=() IFS='|'; hw=($(detect_hardware_tier)); unset IFS
+    local ram=${hw[0]:-8} cpus=${hw[1]:-4} vram=${hw[3]:-0}
+    [[ "$vram" =~ ^[0-9]+$ ]] || vram=0
+    if   [[ "$ram" -lt 8 || "$cpus" -le 2 ]]; then echo qwen3.5:0.8b
+    elif [[ "$vram" -ge 8000 ]]; then echo qwen3.5:9b
+    elif [[ "$vram" -ge 4000 || ( "$ram" -ge 16 && "$cpus" -ge 8 ) ]]; then echo qwen3.5:4b
+    else echo qwen3.5:2b; fi
+}
+SECURITY_MODEL_PICKED=false   # true when you chose it now (then it also replaces the model in ai-antivirus.toml)
+
 # ---- the Security center: which firewall, and ai-antivirus. Same rules as the other choices: the command line wins,
 # --choose asks again, otherwise the saved answer is used. Each module is independent of the other.
 choose_security() {
@@ -1668,6 +1682,22 @@ choose_security() {
         AV_ASKED=true
     fi
     log_info "Security: firewall $FIREWALL, antivirus $([[ "$INSTALL_AV" == true ]] && echo "yes (built in step 12)" || echo no)"
+    # the assistants' model: SECURITY_MODEL wins, then the saved one, else what fits this laptop (a menu on a first install or --choose)
+    if [[ "$FIREWALL" == ai || "$INSTALL_AV" == "true" ]] && [[ "$SECURITY_MODEL" != none ]]; then
+        local s_m rec; s_m=$(saved_choice SECURITY_MODEL); rec=$(security_model_for_hardware)
+        if [[ -n "$SECURITY_MODEL" ]]; then SECURITY_MODEL_PICKED=true
+        elif [[ -n "$s_m" && "$CHOOSE" != "true" ]]; then SECURITY_MODEL="$s_m"
+        elif [[ "$interactive" == "true" ]]; then
+            menu_pick SECURITY_MODEL "Security assistants' model (Ollama)" "$rec" 0 \
+                "qwen3.5:0.8b|Qwen 3.5 0.8B|~1.2 GB, for weak laptops (under 8 GB RAM): short answers only" \
+                "qwen3.5:2b|Qwen 3.5 2B|~2.7 GB, light: 8 GB RAM, no big GPU" \
+                "qwen3.5:4b|Qwen 3.5 4B|~3.3 GB, the balance: 16 GB RAM or a 4 GB GPU" \
+                "qwen3.5:9b|Qwen 3.5 9B|~6.6 GB, the best analysis: an 8 GB+ GPU" \
+                "none|None|no model: the assistants answer from the doctor and status"
+            [[ "$SECURITY_MODEL" == "$rec" ]] || SECURITY_MODEL_PICKED=true
+        else SECURITY_MODEL="$rec"; fi
+        log_info "Security assistants' model: $SECURITY_MODEL (suggested for this laptop: $rec)"
+    fi
 }
 [[ "$REMOVE_LOGIN" != "true" ]] && choose_security
 
@@ -2393,7 +2423,7 @@ if [[ "$DRY_RUN" != "true" ]] && ! kbd_led_present && is_laptop; then
     run_as_user bash "$TARGET_RICE/scripts/kbd-backlight.sh" doctor 2>&1 | sed 's/^/   /' | head -n 8 || true
 fi
 
-# ---- safety check (optional): the program Settings > Backup > "Safety check" starts
+# ---- safety check (optional): the program Settings > Security > "Safety check" starts
 # Like sysmode it runs as root (system update, scans, firewall, backup), so the installed copy is root-owned: nothing running
 # as you can change what you later start with sudo. Settings greys the entry out when /usr/local/bin/safety-check is missing.
 if [[ "$SAFETY" == "true" ]]; then
@@ -2403,14 +2433,14 @@ if [[ "$SAFETY" == "true" ]]; then
     fi
     if [[ "$DRY_RUN" == "true" ]] || [[ -f "$BIN_DIR/safety-check" ]]; then
         try run_cmd "Installing /usr/local/bin/safety-check (root-owned)" as_root install -Dm755 -o root -g root "$BIN_DIR/safety-check" /usr/local/bin/safety-check
-        log_info "Run it from Settings > Backup > Safety check, or in a terminal:  sudo safety-check   (logs: /var/log/halcyon/safety_check/)"
+        log_info "Run it from Settings > Security > Safety check, or in a terminal:  sudo safety-check   (logs: /var/log/halcyon/safety_check/)"
     else
         warn_later "safety-check was not built, so it is not installed (its Settings entry stays greyed out). Retry: ./install.sh --safety-check"
     fi
 elif [[ "$SAFETY_ASKED" == "true" && "$PACKAGES" == "true" && "$DRY_RUN" != "true" && -e /usr/local/bin/safety-check ]]; then
     try run_cmd "Removing /usr/local/bin/safety-check (you chose no safety check)" as_root rm -f /usr/local/bin/safety-check
 else
-    log_info "Safety check skipped: its entry in Settings > Backup stays greyed out (add it later: ./install.sh --safety-check)."
+    log_info "Safety check skipped: its entry in Settings > Security stays greyed out (add it later: ./install.sh --safety-check)."
 fi
 
 # ---- firewall: ai-firewall (Halcyon's), ufw, or leave it alone
@@ -2523,7 +2553,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" "FIREWALL=$FIREWALL" "ANTIVIRUS=$([[ "$INSTALL_AV" == true ]] && echo yes || echo no)" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" "FIREWALL=$FIREWALL" "ANTIVIRUS=$([[ "$INSTALL_AV" == true ]] && echo yes || echo no)" "SECURITY_MODEL=$SECURITY_MODEL" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
     user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} ${LOCK_LOGIN_SAVE:+"LOCK_LOGIN=$LOCK_LOGIN_SAVE"} || true
 elif [[ -n "$PICK_RENDERER" ]]; then
@@ -2648,7 +2678,8 @@ install_ai_firewall() {
 # Synapse was ai-antivirus's old name: its package is replaced, its settings carried over by the new package
 AV_UNITS=(ai-antivirus-sensord.service ai-antivirus-engined.service ai-antivirus-responderd.service ai-antivirus-analyzer.service)
 remove_old_synapse() {
-    pacman -Q synapse-edr >/dev/null 2>&1 || return 0
+    # -Q also matches `provides`, and ai-antivirus provides synapse-edr: only the real old package counts
+    pacman -Qi synapse-edr 2>/dev/null | grep -q '^Name *: synapse-edr$' || return 0
     try run_cmd "Synapse (old name): stopping its services" as_root systemctl disable --now synapse-sensord.service synapse-engined.service synapse-responderd.service synapse-ai.service
     try run_as_user_cmd "Synapse (old name): desktop notifications off" systemctl --user disable --now synapse-notify.service
     try run_cmd "Synapse (old name): removing the package (its config is kept as .pacsave)" as_root pacman -R --noconfirm synapse-edr
@@ -2707,6 +2738,17 @@ pull_security_model() {
     try run_as_user_cmd "Security assistants: downloading $SECURITY_MODEL (one time)" ollama pull "$SECURITY_MODEL"
 }
 
+# ai-antivirus.toml [ai] model: the placeholder is replaced; a model you set by hand stays unless you picked one in this run.
+# `enabled` is not touched: the analyzer stays off until you switch it on (alert-only).
+set_antivirus_model() {
+    local conf=/etc/ai-antivirus/ai-antivirus.toml cur
+    [[ -n "$SECURITY_MODEL" && "$SECURITY_MODEL" != none && "$DRY_RUN" != "true" && -f "$conf" ]] || return 0
+    cur=$(sed -n "/^\[ai\]/,/^\[/ s/^model *= *['\"]\(.*\)['\"].*/\1/p" "$conf" | head -1)
+    [[ "$cur" == "$SECURITY_MODEL" ]] && return 0
+    [[ "$cur" == "set-your-local-model" || "$SECURITY_MODEL_PICKED" == "true" ]] || return 0
+    try run_cmd "ai-antivirus: its analyzer model is $SECURITY_MODEL" as_root sed -i "/^\[ai\]/,/^\[/ s|^model *=.*|model = '$SECURITY_MODEL'|" "$conf"
+}
+
 if [[ "$PACKAGES" == "true" ]]; then
     case "$FIREWALL" in
         ai)   install_ai_firewall || true ;;
@@ -2723,6 +2765,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_AV" == "true" ]]; then install_antivirus || true
     elif [[ "$AV_ASKED" == "true" ]]; then remove_antivirus; fi
     [[ "$FIREWALL" == ai || "$INSTALL_AV" == "true" ]] && pull_security_model
+    [[ "$INSTALL_AV" == "true" ]] && set_antivirus_model
 fi
 
 # the boot splash, now that the colours are made (scheme/current.lua): rendered in them, then the initramfs is rebuilt
@@ -2854,7 +2897,7 @@ echo -e "  ${MAGENTA}Super (tap)${RESET}       Launcher          ${MAGENTA}Super
 echo -e "  ${MAGENTA}Super + Q${RESET}         Close window      ${MAGENTA}Super + Tab${RESET}       Workspace tree"
 echo -e "  ${MAGENTA}Super + /${RESET}         All shortcuts     ${MAGENTA}Super + L${RESET}         Lock screen"
 echo -e "  ${MAGENTA}Super + Ctrl + ←/→${RESET}  Previous / next workspace (a new one after the last)"
-[[ "$SAFETY" == "true" ]] && echo -e "  ${MAGENTA}Settings > Backup${RESET}   Safety check (update, malware / rootkit scan, firewall, backup)"
+[[ "$SAFETY" == "true" ]] && echo -e "  ${MAGENTA}Settings > Security${RESET} Safety check (update, malware / rootkit scan, firewall, backup)"
 command -v ai-firewall >/dev/null 2>&1 && [[ "${PICK_FIREWALL:-ai}" == "ai" ]] && echo -e "  ${MAGENTA}>firewall${RESET}           ai-firewall: the Firewall Center (launcher), or in a terminal:  sudo ai-firewall top"
 echo
 echo -e "${DIM}Update later: ~/.config/Halcyon/update.sh     ·     Settings: from the island     ·     Log of this run: ${LOG_FILE}${RESET}"
