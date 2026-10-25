@@ -17,6 +17,8 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -658,9 +660,16 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
     let mut sampler = Sampler::default();
     sampler.sample();
 
+    let fs_stop = Arc::new(AtomicBool::new(false));
     let code: Option<i32> = if let Some(p) = &plan {
         match spawn_game(p, logfile) {
-            Ok(child) => supervise_child(child, &mut sampler),
+            Ok(child) => {
+                if g.fullscreen {
+                    let (root, unit) = (child.id(), format!("{}.scope", p.unit));
+                    spawn_fullscreen(fs_stop.clone(), move || game_tree_pids(root, &unit));
+                }
+                supervise_child(child, &mut sampler)
+            }
             Err(e) => {
                 if let Some(taken) = take_state() {
                     restore(&taken, true);
@@ -669,8 +678,13 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
             }
         }
     } else {
+        if g.fullscreen {
+            let appid = g.appid.clone();
+            spawn_fullscreen(fs_stop.clone(), move || steam::game_pids(&appid));
+        }
         supervise_steam(&g, &mut sampler)
     };
+    fs_stop.store(true, Ordering::Relaxed);
     sampler.sample();
 
     let secs = t0.elapsed().as_secs();
@@ -713,6 +727,65 @@ fn spawn_game(p: &Plan, log: fs::File) -> Result<Child, String> {
     // own process group: closing the terminal or Ctrl-C on hgl does not take the game down; the watchdog restores afterwards
     cmd.stdin(Stdio::null()).stdout(Stdio::from(log)).stderr(Stdio::from(err)).process_group(0);
     cmd.spawn().map_err(|e| format!("{}: {e}", p.argv[0]))
+}
+
+// ------------------------------------------------------------------------------------------------ fullscreen
+// `fullscreen` on in the profile: while the game runs, each new tiled window of the game is set to Hyprland fullscreen. Launchers that
+// hand over to the real game window are covered (every new window is checked, not only the first); floating ones (dialogs, splash
+// screens) are left alone. Only windows whose process belongs to the game are touched, and only once each, so a window you take out
+// of fullscreen with Super + F stays that way.
+
+/// The game's processes: the child's process group (spawn_game gives it its own) plus everything in its scope unit (Wine and
+/// Proton start helpers that leave the group).
+fn game_tree_pids(root: u32, unit: &str) -> Vec<u32> {
+    processes()
+        .into_iter()
+        .map(|(p, _)| p)
+        .filter(|&p| proc_pgrp(p) == Some(root) || (unit != ".scope" && cgroup_unit(p).as_deref() == Some(unit)))
+        .collect()
+}
+
+fn proc_pgrp(pid: u32) -> Option<u32> {
+    let t = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // the command name is in parentheses and may contain spaces: the fields after it start at the last ')'
+    t.rsplit_once(')')?.1.split_whitespace().nth(2)?.parse().ok()
+}
+
+/// Windows (address) from `hyprctl clients -j` that belong to one of `pids` and are not floating.
+pub fn game_windows(clients: &str, pids: &[u32]) -> Vec<String> {
+    let Some(j) = crate::json::parse(clients) else { return Vec::new() };
+    j.items()
+        .iter()
+        .filter(|c| c.num("pid").map(|p| p >= 0.0 && pids.contains(&(p as u32))).unwrap_or(false))
+        .filter(|c| !matches!(c.get("floating"), Some(crate::json::Json::Bool(true))))
+        .filter_map(|c| c.str("address").map(|a| a.to_string()))
+        .filter(|a| a.starts_with("0x") && a.len() > 2 && a[2..].chars().all(|c| c.is_ascii_hexdigit()))
+        .collect()
+}
+
+fn spawn_fullscreen(stop: Arc<AtomicBool>, pids: impl Fn() -> Vec<u32> + Send + 'static) {
+    if !have("hyprctl") || std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
+        return;
+    }
+    std::thread::spawn(move || {
+        let mut done: Vec<String> = Vec::new();
+        while !stop.load(Ordering::Relaxed) {
+            let p = pids();
+            if !p.is_empty() {
+                if let Some(clients) = out("hyprctl", &["clients", "-j"]) {
+                    for a in game_windows(&clients, &p) {
+                        if done.contains(&a) {
+                            continue;
+                        }
+                        let d = format!("hl.dsp.window.fullscreen({{ mode = \"fullscreen\", action = \"set\", window = \"address:{a}\" }})");
+                        run_quiet("hyprctl", &["dispatch", &d], 4);
+                        done.push(a);
+                    }
+                }
+            }
+            sleep(Duration::from_secs(1));
+        }
+    });
 }
 
 fn supervise_child(mut child: Child, sampler: &mut Sampler) -> Option<i32> {
@@ -919,6 +992,15 @@ pub fn running_id() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fullscreen_picks_only_the_games_tiled_windows() {
+        let clients = r#"[{"address":"0xaa","pid":100,"floating":false},{"address":"0xbb","pid":100,"floating":true},
+            {"address":"0xcc","pid":200,"floating":false},{"address":"0xdd; rm","pid":100,"floating":false},{"address":"0xee","pid":-1}]"#;
+        assert_eq!(game_windows(clients, &[100]), vec!["0xaa".to_string()]);
+        assert!(game_windows(clients, &[]).is_empty());
+        assert!(game_windows("not json", &[100]).is_empty());
+    }
 
     #[test]
     fn session_roundtrip_and_validation() {
