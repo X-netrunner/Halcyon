@@ -453,6 +453,14 @@ if [[ $EUID -ne 0 ]]; then
     fi
 fi
 
+# ---- a crash, kill -9 or power cut during an AUR build can leave the temporary installer sudo rule behind (passwordless
+# pacman, see ensure_aur_helper). The exit trap normally removes it; this catches the cases where the trap never ran.
+STALE_SUDOERS=/etc/sudoers.d/99-halcyon-installer-tmp
+if [[ "$DRY_RUN" != "true" ]] && as_root test -e "$STALE_SUDOERS" 2>/dev/null; then
+    if as_root rm -f "$STALE_SUDOERS"; then log_info "Removed a leftover temporary sudo rule from an interrupted install ($STALE_SUDOERS)"
+    else warn_later "A temporary sudo rule from an interrupted install is still there: remove it with  sudo rm $STALE_SUDOERS"; fi
+fi
+
 USER_SETUP="$TARGET_RICE/scripts/user-setup.sh"; [[ -f "$USER_SETUP" ]] || USER_SETUP="$RICE_SOURCE/scripts/user-setup.sh"
 user_setup() {   # the per-user steps run as the user, so nothing in their home is ever owned by root
     if [[ "$DRY_RUN" == "true" ]]; then log_task "[DRY-RUN] (as $TARGET_USER) user-setup.sh $*"; return 0; fi
