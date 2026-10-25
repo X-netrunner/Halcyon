@@ -21,6 +21,7 @@ Scope {
     property bool open: false
     property string tab: "overview"          // overview | firewall | antivirus | exceptions | ask
     signal consoleRequested(string cmd)
+    signal terminalRequested(string cmd)     // full-screen programs (the firewall dashboard) need a real terminal window, not the console
     signal focusRequested(string what)
 
     property string fwBin: "/usr/local/bin/ai-firewall"     // install.sh puts it here, the Arch package in /usr/bin (found on open)
@@ -854,7 +855,7 @@ Scope {
                                         "open tcp " + ((root.fw.allow_tcp || []).join(" ") || "none")].join("  ·  ")
                                     Btn { label: "Test"; glyph: 0xF0668; onClicked: root.runTest("all") }
                                     Btn { label: "Doctor"; glyph: 0xF04D9; onClicked: root.consoleRequested("sudo " + root.fwBin + " doctor --fix") }
-                                    Btn { label: "Dashboard"; glyph: 0xF0A07; primary: true; onClicked: root.consoleRequested("sudo " + root.fwBin + " top") }
+                                    Btn { label: "Dashboard"; glyph: 0xF0A07; primary: true; onClicked: root.terminalRequested("sudo " + root.shq(root.fwBin) + " top") }
                                 }
 
                                 Strip {
@@ -1238,7 +1239,7 @@ Scope {
                                     clip: true
                                     spacing: 16
                                     boundsBehavior: Flickable.StopAtBounds
-                                    model: root.msgs
+                                    model: root.msgs.length    // a number, not the array: every streamed chunk replaces root.msgs, and an array model would rebuild every bubble (the twitching)
                                     onCountChanged: Qt.callLater(function () { chat.positionViewAtEnd() })
                                     onContentHeightChanged: if (root.asking) chat.positionViewAtEnd()
                                     footer: Item {
@@ -1248,7 +1249,8 @@ Scope {
                                     }
                                     delegate: Item {
                                         id: mItem
-                                        required property var modelData
+                                        required property int index
+                                        readonly property var modelData: root.msgs[index] || ({})
                                         width: chat.width
                                         height: mCol.implicitHeight
 

@@ -103,13 +103,16 @@ Item {
     property string cmdCategory: "all"
     property string runningGame: ""       // the game that runs now (shell.qml): "Stop the game" is only listed then
     property bool firewallInstalled: false // ai-firewall is installed (shell.qml): its two commands are only listed then
+    property bool antivirusInstalled: false // ai-antivirus is installed (shell.qml): the Security category and its exceptions are only listed then
+    readonly property bool securityOn: firewallInstalled || antivirusInstalled
     property int infoIdx: -1              // the command row whose description popup is open (-1 = none)
     // the order of the command list: groups first, then this order inside each group (anything not listed goes last)
-    readonly property var catOrder: ["system", "desktop", "tools", "games", "power"]
+    readonly property var catOrder: ["system", "security", "desktop", "tools", "games", "power"]
     readonly property var cmdOrder: [
-        "settings", "security", "firewall", "antivirus", "exceptions", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
+        "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
         "calendar", "notes", "notesall", "study", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
+        "security", "firewall", "firewall-dashboard", "exceptions",
         "gamecenter", "games", "games-stop",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
@@ -151,8 +154,8 @@ Item {
         { id: "tool-mixer", name: "Volume per app", desc: "Choose an app that plays sound and set its own volume, or mute it. In a terminal: halcyon mixer set spotify 30", glyph: 0xF057E, kw: "volume mixer app per application spotify discord sound audio mute", cat: "tools" },
         { id: "tool-zoom", name: "Magnifier", desc: "Zoom the whole screen in and out (Super + Alt + Z toggles 2x); good for small text and for checking pixels", glyph: 0xF0349, kw: "zoom magnifier magnify screen enlarge accessibility lens", cat: "tools" },
         { id: "tool-vpn", name: "VPN on / off", desc: "Switch your VPN (NetworkManager, WireGuard or Tailscale) on or off; with several it asks which", glyph: 0xF0582, kw: "vpn wireguard tailscale network tunnel privacy openvpn", cat: "tools" },
-        { id: "firewall", name: "Firewall Center", desc: "Everything ai-firewall does in one window: a live graph, bans, rules and profiles, blocklist feeds, history, and its assistant with the network doctor", glyph: 0xF0565, kw: "firewall ai-firewall ufw security network ports blocked banned bans attack scan protect shield", cat: "system" },
-        { id: "firewall-dashboard", name: "Firewall dashboard", desc: "The live firewall dashboard in a terminal: counters, a drops graph, bans and detections; press a to ask it what's wrong", glyph: 0xF0128, kw: "firewall dashboard ai-firewall top monitor network traffic bans ask doctor", cat: "system" },
+        { id: "firewall", name: "Firewall Center", desc: "Everything ai-firewall does in one window: a live graph, bans, rules and profiles, blocklist feeds, history, and its assistant with the network doctor", glyph: 0xF0565, kw: "firewall ai-firewall ufw security network ports blocked banned bans attack scan protect shield", cat: "security" },
+        { id: "firewall-dashboard", name: "Firewall dashboard", desc: "The live firewall dashboard in a terminal: counters, a drops graph, bans and detections; press a to ask it what's wrong", glyph: 0xF0128, kw: "firewall dashboard ai-firewall top monitor network traffic bans ask doctor", cat: "security" },
         { id: "tour", name: "Guided tour", desc: "Replay the walkthrough of the island, its panels and shortcuts", glyph: 0xF02D6, kw: "tutorial help intro welcome walkthrough onboarding whats new release notes learn", cat: "system" },
         { id: "barbuilder", name: "Bar builder", desc: "Drag widgets into the left, middle and right of your own bar", glyph: 0xF0208, kw: "bar custom widgets layout drag drop builder edit", cat: "desktop" },
         { id: "widgetbuilder", name: "Widget builder", desc: "Desktop widgets (clock, system usage, music, visualizer, focus streak ...): pick a layout and a look for each", glyph: 0xF0208, kw: "widgets desktop clock battery wifi stats cpu music visualizer focus streak weather style look design builder customise", cat: "desktop" },
@@ -169,10 +172,8 @@ Item {
         { id: "theme", name: "Light / dark theme", desc: "Switch the whole desktop between the dark and the light theme (toggle)", glyph: 0xF0594, kw: "dark light mode appearance colours day night", cat: "desktop" },
         { id: "settings", name: "Settings", desc: "Theme, wallpaper, scrolling, default apps, transparency, motion, gaming", glyph: 0xF0493, kw: "rice options look theme gear config", cat: "system" },
         { id: "extradim", name: "Extra dim display", desc: "Dim screen backlight to minimum (Super + Alt + D)", glyph: 0xF058F, kw: "dim brightness backlight dark night minimum screen", cat: "tools" },
-        { id: "security", name: "Security Center", desc: "", glyph: 0xF0565, kw: "security firewall antivirus ai-antivirus virus malware scan ban bans shield protect", cat: "system" },
-        { id: "firewall", name: "Firewall", desc: "", glyph: 0xF1A11, kw: "firewall ai-firewall ban unban ports network security", cat: "system" },
-        { id: "antivirus", name: "Antivirus", desc: "", glyph: 0xF13B6, kw: "antivirus ai-antivirus virus malware alerts scan security", cat: "system" },
-        { id: "exceptions", name: "Antivirus exceptions", desc: "", glyph: 0xF0780, kw: "exceptions exclusions exclude allow allowlist whitelist ignore trusted antivirus claude agy", cat: "system" },
+        { id: "security", name: "Security Center", desc: "", glyph: 0xF0565, kw: "security firewall antivirus ai-antivirus virus malware scan ban bans shield protect", cat: "security" },
+        { id: "exceptions", name: "Antivirus exceptions", desc: "", glyph: 0xF0780, kw: "exceptions exclusions exclude allow allowlist whitelist ignore trusted antivirus claude agy", cat: "security" },
         { id: "study", name: "Study Center", desc: "Add PDFs, slides, notes or photos of pages and ask questions about them; the answers name the page. Also a revision summary, a quiz and flashcards. All on this computer", glyph: 0xF0474, kw: "study learn pdf notes lecture slides exam revise revision quiz flashcards summary ask questions document book homework", cat: "tools" },
         { id: "gamecenter", name: "Game Center", desc: "Your games with cover art: add a Windows game (.exe), read Steam, Epic and GOG, Proton versions and the system check for games", glyph: 0xF0297, kw: "game games center library add exe import steam epic gog stores proton runtimes doctor check settings launcher", cat: "games" },
         { id: "games", name: "Games", desc: "Your game library: Enter launches. Type  >  and its name (or  >game  for the list) to find one (Steam games and the .exe games you added). Halcyon rests while a game runs", glyph: 0xF0297, kw: "game games play library steam proton launcher", cat: "games" },
@@ -239,6 +240,7 @@ Item {
                 { id: "all", label: "All" },
                 { id: "desktop", label: "Desktop" },
                 { id: "system", label: "System" },
+                { id: "security", label: "Security" },
                 { id: "tools", label: "Tools" },
                 { id: "games", label: "Games" },
                 { id: "power", label: "Power" }
@@ -246,6 +248,7 @@ Item {
             delegate: Rectangle {
                 required property var modelData
                 readonly property bool activeCat: root.cmdCategory === modelData.id
+                visible: modelData.id !== "security" || root.securityOn
                 height: root.pal.zen ? 22 : 20
                 width: catText.implicitWidth + (root.pal.zen ? 20 : 16)
                 radius: height / 2
@@ -549,6 +552,8 @@ Item {
                 if (root.cmdCategory !== "all" && cm.cat !== root.cmdCategory) continue
                 if (cm.id === "games-stop" && root.runningGame === "") continue
                 if ((cm.id === "firewall" || cm.id === "firewall-dashboard") && !root.firewallInstalled) continue
+                if (cm.id === "exceptions" && !root.antivirusInstalled) continue
+                if (cm.cat === "security" && !root.securityOn) continue
                 total++
                 if (shortList) {                             // used: by how much (always above the core ones); core: in its own order
                     var us = score("cmd:" + cm.id), ci = cmdCore.indexOf(cm.id)

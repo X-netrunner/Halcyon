@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# antivirus-select.sh : which antivirus runs (Settings > Backup & safety > Antivirus).
+# antivirus-select.sh : which antivirus runs (Settings > Security > Antivirus).
 #   antivirus-select.sh status            prints ai | clamav | off (what runs now)
 #   antivirus-select.sh ai|clamav|off     switches; asks for your admin password (sudo), so nothing can turn it off silently
 # ai      AI Antivirus (ai-antivirus-sensord, -engined, -responderd; the analyzer too when [ai] enabled = true; your notifier)

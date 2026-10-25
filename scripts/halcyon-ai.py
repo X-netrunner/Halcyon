@@ -249,6 +249,76 @@ def generate_json(prompt, system="", num_predict=400):
 
 
 # ------------------------------------------------------------------------------------------------ ask
+# What the model is told about itself. Short and fixed, so even the smallest model knows where it lives; the details come from the docs
+# (halcyon_context). Only facts that are true of every install belong here.
+HALCYON_ABOUT = (
+    "You are Halcyon's built-in assistant, the >ask box of Halcyon, a Hyprland desktop for Arch Linux built around one floating "
+    "\"island\" (bar, launcher, notifications, music, settings, game launcher in one place). Hyprland is configured in Lua, the island is "
+    "Quickshell (QML), the always-on helpers are small Rust programs, and you run on a local Ollama model on this computer, nothing leaves it. "
+    "Halcyon lives in ~/.config/Halcyon (install.sh / update.sh). Super opens the launcher: type for apps, > for commands (>settings, "
+    ">security, >gaming, >ask, >do), = for a calculator, . for every app. Super+Tab is the overview, Super+/ the shortcut map. "
+    "Settings has a search box and a guided tour (>tour). Halcyon has a Game Center, Study Center, Calendar and notes, clipboard history, "
+    "screenshots, a lock screen with widgets, builders (bar, desktop, widgets, lock screen, notifications), sysmode, a Security center "
+    "(ai-firewall and ai-antivirus, only when installed) and backups. You help the person use and change their Halcyon desktop.")
+HALCYON_Q = re.compile(r"\b(halcyon|the island|quickshell|hyprland|who are you|what are you|what can you|your name|what is this|"
+                       r"this (desktop|rice|setup|shell|launcher)|my (desktop|bar|launcher|island)|super key|install(er)?|update\.sh|"
+                       r"security cent(er|re)|firewall|antivirus|settings?|wallpaper|widgets?|launcher|notifications?|shortcuts?|keybinds?|sysmode|game center|study center)\b", re.I)
+DOC_FILES = ("README.md", "docs/features.md", "docs/how-it-works.md", "docs/architecture.md")
+
+
+def doc_chunks():
+    """Paragraphs and bullets of Halcyon's own docs as (heading, text); markdown images and links are reduced to their words."""
+    out = []
+    for rel in DOC_FILES:
+        try:
+            src = open(os.path.join(RICE, rel), encoding="utf-8").read()
+        except OSError:
+            continue
+        head = ""
+        for block in re.split(r"\n\s*\n|\n(?=- )", src):
+            block = block.strip()
+            if block.startswith("#"):
+                head = block.lstrip("# ").split("\n")[0].strip()
+                block = "\n".join(block.split("\n")[1:]).strip()
+            block = re.sub(r"!\[[^\]]*\]\([^)]*\)|<[^>]+>", "", block)
+            block = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", block).replace("`", "").replace("**", "")
+            block = " ".join(block.split())
+            if len(block) > 40 and not block.startswith("http"):
+                out.append((head, block))
+    return out
+
+
+def halcyon_context(q, limit=5, budget=2600):
+    """The docs excerpts that answer q (and the matching Settings rows), or "" when q is not about Halcyon and nothing in the docs fits."""
+    qw = set(_words(q))
+    about = HALCYON_Q.search(q) is not None
+    if not qw and not about:
+        return ""
+    scored, chunks = [], doc_chunks()
+    for head, text in chunks:
+        hw, tw = set(_words(head)), set(_words(text))
+        sc = 3 * len(qw & hw) + len(qw & tw)
+        if sc >= 2:
+            scored.append((sc, head, text))
+    scored.sort(key=lambda x: -x[0])
+    if not about and not (scored and scored[0][0] >= 5):
+        return ""
+    if about and not scored:          # "what is Halcyon", "what are you": the opening of the README says it best
+        scored = [(1, h, t) for h, t in chunks[:4]]
+    parts, used = [], 0
+    for _, head, text in scored[:limit]:
+        t = text[:600]
+        if used + len(t) > budget:
+            break
+        parts.append(f"- [{head}] {t}")
+        used += len(t)
+    for sc, e in help_search(q, 3):
+        if sc >= HOWTO_MIN and used < budget:
+            parts.append(f"- Settings/command: {_where(e)}: {e['text'][:200].strip()}")
+            used += 250
+    return "\n".join(parts) if parts else "(no matching excerpt: say you are not sure)"
+
+
 def cmd_ask(args):
     q = " ".join(a for a in args if not a.startswith("--")).strip()
     if not q:
@@ -261,10 +331,18 @@ def cmd_ask(args):
         fw = firewall_ask(q)
         if fw:
             return fw
-    ans = generate(q, system=(
-        "You answer quick questions typed into a desktop launcher. Answer in one or two short sentences of plain text: no markdown, "
-        "no lists, no preamble. If it is a calculation or a fact, give the result first. If you are not sure, say so briefly."),
-        num_predict=160, temperature=0.3, timeout=60)
+    about = halcyon_context(q)
+    if about:                       # a question about Halcyon, or one the docs can answer: the model reads the docs, it does not guess
+        ans = generate(f"Question: {q}\n\nFrom Halcyon's own docs:\n{about}", system=(
+            HALCYON_ABOUT + " Answer from the docs excerpts and the facts above; if they do not say, say you are not sure and point to "
+            "Settings (search box) or the shortcut map (Super + /). Plain text, no markdown, at most four short sentences. "
+            "Name exact places: Settings > page > group, a >command, or a key."),
+            num_predict=320, temperature=0.2, timeout=90)
+    else:
+        ans = generate(q, system=(
+            HALCYON_ABOUT + " You answer quick questions typed into that launcher. Answer in one or two short sentences of plain text: "
+            "no markdown, no lists, no preamble. If it is a calculation or a fact, give the result first. If you are not sure, say so briefly."),
+            num_predict=160, temperature=0.3, timeout=60)
     ans = " ".join(plain(ans).split())
     if not ans:
         raise Fail("The model gave no answer.")
