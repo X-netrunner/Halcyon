@@ -211,6 +211,7 @@ Scope {
         }
         if (typeof key === "string" && key.indexOf("st:") === 0) {
             var k = key.substring(3)
+            if (k === "ANTIVIRUS") { root.action("antivirus-select:" + String(v)); startupAgain.restart(); return }   // root: shell.qml runs it in the console
             var st = JSON.parse(JSON.stringify(startup))
             st[k] = v
             startup = st                                   // show it at once; the real state is read again below
@@ -969,6 +970,11 @@ Scope {
             { type: "acts", label: "Backup", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the files are copied onto it (scripts/backup-device.sh). Whole system: everything (asks for your admin password). Home folder: only your files, no password. Nothing on the disk is erased; every backup goes in its own dated folder. Caches, trash, package downloads and game files are skipped; add your own in ~/.config/Halcyon/backup-exclude.conf.", btns: [{ id: "backup-device", btn: "Whole system", done: "Opening…" }, { id: "backup-home", btn: "Home folder only", done: "Opening…" }] },
             { type: "acts", label: "Restore", desc: "Plug in the backup disk and pick a backup in the terminal that opens. Whole system: a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Home folder only: only ever touches your home folder (any backup works), you can restore just one folder or file, no password. Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder.", btns: [{ id: "restore-device", btn: "From a backup", done: "Opening…" }, { id: "restore-home", btn: "Home folder only", done: "Opening…" }] }
         ].concat(root.remindRows("BACKUP", "Remind me to back up", "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off.")).concat([
+            { type: "seg", key: "st:ANTIVIRUS", needs: "anyav", label: "Antivirus", desc: "Which antivirus runs. Off stops it; it stays installed with its settings. The change opens the console and asks for your admin password.",
+              opts: (root.startup.has && root.startup.has.antivirus ? [o("ai", "AI Antivirus")] : []).concat(root.startup.has && root.startup.has.clamav ? [o("clamav", "ClamAV")] : []).concat([o("off", "Off")]) },
+            { type: "action", id: "security-firewall", needs: "firewall", label: "Firewall", btn: "Open", done: "Opening…" },
+            { type: "action", id: "security-antivirus", needs: "antivirus", label: "Antivirus", btn: "Open", done: "Opening…" },
+            { type: "action", id: "security-exceptions", needs: "antivirus", label: "Antivirus exceptions", btn: "Open", done: "Opening…" },
             { type: "action", adv: true, id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in /var/log/halcyon/safety_check/." }
         ]).concat(root.remindRows("SAFETY", "Remind me to run the safety check", "Same, for the safety check (by hand or automatic, either counts as done).", "safety")).concat([
             { type: "custom", name: "safetyAuto" },

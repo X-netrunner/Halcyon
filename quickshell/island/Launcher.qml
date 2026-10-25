@@ -107,7 +107,7 @@ Item {
     // the order of the command list: groups first, then this order inside each group (anything not listed goes last)
     readonly property var catOrder: ["system", "desktop", "tools", "games", "power"]
     readonly property var cmdOrder: [
-        "settings", "display", "printer", "wifi", "bluetooth", "firewall", "firewall-dashboard", "startupview", "quickterm", "cheatsheet", "reload", "tour",
+        "settings", "security", "firewall", "antivirus", "exceptions", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
         "calendar", "notes", "notesall", "study", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "gamecenter", "games", "games-stop",
@@ -118,7 +118,7 @@ Item {
     readonly property bool cmdAll: mode === "cmd" && q0.substring(1).trim() === "."
     readonly property bool cmdGrouped: mode === "cmd" && cmdAll && cmdCategory === "all"
     readonly property int cmdShort: 10
-    readonly property var cmdCore: ["settings", "wallgallery", "desktopbuilder", "barbuilder", "calendar", "notes", "clipboard", "screenshot", "record",
+    readonly property var cmdCore: ["settings", "security", "wallgallery", "desktopbuilder", "barbuilder", "calendar", "notes", "clipboard", "screenshot", "record",
         "tool-colorpick", "ask", "calc", "quickterm", "cheatsheet", "startupview", "reload", "gamecenter", "games-stop", "power", "gaming"]
     property int cmdTucked: 0
     function cmdRank(c) {
@@ -169,6 +169,10 @@ Item {
         { id: "theme", name: "Light / dark theme", desc: "Switch the whole desktop between the dark and the light theme (toggle)", glyph: 0xF0594, kw: "dark light mode appearance colours day night", cat: "desktop" },
         { id: "settings", name: "Settings", desc: "Theme, wallpaper, scrolling, default apps, transparency, motion, gaming", glyph: 0xF0493, kw: "rice options look theme gear config", cat: "system" },
         { id: "extradim", name: "Extra dim display", desc: "Dim screen backlight to minimum (Super + Alt + D)", glyph: 0xF058F, kw: "dim brightness backlight dark night minimum screen", cat: "tools" },
+        { id: "security", name: "Security Center", desc: "", glyph: 0xF0565, kw: "security firewall antivirus ai-antivirus virus malware scan ban bans shield protect", cat: "system" },
+        { id: "firewall", name: "Firewall", desc: "", glyph: 0xF1A11, kw: "firewall ai-firewall ban unban ports network security", cat: "system" },
+        { id: "antivirus", name: "Antivirus", desc: "", glyph: 0xF13B6, kw: "antivirus ai-antivirus virus malware alerts scan security", cat: "system" },
+        { id: "exceptions", name: "Antivirus exceptions", desc: "", glyph: 0xF0780, kw: "exceptions exclusions exclude allow allowlist whitelist ignore trusted antivirus claude agy", cat: "system" },
         { id: "study", name: "Study Center", desc: "Add PDFs, slides, notes or photos of pages and ask questions about them; the answers name the page. Also a revision summary, a quiz and flashcards. All on this computer", glyph: 0xF0474, kw: "study learn pdf notes lecture slides exam revise revision quiz flashcards summary ask questions document book homework", cat: "tools" },
         { id: "gamecenter", name: "Game Center", desc: "Your games with cover art: add a Windows game (.exe), read Steam, Epic and GOG, Proton versions and the system check for games", glyph: 0xF0297, kw: "game games center library add exe import steam epic gog stores proton runtimes doctor check settings launcher", cat: "games" },
         { id: "games", name: "Games", desc: "Your game library: Enter launches. Type  >  and its name (or  >game  for the list) to find one (Steam games and the .exe games you added). Halcyon rests while a game runs", glyph: 0xF0297, kw: "game games play library steam proton launcher", cat: "games" },
