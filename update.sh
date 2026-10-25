@@ -13,7 +13,7 @@
 #            --browser ID  --files ID[,ID]  --editor ID[,ID]  --music ID[,ID]  --resources low|medium|high|adaptive  --renderer auto|opengl|vulkan
 #            --firewall ai|ufw|none  --antivirus / --no-antivirus
 #            --resource-offset N   (a value goes after a space or an =, see ./install.sh --help)
-#   First install on a new machine (nothing to update yet):  curl -fsSL https://raw.githubusercontent.com/X-netrunner/Halcyon/HEAD/get.sh | bash
+#   First install on a new machine (nothing to update yet):  curl -fsSLO https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh && bash get.sh
 #
 # If ~/.config/Halcyon is a git checkout it is updated in place (git pull --rebase --autostash, so your own edits
 # stay). If it is a plain copy, the latest version is cloned to ~/.cache/halcyon-update and installed over it
