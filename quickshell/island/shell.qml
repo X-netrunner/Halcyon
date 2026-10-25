@@ -652,14 +652,10 @@ ShellRoot {
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
-            else if (id === "fw-page") root.page = "fw"
-            else if (id === "fw-center") root.runCommand("firewall")
-            else if (id === "fw-doctor") quickTerm.run("sudo ai-firewall doctor --fix")          // in the console: sudo and its [y/N] questions are answered there
-            else if (id === "fw-top" || id === "fw-ask" || id === "fw-config") {                  // full-screen programs: a real terminal
-                var fwCmd = id === "fw-top" ? "sudo ai-firewall top"
-                          : id === "fw-ask" ? "sudo ai-firewall top --ask"
-                          : "sudoedit /etc/ai-firewall/config.toml"
-                Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", fwCmd])
+            else if (id === "security-firewall" || id === "security-antivirus" || id === "security-exceptions") { settingsWin.hide(); securityCenter.show(id.substring(9)) }
+            else if (id.indexOf("antivirus-select:") === 0) {          // Settings > Backup & safety > Antivirus: ai | clamav | off, with sudo in the console
+                var avm = id.substring(17)
+                if (avm === "ai" || avm === "clamav" || avm === "off") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-select.sh " + avm) }
             }
             else if (id === "fx-safe-on") root.fxRun(["safe-mode", "on"])
             else if (id === "fx-safe-off") root.fxRun(["safe-mode", "back"])
@@ -1070,6 +1066,14 @@ ShellRoot {
         onConsoleRequested: cmd => quickTerm.run(cmd)
     }
 
+    // >security, >firewall, >antivirus: the firewall (ai-firewall) and the antivirus (ai-antivirus) in one window, each one optional
+    // (SecurityCenter.qml; install.sh --firewall ai, --antivirus). Root actions run in the pop-out console.
+    SecurityCenter {
+        id: securityCenter
+        pal: pal
+        onConsoleRequested: cmd => { securityCenter.hide(); quickTerm.run(cmd) }
+    }
+
     // SUPER + CTRL + S, >screenshot: Region / Window / Full screen, then Copy, Save or Both (ShotMenu.qml, scripts/halcyon-shot.py)
     ShotMenu {
         id: shotMenu
@@ -1105,7 +1109,7 @@ ShellRoot {
     // notifs.centerOpen is NOT in this list on purpose: the notification window does not need to raise itself above itself, and the
     // raise() un-maps the window for a moment, which made the box think the pointer had left and close about a second after opening.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
-        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || studyCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
+        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || studyCenter.open || securityCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
         || settingsWin.galleryOpen || settingsWin.builderOpen
         || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
@@ -1348,8 +1352,7 @@ ShellRoot {
         if (clipMenu.open) { clipMenu.close(); return true }
         if (gameCenter.open) { gameCenter.close(); return true }
         if (studyCenter.open) { studyCenter.hide(); return true }
-        if (fwCenter.open) { fwCenter.hide(); return true }
-        if (focusStreak.open) { focusStreak.hide(); return true }
+        if (securityCenter.open) { securityCenter.hide(); return true }
         if (shotMenu.open) { shotMenu.close(); return true }
         if (musicMenu.open) { musicMenu.close(); return true }
         if (calendar.open) { calendar.hide(); return true }
@@ -1664,7 +1667,7 @@ ShellRoot {
         }
         // its own process group and a scope-less detach: the game must not die with the shell
         // its output (and any error before the game starts) goes to a file the Game Center reads to say what is happening
-        Quickshell.execDetached(["sh", "-c", "exec \"$1\" run \"$2\" >\"$3\" 2>&1", "sh", root.hgl, id, Quickshell.env("XDG_RUNTIME_DIR") + "/hgl-launch.out"])
+        Quickshell.execDetached(["sh", "-c", "unset VK_DRIVER_FILES VK_ICD_FILENAMES __EGL_VENDOR_LIBRARY_FILENAMES; exec \"$1\" run \"$2\" >\"$3\" 2>&1", "sh", root.hgl, id, Quickshell.env("XDG_RUNTIME_DIR") + "/hgl-launch.out"])
     }
     // the island restarted while a game runs (a reload, a crash): hgl knows
     Process {
@@ -1971,6 +1974,8 @@ ShellRoot {
         case "games": launcher.openGames(); if (page !== "launcher") { overviewOpen = false; page = "launcher" } break
         case "gamecenter": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggle(); break
         case "study": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); studyCenter.toggle(); break
+        case "security": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (studyCenter.open) studyCenter.hide(); securityCenter.toggle(); break
+        case "firewall": case "antivirus": case "exceptions": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (studyCenter.open) studyCenter.hide(); securityCenter.show(id); break
         case "games-add": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.showAdd(); break
         case "games-import": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("library"); gameCenter.act([root.hgl, "import", "steam"], "Steam library read"); break
         case "games-doctor": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("doctor"); break
@@ -2635,6 +2640,8 @@ ShellRoot {
         function gamestart(id: string, name: string, since: string, lean: bool): void { root.gameStarted(id, name, Number(since), lean) }   // hgl run
         function gameend(): void { root.gameEnded() }                                                                                     // hgl run, when the game is over
         function study(): void { root.runCommand("study") }                                                                                // the Study Center window (toggle)
+        function security(): void { root.runCommand("security") }                                                                          // the Security center window (toggle)
+        function securitypage(page: string): void { securityCenter.show(page) }                                                           // overview | firewall | antivirus | exceptions | ask
         function gamecenter(): void { root.runCommand("gamecenter") }                                                                      // the Game Center window (toggle)
         function gamecenterpage(page: string): void { gameCenter.show(page) }                                                              // library | stores | runtimes | doctor
         function leanset(on: bool): void { root.setLean(on) }                                                                              // by hand: the lean island alone
