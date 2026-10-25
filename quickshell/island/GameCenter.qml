@@ -413,6 +413,7 @@ Scope {
         { k: "gamemode", t: "Gamemode", d: "Asks the system for its performance mode while the game runs", wrapper: true },
         { k: "mangohud", t: "MangoHud", d: "FPS and temperature overlay", wrapper: true },
         { k: "lean", t: "Lean island", d: "Halcyon pauses its feeds, widgets and animations while this game runs", wrapper: false },
+        { k: "fullscreen", t: "Fullscreen", d: "Puts the game's window in fullscreen when it opens", wrapper: false },
         { k: "wayland", t: "Wayland mode", d: "Off is safer: most games still run best through XWayland", wrapper: false }
     ]
     function toggleOn(def) {
@@ -1837,7 +1838,7 @@ Scope {
                                                 delegate: RowLayout {
                                                     required property var modelData
                                                     // Wayland mode and the wrappers apply to games Halcyon starts itself, not to Steam's own launch
-                                                    visible: root.isWine(root.sel) || modelData.k === "lean"
+                                                    visible: root.isWine(root.sel) || modelData.k === "lean" || modelData.k === "fullscreen"
                                                     width: parent.width
                                                     height: visible ? implicitHeight : 0
                                                     spacing: 10
