@@ -79,6 +79,8 @@ jobs:
         run: python3 tests/test_no_redefine.py
       - name: '>ask routing (small talk gets a fixed reply, general questions are not turned into Halcyon guides; model stubbed)'
         run: python3 tests/test_ask_routing.py
+      - name: ClamAV test and scan (fixes only from the fixed list, the model only orders them, home folders only; clamscan stubbed)
+        run: python3 tests/test_clamav.py
 
   qml:
     runs-on: ubuntu-latest
