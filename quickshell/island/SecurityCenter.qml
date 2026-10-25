@@ -32,10 +32,11 @@ Scope {
     // ---- which modules are installed (looked up each time the window opens)
     property bool hasFw: false
     property bool hasAv: false
+    property bool hasClam: false             // clamscan is installed: the ClamAV page (test it, scan with it)
     property bool detected: false
     Process {
         id: detectProc
-        command: ["sh", "-c", "for p in /usr/local/bin/ai-firewall /usr/bin/ai-firewall; do [ -x \"$p\" ] && { echo \"fw $p\"; break; }; done; p=$(command -v ai-antivirus) && echo \"av $p\"; true"]
+        command: ["sh", "-c", "for p in /usr/local/bin/ai-firewall /usr/bin/ai-firewall; do [ -x \"$p\" ] && { echo \"fw $p\"; break; }; done; p=$(command -v ai-antivirus) && echo \"av $p\"; command -v clamscan >/dev/null 2>&1 && echo clam; true"]
         stdout: StdioCollector {
             onStreamFinished: {
                 var m = text.match(/^fw (\S+)$/m)
@@ -44,8 +45,11 @@ Scope {
                 var a = text.match(/^av (\S+)$/m)
                 if (a) root.avBin = a[1]
                 root.hasAv = a !== null
+                root.hasClam = /^clam$/m.test(text)
                 root.detected = true
-                if (root.tab === "firewall" && !root.hasFw || (root.tab === "antivirus" || root.tab === "exceptions") && !root.hasAv) root.tab = "overview"
+                if (root.tab === "firewall" && !root.hasFw || (root.tab === "antivirus" || root.tab === "exceptions") && !root.hasAv
+                    || root.tab === "clamav" && !root.hasClam) root.tab = "overview"
+                if (root.tab === "overview" && !root.hasFw && !root.hasAv && root.hasClam) root.tab = "clamav"   // ClamAV alone: its page
                 if (root.askTarget === "firewall" && !root.hasFw) root.askTarget = "antivirus"
                 if (root.askTarget === "antivirus" && !root.hasAv) root.askTarget = "firewall"
                 root.refresh()
@@ -147,6 +151,37 @@ Scope {
             }
         }
         onExited: if (root.scanSum === null) root.scanSum = { files: 0, found: root.scanFound.length, seconds: 0, failed: true }
+    }
+
+    // ---- ClamAV: `halcyon-ai.py clamav test|scan`. The fixes are commands from a fixed list (the local model, when it is on, only
+    // orders them and sums up); each one opens in the console, so you see it and type your password before anything changes.
+    readonly property string aiScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-ai.py"
+    property var clam: null                  // the last result: { kind: test|scan, headline, summary, checks, found, fixes, good, ai }
+    property string clamErr: ""
+    property string clamWhat: ""
+    readonly property bool clamBusy: clamProc.running
+    readonly property string clamState: clamBusy ? (clamWhat === "test" ? "Testing…" : "Scanning…")
+        : (clam === null ? (clamErr !== "" ? "Failed" : "Not tested yet") : (clam.good ? (clam.kind === "test" ? "Works" : "Clean") : (clam.kind === "test" ? "Needs attention" : "Found something")))
+    readonly property color clamColor: clamBusy || clam === null ? (clamErr !== "" ? pal.bad : pal.muted) : (clam.good ? pal.good : pal.bad)
+    function clamRun(what, dir) {
+        if (clamBusy || !hasClam) return
+        clamWhat = what; clamErr = ""; clam = null
+        clamProc.command = ["python3", aiScript, "clamav", what].concat(dir ? [dir] : []).concat(["--json"])
+        clamProc.running = true
+    }
+    // a fix that is a command (not an instruction such as the NixOS one) can be opened in the console
+    function runnable(cmd) { return /^(sudo |clamscan |mkdir |xdg-open )/.test(String(cmd || "")) }
+    Process {
+        id: clamProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var d = null
+                try { d = JSON.parse(text) } catch (e) { d = null }
+                if (!d) { root.clamErr = "No answer from halcyon-ai.py (is python3 there?)"; return }
+                if (!d.ok) { root.clamErr = d.error || "It did not work."; return }
+                root.clam = d
+            }
+        }
     }
 
     // ---- exceptions: programs and folders the antivirus leaves alone
@@ -312,7 +347,7 @@ Scope {
     function cap(s) { s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1) }
 
     function show(t) {
-        if (t === "overview" || t === "firewall" || t === "antivirus" || t === "exceptions" || t === "ask") tab = t
+        if (t === "overview" || t === "firewall" || t === "antivirus" || t === "exceptions" || t === "ask" || t === "clamav") tab = t
         open = true
         detectProc.running = true
         Qt.callLater(function () { root.focusRequested(root.tab === "ask" ? "ask" : "panel") })
@@ -677,8 +712,8 @@ Scope {
                 Keys.onPressed: e => {
                     if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true; return }
                     // 1-5 switch pages
-                    var pages = ["overview", "firewall", "antivirus", "exceptions", "ask"], i = e.key - Qt.Key_1
-                    if (i >= 0 && i < 5) { root.setTab(pages[i]); e.accepted = true }
+                    var pages = ["overview", "firewall", "antivirus", "exceptions", "ask", "clamav"], i = e.key - Qt.Key_1
+                    if (i >= 0 && i < pages.length) { root.setTab(pages[i]); e.accepted = true }
                 }
                 Connections {
                     target: root
@@ -728,6 +763,7 @@ Scope {
                                 NavRow { key: "antivirus"; label: "Antivirus"; glyph: 0xF13B6; tone: root.avColor; badge: root.avUnacked; available: root.hasAv || !root.detected }
                                 NavRow { key: "exceptions"; label: "Exceptions"; glyph: 0xF0780; available: root.hasAv || !root.detected }
                                 NavRow { key: "ask"; label: "Ask"; glyph: 0xF0B79; available: root.hasFw || root.hasAv || !root.detected }
+                                NavRow { key: "clamav"; label: "ClamAV"; glyph: 0xF0668; tone: root.clam !== null ? root.clamColor : "transparent"; available: root.hasClam || !root.detected }
                                 Item { Layout.fillHeight: true }
                                 Text {
                                     Layout.fillWidth: true
@@ -766,7 +802,7 @@ Scope {
 
                             // ---- nothing installed
                             Empty {
-                                visible: root.detected && !root.hasFw && !root.hasAv
+                                visible: root.detected && !root.hasFw && !root.hasAv && !root.hasClam
                                 glyph: 0xF099E
                                 tone: root.pal.muted
                                 text: "Not installed"
@@ -1055,6 +1091,98 @@ Scope {
                                         }
                                     }
                                     Empty { visible: root.avAlerts.length === 0; text: root.avKnown ? "All clear" : "Unreadable"; tone: root.avKnown ? root.pal.good : root.pal.muted; glyph: root.avKnown ? 0xF0565 : 0xF033E }
+                                }
+                            }
+
+                            // ---- ClamAV: test it, scan with it, and the fixes
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 28
+                                spacing: 18
+                                visible: root.tab === "clamav" && root.hasClam
+
+                                PageHead {
+                                    glyph: 0xF0668
+                                    status: root.clamState
+                                    tone: root.clamColor
+                                    detail: root.clamErr !== "" ? root.clamErr
+                                        : (root.clam === null ? "Checks the signatures, the updater and that ClamAV detects a harmless test file"
+                                        : root.clam.headline)
+                                    Btn { label: "Test ClamAV"; glyph: 0xF0668; disabled: root.clamBusy; onClicked: root.clamRun("test", "") }
+                                    Btn { label: "Scan Downloads"; glyph: 0xF1276; primary: true; disabled: root.clamBusy; onClicked: root.clamRun("scan", "Downloads") }
+                                }
+
+                                Working { visible: root.clamBusy }
+
+                                // the model's short summary, marked as such (the headline above is from fixed rules)
+                                Small {
+                                    Layout.fillWidth: true
+                                    visible: !root.clamBusy && root.clam !== null && root.clam.ai === true && (root.clam.summary || "") !== ""
+                                    text: "AI: " + (root.clam ? root.clam.summary : "")
+                                    wrapMode: Text.Wrap
+                                }
+
+                                // test: one row per check
+                                Column {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    visible: !root.clamBusy && root.clam !== null && root.clam.kind === "test"
+                                    Repeater {
+                                        model: root.clam && root.clam.checks ? root.clam.checks : []
+                                        delegate: Row {
+                                            required property var modelData
+                                            spacing: 9
+                                            Dot { anchors.verticalCenter: parent.verticalCenter; width: 7; height: 7; radius: 4; color: modelData.ok ? root.pal.good : root.pal.bad }
+                                            Text { text: modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1 }
+                                            Small { anchors.verticalCenter: parent.verticalCenter; text: modelData.detail }
+                                        }
+                                    }
+                                }
+
+                                // scan: what was found
+                                Column {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+                                    visible: !root.clamBusy && root.clam !== null && root.clam.kind === "scan" && (root.clam.found || []).length > 0
+                                    Repeater {
+                                        model: root.clam && root.clam.found ? root.clam.found.slice(0, 8) : []
+                                        delegate: Row {
+                                            required property var modelData
+                                            spacing: 10
+                                            Text { id: cfP; text: modelData.file.replace(/^\/home\/[^/]+\//, "~/"); color: root.pal.text; font.family: root.pal.mono; font.pixelSize: root.pal.tCap + 1; width: Math.min(implicitWidth, 460); elide: Text.ElideMiddle }
+                                            Small { text: modelData.signature; color: root.pal.bad }
+                                        }
+                                    }
+                                }
+
+                                Section {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    title: "Fixes"
+                                    extra: root.clam && root.clam.fixes ? String(root.clam.fixes.length) : ""
+                                    ListView {
+                                        anchors.fill: parent
+                                        clip: true
+                                        spacing: 2
+                                        boundsBehavior: Flickable.StopAtBounds
+                                        model: root.clam && root.clam.fixes ? root.clam.fixes : []
+                                        delegate: ListRow {
+                                            required property var modelData
+                                            width: ListView.view.width
+                                            title: modelData.title + "  ·  " + modelData.cmd
+                                            sub: modelData.why
+                                            mark: root.pal.warn
+                                            actGlyph: root.runnable(modelData.cmd) ? 0xF018D : 0
+                                            actTone: root.pal.accent
+                                            onAct: root.consoleRequested(modelData.cmd)
+                                        }
+                                    }
+                                    Empty {
+                                        visible: !root.clamBusy && (root.clam === null || (root.clam.fixes || []).length === 0)
+                                        text: root.clam === null ? "Run a test or a scan" : "Nothing to fix"
+                                        tone: root.clam === null ? root.pal.muted : root.pal.good
+                                        glyph: root.clam === null ? 0xF0668 : 0xF0565
+                                    }
                                 }
                             }
 
