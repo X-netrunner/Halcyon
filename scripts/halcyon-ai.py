@@ -1768,8 +1768,31 @@ def clam_updater_active():
     return sh(["pgrep", "-x", "freshclam"], timeout=5)[0] == 0
 
 
+def broken_names(paths, limit=200000):
+    """Files under paths whose name holds a line break (they would make clamscan's one-line-per-file output ambiguous)."""
+    bad, seen = [], 0
+    for p in paths:
+        if os.path.isfile(p):
+            if "\n" in p or "\r" in p:
+                bad.append(p)
+            continue
+        for d, dirs, files in os.walk(p):
+            for n in dirs + files:
+                seen += 1
+                if "\n" in n or "\r" in n:
+                    bad.append(os.path.join(d, n))
+            if seen > limit:
+                return bad
+    return bad
+
+
 def clam_scan(paths, timeout=None):
     """clamscan's findings: (files scanned or None, [(file, signature)], error text)."""
+    # a file name with a line break could forge a "FOUND" line for another file: then the output is not read at all
+    odd = broken_names(paths)
+    if odd:
+        return None, [], ("a file name contains a line break, so the result could not be trusted: " + repr(odd[0])[:160]
+                          + ". Rename or remove it, then scan again")
     try:
         r = subprocess.run(["clamscan", "--recursive", "--infected", "--stdout", *paths], capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError:
