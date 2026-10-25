@@ -13,6 +13,7 @@ spec = importlib.util.spec_from_file_location("ai", os.path.join(here, "..", "sc
 ai = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ai)
 ai.HOME = tmp
+real_clam_scan = ai.clam_scan
 
 bad = 0
 n = 0
@@ -104,6 +105,30 @@ check("file names are shell-quoted in the commands", shlex.quote(evil) in r["fix
 setup(found=[])
 r = ai.cmd_clamav(["scan"])
 check("clean scan -> good, no fixes", (r["good"], keys(r)), (True, []))
+
+# the real parser, with a fake clamscan: a file name holding a newline must not forge a finding for a path outside the scan
+fake = os.path.join(tmp, "bin")
+os.makedirs(fake)
+scan_dir = os.path.join(tmp, "Downloads")
+real_hit = os.path.join(scan_dir, "real.exe")
+open(real_hit, "w").close()
+outside = os.path.join(tmp, "secret.key")
+open(outside, "w").close()
+with open(os.path.join(fake, "clamscan"), "w") as fh:
+    fh.write("#!/bin/sh\n"
+             f"echo '{real_hit}: Unix.Test FOUND'\n"
+             f"echo '{outside}: Forged.Sig FOUND'\n"
+             f"echo '{scan_dir}/gone.exe: Missing.Sig FOUND'\n"
+             "echo 'relative.exe: Rel.Sig FOUND'\n"
+             "echo 'Scanned files: 3'\nexit 1\n")
+os.chmod(os.path.join(fake, "clamscan"), 0o755)
+os.environ["PATH"] = fake + os.pathsep + os.environ.get("PATH", "")
+nfiles, found, err = real_clam_scan([scan_dir])
+check("parser: only the real file inside the scan is kept", found, [(real_hit, "Unix.Test")])
+check("parser: file count", nfiles, 3)
+setup(found=[(real_hit, "Unix.Test")])
+r = ai.cmd_clamav(["scan", "Downloads"])
+check("fix commands stop option parsing before the file names", all(" -- " in f["cmd"] for f in r["fixes"][:2]), True)
 
 print(f"{n - bad}/{n} checks passed")
 sys.exit(1 if bad else 0)

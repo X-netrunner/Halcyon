@@ -1659,8 +1659,8 @@ def clam_fixes_table():
         "install": {"title": "Install ClamAV", "cmd": install, "why": "clamscan is not installed."},
         "freshclam": {"title": "Download the signatures", "cmd": "sudo freshclam", "why": "Without a signature database ClamAV finds nothing."},
         "updater": {"title": "Keep the signatures up to date", "cmd": updater, "why": "The updater service is not running, so the signatures get old."},
-        "inspect": {"title": "Look at what was found", "cmd": "clamscan --infected --no-summary {files}", "why": "Scan the reported files again and read the signature names."},
-        "quarantine": {"title": "Move what was found out of the way", "cmd": "mkdir -p ~/.local/share/halcyon-quarantine && mv -n {files} ~/.local/share/halcyon-quarantine/",
+        "inspect": {"title": "Look at what was found", "cmd": "clamscan --infected --no-summary -- {files}", "why": "Scan the reported files again and read the signature names."},
+        "quarantine": {"title": "Move what was found out of the way", "cmd": "mkdir -p ~/.local/share/halcyon-quarantine && mv -n -- {files} ~/.local/share/halcyon-quarantine/",
                        "why": "Moves the files, nothing is deleted. Only do this when you do not recognise them."},
         "false_positive": {"title": "Report a false positive", "cmd": "xdg-open https://www.clamav.net/reports/fp",
                            "why": "If a file you trust is detected, the ClamAV project can fix the signature."},
@@ -1698,7 +1698,15 @@ def clam_scan(paths, timeout=None):
         return None, [], "clamscan is not installed"
     except subprocess.TimeoutExpired:
         return None, [], "the scan took too long"
-    found = [(m.group(1), m.group(2)) for m in re.finditer(r"^(.+): (\S+) FOUND$", r.stdout, re.M)]
+    # clamscan prints "<path>: <signature> FOUND" per line, so a file whose name holds a newline could forge a finding for any
+    # other path (which a fix below would then name). Only keep paths that exist and lie inside what was scanned.
+    roots = [os.path.realpath(p) for p in paths]
+    found = []
+    for m in re.finditer(r"^(.+): (\S+) FOUND$", r.stdout, re.M):
+        f = m.group(1)
+        real = os.path.realpath(f)
+        if os.path.isabs(f) and os.path.lexists(f) and any(real == x or real.startswith(x.rstrip(os.sep) + os.sep) for x in roots):
+            found.append((f, m.group(2)))
     m = re.search(r"^Scanned files:\s*(\d+)", r.stdout, re.M)
     err = ""
     if r.returncode == 2:           # 0 clean, 1 found, 2 error
