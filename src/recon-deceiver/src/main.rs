@@ -416,6 +416,36 @@ fn ufw_unban(ip: Option<&str>) {
     }
 }
 
+/// ai-firewall's command, when it is installed and its service runs: bans then go into its kernel blocklist and expire there
+/// by themselves. Otherwise bans are ufw rules, as before.
+fn ai_firewall() -> Option<&'static str> {
+    let bin = ["/usr/local/bin/ai-firewall", "/usr/bin/ai-firewall"]
+        .into_iter()
+        .find(|p| Path::new(p).is_file())?;
+    let active = Command::new("systemctl")
+        .args(["is-active", "--quiet", "ai-firewall"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    active.then_some(bin)
+}
+
+/// The arguments of the ban command for `ip`: `ai-firewall ban` when `aifw` is set, else a ufw rule.
+fn ban_command(aifw: Option<&str>, ip: &str) -> (String, Vec<String>) {
+    match aifw {
+        Some(bin) => (
+            bin.to_string(),
+            vec!["ban".into(), ip.into(), "--minutes".into(), (BAN_SECONDS / 60).max(1).to_string()],
+        ),
+        None => (
+            "ufw".into(),
+            ["insert", "1", "deny", "from", ip, "to", "any", "comment", BAN_COMMENT]
+                .map(String::from)
+                .to_vec(),
+        ),
+    }
+}
+
 /// One thread for every ban: it wakes every few seconds and lifts the bans that ran out.
 fn start_unban_reaper(state: AppState) {
     thread::spawn(move || loop {
@@ -494,7 +524,7 @@ impl AppState {
     fn send_ban_notification(&self, ip: &str) {
         run_notify_send(
             "Active Defense Lockout",
-            &format!("Banned host {} for 10 minutes in UFW firewall", ip),
+            &format!("Banned host {} for 10 minutes in the firewall", ip),
             "normal",
             "security-low",
         );
@@ -528,13 +558,16 @@ impl AppState {
             banned.insert(ip.to_string());
         }
 
-        let added = Command::new("ufw")
-            .args(["insert", "1", "deny", "from", ip, "to", "any", "comment", BAN_COMMENT])
+        let aifw = ai_firewall();
+        let (prog, args) = ban_command(aifw, ip);
+        let added = Command::new(&prog)
+            .args(&args)
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false);
         if !added {
-            self.log_event(&format!("[ERROR] ufw could not ban {} (is ufw installed and active?)", ip));
+            let which = if aifw.is_some() { "ai-firewall" } else { "ufw (is it installed and active?)" };
+            self.log_event(&format!("[ERROR] {} could not ban {}", which, ip));
             lock(&self.banned_ips).remove(ip);
             return;
         }
@@ -2409,6 +2442,17 @@ mod tests {
                      wlan0\t00000000\t0100A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0\n\
                      wlan0\t0000A8C0\t00000000\t0001\t0\t0\t600\t00FFFFFF\t0\t0\t0\n";
         assert_eq!(parse_default_gateways(table), vec!["192.168.0.1".to_string()]);
+    }
+
+    #[test]
+    fn test_ban_command_backends() {
+        let (p, a) = ban_command(Some("/usr/local/bin/ai-firewall"), "203.0.113.9");
+        assert_eq!(p, "/usr/local/bin/ai-firewall");
+        assert_eq!(a, ["ban", "203.0.113.9", "--minutes", "10"]);
+        let (p, a) = ban_command(None, "203.0.113.9");
+        assert_eq!(p, "ufw");
+        assert_eq!(a[..5], ["insert", "1", "deny", "from", "203.0.113.9"]);
+        assert_eq!(a.last().map(String::as_str), Some(BAN_COMMENT));
     }
 
     #[test]

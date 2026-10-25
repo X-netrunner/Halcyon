@@ -80,7 +80,18 @@
 #   --luna / --no-luna     the extra: LUNA, a local AI assistant in Rust (https://github.com/X-netrunner/LUNA-AI), built from the
 #                          commit pinned below (LUNA_REV) into ~/.local/bin/luna. Asked on the first install and with --choose
 #                          (default no), then remembered. Only the program is installed: its daemon is never switched on for you.
-#   --renderer MODE        how the island draws: auto | opengl | vulkan (default auto = picked for this machine each time Halcyon
+#   --firewall ID          ai | ufw | none (default ufw). ai = ai-firewall (eBPF, replaces ufw, page in the Security center), built
+#                          from AIFW_SRC (default ~/.local/src/ai-firewall) or AIFW_REPO at AIFW_REV; needs nightly Rust + bpf-linker.
+#                          If it cannot be built, ufw stays and an installed copy is kept. Switching away from ai removes it.
+#                          Asked on the first install and with --choose, then remembered.
+#   --antivirus / --no-antivirus  the extra: ai-antivirus (alert-only by default, page in the Security center), built as a
+#                          pacman package from AV_SRC (default ~/.local/src/ai-antivirus) or AV_REPO at AV_REV. Default no,
+#                          asked once, then remembered; --no-antivirus after it was installed removes the package (its config is kept).
+#                          The firewall and the antivirus are independent: either one can be on without the other.
+#                          (--synapse / --no-synapse still work: Synapse was its old name.)
+#   SECURITY_MODEL=NAME    the local model the firewall and antivirus assistants use (default qwen3.5:4b, ~3.3 GB, pulled when
+#                          Ollama is installed and either module is on); SECURITY_MODEL=none skips the download.
+#   --renderer MODE       how the island draws: auto | opengl | vulkan (default auto = picked for this machine each time Halcyon
 #                          starts; OpenGL on integrated graphics, where it measured ~500 MB less RAM than Vulkan at the same power)
 #                            keep     your prompt is not touched at all (Halcyon does not start Starship, and does not edit your starship.toml)
 #                            colours  your own layout stays, only the colours follow the wallpaper
@@ -131,6 +142,13 @@ AIFW_SRC="${AIFW_SRC:-}"
 # LUNA is built from this exact commit, never from whatever is on main: move the pin when a LUNA version is ready for everyone
 LUNA_REPO="https://github.com/X-netrunner/LUNA-AI.git"
 LUNA_REV="9e79a8542a0c05bb882639103dacc425c22c857c"
+# the Security center's two modules (see choose_security): each one on or off on its own
+FIREWALL=ufw; FIREWALL_ASKED=false             # ai | ufw | none
+INSTALL_AV=false; AV_ASKED=false                # the ai-antivirus extra
+AIFW_SRC="${AIFW_SRC:-}"; AIFW_REPO="${AIFW_REPO:-}"; AIFW_REV="${AIFW_REV:-}"                  # where ai-firewall is built from
+AV_SRC="${AV_SRC:-${SYNAPSE_SRC:-}}"; AV_REPO="${AV_REPO:-${SYNAPSE_REPO:-}}"; AV_REV="${AV_REV:-${SYNAPSE_REV:-}}" # where ai-antivirus is built from
+[[ -n "$AV_SRC" || -n "$AV_REPO" ]] || AV_REPO="https://github.com/X-netrunner/ai-antivirus"   # nothing given: clone it into ~/.local/src/ai-antivirus
+SECURITY_MODEL="${SECURITY_MODEL:-qwen3.5:4b}"   # the assistants' local model (fits a 6 GB GPU)
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 PICK_PROMPT=""; FIRST_INSTALL=false        # your shell prompt: keep | colours | halcyon (see choose_prompt); FIRST_INSTALL: nothing was chosen on this machine yet
@@ -235,6 +253,10 @@ while [[ $# -gt 0 ]]; do
         --firewall=*)       PICK_FIREWALL="${1#--firewall=}"; [[ "$PICK_FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none (see --help)" ;;
         --luna)             INSTALL_LUNA=true; LUNA_ASKED=true ;;
         --no-luna)          INSTALL_LUNA=false; LUNA_ASKED=true ;;
+        --firewall)         shift; FIREWALL="${1:-}"; FIREWALL_ASKED=true; [[ "$FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none" ;;
+        --firewall=*)       FIREWALL="${1#--firewall=}"; FIREWALL_ASKED=true; [[ "$FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none" ;;
+        --antivirus|--synapse)       INSTALL_AV=true; AV_ASKED=true ;;
+        --no-antivirus|--no-synapse) INSTALL_AV=false; AV_ASKED=true ;;
         --choose)           CHOOSE=true ;;
         --no-tune)          SKIP_TUNE=true ;;
         --link)             LINK_CONFIG=true ;;
@@ -1610,6 +1632,45 @@ choose_extras() {
 }
 [[ "$REMOVE_LOGIN" != "true" ]] && choose_extras
 
+# ---- the Security center: which firewall, and ai-antivirus. Same rules as the other choices: the command line wins,
+# --choose asks again, otherwise the saved answer is used. Each module is independent of the other.
+choose_security() {
+    local s_f s_s interactive=false have_fw=ufw have_syn=false
+    s_f=$(saved_choice FIREWALL); s_s=$(saved_choice ANTIVIRUS); [[ -n "$s_s" ]] || s_s=$(saved_choice SYNAPSE)   # SYNAPSE: the old name
+    [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && interactive=true
+    # nothing saved yet: what is already on the machine is the default, so an install made by hand is never removed
+    [[ -e /usr/local/bin/ai-firewall ]] || pacman -Q ai-firewall >/dev/null 2>&1 && have_fw=ai
+    pacman -Q ai-antivirus >/dev/null 2>&1 || pacman -Q synapse-edr >/dev/null 2>&1 && have_syn=true
+    if [[ "$FIREWALL_ASKED" != "true" && -z "$s_f" && ( "$interactive" != "true" ) ]]; then
+        FIREWALL=$have_fw          # not asked: nothing gets removed (FIREWALL_ASKED stays false)
+    elif [[ "$FIREWALL_ASKED" != "true" ]]; then
+        if [[ "$interactive" == "true" && ( "$CHOOSE" == "true" || -z "$s_f" ) ]]; then
+            menu_pick FIREWALL "Firewall" "${s_f:-$have_fw}" 0 "ufw|ufw|the classic, what Halcyon used so far" \
+                "ai|ai-firewall|eBPF firewall with auto-bans, live tests and a local assistant (built from source: nightly Rust + bpf-linker)" \
+                "none|None|Halcyon sets no firewall up"
+        elif [[ -n "$s_f" ]]; then
+            FIREWALL="$s_f"
+        fi
+        FIREWALL_ASKED=true
+    fi
+    if [[ "$AV_ASKED" != "true" && -z "$s_s" && "$interactive" != "true" ]]; then
+        INSTALL_AV=$have_syn  # not asked: an installed package is kept, nothing new is built
+    elif [[ "$AV_ASKED" != "true" ]]; then
+        if [[ "$interactive" == "true" && ( "$CHOOSE" == "true" || -z "$s_s" ) ]]; then
+            echo -e "\n  ${CYAN}${BOLD}Extra: ai-antivirus${RESET}  ${DIM}AI antivirus / EDR: eBPF + fanotify sensor, YARA and behaviour rules, alert-only until you change it${RESET}"
+            echo -e "   ${DIM}built as a pacman package from source (needs bpf-linker for its eBPF part); shows up in the Security center.${RESET}"
+            if [[ "$have_syn" == "true" ]]; then
+                if confirm "  Keep ai-antivirus?"; then INSTALL_AV=true; else INSTALL_AV=false; fi
+            elif confirm_no "  Install ai-antivirus?"; then INSTALL_AV=true; else INSTALL_AV=false; fi
+        elif [[ -n "$s_s" ]]; then
+            [[ "$s_s" == yes ]] && INSTALL_AV=true || INSTALL_AV=false
+        fi
+        AV_ASKED=true
+    fi
+    log_info "Security: firewall $FIREWALL, antivirus $([[ "$INSTALL_AV" == true ]] && echo "yes (built in step 12)" || echo no)"
+}
+[[ "$REMOVE_LOGIN" != "true" ]] && choose_security
+
 # ---------------------------------------------------------------------------------------------- step 5
 log_step "Step 5: Hyprland and the desktop"
 
@@ -2462,7 +2523,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "FIREWALL=${PICK_FIREWALL:-ai}" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" ${LOCK_LOGIN_SAVE:+"LOCK_LOGIN=$LOCK_LOGIN_SAVE"} || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" "FIREWALL=$FIREWALL" "ANTIVIRUS=$([[ "$INSTALL_AV" == true ]] && echo yes || echo no)" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
     user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} ${LOCK_LOGIN_SAVE:+"LOCK_LOGIN=$LOCK_LOGIN_SAVE"} || true
 elif [[ -n "$PICK_RENDERER" ]]; then
@@ -2501,6 +2562,168 @@ install_luna() {
     log_success "LUNA installed: run 'luna' (its README: $src/README.md; the daemon: $src/deploy/luna-daemon.service, off until you enable it)"
 }
 [[ "$INSTALL_LUNA" == "true" ]] && install_luna
+
+# ---- the Security center's modules: ai-firewall and ai-antivirus. Each is built as you from a source folder (or a
+# pinned git revision), installed as root, and removed again when you switch it off. Neither needs the other.
+# security_src NAME DIR REPO REV -> prints the source folder, cloning / updating REPO at REV into DIR when it is set
+security_src() {
+    local name=$1 dir=$2 repo=$3 rev=$4
+    if [[ -n "$repo" ]]; then
+        command -v git >/dev/null 2>&1 || install_pkgs git >&2
+        # progress goes to stderr: stdout is the folder name the caller captures
+        if [[ -d "$dir/.git" ]]; then
+            run_as_user_cmd "$name: fetching" git -C "$dir" fetch --quiet origin >&2 || return 1
+            [[ -n "$rev" ]] || run_as_user_cmd "$name: updating" git -C "$dir" merge --quiet --ff-only '@{upstream}' >&2 || return 1
+        else
+            run_as_user_cmd "$name: downloading" git clone --quiet "$repo" "$dir" >&2 || return 1
+        fi
+        [[ -n "$rev" ]] && { run_as_user_cmd "$name: version ${rev:0:7}" git -C "$dir" -c advice.detachedHead=false checkout --quiet --force "$rev" >&2 || return 1; }
+    fi
+    [[ -f "$dir/Cargo.toml" ]] || return 1
+    echo "$dir"
+}
+
+# what a source folder looks like now: the git revision (+ a hash of uncommitted changes), else the newest file time.
+# Saved after a good build, so an unchanged source is not rebuilt on every update.
+src_stamp() {
+    local dir=$1
+    if git -C "$dir" rev-parse HEAD >/dev/null 2>&1; then
+        echo "$(git -C "$dir" rev-parse HEAD)-$(git -C "$dir" status --porcelain 2>/dev/null | sha256sum | cut -c1-12)"
+    else
+        find "$dir" -path "$dir/target" -prune -o -type f -printf '%T@\n' 2>/dev/null | sort -n | tail -1
+    fi
+}
+save_stamp() { [[ "$DRY_RUN" == "true" ]] || run_as_user bash -c 'mkdir -p "$(dirname "$1")" && printf "%s\n" "$2" > "$1"' _ "$1" "$2" || true; }
+
+remove_ai_firewall() {
+    [[ -e /usr/local/bin/ai-firewall ]] || return 0
+    try run_cmd "ai-firewall: stopping the filter" as_root /usr/local/bin/ai-firewall off
+    try run_cmd "ai-firewall: removing the service" as_root systemctl disable --now ai-firewall.service
+    try run_cmd "ai-firewall: removing the program" as_root rm -f /usr/local/bin/ai-firewall /etc/systemd/system/ai-firewall.service
+    try run_cmd "systemd: reloading units" as_root systemctl daemon-reload
+    log_info "ai-firewall removed (its config stays in /etc/ai-firewall)"
+}
+
+install_ai_firewall() {
+    local src tgt="$TARGET_HOME/.cache/halcyon-build/ai-firewall" keep=""
+    if pacman -Q ai-firewall >/dev/null 2>&1; then
+        log_success "ai-firewall: installed as a pacman package (/usr/bin/ai-firewall), left as it is"; return 0
+    fi
+    [[ -e /usr/local/bin/ai-firewall ]] && keep=" (the installed copy keeps running)"
+    src=$(security_src ai-firewall "${AIFW_SRC:-$TARGET_HOME/.local/src/ai-firewall}" "$AIFW_REPO" "$AIFW_REV") \
+        || { warn_later "ai-firewall: no source found (set AIFW_SRC to its folder, or AIFW_REPO / AIFW_REV); ufw stays$keep"; return 1; }
+    local stamp="$TARGET_HOME/.local/state/island/aifw-src" now
+    now=$(src_stamp "$src")
+    if [[ -x /usr/local/bin/ai-firewall && "$(cat "$stamp" 2>/dev/null)" == "$now" ]]; then
+        log_success "ai-firewall: this version is already installed"; return 0
+    fi
+    rust_ok || { warn_later "ai-firewall needs Rust (sudo pacman -S rustup) to build$keep"; return 1; }
+    run_as_user rustup toolchain list 2>/dev/null | grep -q '^nightly' \
+        || { warn_later "ai-firewall needs the nightly toolchain: rustup toolchain install nightly --component rust-src$keep"; return 1; }
+    run_as_user bash -c 'command -v bpf-linker' >/dev/null 2>&1 \
+        || { warn_later "ai-firewall needs bpf-linker: cargo install bpf-linker$keep"; return 1; }
+    run_as_user_cmd "ai-firewall: building (a few minutes)" env CARGO_TARGET_DIR="$tgt" cargo build --release --locked -p ai-firewall \
+        --manifest-path "$src/Cargo.toml" || { warn_later "ai-firewall did not build (see the log)$keep"; return 1; }
+    run_cmd "ai-firewall: installing /usr/local/bin/ai-firewall" as_root install -Dm755 "$tgt/release/ai-firewall" /usr/local/bin/ai-firewall || return 1
+    run_cmd "ai-firewall: installing the service" as_root install -Dm644 "$src/packaging/ai-firewall.service" /etc/systemd/system/ai-firewall.service || return 1
+    if [[ "$DRY_RUN" != "true" && ! -f /etc/ai-firewall/config.toml ]]; then
+        /usr/local/bin/ai-firewall default-config | as_root install -Dm644 /dev/stdin /etc/ai-firewall/config.toml
+    fi
+    [[ "$DRY_RUN" == "true" ]] || as_root /usr/local/bin/ai-firewall check || { warn_later "ai-firewall: /etc/ai-firewall/config.toml does not check out"; return 1; }
+    # it replaces ufw / firewalld: two filters at once fight over the same traffic
+    local fw
+    for fw in ufw firewalld; do
+        if systemctl is-enabled "$fw.service" >/dev/null 2>&1; then
+            [[ $fw == ufw ]] && try run_cmd "ufw: switching it off" as_root ufw --force disable
+            try run_cmd "$fw: disabling the service" as_root systemctl disable --now "$fw.service"
+        fi
+    done
+    try run_cmd "systemd: reloading units" as_root systemctl daemon-reload
+    run_cmd "ai-firewall: starting" as_root systemctl enable --now ai-firewall.service || return 1
+    [[ "$DRY_RUN" != "true" ]] && run_as_user rm -rf "$tgt" || true
+    save_stamp "$stamp" "$now"
+    log_success "ai-firewall installed: Security center (>security), or sudo ai-firewall top"
+}
+
+# Synapse was ai-antivirus's old name: its package is replaced, its settings carried over by the new package
+AV_UNITS=(ai-antivirus-sensord.service ai-antivirus-engined.service ai-antivirus-responderd.service ai-antivirus-analyzer.service)
+remove_old_synapse() {
+    pacman -Q synapse-edr >/dev/null 2>&1 || return 0
+    try run_cmd "Synapse (old name): stopping its services" as_root systemctl disable --now synapse-sensord.service synapse-engined.service synapse-responderd.service synapse-ai.service
+    try run_as_user_cmd "Synapse (old name): desktop notifications off" systemctl --user disable --now synapse-notify.service
+    try run_cmd "Synapse (old name): removing the package (its config is kept as .pacsave)" as_root pacman -R --noconfirm synapse-edr
+}
+
+remove_antivirus() {
+    remove_old_synapse
+    pacman -Q ai-antivirus >/dev/null 2>&1 || return 0
+    try run_cmd "ai-antivirus: stopping its services" as_root systemctl disable --now "${AV_UNITS[@]}"
+    try run_as_user_cmd "ai-antivirus: desktop notifications off" systemctl --user disable --now ai-antivirus-notify.service
+    try run_cmd "ai-antivirus: removing the package (its config is kept as .pacsave)" as_root pacman -R --noconfirm ai-antivirus
+}
+
+install_antivirus() {
+    local src pkg
+    src=$(security_src ai-antivirus "${AV_SRC:-$TARGET_HOME/.local/src/ai-antivirus}" "$AV_REPO" "$AV_REV") \
+        || { warn_later "ai-antivirus: no source found (set AV_SRC to its folder, or AV_REPO / AV_REV)"; return 1; }
+    local stamp="$TARGET_HOME/.local/state/island/ai-antivirus-src" now
+    now=$(src_stamp "$src")
+    if pacman -Q ai-antivirus >/dev/null 2>&1 && [[ "$(cat "$stamp" 2>/dev/null)" == "$now" ]]; then
+        log_success "ai-antivirus: this version is already installed"; return 0
+    fi
+    rust_ok || { warn_later "ai-antivirus needs Rust (sudo pacman -S rustup) to build"; return 1; }
+    install_pkgs base-devel clang sqlite libarchive
+    if [[ ! -f "$src/target/bpf/ai-antivirus-ebpf.o" ]] && ! run_as_user bash -c 'command -v bpf-linker' >/dev/null 2>&1; then
+        warn_later "ai-antivirus needs bpf-linker for its eBPF sensor: cargo install bpf-linker (and rustup toolchain install nightly --component rust-src)"
+        return 1
+    fi
+    if [[ ! -f "$src/target/bpf/ai-antivirus-ebpf.o" ]] && ! run_as_user rustup toolchain list 2>/dev/null | grep -q '^nightly'; then
+        warn_later "ai-antivirus needs the nightly toolchain for its eBPF sensor: rustup toolchain install nightly --component rust-src"
+        return 1
+    fi
+    run_as_user_cmd "ai-antivirus: building the package (a few minutes)" bash -c 'cd "$1/packaging/arch" && makepkg -f --noconfirm' _ "$src" \
+        || { warn_later "ai-antivirus did not build (see the log). By hand: cd $src/packaging/arch && makepkg -f"; return 1; }
+    # [0-9]: the package itself, not makepkg's ai-antivirus-debug-* next to it
+    if [[ "$DRY_RUN" == "true" ]]; then pkg="$src/packaging/arch/ai-antivirus-[0-9]*.pkg.tar.zst"
+    else pkg=$(ls -t "$src"/packaging/arch/ai-antivirus-[0-9]*.pkg.tar.zst 2>/dev/null | head -1); fi
+    [[ -n "$pkg" ]] || { warn_later "ai-antivirus: the package file is missing after the build"; return 1; }
+    remove_old_synapse
+    run_cmd "ai-antivirus: installing the package" as_root pacman -U --noconfirm "$pkg" || return 1
+    # alert-only by default: the sensor, the engine and the responder run; the AI analyzer stays off until you set it up
+    run_cmd "ai-antivirus: starting (alert-only)" as_root systemctl enable --now "${AV_UNITS[@]:0:3}" || return 1
+    # the Security center reads `ai-antivirus status` (group ai-antivirus: the database and the event log); desktop
+    # notifications need group ai-antivirus-notify. Both apply from the next login.
+    try run_cmd "ai-antivirus: adding $TARGET_USER to its groups" as_root usermod -aG ai-antivirus,ai-antivirus-notify "$TARGET_USER"
+    try run_as_user_cmd "ai-antivirus: desktop notifications" systemctl --user enable --now ai-antivirus-notify.service
+    save_stamp "$stamp" "$now"
+    log_success "ai-antivirus installed (alert-only): Security center (>security), or ai-antivirus status"
+}
+
+# the assistants' model (firewall Ask, antivirus Ask): pulled once when Ollama is there; both pick it up by themselves
+pull_security_model() {
+    [[ -n "$SECURITY_MODEL" && "$SECURITY_MODEL" != none ]] || return 0
+    command -v ollama >/dev/null 2>&1 || { log_info "Security assistants: no Ollama, so they answer from the doctor and status instead"; return 0; }
+    run_as_user ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx -e "$SECURITY_MODEL" -e "$SECURITY_MODEL:latest" && return 0
+    try run_as_user_cmd "Security assistants: downloading $SECURITY_MODEL (one time)" ollama pull "$SECURITY_MODEL"
+}
+
+if [[ "$PACKAGES" == "true" ]]; then
+    case "$FIREWALL" in
+        ai)   install_ai_firewall || true ;;
+        ufw)  # back to ufw from ai-firewall: remove it, then switch ufw on again when it is installed (the safety check installs it)
+              if [[ "$FIREWALL_ASKED" == "true" && -e /usr/local/bin/ai-firewall ]]; then
+                  remove_ai_firewall
+                  if command -v ufw >/dev/null 2>&1; then
+                      try run_cmd "ufw: switching it on again" as_root systemctl enable --now ufw.service
+                      try run_cmd "ufw: enabling the rules" as_root ufw --force enable
+                  fi
+              fi ;;
+        none) [[ "$FIREWALL_ASKED" == "true" ]] && remove_ai_firewall ;;
+    esac
+    if [[ "$INSTALL_AV" == "true" ]]; then install_antivirus || true
+    elif [[ "$AV_ASKED" == "true" ]]; then remove_antivirus; fi
+    [[ "$FIREWALL" == ai || "$INSTALL_AV" == "true" ]] && pull_security_model
+fi
 
 # the boot splash, now that the colours are made (scheme/current.lua): rendered in them, then the initramfs is rebuilt
 if [[ "$INSTALL_PLYMOUTH" == "true" ]]; then

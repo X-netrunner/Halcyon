@@ -12,6 +12,7 @@
 #       AUDIO_RESUME         0 | 1     bring the paused music back when the other player stops (audio-focus.sh reads it live)
 #       AUDIO_DELAY          1 | 2 | 5 | 10   seconds of silence before it does
 #       PORTAL               login | demand   screen-sharing helper: started at login, or only when an app first asks   next login
+#   ANTIVIRUS (list only)    ai | clamav | off: what runs now. It is changed by scripts/antivirus-select.sh in the console (sudo).
 # The values live in ~/.config/Halcyon/autostart.conf (read by scripts/autostart-extras.sh) and ~/.config/Halcyon/gpu-mode.
 RICE="${HALCYON_DIR:-$HOME/.config/Halcyon}"
 conf="$RICE/autostart.conf"
@@ -35,7 +36,7 @@ write_conf() {   # rewrite our keys, keep any other line the user added
 
 case "${1:-list}" in
   list)
-    nm=false; bl=false; hp=false; gn=false; kd=false; nv=false; sf=false; fw=false
+    nm=false; bl=false; hp=false; gn=false; kd=false; nv=false; sf=false; fw=false; sy=false; cl=false; anyav=false
     have nm-applet && nm=true
     have blueman-applet && bl=true
     exists /usr/lib/hyprpolkitagent/hyprpolkitagent && hp=true
@@ -43,11 +44,15 @@ case "${1:-list}" in
     exists /usr/lib/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 && kd=true
     [ -r /proc/driver/nvidia/version ] && nv=true
     [ -x /usr/local/bin/safety-check ] && sf=true      # the optional safety check (install.sh asks): Settings greys its entry out without it
-    have ai-firewall && fw=true                        # ai-firewall (install.sh --firewall ai, or a package): Settings > Firewall greys out without it
+    exists /usr/local/bin/ai-firewall /usr/bin/ai-firewall && fw=true      # the Security center's modules (install.sh --firewall ai, --antivirus): each greys out on its own
+    have ai-antivirus && sy=true
+    exists /usr/bin/clamd /usr/sbin/clamd && cl=true
+    { [ "$sy" = true ] || [ "$cl" = true ]; } && anyav=true
+    av_now=$(bash "$RICE/scripts/antivirus-select.sh" status 2>/dev/null || echo off)
     case "$PORTAL" in demand) ;; *) PORTAL=login ;; esac
-    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","CLIPBOARD":%s,"GESTURES":%s,"AUDIO_FOCUS":%s,"AUDIO_RESUME":%s,"AUDIO_DELAY":"%s","PORTAL":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s,"safety":%s,"firewall":%s}}\n' \
+    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","CLIPBOARD":%s,"GESTURES":%s,"AUDIO_FOCUS":%s,"AUDIO_RESUME":%s,"AUDIO_DELAY":"%s","PORTAL":"%s","ANTIVIRUS":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s,"safety":%s,"firewall":%s,"antivirus":%s,"clamav":%s,"anyav":%s}}\n' \
       "$([ "$NM_APPLET" = 1 ] && echo true || echo false)" "$([ "$BLUEMAN" = 1 ] && echo true || echo false)" \
-      "$POLKIT" "$(gpu_now)" "$(files_now)" "$([ "$CLIPBOARD" = 1 ] && echo true || echo false)" "$([ "$GESTURES" = 1 ] && echo true || echo false)" "$([ "$AUDIO_FOCUS" = 1 ] && echo true || echo false)" "$([ "$AUDIO_RESUME" = 1 ] && echo true || echo false)" "$AUDIO_DELAY" "$PORTAL" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv" "$sf" "$fw"
+      "$POLKIT" "$(gpu_now)" "$(files_now)" "$([ "$CLIPBOARD" = 1 ] && echo true || echo false)" "$([ "$GESTURES" = 1 ] && echo true || echo false)" "$([ "$AUDIO_FOCUS" = 1 ] && echo true || echo false)" "$([ "$AUDIO_RESUME" = 1 ] && echo true || echo false)" "$AUDIO_DELAY" "$PORTAL" "$av_now" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv" "$sf" "$fw" "$sy" "$cl" "$anyav"
     ;;
   set)
     key="$2"; val="$3"
