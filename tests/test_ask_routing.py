@@ -76,5 +76,11 @@ for q in ("what is halcyon", "who are you"):
 
 check("my ssh connection is blocked", "firewall")
 
+# any part of the UI: shortcuts, widgets and tour cards are explained from their own descriptions
+for q in ("how do I pin a window", "what is the shortcut to pin a window", "what is the focus streak widget",
+          "explain the performance page"):
+    check(q, "docs")
+check("what is a clock", "general")
+
 print(f"{n - bad}/{n} checks passed")
 sys.exit(1 if bad else 0)
