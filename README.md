@@ -74,7 +74,7 @@ Lua). Developed and tested on Arch with Hyprland 0.56.2. The installer also has 
 As your normal user:
 
 ```bash
-curl -fsSL https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh | bash
+curl -fsSLO https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh && bash get.sh
 ```
 
 It asks a few short questions (browser, file manager, editor, whether you want the optional extras) and asks for your password only when a

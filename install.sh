@@ -89,7 +89,10 @@
 #                          asked once, then remembered; --no-antivirus after it was installed removes the package (its config is kept).
 #                          The firewall and the antivirus are independent: either one can be on without the other.
 #                          (--synapse / --no-synapse still work: Synapse was its old name.)
-#   SECURITY_MODEL=NAME    the local model the firewall and antivirus assistants use. Default: the best qwen3.5 size for this laptop
+#   --no-av-exception      do not add the ai-antivirus exception for this installer. By default, with ai-antivirus installed, the
+#                          installer adds two program exceptions (~/.config/Halcyon/install.sh, ~/.cache/halcyon-update/install.sh)
+#                          so the systemd units it writes on every update are not reported. Why and how to undo: docs/antivirus.md
+#   SECURITY_MODEL=NAME   the local model the firewall and antivirus assistants use. Default: the best qwen3.5 size for this laptop
 #                          (0.8b / 2b / 4b / 9b by GPU memory or RAM), suggested on a first install with a menu to change it, remembered,
 #                          pulled when Ollama is installed and either module is on; SECURITY_MODEL=none skips the download.
 #   --renderer MODE       how the island draws: auto | opengl | vulkan (default auto = picked for this machine each time Halcyon
@@ -146,6 +149,7 @@ LUNA_REV="9e79a8542a0c05bb882639103dacc425c22c857c"
 # the Security center's two modules (see choose_security): each one on or off on its own
 FIREWALL=ufw; FIREWALL_ASKED=false             # ai | ufw | none
 INSTALL_AV=false; AV_ASKED=false                # the ai-antivirus extra
+AV_EXCEPTION=true                               # ai-antivirus: except this installer's own unit writes (docs/antivirus.md)
 AIFW_SRC="${AIFW_SRC:-}"; AIFW_REPO="${AIFW_REPO:-}"; AIFW_REV="${AIFW_REV:-}"                  # where ai-firewall is built from
 AV_SRC="${AV_SRC:-${SYNAPSE_SRC:-}}"; AV_REPO="${AV_REPO:-${SYNAPSE_REPO:-}}"; AV_REV="${AV_REV:-${SYNAPSE_REV:-}}" # where ai-antivirus is built from
 [[ -n "$AV_SRC" || -n "$AV_REPO" ]] || AV_REPO="https://github.com/X-netrunner/ai-antivirus"   # nothing given: clone it into ~/.local/src/ai-antivirus
@@ -258,6 +262,7 @@ while [[ $# -gt 0 ]]; do
         --firewall=*)       FIREWALL="${1#--firewall=}"; FIREWALL_ASKED=true; [[ "$FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none" ;;
         --antivirus|--synapse)       INSTALL_AV=true; AV_ASKED=true ;;
         --no-antivirus|--no-synapse) INSTALL_AV=false; AV_ASKED=true ;;
+        --no-av-exception)  AV_EXCEPTION=false ;;
         --choose)           CHOOSE=true ;;
         --no-tune)          SKIP_TUNE=true ;;
         --link)             LINK_CONFIG=true ;;
@@ -2730,6 +2735,20 @@ install_antivirus() {
     log_success "ai-antivirus installed (alert-only): Security center (>security), or ai-antivirus status"
 }
 
+# ai-antivirus reports every systemd unit a program other than pacman / systemctl writes (rule AV-B-0005), and this installer
+# writes Halcyon's units again each time update.sh runs it. Two narrow program exceptions: the two absolute paths the installer
+# is run from (get.sh and update.sh run it as  bash <path>/install.sh). Everything else stays watched; malware found in a file
+# is still reported. docs/antivirus.md explains it and how to remove them (sudo ai-antivirus exceptions remove ...).
+av_installer_exceptions() {
+    [[ "$AV_EXCEPTION" == "true" ]] || { log_info "ai-antivirus: no exception for the installer (--no-av-exception)"; return 0; }
+    [[ "$DRY_RUN" == "true" ]] || command -v ai-antivirus >/dev/null 2>&1 || return 0
+    local p
+    for p in '~/.config/Halcyon/install.sh' '~/.cache/halcyon-update/install.sh'; do
+        try run_cmd "ai-antivirus: exception for the Halcyon installer ($p)" \
+            as_root ai-antivirus exceptions add program "$p" --name "Halcyon installer"
+    done
+}
+
 # the assistants' model (firewall Ask, antivirus Ask): pulled once when Ollama is there; both pick it up by themselves
 pull_security_model() {
     [[ -n "$SECURITY_MODEL" && "$SECURITY_MODEL" != none ]] || return 0
@@ -2762,7 +2781,7 @@ if [[ "$PACKAGES" == "true" ]]; then
               fi ;;
         none) [[ "$FIREWALL_ASKED" == "true" ]] && remove_ai_firewall ;;
     esac
-    if [[ "$INSTALL_AV" == "true" ]]; then install_antivirus || true
+    if [[ "$INSTALL_AV" == "true" ]]; then install_antivirus || true; av_installer_exceptions
     elif [[ "$AV_ASKED" == "true" ]]; then remove_antivirus; fi
     [[ "$FIREWALL" == ai || "$INSTALL_AV" == "true" ]] && pull_security_model
     [[ "$INSTALL_AV" == "true" ]] && set_antivirus_model
