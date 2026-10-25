@@ -295,7 +295,73 @@ def small_talk(q):
         if rx.match(t):
             return reply
     return None
+
+
 DOC_FILES = ("README.md", "docs/features.md", "docs/how-it-works.md", "docs/architecture.md")
+# The UI's own descriptions, so >ask can explain any part of it: the guided tour's cards (features.json), every desktop widget
+# (WidgetData.js) and every shortcut (Binds.js). Read from the island's files, so they never drift from what is on screen.
+UI_NOUNS = re.compile(r"\b(widgets?|shortcuts?|keys?|keybinds?|bindings?|bar|island|page|tour|window|panel|card|button|menu)\b", re.I)
+_UI_CACHE = []
+
+
+def ui_items():
+    """[{head, text, label}] from features.json, WidgetData.js and Binds.js (read once per run)."""
+    if _UI_CACHE:
+        return _UI_CACHE
+    out = []
+    with contextlib.suppress(OSError, ValueError, AttributeError, TypeError):
+        for f in json.load(open(os.path.join(ISLAND_DIR, "features.json"), encoding="utf-8")).get("features", []):
+            if f.get("title") and f.get("body"):
+                keys = " + ".join(f.get("keys") or [])
+                out.append({"head": "Feature: " + f["title"], "label": f["title"],
+                            "text": f["body"] + (f" (keys: {keys})" if keys else "")})
+    with contextlib.suppress(OSError):
+        src = open(os.path.join(ISLAND_DIR, "WidgetData.js"), encoding="utf-8").read()
+        for m in re.finditer(r'\{ id: "[\w-]+", cat: "(\w+)", name: "([^"]+)",[^\n]*?hint: "((?:\\.|[^"\\])*)"', src):
+            out.append({"head": "Widget: " + m.group(2), "label": m.group(2),
+                        "text": f"{m.group(2)} is a desktop widget ({m.group(1)}): {_unq(m.group(3))}. Widgets are added and placed with the desktop editor or the widget builder."})
+    with contextlib.suppress(OSError):
+        src = open(os.path.join(ISLAND_DIR, "Binds.js"), encoding="utf-8").read()
+        group = ""
+        for line in src.splitlines():
+            g = re.search(r'\{ id: "\w+", title: "([^"]+)", items:', line)
+            if g:
+                group = g.group(1)
+                continue
+            m = re.search(r'label: "((?:\\.|[^"\\])*)"[^}]*keys: "((?:\\.|[^"\\])*)"', line)
+            if m:
+                lab, keys = _unq(m.group(1)), _unq(m.group(2))
+                out.append({"head": f"Shortcut ({group}): {lab}", "label": lab,
+                            "text": f"{lab}: {keys}. Every shortcut is in the shortcut map (Super + /), where most can be changed."})
+    _UI_CACHE.extend(out)
+    return out
+
+
+def ui_best(q):
+    """(share of the label's words in q, number of them, item) for the UI item the question names best, or (0, 0, None)."""
+    qw = set(_words(q))
+    best = (0, 0, None)
+    for it in ui_items():
+        lw = set(_words(it["label"]))
+        if not lw:
+            continue
+        hit = len(qw & lw)
+        cand = (hit / len(lw), hit, it)
+        if cand[:2] > best[:2]:
+            best = cand
+    return best
+
+
+def ui_mentioned(q):
+    """The question names a part of the UI: a tour card, widget or shortcut. Two of its words with a word such as widget or
+    shortcut ("the focus streak widget"), or all of a label of two words or more ("the performance page"). One-word labels only
+    count next to such a word, so "what is a clock" stays a general question."""
+    share, hit, it = ui_best(q)
+    if it is None or hit == 0:
+        return False
+    noun = UI_NOUNS.search(q) is not None
+    many = len(set(_words(it["label"]))) >= 2
+    return (share == 1 and (many or noun)) or (noun and hit >= 2)
 
 
 def doc_chunks():
@@ -323,13 +389,17 @@ def doc_chunks():
 def halcyon_context(q, limit=5, budget=2600):
     """The docs excerpts that answer q (and the matching Settings rows), or "" when q is not about Halcyon and nothing in the docs fits."""
     qw = set(_words(q))
-    about = HALCYON_Q.search(q) is not None
+    about = HALCYON_Q.search(q) is not None or ui_mentioned(q)
     if not qw and not about:
         return ""
+    ql = q.lower()
     scored, chunks = [], doc_chunks()
-    for head, text in chunks:
+    ui = [(it["head"], it["text"], it["label"].lower()) for it in ui_items()]
+    for head, text, lab in [(h, t, "") for h, t in chunks] + ui:
         hw, tw = set(_words(head)), set(_words(text))
         sc = 3 * len(qw & hw) + len(qw & tw)
+        if lab and len(lab) >= 4 and lab in ql:       # the question names this widget / shortcut / tour card
+            sc += 6
         if sc >= 2:
             scored.append((sc, head, text))
     scored.sort(key=lambda x: -x[0])
@@ -358,11 +428,19 @@ def cmd_ask(args):
     reply = small_talk(q)
     if reply:
         return {"text": reply, "kind": "smalltalk"}
-    general = GENERAL_Q.search(q) is not None and HALCYON_Q.search(q) is None
+    general = GENERAL_Q.search(q) is not None and HALCYON_Q.search(q) is None and not ui_mentioned(q)
+    # a shortcut, widget or tour card named in full ("how do I pin a window" = the Pin window shortcut) is answered from its
+    # own description, unless a Settings row or command is named just as fully
+    share, _, ui_hit = ui_best(q)
+    ui_full = ui_hit is not None and share == 1 and len(set(_words(ui_hit["label"]))) >= 2
     if HOWTO_INTENT.search(q) and not general:
         hits = help_search(q)
         if hits and hits[0][0] >= HOWTO_MIN:
-            return howto(q, hits)
+            top = set(_words(hits[0][1]["label"]))
+            # the Settings row / command must be named as fully as the UI item ("Switch window" is only "window" once
+            # "switch" is dropped as a filler word, so it does not beat "Pin window")
+            if not ui_full or (top and top <= set(_words(q)) and len(top) >= len(set(_words(ui_hit["label"])))):
+                return howto(q, hits)
     # only a problem on this machine goes to ai-firewall's live checks; "what is DNS" is answered by the model
     if FIREWALL_Q.search(q) and not general and shutil.which("ai-firewall"):
         fw = firewall_ask(q)
