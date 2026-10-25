@@ -136,8 +136,8 @@ WBase {
         id: appListC
         Column {
             spacing: root.sz(8)
-            WLbl { b: root; text: "BACKGROUND APPS"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 2.5 }
-            WLbl { b: root; visible: root.apps.length === 0; text: "Nothing is running in the background"; color: root.dim; font.pixelSize: root.sz(12) }
+            WLbl { b: root; width: root.boxW; horizontalAlignment: Text.AlignHCenter; text: "BACKGROUND APPS"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 2.5 }
+            WLbl { b: root; width: root.boxW; horizontalAlignment: Text.AlignHCenter; visible: root.apps.length === 0; text: "Nothing is running in the background"; color: root.dim; font.pixelSize: root.sz(12) }
             Repeater {
                 model: root.apps
                 delegate: Rectangle {
@@ -153,7 +153,7 @@ WBase {
                         source: ar.modelData.icon
                         fillMode: Image.PreserveAspectFit; smooth: true
                     }
-                    WLbl { b: root; x: root.sz(44); anchors.verticalCenter: parent.verticalCenter; width: parent.width - root.sz(56); text: root.appName(ar.modelData); font.pixelSize: root.sz(13); elide: Text.ElideRight }
+                    WLbl { b: root; x: root.sz(44); y: 0; height: parent.height; verticalAlignment: Text.AlignVCenter; width: parent.width - root.sz(56); text: root.appName(ar.modelData); font.pixelSize: root.sz(13); elide: Text.ElideRight }
                     MouseArea { id: am; anchors.fill: parent; hoverEnabled: true; enabled: !root.editing; cursorShape: Qt.PointingHandCursor; onClicked: ar.modelData.activate() }
                 }
             }
@@ -164,7 +164,7 @@ WBase {
         id: iconsC
         Row {
             spacing: root.sz(10)
-            WLbl { b: root; visible: root.apps.length === 0; text: "No background apps"; color: root.dim; font.pixelSize: root.sz(12) }
+            WLbl { b: root; height: root.sz(36); verticalAlignment: Text.AlignVCenter; visible: root.apps.length === 0; text: "No background apps"; color: root.dim; font.pixelSize: root.sz(12) }
             Repeater {
                 model: root.apps
                 delegate: Rectangle {

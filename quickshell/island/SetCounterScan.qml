@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 
-// Settings > Backup & safety > "Counter-scan attackers" (custom leaf, only listed while the sysmode is stealth).
+// Settings > Security > "Counter-scan attackers" (custom leaf, only listed while the sysmode is stealth).
 // The switch is `sysmode counterscan on|off`, which saves COUNTER_SCAN in /etc/recon-deceiver.conf: once it is on it stays on,
 // across reboots and mode switches, until you turn it off here (or with `sudo sysmode counterscan off`). It is root, so every
 // change asks for the sudo password: it goes to `sudo -k -S` once and is never stored or logged.

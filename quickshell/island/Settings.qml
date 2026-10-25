@@ -275,7 +275,7 @@ Scope {
     }
 
     // ---- Backup / safety-check reminders (scripts/remind.sh): keys "rm:NAME" in the tree below. The automatic safety-check run
-    // (root, behind your sudo password) is the custom leaf at the end of Settings > Backup; its state comes in as remind.auto.
+    // (root, behind your sudo password) is the custom leaf at the end of Settings > Security; its state comes in as remind.auto.
     property var remind: ({ BACKUP_REMIND: false, BACKUP_EVERY: "7", BACKUP_DAYS: 14, SAFETY_REMIND: false, SAFETY_EVERY: "30", SAFETY_DAYS: 14, backupAgo: "never", safetyAgo: "never", auto: ({ on: false, days: 0, every: "custom" }) })
     readonly property string remindScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/remind.sh"
     readonly property string autoScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/safety-auto.sh"
@@ -965,18 +965,19 @@ Scope {
             { type: "seg", key: "st:FILE_ICONS", label: "File manager icons", desc: "How big the icons are in Thunar (side bar, lists, icon view, toolbar). Thunar picks it up at once; windows that are already open may need a reopen.", opts: [o("small", "Small"), o("medium", "Medium"), o("large", "Large")] },
             { type: "acts", label: "Rice", desc: "Edit config: opens the config files. Shortcuts: the shortcut tree. Reload: re-reads the config files and puts the island's own values back on top.", btns: [{ id: "config", btn: "Edit config", done: "", close: true }, { id: "cheatsheet", btn: "Shortcuts", done: "", close: true }, { id: "reload", btn: "Reload Hyprland", done: "Reloading…" }] }
         ] },
-        { id: "backup", title: "Backup & safety", section: "System", items: [
+        { id: "backup", title: "Backup", section: "System", items: [
             { type: "custom", name: "dayClock" },
             { type: "acts", label: "Backup", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the files are copied onto it (scripts/backup-device.sh). Whole system: everything (asks for your admin password). Home folder: only your files, no password. Nothing on the disk is erased; every backup goes in its own dated folder. Caches, trash, package downloads and game files are skipped; add your own in ~/.config/Halcyon/backup-exclude.conf.", btns: [{ id: "backup-device", btn: "Whole system", done: "Opening…" }, { id: "backup-home", btn: "Home folder only", done: "Opening…" }] },
             { type: "acts", label: "Restore", desc: "Plug in the backup disk and pick a backup in the terminal that opens. Whole system: a whole-system backup can restore your home folder or the whole system (asks for your admin password and a typed confirmation). Home folder only: only ever touches your home folder (any backup works), you can restore just one folder or file, no password. Nothing is deleted, you see what would change first, and every file that gets replaced is saved in an undo folder.", btns: [{ id: "restore-device", btn: "From a backup", done: "Opening…" }, { id: "restore-home", btn: "Home folder only", done: "Opening…" }] }
-        ].concat(root.remindRows("BACKUP", "Remind me to back up", "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off.")).concat([
+        ].concat(root.remindRows("BACKUP", "Remind me to back up", "A notification when it has been that long since the last backup made with the buttons above. Off by default; nothing runs in the background while every reminder is off.")) },
+        { id: "security", title: "Security", section: "System", items: [
             { type: "seg", key: "st:ANTIVIRUS", needs: "anyav", label: "Antivirus", desc: "Which antivirus runs. Off stops it; it stays installed with its settings. The change opens the console and asks for your admin password.",
               opts: (root.startup.has && root.startup.has.antivirus ? [o("ai", "AI Antivirus")] : []).concat(root.startup.has && root.startup.has.clamav ? [o("clamav", "ClamAV")] : []).concat([o("off", "Off")]) },
-            { type: "action", id: "security-firewall", needs: "firewall", label: "Firewall", btn: "Open", done: "Opening…" },
-            { type: "action", id: "security-antivirus", needs: "antivirus", label: "Antivirus", btn: "Open", done: "Opening…" },
+            { type: "action", id: "security-firewall", needs: "firewall", label: "Firewall", btn: "Open in the Security center", done: "Opening…" },
+            { type: "action", id: "security-antivirus", needs: "antivirus", label: "Antivirus", btn: "Open in the Security center", done: "Opening…" },
             { type: "action", id: "security-exceptions", needs: "antivirus", label: "Antivirus exceptions", btn: "Open", done: "Opening…" },
             { type: "action", adv: true, id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in /var/log/halcyon/safety_check/." }
-        ]).concat(root.remindRows("SAFETY", "Remind me to run the safety check", "Same, for the safety check (by hand or automatic, either counts as done).", "safety")).concat([
+        ].concat(root.remindRows("SAFETY", "Remind me to run the safety check", "Same, for the safety check (by hand or automatic, either counts as done).", "safety")).concat([
             { type: "custom", name: "safetyAuto" },
             { type: "custom", name: "counterScan", when: "sysmode=stealth|hacking", label: "Counter-scan attackers (nmap)", desc: "stealth mode only: scan back whoever probes the decoys. Once on it stays on until you turn it off." }
         ]) },
@@ -1105,7 +1106,8 @@ Scope {
         { id: "Input & power", sub: "Mouse, touchpad, gestures, mouse buttons, keyboard, power and the lock screen.", groups: ["mouse", "keyboard", "gestures", "mousebtn", "power"] },
         { id: "Performance", sub: "Profiles, safe mode, speed, memory limits, the tree view and suggestions.", groups: ["performance", "treeview", "profiles", "suggestions"] },
         { id: "System", sub: "Preferences, timeouts, login manager, startup and apps.", groups: ["sysoptions", "startup", "apps"] },
-        { id: "Backup", sub: "Backups, restore, the safety check and the firewall.", groups: ["backup", "firewall"] }
+        { id: "Backup", sub: "Backups and restore, with reminders.", groups: ["backup"] },
+        { id: "Security", sub: "The antivirus, the firewall, the safety check and their reminders.", groups: ["security", "firewall"] }
     ]
     property string page: "Discover"
     function pageOf(gid) { for (var i = 0; i < pages.length; i++) if (pages[i].groups.indexOf(gid) >= 0) return pages[i].id; return "Appearance" }
