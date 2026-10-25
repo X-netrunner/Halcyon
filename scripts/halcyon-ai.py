@@ -260,9 +260,35 @@ HALCYON_ABOUT = (
     "Settings has a search box and a guided tour (>tour). Halcyon has a Game Center, Study Center, Calendar and notes, clipboard history, "
     "screenshots, a lock screen with widgets, builders (bar, desktop, widgets, lock screen, notifications), sysmode, a Security center "
     "(ai-firewall and ai-antivirus, only when installed) and backups. You help the person use and change their Halcyon desktop.")
+# Words that only mean Halcyon. Common words (install, settings, wallpaper, firewall, notifications ...) are left out on purpose:
+# "how do I install numpy" is not about Halcyon. Those questions still reach the docs when the docs match them well (score >= 5).
 HALCYON_Q = re.compile(r"\b(halcyon|the island|quickshell|hyprland|who are you|what are you|what can you|your name|what is this|"
-                       r"this (desktop|rice|setup|shell|launcher)|my (desktop|bar|launcher|island)|super key|install(er)?|update\.sh|"
-                       r"security cent(er|re)|firewall|antivirus|settings?|wallpaper|widgets?|launcher|notifications?|shortcuts?|keybinds?|sysmode|game center|study center)\b", re.I)
+                       r"this (desktop|rice|setup|shell|launcher)|my (desktop|bar|launcher|island|lock screen)|super key|install\.sh|update\.sh|"
+                       r"security cent(er|re)|firewall center|sysmode|game center|study center)\b", re.I)
+# A general-knowledge question ("explain how a firewall works", "what is DNS", "how do notifications work on android"): answered
+# by the model directly, not turned into a Halcyon settings guide.
+GENERAL_Q = re.compile(r"^\s*(explain|define|describe|tell me|write|translate|summari[sz]e|compare|why (is|are|do|does)|what (is|are|was|were|'s)\b"
+                       r"|who (is|was)|how (does|do|did) (?!i\b|you\b)\w+(\s\w+){0,3} work)|\bdifference between\b|"
+                       r"\b(android|iphone|ios|windows|macos|mac os|chromebook|gnome|kde|xfce)\b", re.I)
+# Small talk gets a fixed reply: no model call (and it works with the AI switched off).
+SMALL_TALK = [
+    (re.compile(r"^(hi|hello|hey|heya|hiya|yo|sup|howdy|good (morning|afternoon|evening))( there)?$"),
+     "Hi! Ask me about Halcyon (\"how do I change the wallpaper\") or anything quick (\"how many ml in a cup\")."),
+    (re.compile(r"^(thanks?|thank you( so much| very much)?|thx|ty|cheers|great|nice|cool|ok(ay)?|perfect|awesome)$"),
+     "You're welcome."),
+    (re.compile(r"^(bye|goodbye|see you|see ya|good ?night|gn)$"), "Bye!"),
+    (re.compile(r"^(how are you|how are you doing|how's it going|what's up)$"),
+     "All good, running locally on this computer. What do you need?"),
+]
+
+
+def small_talk(q):
+    t = re.sub(r"[\s!.?,:;)(*~-]+$", "", q.strip().lower())
+    t = re.sub(r"\s+", " ", t)
+    for rx, reply in SMALL_TALK:
+        if rx.match(t):
+            return reply
+    return None
 DOC_FILES = ("README.md", "docs/features.md", "docs/how-it-works.md", "docs/architecture.md")
 
 
@@ -323,15 +349,20 @@ def cmd_ask(args):
     q = " ".join(a for a in args if not a.startswith("--")).strip()
     if not q:
         raise Fail("Ask something, e.g.  ask how many ml in a cup")
-    if HOWTO_INTENT.search(q):
+    reply = small_talk(q)
+    if reply:
+        return {"text": reply, "kind": "smalltalk"}
+    general = GENERAL_Q.search(q) is not None and HALCYON_Q.search(q) is None
+    if HOWTO_INTENT.search(q) and not general:
         hits = help_search(q)
         if hits and hits[0][0] >= HOWTO_MIN:
             return howto(q, hits)
-    if FIREWALL_Q.search(q) and shutil.which("ai-firewall"):
+    # only a problem on this machine goes to ai-firewall's live checks; "what is DNS" is answered by the model
+    if FIREWALL_Q.search(q) and not general and shutil.which("ai-firewall"):
         fw = firewall_ask(q)
         if fw:
             return fw
-    about = halcyon_context(q)
+    about = "" if general else halcyon_context(q)
     if about:                       # a question about Halcyon, or one the docs can answer: the model reads the docs, it does not guess
         ans = generate(f"Question: {q}\n\nFrom Halcyon's own docs:\n{about}", system=(
             HALCYON_ABOUT + " Answer from the docs excerpts and the facts above; if they do not say, say you are not sure and point to "
@@ -339,10 +370,14 @@ def cmd_ask(args):
             "Name exact places: Settings > page > group, a >command, or a key."),
             num_predict=320, temperature=0.2, timeout=90)
     else:
+        # a general question: answer it like a normal assistant would. The Halcyon facts stay in the prompt (so "what can you do"
+        # still works) but the model is told not to bend every answer towards the desktop.
         ans = generate(q, system=(
-            HALCYON_ABOUT + " You answer quick questions typed into that launcher. Answer in one or two short sentences of plain text: "
-            "no markdown, no lists, no preamble. If it is a calculation or a fact, give the result first. If you are not sure, say so briefly."),
-            num_predict=160, temperature=0.3, timeout=60)
+            HALCYON_ABOUT + " Right now you are answering a general question typed into the launcher. Answer it directly and helpfully, "
+            "the way a knowledgeable friend would; do not steer the answer towards Halcyon unless the question is about it. "
+            "Plain text, no markdown, no preamble, at most five sentences. If it is a calculation or a fact, give the result first. "
+            "If you are not sure, say so briefly."),
+            num_predict=320, temperature=0.4, timeout=75)
     ans = " ".join(plain(ans).split())
     if not ans:
         raise Fail("The model gave no answer.")
