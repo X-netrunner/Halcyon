@@ -22,6 +22,8 @@ pub struct Game {
     pub gamescope: String,
     pub wayland: bool,
     pub lean: bool,
+    /// Hyprland fullscreen for the game's windows while it runs (`hgl run` watches for them)
+    pub fullscreen: bool,
     pub debug: bool,
     /// favourite: listed first (Game Center, `>game` in the launcher)
     pub fav: bool,
@@ -73,6 +75,7 @@ impl Game {
                 "gamescope" => g.gamescope = v,
                 "wayland" => g.wayland = parse_bool(&v).unwrap_or(false),
                 "lean" => g.lean = parse_bool(&v).unwrap_or(true),
+                "fullscreen" => g.fullscreen = parse_bool(&v).unwrap_or(false),
                 "debug" => g.debug = parse_bool(&v).unwrap_or(false),
                 "fav" => g.fav = parse_bool(&v).unwrap_or(false),
                 "cover" => g.cover = v,
@@ -107,6 +110,9 @@ impl Game {
         s.push_str(&format!("wrappers={wr}\n"));
         s.push_str(&format!("wayland={}\n", self.wayland as u8));
         s.push_str(&format!("lean={}\n", self.lean as u8));
+        if self.fullscreen {
+            s.push_str("fullscreen=1\n");
+        }
         s.push_str(&format!("debug={}\n", self.debug as u8));
         if self.fav {
             s.push_str("fav=1\n");
@@ -190,6 +196,7 @@ impl Game {
             "cover" => self.cover = val.into(),
             "wayland" => self.wayland = b()?,
             "lean" => self.lean = b()?,
+            "fullscreen" => self.fullscreen = b()?,
             "debug" => self.debug = b()?,
             "fav" => self.fav = b()?,
             "wrappers" => {
@@ -201,7 +208,7 @@ impl Game {
                 }
                 self.wrappers = list;
             }
-            _ => return Err(format!("unknown key '{key}' (name, exe, proton, prefix, args, wrappers, gamescope, wayland, lean, debug, umu_id, cover, env.NAME)")),
+            _ => return Err(format!("unknown key '{key}' (name, exe, proton, prefix, args, wrappers, gamescope, wayland, lean, fullscreen, debug, umu_id, cover, env.NAME)")),
         }
         Ok(())
     }
@@ -324,6 +331,9 @@ mod tests {
         assert!(h.wayland && h.lean && !h.fav);
         g.set("fav", "on").unwrap_or(());
         assert!(Game::parse("hades", &g.serialize()).fav);
+        assert!(!h.fullscreen);
+        g.set("fullscreen", "on").unwrap_or(());
+        assert!(Game::parse("hades", &g.serialize()).fullscreen);
         assert_eq!(h.unknown, vec![("future_key".to_string(), "x".to_string())]);
     }
 
