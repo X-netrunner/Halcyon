@@ -1459,7 +1459,8 @@ def parse_safety(text):
             m = re.search(r"Status:\s*(\w+)", body)
             if m:
                 counts["ufw"] = m.group(1).lower()
-            m = re.search(r"ai-firewall status: ai-firewall\s+(running|NOT RESPONDING)", body)
+            # PREFIX has already removed "ai-firewall status: ", so the line starts with the tool's own status
+            m = re.match(r"ai-firewall\s+(running|NOT RESPONDING)\b", body)
             if m:
                 counts["ufw"] = "ai-firewall " + m.group(1).lower()
         elif sec == "lynis":
