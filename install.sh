@@ -2010,13 +2010,19 @@ have_dm() {
 dm_name() { basename "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null; }
 
 WANT_LOCK_LOGIN=false
+LOCK_LOGIN_SAVE=""      # yes | no: your answer, remembered in install-choices.env (LOCK_LOGIN) so it is asked once
 if have_dm; then
     log_success "Login manager found ($(dm_name)): pick the \"Halcyon\" session on its login screen. Halcyon's own lock screen is used when you lock."
     [[ "$LOCK_LOGIN" == "1" ]] && WANT_LOCK_LOGIN=true
 else
     log_info "No login manager (sddm, gdm, ...): at boot you get a text console; start Halcyon with: start-halcyon"
     if [[ "$LOCK_LOGIN" == "0" ]]; then log_info "Lock-screen login skipped (--no-lock-login)."
-    elif [[ "$LOCK_LOGIN" == "1" ]]; then WANT_LOCK_LOGIN=true
+    elif [[ "$LOCK_LOGIN" == "1" ]]; then WANT_LOCK_LOGIN=true; LOCK_LOGIN_SAVE=yes
+    elif [[ -f "$GETTY_DROPIN" ]]; then
+        # already the login screen: keep it, do not ask again (an outdated drop-in is refreshed just below)
+        log_info "Lock-screen login: on (undo with ./install.sh --remove-lock-login)."; LOCK_LOGIN_SAVE=yes
+    elif [[ "$CHOOSE" != "true" && "$(saved_choice LOCK_LOGIN)" == "no" ]]; then
+        log_info "Lock-screen login: not set up (your earlier answer; ./install.sh --choose or --lock-login asks again)."; LOCK_LOGIN_SAVE=no
     else
         # Opt-in only. It used to be "yes" by default (and --yes always said yes), so a machine whose Halcyon did not start
         # right booted straight into a broken desktop with no text console in sight. Now it is only set up when you ask for it.
@@ -2024,8 +2030,10 @@ else
         echo "   LOCKED (with a short splash of moving stars and the Halcyon sparkle first; Settings > Power & lock > Login splash turns it off),"
         echo "   and you type your password on the lock screen. Other consoles (Ctrl+Alt+F2) stay normal text logins."
         echo "   Undo any time: ./install.sh --remove-lock-login"
-        if [[ "$AUTO_CONFIRM" != "true" && -t 0 ]] && confirm_no "   Set that up? (Enter = no; start-halcyon works from any text console)"; then WANT_LOCK_LOGIN=true
-        else log_info "Not set up. Add --lock-login (or answer y when asked) to enable it later."; fi
+        if [[ "$AUTO_CONFIRM" != "true" && -t 0 ]]; then
+            if confirm_no "   Set that up? (Enter = no; start-halcyon works from any text console)"; then WANT_LOCK_LOGIN=true; LOCK_LOGIN_SAVE=yes
+            else LOCK_LOGIN_SAVE=no; log_info "Not set up (remembered). ./install.sh --choose or --lock-login asks again."; fi
+        else log_info "Not set up. Add --lock-login to enable it later."; fi
     fi
 fi
 if [[ "$WANT_LOCK_LOGIN" == "true" && "$HYPR_CONFIG_OK" == "no" ]]; then
@@ -2446,11 +2454,11 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "FIREWALL=${PICK_FIREWALL:-ai}" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "FIREWALL=${PICK_FIREWALL:-ai}" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" ${LOCK_LOGIN_SAVE:+"LOCK_LOGIN=$LOCK_LOGIN_SAVE"} || true
 elif [[ -n "$PICK_PROMPT" ]]; then
-    user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} || true
+    user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} ${LOCK_LOGIN_SAVE:+"LOCK_LOGIN=$LOCK_LOGIN_SAVE"} || true
 elif [[ -n "$PICK_RENDERER" ]]; then
-    user_setup save-choices "RENDERER=$PICK_RENDERER" || true     # --no-packages: the prompt choice is still remembered
+    user_setup save-choices "RENDERER=$PICK_RENDERER" ${LOCK_LOGIN_SAVE:+"LOCK_LOGIN=$LOCK_LOGIN_SAVE"} || true     # --no-packages: the prompt choice is still remembered
 fi
 [[ "$PACKAGES" == "true" && "$SKIP_DRIVERS" != "true" ]] && { user_setup gpu-env "$GPU_ENV_MODE" || true; }
 
