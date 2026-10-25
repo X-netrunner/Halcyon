@@ -95,13 +95,16 @@ rep, key, _ = run(sec(7, "Backup to External Drive") + "[10:00:02] ⚠ Device /d
 check("skipped backup -> verify", key, "verify")
 rep, key, _ = run(sec(4, "Firewall Status") + "[10:00:04] ufw status: Status: inactive\n[10:00:04] ⚠ Firewall is INACTIVE. Enabling...\n" + CLEAN)
 check("firewall was off -> verify", key, "verify")
-# ai-firewall in place of ufw (install.sh --firewall ai): same verdicts, its own log line
-AIFW = CLEAN.replace("ufw status: Status: active\n[10:00:04] ✓ Firewall is active", "ai-firewall status: Status: active\n[10:00:04] ✓ Firewall is active (ai-firewall)")
-rep, key, items = run(AIFW)
-check("ai-firewall active -> good", key, "good")
-check("ai-firewall active is counted", "firewall active" in rep, True)
-rep, key, _ = run(sec(4, "Firewall Status") + "[10:00:04] ai-firewall status: Status: inactive\n[10:00:04] ⚠ Firewall is INACTIVE. Starting ai-firewall...\n" + CLEAN)
-check("ai-firewall was off -> verify", key, "verify")
+# ai-firewall instead of ufw (install.sh --firewall ai): its own status line and its own advice
+rep, key, _ = run(sec(4, "Firewall Status") + "[10:00:04] ai-firewall status: ai-firewall  running  enforce mode\n[10:00:04] ✓ Firewall is active (ai-firewall)\n" + CLEAN)
+check("ai-firewall running -> good", key, "good")
+rep, key, _ = run(sec(4, "Firewall Status") + "[10:00:04] ai-firewall status: ai-firewall  running  enforce mode\n")
+check("ai-firewall state is in the summary", "Seen: firewall ai-firewall running" in rep, True)
+rep, key, _ = run(sec(4, "Firewall Status") + "[10:00:04] ai-firewall status: Error: ai-firewall is not running (no /run/ai-firewall/status.json)\n"
+                  "[10:00:04] ⚠ Firewall is INACTIVE (ai-firewall). Starting...\n" + CLEAN)
+check("ai-firewall down -> verify", key, "verify")
+check("ai-firewall down -> its own advice", "sudo ai-firewall doctor" in rep, True)
+check("ai-firewall down -> no ufw advice", "ufw status verbose" in rep, False)
 
 # a tool that is not installed means that part was not checked: say so, do not claim a full pass
 rep, key, _ = run(sec(3, "rkhunter Rootkit Check") + "[10:00:02] ! rkhunter not installed\n" + CLEAN)

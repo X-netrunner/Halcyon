@@ -3,7 +3,8 @@
 # root) and adds ONE sudoers line that lets your user run exactly that file without a password. It does a fixed list of
 # things and nothing else, so the sudo rule stays narrow:
 #
-#   halcyon-tune game-on                 CPU governor / EPP / turbo, platform profile, GPU clocks, swappiness, Wi-Fi power saving off
+#   halcyon-tune game-on                 CPU governor / EPP / turbo, platform profile, GPU clocks, swappiness, Wi-Fi power saving off;
+#                                        the antivirus keeps protecting at a low CPU / disk priority, its extras pause (SEC_* below)
 #   halcyon-tune game-off                put every one of those back to what it was before game-on
 #   halcyon-tune wifi-ps on|off          Wi-Fi power saving on every wireless interface
 #   halcyon-tune pm <manager>            halcyon | power-profiles-daemon | tlp | auto-cpufreq | tuned: only this one may run
@@ -20,6 +21,19 @@ rd() { cat "$1" 2>/dev/null; }
 wifi_ifaces() { local d; for d in /sys/class/net/*; do [ -d "$d/wireless" ] && basename "$d"; done; }
 wifi_get() { iw dev "$1" get power_save 2>/dev/null | awk '/[Pp]ower save/ { print $NF }'; }
 wifi_set() { command -v iw >/dev/null 2>&1 && iw dev "$1" set power_save "$2" >/dev/null 2>&1; }
+
+# While gaming the antivirus keeps running, but games get the CPU and disk first (a game or shader-cache install writes
+# thousands of files, and each one may be scanned). Extras that protect nothing on their own pause until game-off:
+# the AI Antivirus analyzer (it explains alerts with a local model, which also wants the GPU) and ClamAV's signature updater.
+SEC_LOW=(ai-antivirus-sensord.service ai-antivirus-engined.service ai-antivirus-responderd.service clamav-daemon.service clamav-clamonacc.service)
+SEC_PAUSE=(ai-antivirus-analyzer.service clamav-freshclam.service)
+sec_weight() {          # sec_weight WEIGHT : runtime only (gone at reboot), never touches the unit files
+  local u
+  for u in "${SEC_LOW[@]}"; do
+    systemctl is-active --quiet "$u" && systemctl set-property --runtime "$u" "CPUWeight=$1" "IOWeight=$1" >/dev/null 2>&1
+  done
+  return 0
+}
 
 load_saved() {          # read KEY=VALUE lines. Never `source` the file.
   local k v
@@ -40,6 +54,7 @@ game_on() {
     echo "notb=$(rd /sys/devices/system/cpu/intel_pstate/no_turbo)"
     for i in $(wifi_ifaces); do echo "wifi_$i=$(wifi_get "$i")"; done
     command -v nvidia-smi >/dev/null 2>&1 && echo "nvpm=$(nvidia-smi --query-gpu=persistence_mode --format=csv,noheader 2>/dev/null | head -n1)"
+    echo "paused=$(for i in "${SEC_PAUSE[@]}"; do systemctl is-active --quiet "$i" && printf '%s ' "$i"; done)"
   } > "$SAVE"
   for d in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do w performance "$d"; done
   for d in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do w performance "$d"; done
@@ -53,6 +68,8 @@ game_on() {
   done
   for i in $(wifi_ifaces); do wifi_set "$i" off; done             # lower latency
   command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -pm 1 >/dev/null 2>&1   # NVIDIA: keep the driver loaded, no wake-up stalls
+  sec_weight 20                                                   # default is 100
+  for i in "${SEC_PAUSE[@]}"; do systemctl is-active --quiet "$i" && systemctl stop "$i" >/dev/null 2>&1; done
 }
 
 game_off() {
@@ -73,6 +90,12 @@ game_off() {
   for i in $(wifi_ifaces); do                                     # back to what each card had, not just "on"
     case "${S[wifi_$i]:-}" in on|off) wifi_set "$i" "${S[wifi_$i]}" ;; esac
   done
+  sec_weight 100
+  local u p
+  for u in ${S[paused]:-}; do                                     # only names from SEC_PAUSE, whatever the file says
+    for p in "${SEC_PAUSE[@]}"; do [ "$u" = "$p" ] && systemctl start "$u" >/dev/null 2>&1; done
+  done
+  return 0
 }
 
 # `iw ... set power_save` only changes the card for now: a reconnect, a reboot or a driver reload goes back to the default. So the

@@ -724,6 +724,13 @@ fn spawn_game(p: &Plan, log: fs::File) -> Result<Child, String> {
     if let Some(c) = &p.cwd {
         cmd.current_dir(c);
     }
+    // Drop shell/compositor isolation variables that restrict Vulkan/EGL to integrated GPUs.
+    // Games and Proton need access to discrete GPUs and PRIME offload without iGPU locks.
+    for var in ["VK_DRIVER_FILES", "VK_ICD_FILENAMES", "__EGL_VENDOR_LIBRARY_FILENAMES"] {
+        if !p.env.iter().any(|(k, _)| k == var) {
+            cmd.env_remove(var);
+        }
+    }
     // own process group: closing the terminal or Ctrl-C on hgl does not take the game down; the watchdog restores afterwards
     cmd.stdin(Stdio::null()).stdout(Stdio::from(log)).stderr(Stdio::from(err)).process_group(0);
     cmd.spawn().map_err(|e| format!("{}: {e}", p.argv[0]))
@@ -806,13 +813,16 @@ fn supervise_child(mut child: Child, sampler: &mut Sampler) -> Option<i32> {
 
 fn supervise_steam(g: &Game, sampler: &mut Sampler) -> Option<i32> {
     // hand the launch to Steam, headless; the Steam client keeps running after the game (cloud saves, DRM)
-    let spawned = Command::new("steam")
-        .args(["-silent", &format!("steam://rungameid/{}", g.appid)])
+    let mut cmd = Command::new("steam");
+    cmd.args(["-silent", &format!("steam://rungameid/{}", g.appid)])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .process_group(0)
-        .spawn();
+        .process_group(0);
+    for var in ["VK_DRIVER_FILES", "VK_ICD_FILENAMES", "__EGL_VENDOR_LIBRARY_FILENAMES"] {
+        cmd.env_remove(var);
+    }
+    let spawned = cmd.spawn();
     if let Err(e) = spawned {
         eprintln!("could not start steam: {e}");
         return None;

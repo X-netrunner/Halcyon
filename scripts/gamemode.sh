@@ -2,17 +2,18 @@
 # Gaming mode: on | off | toggle | status.  Run by the island (Gaming chip / Settings / SUPER+F10).
 #   on   performance power profile (Auto power paused), Hyprland animations / blur / shadows / gaps / rounding off,
 #        allow tearing, CPU governor performance, GPU performance mode, Caffeine on, DND on, background helpers stopped,
-#        Ollama's loaded models unloaded (the AI scripts load none while this is on; they keep one 30 min otherwise).
+#        Ollama's loaded models unloaded (the AI scripts load none while this is on; they keep one 30 min otherwise),
+#        the antivirus at low CPU / disk priority with its AI analyzer and ClamAV's updater paused (halcyon-tune; it keeps protecting).
 #   off  power profile, CPU/GPU, Hyprland config restored; Caffeine and DND go back to what they were before (a Caffeine or
 #        DND you had switched on yourself stays on).
 # Edit ~/.config/Halcyon/gamemode.conf to choose what gets stopped:
 #   KILL="cava baloo_file baloo_file_extractor tracker-miner-fs-3 tracker-extract-3 syncthing dropbox nextcloud"   # processes killed by name (never restarted; this is the default)
-#   STOP_SERVICES=""                                                                            # user services stopped now, started again on `off`
+#   STOP_SERVICES="halcyon-updates.timer"                                                       # user units stopped now, started again on `off` (default: the update check, which downloads the package lists)
 
 STATE=/dev/shm/halcyon-gamemode
 CONF="$HOME/.config/Halcyon/gamemode.conf"
 KILL="cava baloo_file baloo_file_extractor tracker-miner-fs-3 tracker-extract-3 syncthing dropbox nextcloud"
-STOP_SERVICES=""
+STOP_SERVICES="halcyon-updates.timer"
 [ -f "$CONF" ] && . "$CONF"
 
 note() { command -v notify-send >/dev/null && ( timeout 3 notify-send -a Halcyon -i applications-games -t 3000 "Gaming mode" "$1" >/dev/null 2>&1 & ); }

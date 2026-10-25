@@ -337,6 +337,38 @@ remove_sudo_logging() {
     rm -f /etc/sudoers.d/sysmode-logging
 }
 
+# ---------------------------------------------------------------------------
+# Firewalls: ufw and ai-firewall. Every mode sets both, whichever is installed: ufw gets its rules as before (harmless while
+# it is switched off), ai-firewall gets the matching posture (`ai-firewall posture <mode>`), laid over its own config.
+# ---------------------------------------------------------------------------
+AIFW_BIN=""
+for _b in /usr/local/bin/ai-firewall /usr/bin/ai-firewall; do
+    if trusted_bin "$_b"; then AIFW_BIN="$_b"; break; fi
+done
+unset _b
+
+aifw_active() { [[ -n "$AIFW_BIN" ]] && systemctl is-active --quiet ai-firewall 2>/dev/null; }
+ufw_reload() { if command -v ufw >/dev/null; then ufw reload >/dev/null 2>&1 || true; fi; }
+
+# The networks this machine is on (for stealth: the honeypot answers them only)
+local_subnets() { ip -4 route show proto kernel scope link 2>/dev/null | awk '$1 ~ /\// {print $1}' | sort -u; }
+
+set_fw_posture() {
+    local mode="$1" sub
+    [[ -n "$AIFW_BIN" ]] || return 0
+    local args=(posture "$mode")
+    if [[ "$mode" == stealth ]]; then
+        for sub in $(local_subnets); do args+=(--lan "$sub"); done
+    fi
+    if "$AIFW_BIN" "${args[@]}" >/dev/null; then
+        echo "[*] ai-firewall posture: $mode"
+    else
+        echo "[!] ai-firewall did not take posture $mode (see: ai-firewall posture)"
+    fi
+}
+
+aifw_posture() { [[ -n "$AIFW_BIN" ]] && "$AIFW_BIN" posture --json 2>/dev/null | sed -n 's/.*"posture":"\([a-z]*\)".*/\1/p'; }
+
 set_ufw_sysctl() {
     local forward="$1" icmp="$2" policy="$3"
     if [[ -f /etc/ufw/sysctl.conf ]]; then
@@ -825,6 +857,12 @@ show_status() {
     echo "Kernel Modules Loading          : $( [[ "$modules" == "0" ]] && echo 'Enabled (Dynamic)' || echo 'Disabled (One-way Lock)' )"
     echo "Unprivileged eBPF               : $( [[ "$unpriv_bpf" == "0" ]] && echo 'Enabled (Dynamic)' || echo 'Disabled (One-way Lock)' )"
     echo "Stealth Mode (Ignore Ping)      : $( [[ "$icmp_ignore" == "1" ]] && echo 'Enabled' || echo 'Disabled' )"
+    local fw_ai="no" fw_ufw="no"
+    aifw_active && fw_ai="active, posture $(aifw_posture)"
+    [[ -n "$AIFW_BIN" && "$fw_ai" == no ]] && fw_ai="installed, not running"
+    command -v ufw >/dev/null && fw_ufw="$(ufw status 2>/dev/null | sed -n 's/^Status: //p')"
+    echo "Firewall: ai-firewall           : $fw_ai"
+    echo "Firewall: ufw                   : ${fw_ufw:-unknown}"
     if [[ -f /etc/sysmode.decoy-wifi ]]; then
         echo "Decoy WiFi Hotspot              : Active on $(cat /etc/sysmode.decoy-wifi)"
     else
@@ -879,6 +917,13 @@ verify_mode() {
         compilers="Strict"
     else
         compilers="Relaxed"
+    fi
+
+    if aifw_active; then
+        case "$mode" in
+            secure|relaxed|lockdown) check_val "ai-firewall posture" "$mode" "$(aifw_posture)" ;;
+            stealth|hacking) check_val "ai-firewall posture" "stealth" "$(aifw_posture)" ;;
+        esac
     fi
 
     case "$mode" in
@@ -948,7 +993,12 @@ run_doctor() {
     check_dep "docker" "docker" "Cowrie SSH honeypot container runtime"
     check_dep "nmap" "nmap" "Attacker counter-recon scanner"
     check_dep "tcpdump" "tcpdump" "MAC scanner and packet capture"
-    check_dep "ufw" "ufw" "Firewall rule management"
+    if [[ -n "$AIFW_BIN" ]]; then
+        printf "  %-20s : \e[1;32m[INSTALLED]\e[0m (%s)\n" "ai-firewall" "eBPF firewall; sysmode sets its posture"
+        command -v ufw >/dev/null 2>&1 && printf "  %-20s : \e[1;32m[INSTALLED]\e[0m (%s)\n" "ufw" "Firewall rules (kept in step, used when ai-firewall is off)"
+    else
+        check_dep "ufw" "ufw" "Firewall rule management"
+    fi
     check_dep "auditctl" "audit" "Kernel security audit daemon"
     check_dep "dnscrypt-proxy" "dnscrypt-proxy" "Encrypted DNS resolver"
     if trusted_bin "$SCRIPTS_DIR/recon-deceiver" || command -v recon-deceiver >/dev/null 2>&1; then
@@ -985,6 +1035,10 @@ run_doctor() {
 
 show_logs() {
     echo "=== Active Banned IPs ==="
+    if aifw_active; then
+        echo "ai-firewall:"
+        { "$AIFW_BIN" status 2>/dev/null || true; } | sed -n '/^bans (/,/^$/p' | head -n 25
+    fi
     if command -v ufw >/dev/null; then
         local banned
         banned=$(ufw status verbose 2>/dev/null | grep "recon-deceiver-ban" || true)
@@ -1074,6 +1128,7 @@ Profiles:
     - Starts lightweight signature matching IDS (log-analyst.py)
     - Sets TCP TTL (64) to match the persona used by service banners
     - Unmasks tun+ and wg+ interfaces in firewall for secure reverse shells
+    - ai-firewall (when installed): posture stealth, ping dropped, honeypot ports open to your local networks only
     - Mounts transient RAM-backed secure workspace at ~/Workspace/Stealth
     - Forces volatile systemd logging (system logs held only in memory)
 
@@ -1093,7 +1148,7 @@ Profiles:
     - Enforces idle shell timeouts (10-minute auto-logout)
     - Configures /proc to hidepid=2 (cannot see other users' running processes)
     - Restricts the home directory permissions of the rice user
-    - Enforces strict UFW default DROP policies
+    - Enforces strict UFW default DROP policies (ai-firewall: posture lockdown, every inbound port closed)
     * Note: Requires a reboot to fully revert after switching back to another mode.
 
 Dossier Command:
@@ -1216,7 +1271,7 @@ cleanup_stealth() {
                 ufw --force delete "$rule_num" >/dev/null || true
             fi
         done < <(ufw status numbered 2>/dev/null | grep -E "sysmode-isolation|sysmode-local|reverse shells|recon-deceiver-ban|recon-deceiver-decoy" | awk -F'[][]' '{print $2}' | sort -rn)
-        ufw reload >/dev/null || true
+        ufw_reload
     fi
 
     # Clean up OS detection spoofing iptables rules
@@ -1319,7 +1374,8 @@ set_secure() {
     sysctl --system >/dev/null 2>&1 || true
 
     set_ufw_logging medium
-    ufw reload >/dev/null || true
+    ufw_reload
+    set_fw_posture secure
 
     ensure_logs
     set_compilers secure
@@ -1412,7 +1468,8 @@ EOF
         ufw deny 22/tcp >/dev/null || true
         ufw logging high >/dev/null || true
     fi
-    ufw reload >/dev/null || true
+    ufw_reload
+    set_fw_posture lockdown
 
     # Disable sshd service entirely in lockdown
     echo "[*] Disabling sshd service..."
@@ -1513,7 +1570,8 @@ set_relaxed() {
     sysctl --system >/dev/null 2>&1 || true
 
     set_ufw_logging low
-    ufw reload >/dev/null || true
+    ufw_reload
+    set_fw_posture relaxed
 
     # Restore SSH service access
     echo "[*] Restoring sshd service access..."
@@ -1794,7 +1852,8 @@ EOF
 
     # ufw reload rebuilds the whole filter table, so reload first, then insert
     # the custom fingerprint-mitigation rules afterwards.
-    ufw reload >/dev/null || true
+    ufw_reload
+    set_fw_posture stealth
 
     # Block Nmap OS detection / stealth scanning signatures to confuse OS fingerprinting
     if command -v iptables >/dev/null; then
@@ -1924,8 +1983,9 @@ RestrictSUIDSGID=yes
 RestrictNamespaces=yes
 # network + the unix sockets sudo / notify-send / D-Bus use; AF_PACKET and AF_NETLINK for nmap and ufw/iptables
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK AF_PACKET
-# bind <1024 | nmap raw sockets + firewall | write into your (user-owned) logs folder | notify-send as you through sudo
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_NET_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER CAP_SETUID CAP_SETGID CAP_AUDIT_WRITE CAP_SYS_RESOURCE CAP_KILL
+# bind <1024 | nmap raw sockets + firewall (CAP_BPF: bans through ai-firewall) | write into your (user-owned) logs folder |
+# notify-send as you through sudo
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_NET_ADMIN CAP_BPF CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER CAP_SETUID CAP_SETGID CAP_AUDIT_WRITE CAP_SYS_RESOURCE CAP_KILL
 SystemCallFilter=~@mount @swap @reboot @module @raw-io @cpu-emulation @obsolete
 SystemCallErrorNumber=EPERM
 UNIT

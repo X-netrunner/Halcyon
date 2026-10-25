@@ -483,6 +483,7 @@ Scope {
     }
     function playSel() {
         if (!sel) return
+        if (phase === "starting") return
         if (selRunning) { stopRequested(); return }
         if (runningId !== "") { flash("Another game is running: stop it first", true); return }
         launchId = sel.id
@@ -1492,10 +1493,10 @@ Scope {
                                             width: parent.width
                                             implicitHeight: 46
                                             readonly property bool starting: root.phase === "starting" && root.sel !== null && root.launchId === root.sel.id
-                                            glyph: String.fromCodePoint(root.selRunning ? 0xF04DB : 0xF040A)
-                                            label: root.selRunning ? "Stop" : (starting ? "Starting\u2026" : ((root.phase === "ended" || root.phase === "failed") && root.sel && root.launchId === root.sel.id ? "Try again" : "Play"))
-                                            danger: root.selRunning
-                                            disabled: starting && !root.selRunning
+                                            glyph: String.fromCodePoint(starting ? 0xF040A : (root.selRunning ? 0xF04DB : 0xF040A))
+                                            label: starting ? "Starting\u2026" : (root.selRunning ? "Stop" : ((root.phase === "ended" || root.phase === "failed") && root.sel && root.launchId === root.sel.id ? "Try again" : "Play"))
+                                            danger: !starting && root.selRunning
+                                            disabled: starting
                                             onClicked: root.playSel()
                                         }
                                         // a known problem with this game (fixes.db)

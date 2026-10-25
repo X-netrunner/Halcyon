@@ -1307,6 +1307,8 @@ SAFETY_RULES = [
      "logs, caches and package/system state change all the time", ""),
     ("aide", r"^/(usr|opt)/", "verify",
      "expected after a system update; unexpected if you did not update", "pacman -Qo THE_PATH && pacman -Qkk $(pacman -Qqo THE_PATH)"),
+    ("firewall", r"INACTIVE \(ai-firewall\)", "verify", "ai-firewall was not running and the check restarted it; find out why it stopped",
+     "systemctl status ai-firewall; journalctl -u ai-firewall -n 50; sudo ai-firewall doctor"),
     ("firewall", r"INACTIVE", "verify", "the firewall was off and the check switched it back on; find out why it was off",
      "ai-firewall status || sudo ufw status verbose; journalctl -u ai-firewall -u ufw -n 20"),
     ("backup", r"not found|skipped|not connected|Failed to mount|not ext4", "verify",
@@ -1379,6 +1381,9 @@ def parse_safety(text):
             m = re.search(r"Status:\s*(\w+)", body)
             if m:
                 counts["ufw"] = m.group(1).lower()
+            m = re.search(r"ai-firewall status: ai-firewall\s+(running|NOT RESPONDING)", body)
+            if m:
+                counts["ufw"] = "ai-firewall " + m.group(1).lower()
         elif sec == "lynis":
             m = re.search(r"Hardening index\s*:\s*(\d+)", body)
             if m:

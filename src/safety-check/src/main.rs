@@ -265,24 +265,27 @@ fn main() {
     // 4. Firewall
     section("4/7 — Firewall Status");
     notify("4/7 — Firewall Status", "normal", &real_user);
-    // Halcyon's ai-firewall when it is installed (install.sh --firewall ai): its service conflicts with ufw's, so
-    // "re-enabling" ufw here would switch ai-firewall off
-    if command_exists("ai-firewall") {
-        println!("{}", "  [EXEC] Running: systemctl is-active ai-firewall".bold().yellow());
-        let active = Command::new("systemctl")
-            .args(["is-active", "--quiet", "ai-firewall"])
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        let state = if active { "active" } else { "inactive" };
-        println!("    {}", format!("Status: {state}").dimmed());
-        write_to_log(&format!("ai-firewall status: Status: {state}"));
-        if active {
-            log_success("Firewall is active (ai-firewall)");
-        } else {
-            log_error("Firewall is INACTIVE. Starting ai-firewall...");
+    // ai-firewall (install.sh --firewall ai) replaces ufw: check it instead, and never switch ufw on beside it
+    // (two filters on the same traffic fight each other)
+    // install.sh puts it in /usr/local/bin, the Arch package in /usr/bin
+    let aifw = ["/usr/local/bin/ai-firewall", "/usr/bin/ai-firewall"].into_iter().find(|p| Path::new(p).exists());
+    if let Some(aifw) = aifw {
+        println!("{}", "  [EXEC] Running: ai-firewall status".bold().yellow());
+        let (ok, text) = match Command::new(aifw).arg("status").output() {
+            Ok(o) => (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))),
+            Err(e) => (false, format!("could not run: {}", e)),
+        };
+        println!("  Firewall Status output:");
+        for line in text.lines() {
+            println!("    {}", line.dimmed());
+            write_to_log(&format!("ai-firewall status: {}", line));
+        }
+        if !ok || !text.contains("running") || text.contains("NOT RESPONDING") {
+            log_error("Firewall is INACTIVE (ai-firewall). Starting...");
             notify("⚠ Firewall was OFF — restarting ai-firewall!", "critical", &real_user);
-            run_command("systemctl", &["start", "ai-firewall"]);
+            run_command("systemctl", &["restart", "ai-firewall.service"]);
+        } else {
+            log_success("Firewall is active (ai-firewall)");
         }
     } else if command_exists("ufw") {
         println!("{}", "  [EXEC] Running: ufw status".bold().yellow());
