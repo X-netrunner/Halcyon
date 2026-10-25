@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import "SecAsk.js" as SecAsk
 
 // Security center.   >security in the launcher (also >firewall, >antivirus, the IPC call `security`).
 // Two modules, each optional on its own (install.sh --firewall ai, --antivirus): the firewall (ai-firewall) and the antivirus
@@ -14,6 +15,7 @@ import Quickshell.Wayland
 //               Changes run as root through pkexec (the polkit password window), or in the console without a polkit agent.
 //   Ask         questions to either module's local model (`ai-firewall ask --json`, `ai-antivirus ask --json`). The firewall can
 //               run live tests (`/test`, or when the model asks for one); their results land in the conversation.
+//               Only security questions and /test reach them (SecAsk.js); small talk and other questions get a fixed reply.
 // Anything that needs root opens in the pop-out console (consoleRequested). Nothing runs while the window is closed.
 Scope {
     id: root
@@ -237,6 +239,12 @@ Scope {
         if (target === "firewall" && !hasFw) return
         if (target === "antivirus" && !hasAv) return
         pushMsg({ role: "you", text: q, who: target })
+        var r = SecAsk.route(q, target)
+        if (!r.send) {                         // not a security question: answered here, neither tool is started
+            pushMsg({ role: "ai", text: r.reply, live: false, actions: [], who: target })
+            Qt.callLater(function () { root.focusRequested("ask") })
+            return
+        }
         askProc.target = target
         askProc.command = target === "firewall" ? [fwBin, "ask", "--json", q] : ["ai-antivirus", "ask", "--json", q]
         askProc.running = true

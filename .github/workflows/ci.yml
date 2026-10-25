@@ -54,6 +54,8 @@ jobs:
         run: node tests/settings-groups.test.js
       - name: QML types and double bindings (what qmllint cannot see without Quickshell's types; both stop the island at login)
         run: node tests/qml-types.test.js
+      - name: security center Ask gate (only security questions and /test reach ai-firewall / ai-antivirus)
+        run: node tests/secask.test.js
       - name: shellcheck (errors only, so old scripts do not block a push)
         run: sudo apt-get install -y shellcheck && shellcheck -S error $(git ls-files '*.sh') install.sh update.sh get.sh sysmode/sysmode scripts/halcyon-tune
 
