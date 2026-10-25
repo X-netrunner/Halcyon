@@ -25,7 +25,11 @@ off (Settings > Performance > AI features). Nothing leaves this machine (`update
                                                 positives), "confirm this" and "look at this", and says plainly whether everything is
                                                 good. The verdict comes from fixed rules, so it works with the AI off; the model only
                                                 explains what is left.
-  halcyon-ai.py organise [--apply]              notes: tags, groups and duplicates. Without --apply it only proposes (and saves the
+  halcyon-ai.py clamav test | scan [FOLDER]      Security center > ClamAV: test that ClamAV works (installed, fresh signatures, updater
+                                                running, detects the harmless EICAR test file), or scan a folder in your home (default
+                                                Downloads). Fixes are commands from a fixed list for you to run; the model only orders
+                                                and explains them. Nothing is changed. Works with the AI off.
+  halcyon-ai.py organise [--apply]             notes: tags, groups and duplicates. Without --apply it only proposes (and saves the
                                                 proposal); --apply carries out the saved proposal (a backup of notes.json is kept first)
   halcyon-ai.py lyrics meaning [--title T --artist A --album B --duration S --url U]
                                                 what the playing song is about
@@ -56,9 +60,11 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -1619,6 +1625,192 @@ def cmd_safety(args):
     return {"text": text, "verdict": key, "open": len(open_items)}
 
 
+# ------------------------------------------------------------------------------------------------ clamav: test it, scan with it
+# Security center > ClamAV. "test" checks that ClamAV can find anything at all: the scanner is there, the signature database is
+# there and fresh, the updater runs, and the harmless EICAR test file is detected. "scan" scans one folder in your home.
+# Nothing is changed: the fixes are commands for you to run (the Security center opens them in the console). They come from the
+# fixed table below; the model (when it is on) only puts them in order and explains them, it cannot add a command of its own.
+CLAM_DB_DIRS = ("/var/lib/clamav", "/var/db/clamav", "/usr/local/share/clamav")
+CLAM_DB_MAX_DAYS = 7
+CLAM_UPDATER = ("clamav-freshclam.service", "freshclam.service", "clamav-freshclam-once.timer")
+# the EICAR test string, in two halves so this file is not itself detected as the test virus
+EICAR = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-" + "STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+
+
+def os_family():
+    """arch | debian | fedora | nixos | other, from /etc/os-release (for the install command in a fix)."""
+    try:
+        txt = open("/etc/os-release", encoding="utf-8").read().lower()
+    except OSError:
+        return "other"
+    ids = " ".join(re.findall(r"^(?:id|id_like)=\"?([^\"\n]+)", txt, re.M))
+    for fam, keys in (("nixos", ("nixos",)), ("arch", ("arch",)), ("fedora", ("fedora", "rhel")), ("debian", ("debian", "ubuntu"))):
+        if any(k in ids.split() for k in keys):
+            return fam
+    return "other"
+
+
+def clam_fixes_table():
+    fam = os_family()
+    install = {"arch": "sudo pacman -S --needed clamav", "debian": "sudo apt install clamav clamav-freshclam",
+               "fedora": "sudo dnf install clamav clamav-update", "nixos": "add services.clamav.updater.enable = true; to configuration.nix, then sudo nixos-rebuild switch"}.get(fam, "install ClamAV with your package manager")
+    updater = "sudo systemctl enable --now clamav-freshclam.service"
+    return {
+        "install": {"title": "Install ClamAV", "cmd": install, "why": "clamscan is not installed."},
+        "freshclam": {"title": "Download the signatures", "cmd": "sudo freshclam", "why": "Without a signature database ClamAV finds nothing."},
+        "updater": {"title": "Keep the signatures up to date", "cmd": updater, "why": "The updater service is not running, so the signatures get old."},
+        "inspect": {"title": "Look at what was found", "cmd": "clamscan --infected --no-summary {files}", "why": "Scan the reported files again and read the signature names."},
+        "quarantine": {"title": "Move what was found out of the way", "cmd": "mkdir -p ~/.local/share/halcyon-quarantine && mv -n {files} ~/.local/share/halcyon-quarantine/",
+                       "why": "Moves the files, nothing is deleted. Only do this when you do not recognise them."},
+        "false_positive": {"title": "Report a false positive", "cmd": "xdg-open https://www.clamav.net/reports/fp",
+                           "why": "If a file you trust is detected, the ClamAV project can fix the signature."},
+    }
+
+
+def clam_db():
+    """(folder, newest signature file's age in days) or (None, None)."""
+    best = None
+    for d in CLAM_DB_DIRS:
+        with contextlib.suppress(OSError):
+            for f in os.listdir(d):
+                if f.endswith((".cvd", ".cld", ".cud")):
+                    m = os.path.getmtime(os.path.join(d, f))
+                    if best is None or m > best[1]:
+                        best = (d, m)
+    if best is None:
+        return None, None
+    return best[0], (time.time() - best[1]) / 86400
+
+
+def clam_updater_active():
+    for u in CLAM_UPDATER:
+        code, out = sh(["systemctl", "is-active", u], timeout=5)
+        if code == 0 and out.strip() == "active":
+            return True
+    return sh(["pgrep", "-x", "freshclam"], timeout=5)[0] == 0
+
+
+def clam_scan(paths, timeout=None):
+    """clamscan's findings: (files scanned or None, [(file, signature)], error text)."""
+    try:
+        r = subprocess.run(["clamscan", "--recursive", "--infected", "--stdout", *paths], capture_output=True, text=True, timeout=timeout)
+    except FileNotFoundError:
+        return None, [], "clamscan is not installed"
+    except subprocess.TimeoutExpired:
+        return None, [], "the scan took too long"
+    found = [(m.group(1), m.group(2)) for m in re.finditer(r"^(.+): (\S+) FOUND$", r.stdout, re.M)]
+    m = re.search(r"^Scanned files:\s*(\d+)", r.stdout, re.M)
+    err = ""
+    if r.returncode == 2:           # 0 clean, 1 found, 2 error
+        err = (r.stderr.strip().splitlines() or ["clamscan failed"])[-1][:200]
+    return (int(m.group(1)) if m else None), found, err
+
+
+def clam_test():
+    checks, need = [], []
+    have_scan = have("clamscan")
+    checks.append({"name": "Scanner installed", "ok": have_scan, "detail": shutil.which("clamscan") or "clamscan not found"})
+    if not have_scan:
+        return checks, ["install"]
+    db, age = clam_db()
+    checks.append({"name": "Signature database", "ok": db is not None,
+                   "detail": f"{db}, updated {age:.0f} days ago" if db else "no signatures in " + ", ".join(CLAM_DB_DIRS)})
+    if db is None:
+        need.append("freshclam")
+    elif age > CLAM_DB_MAX_DAYS:
+        checks[-1]["ok"] = False
+        checks[-1]["detail"] += f" (older than {CLAM_DB_MAX_DAYS} days)"
+        need.append("freshclam")
+    upd = clam_updater_active()
+    checks.append({"name": "Signature updater", "ok": upd, "detail": "running" if upd else "not running"})
+    if not upd:
+        need.append("updater")
+    # the EICAR file: written to a private folder in ~/.cache (not executable, not in Downloads or /tmp, so on-write scanners
+    # leave it alone), scanned, and removed again
+    ok, detail = False, "skipped: no signatures"
+    if db is not None:
+        tmp = tempfile.mkdtemp(prefix="clamav-test-", dir=os.path.join(HOME, ".cache") if os.path.isdir(os.path.join(HOME, ".cache")) else None)
+        f = os.path.join(tmp, "eicar-test.txt")
+        try:
+            with open(f, "w", encoding="ascii") as fh:
+                fh.write(EICAR)
+            _, found, err = clam_scan([f], timeout=120)
+            ok = any("eicar" in sig.lower() for _, sig in found)
+            detail = "detected (" + found[0][1] + ")" if ok else (err or "NOT detected: the signatures are missing or broken")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        if not ok and "freshclam" not in need:
+            need.append("freshclam")
+    checks.append({"name": "Detects the EICAR test file", "ok": ok, "detail": detail})
+    return checks, need
+
+
+def clam_fixes(keys, files, context):
+    """The fixes for keys, in the model's order when it is on, each with a one-line reason. Commands only come from the table."""
+    table = clam_fixes_table()
+    q = " ".join(shlex.quote(p) for p in files[:10])
+    fixes = [dict(table[k], key=k, cmd=table[k]["cmd"].replace("{files}", q)) for k in keys if k in table]
+    if not fixes:
+        return fixes, "", False
+    try:
+        listing = "\n".join(f"{i + 1}. {f['title']}: {f['cmd']}  ({f['why']})" for i, f in enumerate(fixes))
+        d = generate_json(
+            f"What the ClamAV check found:\n{context}\n\nFixes that can be offered (only these):\n{listing}",
+            system=("You help the owner of a Linux desktop fix their ClamAV setup or act on a scan result. Reply with JSON: "
+                    "{\"summary\": \"two short plain sentences: what is wrong and what to do first\", \"order\": [fix numbers, most "
+                    "useful first]}. Only use the numbered fixes. Never call a file safe or infected beyond what ClamAV reported."),
+            num_predict=220)
+        # the model orders the fixes and sums up; each fix keeps its fixed reason (a small model got the facts wrong there)
+        order = [int(x) for x in d.get("order") or [] if str(x).isdigit() and 1 <= int(x) <= len(fixes)]
+        if order:
+            seen = list(dict.fromkeys(order))
+            fixes = [fixes[i - 1] for i in seen] + [f for j, f in enumerate(fixes) if j + 1 not in seen]
+        return fixes, " ".join(plain(str(d.get("summary") or "")).split())[:400], True
+    except (AiOff, Fail, ValueError, TypeError):
+        return fixes, "", False
+
+
+def cmd_clamav(args):
+    words = [a for a in args if not a.startswith("--")]
+    what = words[0] if words else "test"
+    if what == "test":
+        checks, need = clam_test()
+        bad = [c for c in checks if not c["ok"]]
+        context = "\n".join(f"- {c['name']}: {'ok' if c['ok'] else 'PROBLEM'} ({c['detail']})" for c in checks)
+        fixes, summary, by_ai = clam_fixes(need, [], context)
+        head = "ClamAV works: it is installed, up to date and detects the test file." if not bad else \
+            f"ClamAV needs attention: {len(bad)} of {len(checks)} checks failed."
+        text = head + "\n" + context.replace("- ", "  ") + "".join(f"\n  Fix: {f['title']}: {f['cmd']}" for f in fixes)
+        return {"text": text, "kind": "test", "checks": checks, "fixes": fixes, "headline": head, "summary": summary, "ai": by_ai,
+                "good": not bad}
+    if what == "scan":
+        rel = words[1] if len(words) > 1 else "Downloads"
+        path = os.path.realpath(os.path.join(HOME, rel))
+        if not (path == HOME or path.startswith(HOME + os.sep)):
+            raise Fail("Only folders in your home can be scanned from here.")
+        if not os.path.isdir(path):
+            raise Fail(f"No such folder: {path}")
+        if not have("clamscan"):
+            fixes, _, _ = clam_fixes(["install"], [], "clamscan is not installed")
+            return {"text": "ClamAV is not installed.", "kind": "scan", "found": [], "fixes": fixes, "files": 0, "good": False,
+                    "headline": "ClamAV is not installed.", "summary": "", "ai": False}
+        t0 = time.time()
+        n, found, err = clam_scan([path])
+        secs = round(time.time() - t0)
+        if err and not found:
+            raise Fail(f"The scan failed: {err}. Run Test ClamAV to see why.")
+        items = [{"file": f, "signature": s} for f, s in found]
+        files = [f for f, _ in found]
+        keys = ["inspect", "quarantine", "false_positive"] if found else []
+        context = "\n".join(f"- {f}: {s}" for f, s in found[:20]) or "nothing found"
+        fixes, summary, by_ai = clam_fixes(keys, files, f"Scan of {path}: {len(found)} found in {n} files.\n{context}")
+        head = (f"{len(found)} found" if found else "Clean") + f" in {path.replace(HOME, '~', 1)}: {n if n is not None else '?'} files, {secs} s."
+        text = head + "".join(f"\n  {f}: {s}" for f, s in found) + "".join(f"\n  Fix: {f['title']}: {f['cmd']}" for f in fixes)
+        return {"text": text, "kind": "scan", "found": items, "files": n or 0, "seconds": secs, "fixes": fixes,
+                "headline": head, "summary": summary, "ai": by_ai, "good": not found, "folder": path}
+    raise Fail("Use: clamav test   or   clamav scan [folder in your home]")
+
+
 # ------------------------------------------------------------------------------------------------ howto: a guide to Halcyon itself
 # The model is small and knows nothing about Halcyon, so it is never asked to remember: the question is matched against the real
 # Settings rows (Settings.qml: group, label, description, the Advanced fold) and the launcher commands (Launcher.qml), and the model
@@ -2436,7 +2628,7 @@ def cmd_unused(args):
 
 # ------------------------------------------------------------------------------------------------ main
 COMMANDS = {"ask": cmd_ask, "howto": cmd_howto, "do": cmd_do, "clip": cmd_clip, "brief": cmd_brief, "explain": cmd_explain,
-            "safety": cmd_safety, "organise": cmd_organise, "organize": cmd_organise, "lyrics": cmd_lyrics,
+            "safety": cmd_safety, "clamav": cmd_clamav, "organise": cmd_organise, "organize": cmd_organise, "lyrics": cmd_lyrics,
             "updates": cmd_updates, "study": cmd_study, "commit": cmd_commit, "unused": cmd_unused}
 
 
