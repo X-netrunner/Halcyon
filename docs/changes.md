@@ -1,6 +1,6 @@
 # Halcyon: notes from past passes
 
-Older "what changed" sections, moved out of the README. The full history is in [changelog.md](../changelog.md).
+Older "what changed" sections, moved out of the README. The full history is in [changelog.md](../changelog.md); engineering notes on past optimisation passes are in [fixes.md](fixes.md).
 
 ## Settings added later: default apps, sleep & lock, notification count
 - **Default apps** (Settings > Default apps): terminal, browser, file manager. Only installed ones are listed. The choice is saved by `scripts/apps.sh` in `~/.local/state/island/apps.env` and applies at once: SUPER+T / W / E, the console's "open in a real terminal", the system monitor and the music fallback all go through it. A browser or file manager you pick also becomes the xdg default for links and folders. To offer another app, add a line to the tables at the top of `scripts/apps.sh`.
