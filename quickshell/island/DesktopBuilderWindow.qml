@@ -631,6 +631,13 @@ Item {
                             }
                             ChipRow {
                                 Layout.fillWidth: true
+                                pal: root.pal; label: "Console shows"
+                                options: [["terminal", "Terminal"], ["luna", "Luna's chat"]]
+                                current: (root.opt && root.opt.consoleLuna === true) ? "luna" : "terminal"
+                                onPicked: id => root.put("consoleLuna", id === "luna")
+                            }
+                            ChipRow {
+                                Layout.fillWidth: true
                                 pal: root.pal; label: "Notif trigger"
                                 options: [["edge", "Screen edge strip"], ["corner", "Corner trigger"]]
                                 current: (root.opt && root.opt.notifSpot === "corner") ? "corner" : "edge"
