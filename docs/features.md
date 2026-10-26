@@ -114,6 +114,7 @@ The utilities panel and the notification centre share `boxW`, `boxPad`, `boxEdge
 - **Show her thinking while she works** (This window page, off by default): her reasoning scrolls by under the status line as she writes it, instead of only behind *Show the reasoning* afterwards. Needs *Thinking Mode* on (Models page).
 - **Slash commands** show in a solid list above the message box: Up and Down choose, Tab completes.
 - **Voice**: she speaks through Kokoro on this machine. If the files are missing, Settings > Voice & Audio says what and has *Set up her voice* (`scripts/luna-voice-setup.sh`: pacman packages, a ~330 MB model from the kokoro-onnx GitHub release, a small Python environment, her `[voice]` config). Then *Read her answers aloud* and the *Read aloud* link on each answer work.
+- **Voice from the installer**: `./install.sh --luna --luna-voice` (or answer yes when asked) does what `luna-voice-setup.sh` does.
 - **Pop out** (header) turns her into an ordinary window on the workspace you are on; *Back to overlay* undoes it. Study, Games, Security and Firewall follow the same Settings choice (Workspaces & windows > Halcyon windows).
 - **Console corner**: Desktop builder > Edge boxes > *Console shows* can be *Luna's chat* instead of the terminal.
 - `/delete` deletes the open chat (type it twice to confirm). Luna's mark is Halcyon's sparkle, which turns while she works.
