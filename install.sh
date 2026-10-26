@@ -1943,6 +1943,33 @@ if [[ "$PACKAGES" == "true" ]]; then
         log_info "Apps skipped (--no-apps): foot, Discord."
     fi
     # ---- Ollama itself (used by the Local AI Advisor and by the picture model for Notes): installed and started once per run
+    # Debian / Ubuntu do not package it: the official release archive, pinned to one version and checked against its SHA-256
+    # (from that release's sha256sum.txt; bump the version and both sums together). No remote script is run.
+    OLLAMA_VERSION="v0.40.11"
+    OLLAMA_SHA256_amd64="7bedab90dd122661be78798e9f0edf37fccf0cccf2699d2c58ea1a3afdc04b6d"
+    OLLAMA_SHA256_arm64="77b278837b9e62c172f77d703675be4c52c8054e9075639031a9a6d5a53f1924"
+    install_ollama_release() {
+        local arch sum url tmp
+        case "$ARCH_CPU" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; *) warn_later "Ollama: no release for ${ARCH_CPU}"; return 1 ;; esac
+        sum="OLLAMA_SHA256_${arch}"; sum="${!sum}"
+        url="https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-${arch}.tar.zst"
+        install_pkgs zstd
+        if [[ "$DRY_RUN" == "true" ]]; then
+            run_cmd "Ollama ${OLLAMA_VERSION}: download and check the SHA-256" curl -fsSL -o "<tmp>/ollama.tar.zst" "$url"
+            run_cmd "Ollama ${OLLAMA_VERSION}: unpack into /usr/local" as_root tar --zstd -xf "<tmp>/ollama.tar.zst" -C /usr/local
+            return 0
+        fi
+        tmp="$(mktemp -d)" || return 1
+        if ! curl -fsSL -o "$tmp/ollama.tar.zst" "$url" 2>>"$LOG_FILE" || ! echo "$sum  $tmp/ollama.tar.zst" | sha256sum -c --status; then
+            rm -rf "$tmp"
+            warn_later "Ollama ${OLLAMA_VERSION}: the download failed or its checksum did not match, so it was not installed."
+            return 1
+        fi
+        run_cmd "Ollama ${OLLAMA_VERSION}: unpacking into /usr/local (checksum ok)" as_root tar --zstd -xf "$tmp/ollama.tar.zst" -C /usr/local
+        local rc=$?
+        rm -rf "$tmp"
+        return $rc
+    }
     OLLAMA_READY=false
     setup_ollama() {
         [[ "$OLLAMA_READY" == "true" ]] && return 0
@@ -1951,9 +1978,7 @@ if [[ "$PACKAGES" == "true" ]]; then
             if [[ "$DISTRO_FAMILY" == "arch" || "$DISTRO_FAMILY" == "fedora" ]]; then
                 install_pkgs ollama
             else
-                # (downloaded to a file first and run from there: a connection that drops half way never runs half a script as root.
-                # Read it first if you like: https://ollama.com/install.sh)
-                try run_cmd "Installing Ollama via official installer" sh -c 'f=$(mktemp) && curl -fsSL -o "$f" https://ollama.com/install.sh && sh "$f"; rc=$?; rm -f "$f"; exit $rc'
+                install_ollama_release || true
             fi
             ollama_bin="$(run_as_user which ollama 2>/dev/null || which ollama 2>/dev/null || echo "")"
         fi
