@@ -186,6 +186,7 @@ Scope {
         { c: "/status", d: "Halcyon at a glance: firewall, antivirus, AI, GPU" },
         { c: "/new", d: "Start a new chat" },
         { c: "/clear", d: "Empty this chat and Luna's memory of it" },
+        { c: "/delete", d: "Delete this chat (type it twice)" },
         { c: "/test-model", d: "Is Ollama answering, and which models does Luna use" },
         { c: "/help", d: "These commands" },
         { c: "/exit", d: "Close this window" }
@@ -205,12 +206,19 @@ Scope {
         if (c === "/status") { addSys("Looking…"); call("control", ["control", "info", "overview"]); return true }
         if (c === "/new") { newChat(); return true }
         if (c === "/clear") { if (cur !== "") { Quickshell.execDetached(["python3", script, "clear", cur]) } msgs = []; reload(false); return true }
+        if (c === "/delete") {
+            if (cur === "") { addSys("There is no saved chat open to delete."); return true }
+            if (busy) { addSys("Luna is still answering. Stop her first, then delete the chat."); return true }
+            if (delAsk !== cur) { delAsk = cur; addSys("Type /delete again to delete this chat for good."); return true }
+            delAsk = ""; removeSession(cur); return true
+        }
         if (c === "/test-model") { addSys("Asking Ollama…"); call("models", ["models"]); testing = true; return true }
         if (c === "/help") { addSys(slashCmds.map(function (x) { return x.c + "   " + x.d }).join("\n")); return true }
         if (c === "/exit" || c === "/quit") { hide(); return true }
         addSys("Unknown command " + c + ". Type /help.")
         return true
     }
+    property string delAsk: ""             // the chat /delete waits to confirm
     property bool testing: false
     onInstalledChanged: if (testing) { testing = false; addSys(reachable ? "Ollama answers. Luna's main model: " + (roles.model || "?") + (roles.fast ? ", fast: " + roles.fast : "") + (roles.deep ? ", deep: " + roles.deep : "") + (roles.security ? ", security: " + roles.security : "") + ". " + installed.length + " models installed." : "Ollama is not answering. Start it with: systemctl --user start ollama (or sudo systemctl start ollama).") }
     readonly property var slashHits: {
@@ -260,7 +268,7 @@ Scope {
     }
     function openSession(id) {
         if (busy || id === cur) return
-        cur = id; msgs = []; confirmDel = ""; renaming = ""
+        cur = id; msgs = []; confirmDel = ""; renaming = ""; delAsk = ""
         showProc.command = ["python3", script, "show", id, "--json"]
         showProc.running = true
         Qt.callLater(function () { root.focusRequested("ask") })
@@ -279,7 +287,7 @@ Scope {
             }
         }
     }
-    function newChat() { if (busy) return; cur = ""; msgs = []; confirmDel = ""; renaming = ""; Qt.callLater(function () { root.focusRequested("ask") }) }
+    function newChat() { if (busy) return; delAsk = ""; cur = ""; msgs = []; confirmDel = ""; renaming = ""; Qt.callLater(function () { root.focusRequested("ask") }) }
     function removeSession(id) {
         confirmDel = ""
         Quickshell.execDetached(["python3", script, "delete", id])
@@ -408,30 +416,55 @@ Scope {
         }
         MouseArea { id: pbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pb.clicked() }
     }
-    // Luna's mark: a moon that waxes while she works and rests full when she has answered
-    component Moon: Canvas {
-        id: mn
-        property real base: 0.5                 // 0 new .. 0.5 full .. 1 new
+    // Luna's mark is Halcyon's own sparkle (the splash's four-point star with its two companions). It turns and breathes while she
+    // works and sits still when she has answered.
+    component Spark: Canvas {
+        id: sk
         property bool spin: false
+        property bool bad: false
         property real t: 0
-        property color lit: root.pal.accent
-        readonly property int q: Math.round((spin ? t : base) * 24) % 24
-        implicitWidth: 22
-        implicitHeight: 22
+        readonly property int q: spin ? Math.round(t * 36) % 36 : 0
+        implicitWidth: 24
+        implicitHeight: 24
+        renderTarget: Canvas.FramebufferObject
         onQChanged: requestPaint()
-        onLitChanged: requestPaint()
-        NumberAnimation on t { from: 0; to: 1; duration: 4800; loops: Animation.Infinite; running: mn.spin && root.open }
+        onWidthChanged: requestPaint()
+        Connections { target: root.pal; function onAccentChanged() { sk.requestPaint() } }
+        NumberAnimation on t { from: 0; to: 1; duration: 2400; loops: Animation.Infinite; running: sk.spin && root.open }
         onPaint: {
-            var c = getContext("2d"), r = width / 2 - 1, cx = width / 2, cy = height / 2
+            var c = getContext("2d"), w = width, ph = q / 36
             c.reset()
-            c.fillStyle = Qt.alpha(mn.lit, 0.16)
-            c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill()
-            var k = Math.cos(q / 24 * Math.PI * 2), wax = q <= 12, n = 28, i, y, w, x
-            c.fillStyle = mn.lit
-            c.beginPath()
-            for (i = 0; i <= n; i++) { y = -r + 2 * r * i / n; w = Math.sqrt(Math.max(0, r * r - y * y)); x = wax ? w : -w; if (i === 0) c.moveTo(cx + x, cy + y); else c.lineTo(cx + x, cy + y) }
-            for (i = n; i >= 0; i--) { y = -r + 2 * r * i / n; w = Math.sqrt(Math.max(0, r * r - y * y)); x = (wax ? 1 : -1) * k * w; c.lineTo(cx + x, cy + y) }
-            c.closePath(); c.fill()
+            c.translate(w / 2, w / 2)
+            var a1 = bad ? root.pal.bad : root.pal.accent, a2 = bad ? root.pal.bad : root.pal.accent2
+            var breathe = spin ? 1 + 0.12 * Math.sin(ph * Math.PI * 2) : 1
+            var R = w * 0.40 * breathe
+            function rgba(col, a) { return Qt.rgba(col.r, col.g, col.b, a) }
+            function star(rv, rh, k) {
+                var cc = Math.min(rv, rh) * k
+                c.beginPath()
+                c.moveTo(0, -rv); c.quadraticCurveTo(cc, -cc, rh, 0); c.quadraticCurveTo(cc, cc, 0, rv)
+                c.quadraticCurveTo(-cc, cc, -rh, 0); c.quadraticCurveTo(-cc, -cc, 0, -rv); c.closePath()
+            }
+            var hg = c.createRadialGradient(0, 0, 0, 0, 0, w * 0.5)
+            hg.addColorStop(0, rgba(a1, spin ? 0.34 : 0.2)); hg.addColorStop(1, rgba(a2, 0))
+            c.fillStyle = hg
+            c.beginPath(); c.arc(0, 0, w * 0.5, 0, 6.2832); c.fill()
+            c.save()
+            c.rotate(ph * Math.PI / 2)
+            var fg = c.createLinearGradient(-R, -R, R, R)
+            fg.addColorStop(0, rgba(a1, 1)); fg.addColorStop(1, rgba(a2, 1))
+            c.fillStyle = fg
+            star(R, R * 0.84, 0.11); c.fill()
+            var cg = c.createRadialGradient(0, 0, 0, 0, 0, R * 0.4)
+            cg.addColorStop(0, Qt.rgba(1, 1, 1, 0.9)); cg.addColorStop(1, Qt.rgba(1, 1, 1, 0))
+            c.fillStyle = cg
+            c.beginPath(); c.arc(0, 0, R * 0.4, 0, 6.2832); c.fill()
+            c.restore()
+            if (w >= 20) {
+                var tw = spin ? 0.5 + 0.5 * Math.sin(ph * Math.PI * 4) : 1
+                c.fillStyle = rgba(a2, 0.55 + 0.4 * tw)
+                c.save(); c.translate(w * 0.36, -w * 0.34); star(w * 0.1 * (0.8 + 0.2 * tw), w * 0.085 * (0.8 + 0.2 * tw), 0.12); c.fill(); c.restore()
+            }
         }
     }
     component Sw: Rectangle {
@@ -508,17 +541,15 @@ Scope {
     // ================================================================ the window
     LazyLoader {
         active: root.open || root.linger
-        PanelWindow {
+        Host {
             id: win
-            visible: true
-            anchors { top: true; bottom: true; left: true; right: true }
-            color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.namespace: "island-luna"
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            desktop: root.pal.deskWin
+            title: "Luna"
+            namespace: "island-luna"
+            keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            onCloseRequested: root.hide()
 
-            MouseArea { anchors.fill: parent; onClicked: root.hide() }
+            MouseArea { anchors.fill: parent; enabled: !win.desktop; onClicked: root.hide() }
 
             Item {
                 id: qp
@@ -529,25 +560,25 @@ Scope {
                 onTargetChanged: reveal = target
                 Behavior on reveal { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Component.onCompleted: { ready = true; Qt.callLater(function () { askIn.forceActiveFocus() }) }
-                Keys.onEscapePressed: root.hide()
+                Keys.onEscapePressed: if (!win.desktop) root.hide()
                 Connections {
                     target: root
                     function onFocusRequested(what) { askIn.forceActiveFocus() }
                 }
 
-                Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
+                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
 
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: Math.min(1100, qp.width - 80)
-                    height: Math.min(740, qp.height - 80)
-                    radius: root.pal.rXl
+                    width: win.desktop ? qp.width : Math.min(1100, qp.width - 80)
+                    height: win.desktop ? qp.height : Math.min(740, qp.height - 80)
+                    radius: win.desktop ? 0 : root.pal.rXl
                     opacityBody: 0.97
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                     anchors.centerIn: parent
-                    opacity: qp.reveal
-                    scale: 0.97 + 0.03 * qp.reveal
+                    opacity: win.desktop ? 1 : qp.reveal
+                    scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
 
                     RowLayout {
@@ -578,12 +609,17 @@ Scope {
                                 anchors.rightMargin: 21
                                 spacing: 14
 
-                                Text {
-                                    text: "Luna"
-                                    color: root.pal.text
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tTitle + 2
-                                    font.weight: Font.DemiBold
+                                Row {
+                                    spacing: 10
+                                    Spark { anchors.verticalCenter: parent.verticalCenter; width: 26; height: 26; spin: root.busy }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Luna"
+                                        color: root.pal.text
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tTitle + 2
+                                        font.weight: Font.DemiBold
+                                    }
                                 }
                                 PrimaryBtn {
                                     Layout.fillWidth: true
@@ -1068,7 +1104,7 @@ Scope {
                                         visible: root.msgs.length === 0
                                         width: Math.min(parent.width, 560)
                                         spacing: 10
-                                        Moon { anchors.horizontalCenter: parent.horizontalCenter; width: 56; height: 56; base: 0.38 }
+                                        Spark { anchors.horizontalCenter: parent.horizontalCenter; width: 64; height: 64 }
                                         Item { width: 1; height: 6 }
                                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Ask Luna anything"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.DemiBold }
                                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: "She runs on this machine. Chats are saved on the left."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
@@ -1136,11 +1172,10 @@ Scope {
                                                 visible: !mrow.you && !mrow.sys
                                                 width: Math.min(parent.width, 780)
                                                 spacing: 14
-                                                Moon {
-                                                    y: 3
-                                                    base: mrow.modelData.bad ? 0 : 0.42
+                                                Spark {
+                                                    y: 1
                                                     spin: mrow.modelData.live === true
-                                                    lit: mrow.modelData.bad ? root.pal.bad : root.pal.accent
+                                                    bad: mrow.modelData.bad === true
                                                 }
                                                 Column {
                                                     id: aiBody
@@ -1291,7 +1326,7 @@ Scope {
                                                 if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && !(e.modifiers & Qt.ShiftModifier)) {
                                                     if (!root.busy && text.trim() !== "") { root.send(text); text = "" }
                                                     e.accepted = true
-                                                } else if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true }
+                                                } else if (e.key === Qt.Key_Escape && !win.desktop) { root.hide(); e.accepted = true }
                                             }
                                             Text {
                                                 anchors.verticalCenter: parent.verticalCenter
