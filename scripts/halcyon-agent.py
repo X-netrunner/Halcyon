@@ -627,7 +627,7 @@ class Agent:
                 raise RuntimeError(f"model '{self.model_fn()}' is not installed. Try: advisor model switch {self.model_fn()}")
             raise RuntimeError(f"Ollama HTTP {e.code} {body[:200]}")
         except urllib.error.URLError:
-            raise RuntimeError("can't reach Ollama on 127.0.0.1:11434. Start it with: systemctl --user start ollama")
+            raise RuntimeError("can't reach Ollama on 127.0.0.1:11434. Start it with: sudo systemctl start ollama (or, if it is set up per user: systemctl --user start ollama)")
         emit(tf.flush())
         decided, hold = st["decided"], st["hold"]
         text = "".join(content).strip()
