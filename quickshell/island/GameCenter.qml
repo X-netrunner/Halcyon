@@ -25,6 +25,7 @@ Scope {
     property string hgl: ""                 // the hgl binary (shell.qml gives the path)
     property string runningId: ""           // the game that runs now (shell.qml), "" = none
     property bool open: false
+    readonly property bool asWindow: open && pal.deskWin        // an ordinary window (Settings > Halcyon windows): Super+Q and opening another centre leave it alone (shell.qml)
     property string tab: "library"          // library | stores | runtimes | doctor
     signal launchRequested(string id)
     signal stopRequested()

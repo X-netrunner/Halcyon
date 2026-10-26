@@ -48,8 +48,11 @@ Scope {
         check()
         reload(true)
     }
-    function hide() { open = false; confirmDel = ""; renaming = ""; keyOpen = ""; modelMenu = ""; view = "chat" }
+    function hide() { open = false; popped = false; confirmDel = ""; renaming = ""; keyOpen = ""; modelMenu = ""; view = "chat" }
     function toggle() { if (open) hide(); else show() }
+    property bool popped: false             // "Pop out": only this open window is an ordinary window; closing it forgets that (the setting in Settings is separate)
+    readonly property bool deskMode: pal.deskWin || popped
+    readonly property bool asWindow: open && deskMode       // an ordinary window: Super+Q and opening another centre leave it alone (shell.qml)
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
     Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
@@ -129,10 +132,6 @@ Scope {
         return o
     }
     function setPref(k, v) { call("prefs", ["pref", k, v ? "on" : "off"]) }
-    // Pop out: this window becomes an ordinary window on the workspace you are on (Settings > Workspaces & windows > Halcyon windows)
-    function setWindowMode(m) {
-        Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.env("HOME") + "/.config/Halcyon/quickshell/island", "call", "island", "setopt", "windowMode", JSON.stringify(m)])
-    }
     function termRun(cmd) { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", cmd + "; echo; read -n1 -s -r -p 'Press any key to close'"]) }
     // the end of her reasoning, for the live view
     function tail(t) { t = String(t || ""); if (t.length <= 700) return t; t = t.substring(t.length - 700); var i = t.indexOf(" "); return "…" + (i > 0 ? t.substring(i) : t) }
@@ -585,7 +584,7 @@ Scope {
         active: root.open || root.linger
         Host {
             id: win
-            desktop: root.pal.deskWin
+            desktop: root.deskMode
             title: "Luna"
             namespace: "island-luna"
             keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -840,10 +839,10 @@ Scope {
                                         font.pixelSize: root.pal.tCap + 1
                                     }
                                     LinkBtn {
-                                        visible: root.view !== "settings"
-                                        label: root.pal.deskWin ? "Back to overlay" : "Pop out"
-                                        glyph: String.fromCodePoint(root.pal.deskWin ? 0xF0141 : 0xF03CC)
-                                        onClicked: root.setWindowMode(root.pal.deskWin ? "overlay" : "desktop")
+                                        visible: root.view !== "settings" && !root.pal.deskWin
+                                        label: root.popped ? "Back to overlay" : "Pop out"
+                                        glyph: String.fromCodePoint(root.popped ? 0xF0141 : 0xF03CC)
+                                        onClicked: root.popped = !root.popped
                                     }
                                     LinkBtn {
                                         visible: root.view !== "settings"
@@ -1273,7 +1272,7 @@ Scope {
                                                 height: youT.height + 20
                                                 radius: 18
                                                 color: Qt.alpha(root.pal.accent, 0.13)
-                                                Text { id: youT; x: 16; y: 10; width: parent.width - 32; wrapMode: Text.Wrap; text: mrow.modelData.text; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; lineHeight: 1.3 }
+                                                SelText { id: youT; x: 16; y: 10; width: parent.width - 32; wrapMode: TextEdit.Wrap; text: mrow.modelData.text; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1 }
                                             }
                                             Rectangle {
                                                 id: sysBox
@@ -1282,7 +1281,7 @@ Scope {
                                                 height: sysT.height + 20
                                                 radius: 14
                                                 color: Qt.alpha(root.pal.text, 0.05)
-                                                Text { id: sysT; x: 14; y: 10; width: parent.width - 28; wrapMode: Text.Wrap; text: mrow.modelData.text; color: root.pal.muted; font.family: root.pal.mono; font.pixelSize: root.pal.tCap + 1; lineHeight: 1.25 }
+                                                SelText { id: sysT; x: 14; y: 10; width: parent.width - 28; wrapMode: TextEdit.Wrap; text: mrow.modelData.text; color: root.pal.muted; font.family: root.pal.mono; font.pixelSize: root.pal.tCap + 1 }
                                             }
                                             HoverHandler { id: mHover }
                                             Row {
@@ -1316,17 +1315,16 @@ Scope {
                                                         font.pixelSize: root.pal.tCap + 1
                                                         lineHeight: 1.3
                                                     }
-                                                    Text {
+                                                    SelText {
                                                         id: aiT
                                                         visible: mrow.modelData.text !== ""
                                                         width: parent.width
-                                                        wrapMode: Text.Wrap
-                                                        textFormat: Text.RichText
+                                                        wrapMode: TextEdit.Wrap
+                                                        textFormat: TextEdit.RichText
                                                         text: root.fmt(mrow.modelData.text)
                                                         color: mrow.modelData.bad ? root.pal.bad : root.pal.text
                                                         font.family: root.pal.uiFont
                                                         font.pixelSize: root.pal.tBody + 1
-                                                        lineHeight: 1.4
                                                     }
                                                     Row {
                                                         spacing: 4

@@ -175,6 +175,11 @@ Scope {
     property double nowMs: Date.now()
     Timer { interval: 1000; repeat: true; running: root.busy && root.shown; onTriggered: root.nowMs = Date.now() }
     // a fresh copy each time: the objects in `runs` change in place, and a binding only wakes up for a new value
+    function copyRun(r) {
+        var t = []
+        for (var i = 0; i < out.count; i++) { var o = out.get(i); if (o.r === r && o.k !== "cmd") t.push(o.t) }
+        Quickshell.execDetached(["wl-copy", "--", t.join("\n")])
+    }
     function runInfo(r) { runsRev; var x = runs[r]; return x ? { start: x.start, end: x.end, code: x.code, count: x.count, open: x.open } : undefined }
     function touchRuns() { runsRev++ }
     function newRun(header) {
@@ -750,7 +755,7 @@ Scope {
                             }
                             Text {
                                 id: hcmd
-                                anchors { left: parent.left; bottom: parent.bottom; bottomMargin: 4; right: hstat.left; rightMargin: 12 }
+                                anchors { left: parent.left; bottom: parent.bottom; bottomMargin: 4; right: hcopy.left; rightMargin: 12 }
                                 text: "❯ " + ln.t
                                 elide: Text.ElideRight
                                 textFormat: Text.PlainText
@@ -758,6 +763,16 @@ Scope {
                                 font.family: root.mono
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
+                            }
+                            Text {
+                                id: hcopy             // copies this command's output (drag over a line to copy part of one)
+                                visible: !!ln.run && ln.run.count > 0
+                                anchors { right: hstat.left; bottom: parent.bottom; bottomMargin: 4; rightMargin: 12 }
+                                text: "copy"
+                                color: hcopyMa.containsMouse ? root.pal.accent : root.pal.muted
+                                font.family: root.mono
+                                font.pixelSize: 11
+                                MouseArea { id: hcopyMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.copyRun(ln.r); hcopy.text = "copied" } }
                             }
                             Text {
                                 id: hstat
@@ -783,21 +798,18 @@ Scope {
                             }
                         }
                         // ---- an output line: one line each (long ones end in …), coloured by what it says
-                        Text {
+                        SelText {
                             id: line
                             visible: !ln.head
                             width: parent.width
                             leftPadding: 14
                             text: ln.t === "" ? " " : ln.t
-                            textFormat: Text.PlainText
-                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            textFormat: TextEdit.PlainText
+                            wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
                             color: ln.tone === "bad" ? root.pal.bad : ln.tone === "warn" ? root.pal.warn : ln.tone === "ask" ? root.pal.accent
                                  : (ln.k === "info" ? Qt.lighter(root.pal.muted, 1.35) : "#d7dae0")
                             font.family: root.mono
                             font.pixelSize: 11
-                            lineHeight: 1.12
-                            style: Text.Outline
-                            styleColor: Qt.rgba(0, 0, 0, 0.6)
                         }
                     }
                 }
