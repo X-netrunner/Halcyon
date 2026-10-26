@@ -122,7 +122,6 @@ your setup are welcome in [Discussions](https://github.com/X-netrunner/Halcyon/d
 
 ## Who made it
 
-Halcyon is written by Srijan ([netrunner](https://github.com/X-netrunner)). I also used [Claude Code](https://claude.com/claude-code)
-to help with optimizations and features along the way.
+Halcyon is written by Srijan ([netrunner](https://github.com/X-netrunner)).
 
 MIT licensed. See [LICENSE](LICENSE).

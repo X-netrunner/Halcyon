@@ -1275,7 +1275,7 @@ env: ‘user_systemctl’: No such file or directory
 - **`src/hx/src/status.rs`**: Replaced $O(N)$ linear scans in a `Vec<String>` for unique attacker IP collection with an $O(1)$ `std::collections::HashSet<String>`, significantly speeding up `hx status` execution when `recon-attempts.log` contains large volumes of events.
 - **Binaries Recompiled & Deployed**:
   - Built optimized release binaries for `hx`, `power-manager`, `recon-deceiver`, `log-analyst`, and `attacker-dossier`.
-  - Installed binaries into both `/home/sushanth/.config/Halcyon/bin/` and `/usr/local/bin/` / `/usr/local/lib/halcyon/sysmode/`.
+  - Installed binaries into both `~/.config/Halcyon/bin/` and `/usr/local/bin/` / `/usr/local/lib/halcyon/sysmode/`.
 
 ---
 
