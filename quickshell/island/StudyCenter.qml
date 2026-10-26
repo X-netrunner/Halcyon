@@ -543,18 +543,18 @@ Scope {
     // ================================================================ the window
     LazyLoader {
         active: root.open || root.linger
-        PanelWindow {
+        Host {
             id: win
-            visible: true
-            anchors { top: true; bottom: true; left: true; right: true }
-            color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.namespace: "island-study"
-            WlrLayershell.layer: WlrLayer.Overlay
+            desktop: root.pal.deskWin
+            title: "Study"
+            deskWidth: 1160
+            deskHeight: 760
+            namespace: "island-study"
             // while the console is up (a command this window sent) it has the keyboard; this window stays open behind it
-            WlrLayershell.keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            onCloseRequested: root.hide()
 
-            MouseArea { anchors.fill: parent; onClicked: root.hide() }
+            MouseArea { anchors.fill: parent; enabled: !win.desktop; onClicked: root.hide() }
 
             Item {
                 id: qp
@@ -584,18 +584,18 @@ Scope {
                     }
                 }
 
-                Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
+                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
 
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: Math.min(1160, qp.width - 80)
-                    height: Math.min(760, qp.height - 80)
-                    radius: root.pal.rXl
+                    width: win.desktop ? qp.width : Math.min(1160, qp.width - 80)
+                    height: win.desktop ? qp.height : Math.min(760, qp.height - 80)
+                    radius: win.desktop ? 0 : root.pal.rXl
                     opacityBody: 0.97
                     anchors.centerIn: parent
-                    opacity: qp.reveal
-                    scale: 0.97 + 0.03 * qp.reveal
+                    opacity: win.desktop ? 1 : qp.reveal
+                    scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
 
                     RowLayout {
@@ -836,13 +836,13 @@ Scope {
                                     clip: true
                                     spacing: 18
                                     boundsBehavior: Flickable.StopAtBounds
-                                    model: root.msgs
+                                    model: root.msgs.length         // a number: an array replaced for every streamed chunk would rebuild every bubble (the flicker)
                                     onCountChanged: Qt.callLater(function () { chat.positionViewAtEnd() })
                                     onContentHeightChanged: if (root.asking) positionViewAtEnd()
                                     delegate: Item {
                                         id: mrow
-                                        required property var modelData
                                         required property int index
+                                        readonly property var modelData: root.msgs[index] || ({ role: "ai", text: "", sources: [], live: false, bad: false })
                                         readonly property bool you: modelData.role === "you"
                                         property bool allSrc: false
                                         property bool showThink: false
