@@ -993,7 +993,6 @@ Scope {
                                         root.av.last_event_unix ? "last event " + root.ago(root.av.last_event_unix) + " ago" : ""].filter(function (x) { return x !== "" }).join("  ·  ")
                                     Btn { label: "Log"; glyph: 0xF018D; onClicked: root.consoleRequested("ai-antivirus tail -f") }
                                     Btn { label: "Scan home"; glyph: 0xF02DC; disabled: root.scanning; onClicked: root.scan(".") }
-                                    Btn { label: "Exceptions"; glyph: 0xF0780; disabled: root.clamBusy; onClicked: root.clamRun("exceptions", "") }
                                     Btn { label: "Scan Downloads"; glyph: 0xF1276; primary: true; disabled: root.scanning; onClicked: root.scan("Downloads") }
                                 }
 
@@ -1112,6 +1111,7 @@ Scope {
                                         : (root.clam === null ? "Checks the signatures, the updater and that ClamAV detects a harmless test file"
                                         : root.clam.headline)
                                     Btn { label: "Test ClamAV"; glyph: 0xF0668; disabled: root.clamBusy; onClicked: root.clamRun("test", "") }
+                                    Btn { label: "Exceptions"; glyph: 0xF0780; disabled: root.clamBusy; onClicked: root.clamRun("exceptions", "") }
                                     Btn { label: "Scan Downloads"; glyph: 0xF1276; primary: true; disabled: root.clamBusy; onClicked: root.clamRun("scan", "Downloads") }
                                 }
 
