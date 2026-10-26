@@ -81,6 +81,8 @@
 #   --luna / --no-luna     the extra: LUNA, a local AI assistant in Rust (https://github.com/X-netrunner/LUNA-AI), built from the
 #                          commit pinned below (LUNA_REV) into ~/.local/bin/luna. Asked on the first install and with --choose
 #                          (default no), then remembered. Only the program is installed: its daemon is never switched on for you.
+#   --luna-voice / --no-luna-voice  with LUNA: also give her a voice (scripts/luna-voice-setup.sh: the Kokoro model, about 330 MB from the
+#                          kokoro-onnx GitHub release, a small Python environment, her [voice] config). Asked after the LUNA question, default no.
 #   --firewall ID          ai | ufw | none (default ufw). ai = ai-firewall (eBPF, replaces ufw, page in the Security center), built
 #                          from AIFW_SRC (default ~/.local/src/ai-firewall) or AIFW_REPO at AIFW_REV; needs nightly Rust + bpf-linker.
 #                          If it cannot be built, ufw stays and an installed copy is kept. Switching away from ai removes it.
@@ -139,6 +141,7 @@ VLM_DEFAULT_MODEL="qwen2.5vl:3b"                                       # the mod
 PICK_RENDERER=""      # auto | opengl | vulkan (see choose_renderer)
 INSTALL_PLYMOUTH=""; PLYMOUTH_ASKED=false      # the boot splash (see choose_plymouth); "" = not decided yet
 INSTALL_LUNA=false; LUNA_ASKED=false           # the LUNA extra (see choose_extras)
+INSTALL_LUNA_VOICE=false; LUNA_VOICE_ASKED=false   # her voice: Kokoro model (~330 MB) and a Python environment (scripts/luna-voice-setup.sh)
 PICK_FIREWALL=""                               # ai | ufw | none (see choose_apps); "" = not decided yet
 # ai-firewall source: a local checkout wins (AIFW_SRC), else this repository at AIFW_REV ("" = its default branch)
 AIFW_REPO="${AIFW_REPO:-https://github.com/X-netrunner/ai-firewall.git}"
@@ -146,7 +149,7 @@ AIFW_REV="${AIFW_REV:-}"
 AIFW_SRC="${AIFW_SRC:-}"
 # LUNA is built from this exact commit, never from whatever is on main: move the pin when a LUNA version is ready for everyone
 LUNA_REPO="https://github.com/X-netrunner/LUNA-AI.git"
-LUNA_REV="9e79a8542a0c05bb882639103dacc425c22c857c"
+LUNA_REV="d4abadb0522ac0158cab64b5bbfee5fd46cc6241"       # has --stdio (the >luna window), Auto routing, voice requests
 # the Security center's two modules (see choose_security): each one on or off on its own
 FIREWALL=ufw; FIREWALL_ASKED=false             # ai | ufw | none
 INSTALL_AV=false; AV_ASKED=false                # the ai-antivirus extra
@@ -259,6 +262,8 @@ while [[ $# -gt 0 ]]; do
         --firewall=*)       PICK_FIREWALL="${1#--firewall=}"; [[ "$PICK_FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none (see --help)" ;;
         --luna)             INSTALL_LUNA=true; LUNA_ASKED=true ;;
         --no-luna)          INSTALL_LUNA=false; LUNA_ASKED=true ;;
+        --luna-voice)       INSTALL_LUNA_VOICE=true; LUNA_VOICE_ASKED=true ;;
+        --no-luna-voice)    INSTALL_LUNA_VOICE=false; LUNA_VOICE_ASKED=true ;;
         --firewall)         shift; FIREWALL="${1:-}"; FIREWALL_ASKED=true; [[ "$FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none" ;;
         --firewall=*)       FIREWALL="${1#--firewall=}"; FIREWALL_ASKED=true; [[ "$FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none" ;;
         --antivirus|--synapse)       INSTALL_AV=true; AV_ASKED=true ;;
@@ -1821,6 +1826,18 @@ choose_extras() {
         fi
         LUNA_ASKED=true
     fi
+    if [[ "$INSTALL_LUNA" == "true" && "$LUNA_VOICE_ASKED" != "true" ]]; then
+        local s_v; s_v=$(saved_choice LUNA_VOICE)
+        if [[ "$AUTO_CONFIRM" != "true" && -t 0 && ( "$CHOOSE" == "true" || -z "$s_v" ) ]]; then
+            echo -e "\n  ${CYAN}${BOLD}Extra: LUNA's voice${RESET}  ${DIM}she reads her answers aloud (Kokoro, runs on this computer)${RESET}"
+            echo -e "   ${DIM}downloads about 330 MB from the kokoro-onnx GitHub release and makes a small Python environment in ~/.local/share/luna.${RESET}"
+            if confirm_no "  Give LUNA a voice?"; then INSTALL_LUNA_VOICE=true; else INSTALL_LUNA_VOICE=false; fi
+        elif [[ -n "$s_v" ]]; then
+            [[ "$s_v" == yes ]] && INSTALL_LUNA_VOICE=true || INSTALL_LUNA_VOICE=false
+        fi
+        LUNA_VOICE_ASKED=true
+    fi
+    [[ "$INSTALL_LUNA" != "true" ]] && INSTALL_LUNA_VOICE=false
     log_info "Extras: LUNA $([[ "$INSTALL_LUNA" == true ]] && echo "yes (built in step 12)" || echo no)"
 }
 [[ "$REMOVE_LOGIN" != "true" ]] && choose_extras
@@ -2779,7 +2796,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" "FIREWALL=$FIREWALL" "ANTIVIRUS=$([[ "$INSTALL_AV" == true ]] && echo yes || echo no)" "SECURITY_MODEL=$SECURITY_MODEL" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" "LUNA_VOICE=$([[ "$INSTALL_LUNA_VOICE" == true ]] && echo yes || echo no)" "FIREWALL=$FIREWALL" "ANTIVIRUS=$([[ "$INSTALL_AV" == true ]] && echo yes || echo no)" "SECURITY_MODEL=$SECURITY_MODEL" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
     user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} ${LOCK_LOGIN_SAVE:+"LOCK_LOGIN=$LOCK_LOGIN_SAVE"} || true
 elif [[ -n "$PICK_RENDERER" ]]; then
@@ -2817,7 +2834,18 @@ install_luna() {
     fi
     log_success "LUNA installed: run 'luna' (its README: $src/README.md; the daemon: $src/deploy/luna-daemon.service, off until you enable it)"
 }
+# her voice: the packages that are heavy to build come from the distro (Arch only; elsewhere the script's venv takes them from PyPI),
+# then scripts/luna-voice-setup.sh downloads the model and sets up the Python environment as you (no sudo inside it: LUNA_VOICE_NO_SUDO)
+install_luna_voice() {
+    local vs="$RICE_SOURCE/scripts/luna-voice-setup.sh"
+    [[ -f "$vs" ]] || { warn_later "LUNA voice: $vs is missing"; return 0; }
+    [[ "$DISTRO_FAMILY" == "arch" ]] && install_pkgs python-numpy python-onnxruntime-cpu python-soundfile
+    run_as_user_cmd "LUNA voice: the Kokoro model (about 330 MB) and her Python environment" env LUNA_VOICE_NO_SUDO=1 bash "$vs" \
+        || { warn_later "LUNA's voice was not set up. Try by hand: bash $vs"; return 0; }
+    log_success "LUNA voice ready: turn on \"Read her answers aloud\" under Voice & Audio in her settings"
+}
 [[ "$INSTALL_LUNA" == "true" ]] && install_luna
+[[ "$INSTALL_LUNA" == "true" && "$INSTALL_LUNA_VOICE" == "true" ]] && install_luna_voice
 
 # ---- the Security center's modules: ai-firewall and ai-antivirus. Each is built as you from a source folder (or a
 # pinned git revision), installed as root, and removed again when you switch it off. Neither needs the other.

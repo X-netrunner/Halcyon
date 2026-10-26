@@ -665,6 +665,10 @@ ShellRoot {
                 var avm = id.substring(17)
                 if (avm === "ai" || avm === "clamav" || avm === "off") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-select.sh " + avm) }
             }
+            else if (id.indexOf("antivirus-ai:") === 0) {                // Settings > Security > AI review of alerts: on | off, with sudo in the console
+                var avi = id.substring(13)
+                if (avi === "on" || avi === "off") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-ai.sh " + avi) }
+            }
             else if (id === "fx-safe-on") root.fxRun(["safe-mode", "on"])
             else if (id === "fx-safe-off") root.fxRun(["safe-mode", "back"])
             else if (id === "adapt-reset") Quickshell.execDetached([Quickshell.env("HOME") + "/.config/Halcyon/bin/hx", "adapt-reset"])

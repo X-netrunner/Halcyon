@@ -22,7 +22,9 @@ say "1/4  Python packages (numpy, onnxruntime, soundfile)"
 if command -v pacman >/dev/null; then
     missing=""
     for p in python-numpy python-onnxruntime-cpu python-soundfile; do pacman -Qq "$p" >/dev/null 2>&1 || missing="$missing $p"; done
-    if [ -n "$missing" ]; then
+    if [ -n "$missing" ] && [ -n "${LUNA_VOICE_NO_SUDO:-}" ]; then
+        echo "needs:$missing (the installer adds them)"
+    elif [ -n "$missing" ]; then
         echo "needs:$missing"
         sudo pacman -S --needed $missing || die "pacman could not install:$missing"
     else
