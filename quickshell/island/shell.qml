@@ -143,6 +143,7 @@ ShellRoot {
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsCalendar: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: false,   // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
         dialogStarStyle: "none",   // moving | constellations | both | none : dialog star style (none by default: quiet, clean boxes)
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
+        consoleLuna: false,        // the console corner opens Luna's chat instead of the terminal (Desktop builder > Console)
         windowMode: "overlay",     // overlay | desktop : centres float above everything, or open as ordinary windows on the workspace (Host.qml)
         floatAll: false,           // every window floats, no tiling (scripts/floating-mode.sh, hyprland/rules.lua)
         uiStyle: "new",            // new | legacy | classic : the quiet redesign, the first calm look, the original (Settings > Look > Interface; Pal.zen / Pal.calm)
@@ -979,6 +980,8 @@ ShellRoot {
         flyLoop: root.boxStarLoop
         sysmode: root.sysmode
         clickMode: root.termClick
+        lunaMode: root.opt.consoleLuna === true
+        onLunaRequested: lunaCenter.toggle()
         autoHide: root.autoHide
         starData: root.starData
         profileStars: root.profileStars

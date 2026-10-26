@@ -100,9 +100,56 @@ def arg_safe(v, what="value"):
 
 
 # ============================================================================================= INFO (read only)
+OTHER_RICES = {"caelestia": "Caelestia", "illogical-impulse": "end-4's illogical-impulse", "hyde": "HyDE", "ml4w": "ML4W", "noctalia": "Noctalia",
+               "DankMaterialShell": "DankMaterialShell", "ags": "an AGS shell", "waybar": "Waybar"}
+
+
+def rice_line():
+    """Which desktop this is, found out here and now (never guessed): the rice, its update date, the compositor and the main choices."""
+    parts = []
+    if os.path.isdir(ISLAND):
+        when = ""
+        try:
+            when = time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(os.path.join(RICE, "changelog.md"))))
+        except OSError:
+            pass
+        parts.append("the Halcyon rice" + (f" (updated {when})" if when else ""))
+    else:
+        parts.append("not the Halcyon rice (its island is not installed)")
+    code, text = run(["hyprctl", "version"], timeout=5)
+    m = re.search(r"Hyprland\s+(\S+)", text or "")
+    if code == 0 and m:
+        parts.append("on Hyprland " + m.group(1).lstrip("v").rstrip(","))
+    o = settings_opt()
+    code, text = run(["hyprctl", "getoption", "general:layout", "-j"], timeout=5)
+    lay = re.search(r'"str":\s*"(\w+)"', text or "") if code == 0 else None
+    bits = []
+    try:
+        theme = json.load(open(os.path.join(STATE, "settings.json"), encoding="utf-8")).get("theme")
+    except (OSError, ValueError):
+        theme = None
+    if theme:
+        bits.append(f"{theme} theme")
+    bits.append("UI style " + str(o.get("uiStyle", "new")))
+    if lay:
+        floating = False
+        try:
+            floating = open(os.path.join(STATE, "float-all"), encoding="utf-8").read().strip() == "1"
+        except OSError:
+            pass
+        bits.append("no tiling (every window floats)" if floating else f"tiling layout {lay.group(1)}")
+    bits.append("Halcyon windows " + ("on the desktop" if o.get("windowMode") == "desktop" else "as an overlay"))
+    others = [name for d, name in OTHER_RICES.items() if os.path.isdir(os.path.join(HOME, ".config", d))]
+    line = " ".join(parts) + "; " + ", ".join(bits)
+    if others:
+        line += ". Config folders of other setups also exist here: " + ", ".join(others)
+    return line
+
+
 def a_overview(args):
     a = ai()
     out = []
+    out.append("rice: " + rice_line())
     out.append("island: " + ("running" if run(["pgrep", "-x", "quickshell"])[0] == 0 else "NOT running"))
     out.append("gaming mode: " + ("on" if a.gaming() else "off") + "; AI features: " + ("on" if a.ai_enabled() else "off"))
     o = settings_opt()
@@ -466,6 +513,8 @@ ACTIONS = {
 def manual():
     """What Luna is told about Halcyon at the start of a session: short, true on every install."""
     lines = [
+        "THIS COMPUTER: " + rice_line() + ". A \"rice\" is a customised Linux desktop setup; when the user says \"my rice\" or asks which rice or "
+        "which desktop they use, they mean this one: answer from this line, without running tools.",
         "HALCYON (this computer's desktop; you are part of it). Halcyon is a Hyprland desktop built around one floating \"island\" "
         "(bar, launcher, notifications, music, settings in one place), with three parts that work best together: ai-firewall "
         "(eBPF firewall), ai-antivirus (behaviour-based EDR; ClamAV is an optional extra scanner) and you, Luna. Everything is local.",

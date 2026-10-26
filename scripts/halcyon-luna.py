@@ -13,6 +13,9 @@ session so any of them can be opened again and continued where it stopped. Every
   halcyon-luna.py settings                  Luna's settings, as the terminal UI has them (categories, toggles, gates, API keys, models)
   halcyon-luna.py set <key> <json>          one setting by its key, e.g. set external.allow_halcyon_actions true
   halcyon-luna.py models                    what Ollama has and which model fills which role
+  halcyon-luna.py voice                     is Luna able to speak (the voice files and packages), as JSON
+  halcyon-luna.py speak                     read the text on stdin aloud in Luna's voice
+  halcyon-luna.py stats                     how long her answers take (average, typical, per model)
   halcyon-luna.py model <name> [role]       /model: role model (default) | fast | deep | security
   halcyon-luna.py key <name>                store an API key: the key is read from STANDARD INPUT (never an argument), Luna keeps it in the
                                             OS keyring and luna.toml only refers to it
@@ -42,7 +45,7 @@ GAMING_FLAG = "/dev/shm/halcyon-gamemode"
 AI_OFF_FLAG = os.path.join(HOME, ".local", "state", "island", "ai-off")
 MAX_TITLE = 60
 PREFS = os.path.join(os.path.dirname(DATA), "prefs.json")
-PREF_DEFAULTS = {"liveThink": False, "notifyDone": True}      # the window's own switches (Luna's settings are luna.toml's)
+PREF_DEFAULTS = {"liveThink": False, "notifyDone": True, "speakReplies": False}      # the window's own switches (Luna's settings are luna.toml's)
 MAX_TURNS = 400            # per session: the window shows the last ones, Luna's own window of memory is smaller anyway
 
 
@@ -196,6 +199,31 @@ def cmd_prefs(rest):
         p[rest[0]] = rest[1].lower() in ("1", "true", "yes", "on")
         write(PREFS, p)
     return {"type": "prefs", **p}
+
+
+def cmd_stats():
+    """How long her answers take: from the `secs` saved with every answer, over all chats (the newest 400 answers)."""
+    rows = []
+    for s in list_sessions():
+        d = read(path(s["id"]), None)
+        for t in (d or {}).get("turns", []):
+            if t.get("role") == "luna" and not t.get("bad") and (t.get("secs") or 0) > 0:
+                rows.append((t.get("ts", 0), float(t["secs"]), shorten_model(t.get("model", ""))))
+    rows.sort(reverse=True)
+    rows = rows[:400]
+    if not rows:
+        return {"type": "stats", "n": 0, "avg": 0, "median": 0, "models": []}
+    secs = sorted(r[1] for r in rows)
+    by = {}
+    for _, sec, m in rows:
+        by.setdefault(m or "?", []).append(sec)
+    models = sorted(({"name": m, "n": len(v), "avg": round(sum(v) / len(v), 1)} for m, v in by.items()), key=lambda x: -x["n"])
+    return {"type": "stats", "n": len(rows), "avg": round(sum(secs) / len(secs), 1), "median": round(secs[len(secs) // 2], 1), "models": models}
+
+
+def shorten_model(n):
+    n = str(n or "")
+    return n[:-7] if n.endswith(":latest") else n
 
 
 def cmd_gate():
@@ -358,6 +386,15 @@ def main(argv):
             print(json.dumps(luna_call({"type": "settings_get"}, {"settings"})))
         elif cmd == "pref":
             print(json.dumps(cmd_prefs(rest)))
+        elif cmd == "voice":
+            print(json.dumps(luna_call({"type": "voice_status"}, {"voice"})))
+        elif cmd == "speak":
+            text = sys.stdin.readline().strip()[:4000]   # on stdin (one line): an answer in an argument would show in `ps`
+            if not text:
+                raise Fail("Nothing to read.")
+            print(json.dumps(luna_call({"type": "speak", "text": text}, {"spoke"}, timeout=240)))
+        elif cmd == "stats":
+            print(json.dumps(cmd_stats()))
         elif cmd == "gate":
             print(json.dumps(cmd_gate()))
         elif cmd == "models":

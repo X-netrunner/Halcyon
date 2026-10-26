@@ -93,12 +93,19 @@ Scope {
     // ---------- open / close ----------
     readonly property bool typing: input.text !== ""
     readonly property bool mayAutoClose: !askPass && input.text === "" && (autoHide || (!clickMode && !pinned))
+    // Desktop builder > Console: the corner opens Luna's chat instead of the terminal (commands that Halcyon runs for you still use this one)
+    property bool lunaMode: false
+    signal lunaRequested()
+    Timer { id: lunaCool; interval: 1500 }
+    function askLuna() { if (lunaCool.running) return; lunaCool.restart(); root.lunaRequested() }
     function setHover(on) {
+        if (lunaMode) { if (on && !clickMode) askLuna(); return }
         if (on) { closeT.stop(); if (!clickMode) { open = true; if (!focused) autoFocusT.restart() } }
         else { autoFocusT.stop(); if (mayAutoClose) { closeT.interval = 550; closeT.restart() } }
     }
-    function cornerTap() { if (open) close(); else { closeT.stop(); open = true; takeFocus() } }
+    function cornerTap() { if (lunaMode) { askLuna(); return } if (open) close(); else { closeT.stop(); open = true; takeFocus() } }
     function toggle() {
+        if (lunaMode) { askLuna(); return }
         if (open && focused) { close(); return }
         closeT.stop()
         open = true

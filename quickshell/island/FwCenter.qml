@@ -165,18 +165,18 @@ Scope {
     // ======================================================================================== the window
     LazyLoader {
         active: root.open || root.linger
-        PanelWindow {
+        Host {
             id: win
-            visible: true
-            anchors { top: true; bottom: true; left: true; right: true }
-            color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.namespace: "island-firewall"
-            WlrLayershell.layer: WlrLayer.Overlay
+            desktop: root.pal.deskWin
+            title: "Firewall"
+            deskWidth: 1100
+            deskHeight: 720
+            namespace: "island-firewall"
             // while the console is up (a command this window sent) it has the keyboard; this window stays open behind it
-            WlrLayershell.keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            onCloseRequested: root.hide()
 
-            MouseArea { anchors.fill: parent; onClicked: root.hide() }
+            MouseArea { anchors.fill: parent; enabled: !win.desktop; onClicked: root.hide() }
 
             Item {
                 id: qp
@@ -189,18 +189,18 @@ Scope {
                 Component.onCompleted: { ready = true; Qt.callLater(() => qp.forceActiveFocus()) }
                 Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true } }
 
-                Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
+                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
 
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: Math.min(1100, qp.width - 80)
-                    height: Math.min(720, qp.height - 80)
-                    radius: root.pal.rXl
+                    width: win.desktop ? qp.width : Math.min(1100, qp.width - 80)
+                    height: win.desktop ? qp.height : Math.min(720, qp.height - 80)
+                    radius: win.desktop ? 0 : root.pal.rXl
                     opacityBody: 0.97
                     anchors.centerIn: parent
-                    opacity: qp.reveal
-                    scale: 0.97 + 0.03 * qp.reveal
+                    opacity: win.desktop ? 1 : qp.reveal
+                    scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
                     RoundBtn { z: 5; anchors { top: parent.top; right: parent.right; margins: 24 } pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
 
@@ -740,11 +740,12 @@ Scope {
                                     Layout.fillHeight: true
                                     clip: true
                                     spacing: 12
-                                    model: root.msgs.concat(root.asking ? [{ role: "fw", text: root.answer === "" ? "thinking…" : root.answer, cmds: [], live: true }] : [])
+                                    model: root.msgs.length + (root.asking ? 1 : 0)       // a number: an array rebuilt on every streamed line would rebuild every bubble
                                     onCountChanged: Qt.callLater(() => chat.positionViewAtEnd())
                                     delegate: Column {
                                         id: msg
-                                        required property var modelData
+                                        required property int index
+                                        readonly property var modelData: index < root.msgs.length ? root.msgs[index] : ({ role: "fw", text: root.answer === "" ? "thinking…" : root.answer, cmds: [], live: true })
                                         width: ListView.view.width
                                         spacing: 6
                                         Text {

@@ -114,6 +114,13 @@ os.environ["HALCYON_LUNA_BIN"] = old_luna
 st = json.loads(run("status", "--json")[1])
 check("status: a Luna without --stdio is flagged old, not ready", (st["old"], st["ok"]), (True, False))
 os.environ["HALCYON_LUNA_BIN"] = fake
+# answer times: the saved `secs` of her answers, over all chats
+run("chat", sid, "--json", "--", "time me")
+st = json.loads(run("stats")[1])
+check("stats: counts the answers that have a time", (st["n"] >= 1, st["avg"] > 0), (True, True))
+pf = json.loads(run("pref", "liveThink", "on")[1])
+check("pref: a switch is saved and read back", (pf["liveThink"], pf["notifyDone"], pf["speakReplies"]), (True, True, False))
+check("pref: an unknown switch is refused", run("pref", "bogus", "on")[0], 1)
 run("delete", sid)
 check("delete removes both files", [f for f in os.listdir(lb.DATA) if f.startswith(sid)], [])
 print(f"{n - bad}/{n} checks passed")

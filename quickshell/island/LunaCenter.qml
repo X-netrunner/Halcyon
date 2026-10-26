@@ -14,6 +14,7 @@ Scope {
     id: root
     property var pal
     property bool open: false
+    signal scrollEnd()                      // the chat jumps to the newest message and follows it again
     signal focusRequested(string what)      // the window's own field takes the keyboard (ids inside the LazyLoader are not reachable)
     property bool consoleOpen: false        // kept for the same wiring as the other centers (shell.qml)
 
@@ -22,7 +23,13 @@ Scope {
     // ---- state
     property var sessions: []               // { id, title, updated, count, preview }
     property string cur: ""                 // the open session ("" = a new chat, made when you send the first message)
-    property var msgs: []                   // { role: "you" | "luna", text, tools: [], model, secs, think, live, bad }
+    // the open chat, as a ListModel changed in place (a plain array that is replaced on every word of her reasoning rebuilt every row
+    // and made the whole window flicker): { role: "you" | "luna" | "sys", text, mname, secs, think, live, bad, toolsJson }
+    ListModel { id: mm }
+    readonly property int msgCount: mm.count
+    function mrec(o) { return { role: o.role, text: o.text || "", mname: o.model || "", secs: o.secs || 0, think: o.think || "", live: o.live === true, bad: o.bad === true, toolsJson: JSON.stringify(o.tools || []) } }
+    function setMsgs(arr) { mm.clear(); for (var i = 0; i < arr.length; i++) mm.append(mrec(arr[i])) }
+    function pushMsg(o) { mm.append(mrec(o)) }
     property bool ok: true                  // Luna installed and the AI on
     property string problem: ""
     property string status: ""              // what she is doing right now
@@ -37,6 +44,7 @@ Scope {
         open = true
         note = ""
         call("prefs", ["pref"])
+        call("stats", ["stats"])
         check()
         reload(true)
     }
@@ -95,8 +103,12 @@ Scope {
     property bool auto: true                // Luna picks the model per question
     property string page: "models"          // the settings page that is open
     property string modelMenu: ""           // the open model menu ("" = none)
+    property var stats: ({ n: 0, avg: 0, median: 0, models: [] })
+    function fmtSecs(x) { x = Number(x) || 0; return x < 90 ? Math.round(x) + " s" : (x / 60).toFixed(1) + " min" }
     property var gate: ({ state: "", requested: false, key: false, effective: false })
-    property var prefs: ({ liveThink: false, notifyDone: true })
+    property var prefs: ({ liveThink: false, notifyDone: true, speakReplies: false })
+    property var voiceInfo: ({ ok: false, mode: "", missing: [] })
+    property bool voiceKnown: false
     function clean(n) { return String(n || "").replace(/^[^A-Za-z]+/, "") }
     readonly property var refusalKeys: ["llm.security_unrestricted", "llm.security_retry_on_refusal"]
     function itemPage(cat, key) { return refusalKeys.indexOf(key) >= 0 ? "refusal" : (clean(cat) === "AI & Models" ? "models" : clean(cat)) }
@@ -117,6 +129,10 @@ Scope {
         return o
     }
     function setPref(k, v) { call("prefs", ["pref", k, v ? "on" : "off"]) }
+    // Pop out: this window becomes an ordinary window on the workspace you are on (Settings > Workspaces & windows > Halcyon windows)
+    function setWindowMode(m) {
+        Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.env("HOME") + "/.config/Halcyon/quickshell/island", "call", "island", "setopt", "windowMode", JSON.stringify(m)])
+    }
     function termRun(cmd) { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", cmd + "; echo; read -n1 -s -r -p 'Press any key to close'"]) }
     // the end of her reasoning, for the live view
     function tail(t) { t = String(t || ""); if (t.length <= 700) return t; t = t.substring(t.length - 700); var i = t.indexOf(" "); return "…" + (i > 0 ? t.substring(i) : t) }
@@ -125,7 +141,7 @@ Scope {
     readonly property var roleNames: [["model", "Main"], ["fast", "Fast"], ["deep", "Deep"], ["security", "Security"]]
     function openSettings() { view = "settings"; modelMenu = ""; loadSettings() }
     function showSettings() { show(); openSettings() }
-    function loadSettings() { call("settings", ["settings"]); call2("models", ["models"]); call("prefs", ["pref"]); call("gate", ["gate"]) }
+    function loadSettings() { call("settings", ["settings"]); call2("models", ["models"]); call("prefs", ["pref"]); call("gate", ["gate"]); call("voice", ["voice"]) }
     function call(what, args) {
         if (callProc.running) { callQ = callQ.concat([[what, args]]); return }
         callProc.what = what
@@ -146,8 +162,10 @@ Scope {
                 else if (o.type === "error") { root.flash(o.error); if (w === "keysave") root.keyMsg = o.error }
                 else if (o.type === "settings") { root.cfg = o; root.roles = o.models || root.roles; if (o.auto !== undefined) root.auto = o.auto === true }
                 else if (o.type === "models") { root.installed = o.installed || []; root.roles = o.roles || root.roles; root.reachable = o.reachable === true; if (o.auto !== undefined) root.auto = o.auto === true }
-                else if (o.type === "prefs") root.prefs = { liveThink: o.liveThink === true, notifyDone: o.notifyDone === true }
+                else if (o.type === "prefs") root.prefs = { liveThink: o.liveThink === true, notifyDone: o.notifyDone === true, speakReplies: o.speakReplies === true }
+                else if (o.type === "voice") { root.voiceInfo = o; root.voiceKnown = true }
                 else if (o.type === "gate") root.gate = o
+                else if (o.type === "stats") root.stats = o
                 else if (o.type === "saved") { root.flash("Saved"); root.loadSettings() }
                 else if (o.type === "key_saved") { root.keyOpen = ""; root.keyMsg = ""; root.flash("Key saved in " + (o.where === "keyring" ? "the keyring" : "Luna's secrets file")); root.loadSettings() }
                 else if (o.type === "control") { root.addSys(o.text) }
@@ -191,7 +209,7 @@ Scope {
         { c: "/help", d: "These commands" },
         { c: "/exit", d: "Close this window" }
     ]
-    function addSys(t) { msgs = msgs.concat([{ role: "sys", text: String(t) }]) }
+    function addSys(t) { pushMsg({ role: "sys", text: String(t) }) }
     // true when the text was a command (nothing goes to the model)
     function runSlash(raw) {
         var t = String(raw).trim()
@@ -205,7 +223,7 @@ Scope {
         if (c === "/keys") { openSettings(); return true }
         if (c === "/status") { addSys("Looking…"); call("control", ["control", "info", "overview"]); return true }
         if (c === "/new") { newChat(); return true }
-        if (c === "/clear") { if (cur !== "") { Quickshell.execDetached(["python3", script, "clear", cur]) } msgs = []; reload(false); return true }
+        if (c === "/clear") { if (cur !== "") { Quickshell.execDetached(["python3", script, "clear", cur]) } mm.clear(); reload(false); return true }
         if (c === "/delete") {
             if (cur === "") { addSys("There is no saved chat open to delete."); return true }
             if (busy) { addSys("Luna is still answering. Stop her first, then delete the chat."); return true }
@@ -260,7 +278,7 @@ Scope {
                 try {
                     root.sessions = JSON.parse(text).sessions || []
                     // opening the window carries on with the newest session, unless one is already open or being written
-                    if (listProc.openLast && root.cur === "" && root.msgs.length === 0 && !root.busy && root.sessions.length > 0)
+                    if (listProc.openLast && root.cur === "" && root.msgCount === 0 && !root.busy && root.sessions.length > 0)
                         root.openSession(root.sessions[0].id)
                 } catch (e) {}
             }
@@ -268,7 +286,7 @@ Scope {
     }
     function openSession(id) {
         if (busy || id === cur) return
-        cur = id; msgs = []; confirmDel = ""; renaming = ""; delAsk = ""
+        cur = id; mm.clear(); confirmDel = ""; renaming = ""; delAsk = ""
         showProc.command = ["python3", script, "show", id, "--json"]
         showProc.running = true
         Qt.callLater(function () { root.focusRequested("ask") })
@@ -282,17 +300,17 @@ Scope {
                     for (var i = 0; i < t.length; i++)
                         m.push({ role: t[i].role, text: t[i].text || "", tools: t[i].tools || [], model: t[i].model || "", secs: t[i].secs || 0,
                                  think: t[i].thinking || "", live: false, bad: t[i].bad === true })
-                    root.msgs = m
+                    root.setMsgs(m)
                 } catch (e) {}
             }
         }
     }
-    function newChat() { if (busy) return; delAsk = ""; cur = ""; msgs = []; confirmDel = ""; renaming = ""; Qt.callLater(function () { root.focusRequested("ask") }) }
+    function newChat() { if (busy) return; delAsk = ""; cur = ""; mm.clear(); confirmDel = ""; renaming = ""; Qt.callLater(function () { root.focusRequested("ask") }) }
     function removeSession(id) {
         confirmDel = ""
         Quickshell.execDetached(["python3", script, "delete", id])
         sessions = sessions.filter(function (s) { return s.id !== id })
-        if (cur === id) { cur = ""; msgs = [] }
+        if (cur === id) { cur = ""; mm.clear() }
         relT.restart()
     }
     function renameSession(id, title) {
@@ -311,7 +329,9 @@ Scope {
         if (runSlash(q)) return
         if (busy) return
         if (!ok) { flash(problem !== "" ? problem : "Luna is not available."); return }
-        msgs = msgs.concat([{ role: "you", text: q }, { role: "luna", text: "", tools: [], model: "", secs: 0, think: "", live: true, bad: false }])
+        pushMsg({ role: "you", text: q })
+        pushMsg({ role: "luna", live: true })
+        scrollEnd()
         status = "thinking"
         secs = 0
         if (cur === "") { newProc.question = q; newProc.running = true }
@@ -333,15 +353,17 @@ Scope {
             }
         }
     }
+    // change the last (Luna's) row in place; f gets a plain copy: { text, think, tools, model, secs, live, bad }
     function patchLast(f) {
-        var m = msgs.slice(), l = m.length - 1
-        if (l < 0 || m[l].role !== "luna") return
-        var c = {}
-        for (var k in m[l]) c[k] = m[l][k]
+        var i = mm.count - 1
+        if (i < 0) return
+        var r = mm.get(i)
+        if (r.role !== "luna") return
+        var c = { text: r.text, think: r.think, tools: JSON.parse(r.toolsJson), model: r.mname, secs: r.secs, live: r.live, bad: r.bad }
         f(c)
-        m[l] = c
-        msgs = m
+        mm.set(i, { text: c.text, think: c.think, toolsJson: JSON.stringify(c.tools), mname: c.model, secs: c.secs, live: c.live, bad: c.bad })
     }
+    function thinkMore(d) { var i = mm.count - 1; if (i >= 0 && mm.get(i).role === "luna") mm.setProperty(i, "think", mm.get(i).think + d) }
     Process {
         id: chatProc
         stdout: SplitParser {
@@ -353,8 +375,11 @@ Scope {
                         root.status = "running " + o.name + (o.summary && o.summary !== o.name ? ": " + o.summary : "")
                         root.patchLast(function (c) { c.tools = c.tools.concat([{ name: o.name, summary: o.summary || "" }]) })
                     } else if (o.kind === "step") root.status = "thinking"
-                } else if (o.type === "thinking") root.patchLast(function (c) { c.think += o.delta })
-                else if (o.type === "reply") root.patchLast(function (c) { c.text = o.text; c.model = o.model || ""; c.secs = o.secs || 0; c.live = false })
+                } else if (o.type === "thinking") root.thinkMore(o.delta)
+                else if (o.type === "reply") {
+                    root.patchLast(function (c) { c.text = o.text; c.model = o.model || ""; c.secs = o.secs || 0; c.live = false })
+                    if (root.prefs.speakReplies && o.text) root.speak(o.text)
+                }
                 else if (o.type === "error") root.patchLast(function (c) { c.text = o.error; c.bad = true; c.live = false })
             }
         }
@@ -363,11 +388,28 @@ Scope {
             root.patchLast(function (c) { if (c.live) { c.live = false; if (c.text === "") { c.text = "Stopped."; c.bad = true } } })
             root.check()
             root.reload(false)
-            if (!root.open && root.prefs.notifyDone && root.msgs.length > 0) {
-                var l = root.msgs[root.msgs.length - 1]
+            root.call("stats", ["stats"])
+            if (!root.open && root.prefs.notifyDone && mm.count > 0) {
+                var l = mm.get(mm.count - 1)
                 if (l.role === "luna" && l.text !== "" && !l.bad) Quickshell.execDetached(["notify-send", "-a", "Luna", "Luna has answered", String(l.text).replace(/\s+/g, " ").substring(0, 140)])
             }
         }
+    }
+    // read an answer aloud (Luna's own voice; the answer goes in on stdin)
+    Process {
+        id: speakProc
+        stdinEnabled: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { var o = JSON.parse(text); if (o.type === "error") root.flash(o.error) } catch (e) {}
+            }
+        }
+    }
+    function speak(t) {
+        if (speakProc.running) return
+        speakProc.command = ["python3", script, "speak"]
+        speakProc.running = true
+        speakProc.write(String(t).replace(/\s+/g, " ") + "\n")
     }
     function copy(t) { Quickshell.execDetached(["wl-copy", "--", t]); flash("Copied") }
     function saveNote(t) {
@@ -722,6 +764,15 @@ Scope {
                                         font.pixelSize: root.pal.tBody
                                     }
                                 }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: root.stats.n > 0
+                                    wrapMode: Text.Wrap
+                                    text: "Answers take " + root.fmtSecs(root.stats.avg) + " on average" + (root.stats.n > 1 ? "  ·  " + root.stats.n + " answers" : "")
+                                    color: Qt.alpha(root.pal.muted, 0.9)
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tCap
+                                }
                             }
 
                             // the settings pages take the place of the chats while Settings is open
@@ -787,6 +838,12 @@ Scope {
                                         color: root.pal.muted
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tCap + 1
+                                    }
+                                    LinkBtn {
+                                        visible: root.view !== "settings"
+                                        label: root.pal.deskWin ? "Back to overlay" : "Pop out"
+                                        glyph: String.fromCodePoint(root.pal.deskWin ? 0xF0141 : 0xF03CC)
+                                        onClicked: root.setWindowMode(root.pal.deskWin ? "overlay" : "desktop")
                                     }
                                     LinkBtn {
                                         visible: root.view !== "settings"
@@ -856,6 +913,15 @@ Scope {
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tCap + 1
                                             }
+                                            Text {
+                                                visible: root.stats.n > 0
+                                                width: parent.width
+                                                wrapMode: Text.Wrap
+                                                text: "Average answer " + root.fmtSecs(root.stats.avg) + ", typical " + root.fmtSecs(root.stats.median) + ". " + root.stats.models.map(function (m) { return root.shortName(m.name) + " " + root.fmtSecs(m.avg) + " (" + m.n + ")" }).join("  ·  ")
+                                                color: root.pal.muted
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap + 1
+                                            }
                                             Column {
                                                 visible: root.auto
                                                 width: parent.width
@@ -874,6 +940,46 @@ Scope {
                                                         onPicked: id => root.pickModel(id, modelData[0])
                                                     }
                                                 }
+                                            }
+                                        }
+
+                                        // ---- voice: can she speak, and read answers aloud
+                                        Column {
+                                            visible: root.page === "Voice & Audio"
+                                            width: parent.width
+                                            spacing: 12
+                                            Rectangle {
+                                                width: parent.width
+                                                height: vRow.implicitHeight + 28
+                                                radius: 18
+                                                color: root.voiceKnown && root.voiceInfo.ok ? Qt.alpha(root.pal.good, 0.14) : Qt.alpha(root.pal.text, 0.06)
+                                                Column {
+                                                    id: vRow
+                                                    x: 18; y: 14
+                                                    width: parent.width - 36
+                                                    spacing: 4
+                                                    Text { text: !root.voiceKnown ? "Checking her voice" : (root.voiceInfo.ok ? "Luna can speak" : (root.voiceInfo.mode === "off" ? "Her voice is off" : "Luna cannot speak yet")); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                                    Text {
+                                                        visible: root.voiceKnown && !root.voiceInfo.ok
+                                                        width: parent.width
+                                                        wrapMode: Text.Wrap
+                                                        text: root.voiceInfo.mode === "off" ? "Set Voice Mode below to basic." : "She needs " + (root.voiceInfo.missing || []).join(", ") + "."
+                                                        color: root.pal.muted
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tCap + 1
+                                                    }
+                                                }
+                                            }
+                                            Flow {
+                                                width: parent.width
+                                                spacing: 8
+                                                PrimaryBtn { visible: root.voiceKnown && !root.voiceInfo.ok && root.voiceInfo.mode !== "off"; label: "Set up her voice"; onClicked: root.termRun("bash ~/.config/Halcyon/scripts/luna-voice-setup.sh") }
+                                                LinkBtn { label: "Check again"; onClicked: root.call("voice", ["voice"]) }
+                                            }
+                                            Item {
+                                                width: parent.width; height: 40
+                                                Text { anchors { left: parent.left; verticalCenter: parent.verticalCenter } text: "Read her answers aloud"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                                Sw { anchors { right: parent.right; verticalCenter: parent.verticalCenter } on: root.prefs.speakReplies === true; onToggled: v => root.setPref("speakReplies", v) }
                                             }
                                         }
 
@@ -1101,7 +1207,7 @@ Scope {
 
                                     Column {
                                         anchors.centerIn: parent
-                                        visible: root.msgs.length === 0
+                                        visible: root.msgCount === 0
                                         width: Math.min(parent.width, 560)
                                         spacing: 10
                                         Spark { anchors.horizontalCenter: parent.horizontalCenter; width: 64; height: 64 }
@@ -1130,18 +1236,30 @@ Scope {
                                     ListView {
                                         id: chat
                                         anchors { left: parent.left; right: parent.right; top: parent.top; bottom: askBar.top; bottomMargin: 14 }
-                                        visible: root.msgs.length > 0
+                                        visible: root.msgCount > 0
                                         clip: true
                                         spacing: 18
                                         boundsBehavior: Flickable.StopAtBounds
-                                        model: root.msgs
-                                        onCountChanged: Qt.callLater(function () { chat.positionViewAtEnd() })
-                                        onContentHeightChanged: if (root.busy) positionViewAtEnd()
+                                        model: mm
+                                        property bool follow: true      // stays at the end while she writes, unless you scrolled up
+                                        onCountChanged: Qt.callLater(function () { if (chat.follow) chat.positionViewAtEnd() })
+                                        onContentHeightChanged: if (follow && root.busy) positionViewAtEnd()
+                                        onMovementStarted: follow = false
+                                        Connections { target: root; function onScrollEnd() { chat.follow = true; chat.positionViewAtEnd() } }
+                                        onAtYEndChanged: if (atYEnd) follow = true
                                         delegate: Item {
                                             id: mrow
-                                            required property var modelData
                                             required property int index
-                                            readonly property bool you: modelData.role === "you"
+                                            required property string role
+                                            required property string text
+                                            required property string mname
+                                            required property int secs
+                                            required property string think
+                                            required property bool live
+                                            required property bool bad
+                                            required property string toolsJson
+                                            readonly property var modelData: ({ role: role, text: text, model: mname, secs: secs, think: think, live: live, bad: bad, tools: JSON.parse(toolsJson) })
+                                            readonly property bool you: role === "you"
                                             readonly property bool sys: modelData.role === "sys"
                                             property bool showThink: false
                                             property bool showTools: false
@@ -1225,10 +1343,11 @@ Scope {
                                                         // the actions come in on hover (and stay while a panel is open) so a long chat stays quiet
                                                         Row {
                                                             spacing: 4
-                                                            opacity: (mHover.hovered || mrow.showTools || mrow.showThink || mrow.index === root.msgs.length - 1) ? 1 : 0
+                                                            opacity: (mHover.hovered || mrow.showTools || mrow.showThink || mrow.index === root.msgCount - 1) ? 1 : 0
                                                             Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
                                                             LinkBtn { visible: (mrow.modelData.tools || []).length > 0; label: (mrow.showTools ? "Hide " : "") + (mrow.modelData.tools || []).length + (((mrow.modelData.tools || []).length === 1) ? " tool used" : " tools used"); onClicked: mrow.showTools = !mrow.showTools }
                                                             LinkBtn { visible: (mrow.modelData.think || "") !== ""; label: mrow.showThink ? "Hide the reasoning" : "Show the reasoning"; onClicked: mrow.showThink = !mrow.showThink }
+                                                            LinkBtn { label: "Read aloud"; glyph: String.fromCodePoint(0xF057E); onClicked: root.speak(mrow.modelData.text) }
                                                             LinkBtn { label: "Copy"; glyph: String.fromCodePoint(0xF018F); onClicked: root.copy(mrow.modelData.text) }
                                                             LinkBtn { label: "Save as note"; glyph: String.fromCodePoint(0xF0F8C); onClicked: root.saveNote(mrow.modelData.text) }
                                                         }
