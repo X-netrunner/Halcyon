@@ -158,5 +158,66 @@ nfiles, found, err = real_clam_scan([scan_dir])
 check("renamed during the scan -> nothing trusted", (found, "changed during the scan" in err), ([], True))
 check("fix commands stop option parsing before the file names", all(" -- " in f["cmd"] for f in r["fixes"][:2]), True)
 
+# ---- triage after a scan: the model judges, fixed gates decide what may become an exception
+tri = os.path.join(tmp, "Downloads", "tri")
+os.makedirs(tri)
+
+
+def mk(name, text="plain text", mode=0o644):
+    f = os.path.join(tri, name)
+    open(f, "w").write(text)
+    os.chmod(f, mode)
+    return f
+
+
+FP = '{"verdict": "false_positive", "reason": "an ordinary zip"}'
+ai.clam_owner = lambda path: "owned-pkg" if "owned" in path else ""
+ai.CLAM_EXC = os.path.join(tmp, "exc.json")
+
+
+def scan_with(found, model):
+    setup(found=found, model=model)
+    return ai.cmd_clamav(["scan", "Downloads"])
+
+
+z = mk("a.zip")
+r = scan_with([(z, "Heuristics.Encrypted.Zip")], FP)
+check("triage: guess signature + false positive -> excepted", (r["good"], [i["status"] for i in r["excepted"]]), (True, ["new_exception"]))
+check("triage: the exception is stored with the hash", [e["by"] for e in ai.clam_exceptions()] + [len(ai.clam_exceptions()[0]["sha256"])], ["ai", 64])
+r = scan_with([(z, "Heuristics.Encrypted.Zip")], '{"verdict": "malicious", "reason": "x"}')
+check("triage: a known exception is not asked about again", (r["good"], [i["status"] for i in r["excepted"]]), (True, ["excepted"]))
+open(z, "w").write("changed")
+r = scan_with([(z, "Heuristics.Encrypted.Zip")], '{"verdict": "malicious", "reason": "grew teeth"}')
+check("triage: a changed file is reported again", (r["good"], [i["status"] for i in r["found"]]), (False, ["malicious"]))
+ai.clam_save_exceptions([])
+
+t1 = mk("trojan.bin")
+r = scan_with([(t1, "Win.Trojan.Agent-1234")], FP)
+check("triage: a named signature is never excepted", (r["good"], r["found"][0]["status"], ai.clam_exceptions()), (False, "false_positive", []))
+e1 = mk("eicar.txt")
+r = scan_with([(e1, "Win.Test.EICAR_HDB-1")], FP)
+check("triage: EICAR is never excepted", (r["good"], ai.clam_exceptions()), (False, []))
+x1 = mk("tool.sh", "#!/bin/sh\n", 0o755)
+r = scan_with([(x1, "PUA.Linux.Tool")], FP)
+check("triage: a program no package owns is never excepted", (r["good"], ai.clam_exceptions()), (False, []))
+x2 = mk("owned.sh", "#!/bin/sh\n", 0o755)
+r = scan_with([(x2, "PUA.Linux.Tool")], FP)
+check("triage: a package-owned program may be", (r["good"], len(ai.clam_exceptions())), (True, 1))
+ai.clam_save_exceptions([])
+r = scan_with([(z, "Heuristics.Encrypted.Zip")], '{"verdict": "pwned", "reason": "x"}')
+check("triage: an unknown verdict counts as unsure", r["found"][0]["status"], "unsure")
+r = scan_with([(z, "Heuristics.Encrypted.Zip")], None)
+check("triage: AI off -> stays on the list", (r["found"][0]["status"], ai.clam_exceptions()), ("review", []))
+scan_with([(z, "Heuristics.Encrypted.Zip")], FP)
+r = ai.cmd_clamav(["exceptions"])
+check("exceptions: listed", len(r["exceptions"]), 1)
+r = ai.cmd_clamav(["forget", "1"])
+check("exceptions: forget removes it", ai.clam_exceptions(), [])
+try:
+    ai.cmd_clamav(["forget", "9"])
+    check("forget: bad number refused", "no error", "Fail")
+except ai.Fail:
+    check("forget: bad number refused", True, True)
+
 print(f"{n - bad}/{n} checks passed")
 sys.exit(1 if bad else 0)

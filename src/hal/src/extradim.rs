@@ -1,5 +1,6 @@
 //! hal extra-dim toggle | on | off | status
 
+use crate::light;
 use crate::util;
 use std::fs;
 use std::path::PathBuf;
@@ -37,6 +38,20 @@ fn set_brightness(val: &str) {
     }
 }
 
+/// Fade to `target` (a raw value, or "N%") instead of jumping: Extra dim used to cut the backlight in one step.
+fn fade_to(target: &str) {
+    if let Some((dev, cur, max)) = light::best_screen_info() {
+        let raw = match target.strip_suffix('%') {
+            Some(p) => max * p.parse::<i64>().unwrap_or(35) / 100,
+            None => target.parse::<i64>().unwrap_or(cur),
+        }
+        .clamp(1, max.max(1));
+        light::fade_screen(&dev, cur, raw, max, 500);
+        return;
+    }
+    set_brightness(target);
+}
+
 fn status() -> i32 {
     let p = state_path();
     if p.exists() {
@@ -54,7 +69,7 @@ fn on() -> i32 {
         let cur = get_current_brightness();
         let _ = fs::write(&p, format!("{}\n", cur));
     }
-    set_brightness("1%");
+    fade_to("1%");
     util::notify("Extra Dim", "Screen brightness dimmed to minimum", None, 2000);
     println!("on");
     0
@@ -67,12 +82,12 @@ fn off() -> i32 {
         let _ = fs::remove_file(&p);
         let saved = saved.trim();
         if saved.chars().all(|c| c.is_ascii_digit()) && !saved.is_empty() {
-            set_brightness(saved);
+            fade_to(saved);
         } else {
-            set_brightness("35%");
+            fade_to("35%");
         }
     } else {
-        set_brightness("35%");
+        fade_to("35%");
     }
     util::notify("Extra Dim", "Screen brightness restored", None, 2000);
     println!("off");
