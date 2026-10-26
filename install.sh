@@ -426,6 +426,9 @@ if command -v pacman >/dev/null 2>&1; then
 elif command -v apt-get >/dev/null 2>&1; then
     PKG_MGR="apt"
     DISTRO_FAMILY="debian"
+elif command -v dnf >/dev/null 2>&1; then
+    PKG_MGR="dnf"
+    DISTRO_FAMILY="fedora"
 fi
 log_info "System: ${BOLD}${DISTRO_NAME}${RESET} (${DISTRO_ID}), ${ARCH_CPU}${PKG_MGR:+ [package manager: ${PKG_MGR}]}"
 
@@ -456,10 +459,17 @@ upgrade_hint() {
 }
 
 if [[ "$PACKAGES" == "true" ]]; then
-    [[ -n "$PKG_MGR" ]] || die "No supported package manager found (pacman or apt). Install the packages from README.md by hand, then run again with --no-packages."
+    [[ -n "$PKG_MGR" ]] || die "No supported package manager found (pacman, apt or dnf). Install the packages from README.md by hand, then run again with --no-packages."
     case " $DISTRO_ID $DISTRO_LIKE " in
         *" arch "*|*" cachyos "*|*" endeavouros "*|*" manjaro "*|*" garuda "*|*" artix "*|*" arcolinux "*) ;;
         *" ubuntu "*|*" pop "*|*" debian "*|*" linuxmint "*|*" elementary "*|*" zorin "*|*" kali "*) ;;
+        *" fedora "*)
+            # Quickshell is in Fedora from 44 on; Hyprland comes from the sdegler/hyprland COPR (asked below)
+            FEDORA_VER="$(. /etc/os-release; echo "${VERSION_ID:-0}")"
+            if [[ "$FEDORA_VER" =~ ^[0-9]+$ && "$FEDORA_VER" -lt 44 ]]; then
+                log_warn "Fedora ${FEDORA_VER}: Quickshell is only in Fedora 44 and newer. Upgrade Fedora first (docs/install-fedora.md)."
+                confirm "Go on anyway?" || exit 1
+            fi ;;
         *) log_warn "${DISTRO_NAME} is not a directly tested distribution, but ${PKG_MGR} is available."
            confirm "Go on anyway?" || exit 1 ;;
     esac
@@ -601,6 +611,8 @@ log_step "Step 2: Package manager"
 pkg_missing() {
     if [[ "$PKG_MGR" == "apt" ]]; then
         dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "ok installed" && return 1 || return 0
+    elif [[ "$PKG_MGR" == "dnf" ]]; then
+        rpm -q "$1" >/dev/null 2>&1 && return 1 || return 0
     else
         [[ -n "$(pacman -T "$1" 2>/dev/null)" ]]
     fi
@@ -752,6 +764,73 @@ map_pkg_for_apt() {
     esac
 }
 
+# Translate Arch package names into Fedora package names ("" = not in Fedora's own repositories: skipped, see docs/install-fedora.md)
+map_pkg_for_dnf() {
+    local p="$1"
+    case "$p" in
+        base-devel)             echo "gcc gcc-c++ make patch" ;;
+        pkgconf)                echo "pkgconf-pkg-config" ;;
+        amd-ucode)              echo "amd-ucode-firmware" ;;
+        intel-ucode)            echo "microcode_ctl" ;;
+        mesa)                   echo "mesa-dri-drivers mesa-vulkan-drivers mesa-libGL mesa-libEGL" ;;
+        vulkan-radeon|vulkan-intel|vulkan-virtio|vulkan-swrast) echo "mesa-vulkan-drivers" ;;
+        intel-media-driver)     echo "libva-intel-media-driver" ;;
+        intel-gpu-tools)        echo "igt-gpu-tools" ;;
+        libva-mesa-driver)      echo "mesa-va-drivers" ;;
+        libva-intel-driver)     echo "libva-intel-driver" ;;
+        mesa-vdpau)             echo "mesa-vdpau-drivers" ;;
+        mesa-utils)             echo "glx-utils" ;;
+        vulkan-icd-loader)      echo "vulkan-loader" ;;
+        pipewire-pulse)         echo "pipewire-pulseaudio" ;;
+        libpulse)               echo "pulseaudio-libs" ;;
+        sof-firmware)           echo "alsa-sof-firmware" ;;
+        alsa-ucm-conf)          echo "alsa-ucm" ;;
+        bluez-utils)            echo "bluez" ;;
+        networkmanager)         echo "NetworkManager" ;;
+        python-gobject)         echo "python3-gobject" ;;
+        pacman-contrib)         echo "" ;;     # checkupdates is Arch only
+        polkit-kde-agent)       echo "polkit-kde" ;;
+        qt6-base)               echo "qt6-qtbase qt6-qtbase-gui" ;;
+        qt6-declarative)        echo "qt6-qtdeclarative" ;;
+        qt6-svg)                echo "qt6-qtsvg" ;;
+        qt6-shadertools)        echo "qt6-qtshadertools" ;;
+        qt6-wayland)            echo "qt6-qtwayland" ;;
+        qt6-5compat)            echo "qt6-qt5compat" ;;
+        qt6-multimedia)         echo "qt6-qtmultimedia" ;;
+        qt5-wayland)            echo "qt5-qtwayland" ;;
+        kservice)               echo "kf6-kservice" ;;
+        imagemagick)            echo "ImageMagick" ;;
+        poppler)                echo "poppler-utils" ;;
+        fd)                     echo "fd-find" ;;
+        tesseract-data-eng)     echo "tesseract-langpack-eng" ;;
+        python)                 echo "python3 python3-pip" ;;
+        python-pillow)          echo "python3-pillow" ;;
+        inter-font)             echo "rsms-inter-fonts" ;;
+        ttf-jetbrains-mono-nerd) echo "jetbrains-mono-fonts" ;;
+        noto-fonts)             echo "google-noto-sans-fonts" ;;
+        noto-fonts-emoji)       echo "google-noto-color-emoji-fonts" ;;
+        rust)                   echo "rust cargo" ;;
+        docker)                 echo "moby-engine" ;;
+        acct)                   echo "psacct" ;;
+        clamav)                 echo "clamav clamav-freshclam" ;;
+        egl-wayland)            echo "egl-wayland" ;;
+        thunar)                 echo "Thunar" ;;
+        gvfs|gvfs-mtp)          echo "gvfs gvfs-mtp" ;;
+        ffmpegthumbs)           echo "ffmpegthumbs" ;;
+        pcmanfm-gtk3)           echo "pcmanfm" ;;
+        whisper-cpp|whisper.cpp) echo "whisper-cpp" ;;
+        sqlite)                 echo "sqlite" ;;
+        libarchive)             echo "libarchive" ;;
+        # not in Fedora's own repositories (RPM Fusion, COPR or the vendor's repo): skipped, see docs/install-fedora.md
+        nvidia-utils|nvidia-settings|libva-nvidia-driver|nvidia-prime|nvidia-driver|nvidia-driver-550|libnvidia-egl-wayland1) echo "" ;;
+        zen-browser-bin|librewolf-bin|floorp-bin|brave-bin|google-chrome|vivaldi|vscodium-bin|zed) echo "" ;;
+        spotify|spotify-launcher|spicetify-cli|discord|vesktop|sweet-cursors-git|wayfreeze|bemoji|asusctl) echo "" ;;
+        *-dkms)                 echo "" ;;     # Arch DKMS packages; Fedora ships these drivers in the kernel or through akmods
+        lib32-*)                echo "" ;;
+        *)                      echo "$p" ;;
+    esac
+}
+
 ensure_aur_helper() {   # called only when an AUR package is really needed; installs yay-bin if no helper exists
     [[ "$PKG_MGR" != "pacman" ]] && return 1
     [[ -n "$AUR_HELPER" ]] && return 0
@@ -889,9 +968,65 @@ install_pkgs_pacman() {
     return 0
 }
 
+# Fedora: Hyprland and its tools are not in Fedora's own repositories. They come from the sdegler/hyprland COPR (the
+# maintained successor of solopasha/hyprland: Hyprland 0.56 for Fedora 43-45), enabled only after asking.
+HYPR_COPR="sdegler/hyprland"
+COPR_ASKED=false
+enable_hypr_copr() {
+    [[ "$COPR_ASKED" == "true" ]] && return 1
+    COPR_ASKED=true
+    if dnf copr list 2>/dev/null | grep -q "$HYPR_COPR"; then return 1; fi
+    ask "Hyprland is not in Fedora's repositories. Enable the COPR ${HYPR_COPR} (community builds of Hyprland and its tools)?" || return 1
+    run_cmd "Installing the dnf COPR plugin" as_root dnf install -y dnf-plugins-core || true
+    run_cmd "Enabling the COPR ${HYPR_COPR}" as_root dnf copr enable -y "$HYPR_COPR"
+}
+
+install_pkgs_dnf() {
+    local critical=false repo_only=false
+    while [[ "${1:-}" == --* ]]; do
+        case "$1" in --critical) critical=true ;; --repo-only) repo_only=true ;; *) break ;; esac
+        shift
+    done
+    local wanted=() avail to_install=() p m
+    for p in "$@"; do
+        [[ -z "$p" ]] && continue
+        for m in $(map_pkg_for_dnf "$p"); do pkg_missing "$m" && wanted+=("$m"); done
+    done
+    [[ ${#wanted[@]} -eq 0 ]] && return 0
+    mapfile -t wanted < <(printf '%s\n' "${wanted[@]}" | sort -u)
+    # one query for all of them: which names do the enabled repositories have?
+    avail="$(dnf repoquery --available --qf '%{name}\n' "${wanted[@]}" 2>/dev/null | sort -u)"
+    if ! grep -qx hyprland <<<"$avail" && printf '%s\n' "${wanted[@]}" | grep -qx hyprland && enable_hypr_copr; then
+        avail="$(dnf repoquery --available --qf '%{name}\n' "${wanted[@]}" 2>/dev/null | sort -u)"
+    fi
+    for m in "${wanted[@]}"; do
+        if grep -qx "$m" <<<"$avail" || [[ "$DRY_RUN" == "true" ]]; then to_install+=("$m")
+        else log_info "Not in the enabled dnf repositories, skipped: $m"; [[ "$repo_only" == "true" ]] || FAILED_PKGS+=("$m"); fi
+    done
+    if [[ ${#to_install[@]} -gt 0 ]]; then
+        if ! run_cmd "Installing (dnf): ${to_install[*]}" as_root dnf install -y --setopt=install_weak_deps=False "${to_install[@]}"; then
+            log_warn "The dnf batch failed: trying one package at a time..."
+            for m in "${to_install[@]}"; do
+                run_cmd "Installing (dnf) $m" as_root dnf install -y --setopt=install_weak_deps=False "$m" || FAILED_PKGS+=("$m")
+            done
+        fi
+    fi
+    if [[ "$critical" == "true" && "$DRY_RUN" != "true" ]]; then
+        for p in "$@"; do
+            command -v "$p" >/dev/null 2>&1 && continue
+            for m in $(map_pkg_for_dnf "$p"); do
+                pkg_missing "$m" && die "Required package '$m' ('$p') could not be installed. See ${LOG_FILE} and docs/install-fedora.md"
+            done
+        done
+    fi
+    return 0
+}
+
 install_pkgs() {
     if [[ "$PKG_MGR" == "apt" ]]; then
         install_pkgs_apt "$@"
+    elif [[ "$PKG_MGR" == "dnf" ]]; then
+        install_pkgs_dnf "$@"
     else
         install_pkgs_pacman "$@"
     fi
@@ -906,6 +1041,8 @@ if [[ "$PACKAGES" == "true" ]]; then
                 run_cmd "Enabling i386 multiarch" as_root bash -c 'dpkg --add-architecture i386 && apt-get update -qq' && MULTILIB_ENABLED=true || true
             fi
         fi
+    elif [[ "$PKG_MGR" == "dnf" ]]; then
+        MULTILIB_ENABLED=true          # Fedora ships the 32-bit (i686) packages in the same repositories
     else
         grep -qE '^\s*\[multilib\]' /etc/pacman.conf 2>/dev/null && MULTILIB_ENABLED=true
     fi
@@ -920,6 +1057,10 @@ if [[ "$PACKAGES" == "true" ]]; then
         DB_AGE_DAYS=999
         if [[ "$PKG_MGR" == "apt" ]]; then
             if DBF="$(ls -t /var/lib/apt/lists/*Packages 2>/dev/null | head -n1)" && [[ -n "$DBF" ]]; then
+                DB_AGE_DAYS=$(( ( $(date +%s) - $(stat -c %Y "$DBF") ) / 86400 ))
+            fi
+        elif [[ "$PKG_MGR" == "dnf" ]]; then
+            if DBF="$(ls -td /var/cache/libdnf5/*/ /var/cache/dnf/*/ 2>/dev/null | head -n1)" && [[ -n "$DBF" ]]; then
                 DB_AGE_DAYS=$(( ( $(date +%s) - $(stat -c %Y "$DBF") ) / 86400 ))
             fi
         else
@@ -939,6 +1080,9 @@ if [[ "$PACKAGES" == "true" ]]; then
         if [[ "$PKG_MGR" == "apt" ]]; then
             run_cmd "Full system upgrade (apt update && upgrade)" as_root env DEBIAN_FRONTEND=noninteractive bash -c "apt-get update && apt-get upgrade -y" \
                 || die "The system upgrade failed. Fix apt repositories and run again."
+        elif [[ "$PKG_MGR" == "dnf" ]]; then
+            run_cmd "Full system upgrade (dnf upgrade)" as_root dnf upgrade --refresh -y \
+                || die "The system upgrade failed. Fix the dnf repositories and run again."
         else
             run_cmd "Full system upgrade (pacman -Syu)" as_root pacman -Syu --noconfirm \
                 || die "The system upgrade failed. Fix pacman (mirrors / keyring) and run again."
@@ -955,6 +1099,10 @@ fi
 log_step "Step 3: Graphics drivers and CPU microcode"
 
 kernel_headers() {
+    if [[ "$PKG_MGR" == "dnf" ]]; then
+        echo "kernel-devel"
+        return 0
+    fi
     if [[ "$PKG_MGR" == "apt" ]]; then
         local kver
         kver="$(uname -r)"
@@ -975,7 +1123,7 @@ kernel_headers() {
     printf '%s\n' "${out[@]}" | sort -u
 }
 installed_kernels() {   # the pkgbase of every installed kernel
-    if [[ "$PKG_MGR" == "apt" ]]; then
+    if [[ "$PKG_MGR" == "apt" || "$PKG_MGR" == "dnf" ]]; then
         uname -r
         return 0
     fi
@@ -1035,6 +1183,8 @@ else
         NV_PRESENT=false
         if [[ "$PKG_MGR" == "apt" ]]; then
             dpkg -l 2>/dev/null | grep -qE '^ii\s+(nvidia-driver|nvidia-kernel|linux-modules-nvidia)' && NV_PRESENT=true
+        elif [[ "$PKG_MGR" == "dnf" ]]; then
+            { rpm -q akmod-nvidia >/dev/null 2>&1 || rpm -q kmod-nvidia >/dev/null 2>&1; } && NV_PRESENT=true
         else
             for q in nvidia nvidia-open nvidia-dkms nvidia-open-dkms nvidia-lts nvidia-580xx-dkms nvidia-470xx-dkms; do pacman -Qq "$q" >/dev/null 2>&1 && NV_PRESENT=true; done
             pacman -Qq linux-cachyos-nvidia-open >/dev/null 2>&1 && NV_PRESENT=true
@@ -1054,6 +1204,16 @@ else
                 fi
             fi
             install_pkgs --repo-only egl-wayland nvidia-settings nvtop
+        elif [[ "$PKG_MGR" == "dnf" ]]; then
+            # Fedora: the NVIDIA driver is in RPM Fusion (akmod-nvidia), which this installer does not add by itself
+            if [[ "$NV_PRESENT" == "true" ]]; then
+                log_info "An NVIDIA kernel driver is already installed: leaving it alone."
+            elif dnf repoquery --available --qf '%{name}\n' akmod-nvidia 2>/dev/null | grep -qx akmod-nvidia; then
+                install_pkgs --repo-only kernel-devel akmod-nvidia xorg-x11-drv-nvidia-cuda
+            else
+                warn_later "NVIDIA on Fedora: enable RPM Fusion (https://rpmfusion.org/Configuration), then sudo dnf install akmod-nvidia xorg-x11-drv-nvidia-cuda and reboot. See docs/install-fedora.md."
+            fi
+            install_pkgs --repo-only egl-wayland nvtop
         else
             case "$NVIDIA_GEN" in
             open)
@@ -1745,7 +1905,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     # AUR: the cursor theme Halcyon is configured for, the log-out menu, emoji picker, frozen screenshots
     install_pkgs sweet-cursors-git wlogout bemoji wayfreeze
     # On Debian/Ubuntu, ensure JetBrainsMono Nerd Font is installed in ~/.local/share/fonts if not present
-    if [[ "$PKG_MGR" == "apt" && "$DRY_RUN" != "true" ]] && ! run_as_user bash -c 'fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd"'; then
+    if [[ ( "$PKG_MGR" == "apt" || "$PKG_MGR" == "dnf" ) && "$DRY_RUN" != "true" ]] && ! run_as_user bash -c 'fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd"'; then
         log_info "Installing JetBrainsMono Nerd Font to $TARGET_HOME/.local/share/fonts..."
         try run_as_user_cmd "Downloading JetBrainsMono Nerd Font" bash -c '
             fdir="$HOME/.local/share/fonts/JetBrainsMonoNerd"
@@ -1788,7 +1948,7 @@ if [[ "$PACKAGES" == "true" ]]; then
         [[ "$OLLAMA_READY" == "true" ]] && return 0
         ollama_bin="$(run_as_user which ollama 2>/dev/null || which ollama 2>/dev/null || echo "")"
         if [[ -z "$ollama_bin" ]]; then
-            if [[ "$DISTRO_FAMILY" == "arch" ]]; then
+            if [[ "$DISTRO_FAMILY" == "arch" || "$DISTRO_FAMILY" == "fedora" ]]; then
                 install_pkgs ollama
             else
                 # (downloaded to a file first and run from there: a connection that drops half way never runs half a script as root.
@@ -1861,6 +2021,8 @@ EOF
             if [[ "$PKG_MGR" == "pacman" ]]; then
                 install_pkgs whisper-cpp            # Arch's own package (extra repo, provides whisper-cli)
                 have_any whisper-cli whisper-cpp whisper.cpp || install_pkgs whisper.cpp    # older name, AUR
+            elif [[ "$PKG_MGR" == "dnf" ]]; then
+                install_pkgs whisper-cpp            # Fedora's package
             else
                 warn_later "whisper.cpp has no apt package: build it from https://github.com/ggml-org/whisper.cpp (cmake) so that 'whisper-cli' is on your PATH, or pip install faster-whisper. The model below is downloaded anyway."
             fi
@@ -2729,6 +2891,10 @@ remove_antivirus() {
 
 install_antivirus() {
     local src pkg
+    if [[ "$PKG_MGR" != "pacman" ]]; then
+        warn_later "ai-antivirus is packaged for Arch only (makepkg): skipped on ${DISTRO_NAME}. ClamAV works here: Security center > ClamAV."
+        return 1
+    fi
     src=$(security_src ai-antivirus "${AV_SRC:-$TARGET_HOME/.local/src/ai-antivirus}" "$AV_REPO" "$AV_REV") \
         || { warn_later "ai-antivirus: no source found (set AV_SRC to its folder, or AV_REPO / AV_REV)"; return 1; }
     local stamp="$TARGET_HOME/.local/state/island/ai-antivirus-src" now

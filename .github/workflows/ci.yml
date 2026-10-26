@@ -135,12 +135,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [archlinux:latest, debian:trixie]
+        image: [archlinux:latest, debian:trixie, fedora:44]
     container: ${{ matrix.image }}
     steps:
       - name: tools the checkout and the installer need
         run: |
-          if command -v pacman >/dev/null; then pacman -Sy --noconfirm git sudo curl; else apt-get update && apt-get install -y git sudo curl ca-certificates; fi
+          if command -v pacman >/dev/null; then pacman -Sy --noconfirm git sudo curl; elif command -v dnf >/dev/null; then dnf install -y git sudo curl; else apt-get update && apt-get install -y git sudo curl ca-certificates; fi
       - uses: actions/checkout@v4
       - name: a normal user to install for
         run: useradd -m tester
