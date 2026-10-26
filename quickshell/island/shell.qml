@@ -1180,7 +1180,9 @@ ShellRoot {
             root.tourAuto()
         }
     }
-    function tourPlan(mode) { return TourData.plan(mode, tourCur, tourSeenFile, { sysmode: cmdTree.available, firewall: root.fwInstalled }) }
+    property bool lunaInstalled: false
+    Process { running: true; command: ["sh", "-c", "test -x \"$HOME/.local/bin/luna\" || command -v luna >/dev/null"]; onExited: code => root.lunaInstalled = code === 0 }
+    function tourPlan(mode) { return TourData.plan(mode, tourCur, tourSeenFile, { sysmode: cmdTree.available, firewall: root.fwInstalled, antivirus: root.avInstalled, luna: root.lunaInstalled }) }
     function tourAuto() {
         if (!tourCur) return
         var plan = tourPlan(tourMode)
@@ -2650,6 +2652,7 @@ ShellRoot {
         function gamingset(on: bool): void { if (root.gaming !== on) root.setGaming(on) }       // set, for `halcyon ai do gaming on`
         function gamestart(id: string, name: string, since: string, lean: bool): void { root.gameStarted(id, name, Number(since), lean) }   // hgl run
         function gameend(): void { root.gameEnded() }                                                                                     // hgl run, when the game is over
+        function lunasettings(): void { if (!lunaCenter.open) root.runCommand("luna"); lunaCenter.openSettings() }   // the Luna window on its Settings page
         function luna(): void { root.runCommand("luna") }                                                                                  // the Luna window (toggle)
         function study(): void { root.runCommand("study") }                                                                                // the Study Center window (toggle)
         function security(): void { root.runCommand("security") }                                                                          // the Security center window (toggle)
