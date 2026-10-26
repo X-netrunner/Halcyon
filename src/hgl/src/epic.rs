@@ -129,7 +129,7 @@ pub fn owned() -> Result<Vec<Title>, String> {
         let title = g.str("app_title").unwrap_or(app).to_string();
         out.push(Title { app: app.to_string(), title, installed: have_apps.iter().any(|a| a == app) });
     }
-    out.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+    out.sort_by_cached_key(|a| a.title.to_lowercase());
     Ok(out)
 }
 
