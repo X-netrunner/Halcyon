@@ -1,12 +1,12 @@
-function push --description 'Sync and push Halcyon, ai-firewall or LUNA-AI (push halcyon | firewall | luna | all)'
+function push --description 'Sync and push Halcyon, ai-firewall, ai-antivirus or LUNA-AI (push halcyon | firewall | antivirus | luna | all)'
     # The real work is scripts/sync-and-push.sh: it finds every Halcyon checkout on the
     # machine, lists them 1, 2, 3 ..., and syncs + pushes the one you pick.
-    # ai-firewall and LUNA-AI are found by their GitHub remote (wherever they are checked out)
+    # ai-firewall, ai-antivirus and LUNA-AI are found by their GitHub remote (wherever they are checked out)
     # and go through the same script with --repo.
     set -l script "$HOME/.config/Halcyon/scripts/sync-and-push.sh"
     test -f "$script"; or set script "$HOME/Projects/Halcyon/scripts/sync-and-push.sh"
     test -f "$script"; or set script "$HOME/CustomHyprScripts/sync-and-push.sh"
-    set -l usage "usage: push halcyon|firewall|luna|all [number | --list | --dry-run | --yes | -m \"message\"]"
+    set -l usage "usage: push halcyon|firewall|antivirus|luna|all [number | --list | --dry-run | --yes | -m \"message\"]"
 
     if test (count $argv) -eq 0
         echo $usage
@@ -22,6 +22,8 @@ function push --description 'Sync and push Halcyon, ai-firewall or LUNA-AI (push
             bash "$script" $argv[2..-1]
         case firewall ai-firewall fw
             __push_repo X-netrunner/ai-firewall $argv[2..-1]
+        case antivirus ai-antivirus av
+            __push_repo X-netrunner/ai-antivirus $argv[2..-1]
         case luna luna-ai
             __push_repo X-netrunner/LUNA-AI $argv[2..-1]
         case all
@@ -29,6 +31,7 @@ function push --description 'Sync and push Halcyon, ai-firewall or LUNA-AI (push
             set -l failed
             bash "$script" $argv[2..-1]; or set -a failed halcyon
             __push_repo X-netrunner/ai-firewall $argv[2..-1]; or set -a failed ai-firewall
+            __push_repo X-netrunner/ai-antivirus $argv[2..-1]; or set -a failed ai-antivirus
             __push_repo X-netrunner/LUNA-AI $argv[2..-1]; or set -a failed LUNA-AI
             if test (count $failed) -gt 0
                 echo "push: not pushed: $failed" >&2
