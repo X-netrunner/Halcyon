@@ -85,6 +85,8 @@ jobs:
         run: python3 tests/test_ai_eval.py
       - name: Luna window sessions (fake `luna --stdio`; sessions saved, resumed, deleted; gaming mode and a missing Luna stop it)
         run: python3 tests/test_luna_bridge.py
+      - name: Luna's Halcyon tools (tiers enforced, arguments validated, the admin password never on a command line; every program stubbed)
+        run: python3 tests/test_halcyon_control.py
       - name: cache trimmer (only Halcyon's own caches, oldest first, never while a build runs)
         run: python3 tests/test_cache_trim.py
 

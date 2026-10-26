@@ -269,12 +269,14 @@ HALCYON_ABOUT = (
     ">security, >gaming, >ask, >do), = for a calculator, . for every app. Super+Tab is the overview, Super+/ the shortcut map. "
     "Settings has a search box and a guided tour (>tour). Halcyon has a Game Center, Study Center, Calendar and notes, clipboard history, "
     "screenshots, a lock screen with widgets, builders (bar, desktop, widgets, lock screen, notifications), sysmode, a Security center "
-    "(ai-firewall and ai-antivirus, only when installed: ai-antivirus watches what programs do, not only file signatures like ClamAV, and runs fully locally) and backups. You help the person use and change their Halcyon desktop.")
+    "(ai-firewall and ai-antivirus, only when installed: ai-antivirus watches what programs do, not only file signatures like ClamAV, and runs fully locally) and backups. Luna is a separate local assistant (a Rust program on Ollama) that Halcyon can install: >luna opens her chat window with saved chats, "
+    "settings (models, Auto routing, no-refusal mode, API keys) and tools to read, and with permission change, Halcyon. You are the quick helper "
+    "in the launcher; Luna is the longer conversation. If Luna is not installed, ./install.sh --choose adds her. You help the person use and change their Halcyon desktop.")
 # Words that only mean Halcyon. Common words (install, settings, wallpaper, firewall, notifications ...) are left out on purpose:
 # "how do I install numpy" is not about Halcyon. Those questions still reach the docs when the docs match them well (score >= 5).
 HALCYON_Q = re.compile(r"\b(halcyon|the island|quickshell|hyprland|who are you|what are you|what can you|your name|what is this|"
                        r"this (desktop|rice|setup|shell|launcher)|my (desktop|bar|launcher|island|lock screen)|super key|install\.sh|update\.sh|"
-                       r"security cent(er|re)|ai-antivirus|ai antivirus|ai-firewall|firewall center|sysmode|game center|study center)\b", re.I)
+                       r"luna|security cent(er|re)|ai-antivirus|ai antivirus|ai-firewall|firewall center|sysmode|game center|study center)\b", re.I)
 # A general-knowledge question ("explain how a firewall works", "what is DNS", "how do notifications work on android"): answered
 # by the model directly, not turned into a Halcyon settings guide.
 GENERAL_Q = re.compile(r"^\s*(explain|define|describe|tell me|write|translate|summari[sz]e|compare|why (is|are|do|does)|what (is|are|was|were|'s)\b"
@@ -2143,7 +2145,7 @@ def help_index():
             if not f.get("label"):
                 continue
             opts = [_unq(x) for x in re.findall(r'(?:o|ch)\("[^"]*", "((?:\\.|[^"\\])*)"\)', line)]
-            out.append({"kind": "setting", "type": f.get("type", ""), "label": f["label"], "group": gid, "title": title,
+            out.append({"kind": "setting", "key": f.get("key", ""), "type": f.get("type", ""), "label": f["label"], "group": gid, "title": title,
                         "page": pages.get(gid, g.group(3)), "adv": "adv: true" in line, "opts": opts, "btn": f.get("btn", ""),
                         "text": " ".join([f.get("desc", ""), f.get("why", ""), " ".join(opts)]), "open": {"settings": gid}})
     try:

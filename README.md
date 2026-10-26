@@ -17,6 +17,11 @@ Everything below is how Halcyon looks right after installing, before you change 
 | ![Launcher](docs/screenshots/launcher.webp) | **One search bar for everything.** Tap <kbd>Super</kbd> and use the arrow keys straight away, or start typing. Type `>` for commands (`>settings`, `>gaming`, a game's name), `=` for a calculator, `.` to see every app. |
 | ![Game Center](docs/screenshots/gamecenter.webp) | **Game Center.** Steam games and your own Windows `.exe` games in one library with cover art. It manages Proton versions, checks your system for problems, and switches on gaming mode while you play. The first start shows a download screen with a progress bar. |
 | ![Study Center](docs/screenshots/study.webp) | **Study Center.** Add your PDFs, slides and notes, then ask questions about them or make summaries, quizzes and flashcards, all with a local AI model on your own machine. |
+| ![Luna](docs/screenshots/luna-chat.webp) | **Luna, your local assistant.** `>luna` opens a chat with [Luna](https://github.com/X-netrunner/LUNA-AI) in the same style as everything else. Every chat is saved: open an old one and carry on where it stopped. You see the tools she runs, can show her reasoning, and type `/` for commands (`/model` switches her model, `/status` shows the firewall and antivirus at a glance). She knows Halcyon and can look things up in it and, if you allow it, change it. |
+| ![Luna settings](docs/screenshots/luna-settings.webp) | **Luna's settings are a page, not a config file.** Pick her models (main, fast, deep, security) from what Ollama has, and flip her switches: thinking, voice, the watchdog, her safety gates. **Control Halcyon** is the one switch that lets her change the desktop; it is off until you turn it on. |
+| ![API keys](docs/screenshots/luna-keys.webp) | **Paste a key, Luna stores it.** Web search, Gemini, Todoist and Spotify keys go in with one paste. They are kept in your system keyring and are never sent back to the window or written into `luna.toml`. |
+| ![Security center](docs/screenshots/security-overview.webp) | **Security center.** Firewall, antivirus and ClamAV in one window: what was blocked, what was found, exceptions, and an assistant that answers from live checks. See [the three parts below](#halcyon-ai-firewall-ai-antivirus-and-luna). |
+| ![ClamAV](docs/screenshots/security-clamav.webp) | **ClamAV that checks itself.** One click tests that ClamAV works (installed, fresh signatures, updater running, finds the harmless EICAR test file). After a scan, the local model looks at each finding and says false positive, malicious or unsure. A guess-type signature it judges a false positive can become an exception tied to the file's hash; a named malware signature never does. |
 | ![Calendar](docs/screenshots/calendar.webp) | **Calendar and notes.** Your month, your day's notes and reminders, plus birthdays and holidays. |
 | ![Settings](docs/screenshots/settings.webp) | **Settings that explain themselves.** Every option is searchable. Most of them have a short explanation, and there is a guided tour that shows you around step by step. |
 | ![Overview](docs/screenshots/tree.webp) | **Overview.** <kbd>Super</kbd> + <kbd>Tab</kbd> shows every workspace and window as one constellation: click one to go there, drag a window onto another workspace. Halcyon's own CPU and memory use sit in the corner. |
@@ -24,6 +29,27 @@ Everything below is how Halcyon looks right after installing, before you change 
 
 There's more: clipboard history, screenshots, notifications and music in the island, a lock screen with widgets, live wallpapers,
 touchpad gestures, focus mode and backups. [Full feature list](docs/features.md).
+
+## Halcyon, ai-firewall, ai-antivirus and Luna
+
+Halcyon comes with three companion projects. They are separate repositories and each one **works on its own**, but they are built to
+fit together, and Halcyon is where they fit best.
+
+| Project | What it is | On its own | In Halcyon |
+|---|---|---|---|
+| **[ai-firewall](https://github.com/X-netrunner/ai-firewall)** | A self-healing eBPF/XDP firewall that replaces ufw: inbound is denied by default, scanners and floods are banned by themselves. | `ai-firewall status`, `top`, `ban`, `open`, `doctor`, `ask` | A Security center page with the live numbers, bans and rules; sysmode sets its posture; Luna can read it and, with your permission, ban or open ports. |
+| **[ai-antivirus](https://github.com/X-netrunner/ai-antivirus)** | A behaviour-based antivirus and EDR: it watches what programs do (not only what files contain), with pacman trust, YARA and behaviour rules. Alert-only until you change that. | `ai-antivirus status`, `alerts`, `scan`, `exceptions`, `ask` | A Security center page and an exceptions list; Halcyon's installer gets a narrow exception so its updates are not reported; Luna can read it and, with your permission, scan and add exceptions. |
+| **[Luna](https://github.com/X-netrunner/LUNA-AI)** | A local AI assistant in Rust that runs on Ollama: tools, memory, reminders, voice. | `luna` in a terminal (text or the TUI) | The `>luna` window with saved chats, her settings and API keys as a page, and tools that let her read, and with your permission operate, the rest of Halcyon. |
+
+Together they give you things none of them has alone:
+
+- **One place to look.** The Security center shows the firewall, the antivirus and ClamAV side by side, and asks you before anything that needs admin rights.
+- **A security assistant that knows your machine.** Ask Luna "is my firewall running?" or "what is the antivirus saying?" and she reads the real status instead of guessing.
+- **Control you can switch off.** Luna's three Halcyon tools are separate on purpose: reading is always allowed, changing Halcyon needs the **Control Halcyon** switch in her settings, and firewall and antivirus changes need her developer-signed capability gate and admin rights. Nothing here can be unlocked by the model itself.
+- **It stays on your machine.** The models run through Ollama on 127.0.0.1, and the firewall and antivirus send nothing out. Luna only reaches the internet for what you ask of her (web search, Todoist, Spotify, WhatsApp), each one optional and using a key you gave her.
+
+Install them from Halcyon's installer: `./install.sh --firewall ai`, `--antivirus`, `--luna` (each is asked about on a first install, and
+you can add one later by running the installer again). [How ai-antivirus differs from ClamAV, and why Halcyon's installer is excepted](docs/antivirus.md).
 
 ## Make it yours
 
@@ -84,8 +110,9 @@ The dry run shows every step and changes nothing.
 **Optional extras you choose at install time:**
 - **sysmode**: a security lab with a honeypot, an intrusion detection system (IDS) and hardening. It's off unless you say yes.
 - **Safety check**: a one-click system update, malware scan and backup.
+- **ai-firewall**, **ai-antivirus** and **Luna**: the [three companion projects](#halcyon-ai-firewall-ai-antivirus-and-luna) (`--firewall ai`, `--antivirus`, `--luna`).
 
-Both run as root. [How it works](docs/how-it-works.md#install-one-script) says exactly what is installed and why it can be trusted.
+The first two run as root. [How it works](docs/how-it-works.md#install-one-script) says exactly what is installed and why it can be trusted.
 
 ## First steps
 
