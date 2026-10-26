@@ -1768,28 +1768,38 @@ def clam_updater_active():
     return sh(["pgrep", "-x", "freshclam"], timeout=5)[0] == 0
 
 
-def broken_names(paths, limit=200000):
-    """Files under paths whose name holds a line break (they would make clamscan's one-line-per-file output ambiguous)."""
-    bad, seen = [], 0
+CLAM_MAX_FILES = 200000
+
+
+def scan_listing(paths, limit=None):
+    """(every file under paths, names with a line break, too many to check). A name with a line break would make
+    clamscan's one-line-per-file output ambiguous; the listing is what a reported path must be part of."""
+    limit = CLAM_MAX_FILES if limit is None else limit
+    listed, bad = set(), []
     for p in paths:
         if os.path.isfile(p):
             if "\n" in p or "\r" in p:
                 bad.append(p)
+            listed.add(p)
             continue
         for d, dirs, files in os.walk(p):
             for n in dirs + files:
-                seen += 1
                 if "\n" in n or "\r" in n:
                     bad.append(os.path.join(d, n))
-            if seen > limit:
-                return bad
-    return bad
+            listed.update(os.path.join(d, n) for n in files)
+            if len(listed) > limit:
+                return listed, bad, True
+    return listed, bad, False
 
 
 def clam_scan(paths, timeout=None):
     """clamscan's findings: (files scanned or None, [(file, signature)], error text)."""
-    # a file name with a line break could forge a "FOUND" line for another file: then the output is not read at all
-    odd = broken_names(paths)
+    # clamscan prints "<path>: <signature> FOUND" per line, so a file whose name holds a line break could forge a finding for
+    # another file (which a fix would then name). Fail closed: a name like that, before or after the scan, or a folder too big
+    # to list, means the output is not read; and a reported path must be one of the files listed before the scan.
+    listed, odd, many = scan_listing(paths)
+    if many:
+        return None, [], f"the folder has more than {CLAM_MAX_FILES} files, too many to check; scan a smaller folder"
     if odd:
         return None, [], ("a file name contains a line break, so the result could not be trusted: " + repr(odd[0])[:160]
                           + ". Rename or remove it, then scan again")
@@ -1799,15 +1809,11 @@ def clam_scan(paths, timeout=None):
         return None, [], "clamscan is not installed"
     except subprocess.TimeoutExpired:
         return None, [], "the scan took too long"
-    # clamscan prints "<path>: <signature> FOUND" per line, so a file whose name holds a newline could forge a finding for any
-    # other path (which a fix below would then name). Only keep paths that exist and lie inside what was scanned.
-    roots = [os.path.realpath(p) for p in paths]
-    found = []
-    for m in re.finditer(r"^(.+): (\S+) FOUND$", r.stdout, re.M):
-        f = m.group(1)
-        real = os.path.realpath(f)
-        if os.path.isabs(f) and os.path.lexists(f) and any(real == x or real.startswith(x.rstrip(os.sep) + os.sep) for x in roots):
-            found.append((f, m.group(2)))
+    _, odd, many = scan_listing(paths)              # renamed while the scan ran
+    if odd or many:
+        return None, [], "file names changed during the scan, so the result could not be trusted. Scan again"
+    found = [(m.group(1), m.group(2)) for m in re.finditer(r"^(.+): (\S+) FOUND$", r.stdout, re.M)
+             if m.group(1) in listed and os.path.lexists(m.group(1))]
     m = re.search(r"^Scanned files:\s*(\d+)", r.stdout, re.M)
     err = ""
     if r.returncode == 2:           # 0 clean, 1 found, 2 error
