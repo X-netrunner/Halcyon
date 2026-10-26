@@ -68,8 +68,8 @@ All of these are in Settings > Performance & memory and Settings > Appearance.
 
 ## Install
 
-**Requirements:** an Arch-based distro (Arch, CachyOS, EndeavourOS, Manjaro...) and Hyprland 0.56 or newer (the config is written in
-Lua). Developed and tested on Arch with Hyprland 0.56.2. The installer also has a Debian/Ubuntu path, but it is less tested.
+**Requirements:** Hyprland 0.56 or newer (the config is written in
+Lua). Arch-based distros (Arch, CachyOS, EndeavourOS, Manjaro...) are the reference: developed and tested on Arch with Hyprland 0.56.2. Other systems (less tested): [Debian testing / sid and Ubuntu 26.10+](docs/install-debian.md), [Fedora 44+](docs/install-fedora.md), and [NixOS through the flake](docs/install-nix.md).
 
 As your normal user:
 
