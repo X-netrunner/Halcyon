@@ -130,7 +130,7 @@ def installed_models():
         with urllib.request.urlopen(ai.ollama_host() + "/api/tags", timeout=5) as r:
             data = json.loads(r.read().decode("utf-8", "replace"))
     except (OSError, ValueError):
-        raise ai.AiOff("Ollama is not running. Start it with: systemctl start ollama (or systemctl --user start ollama)")
+        raise ai.AiOff("Ollama is not running. Start it with: sudo systemctl start ollama (or, if it is set up per user: systemctl --user start ollama)")
     return {m["name"]: m.get("size", 0) for m in data.get("models", [])}
 
 
