@@ -15,6 +15,7 @@ function halcyon --description 'Open and control the Halcyon desktop from a term
         printf "  %-20s %s\n" "profile" "work | gaming | battery | night | custom: stars, blur, motion, brightness, top bar"
         printf "  %-20s %s\n" "shot" "shot region|window|full [copy|save|both]: take it now, no panel (works without the island)"
         printf "  %-20s %s\n" "clip" "clip list|status|clear: the clipboard history from a terminal"
+        printf "  %-20s %s\n" "luna" "Luna window; luna list|show|new|chat: your saved chats from a terminal"
         printf "  %-20s %s\n" "study" "Study Center window; study add|ask|list|remove|make: your files from a terminal"
         printf "  %-20s %s\n" "music" "lyrics and queue panel (music lyrics | music queue to pick the tab)"
         printf "  %-20s %s\n" "lyrics" "print the lyrics of what plays, in the terminal (any source: .lrc file, lrclib.net, lyrics.ovh, spotify_player)"
@@ -49,6 +50,11 @@ function halcyon --description 'Open and control the Halcyon desktop from a term
     # halcyon study = the window; halcyon study add notes.pdf / ask "..." / list / make cards: the library from a terminal
     if test "$argv[1]" = study; and test (count $rest) -gt 0
         python3 $HOME/.config/Halcyon/scripts/halcyon-study.py $rest
+        return $status
+    end
+    # halcyon luna = the window; halcyon luna list / show ID / new / chat ID -- "...": the saved chats from a terminal
+    if test "$argv[1]" = luna; and test (count $rest) -gt 0
+        python3 $HOME/.config/Halcyon/scripts/halcyon-luna.py $rest
         return $status
     end
     if test "$argv[1]" = clip
