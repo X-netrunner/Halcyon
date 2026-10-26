@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================================================
 # Halcyon installer: ONE script that sets everything up on Arch Linux and Arch-based systems (CachyOS, EndeavourOS,
-# Manjaro, Garuda, Artix ...). Run it from the folder you downloaded:
+# Manjaro, Garuda, Artix ...), the reference. Also: Debian testing / sid and Ubuntu 26.10+ (apt, docs/install-debian.md),
+# Fedora 44+ (dnf, docs/install-fedora.md). NixOS uses the flake instead (docs/install-nix.md). Run it from the folder you downloaded:
 #
 #     ./install.sh               asks before the important things (sudo password when needed)
 #     ./install.sh --yes         no questions: fresh machine, scripts, and what update.sh uses
@@ -458,6 +459,10 @@ upgrade_hint() {
     esac
 }
 
+# NixOS is set up declaratively: the flake in this folder has a NixOS and a Home Manager module (docs/install-nix.md)
+if [[ "$DISTRO_ID" == "nixos" || -e /etc/NIXOS ]]; then
+    die "This is NixOS: install Halcyon with the flake in this folder (NixOS + Home Manager modules), not with install.sh. See docs/install-nix.md."
+fi
 if [[ "$PACKAGES" == "true" ]]; then
     [[ -n "$PKG_MGR" ]] || die "No supported package manager found (pacman, apt or dnf). Install the packages from README.md by hand, then run again with --no-packages."
     case " $DISTRO_ID $DISTRO_LIKE " in
