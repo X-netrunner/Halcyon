@@ -148,17 +148,12 @@ pub fn run(args: &[String]) -> i32 {
         _ => "wrap",
     };
     let max_raw = flag("ws-max");
-    let mut max: i64 = if !max_raw.is_empty() && max_raw.chars().all(|c| c.is_ascii_digit()) {
+    let max: i64 = if !max_raw.is_empty() && max_raw.chars().all(|c| c.is_ascii_digit()) {
         max_raw.parse::<i64>().unwrap_or(9)
     } else {
         9
-    };
-    if max < 2 {
-        max = 2;
     }
-    if max > 10 {
-        max = 10;
-    }
+    .clamp(2, 10);
 
     let list = parse_workspaces(&util::out("hyprctl", &["workspaces"]));
     let mut wins: HashMap<i64, i64> = HashMap::new();

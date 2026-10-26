@@ -430,7 +430,7 @@ pub fn stats(iv: f64) {
         let (t, idl) = cpu_times();
         let dt = t.saturating_sub(pt);
         let di = idl.saturating_sub(pi).min(dt);
-        let cpu = if dt > 0 { 100 * (dt - di) / dt } else { 0 };
+        let cpu = (100 * (dt - di)).checked_div(dt).unwrap_or(0);
         pt = t;
         pi = idl;
 

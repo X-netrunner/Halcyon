@@ -294,7 +294,7 @@ pub fn owned() -> Result<Vec<Owned>, String> {
         }
         page += 1;
     }
-    out.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+    out.sort_by_cached_key(|a| a.title.to_lowercase());
     Ok(out)
 }
 

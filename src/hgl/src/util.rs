@@ -350,7 +350,7 @@ pub fn expand_home(s: &str) -> PathBuf {
 /// write Windows-style paths, Linux file systems are case-sensitive. `..` is refused.
 pub fn resolve_ci(base: &Path, rel: &str) -> Option<PathBuf> {
     let mut cur = base.to_path_buf();
-    for part in rel.split(|c: char| c == '/' || c == '\\').filter(|p| !p.is_empty() && *p != ".") {
+    for part in rel.split(['/', '\\']).filter(|p| !p.is_empty() && *p != ".") {
         if part == ".." {
             return None;
         }

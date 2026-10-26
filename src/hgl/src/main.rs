@@ -391,7 +391,7 @@ fn cmd_add(rest: &[String]) -> Result<i32, String> {
     }
     // SteamGridDB art only when you gave a key: otherwise adding a game never touches the network
     if !a.has("no-icon") && Conf::load().get("steamgriddb_key").is_some() {
-        let (found, _) = art::fetch_ids(&[id.clone()], false);
+        let (found, _) = art::fetch_ids(std::slice::from_ref(&id), false);
         if found > 0 {
             println!("Cover art found.");
         }

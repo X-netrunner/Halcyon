@@ -395,7 +395,7 @@ pub fn proton_tip(g: &Game, m: &Machine, installed: &[String], current: Option<&
         String::new()
     };
     let tip = |action: &str, cur: &str, why: String| ProtonTip { family: "ge".into(), action: action.into(), current: cur.into(), why, alt: alt.clone() };
-    if !g.proton.is_empty() && !installed.iter().any(|n| *n == g.proton) {
+    if !g.proton.is_empty() && !installed.contains(&g.proton) {
         return Some(tip("install", "", format!("This game is pinned to {}, which is not installed. Install GE-Proton, then pick it under Runs with.", g.proton)));
     }
     match current {
