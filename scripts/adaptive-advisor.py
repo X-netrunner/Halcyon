@@ -925,7 +925,7 @@ def ollama_generate(prompt, schema=None, num_predict=320, temperature=0.2, strea
         else:
             LAST_LLM_ERROR = f"Ollama returned HTTP {e.code}."
     except urllib.error.URLError:
-        LAST_LLM_ERROR = "Can't reach Ollama on 127.0.0.1:11434. Start it: systemctl --user start ollama"
+        LAST_LLM_ERROR = "Can't reach Ollama on 127.0.0.1:11434. Start it: sudo systemctl start ollama (or, if it is set up per user: systemctl --user start ollama)"
     except Exception as e:
         LAST_LLM_ERROR = f"Model call failed: {e}"
 

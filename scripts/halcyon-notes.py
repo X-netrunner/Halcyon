@@ -574,7 +574,7 @@ def run_vlm(path, ocr_text=""):
     """-> (description, None) ('' when nothing usable came back), or (None, why not)."""
     model = vlm_model()
     if not ollama_up():
-        return None, "Ollama is not running. Start it (systemctl start ollama) and use Describe again."
+        return None, "Ollama is not running. Start it (sudo systemctl start ollama) and use Describe again."
     try:
         if os.path.getsize(path) > 12 * 1024 * 1024:
             return None, "The picture is too big to describe (over 12 MB)."

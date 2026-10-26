@@ -740,7 +740,7 @@ def cmd_models(args):
     models = installed_models()
     c = load_conf()
     if models is None:
-        o = {"ok": False, "error": "Ollama is not running (systemctl --user start ollama)", "choice": c.get("model", "auto")}
+        o = {"ok": False, "error": "Ollama is not running (sudo systemctl start ollama, or systemctl --user start ollama)", "choice": c.get("model", "auto")}
         print(json.dumps(o) if JSON_OUT else o["error"])
         return 3
     fast, deep = auto_pick(models)

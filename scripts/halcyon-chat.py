@@ -236,7 +236,7 @@ def ask(messages):
     except urllib.error.HTTPError as e:
         print(f"\n[!] Ollama HTTP {e.code}" + (f": model '{model()}' not installed. Try: advisor model switch {model()}" if e.code == 404 else ""))
     except urllib.error.URLError:
-        print("\n[!] Can't reach Ollama on 127.0.0.1:11434. Start it with: systemctl --user start ollama")
+        print("\n[!] Can't reach Ollama on 127.0.0.1:11434. Start it with: sudo systemctl start ollama (or, if it is set up per user: systemctl --user start ollama)")
     except KeyboardInterrupt:
         print("\n[stopped]")
         return "".join(text).strip() or None

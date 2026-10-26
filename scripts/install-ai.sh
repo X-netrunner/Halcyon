@@ -91,7 +91,7 @@ if command -v ollama >/dev/null 2>&1; then
     if curl -s http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
       ok "Ollama service started successfully"
     else
-      warn "Could not reach Ollama. Start it with: systemctl --user start ollama (or run 'ollama serve')"
+      warn "Could not reach Ollama. Start it with: sudo systemctl start ollama, or systemctl --user start ollama (or run 'ollama serve')"
     fi
   fi
 else
