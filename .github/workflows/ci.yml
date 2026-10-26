@@ -81,6 +81,8 @@ jobs:
         run: python3 tests/test_ask_routing.py
       - name: ClamAV test and scan (fixes only from the fixed list, the model only orders them, home folders only; clamscan stubbed)
         run: python3 tests/test_clamav.py
+      - name: model eval scoring (two fake models; no Ollama)
+        run: python3 tests/test_ai_eval.py
 
   qml:
     runs-on: ubuntu-latest
