@@ -60,7 +60,7 @@ Rectangle {
     }
 
     Shadow {
-        visible: root.shadow
+        visible: root.shadow && root.pal.boxShadow
         z: -1
         anchors.fill: parent
         radius: root.radius

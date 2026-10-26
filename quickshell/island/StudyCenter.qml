@@ -15,6 +15,7 @@ Scope {
     id: root
     property var pal
     property bool open: false
+    readonly property bool asWindow: open && pal.deskWin        // an ordinary window (Settings > Halcyon windows): Super+Q and opening another centre leave it alone (shell.qml)
     property string tab: "ask"              // ask | summary | quiz | cards
     signal focusRequested(string what)      // the window's own fields take the keyboard (ids inside the LazyLoader are not reachable)
     signal consoleRequested(string cmd)     // a model download runs in the pop-out console (it shows the progress)
@@ -857,7 +858,7 @@ Scope {
                                             height: youT.height + 20
                                             radius: 18
                                             color: Qt.alpha(root.pal.accent, 0.13)
-                                            Text { id: youT; x: 16; y: 10; width: parent.width - 32; wrapMode: Text.Wrap; text: mrow.modelData.text; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                            SelText { id: youT; x: 16; y: 10; width: parent.width - 32; wrapMode: TextEdit.Wrap; text: mrow.modelData.text; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                         }
                                         // the answer: plain on the glass, a thin accent line beside it, the sources under it
                                         Column {
@@ -873,16 +874,15 @@ Scope {
                                                 spacing: 14
                                                 visible: mrow.modelData.text !== ""
                                                 Rectangle { width: 2; height: aiT.height; radius: 1; color: mrow.modelData.bad ? Qt.alpha(root.pal.bad, 0.6) : Qt.alpha(root.pal.accent, 0.45) }
-                                                Text {
+                                                SelText {
                                                     id: aiT
                                                     width: aiCol.width - 16
-                                                    wrapMode: Text.Wrap
-                                                    textFormat: Text.RichText
+                                                    wrapMode: TextEdit.Wrap
+                                                    textFormat: TextEdit.RichText
                                                     text: root.fmt(mrow.modelData.text)
                                                     color: mrow.modelData.bad ? root.pal.bad : root.pal.text
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: root.pal.tBody + 1
-                                                    lineHeight: 1.35
                                                 }
                                             }
                                             Flow {

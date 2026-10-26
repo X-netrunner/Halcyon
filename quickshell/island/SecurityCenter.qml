@@ -21,6 +21,7 @@ Scope {
     id: root
     property var pal
     property bool open: false
+    readonly property bool asWindow: open && pal.deskWin        // an ordinary window (Settings > Halcyon windows): Super+Q and opening another centre leave it alone (shell.qml)
     property string tab: "overview"          // overview | firewall | antivirus | exceptions | ask
     signal consoleRequested(string cmd)
     signal terminalRequested(string cmd)     // full-screen programs (the firewall dashboard) need a real terminal window, not the console
@@ -1450,10 +1451,10 @@ Scope {
                                                 height: youT.implicitHeight + 16
                                                 radius: 16
                                                 color: Qt.alpha(root.pal.accent, 0.16)
-                                                Text {
+                                                SelText {
                                                     id: youT
                                                     anchors { fill: parent; leftMargin: 14; rightMargin: 14; topMargin: 8; bottomMargin: 8 }
-                                                    wrapMode: Text.Wrap
+                                                    wrapMode: TextEdit.Wrap
                                                     text: mItem.modelData.text || ""
                                                     color: root.pal.text
                                                     font.family: root.pal.uiFont
@@ -1462,16 +1463,15 @@ Scope {
                                             }
 
                                             // the answer
-                                            Text {
+                                            SelText {
                                                 visible: mItem.modelData.role === "ai" && (mItem.modelData.text || "") !== ""
                                                 width: parent.width
-                                                wrapMode: Text.Wrap
-                                                textFormat: Text.PlainText
+                                                wrapMode: TextEdit.Wrap
+                                                textFormat: TextEdit.PlainText
                                                 text: (mItem.modelData.text || "") + (mItem.modelData.live ? " ▍" : "")
                                                 color: mItem.modelData.bad ? root.pal.bad : root.pal.text
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tBody
-                                                lineHeight: 1.2
                                             }
 
                                             // suggested actions: one click each (root ones open in the console)

@@ -21,6 +21,7 @@ Scope {
     id: root
     property var pal
     property bool open: false
+    readonly property bool asWindow: open && pal.deskWin        // an ordinary window (Settings > Halcyon windows): Super+Q and opening another centre leave it alone (shell.qml)
     property string tab: "overview"            // overview | bans | rules | feeds | history | ask
     signal consoleRequested(string cmd)        // shell.qml runs it in the pop-out console
     property bool consoleOpen: false        // the pop-out console has the keyboard (shell.qml)
@@ -755,14 +756,13 @@ Scope {
                                             font.pixelSize: root.pal.tCap
                                             font.weight: Font.DemiBold
                                         }
-                                        Text {
+                                        SelText {
                                             width: parent.width
                                             text: msg.modelData.text
-                                            wrapMode: Text.WordWrap
+                                            wrapMode: TextEdit.Wrap
                                             color: msg.modelData.live ? root.pal.muted : root.pal.text
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tBody
-                                            lineHeight: 1.25
                                         }
                                         Flow {
                                             width: parent.width

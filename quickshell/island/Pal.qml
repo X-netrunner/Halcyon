@@ -21,6 +21,7 @@ Scope {
     // Settings > Look: explanations / key hints shrink to a "?" dot (Hint.qml; the new style hides them completely),
     // box titles sit in the middle (BoxTitle.qml)
     property bool hideHints: true
+    property bool boxShadow: true           // Settings > Look > Soft shadow around boxes (Glass.qml)
     property bool deskWin: false            // Settings > Windows: centres open as ordinary windows on the workspace instead of an overlay (Host.qml)
     // every title sits in the middle of its header, in every style (the Centred titles switch is gone: one rule everywhere)
     readonly property bool centred: true
