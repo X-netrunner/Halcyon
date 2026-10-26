@@ -429,6 +429,32 @@ elif command -v apt-get >/dev/null 2>&1; then
 fi
 log_info "System: ${BOLD}${DISTRO_NAME}${RESET} (${DISTRO_ID}), ${ARCH_CPU}${PKG_MGR:+ [package manager: ${PKG_MGR}]}"
 
+# The install command to show in a message, for this machine's package manager. Takes Arch names (the reference) and maps
+# them once the name maps below are defined; pkg_hint is also used before that, with names that are the same everywhere.
+pkg_hint() {
+    local names=() p m
+    for p in "$@"; do
+        case "$PKG_MGR" in
+            apt) if declare -F map_pkg_for_apt >/dev/null; then for m in $(map_pkg_for_apt "$p"); do names+=("$m"); done; else names+=("$p"); fi ;;
+            dnf) if declare -F map_pkg_for_dnf >/dev/null; then for m in $(map_pkg_for_dnf "$p"); do names+=("$m"); done; else names+=("$p"); fi ;;
+            *)   names+=("$p") ;;
+        esac
+    done
+    [[ ${#names[@]} -gt 0 ]] || { echo "install ${*} with your package manager"; return 0; }
+    case "$PKG_MGR" in
+        apt) echo "sudo apt install ${names[*]}" ;;
+        dnf) echo "sudo dnf install ${names[*]}" ;;
+        *)   echo "sudo pacman -S ${names[*]}" ;;
+    esac
+}
+upgrade_hint() {
+    case "$PKG_MGR" in
+        apt) echo "sudo apt update && sudo apt upgrade" ;;
+        dnf) echo "sudo dnf upgrade --refresh" ;;
+        *)   echo "sudo pacman -Syu" ;;
+    esac
+}
+
 if [[ "$PACKAGES" == "true" ]]; then
     [[ -n "$PKG_MGR" ]] || die "No supported package manager found (pacman or apt). Install the packages from README.md by hand, then run again with --no-packages."
     case " $DISTRO_ID $DISTRO_LIKE " in
@@ -472,7 +498,7 @@ log_info "For: ${BOLD}${TARGET_USER}${RESET} (home ${TARGET_HOME}); Halcyon goes
 
 # ---- sudo, kept alive for the whole run so a long build cannot make it ask again halfway
 if [[ $EUID -ne 0 ]]; then
-    command -v sudo >/dev/null 2>&1 || die "sudo is required ($([[ "$PKG_MGR" == "apt" ]] && echo "apt install sudo" || echo "pacman -S sudo")), or run this as root with --user NAME."
+    command -v sudo >/dev/null 2>&1 || die "sudo is required (as root: $(pkg_hint sudo | sed 's/^sudo //')), or run this as root with --user NAME."
     if [[ "$DRY_RUN" != "true" ]]; then
         log_info "Checking sudo..."
         sudo -v || die "sudo did not accept the password: administrator rights are needed."
@@ -775,12 +801,8 @@ install_pkgs_apt() {
                         if command -v "$p" >/dev/null 2>&1; then
                             log_info "$p is already available in PATH."
                         else
-                            log_warn "$p is not in official apt repositories: checking alternative sources..."
-                            if [[ "$p" == "hyprland" ]] && command -v add-apt-repository >/dev/null 2>&1; then
-                                if ask "Add Hyprland PPA (ppa:cpp-spence/hyprland) for Ubuntu/Pop!_OS?"; then
-                                    as_root add-apt-repository -y ppa:cpp-spence/hyprland && as_root apt-get update -qq && to_install+=("hyprland") || true
-                                fi
-                            fi
+                            # (there is no maintained PPA: the one this used to offer, ppa:cpp-spence/hyprland, does not exist)
+                            log_warn "$p is not in this release's apt repositories. Halcyon needs Hyprland 0.55+ and Quickshell from the distribution: Debian testing / sid or Ubuntu 26.10 and newer have both. See docs/install-debian.md."
                         fi
                     fi
                 fi
@@ -800,10 +822,10 @@ install_pkgs_apt() {
 
     # Post-install symlinks for Debian/Ubuntu binary name differences
     if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
-        as_root ln -sf "$(command -v fdfind)" /usr/local/bin/fd 2>/dev/null || true
+        try run_cmd "Linking fd to fdfind (Debian's name)" as_root ln -sf "$(command -v fdfind)" /usr/local/bin/fd
     fi
     if command -v batcat >/dev/null 2>&1 && ! command -v bat >/dev/null 2>&1; then
-        as_root ln -sf "$(command -v batcat)" /usr/local/bin/bat 2>/dev/null || true
+        try run_cmd "Linking bat to batcat (Debian's name)" as_root ln -sf "$(command -v batcat)" /usr/local/bin/bat
     fi
 
     if [[ "$critical" == "true" && "$DRY_RUN" != "true" ]]; then
@@ -881,7 +903,7 @@ if [[ "$PACKAGES" == "true" ]]; then
         dpkg --print-foreign-architectures 2>/dev/null | grep -q 'i386' && MULTILIB_ENABLED=true
         if [[ "$MULTILIB_ENABLED" != "true" ]]; then
             if ask "Enable i386 multiarch (32-bit architecture for Steam/Wine)?"; then
-                as_root dpkg --add-architecture i386 && as_root apt-get update -qq && MULTILIB_ENABLED=true || true
+                run_cmd "Enabling i386 multiarch" as_root bash -c 'dpkg --add-architecture i386 && apt-get update -qq' && MULTILIB_ENABLED=true || true
             fi
         fi
     else
@@ -908,7 +930,7 @@ if [[ "$PACKAGES" == "true" ]]; then
         if ! command -v Hyprland >/dev/null 2>&1 || [[ "$DB_AGE_DAYS" -gt 7 ]]; then
             if [[ "$AUTO_CONFIRM" == "true" ]]; then
                 command -v Hyprland >/dev/null 2>&1 && UPGRADE=no || UPGRADE=yes
-            elif [[ -t 0 ]] && ask "Full system upgrade first ($([[ "$PKG_MGR" == "apt" ]] && echo "apt update && apt upgrade" || echo "pacman -Syu"))? Recommended: Hyprland is not installed yet or package caches are ${DB_AGE_DAYS} days old."; then
+            elif [[ -t 0 ]] && ask "Full system upgrade first ($(upgrade_hint))? Recommended: Hyprland is not installed yet or package caches are ${DB_AGE_DAYS} days old."; then
                 UPGRADE=yes
             else UPGRADE=no; fi
         else UPGRADE=no; fi
@@ -922,7 +944,7 @@ if [[ "$PACKAGES" == "true" ]]; then
                 || die "The system upgrade failed. Fix pacman (mirrors / keyring) and run again."
         fi
     else
-        log_info "No system upgrade (add --upgrade for one). If installs fail with 404 errors or missing libraries, run: $([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt update && sudo apt upgrade" || echo "sudo pacman -Syu")"
+        log_info "No system upgrade (add --upgrade for one). If installs fail with 404 errors or missing libraries, run: $(upgrade_hint)"
     fi
     install_pkgs --critical base-devel git curl pkgconf pciutils
 else
@@ -1024,7 +1046,7 @@ else
             else
                 log_info "Installing NVIDIA driver via apt..."
                 if command -v ubuntu-drivers >/dev/null 2>&1; then
-                    as_root ubuntu-drivers install || true
+                    try run_cmd "Installing the recommended NVIDIA driver (ubuntu-drivers)" as_root ubuntu-drivers install
                 elif apt-cache show nvidia-driver-550 >/dev/null 2>&1; then
                     install_pkgs nvidia-driver-550 libnvidia-egl-wayland1 nvidia-settings nvtop
                 elif apt-cache show nvidia-driver >/dev/null 2>&1; then
@@ -1729,8 +1751,13 @@ if [[ "$PACKAGES" == "true" ]]; then
             fdir="$HOME/.local/share/fonts/JetBrainsMonoNerd"
             mkdir -p "$fdir"
             tmp="$(mktemp -d)"
-            if curl -fsSL -o "$tmp/jb.tar.xz" "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz"; then
+            # pinned release and checksum (bump both together)
+            url="https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/JetBrainsMono.tar.xz"
+            sum="04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf"
+            if curl -fsSL -o "$tmp/jb.tar.xz" "$url" && echo "$sum  $tmp/jb.tar.xz" | sha256sum -c --status; then
                 tar -xJf "$tmp/jb.tar.xz" -C "$fdir" && fc-cache -f "$fdir"
+            else
+                echo "JetBrainsMono Nerd Font: download failed or the checksum did not match; skipped" >&2
             fi
             rm -rf "$tmp"'
     fi
@@ -1869,7 +1896,7 @@ if command -v Hyprland >/dev/null 2>&1; then
     HL_VER="$(Hyprland --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || true)"
     log_info "Hyprland ${HL_VER:-installed}"
     if [[ -n "$HL_VER" && "$(printf '%s\n0.55\n' "$HL_VER" | sort -V | head -n1)" != "0.55" ]]; then
-        warn_later "Hyprland ${HL_VER} is older than 0.55: Halcyon's config is written in Lua, which needs 0.55 or newer ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt update && sudo apt install hyprland" || echo "sudo pacman -Syu hyprland"))."
+        warn_later "Hyprland ${HL_VER} is older than 0.55: Halcyon's config is written in Lua, which needs 0.55 or newer ($(upgrade_hint), then $(pkg_hint hyprland); on Debian or Ubuntu see docs/install-debian.md)."
     fi
 else warn_later "Hyprland is not installed."; fi
 
@@ -1896,7 +1923,7 @@ ensure_rust() {
         install_pkgs rust                           # the plain package: nothing is removed, nothing conflicts with rustup
     fi
     rust_ok && log_success "Rust: $(run_as_user rustc --version)" \
-            || warn_later "No working Rust toolchain: the helpers (hx, hal, power-manager, touchpad-gestures, recon-deceiver, log-analyst, attacker-dossier, setStaticMac) cannot be built ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install rustc cargo" || echo "sudo pacman -S rust"))."
+            || warn_later "No working Rust toolchain: the helpers (hx, hal, power-manager, touchpad-gestures, recon-deceiver, log-analyst, attacker-dossier, setStaticMac) cannot be built ($(pkg_hint rust))."
 }
 
 if [[ "$DRY_RUN" == "true" ]]; then
@@ -2041,7 +2068,7 @@ if [[ ${#NEED_BUILD[@]} -gt 0 && "$DRY_RUN" != "true" ]] && ! rust_ok; then
     ensure_rust       # only reached when no prebuilt binaries were available (or a download failed)
 fi
 if [[ ${#NEED_BUILD[@]} -gt 0 && "$DRY_RUN" != "true" ]] && ! rust_ok; then
-    warn_later "No Rust toolchain: skipped building the helpers. Install it ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install rustc cargo" || echo "sudo pacman -S rust")), then run install.sh again."
+    warn_later "No Rust toolchain: skipped building the helpers. Install it ($(pkg_hint rust)), then run install.sh again."
     BUILD_FAILED=("${NEED_BUILD[@]}")
 else
     for crate in "${NEED_BUILD[@]}"; do
@@ -2208,7 +2235,7 @@ if command -v dmidecode >/dev/null 2>&1; then
         enable_service halcyon-ram.service --now
         [[ "$DRY_RUN" == "true" || -s /var/lib/halcyon/dmi-memory.txt ]] || warn_later "dmidecode returned no memory details (virtual machine?): the RAM card shows the size only."
     fi
-else warn_later "dmidecode is missing: the RAM card shows the size only ($([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install dmidecode" || echo "sudo pacman -S dmidecode"), then run this again)."; fi
+else warn_later "dmidecode is missing: the RAM card shows the size only ($(pkg_hint dmidecode), then run this again)."; fi
 
 # ---------------------------------------------------------------------------------------------- step 11
 log_step "Step 11: Root helpers (halcyon-tune, sysmode, safety check, backlight)"
@@ -2312,7 +2339,7 @@ kbd_led_present() { compgen -G "/sys/class/leds/*kbd?backlight*" >/dev/null || c
 setup_kbd_backlight() {
     if [[ "$DRY_RUN" == "true" ]]; then log_task "[DRY-RUN] keyboard backlight: detect the laptop and load / install its driver"; return 0; fi
     if kbd_led_present; then log_success "Keyboard backlight driver found: $(basename "$(ls -d /sys/class/leds/*kbd?backlight* /sys/class/leds/*keyboard*backlight* 2>/dev/null | head -n1)")"; return 0; fi
-    if ! is_laptop; then log_info "Keyboard light: this is not a laptop, so there is no keyboard-light driver to load (an RGB keyboard: $([[ "$PKG_MGR" == "apt" ]] && echo "sudo apt install openrgb" || echo "sudo pacman -S openrgb"))."; return 0; fi
+    if ! is_laptop; then log_info "Keyboard light: this is not a laptop, so there is no keyboard-light driver to load (an RGB keyboard: $(pkg_hint openrgb))."; return 0; fi
     local vendor prod ver id mods=() pkgs=() note="" m loaded=()
     vendor="$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)"; prod="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"; ver="$(cat /sys/class/dmi/id/product_version 2>/dev/null)"
     id="$(tr 'A-Z' 'a-z' <<<"$vendor $prod $ver")"
@@ -2337,7 +2364,7 @@ setup_kbd_backlight() {
         *framework*)                   mods=(cros_kbd_led_backlight framework_laptop) ;;
         *acer*)                        mods=(acer_wmi); note="Acer Predator / Nitro 4-zone RGB: AUR package linuwu-sense-dkms" ;;
         *huawei*|*honor*)              mods=(huawei_wmi) ;;
-        *razer*)                       note="Razer keyboards are not a standard keyboard light: install openrazer ($([[ "$PKG_MGR" == "apt" ]] && echo "apt install openrazer-meta" || echo "pacman -S openrazer-daemon")) and polychromatic" ;;
+        *razer*)                       note="Razer keyboards are not a standard keyboard light: install openrazer (https://openrazer.github.io has the steps for each distribution) and polychromatic" ;;
         *)                             mods=(asus_nb_wmi thinkpad_acpi ideapad_laptop dell_laptop hp_wmi samsung_laptop) ;;
     esac
     for m in "${mods[@]}"; do
@@ -2549,10 +2576,12 @@ if [[ "${VLM_PULLED:-false}" == "true" ]]; then
             || warn_later "Could not set the picture model name: run  notes set NOTES_VLM_MODEL $PICK_VLM_MODEL"
     fi
 fi
+# the `ai` / `advisor` commands (copies scripts, links them into ~/.local/bin, adds the PATH line): a side effect, so it is
+# only shown with --dry-run
 if [[ -f "$TARGET_RICE/scripts/install-ai.sh" ]]; then
-    run_as_user bash "$TARGET_RICE/scripts/install-ai.sh" || true
+    try run_as_user_cmd "Installing the ai and advisor commands" bash "$TARGET_RICE/scripts/install-ai.sh"
 elif [[ -f "$RICE_SOURCE/scripts/install-ai.sh" ]]; then
-    run_as_user bash "$RICE_SOURCE/scripts/install-ai.sh" || true
+    try run_as_user_cmd "Installing the ai and advisor commands" bash "$RICE_SOURCE/scripts/install-ai.sh"
 fi
 if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
@@ -2578,7 +2607,7 @@ install_luna() {
     if [[ -x "$TARGET_HOME/.local/bin/luna" && "$(cat "$stamp" 2>/dev/null)" == "$LUNA_REV" ]]; then
         log_success "LUNA: this version is already installed (~/.local/bin/luna)"; return 0
     fi
-    rust_ok || { warn_later "LUNA was not installed: it needs Rust (sudo pacman -S rust), then ./install.sh --luna"; return 0; }
+    rust_ok || { warn_later "LUNA was not installed: it needs Rust ($(pkg_hint rust)), then ./install.sh --luna"; return 0; }
     command -v git >/dev/null 2>&1 || install_pkgs git
     if [[ -d "$src/.git" ]]; then
         run_as_user_cmd "LUNA: fetching" git -C "$src" fetch --quiet origin || { warn_later "LUNA: could not fetch $LUNA_REPO"; return 0; }
@@ -2652,7 +2681,7 @@ install_ai_firewall() {
     if [[ -x /usr/local/bin/ai-firewall && "$(cat "$stamp" 2>/dev/null)" == "$now" ]]; then
         log_success "ai-firewall: this version is already installed"; return 0
     fi
-    rust_ok || { warn_later "ai-firewall needs Rust (sudo pacman -S rustup) to build$keep"; return 1; }
+    rust_ok || { warn_later "ai-firewall needs Rust ($(pkg_hint rustup)) to build$keep"; return 1; }
     run_as_user rustup toolchain list 2>/dev/null | grep -q '^nightly' \
         || { warn_later "ai-firewall needs the nightly toolchain: rustup toolchain install nightly --component rust-src$keep"; return 1; }
     run_as_user bash -c 'command -v bpf-linker' >/dev/null 2>&1 \

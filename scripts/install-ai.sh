@@ -95,7 +95,7 @@ if command -v ollama >/dev/null 2>&1; then
     fi
   fi
 else
-  warn "Ollama is not installed. To use local AI, install Ollama: curl -fsSL https://ollama.com/install.sh | sh"
+  warn "Ollama is not installed. To use local AI, install it with your package manager (Arch: sudo pacman -S ollama, Fedora: sudo dnf install ollama), or run ./install.sh --llm"
 fi
 
 # 6. Run Hardware Model Recommendation
