@@ -8,7 +8,7 @@
 use crate::store::{self, Game};
 use crate::util::*;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct App {
@@ -50,7 +50,7 @@ fn desktop_fields(text: &str) -> (String, bool, String) {
 }
 
 /// The biggest icon the app exports (scalable first).
-fn icon_path(loc: &PathBuf, icon: &str) -> String {
+fn icon_path(loc: &Path, icon: &str) -> String {
     let base = loc.join("export/share/icons/hicolor");
     let mut best: Option<(u32, PathBuf)> = None;
     if let Ok(rd) = fs::read_dir(&base) {

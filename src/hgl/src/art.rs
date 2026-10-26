@@ -19,7 +19,7 @@ pub fn has_art(g: &Game) -> bool {
 }
 
 fn ext_of(url: &str) -> &'static str {
-    let path = url.split(|c: char| c == '?' || c == '#').next().unwrap_or(url).to_ascii_lowercase();
+    let path = url.split(['?', '#']).next().unwrap_or(url).to_ascii_lowercase();
     if path.ends_with(".png") {
         "png"
     } else if path.ends_with(".webp") {

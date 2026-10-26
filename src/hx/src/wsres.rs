@@ -22,7 +22,7 @@ fn snapshot() -> Procs {
             let r = match buf.rfind(')') { Some(i) => &buf[i + 2..], None => continue };
             // fields after the comm: state(0) ppid(1) ... utime(11) stime(12)
             let mut it = r.split_whitespace();
-            let ppid = match it.nth(1).and_then(|x| x.parse().ok()) { Some(v) => v, None => 0 };
+            let ppid = it.nth(1).and_then(|x| x.parse().ok()).unwrap_or_default();
             let ut = match it.nth(9) { Some(x) => x.parse::<u64>().unwrap_or(0), None => continue };
             let st = match it.next() { Some(x) => x.parse::<u64>().unwrap_or(0), None => continue };
             procs.insert(pid, (ppid, ut + st));
