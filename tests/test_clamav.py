@@ -140,6 +140,22 @@ try:
     check("line break in a name -> the scan fails with the reason", "no error", "Fail")
 except ai.Fail as e:
     check("line break in a name -> the scan fails with the reason", "Rename or remove it" in str(e), True)
+os.remove(os.path.join(scan_dir, "sub", "x\nreal.exe: Forged FOUND"))
+ai.clam_scan = real_clam_scan
+
+# too many files to check: fail closed
+ai.CLAM_MAX_FILES = 0          # the folder holds one file: one more than allowed
+nfiles, found, err = real_clam_scan([scan_dir])
+check("too many files -> nothing trusted", (found, "too many" in err), ([], True))
+ai.CLAM_MAX_FILES = 200000
+
+# a name with a line break that appears while the scan runs: caught afterwards
+with open(os.path.join(fake, "clamscan"), "w") as fh:
+    fh.write("#!/bin/sh\n"
+             f"touch '{scan_dir}/sub/late\nreal.exe: Late FOUND'\n"
+             f"echo '{real_hit}: Unix.Test FOUND'\necho 'Scanned files: 1'\nexit 1\n")
+nfiles, found, err = real_clam_scan([scan_dir])
+check("renamed during the scan -> nothing trusted", (found, "changed during the scan" in err), ([], True))
 check("fix commands stop option parsing before the file names", all(" -- " in f["cmd"] for f in r["fixes"][:2]), True)
 
 print(f"{n - bad}/{n} checks passed")
