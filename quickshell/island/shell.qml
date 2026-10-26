@@ -143,6 +143,7 @@ ShellRoot {
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsCalendar: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: false,   // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
         dialogStarStyle: "none",   // moving | constellations | both | none : dialog star style (none by default: quiet, clean boxes)
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
+        boxShadow: true,           // the soft shadow around every Glass box (Settings > Look; Glass.qml)
         consoleLuna: false,        // the console corner opens Luna's chat instead of the terminal (Desktop builder > Console)
         windowMode: "overlay",     // overlay | desktop : centres float above everything, or open as ordinary windows on the workspace (Host.qml)
         floatAll: false,           // every window floats, no tiling (scripts/floating-mode.sh, hyprland/rules.lua)
@@ -553,6 +554,7 @@ ShellRoot {
         surfaceStyle: root.opt.surface || "tint"
         uiStyle: root.opt.uiStyle === "legacy" || root.opt.uiStyle === "classic" ? root.opt.uiStyle : "new"
         deskWin: root.opt.windowMode === "desktop"
+        boxShadow: root.opt.boxShadow !== false
         glassShift: root.glassShift
         motion: root.lean ? 0 : (root.gaming ? 0.25 : root.motion)
         growth: root.growth
@@ -625,6 +627,7 @@ ShellRoot {
         scrollMouse: root.scrollMouse
         opt: root.opt
         hyCur: root.hyCur
+        avAiOn: root.avAiOn
         onSetting: (k, v) => root.setSetting(k, v)
         onWallpaperSet: path => root.setWallpaper(path)
         onAction: id => {
@@ -665,6 +668,11 @@ ShellRoot {
                 var avm = id.substring(17)
                 if (avm === "ai" || avm === "clamav" || avm === "off") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-select.sh " + avm) }
             }
+            else if (id === "fw-center") { settingsWin.hide(); root.runCommand("firewall") }            // Settings > Security > ai-firewall: these five had no handler, so the buttons did nothing
+            else if (id === "fw-page") { settingsWin.hide(); root.runCommand("firewall-page") }
+            else if (id === "fw-top") root.runCommand("firewall-dashboard")
+            else if (id === "fw-doctor") { settingsWin.hide(); quickTerm.run("sudo ai-firewall doctor --fix") }
+            else if (id === "fw-config") { settingsWin.hide(); quickTerm.run("sudo -e /etc/ai-firewall/config.toml") }
             else if (id.indexOf("antivirus-ai:") === 0) {                // Settings > Security > AI review of alerts: on | off, with sudo in the console
                 var avi = id.substring(13)
                 if (avi === "on" || avi === "off") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-ai.sh " + avi) }
@@ -1192,6 +1200,14 @@ ShellRoot {
             root.tourAuto()
         }
     }
+    // AI review of antivirus alerts (scripts/antivirus-ai.sh): read at start and whenever Settings opens
+    property bool avAiOn: false
+    Process {
+        id: avAiProc
+        command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-ai.sh", "status"]
+        stdout: StdioCollector { onStreamFinished: root.avAiOn = text.trim().indexOf("on") === 0 }
+    }
+    Connections { target: settingsWin; function onOpenChanged() { if (settingsWin.open && root.avInstalled && !avAiProc.running) avAiProc.running = true } }
     property bool lunaInstalled: false
     Process { running: true; command: ["sh", "-c", "test -x \"$HOME/.local/bin/luna\" || command -v luna >/dev/null"]; onExited: code => root.lunaInstalled = code === 0 }
     function tourPlan(mode) { return TourData.plan(mode, tourCur, tourSeenFile, { sysmode: cmdTree.available, firewall: root.fwInstalled, antivirus: root.avInstalled, luna: root.lunaInstalled }) }
@@ -1373,10 +1389,10 @@ ShellRoot {
         if (powerMenu.open) { powerMenu.hide(); return true }
         if (notesMenu.open) { notesMenu.close(); return true }
         if (clipMenu.open) { clipMenu.close(); return true }
-        if (gameCenter.open) { gameCenter.close(); return true }
-        if (studyCenter.open) { studyCenter.hide(); return true }
-        if (lunaCenter.open) { lunaCenter.hide(); return true }
-        if (securityCenter.open) { securityCenter.hide(); return true }
+        if (gameCenter.open && !gameCenter.asWindow) { gameCenter.close(); return true }
+        if (studyCenter.open && !studyCenter.asWindow) { studyCenter.hide(); return true }
+        if (lunaCenter.open && !lunaCenter.asWindow) { lunaCenter.hide(); return true }
+        if (securityCenter.open && !securityCenter.asWindow) { securityCenter.hide(); return true }
         if (shotMenu.open) { shotMenu.close(); return true }
         if (musicMenu.open) { musicMenu.close(); return true }
         if (calendar.open) { calendar.hide(); return true }
@@ -1961,7 +1977,7 @@ ShellRoot {
             return
         }
         switch (id) {
-        case "firewall": if (studyCenter.open) studyCenter.hide(); if (gameCenter.open) gameCenter.hide(); fwCenter.toggle(); break
+        case "firewall": if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); fwCenter.toggle(); break
         case "firewall-page": Qt.callLater(() => { root.page = "fw" }); return      // after the launcher's own close (which sets home)
         case "firewall-dashboard": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", "sudo ai-firewall top"]); break
         case "wallpaper": randomWallpaper(); break
@@ -1997,10 +2013,10 @@ ShellRoot {
         // game launcher (hgl): `>games` is the quick list in the launcher, the rest opens the Game Center (GameCenter.qml)
         case "games": launcher.openGames(); if (page !== "launcher") { overviewOpen = false; page = "launcher" } break
         case "gamecenter": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggle(); break
-        case "study": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (lunaCenter.open) lunaCenter.hide(); studyCenter.toggle(); break
-        case "luna": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (studyCenter.open) studyCenter.hide(); lunaCenter.toggle(); break
-        case "security": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (studyCenter.open) studyCenter.hide(); securityCenter.toggle(); break
-        case "firewall": case "antivirus": case "exceptions": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (studyCenter.open) studyCenter.hide(); securityCenter.show(id); break
+        case "study": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (lunaCenter.open && !lunaCenter.asWindow) lunaCenter.hide(); studyCenter.toggle(); break
+        case "luna": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); lunaCenter.toggle(); break
+        case "security": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); securityCenter.toggle(); break
+        case "firewall": case "antivirus": case "exceptions": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); securityCenter.show(id); break
         case "games-add": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.showAdd(); break
         case "games-import": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("library"); gameCenter.act([root.hgl, "import", "steam"], "Steam library read"); break
         case "games-doctor": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("doctor"); break
