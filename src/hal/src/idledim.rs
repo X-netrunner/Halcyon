@@ -3,8 +3,6 @@
 use crate::light;
 use std::fs;
 use std::path::Path;
-use std::thread::sleep;
-use std::time::Duration;
 
 const FLAG_FILE: &str = "/dev/shm/halcyon-dim";
 
@@ -40,12 +38,8 @@ pub fn run(args: &[String]) -> i32 {
 
             // Fade screen down to 1
             if !sdev.is_empty() && scur > 1 {
-                let steps = 8;
-                for i in 1..=steps {
-                    let v = scur + (1 - scur) * i / steps;
-                    light::backlight_set_direct("backlight", &sdev, &v.to_string());
-                    sleep(Duration::from_millis(50));
-                }
+                let (_, _, smax) = light::best_screen_info().unwrap_or_default();
+                light::fade_screen(&sdev, scur, 1, smax, 700);
             }
             0
         }
@@ -61,7 +55,13 @@ pub fn run(args: &[String]) -> i32 {
                         let dev = parts[1];
                         let val = parts[2];
                         match kind {
-                            "screen" => light::backlight_set_direct("backlight", dev, val),
+                            "screen" => {
+                                let target = val.parse::<i64>().unwrap_or(1);
+                                match light::best_screen_info() {
+                                    Some((_, cur, max)) if cur != target => light::fade_screen(dev, cur, target, max, 300),
+                                    _ => light::backlight_set_direct("backlight", dev, val),
+                                }
+                            }
                             "kbd" => light::backlight_set_direct("leds", dev, val),
                             _ => {}
                         }

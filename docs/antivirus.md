@@ -3,6 +3,23 @@
 Why ai-antivirus (and other behaviour-based antivirus tools) can report Halcyon's installer, and the exception Halcyon adds for it.
 Back to the [README](../README.md).
 
+## Why ai-antivirus, and how it differs from ClamAV
+
+ai-antivirus is a host EDR, not only a file scanner. A sensor (eBPF, fanotify, `/proc`) sees programs start, files written and
+connections opened as they happen. The engine judges them with pacman trust (a file from a package that is unchanged is trusted),
+a hash table, YARA rules and behaviour rules (a download piped into a shell, a new autostart entry, a program run from `/tmp`).
+ClamAV matches file contents against known samples: it has a huge library of those, but it cannot see what a program does, so a new
+or home-made script that behaves badly passes it. The two complement each other, and Halcyon's ClamAV page can run next to
+ai-antivirus.
+
+Everything runs on this computer: no file is uploaded, there is no account and no telemetry. The local model only explains and
+advises; it never decides or acts. Automatic responses (freeze, kill, quarantine, block) are off in the default alert-only mode,
+and above a set level they need your approval.
+
+Limits, stated plainly: ai-antivirus is young (a two-week soak on a real desktop is still open), it does not scan a file before it
+runs yet, its sample library is far smaller than a commercial product's, and its responses have only been tried on harmless test
+targets. It does not replace updates, backups or care.
+
 ## What gets reported, and why
 
 None of Halcyon's files match a malware signature. Halcyon's files were checked against ai-antivirus's shipped YARA rules
@@ -54,4 +71,11 @@ than the notifications, skip the exceptions:
 
 ClamAV is signature-based only and does not watch behaviour, so the rules above do not apply to it. If ClamAV reports a Halcyon
 file, run `clamscan --infected <file>` to see the signature name and open an issue with it. A signature hit on a Halcyon file is
-a false positive the ClamAV project can fix, so it should not be excepted locally.
+a false positive the ClamAV project can fix, so report it there (the scan offers the link).
+
+After a scan on the ClamAV page the local model looks at each finding (the file's name, type, size, owner package and the
+signature, never its contents) and says false positive, malicious or unsure. Only a *guessing* signature (Heuristics, PUA, an
+encrypted or broken archive) that the model calls a false positive becomes an exception, and only if the file is not a program, or
+a package owns it. The exception pins the file's SHA-256, so a changed file is reported again. A named malware signature and the
+EICAR test file are never excepted. Review or remove exceptions with the Exceptions button, or `halcyon-ai.py clamav exceptions`
+and `halcyon-ai.py clamav forget N`.

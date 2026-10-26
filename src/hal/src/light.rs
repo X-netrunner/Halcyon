@@ -205,6 +205,40 @@ fn backlight_set(args: &[String]) -> i32 {
     1
 }
 
+/// The raw value at step i of n on the way from `from` to `to`. It moves evenly in how bright the screen *looks* (brightness
+/// is perceived on roughly a power-2.2 curve, so equal raw steps look like a sudden jump near the dark end), with a smooth start
+/// and stop. The last step is exactly `to`.
+pub fn fade_value(from: i64, to: i64, max: i64, i: i64, n: i64) -> i64 {
+    if i >= n || max <= 0 {
+        return to;
+    }
+    let t = i as f64 / n as f64;
+    let ease = t * t * (3.0 - 2.0 * t);
+    let perceived = |v: i64| (v.max(0) as f64 / max as f64).powf(1.0 / 2.2);
+    let p = perceived(from) + (perceived(to) - perceived(from)) * ease;
+    let raw = (p.max(0.0).powf(2.2) * max as f64).round() as i64;
+    raw.clamp(from.min(to), from.max(to))
+}
+
+/// Fade the screen backlight `dev` from `from` to `to` over about `ms` milliseconds (a write about every 12 ms, repeats skipped).
+pub fn fade_screen(dev: &str, from: i64, to: i64, max: i64, ms: u64) {
+    let steps = (ms / 12).clamp(8, 80) as i64;
+    let path = format!("/sys/class/backlight/{}/brightness", dev);
+    let mut last = from;
+    for i in 1..=steps {
+        let v = fade_value(from, to, max, i, steps);
+        if v != last {
+            if !write_sysfs(&path, &v.to_string()) {
+                backlight_set_direct("backlight", dev, &v.to_string());
+            }
+            last = v;
+        }
+        if i < steps {
+            std::thread::sleep(std::time::Duration::from_millis(ms / steps as u64));
+        }
+    }
+}
+
 pub fn best_screen_info() -> Option<(String, i64, i64)> {
     best_screen()
 }
@@ -231,4 +265,26 @@ pub fn backlight_set_direct(class: &str, dev: &str, val: &str) {
         return;
     }
     let _ = logind_set(class, dev, val);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fade_value;
+
+    #[test]
+    fn a_fade_is_monotonic_and_ends_exactly() {
+        for (from, to) in [(400, 1), (1, 400), (255, 3)] {
+            let vals: Vec<i64> = (1..=30).map(|i| fade_value(from, to, 400, i, 30)).collect();
+            assert_eq!(*vals.last().unwrap(), to);
+            let down = from > to;
+            assert!(vals.windows(2).all(|w| if down { w[0] >= w[1] } else { w[0] <= w[1] }), "{vals:?}");
+            assert!(vals.iter().all(|v| *v >= from.min(to) && *v <= from.max(to)), "{vals:?}");
+        }
+    }
+
+    #[test]
+    fn a_fade_starts_gently() {
+        // the first step of a 400 -> 1 fade must not already have dropped most of the way
+        assert!(fade_value(400, 1, 400, 1, 30) > 380);
+    }
 }

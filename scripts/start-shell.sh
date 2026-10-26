@@ -124,7 +124,11 @@ say "using $qs ($("$qs" --version 2>&1 | head -n1)) on $WAYLAND_DISPLAY, QT_QPA_
 # Check every 10 minutes (the shell appends with >>, so truncating in place is safe). The lock fd is closed for this helper.
 ( while sleep 600; do [ "$(stat -c %s "$log" 2>/dev/null || echo 0)" -gt 4194304 ] && : > "$log"; done ) 9>&- &
 trim_pid=$!
-trap 'kill "$trim_pid" 2>/dev/null' EXIT INT TERM
+# Halcyon's own caches (island thumbnails / video copies, the Rust build folders) are kept under a limit when Aggressive Memory
+# Freeing is on: two minutes after start, then every 6 hours, at the lowest priority (scripts/cache-trim.py).
+( sleep 120; while :; do nice -n 19 python3 "$RICE/scripts/cache-trim.py" >/dev/null 2>&1; sleep 21600; done ) 9>&- &
+cache_pid=$!
+trap 'kill "$trim_pid" "$cache_pid" 2>/dev/null' EXIT INT TERM
 
 fails=0
 # Last-known-good settings: 60 s after a start that is still running, settings.json is copied to settings.json.good. If the shell then

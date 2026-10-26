@@ -1068,6 +1068,12 @@ ShellRoot {
         onConsoleRequested: cmd => quickTerm.run(cmd)
     }
 
+    // >luna: your saved conversations with Luna, the local assistant (LunaCenter.qml, scripts/halcyon-luna.py)
+    LunaCenter {
+        id: lunaCenter
+        pal: pal
+    }
+
     // >security, >firewall, >antivirus: the firewall (ai-firewall) and the antivirus (ai-antivirus) in one window, each one optional
     // (SecurityCenter.qml; install.sh --firewall ai, --antivirus). Root actions run in the pop-out console.
     SecurityCenter {
@@ -1112,7 +1118,7 @@ ShellRoot {
     // notifs.centerOpen is NOT in this list on purpose: the notification window does not need to raise itself above itself, and the
     // raise() un-maps the window for a moment, which made the box think the pointer had left and close about a second after opening.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
-        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || studyCenter.open || securityCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
+        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || studyCenter.open || lunaCenter.open || securityCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
         || settingsWin.galleryOpen || settingsWin.builderOpen
         || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
@@ -1355,6 +1361,7 @@ ShellRoot {
         if (clipMenu.open) { clipMenu.close(); return true }
         if (gameCenter.open) { gameCenter.close(); return true }
         if (studyCenter.open) { studyCenter.hide(); return true }
+        if (lunaCenter.open) { lunaCenter.hide(); return true }
         if (securityCenter.open) { securityCenter.hide(); return true }
         if (shotMenu.open) { shotMenu.close(); return true }
         if (musicMenu.open) { musicMenu.close(); return true }
@@ -1976,7 +1983,8 @@ ShellRoot {
         // game launcher (hgl): `>games` is the quick list in the launcher, the rest opens the Game Center (GameCenter.qml)
         case "games": launcher.openGames(); if (page !== "launcher") { overviewOpen = false; page = "launcher" } break
         case "gamecenter": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggle(); break
-        case "study": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); studyCenter.toggle(); break
+        case "study": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (lunaCenter.open) lunaCenter.hide(); studyCenter.toggle(); break
+        case "luna": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (studyCenter.open) studyCenter.hide(); lunaCenter.toggle(); break
         case "security": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (studyCenter.open) studyCenter.hide(); securityCenter.toggle(); break
         case "firewall": case "antivirus": case "exceptions": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open) gameCenter.hide(); if (studyCenter.open) studyCenter.hide(); securityCenter.show(id); break
         case "games-add": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.showAdd(); break
@@ -2642,6 +2650,7 @@ ShellRoot {
         function gamingset(on: bool): void { if (root.gaming !== on) root.setGaming(on) }       // set, for `halcyon ai do gaming on`
         function gamestart(id: string, name: string, since: string, lean: bool): void { root.gameStarted(id, name, Number(since), lean) }   // hgl run
         function gameend(): void { root.gameEnded() }                                                                                     // hgl run, when the game is over
+        function luna(): void { root.runCommand("luna") }                                                                                  // the Luna window (toggle)
         function study(): void { root.runCommand("study") }                                                                                // the Study Center window (toggle)
         function security(): void { root.runCommand("security") }                                                                          // the Security center window (toggle)
         function securitypage(page: string): void { securityCenter.show(page) }                                                           // overview | firewall | antivirus | exceptions | ask

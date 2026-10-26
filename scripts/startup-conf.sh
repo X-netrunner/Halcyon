@@ -4,7 +4,7 @@
 #   startup-conf.sh set KEY VALUE      KEY = NM_APPLET | BLUEMAN | POLKIT | GPU | FILE_ICONS | CLIPBOARD | GESTURES | AUDIO_FOCUS | PORTAL
 #       NM_APPLET / BLUEMAN  0 | 1     takes effect at once (the applet is started / stopped)
 #       POLKIT               auto | hyprpolkitagent | gnome | kde | none    takes effect at the next login
-#       GPU                  igpu | dgpu                                    takes effect at the next login
+#       GPU                  igpu | igpu-only | dgpu                                    takes effect at the next login
 #       FILE_ICONS           small | medium | large                         Thunar icon size (scripts/thunar-look.sh), at once
 #       CLIPBOARD            0 | 1     clipboard history (the two wl-paste watchers + cliphist), started / stopped at once
 #       GESTURES             0 | 1     touchpad edge gestures (touchpad-gestures.service), started / stopped at once
@@ -20,7 +20,7 @@ conf="$RICE/autostart.conf"
 NM_APPLET=0; BLUEMAN=0; POLKIT=auto; CLIPBOARD=1; GESTURES=1; AUDIO_FOCUS=1; AUDIO_RESUME=1; AUDIO_DELAY=2; PORTAL=login
 [ -f "$conf" ] && . "$conf" 2>/dev/null
 
-gpu_now() { local m=igpu; [ -s "$RICE/gpu-mode" ] && m="$(head -n1 "$RICE/gpu-mode")"; case "$m" in dgpu) echo dgpu ;; *) echo igpu ;; esac; }
+gpu_now() { local m=igpu; [ -s "$RICE/gpu-mode" ] && m="$(head -n1 "$RICE/gpu-mode")"; case "$m" in dgpu) echo dgpu ;; igpu-only) echo igpu-only ;; *) echo igpu ;; esac; }
 have() { command -v "$1" >/dev/null 2>&1; }
 exists() { for p in "$@"; do [ -x "$p" ] && return 0; done; return 1; }
 b() { "$@" && echo true || echo false; }
@@ -99,7 +99,7 @@ case "${1:-list}" in
       POLKIT)
         case "$val" in auto|hyprpolkitagent|gnome|kde|none) POLKIT="$val"; write_conf ;; *) echo "bad POLKIT value: $val" >&2; exit 2 ;; esac ;;
       GPU)
-        case "$val" in igpu|dgpu) bash "$RICE/scripts/gpu-mode.sh" "$val" >/dev/null ;; *) echo "bad GPU value: $val" >&2; exit 2 ;; esac ;;
+        case "$val" in igpu|igpu-only|dgpu) bash "$RICE/scripts/gpu-mode.sh" "$val" >/dev/null ;; *) echo "bad GPU value: $val" >&2; exit 2 ;; esac ;;
       FILE_ICONS)
         case "$val" in small|medium|large) bash "$RICE/scripts/thunar-look.sh" "$val" ;; *) echo "bad FILE_ICONS value: $val" >&2; exit 2 ;; esac ;;
       *) echo "unknown key: $key" >&2; exit 2 ;;
