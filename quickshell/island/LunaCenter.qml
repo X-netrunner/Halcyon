@@ -36,10 +36,11 @@ Scope {
     function show() {
         open = true
         note = ""
+        call("prefs", ["pref"])
         check()
         reload(true)
     }
-    function hide() { open = false; confirmDel = ""; renaming = "" }
+    function hide() { open = false; confirmDel = ""; renaming = ""; keyOpen = ""; modelMenu = ""; view = "chat" }
     function toggle() { if (open) hide(); else show() }
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
@@ -83,6 +84,144 @@ Scope {
         return out.join("")
     }
 
+
+    // ---- Luna's settings (the terminal UI's, as a page), her models, her API keys
+    property string view: "chat"            // chat | settings
+    property var cfg: null                  // { categories: [{ name, items: [{ key, label, kind, value, options }] }], keys: [{ name, label, help, set }] }
+    property var installed: []              // [{ name, gb }]
+    property var roles: ({})                // { model, fast, deep, security }
+    property bool reachable: true
+    property string role: "model"           // kept for /model
+    property bool auto: true                // Luna picks the model per question
+    property string page: "models"          // the settings page that is open
+    property string modelMenu: ""           // the open model menu ("" = none)
+    property var gate: ({ state: "", requested: false, key: false, effective: false })
+    property var prefs: ({ liveThink: false, notifyDone: true })
+    function clean(n) { return String(n || "").replace(/^[^A-Za-z]+/, "") }
+    readonly property var refusalKeys: ["llm.security_unrestricted", "llm.security_retry_on_refusal"]
+    function itemPage(cat, key) { return refusalKeys.indexOf(key) >= 0 ? "refusal" : (clean(cat) === "AI & Models" ? "models" : clean(cat)) }
+    function catShows(c) {
+        for (var i = 0; i < c.items.length; i++) { var it = c.items[i]; if (!(it.kind === "value" && !it.options) && itemPage(c.name, it.key) === page) return true }
+        return false
+    }
+    readonly property var pages: {
+        var p = [["models", "Models"]], c = cfg ? cfg.categories : []
+        for (var i = 0; i < c.length; i++) if (clean(c[i].name) !== "AI & Models") p.push([clean(c[i].name), clean(c[i].name)])
+        p.push(["refusal", "No-refusal mode"], ["window", "This window"], ["keys", "API keys"])
+        return p
+    }
+    function pageTitle() { for (var i = 0; i < pages.length; i++) if (pages[i][0] === page) return pages[i][1]; return "Settings" }
+    function modelOpts(withAuto) {
+        var o = withAuto ? [{ id: "__auto", text: "Auto", sub: "Luna picks for each question" }] : []
+        for (var i = 0; i < installed.length; i++) o.push({ id: installed[i].name, text: shortName(installed[i].name), sub: installed[i].gb + " GB" })
+        return o
+    }
+    function setPref(k, v) { call("prefs", ["pref", k, v ? "on" : "off"]) }
+    function termRun(cmd) { Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", cmd + "; echo; read -n1 -s -r -p 'Press any key to close'"]) }
+    // the end of her reasoning, for the live view
+    function tail(t) { t = String(t || ""); if (t.length <= 700) return t; t = t.substring(t.length - 700); var i = t.indexOf(" "); return "…" + (i > 0 ? t.substring(i) : t) }
+    property string keyOpen: ""             // the key being pasted
+    property string keyMsg: ""
+    readonly property var roleNames: [["model", "Main"], ["fast", "Fast"], ["deep", "Deep"], ["security", "Security"]]
+    function openSettings() { view = "settings"; modelMenu = ""; loadSettings() }
+    function showSettings() { show(); openSettings() }
+    function loadSettings() { call("settings", ["settings"]); call2("models", ["models"]); call("prefs", ["pref"]); call("gate", ["gate"]) }
+    function call(what, args) {
+        if (callProc.running) { callQ = callQ.concat([[what, args]]); return }
+        callProc.what = what
+        callProc.command = ["python3", script].concat(args)
+        callProc.running = true
+    }
+    function call2(what, args) { call(what, args) }
+    property var callQ: []
+    Process {
+        id: callProc
+        property string what: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var o = null
+                try { o = JSON.parse(text) } catch (e) { o = null }
+                var w = callProc.what
+                if (o === null) { if (w === "settings") root.note = "Luna did not answer"; }
+                else if (o.type === "error") { root.flash(o.error); if (w === "keysave") root.keyMsg = o.error }
+                else if (o.type === "settings") { root.cfg = o; root.roles = o.models || root.roles; if (o.auto !== undefined) root.auto = o.auto === true }
+                else if (o.type === "models") { root.installed = o.installed || []; root.roles = o.roles || root.roles; root.reachable = o.reachable === true; if (o.auto !== undefined) root.auto = o.auto === true }
+                else if (o.type === "prefs") root.prefs = { liveThink: o.liveThink === true, notifyDone: o.notifyDone === true }
+                else if (o.type === "gate") root.gate = o
+                else if (o.type === "saved") { root.flash("Saved"); root.loadSettings() }
+                else if (o.type === "key_saved") { root.keyOpen = ""; root.keyMsg = ""; root.flash("Key saved in " + (o.where === "keyring" ? "the keyring" : "Luna's secrets file")); root.loadSettings() }
+                else if (o.type === "control") { root.addSys(o.text) }
+            }
+        }
+        onExited: { if (root.callQ.length > 0) { var n = root.callQ[0]; root.callQ = root.callQ.slice(1); root.call(n[0], n[1]) } }
+    }
+    function setSetting(key, value) { call("set", ["set", key, JSON.stringify(value)]) }
+    function pickModel(name, r) { modelMenu = ""; call("model", ["model", name, r]) }
+    Process {
+        id: keyProc
+        stdinEnabled: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var o = null
+                try { o = JSON.parse(text) } catch (e) { o = null }
+                if (o && o.type === "key_saved") { root.keyOpen = ""; root.keyMsg = ""; root.flash("Key saved in " + (o.where === "keyring" ? "the keyring" : "Luna's secrets file")); root.loadSettings() }
+                else root.keyMsg = o && o.error ? o.error : "That did not work."
+            }
+        }
+    }
+    function saveKey(name, value) {
+        value = String(value || "").trim()
+        if (value === "" || keyProc.running) return
+        keyMsg = ""
+        keyProc.command = ["python3", script, "key", name]
+        keyProc.running = true
+        keyProc.write(value + "\n")         // on stdin: a key in the command line would show in `ps`
+    }
+
+    // ---- slash commands (the terminal UI's, for the ones that make sense in a window)
+    readonly property var slashCmds: [
+        { c: "/model", d: "Switch Luna's model: /model NAME (or see the list)" },
+        { c: "/settings", d: "Luna's settings, keys and models" },
+        { c: "/keys", d: "Paste an API key" },
+        { c: "/status", d: "Halcyon at a glance: firewall, antivirus, AI, GPU" },
+        { c: "/new", d: "Start a new chat" },
+        { c: "/clear", d: "Empty this chat and Luna's memory of it" },
+        { c: "/test-model", d: "Is Ollama answering, and which models does Luna use" },
+        { c: "/help", d: "These commands" },
+        { c: "/exit", d: "Close this window" }
+    ]
+    function addSys(t) { msgs = msgs.concat([{ role: "sys", text: String(t) }]) }
+    // true when the text was a command (nothing goes to the model)
+    function runSlash(raw) {
+        var t = String(raw).trim()
+        if (t.charAt(0) !== "/") return false
+        var parts = t.split(/\s+/), c = parts[0].toLowerCase(), arg = parts.slice(1).join(" ")
+        if (c === "/model" || c === "/models") {
+            if (arg === "" || c === "/models") { openSettings(); role = "model"; return true }
+            call("model", ["model", arg, "model"]); addSys("Switching Luna's main model to " + arg + "…"); return true
+        }
+        if (c === "/settings" || c === "/config") { openSettings(); return true }
+        if (c === "/keys") { openSettings(); return true }
+        if (c === "/status") { addSys("Looking…"); call("control", ["control", "info", "overview"]); return true }
+        if (c === "/new") { newChat(); return true }
+        if (c === "/clear") { if (cur !== "") { Quickshell.execDetached(["python3", script, "clear", cur]) } msgs = []; reload(false); return true }
+        if (c === "/test-model") { addSys("Asking Ollama…"); call("models", ["models"]); testing = true; return true }
+        if (c === "/help") { addSys(slashCmds.map(function (x) { return x.c + "   " + x.d }).join("\n")); return true }
+        if (c === "/exit" || c === "/quit") { hide(); return true }
+        addSys("Unknown command " + c + ". Type /help.")
+        return true
+    }
+    property bool testing: false
+    onInstalledChanged: if (testing) { testing = false; addSys(reachable ? "Ollama answers. Luna's main model: " + (roles.model || "?") + (roles.fast ? ", fast: " + roles.fast : "") + (roles.deep ? ", deep: " + roles.deep : "") + (roles.security ? ", security: " + roles.security : "") + ". " + installed.length + " models installed." : "Ollama is not answering. Start it with: systemctl --user start ollama (or sudo systemctl start ollama).") }
+    readonly property var slashHits: {
+        var t = String(askText).trim()
+        if (t.charAt(0) !== "/" || t.indexOf(" ") >= 0) return []
+        return slashCmds.filter(function (x) { return x.c.indexOf(t.toLowerCase()) === 0 })
+    }
+    property string askText: ""
+    property int slashSel: 0
+    onAskTextChanged: slashSel = 0
+
     // ---- is Luna there
     function check() { if (!statusProc.running) statusProc.running = true }
     Process {
@@ -93,7 +232,7 @@ Scope {
                 try {
                     var o = JSON.parse(text)
                     root.ok = o.ok === true
-                    root.problem = o.installed === false ? "Luna is not installed. Run ./install.sh --luna, then open this again." : (o.blocked || "")
+                    root.problem = o.installed === false ? "Luna is not installed. Run ./install.sh --luna, then open this again." : (o.old === true ? "This Luna is older than the window. Update Luna (./install.sh --luna, or rebuild it from github.com/X-netrunner/LUNA-AI) and open this again." : (o.blocked || ""))
                 } catch (e) { root.ok = false; root.problem = "No answer from halcyon-luna.py (is python3 there?)" }
             }
         }
@@ -160,7 +299,9 @@ Scope {
     // ---- a turn
     function send(q) {
         q = String(q || "").trim()
-        if (q === "" || busy) return
+        if (q === "") return
+        if (runSlash(q)) return
+        if (busy) return
         if (!ok) { flash(problem !== "" ? problem : "Luna is not available."); return }
         msgs = msgs.concat([{ role: "you", text: q }, { role: "luna", text: "", tools: [], model: "", secs: 0, think: "", live: true, bad: false }])
         status = "thinking"
@@ -214,6 +355,10 @@ Scope {
             root.patchLast(function (c) { if (c.live) { c.live = false; if (c.text === "") { c.text = "Stopped."; c.bad = true } } })
             root.check()
             root.reload(false)
+            if (!root.open && root.prefs.notifyDone && root.msgs.length > 0) {
+                var l = root.msgs[root.msgs.length - 1]
+                if (l.role === "luna" && l.text !== "" && !l.bad) Quickshell.execDetached(["notify-send", "-a", "Luna", "Luna has answered", String(l.text).replace(/\s+/g, " ").substring(0, 140)])
+            }
         }
     }
     function copy(t) { Quickshell.execDetached(["wl-copy", "--", t]); flash("Copied") }
@@ -263,28 +408,100 @@ Scope {
         }
         MouseArea { id: pbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pb.clicked() }
     }
-    component Working: Row {
-        id: wk
-        property string text: ""
-        spacing: 10
-        Row {
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 5
-            Repeater {
-                model: 3
+    // Luna's mark: a moon that waxes while she works and rests full when she has answered
+    component Moon: Canvas {
+        id: mn
+        property real base: 0.5                 // 0 new .. 0.5 full .. 1 new
+        property bool spin: false
+        property real t: 0
+        property color lit: root.pal.accent
+        readonly property int q: Math.round((spin ? t : base) * 24) % 24
+        implicitWidth: 22
+        implicitHeight: 22
+        onQChanged: requestPaint()
+        onLitChanged: requestPaint()
+        NumberAnimation on t { from: 0; to: 1; duration: 4800; loops: Animation.Infinite; running: mn.spin && root.open }
+        onPaint: {
+            var c = getContext("2d"), r = width / 2 - 1, cx = width / 2, cy = height / 2
+            c.reset()
+            c.fillStyle = Qt.alpha(mn.lit, 0.16)
+            c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill()
+            var k = Math.cos(q / 24 * Math.PI * 2), wax = q <= 12, n = 28, i, y, w, x
+            c.fillStyle = mn.lit
+            c.beginPath()
+            for (i = 0; i <= n; i++) { y = -r + 2 * r * i / n; w = Math.sqrt(Math.max(0, r * r - y * y)); x = wax ? w : -w; if (i === 0) c.moveTo(cx + x, cy + y); else c.lineTo(cx + x, cy + y) }
+            for (i = n; i >= 0; i--) { y = -r + 2 * r * i / n; w = Math.sqrt(Math.max(0, r * r - y * y)); x = (wax ? 1 : -1) * k * w; c.lineTo(cx + x, cy + y) }
+            c.closePath(); c.fill()
+        }
+    }
+    component Sw: Rectangle {
+        id: sw
+        property bool on: false
+        signal toggled(bool v)
+        width: 42; height: 24; radius: 12
+        color: on ? root.pal.accent : Qt.alpha(root.pal.text, 0.18)
+        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Rectangle {
+            width: 18; height: 18; radius: 9; y: 3
+            x: sw.on ? 21 : 3
+            color: sw.on ? root.pal.bg : root.pal.text
+            Behavior on x { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+        }
+        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: sw.toggled(!sw.on) }
+    }
+    // a menu: one line that shows the choice, the list opens right under it
+    component Pick: Column {
+        id: pk
+        property string key: ""
+        property string title: ""
+        property string current: ""
+        property string chosen: ""
+        property var options: []
+        signal picked(string id)
+        readonly property bool opened: root.modelMenu === key
+        spacing: 4
+        Rectangle {
+            width: parent.width; height: 42; radius: 21
+            color: pkMa.containsMouse || pk.opened ? Qt.alpha(root.pal.text, 0.09) : Qt.alpha(root.pal.text, 0.05)
+            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+            Text { anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter } text: pk.title; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+            Row {
+                anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                spacing: 8
+                Text { anchors.verticalCenter: parent.verticalCenter; text: pk.current; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                Text { anchors.verticalCenter: parent.verticalCenter; text: String.fromCodePoint(pk.opened ? 0xF0143 : 0xF0140); color: root.pal.muted; font.family: root.pal.font; font.pixelSize: 15 }
+            }
+            MouseArea { id: pkMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.modelMenu = pk.opened ? "" : pk.key }
+        }
+        Rectangle {
+            visible: pk.opened
+            width: parent.width
+            height: Math.min(pkList.contentHeight, 238) + 12
+            radius: 18
+            color: Qt.alpha(root.pal.surface, 1)
+            border.width: 1
+            border.color: root.pal.lineSoft
+            ListView {
+                id: pkList
+                anchors { fill: parent; margins: 6 }
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                model: pk.options
                 delegate: Rectangle {
-                    required property int index
-                    width: 6; height: 6; radius: 3
-                    color: root.pal.accent
-                    opacity: 0.25 + 0.75 * Math.max(0, Math.sin((dots.t - index * 0.18) * Math.PI * 2))
+                    required property var modelData
+                    readonly property bool on: modelData.id === pk.chosen
+                    width: pkList.width; height: 34; radius: 12
+                    color: on ? Qt.alpha(root.pal.accent, 0.18) : (oMa2.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent")
+                    Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: modelData.text; color: on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: on ? Font.DemiBold : Font.Normal }
+                    Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter } text: modelData.sub || ""; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                    MouseArea { id: oMa2; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pk.picked(modelData.id) }
                 }
             }
         }
-        Item {
-            id: dots
-            property real t: 0
-            NumberAnimation on t { from: 0; to: 1; duration: 1300; loops: Animation.Infinite; running: wk.visible && root.open }
-        }
+    }
+    component Working: Row {
+        id: wk
+        property string text: ""
         Text { anchors.verticalCenter: parent.verticalCenter; text: wk.text; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; elide: Text.ElideRight; width: Math.min(implicitWidth, 520) }
     }
 
@@ -355,6 +572,7 @@ Scope {
                             Rectangle { anchors { top: parent.top; bottom: parent.bottom; right: parent.right; topMargin: 24; bottomMargin: 24 } width: 1; color: root.pal.lineSoft }
 
                             ColumnLayout {
+                                visible: root.view === "chat"
                                 anchors.fill: parent
                                 anchors.margins: 20
                                 anchors.rightMargin: 21
@@ -469,6 +687,41 @@ Scope {
                                     }
                                 }
                             }
+
+                            // the settings pages take the place of the chats while Settings is open
+                            ColumnLayout {
+                                visible: root.view === "settings"
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                anchors.rightMargin: 21
+                                spacing: 14
+                                Text { text: "Settings"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.DemiBold }
+                                PrimaryBtn { Layout.fillWidth: true; label: "Back to chat"; glyph: String.fromCodePoint(0xF0141); onClicked: root.view = "chat" }
+                                Flickable {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    contentHeight: pageCol.height
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    Column {
+                                        id: pageCol
+                                        width: parent.width
+                                        spacing: 2
+                                        Repeater {
+                                            model: root.pages
+                                            delegate: Rectangle {
+                                                required property var modelData
+                                                readonly property bool active: root.page === modelData[0]
+                                                width: pageCol.width; height: 42; radius: 14
+                                                color: active ? Qt.alpha(root.pal.accent, 0.16) : (pgMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
+                                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                Text { anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter } text: modelData[1]; color: active ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: active ? Font.DemiBold : Font.Normal }
+                                                MouseArea { id: pgMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.page = modelData[0]; root.modelMenu = ""; root.keyOpen = "" } }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // ======================== the chat
@@ -486,7 +739,7 @@ Scope {
                                     Text {
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
-                                        text: root.cur === "" ? "New chat" : (function () { for (var i = 0; i < root.sessions.length; i++) if (root.sessions[i].id === root.cur) return root.sessions[i].title; return "Chat" })()
+                                        text: root.view === "settings" ? root.pageTitle() : root.cur === "" ? "New chat" : (function () { for (var i = 0; i < root.sessions.length; i++) if (root.sessions[i].id === root.cur) return root.sessions[i].title; return "Chat" })()
                                         color: root.pal.text
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tTitle
@@ -498,6 +751,12 @@ Scope {
                                         color: root.pal.muted
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tCap + 1
+                                    }
+                                    LinkBtn {
+                                        visible: root.view !== "settings"
+                                        label: root.view === "settings" ? "Back to chat" : "Settings"
+                                        glyph: String.fromCodePoint(root.view === "settings" ? 0xF0141 : 0xF0493)
+                                        onClicked: { if (root.view === "settings") root.view = "chat"; else root.openSettings() }
                                     }
                                     LinkBtn { label: "Close"; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }
                                 }
@@ -511,16 +770,325 @@ Scope {
                                     Text { id: probT; x: 16; y: 12; width: parent.width - 32; wrapMode: Text.Wrap; text: root.problem; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                 }
 
+
+                                // ============ settings: one page at a time (the list is on the left)
+                                Flickable {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    visible: root.view === "settings"
+                                    clip: true
+                                    contentHeight: setCol.height + 20
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    Column {
+                                        id: setCol
+                                        width: Math.min(parent.width, 640)
+                                        spacing: 22
+
+                                        // ---- models: Auto, or one model for everything
+                                        Column {
+                                            visible: root.page === "models"
+                                            width: parent.width
+                                            spacing: 10
+                                            Pick {
+                                                width: parent.width
+                                                key: "main"
+                                                title: "Model"
+                                                current: root.auto ? "Auto" : root.shortName(root.roles.model || "")
+                                                chosen: root.auto ? "__auto" : (root.roles.model || "")
+                                                options: root.modelOpts(true)
+                                                onPicked: id => {
+                                                    root.modelMenu = ""
+                                                    if (id === "__auto") root.setSetting("llm.auto_route", true)
+                                                    else { root.pickModel(id, "model"); root.setSetting("llm.auto_route", false) }
+                                                }
+                                            }
+                                            Text {
+                                                visible: !root.pal.hideHints
+                                                width: parent.width
+                                                wrapMode: Text.Wrap
+                                                text: root.auto ? "Luna chooses for each question: fast for greetings, main for most things, deep for code, security for security work." : "Every question goes to this one model."
+                                                color: root.pal.muted
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap + 1
+                                            }
+                                            Text {
+                                                visible: !root.reachable
+                                                width: parent.width
+                                                wrapMode: Text.Wrap
+                                                text: "Ollama is not answering. Start it, then open Settings again."
+                                                color: root.pal.bad
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap + 1
+                                            }
+                                            Column {
+                                                visible: root.auto
+                                                width: parent.width
+                                                spacing: 8
+                                                topPadding: 8
+                                                Repeater {
+                                                    model: root.roleNames
+                                                    delegate: Pick {
+                                                        required property var modelData
+                                                        width: setCol.width
+                                                        key: modelData[0]
+                                                        title: modelData[1]
+                                                        current: root.roles[modelData[0]] ? root.shortName(root.roles[modelData[0]]) : "not set"
+                                                        chosen: root.roles[modelData[0]] || ""
+                                                        options: root.modelOpts(false)
+                                                        onPicked: id => root.pickModel(id, modelData[0])
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // ---- no refusal: the state, the two models that serve it, how to change it
+                                        Column {
+                                            visible: root.page === "refusal"
+                                            width: parent.width
+                                            spacing: 12
+                                            Rectangle {
+                                                width: parent.width
+                                                height: gateRow.implicitHeight + 28
+                                                radius: 18
+                                                color: root.gate.effective ? Qt.alpha(root.pal.good, 0.14) : Qt.alpha(root.pal.text, 0.06)
+                                                Column {
+                                                    id: gateRow
+                                                    x: 18; y: 14
+                                                    width: parent.width - 36
+                                                    spacing: 4
+                                                    Text { text: root.gate.effective ? "No-refusal mode is on" : "No-refusal mode is off"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                                    Text {
+                                                        width: parent.width
+                                                        wrapMode: Text.Wrap
+                                                        text: root.gate.effective ? "Security questions go to " + (root.roles.security_nr ? root.shortName(root.roles.security_nr) : "your security model") + ", which has its refusals removed in the weights."
+                                                              : (!root.gate.key ? "There is no developer key yet. Create one, then unlock." : (root.gate.requested ? "It is requested but locked. Unlock it with your developer key." : "Unlock it with your developer key to turn it on."))
+                                                        color: root.pal.muted
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tCap + 1
+                                                    }
+                                                }
+                                            }
+                                            Flow {
+                                                width: parent.width
+                                                spacing: 8
+                                                PrimaryBtn { visible: !root.gate.key; label: "Create a developer key"; onClicked: root.termRun("luna --gen-dev-key") }
+                                                PrimaryBtn { visible: root.gate.key && !root.gate.effective; label: "Unlock"; onClicked: root.termRun("luna --unlock-security") }
+                                                LinkBtn { visible: root.gate.effective; label: "Lock again"; onClicked: { root.termRun("luna --lock-security"); root.flash("Locking in the terminal") } }
+                                                LinkBtn { label: "Check again"; onClicked: root.call("gate", ["gate"]) }
+                                            }
+                                            Pick {
+                                                width: parent.width
+                                                key: "security_nr"
+                                                title: "Security model, no refusal"
+                                                current: root.roles.security_nr ? root.shortName(root.roles.security_nr) : "not set"
+                                                chosen: root.roles.security_nr || ""
+                                                options: root.modelOpts(false)
+                                                onPicked: id => root.pickModel(id, "security_nr")
+                                            }
+                                            Pick {
+                                                width: parent.width
+                                                key: "deep_fallback"
+                                                title: "Code model if the deep one refuses"
+                                                current: root.roles.deep_fallback ? root.shortName(root.roles.deep_fallback) : "not set"
+                                                chosen: root.roles.deep_fallback || ""
+                                                options: root.modelOpts(false)
+                                                onPicked: id => root.pickModel(id, "deep_fallback")
+                                            }
+                                            Text {
+                                                visible: !root.pal.hideHints
+                                                width: parent.width
+                                                wrapMode: Text.Wrap
+                                                text: "Pull one with ollama pull NAME, for example an abliterated build, and it appears in the menus. Only the security model is switched by the developer key; the code model is a plain fallback."
+                                                color: root.pal.muted
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap + 1
+                                            }
+                                        }
+
+                                        // ---- this window
+                                        Column {
+                                            visible: root.page === "window"
+                                            width: parent.width
+                                            spacing: 6
+                                            Repeater {
+                                                model: [["liveThink", "Show her thinking while she works"], ["notifyDone", "Tell me when she answers while this window is closed"]]
+                                                delegate: Item {
+                                                    required property var modelData
+                                                    width: setCol.width; height: 40
+                                                    Text { anchors { left: parent.left; verticalCenter: parent.verticalCenter; right: wsw.left; rightMargin: 12 } elide: Text.ElideRight; text: modelData[1]; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                                    Sw { id: wsw; anchors { right: parent.right; verticalCenter: parent.verticalCenter } on: root.prefs[modelData[0]] === true; onToggled: v => root.setPref(modelData[0], v) }
+                                                }
+                                            }
+                                        }
+
+                                        // ---- Luna's own switches (the terminal UI's), the ones that belong on this page
+                                        Column {
+                                            visible: root.page !== "keys" && root.page !== "window"
+                                            width: parent.width
+                                            spacing: 4
+                                            Repeater {
+                                                model: root.cfg ? root.cfg.categories : []
+                                                delegate: Column {
+                                                    id: catCol
+                                                    required property var modelData
+                                                    visible: root.catShows(modelData)
+                                                    width: setCol.width
+                                                    spacing: 4
+                                                    Repeater {
+                                                        model: catCol.modelData.items
+                                                        delegate: Item {
+                                                            id: setRow
+                                                            required property var modelData
+                                                            readonly property bool hidden: (modelData.kind === "value" && !modelData.options) || modelData.key === "llm.auto_route" || root.itemPage(catCol.modelData.name, modelData.key) !== root.page
+                                                            visible: !hidden
+                                                            width: catCol.width
+                                                            height: hidden ? 0 : 38
+                                                            Text {
+                                                                anchors { left: parent.left; verticalCenter: parent.verticalCenter; right: ctl.left; rightMargin: 12 }
+                                                                elide: Text.ElideRight
+                                                                text: setRow.modelData.label
+                                                                color: root.pal.text
+                                                                font.family: root.pal.uiFont
+                                                                font.pixelSize: root.pal.tBody
+                                                            }
+                                                            Sw {
+                                                                id: ctl
+                                                                visible: setRow.modelData.kind === "toggle"
+                                                                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                                                on: setRow.modelData.value === true
+                                                                onToggled: v => root.setSetting(setRow.modelData.key, v)
+                                                            }
+                                                            // a value that has a few choices (voice) or a gate the developer key controls
+                                                            Row {
+                                                                visible: setRow.modelData.kind !== "toggle"
+                                                                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                                                spacing: 6
+                                                                Repeater {
+                                                                    model: setRow.modelData.kind === "value" && setRow.modelData.options ? setRow.modelData.options : []
+                                                                    delegate: Rectangle {
+                                                                        required property var modelData
+                                                                        readonly property bool on: setRow.modelData.value === modelData
+                                                                        width: oT.implicitWidth + 20; height: 28; radius: 14
+                                                                        color: on ? Qt.alpha(root.pal.accent, 0.2) : (oMa.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent")
+                                                                        Text { id: oT; anchors.centerIn: parent; text: modelData; color: on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                                                        MouseArea { id: oMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.setSetting(setRow.modelData.key, modelData) }
+                                                                    }
+                                                                }
+                                                                Text {
+                                                                    visible: setRow.modelData.kind === "gate"
+                                                                    anchors.verticalCenter: parent.verticalCenter
+                                                                    text: (String(setRow.modelData.value).toUpperCase() === "ON" || String(setRow.modelData.value).toLowerCase() === "unlocked") ? "on" : "locked"
+                                                                    color: root.pal.muted
+                                                                    font.family: root.pal.uiFont
+                                                                    font.pixelSize: root.pal.tBody
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // ---- API keys: paste, Luna stores it
+                                        Column {
+                                            visible: root.page === "keys"
+                                            width: parent.width
+                                            spacing: 8
+                                            Repeater {
+                                                model: root.cfg ? root.cfg.keys : []
+                                                delegate: Column {
+                                                    id: keyCol
+                                                    required property var modelData
+                                                    width: setCol.width
+                                                    spacing: 6
+                                                    Item {
+                                                        width: parent.width
+                                                        height: 36
+                                                        Row {
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            spacing: 10
+                                                            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 8; height: 8; radius: 4; color: keyCol.modelData.set ? root.pal.good : Qt.alpha(root.pal.muted, 0.6) }
+                                                            Text { text: keyCol.modelData.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                                            Text { anchors.verticalCenter: parent.verticalCenter; text: keyCol.modelData.set ? "saved" : "not set"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                                        }
+                                                        LinkBtn {
+                                                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                                            label: root.keyOpen === keyCol.modelData.name ? "Cancel" : (keyCol.modelData.set ? "Replace" : "Paste key")
+                                                            onClicked: { root.keyMsg = ""; root.keyOpen = root.keyOpen === keyCol.modelData.name ? "" : keyCol.modelData.name }
+                                                        }
+                                                    }
+                                                    Column {
+                                                        visible: root.keyOpen === keyCol.modelData.name
+                                                        width: parent.width
+                                                        spacing: 6
+                                                        Text { width: parent.width; wrapMode: Text.Wrap; text: keyCol.modelData.help; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                                        Rectangle {
+                                                            width: parent.width
+                                                            height: 42
+                                                            radius: 21
+                                                            color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.75))
+                                                            border.width: keyIn.activeFocus ? 1 : 0
+                                                            border.color: root.pal.lineFocus
+                                                            TextInput {
+                                                                id: keyIn
+                                                                anchors { left: parent.left; right: saveBtn.left; verticalCenter: parent.verticalCenter; leftMargin: 18; rightMargin: 10 }
+                                                                echoMode: TextInput.Password
+                                                                color: root.pal.text
+                                                                font.family: root.pal.uiFont
+                                                                font.pixelSize: root.pal.tBody
+                                                                clip: true
+                                                                onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
+                                                                Keys.onReturnPressed: root.saveKey(keyCol.modelData.name, text)
+                                                                Text { anchors.verticalCenter: parent.verticalCenter; visible: keyIn.text.length === 0; text: "Paste it here, then Enter"; color: root.pal.muted; font: keyIn.font }
+                                                            }
+                                                            PrimaryBtn {
+                                                                id: saveBtn
+                                                                anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
+                                                                height: 34
+                                                                label: "Save"
+                                                                onClicked: root.saveKey(keyCol.modelData.name, keyIn.text)
+                                                            }
+                                                        }
+                                                        Text { visible: root.keyMsg !== ""; width: parent.width; wrapMode: Text.Wrap; text: root.keyMsg; color: root.pal.bad; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                                    }
+                                                }
+                                            }
+                                            Text { width: parent.width; wrapMode: Text.Wrap; text: "Keys are kept in your system keyring. luna.toml only says keyring:NAME."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        }
+                                    }
+                                }
+
                                 Item {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
+                                    visible: root.view === "chat"
 
                                     Column {
                                         anchors.centerIn: parent
                                         visible: root.msgs.length === 0
-                                        spacing: 8
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Ask Luna anything"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Chats are saved. Open one on the left to carry on."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                        width: Math.min(parent.width, 560)
+                                        spacing: 10
+                                        Moon { anchors.horizontalCenter: parent.horizontalCenter; width: 56; height: 56; base: 0.38 }
+                                        Item { width: 1; height: 6 }
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Ask Luna anything"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.DemiBold }
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "She runs on this machine. Chats are saved on the left."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                        Item { width: 1; height: 8 }
+                                        Flow {
+                                            width: parent.width
+                                            spacing: 8
+                                            layoutDirection: Qt.LeftToRight
+                                            Repeater {
+                                                model: ["Is my firewall running?", "Is my antivirus scanning?", "Give me an overview of this machine"]
+                                                delegate: Rectangle {
+                                                    required property string modelData
+                                                    width: sgT.implicitWidth + 28; height: 34; radius: 17
+                                                    color: sgMa.containsMouse ? Qt.alpha(root.pal.accent, 0.16) : Qt.alpha(root.pal.text, 0.05)
+                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                    Text { id: sgT; anchors.centerIn: parent; text: modelData; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                                    MouseArea { id: sgMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.send(modelData) }
+                                                }
+                                            }
+                                        }
                                     }
 
                                     ListView {
@@ -538,10 +1106,11 @@ Scope {
                                             required property var modelData
                                             required property int index
                                             readonly property bool you: modelData.role === "you"
+                                            readonly property bool sys: modelData.role === "sys"
                                             property bool showThink: false
                                             property bool showTools: false
                                             width: chat.width
-                                            height: you ? youBox.height : aiCol.height
+                                            height: you ? youBox.height : (sys ? sysBox.height : aiCol.height)
                                             Rectangle {
                                                 id: youBox
                                                 visible: mrow.you
@@ -552,77 +1121,144 @@ Scope {
                                                 color: Qt.alpha(root.pal.accent, 0.13)
                                                 Text { id: youT; x: 16; y: 10; width: parent.width - 32; wrapMode: Text.Wrap; text: mrow.modelData.text; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; lineHeight: 1.3 }
                                             }
-                                            Column {
+                                            Rectangle {
+                                                id: sysBox
+                                                visible: mrow.sys
+                                                width: Math.min(parent.width, 640)
+                                                height: sysT.height + 20
+                                                radius: 14
+                                                color: Qt.alpha(root.pal.text, 0.05)
+                                                Text { id: sysT; x: 14; y: 10; width: parent.width - 28; wrapMode: Text.Wrap; text: mrow.modelData.text; color: root.pal.muted; font.family: root.pal.mono; font.pixelSize: root.pal.tCap + 1; lineHeight: 1.25 }
+                                            }
+                                            HoverHandler { id: mHover }
+                                            Row {
                                                 id: aiCol
-                                                visible: !mrow.you
+                                                visible: !mrow.you && !mrow.sys
                                                 width: Math.min(parent.width, 780)
-                                                spacing: 10
-                                                Working {
-                                                    visible: mrow.modelData.live === true && mrow.modelData.text === ""
-                                                    text: root.status + "  ·  " + root.secs + " s"
+                                                spacing: 14
+                                                Moon {
+                                                    y: 3
+                                                    base: mrow.modelData.bad ? 0 : 0.42
+                                                    spin: mrow.modelData.live === true
+                                                    lit: mrow.modelData.bad ? root.pal.bad : root.pal.accent
                                                 }
-                                                Row {
-                                                    spacing: 14
-                                                    visible: mrow.modelData.text !== ""
-                                                    Rectangle { width: 2; height: aiT.height; radius: 1; color: mrow.modelData.bad ? Qt.alpha(root.pal.bad, 0.6) : Qt.alpha(root.pal.accent, 0.45) }
+                                                Column {
+                                                    id: aiBody
+                                                    width: aiCol.width - 36
+                                                    spacing: 8
+                                                    Working {
+                                                        visible: mrow.modelData.live === true && mrow.modelData.text === ""
+                                                        height: 28
+                                                        text: root.status + "  ·  " + root.secs + " s"
+                                                    }
+                                                    Text {
+                                                        visible: mrow.modelData.live === true && root.prefs.liveThink && (mrow.modelData.think || "") !== ""
+                                                        width: parent.width
+                                                        wrapMode: Text.Wrap
+                                                        maximumLineCount: 9
+                                                        text: root.tail(mrow.modelData.think)
+                                                        color: Qt.alpha(root.pal.muted, 0.9)
+                                                        font.family: root.pal.uiFont
+                                                        font.italic: true
+                                                        font.pixelSize: root.pal.tCap + 1
+                                                        lineHeight: 1.3
+                                                    }
                                                     Text {
                                                         id: aiT
-                                                        width: aiCol.width - 16
+                                                        visible: mrow.modelData.text !== ""
+                                                        width: parent.width
                                                         wrapMode: Text.Wrap
                                                         textFormat: Text.RichText
                                                         text: root.fmt(mrow.modelData.text)
                                                         color: mrow.modelData.bad ? root.pal.bad : root.pal.text
                                                         font.family: root.pal.uiFont
                                                         font.pixelSize: root.pal.tBody + 1
-                                                        lineHeight: 1.35
+                                                        lineHeight: 1.4
                                                     }
-                                                }
-                                                Row {
-                                                    leftPadding: 16
-                                                    spacing: 4
-                                                    visible: !mrow.modelData.live && !mrow.modelData.bad
-                                                    Text {
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        visible: (mrow.modelData.model || "") !== ""
-                                                        text: root.shortName(mrow.modelData.model) + (mrow.modelData.secs ? "  ·  " + mrow.modelData.secs + " s" : "")
-                                                        color: Qt.alpha(root.pal.muted, 0.8)
-                                                        font.family: root.pal.uiFont
-                                                        font.pixelSize: root.pal.tCap
-                                                        rightPadding: 6
-                                                    }
-                                                    LinkBtn { visible: (mrow.modelData.tools || []).length > 0; label: (mrow.showTools ? "Hide " : "") + (mrow.modelData.tools || []).length + (((mrow.modelData.tools || []).length === 1) ? " tool used" : " tools used"); onClicked: mrow.showTools = !mrow.showTools }
-                                                    LinkBtn { visible: (mrow.modelData.think || "") !== ""; label: mrow.showThink ? "Hide the reasoning" : "Show the reasoning"; onClicked: mrow.showThink = !mrow.showThink }
-                                                    LinkBtn { label: "Copy"; glyph: String.fromCodePoint(0xF018F); onClicked: root.copy(mrow.modelData.text) }
-                                                    LinkBtn { label: "Save as note"; glyph: String.fromCodePoint(0xF0F8C); onClicked: root.saveNote(mrow.modelData.text) }
-                                                }
-                                                Column {
-                                                    visible: mrow.showTools
-                                                    width: parent.width
-                                                    leftPadding: 16
-                                                    spacing: 3
-                                                    Repeater {
-                                                        model: mrow.modelData.tools || []
-                                                        delegate: Text {
-                                                            required property var modelData
-                                                            width: aiCol.width - 20
-                                                            elide: Text.ElideRight
-                                                            text: modelData.name + (modelData.summary && modelData.summary !== modelData.name ? ": " + modelData.summary : "")
-                                                            color: root.pal.muted
-                                                            font.family: root.pal.mono
+                                                    Row {
+                                                        spacing: 4
+                                                        visible: !mrow.modelData.live && !mrow.modelData.bad
+                                                        Text {
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            visible: (mrow.modelData.model || "") !== ""
+                                                            text: root.shortName(mrow.modelData.model) + (mrow.modelData.secs ? "  ·  " + mrow.modelData.secs + " s" : "")
+                                                            color: Qt.alpha(root.pal.muted, 0.8)
+                                                            font.family: root.pal.uiFont
                                                             font.pixelSize: root.pal.tCap
+                                                            rightPadding: 6
+                                                        }
+                                                        // the actions come in on hover (and stay while a panel is open) so a long chat stays quiet
+                                                        Row {
+                                                            spacing: 4
+                                                            opacity: (mHover.hovered || mrow.showTools || mrow.showThink || mrow.index === root.msgs.length - 1) ? 1 : 0
+                                                            Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                                                            LinkBtn { visible: (mrow.modelData.tools || []).length > 0; label: (mrow.showTools ? "Hide " : "") + (mrow.modelData.tools || []).length + (((mrow.modelData.tools || []).length === 1) ? " tool used" : " tools used"); onClicked: mrow.showTools = !mrow.showTools }
+                                                            LinkBtn { visible: (mrow.modelData.think || "") !== ""; label: mrow.showThink ? "Hide the reasoning" : "Show the reasoning"; onClicked: mrow.showThink = !mrow.showThink }
+                                                            LinkBtn { label: "Copy"; glyph: String.fromCodePoint(0xF018F); onClicked: root.copy(mrow.modelData.text) }
+                                                            LinkBtn { label: "Save as note"; glyph: String.fromCodePoint(0xF0F8C); onClicked: root.saveNote(mrow.modelData.text) }
                                                         }
                                                     }
+                                                    Column {
+                                                        visible: mrow.showTools
+                                                        width: parent.width
+                                                        spacing: 3
+                                                        Repeater {
+                                                            model: mrow.modelData.tools || []
+                                                            delegate: Text {
+                                                                required property var modelData
+                                                                width: aiBody.width
+                                                                elide: Text.ElideRight
+                                                                text: modelData.name + (modelData.summary && modelData.summary !== modelData.name ? ": " + modelData.summary : "")
+                                                                color: root.pal.muted
+                                                                font.family: root.pal.mono
+                                                                font.pixelSize: root.pal.tCap
+                                                            }
+                                                        }
+                                                    }
+                                                    Text {
+                                                        visible: mrow.showThink
+                                                        width: parent.width
+                                                        wrapMode: Text.Wrap
+                                                        text: mrow.modelData.think || ""
+                                                        color: root.pal.muted
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tCap + 1
+                                                        lineHeight: 1.3
+                                                    }
                                                 }
-                                                Text {
-                                                    visible: mrow.showThink
-                                                    width: parent.width
-                                                    leftPadding: 16
-                                                    wrapMode: Text.Wrap
-                                                    text: mrow.modelData.think || ""
-                                                    color: root.pal.muted
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tCap + 1
-                                                    lineHeight: 1.3
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        visible: root.slashHits.length > 0
+                                        anchors { left: parent.left; right: parent.right; bottom: askBar.top; bottomMargin: 8 }
+                                        height: slashCol.height + 16
+                                        radius: 16
+                                        z: 5
+                                        color: Qt.alpha(root.pal.surface, 1)
+                                        border.width: 1
+                                        border.color: root.pal.line
+                                        Column {
+                                            id: slashCol
+                                            x: 8; y: 8
+                                            width: parent.width - 16
+                                            Repeater {
+                                                model: root.slashHits
+                                                delegate: Rectangle {
+                                                    required property var modelData
+                                                    width: slashCol.width
+                                                    height: 30
+                                                    radius: 10
+                                                    required property int index
+                                                    color: shMa.containsMouse || index === root.slashSel ? Qt.alpha(root.pal.accent, 0.18) : "transparent"
+                                                    Row {
+                                                        anchors { verticalCenter: parent.verticalCenter; left: parent.left; leftMargin: 10 }
+                                                        spacing: 12
+                                                        Text { text: modelData.c; color: root.pal.accent; font.family: root.pal.mono; font.pixelSize: root.pal.tBody; width: 100 }
+                                                        Text { text: modelData.d; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                                    }
+                                                    MouseArea { id: shMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { askIn.text = modelData.c + " "; askIn.cursorPosition = askIn.text.length; askIn.forceActiveFocus() } }
                                                 }
                                             }
                                         }
@@ -645,7 +1281,13 @@ Scope {
                                             selectionColor: Qt.alpha(root.pal.accent, 0.4)
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tBody + 1
+                                            onTextChanged: root.askText = text
                                             Keys.onPressed: e => {
+                                                if (root.slashHits.length > 0) {
+                                                    if (e.key === Qt.Key_Down) { root.slashSel = (root.slashSel + 1) % root.slashHits.length; e.accepted = true; return }
+                                                    if (e.key === Qt.Key_Up) { root.slashSel = (root.slashSel + root.slashHits.length - 1) % root.slashHits.length; e.accepted = true; return }
+                                                    if (e.key === Qt.Key_Tab) { text = root.slashHits[Math.min(root.slashSel, root.slashHits.length - 1)].c + " "; cursorPosition = text.length; e.accepted = true; return }
+                                                }
                                                 if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && !(e.modifiers & Qt.ShiftModifier)) {
                                                     if (!root.busy && text.trim() !== "") { root.send(text); text = "" }
                                                     e.accepted = true
@@ -654,7 +1296,7 @@ Scope {
                                             Text {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 visible: askIn.text.length === 0
-                                                text: "Message Luna…"
+                                                text: "Message Luna, or type / for commands"
                                                 color: root.pal.muted
                                                 font: askIn.font
                                             }

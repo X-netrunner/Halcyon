@@ -13,11 +13,17 @@ tmp = tempfile.mkdtemp(prefix="halcyon-luna-test-")
 fake = os.path.join(tmp, "luna")
 with open(fake, "w") as fh:
     fh.write('''#!/bin/sh
-H=""; while [ $# -gt 0 ]; do [ "$1" = "--history" ] && { H="$2"; shift; }; shift; done
+case "$1" in --help) echo "      --stdio"; exit 0;; esac
+ALL="$*"; H=""; while [ $# -gt 0 ]; do [ "$1" = "--history" ] && { H="$2"; shift; }; shift; done; ARGV="$ALL"
 n=0
 while IFS= read -r line; do
   case "$line" in
     *'"quit"'*) exit 0;;
+    *'"settings_get"'*) echo '{"type":"ready"}'; echo '{"type":"settings","categories":[],"keys":[{"name":"tavily","set":false}],"models":{}}';;
+    *'"models"'*) echo '{"type":"models","reachable":true,"installed":[{"name":"m:1b","gb":1.0}],"roles":{"model":"m:1b"}}';;
+    *'"setting_set"'*) echo "$line" >> "$(dirname "$H")/.received"; echo '{"type":"saved","key":"k","value":true}';;
+    *'"model_set"'*) case "$line" in *nope*) echo '{"type":"error","error":"Ollama does not have nope"}';; *) echo '{"type":"saved","key":"model.model","value":"x"}';; esac;;
+    *'"key_set"'*) echo "$line" >> "$(dirname "$H")/.received"; echo "ARGV: $ARGV" >> "$(dirname "$H")/.received"; echo '{"type":"key_saved","name":"tavily","where":"keyring"}';;
     *'"turn"'*) n=$((n+1))
       echo '{"type":"thinking","delta":"hm "}'; echo '{"type":"thinking","delta":"ok"}'
       echo '{"type":"activity","kind":"tool_start","name":"run_shell","summary":"ls"}'; echo 'stray line from a tool'
@@ -82,6 +88,31 @@ check("gaming mode: exit 3, nothing started", (code, json.loads(out).get("off"))
 lb.GAMING_FLAG = "/nonexistent"
 os.environ["HALCYON_LUNA_BIN"] = "/nonexistent"
 check("Luna missing: exit 3", run("chat", sid, "--json", "--", "hi")[0], 3)
+os.environ["HALCYON_LUNA_BIN"] = fake
+# settings, models, model, keys, clear
+code, out = run("settings")
+check("settings: the first answer of type settings", (code, json.loads(out)["type"], json.loads(out)["keys"][0]["name"]), (0, "settings", "tavily"))
+check("models", json.loads(run("models")[1])["roles"]["model"], "m:1b")
+code, out = run("set", "external.allow_halcyon_actions", "true")
+check("set sends the JSON value", (code, json.loads(out)["type"]), (0, "saved"))
+check("model: a name Ollama lacks is an error event, exit 0 for the caller to show it", json.loads(run("model", "nope")[1])["type"], "error")
+check("model: ok", json.loads(run("model", "x", "fast")[1])["type"], "saved")
+sys.stdin = io.StringIO("sk-test-123456\n")
+code, out = run("key", "tavily")
+rec = open(os.path.join(lb.DATA, ".received")).read()
+check("key: stored, and the answer never contains the key", (code, json.loads(out)["type"], "sk-test" in out), (0, "key_saved", False))
+check("key: it reached Luna on stdin", '"value": "sk-test-123456"' in rec, True)
+check("key: it was not in Luna's arguments", "sk-test" in rec.split("ARGV:")[-1], False)
+run("chat", sid, "--json", "--", "one more")
+run("clear", sid)
+check("clear empties the session but keeps it", (json.load(open(lb.path(sid)))["turns"], os.path.exists(lb.path(sid, hist=True))), ([], False))
+check("status: a Luna with --stdio is ready", json.loads(run("status", "--json")[1])["ok"], True)
+old_luna = os.path.join(tmp, "oldluna")
+open(old_luna, "w").write("#!/bin/sh\necho 'usage: luna [OPTIONS]'\n")
+os.chmod(old_luna, 0o755)
+os.environ["HALCYON_LUNA_BIN"] = old_luna
+st = json.loads(run("status", "--json")[1])
+check("status: a Luna without --stdio is flagged old, not ready", (st["old"], st["ok"]), (True, False))
 os.environ["HALCYON_LUNA_BIN"] = fake
 run("delete", sid)
 check("delete removes both files", [f for f in os.listdir(lb.DATA) if f.startswith(sid)], [])
