@@ -143,6 +143,8 @@ ShellRoot {
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsCalendar: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: false,   // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
         dialogStarStyle: "none",   // moving | constellations | both | none : dialog star style (none by default: quiet, clean boxes)
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
+        windowMode: "overlay",     // overlay | desktop : centres float above everything, or open as ordinary windows on the workspace (Host.qml)
+        floatAll: false,           // every window floats, no tiling (scripts/floating-mode.sh, hyprland/rules.lua)
         uiStyle: "new",            // new | legacy | classic : the quiet redesign, the first calm look, the original (Settings > Look > Interface; Pal.zen / Pal.calm)
         hideHints: true,           // explanations and key hints shrink to a "?" dot that shows them on hover (Settings > Look; Pal.hideHints, Hint.qml)
         recKind: "screen",         // screen | audio : what the recorder (Super + Alt + R) records: the screen, or sound only (Settings > Screen & audio recording)
@@ -181,6 +183,7 @@ ShellRoot {
         case "wpCat": writeFlag("wallpaper-cat", v); break
         case "wpBootNew": writeFlag("wallpaper-boot-new", v ? "1" : "0"); break
         case "wpQuery": writeFlag("wallpaper-query", String(v || "").replace(/[\r\n]+/g, " ").trim()); break
+        case "floatAll": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/floating-mode.sh", v ? "on" : "off"]); break
         case "wsEnd": writeFlag("ws-end", v); break
         case "wsStart": writeFlag("ws-start", v); break
         case "wsMax": writeFlag("ws-max", v); break
@@ -291,6 +294,7 @@ ShellRoot {
     function syncOptFlags() {
         writeFlag("ws-end", opt.wsEnd); writeFlag("ws-start", opt.wsStart); writeFlag("ws-max", opt.wsMax); writeFlag("ws-invert", opt.wsInvert ? "1" : "0"); writeFlag("ws-swipe4", opt.wsSwipe4 || "left")
         writeFlag("term-mode", opt.termMode)
+        writeFlag("float-all", opt.floatAll ? "1" : "0")
         writeFlag("rec-kind", opt.recKind || "screen"); writeFlag("rec-audio", opt.recAudio || "system")
     }
     // Settings > Look > "Back to the Lua config": forget every Hyprland value changed here and let the config files rule again
@@ -547,6 +551,7 @@ ShellRoot {
         light: root.theme === "light"
         surfaceStyle: root.opt.surface || "tint"
         uiStyle: root.opt.uiStyle === "legacy" || root.opt.uiStyle === "classic" ? root.opt.uiStyle : "new"
+        deskWin: root.opt.windowMode === "desktop"
         glassShift: root.glassShift
         motion: root.lean ? 0 : (root.gaming ? 0.25 : root.motion)
         growth: root.growth
