@@ -234,7 +234,7 @@ def generate(prompt, system="", fmt=None, num_predict=300, temperature=0.2, time
             raise Fail(f"The model {model_name()} is not installed. Run: ollama pull {model_name()}")
         raise Fail(f"Ollama answered with an error: {detail or e}")
     except (urllib.error.URLError, ConnectionError):
-        raise AiOff("Ollama is not running. Start it with: systemctl start ollama")
+        raise AiOff("Ollama is not running. Start it with: sudo systemctl start ollama (or, if it is set up per user: systemctl --user start ollama)")
     except TimeoutError:
         raise Fail("The model took too long to answer.")
     except ValueError:
