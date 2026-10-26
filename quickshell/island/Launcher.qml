@@ -111,7 +111,7 @@ Item {
     readonly property var cmdOrder: [
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
-        "calendar", "notes", "notesall", "study", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
+        "calendar", "notes", "notesall", "study", "luna", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "security", "firewall", "firewall-dashboard", "exceptions",
         "gamecenter", "games", "games-stop",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
@@ -174,6 +174,7 @@ Item {
         { id: "extradim", name: "Extra dim display", desc: "Dim screen backlight to minimum (Super + Alt + D)", glyph: 0xF058F, kw: "dim brightness backlight dark night minimum screen", cat: "tools" },
         { id: "security", name: "Security Center", desc: "", glyph: 0xF0565, kw: "security firewall antivirus ai-antivirus virus malware scan ban bans shield protect", cat: "security" },
         { id: "exceptions", name: "Antivirus exceptions", desc: "", glyph: 0xF0780, kw: "exceptions exclusions exclude allow allowlist whitelist ignore trusted antivirus claude agy", cat: "security" },
+        { id: "luna", name: "Luna", desc: "Chat with Luna, the local assistant. Every chat is saved: open an old one and carry on where it stopped", glyph: 0xF0594, kw: "luna assistant chat ai talk conversation sessions history agent", cat: "tools" },
         { id: "study", name: "Study Center", desc: "Add PDFs, slides, notes or photos of pages and ask questions about them; the answers name the page. Also a revision summary, a quiz and flashcards. All on this computer", glyph: 0xF0474, kw: "study learn pdf notes lecture slides exam revise revision quiz flashcards summary ask questions document book homework", cat: "tools" },
         { id: "gamecenter", name: "Game Center", desc: "Your games with cover art: add a Windows game (.exe), read Steam, Epic and GOG, Proton versions and the system check for games", glyph: 0xF0297, kw: "game games center library add exe import steam epic gog stores proton runtimes doctor check settings launcher", cat: "games" },
         { id: "games", name: "Games", desc: "Your game library: Enter launches. Type  >  and its name (or  >game  for the list) to find one (Steam games and the .exe games you added). Halcyon rests while a game runs", glyph: 0xF0297, kw: "game games play library steam proton launcher", cat: "games" },

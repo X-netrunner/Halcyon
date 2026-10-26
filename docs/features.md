@@ -102,6 +102,16 @@ The utilities panel and the notification centre share `boxW`, `boxPad`, `boxEdge
 - **Safe mode** (`halcyon safe-mode`, Super + Alt + F12, or Settings > Performance): blur, shadows, window animations, stars and island motion off, island reloaded. `halcyon safe-mode back` (or the shortcut again) puts your values back. Works from a terminal or TTY even when the island is unusable: without fish run `python3 ~/.config/Halcyon/scripts/halcyon-fx.py safe-mode`.
 - **Profiles** (Settings > Performance, or `halcyon profile work|gaming|battery|night|custom`): stars, blur, motion, brightness and the top bar in one switch. Custom is your own setup, saved when you leave it. Change a profile in `~/.local/state/island/profiles.json`; `halcyon profile list` shows the current values.
 
+
+## Luna
+
+`>luna` in the launcher, `halcyon luna` (or `quickshell ipc ... call island luna`). Your conversations with Luna, the local assistant (`./install.sh --luna`). Every chat is a saved session on the left: open an old one and carry on where it stopped, because Luna gets that conversation's own memory back. While she works you see which tools she runs and, with "Show the reasoning", what she thought. Rename or delete a chat with the pencil and bin that appear on hover.
+
+- Luna runs her tools as she does in a terminal (that is her job: shell commands, files, reminders). Her tool calls are listed under each answer ("2 tools used").
+- Sessions live in `~/.local/share/halcyon/luna/sessions/`; Luna's own long-term memory (`~/.local/share/luna`) is shared with the terminal Luna.
+- From a terminal: `halcyon luna list`, `halcyon luna show ID`, `halcyon luna chat ID -- "question"`.
+- It stops while gaming mode is on or the AI switch is off, like the rest of Halcyon's AI.
+
 ## Study Center
 `>study` in the launcher, `halcyon study` (or `quickshell ipc ... call island study`). Your files on the left, four tabs on the right:
 - **Add files**: a file browser inside the window (PDF, Word `.docx`, PowerPoint `.pptx`, LibreOffice `.odt` / `.odp`, EPUB, Markdown, text, code, HTML, and photos of pages). A scanned PDF or a photo is read with tesseract. Only the text is kept, in `~/.local/share/halcyon/study`; the file itself is never touched (removing it from the list only forgets the text)

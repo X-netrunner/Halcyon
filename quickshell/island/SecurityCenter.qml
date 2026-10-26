@@ -160,15 +160,16 @@ Scope {
     property string clamErr: ""
     property string clamWhat: ""
     readonly property bool clamBusy: clamProc.running
-    readonly property string clamState: clamBusy ? (clamWhat === "test" ? "Testing…" : "Scanning…")
-        : (clam === null ? (clamErr !== "" ? "Failed" : "Not tested yet") : (clam.good ? (clam.kind === "test" ? "Works" : "Clean") : (clam.kind === "test" ? "Needs attention" : "Found something")))
-    readonly property color clamColor: clamBusy || clam === null ? (clamErr !== "" ? pal.bad : pal.muted) : (clam.good ? pal.good : pal.bad)
+    readonly property string clamState: clamBusy ? (clamWhat === "test" ? "Testing…" : clamWhat === "scan" ? "Scanning…" : "Working…")
+        : (clam === null ? (clamErr !== "" ? "Failed" : "Not tested yet") : (clam.kind === "exceptions" ? "Exceptions" : clam.good ? (clam.kind === "test" ? "Works" : "Clean") : (clam.kind === "test" ? "Needs attention" : "Found something")))
+    readonly property color clamColor: clamBusy || clam === null ? (clamErr !== "" ? pal.bad : pal.muted) : (clam.kind === "exceptions" ? pal.muted : clam.good ? pal.good : pal.bad)
     function clamRun(what, dir) {
         if (clamBusy || !hasClam) return
         clamWhat = what; clamErr = ""; clam = null
         clamProc.command = ["python3", aiScript, "clamav", what].concat(dir ? [dir] : []).concat(["--json"])
         clamProc.running = true
     }
+    function clamForget(n) { clamRun("forget", String(n)) }      // answers with the updated list
     // a fix that is a command (not an instruction such as the NixOS one) can be opened in the console
     function runnable(cmd) { return /^(sudo |clamscan |mkdir |xdg-open )/.test(String(cmd || "")) }
     Process {
@@ -729,6 +730,7 @@ Scope {
                     height: Math.min(720, qp.height - 80)
                     radius: root.pal.rXl
                     opacityBody: 0.97
+                    border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                     anchors.centerIn: parent
                     opacity: qp.reveal
                     scale: 0.97 + 0.03 * qp.reveal
@@ -991,6 +993,7 @@ Scope {
                                         root.av.last_event_unix ? "last event " + root.ago(root.av.last_event_unix) + " ago" : ""].filter(function (x) { return x !== "" }).join("  ·  ")
                                     Btn { label: "Log"; glyph: 0xF018D; onClicked: root.consoleRequested("ai-antivirus tail -f") }
                                     Btn { label: "Scan home"; glyph: 0xF02DC; disabled: root.scanning; onClicked: root.scan(".") }
+                                    Btn { label: "Exceptions"; glyph: 0xF0780; disabled: root.clamBusy; onClicked: root.clamRun("exceptions", "") }
                                     Btn { label: "Scan Downloads"; glyph: 0xF1276; primary: true; disabled: root.scanning; onClicked: root.scan("Downloads") }
                                 }
 
@@ -1151,13 +1154,51 @@ Scope {
                                             spacing: 10
                                             Text { id: cfP; text: modelData.file.replace(/^\/home\/[^/]+\//, "~/"); color: root.pal.text; font.family: root.pal.mono; font.pixelSize: root.pal.tCap + 1; width: Math.min(implicitWidth, 460); elide: Text.ElideMiddle }
                                             Small { text: modelData.signature; color: root.pal.bad }
+                                            Small { visible: (modelData.note || "") !== ""; text: modelData.status.replace("_", " ") + ": " + modelData.note }
                                         }
                                     }
+                                }
+
+                                // scan: what the model judged a false positive (hash-pinned exceptions, removable on the Exceptions button)
+                                Small {
+                                    Layout.fillWidth: true
+                                    visible: !root.clamBusy && root.clam !== null && root.clam.kind === "scan" && (root.clam.excepted || []).length > 0
+                                    wrapMode: Text.Wrap
+                                    text: (root.clam && root.clam.excepted ? root.clam.excepted.map(function (e) { return e.file.replace(/^\/home\/[^/]+\//, "~/") + (e.note ? " (" + e.note + ")" : "") }).slice(0, 6).join("  ·  ") : "")
+                                }
+
+                                // exceptions: one row each, with a way to forget it
+                                Section {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    visible: !root.clamBusy && root.clam !== null && root.clam.kind === "exceptions"
+                                    title: "ClamAV exceptions"
+                                    extra: root.clam && root.clam.exceptions ? String(root.clam.exceptions.length) : ""
+                                    ListView {
+                                        anchors.fill: parent
+                                        clip: true
+                                        spacing: 2
+                                        boundsBehavior: Flickable.StopAtBounds
+                                        model: root.clam && root.clam.exceptions ? root.clam.exceptions : []
+                                        delegate: ListRow {
+                                            required property var modelData
+                                            required property int index
+                                            width: ListView.view.width
+                                            title: modelData.path.replace(/^\/home\/[^/]+\//, "~/") + "  ·  " + modelData.signature
+                                            sub: modelData.by + " " + (modelData.added || "") + (modelData.reason ? "  ·  " + modelData.reason : "")
+                                            mark: root.pal.muted
+                                            actGlyph: 0xF0156
+                                            actTone: root.pal.accent
+                                            onAct: root.clamForget(index + 1)
+                                        }
+                                    }
+                                    Empty { visible: !root.clam || !root.clam.exceptions || root.clam.exceptions.length === 0; text: "No exceptions"; tone: root.pal.muted; glyph: 0xF0780 }
                                 }
 
                                 Section {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
+                                    visible: root.clam === null || root.clam.kind !== "exceptions"
                                     title: "Fixes"
                                     extra: root.clam && root.clam.fixes ? String(root.clam.fixes.length) : ""
                                     ListView {
