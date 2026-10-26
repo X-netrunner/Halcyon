@@ -1,5 +1,14 @@
 local vars = require("variables")
 
+-- Settings > Workspaces & windows > "No tiling" (scripts/floating-mode.sh): one rule floats every window. The script keeps a flag file and
+-- switches this rule on and off live (halcyon_float_all is a global on purpose: `hyprctl eval` reaches it); a reload reads the flag again.
+local floatAll = false
+do
+    local f = io.open((os.getenv("HOME") or "") .. "/.local/state/island/float-all")
+    if f then floatAll = (f:read("*l") or ""):find("1", 1, true) ~= nil; f:close() end
+end
+halcyon_float_all = hl.window_rule({ name = "halcyon-float-all", match = { class = ".*" }, float = true, enabled = floatAll })
+
 hl.window_rule({ match = { title = "Picture-in-Picture" }, float = true, pin = true })
 hl.window_rule({ match = { class = "mpv" }, float = true })
 hl.window_rule({ match = { class = "org.kde.polkit-kde-authentication-agent-1" }, float = true })
