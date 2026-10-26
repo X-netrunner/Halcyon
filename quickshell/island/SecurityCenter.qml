@@ -992,6 +992,12 @@ Scope {
                                     detail: root.av === null ? "" : [root.av.mode || "-", "v" + root.av.version,
                                         root.av.last_event_unix ? "last event " + root.ago(root.av.last_event_unix) + " ago" : ""].filter(function (x) { return x !== "" }).join("  ·  ")
                                     Btn { label: "Log"; glyph: 0xF018D; onClicked: root.consoleRequested("ai-antivirus tail -f") }
+                                    Btn {
+                                        readonly property bool aiOn: !!(root.av && root.av.services && root.av.services.analyzer === "active")
+                                        label: aiOn ? "AI review: on" : "Turn on AI review"
+                                        glyph: 0xF0B79
+                                        onClicked: root.consoleRequested("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-ai.sh " + (aiOn ? "off" : "on"))
+                                    }
                                     Btn { label: "Scan home"; glyph: 0xF02DC; disabled: root.scanning; onClicked: root.scan(".") }
                                     Btn { label: "Scan Downloads"; glyph: 0xF1276; primary: true; disabled: root.scanning; onClicked: root.scan("Downloads") }
                                 }
