@@ -658,18 +658,18 @@ Scope {
     // ================================================================ the window
     LazyLoader {
         active: root.open || root.linger
-        PanelWindow {
+        Host {
             id: win
-            visible: true
-            anchors { top: true; bottom: true; left: true; right: true }
-            color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.namespace: "island-games"
-            WlrLayershell.layer: WlrLayer.Overlay
+            desktop: root.pal.deskWin
+            title: "Games"
+            deskWidth: 1180
+            deskHeight: 740
+            namespace: "island-games"
             // while the console is up (a command this window sent) it has the keyboard; this window stays open behind it
-            WlrLayershell.keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            onCloseRequested: root.hide()
 
-            MouseArea { anchors.fill: parent; onClicked: root.hide() }
+            MouseArea { anchors.fill: parent; enabled: !win.desktop; onClicked: root.hide() }
 
             Item {
                 id: qp
@@ -696,19 +696,19 @@ Scope {
                 }
 
                 // dim the desktop: the window reads as one thing, and the text behind it stops showing through
-                Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
+                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
 
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: Math.min(1180, qp.width - 80)
-                    height: Math.min(740, qp.height - 80)
-                    radius: root.pal.rXl
+                    width: win.desktop ? qp.width : Math.min(1180, qp.width - 80)
+                    height: win.desktop ? qp.height : Math.min(740, qp.height - 80)
+                    radius: win.desktop ? 0 : root.pal.rXl
                     opacityBody: 0.97
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                     anchors.centerIn: parent
-                    opacity: qp.reveal
-                    scale: 0.97 + 0.03 * qp.reveal
+                    opacity: win.desktop ? 1 : qp.reveal
+                    scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
 
                     ColumnLayout {
