@@ -132,7 +132,7 @@ Item {
 
         MouseArea {
             anchors.fill: parent
-            onClicked: { row.runDefault(); row.dismissRequested() }
+            onClicked: { row.runDefault() }
         }
 
         RowLayout {
