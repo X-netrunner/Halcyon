@@ -2611,7 +2611,7 @@ ShellRoot {
         }
     }
 
-    readonly property var compactEvents: ({ workspacev2: 1, focusedmonv2: 1, openwindow: 1, closewindow: 1, movewindowv2: 1, destroyworkspacev2: 1 })
+    readonly property var compactEvents: ({ workspace: 1, workspacev2: 1, focusedmon: 1, focusedmonv2: 1, openwindow: 1, closewindow: 1, movewindow: 1, movewindowv2: 1, destroyworkspace: 1, destroyworkspacev2: 1 })
     // which special workspace is open ("" = none)
     Connections {
         target: Hyprland

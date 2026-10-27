@@ -170,7 +170,8 @@ fi
 zombies=$(ps -eo stat 2>/dev/null | grep -c '^[Zz]' || true)
 zombies=${zombies:-0}
 if [ "$zombies" -gt 0 ] 2>/dev/null; then
-  warn "$zombies zombie (defunct) process(es) detected"
+  zdetails=$(ps -eo pid,ppid,stat,comm 2>/dev/null | awk '$3 ~ /^[Zz]/ {print $4 " (PID " $1 ", PPID " $2 ")"}' | tr '\n' ', ' | sed 's/,[[:space:]]*$//')
+  warn "$zombies zombie (defunct) process(es): ${zdetails:-unknown}"
 else
   ok "no zombie processes"
 fi
