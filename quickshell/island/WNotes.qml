@@ -77,6 +77,29 @@ WBase {
         }
     }
 
+    // A note that is too long for this widget is shown by its AI summary (the full summary's opening, else the short overview under the note),
+    // and by its own words, cut short, when the AI has written neither (no model installed, AI off, not summarised yet). This is only what
+    // the widget draws: the notes manager (Super + N, >notes) always shows the whole note.
+    readonly property int cap: Math.max(50, Math.round(110 * wide / 290))      // about three lines at this width
+    function clip(t) {
+        t = String(t).replace(/\s+/g, " ").trim()
+        if (t.length <= cap) return t
+        var cut = t.lastIndexOf(" ", cap)
+        return t.substring(0, cut > cap * 0.6 ? cut : cap).replace(/[\s,;:.\-]+$/, "") + "\u2026"
+    }
+    function gist(s) {                        // the first two lines of a summary, without the list marks and bold
+        var l = String(s).split("\n").map(function (x) { return x.replace(/^\s*([-*\u2022]|\d+[.)]|#+)\s*/, "").replace(/\*\*/g, "").trim() }).filter(function (x) { return x !== "" })
+        return l.slice(0, 2).join("  \u00b7  ")
+    }
+    function brief(n) {
+        var raw = String(n.text || "")
+        var flat = raw.replace(/\s+/g, " ").trim()
+        if (flat.length <= cap && (raw.match(/\n/g) || []).length <= 2) return raw
+        var sum = n.summary && n.summary.state === "done" && n.summary.text ? gist(n.summary.text) : ""
+        var why = n.think && n.think.state === "done" && n.think.why ? String(n.think.why).trim() : ""
+        return clip(sum !== "" ? sum : (why !== "" && why !== flat ? why : flat))
+    }
+
     // what is shown: events first, then notes, up to `most` lines
     readonly property int hiddenCount: Math.max(0, notes.length + (events ? calEvents.length : 0) - lines.length)
     readonly property var lines: {
@@ -98,7 +121,7 @@ WBase {
         for (var j = 0; j < sorted.length && out.length < most; j++) {
             var n = sorted[j]
             var badge = (n.image ? " img" : "") + (n.audio ? " voice" : "")
-            var noteTitle = (n.text || "") + badge + (n.task && n.due ? "  \u00b7  " + dueOf(n.due) + (n.repeat ? " \u21bb" : "") : "")
+            var noteTitle = brief(n) + badge + (n.task && n.due ? "  \u00b7  " + dueOf(n.due) + (n.repeat ? " \u21bb" : "") : "")
             out.push({ kind: n.task ? "task" : "note", t: noteTitle, pinned: !!n.pinned, id: n.id || "",
                        overdue: !!(n.task && n.due && !n.reminded && n.due * 1000 < nowMs) })
         }
