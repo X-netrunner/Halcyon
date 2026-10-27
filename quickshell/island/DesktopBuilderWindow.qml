@@ -632,9 +632,12 @@ Item {
                             ChipRow {
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Console shows"
-                                options: [["terminal", "Terminal"], ["luna", "Luna's chat"]]
-                                current: (root.opt && root.opt.consoleLuna === true) ? "luna" : "terminal"
-                                onPicked: id => root.put("consoleLuna", id === "luna")
+                                options: [["terminal", "Terminal"], ["chat", "AI Chatbox"], ["luna", "Luna's chat"]]
+                                current: (root.opt && root.opt.consoleMode) ? root.opt.consoleMode : ((root.opt && root.opt.consoleLuna === true) ? "luna" : "terminal")
+                                onPicked: id => {
+                                    root.put("consoleMode", id)
+                                    root.put("consoleLuna", id === "luna")
+                                }
                             }
                             ChipRow {
                                 Layout.fillWidth: true

@@ -141,7 +141,7 @@ Item {
             onClicked: mouse => {
                 if (mouse.button === Qt.RightButton) { card.hideAll(); return }
                 card.runDefault()
-                card.close(false)
+                card.close(true)
             }
         }
 

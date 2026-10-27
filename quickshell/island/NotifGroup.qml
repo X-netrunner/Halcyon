@@ -104,7 +104,6 @@ Rectangle {
                     onClicked: {
                         var a = it.n && it.n.actions ? it.n.actions : []
                         for (var i = 0; i < a.length; i++) if (a[i].identifier === "default") { a[i].invoke(); break }
-                        g.dismissItem(it.n)
                     }
                 }
                 ColumnLayout {

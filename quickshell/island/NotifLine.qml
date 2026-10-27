@@ -55,7 +55,7 @@ Item {
         Behavior on color { ColorAnimation { duration: row.pal.dFast } }
     }
     HoverHandler { id: hov }
-    MouseArea { anchors.fill: parent; onClicked: { row.runDefault(); row.dismissRequested() } }
+    MouseArea { anchors.fill: parent; onClicked: { row.runDefault() } }
 
     Text {
         x: 0; y: 3; width: 38
