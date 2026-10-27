@@ -182,6 +182,25 @@ else
 fi
 echo
 
+hdr "Package manager & keys"
+if have pacman; then
+  pm_err=$(pacman -Si core/linux 2>&1)
+  if grep -qi "GPGME error\|PGP signature" <<<"$pm_err"; then
+    bad "pacman GPG keyring or sync database is corrupted (GPGME error)"
+    if [ "$FIX" = 1 ] && ask; then
+      echo "    Resetting pacman keyring and clearing sync cache..."
+      sudo rm -rf /var/lib/pacman/sync/* /etc/pacman.d/gnupg && \
+      sudo pacman-key --init && \
+      sudo pacman-key --populate archlinux && \
+      sudo pacman -Sy archlinux-keyring --noconfirm && \
+      ok "pacman keyring and sync databases restored successfully"
+    fi
+  else
+    ok "pacman sync databases and keyring intact"
+  fi
+fi
+echo
+
 hdr "Files & permissions"
 nonexec=()
 for f in "$RICE"/scripts/*.sh "$RICE"/launch/*.sh "$RICE/sysmode/sysmode" "$RICE/scripts/halcyon-tune"; do

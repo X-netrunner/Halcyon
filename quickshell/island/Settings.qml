@@ -812,10 +812,9 @@ Scope {
             { type: "custom", name: "widgetBuilder" }
         ] },
         { id: "workspaces", title: "Workspaces & windows", section: "Desktop", items: [
-            { type: "toggle", key: "opt:floatAll", label: "No tiling: every window floats", desc: "Windows open where you put them at their own size, like an ordinary window manager. Turning it off tiles back the windows this switch floated; windows that float by their own rule (video pop-outs, pavucontrol) stay as they are." },
-            { type: "action", id: "layout", label: "Tiling layout", btn: "Switch dwindle / scrolling", done: "Switched" },
+            { type: "seg", key: "opt:tilingLayout", label: "Tiling layout", desc: "Dwindle: automatic binary tree tiling. Scrolling: horizontal column ribbon (Niri style). Off: every window floats freely at its own size (no tiling).", opts: [o("dwindle", "Dwindle"), o("scrolling", "Scrolling"), o("off", "Off (floating)")] },
             { type: "seg", key: "opt:windowMode", label: "Halcyon windows", desc: "Overlay: Luna and the other windows open above everything with a dimmed backdrop. Desktop: they open as ordinary windows on the workspace, next to your apps (tiled or floating, as you chose above). Applies the next time a window opens.", opts: [o("overlay", "Overlay"), o("desktop", "On the desktop")] },
-            { type: "chips", label: "Behaviour", desc: "Compact: on workspace 3 with nothing on 1 and 2, its windows move to workspace 1. Compact special: scratch / music / communication / monitor / tasks windows are smaller. Jump: go to a window that asks for attention. Send: Spotify / Discord open on their own workspace. Show: bring that workspace into view when one opens (off = it moves quietly).", opts: [ch("compactWs", "Keep workspaces compact"), ch("compactSpecial", "Compact special workspaces"), ch("hy:focusOnActivate", "Jump to a window that asks for attention"), ch("routeApps", "Send Spotify / Discord to their workspace"), ch("routeShow", "Show that workspace when the app opens")] },
+            { type: "chips", label: "Behaviour", desc: "Compact: empty workspace gaps are automatically closed with smooth animations (windows move to fill free lower workspaces). Compact special: scratch / music / communication / monitor / tasks windows are smaller. Jump: go to a window that asks for attention. Send: Spotify / Discord open on their own workspace. Show: bring that workspace into view when one opens (off = it moves quietly).", opts: [ch("compactWs", "Keep workspaces compact"), ch("compactSpecial", "Compact special workspaces"), ch("hy:focusOnActivate", "Jump to a window that asks for attention"), ch("routeApps", "Send Spotify / Discord to their workspace"), ch("routeShow", "Show that workspace when the app opens")] },
             { type: "seg", adv: true, key: "opt:wsEnd", label: "Next workspace, from the last one", desc: "With workspaces 1 and 2, going next from 2 opens a new workspace 3 (never from an empty one).", opts: [o("new", "Open a new one"), o("wrap", "Go back to 1"), o("stay", "Stay")] },
             { type: "seg", adv: true, key: "opt:wsStart", label: "Previous workspace, from the first one", desc: "Wrap: from 1 you land on the highest workspace.", opts: [o("wrap", "Jump to the last"), o("stay", "Stay")] },
             { type: "seg", adv: true, key: "opt:wsMax", label: "Never open more than", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(9, "9"), o(10, "10")] },
@@ -996,6 +995,7 @@ Scope {
     // ---- reading and formatting values
     function get(key) {
         if (!key || typeof key !== "string") return undefined
+        if (key === "opt:tilingLayout") return (opt && opt.floatAll) ? "off" : (hyCur && hyCur.layout ? hyCur.layout : "dwindle")
         if (key.indexOf("opt:") === 0) return opt ? opt[key.substring(4)] : undefined
         if (key.indexOf("hy:") === 0) return hyCur ? hyCur[key.substring(3)] : undefined
         if (key.indexOf("st:") === 0) return startup ? startup[key.substring(3)] : undefined

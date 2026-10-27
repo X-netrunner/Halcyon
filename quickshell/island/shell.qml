@@ -186,6 +186,15 @@ ShellRoot {
         case "wpBootNew": writeFlag("wallpaper-boot-new", v ? "1" : "0"); break
         case "wpQuery": writeFlag("wallpaper-query", String(v || "").replace(/[\r\n]+/g, " ").trim()); break
         case "floatAll": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/floating-mode.sh", v ? "on" : "off"]); break
+        case "tilingLayout":
+            if (v === "off") {
+                root.setOpt("floatAll", true)
+            } else {
+                if (root.opt.floatAll) root.setOpt("floatAll", false)
+                Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_layout.sh", v])
+                hyReadAgain.restart()
+            }
+            break
         case "wsEnd": writeFlag("ws-end", v); break
         case "wsStart": writeFlag("ws-start", v); break
         case "wsMax": writeFlag("ws-max", v); break
@@ -2628,22 +2637,49 @@ ShellRoot {
         command: ["hyprctl", "clients", "-j"]
         stdout: StdioCollector {
             onStreamFinished: {
-                var f = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
-                if (f <= 1 || !root.compactWs || root.activeSpecial !== "") return
+                if (!root.compactWs || root.activeSpecial !== "") return
+                var f = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 1
                 var cl = []
                 try { cl = JSON.parse(text) } catch (e) { return }
-                var mine = []
+
+                // Group mapped window addresses by normal numeric workspace (> 0)
+                var wsMap = {}
                 for (var i = 0; i < cl.length; i++) {
-                    var w = cl[i].workspace ? cl[i].workspace.id : 0
-                    if (!cl[i].mapped) continue
-                    if (w > 0 && w < f) return              // something is before it: leave everything alone
-                    if (w === f) mine.push(cl[i].address)
+                    var c = cl[i]
+                    if (!c.mapped) continue
+                    var w = c.workspace ? c.workspace.id : 0
+                    if (w <= 0) continue
+                    if (!wsMap[w]) wsMap[w] = []
+                    wsMap[w].push(c.address)
                 }
-                if (mine.length === 0) return                // an empty workspace you walked to on purpose stays put
+
+                // Sorted list of occupied numeric workspaces
+                var occupied = Object.keys(wsMap).map(Number).sort(function (a, b) { return a - b })
+                if (occupied.length === 0) return
+
                 var cmds = []
-                for (var j = 0; j < mine.length; j++)
-                    cmds.push("dispatch hl.dsp.window.move({ workspace = 1, window = \"address:" + mine[j] + "\" })")
-                cmds.push("dispatch hl.dsp.focus({ workspace = 1 })")
+                var changed = false
+                var newFocused = f
+
+                for (var k = 0; k < occupied.length; k++) {
+                    var curWs = occupied[k]
+                    var targetWs = k + 1
+                    if (curWs !== targetWs) {
+                        changed = true
+                        var addrs = wsMap[curWs]
+                        for (var j = 0; j < addrs.length; j++) {
+                            cmds.push("dispatch hl.dsp.window.move({ workspace = " + targetWs + ", window = \"address:" + addrs[j] + "\" })")
+                        }
+                        if (f === curWs) newFocused = targetWs
+                    }
+                }
+
+                if (!changed) return
+
+                if (newFocused !== f && newFocused > 0) {
+                    cmds.push("dispatch hl.dsp.focus({ workspace = " + newFocused + " })")
+                }
+
                 Quickshell.execDetached(["hyprctl", "--batch", cmds.join(" ; ")])
             }
         }
