@@ -2446,6 +2446,8 @@ def run(cmd, args):
             done_note(args[1])
         else:
             print("usage: notes done <number>")
+    elif cmd == "clear" and len(args) == 1:       # the Clear completed button; it was documented but never connected, so it saved a note "clear"
+        clear_done()
     elif cmd in ("clip-image", "clip-img", "paste-image"):
         clip_image(" ".join(args[1:]))
     elif cmd == "clip-paste":
