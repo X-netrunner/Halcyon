@@ -15,6 +15,18 @@ hl.window_rule({ match = { class = "org.kde.polkit-kde-authentication-agent-1" }
 hl.window_rule({ match = { class = "pavucontrol" }, float = true })
 hl.window_rule({ match = { class = "blueman-manager" }, float = true })
 hl.window_rule({ match = { class = "nm-connection-editor" }, float = true })
+hl.window_rule({ match = { class = "qalculate-gtk" }, float = true })
+hl.window_rule({ match = { class = "gnome-calculator" }, float = true })
+hl.window_rule({ match = { class = "org.gnome.Calculator" }, float = true })
+hl.window_rule({ match = { class = "file-roller" }, float = true })
+hl.window_rule({ match = { class = "org.gnome.FileRoller" }, float = true })
+hl.window_rule({ match = { class = "ark" }, float = true })
+hl.window_rule({ match = { class = "hyprland-share-picker" }, float = true })
+hl.window_rule({ match = { class = "xdg-desktop-portal-gtk" }, float = true })
+hl.window_rule({ match = { class = "zenity" }, float = true })
+hl.window_rule({ match = { class = "yad" }, float = true })
+hl.window_rule({ match = { class = "pinentry.*" }, float = true })
+hl.window_rule({ match = { class = "polkit-gnome-authentication-agent-1" }, float = true })
 
 hl.layer_rule({ match = { namespace = "notification" }, blur = true })
 
