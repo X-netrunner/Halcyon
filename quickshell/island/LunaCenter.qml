@@ -208,6 +208,8 @@ Scope {
         { c: "/help", d: "These commands" },
         { c: "/exit", d: "Close this window" }
     ]
+    // a huge paste is shown in part (the whole text still goes to Luna): the bubble stays a bubble
+    function shortShown(t) { t = String(t || ""); return t.length > 6000 ? t.substring(0, 6000) + "\n\u2026 " + (t.length - 6000) + " more characters" : t }
     function addSys(t) { pushMsg({ role: "sys", text: String(t) }) }
     // true when the text was a command (nothing goes to the model)
     function runSlash(raw) {
@@ -326,6 +328,7 @@ Scope {
         q = String(q || "").trim()
         if (q === "") return
         if (runSlash(q)) return
+        if (q.length > 60000) { q = q.substring(0, 60000); flash("That was very long: the first 60,000 characters were sent") }
         if (busy) return
         if (!ok) { flash(problem !== "" ? problem : "Luna is not available."); return }
         pushMsg({ role: "you", text: q })
@@ -1268,11 +1271,12 @@ Scope {
                                                 id: youBox
                                                 visible: mrow.you
                                                 anchors.right: parent.right
-                                                width: Math.min(youT.implicitWidth + 32, parent.width * 0.75)
+                                                width: Math.min(youM.implicitWidth + 32, parent.width * 0.75)
                                                 height: youT.height + 20
                                                 radius: 18
                                                 color: Qt.alpha(root.pal.accent, 0.13)
-                                                SelText { id: youT; x: 16; y: 10; width: parent.width - 32; wrapMode: TextEdit.Wrap; text: mrow.modelData.text; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1 }
+                                                Text { id: youM; visible: false; text: root.shortShown(mrow.modelData.text).split("\n")[0].substring(0, 300); font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1 }
+                                                SelText { id: youT; x: 16; y: 10; width: parent.width - 32; wrapMode: TextEdit.Wrap; text: root.shortShown(mrow.modelData.text); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1 }
                                             }
                                             Rectangle {
                                                 id: sysBox
@@ -1425,10 +1429,21 @@ Scope {
                                         border.width: root.pal.zen && !askIn.activeFocus ? 0 : 1
                                         border.color: askIn.activeFocus ? root.pal.lineFocus : root.pal.line
                                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                                        Flickable {
+                                            id: askFl
+                                            anchors { left: parent.left; right: sendBtn.left; top: parent.top; bottom: parent.bottom; leftMargin: 20; rightMargin: 10; topMargin: 14; bottomMargin: 14 }
+                                            contentWidth: width
+                                            contentHeight: askIn.contentHeight
+                                            clip: true
+                                            boundsBehavior: Flickable.StopAtBounds
                                         TextEdit {
                                             id: askIn
-                                            anchors { left: parent.left; right: sendBtn.left; verticalCenter: parent.verticalCenter; leftMargin: 20; rightMargin: 10 }
+                                            width: askFl.width
                                             wrapMode: TextEdit.Wrap
+                                            onCursorRectangleChanged: {
+                                                if (cursorRectangle.y < askFl.contentY) askFl.contentY = cursorRectangle.y
+                                                else if (cursorRectangle.y + cursorRectangle.height > askFl.contentY + askFl.height) askFl.contentY = cursorRectangle.y + cursorRectangle.height - askFl.height
+                                            }
                                             color: root.pal.text
                                             selectionColor: Qt.alpha(root.pal.accent, 0.4)
                                             font.family: root.pal.uiFont
@@ -1452,6 +1467,7 @@ Scope {
                                                 color: root.pal.muted
                                                 font: askIn.font
                                             }
+                                        }
                                         }
                                         RoundBtn {
                                             id: sendBtn
