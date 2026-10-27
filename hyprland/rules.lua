@@ -47,6 +47,7 @@ local glass = {
     ["island-panel"] = 0.55,
     ["island-notifs"] = 0.55,
     ["island-term"] = 0.55,
+    ["island-chat"] = 0.55,
     ["island-apps"] = 0.55,
     ["island-power"] = 0.25,
     ["island-settings"] = 0.25,

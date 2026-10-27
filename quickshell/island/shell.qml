@@ -144,7 +144,8 @@ ShellRoot {
         dialogStarStyle: "none",   // moving | constellations | both | none : dialog star style (none by default: quiet, clean boxes)
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
         boxShadow: true,           // the soft shadow around every Glass box (Settings > Look; Glass.qml)
-        consoleLuna: false,        // the console corner opens Luna's chat instead of the terminal (Desktop builder > Console)
+        consoleMode: "terminal",   // terminal | chat | luna : what the console corner opens (Desktop builder > Console)
+        consoleLuna: false,        // legacy backward compat flag (Desktop builder > Console)
         windowMode: "overlay",     // overlay | desktop : centres float above everything, or open as ordinary windows on the workspace (Host.qml)
         floatAll: false,           // every window floats, no tiling (scripts/floating-mode.sh, hyprland/rules.lua)
         uiStyle: "new",            // new | legacy | classic : the quiet redesign, the first calm look, the original (Settings > Look > Interface; Pal.zen / Pal.calm)
@@ -1001,12 +1002,35 @@ ShellRoot {
         flyLoop: root.boxStarLoop
         sysmode: root.sysmode
         clickMode: root.termClick
-        lunaMode: root.opt.consoleLuna === true
+        lunaMode: root.opt.consoleMode === "luna" || root.opt.consoleLuna === true
+        chatMode: root.opt.consoleMode === "chat"
         onLunaRequested: lunaCenter.toggle()
+        onChatRequested: quickChat.toggle()
+        onOpenChatRequested: {
+            quickTerm.close()
+            quickChat.toggle()
+        }
         autoHide: root.autoHide
         starData: root.starData
         profileStars: root.profileStars
         fsActive: root.fsQuiet
+    }
+
+    // Pop-out AI Chatbox (independent quick assistant supporting Ollama, custom API, and Luna)
+    QuickChat {
+        id: quickChat
+        pal: pal
+        spot: root.boxSpots.term
+        stars: root.opt.stars !== false && root.opt.starsTerm !== false
+        flyCount: root.boxStarCount
+        flyLoop: root.boxStarLoop
+        clickMode: root.termClick
+        autoHide: root.autoHide
+        fsActive: root.fsQuiet
+        onOpenTerminalRequested: {
+            quickChat.close()
+            quickTerm.toggle()
+        }
     }
 
     // SUPER+ALT+/: every console command as a tree (only when sysmode is set up); a click puts the command in the console
@@ -1416,6 +1440,7 @@ ShellRoot {
         if (cheat.open) { if (cheat.editId !== "") cheat.cancelEdit(); else cheat.hide(); return true }
         if (overviewOpen) { overviewOpen = false; return true }
         if (cmdTree.open) { cmdTree.hide(); return true }
+        if (quickChat.open && (quickChat.pinned || quickChat.focused)) { quickChat.close(); return true }
         if (quickTerm.open && (quickTerm.pinned || quickTerm.focused)) { quickTerm.close(); return true }
         if (notifs.centerOpen) { notifs.toggleCenter(); return true }
         if (page !== "home") { page = "home"; return true }
@@ -2019,6 +2044,7 @@ ShellRoot {
         case "barstyle": setOpt("barStyle", notchStyle ? "island" : "notch"); break
         case "notifications": notifs.toggleCenter(); break
         case "quickterm": quickTerm.toggle(); break
+        case "quickchat": quickChat.toggle(); break
         // game launcher (hgl): `>games` is the quick list in the launcher, the rest opens the Game Center (GameCenter.qml)
         case "games": launcher.openGames(); if (page !== "launcher") { overviewOpen = false; page = "launcher" } break
         case "gamecenter": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggle(); break
@@ -2734,6 +2760,7 @@ ShellRoot {
         function closeTop(): string { return root.closeOverlay() ? "closed" : "none" }
         function theme(): void { root.toggleTheme() }
         function quickterm(): void { quickTerm.toggle() }
+        function quickchat(): void { quickChat.toggle() }
         function reloadPalette(): void { pal.reloadFromFile() }
         function cmdlist(): void { cmdTree.toggle() }                // SUPER+ALT+/ (does nothing without sysmode)
         function edgemode(): void { root.toggleEdgeMode() }
