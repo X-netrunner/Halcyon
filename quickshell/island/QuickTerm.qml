@@ -93,18 +93,29 @@ Scope {
     // ---------- open / close ----------
     readonly property bool typing: input.text !== ""
     readonly property bool mayAutoClose: !askPass && input.text === "" && (autoHide || (!clickMode && !pinned))
-    // Desktop builder > Console: the corner opens Luna's chat instead of the terminal (commands that Halcyon runs for you still use this one)
+    // Desktop builder > Console: the corner opens Luna's chat or AI chatbox instead of the terminal
     property bool lunaMode: false
+    property bool chatMode: false
     signal lunaRequested()
+    signal chatRequested()
+    signal openChatRequested()
     Timer { id: lunaCool; interval: 1500 }
+    Timer { id: chatCool; interval: 1500 }
     function askLuna() { if (lunaCool.running) return; lunaCool.restart(); root.lunaRequested() }
+    function askChat() { if (chatCool.running) return; chatCool.restart(); root.chatRequested() }
     function setHover(on) {
+        if (chatMode) { if (on && !clickMode) askChat(); return }
         if (lunaMode) { if (on && !clickMode) askLuna(); return }
         if (on) { closeT.stop(); if (!clickMode) { open = true; if (!focused) autoFocusT.restart() } }
         else { autoFocusT.stop(); if (mayAutoClose) { closeT.interval = 550; closeT.restart() } }
     }
-    function cornerTap() { if (lunaMode) { askLuna(); return } if (open) close(); else { closeT.stop(); open = true; takeFocus() } }
+    function cornerTap() {
+        if (chatMode) { askChat(); return }
+        if (lunaMode) { askLuna(); return }
+        if (open) close(); else { closeT.stop(); open = true; takeFocus() }
+    }
     function toggle() {
+        if (chatMode) { askChat(); return }
         if (lunaMode) { askLuna(); return }
         if (open && focused) { close(); return }
         closeT.stop()
@@ -643,6 +654,7 @@ Scope {
                 anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 20; rightMargin: 20; topMargin: 16 }
                 height: 20
                 Text {
+                    id: termTitle
                     anchors.verticalCenter: parent.verticalCenter
                     // Centred titles: in the middle (the "running" line takes the middle while a command runs)
                     x: root.pal.centred ? (parent.width - width) / 2 : 0
@@ -652,6 +664,23 @@ Scope {
                     font.family: root.mono
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
+                }
+                Rectangle {
+                    anchors.left: termTitle.right; anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !(root.pal.centred && root.busy)
+                    width: 44; height: 18; radius: 4
+                    color: aiSwHov.hovered ? Qt.alpha(root.pal.accent, 0.3) : Qt.alpha(root.pal.fg, 0.08)
+                    border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.25)
+                    Text {
+                        anchors.centerIn: parent
+                        text: "✦ AI"
+                        color: root.pal.accent
+                        font.pixelSize: 10
+                        font.family: root.mono
+                    }
+                    HoverHandler { id: aiSwHov }
+                    TapHandler { onTapped: root.openChatRequested() }
                 }
                 Text {
                     anchors.centerIn: parent
