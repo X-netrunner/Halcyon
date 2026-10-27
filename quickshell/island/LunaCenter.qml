@@ -80,7 +80,7 @@ Scope {
         var code = false
         for (var i = 0; i < lines.length; i++) {
             var l = lines[i]
-            if (/^\s*```/.test(l)) { close(); code = !code; out.push(code ? "<pre style=\"font-family:'" + pal.mono + "'\">" : "</pre>"); continue }
+            if (/^\s*```/.test(l)) { close(); code = !code; out.push(code ? "<pre style=\"font-family:'" + pal.mono + "';margin:6px 0;white-space:pre-wrap;\">" : "</pre>"); continue }
             if (code) { out.push(l + "\n"); continue }
             var h = /^\s*#{1,4}\s+(.*)$/.exec(l), bu = /^\s*[-*•]\s+(.*)$/.exec(l), nu = /^\s*\d+[.)]\s+(.*)$/.exec(l)
             if (bu) { opn("ul"); out.push("<li>" + inline(bu[1]) + "</li>"); continue }
@@ -589,6 +589,8 @@ Scope {
             id: win
             desktop: root.deskMode
             title: "Luna"
+            deskWidth: 1360
+            deskHeight: 860
             namespace: "island-luna"
             keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             onCloseRequested: root.hide()
@@ -615,8 +617,8 @@ Scope {
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: win.desktop ? qp.width : Math.min(1100, qp.width - 80)
-                    height: win.desktop ? qp.height : Math.min(740, qp.height - 80)
+                    width: win.desktop ? qp.width : Math.min(1360, Math.max(1040, qp.width - 80))
+                    height: win.desktop ? qp.height : Math.min(860, Math.max(700, qp.height - 80))
                     radius: win.desktop ? 0 : root.pal.rXl
                     opacityBody: 0.97
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
@@ -1271,17 +1273,17 @@ Scope {
                                                 id: youBox
                                                 visible: mrow.you
                                                 anchors.right: parent.right
-                                                width: Math.min(youM.implicitWidth + 32, parent.width * 0.75)
+                                                width: Math.min(Math.max(youM.implicitWidth + 32, 60), parent.width * 0.85)
                                                 height: youT.height + 20
                                                 radius: 18
                                                 color: Qt.alpha(root.pal.accent, 0.13)
-                                                Text { id: youM; visible: false; text: root.shortShown(mrow.modelData.text).split("\n")[0].substring(0, 300); font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1 }
+                                                Text { id: youM; visible: false; text: root.shortShown(mrow.modelData.text); font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1 }
                                                 SelText { id: youT; x: 16; y: 10; width: parent.width - 32; wrapMode: TextEdit.Wrap; text: root.shortShown(mrow.modelData.text); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1 }
                                             }
                                             Rectangle {
                                                 id: sysBox
                                                 visible: mrow.sys
-                                                width: Math.min(parent.width, 640)
+                                                width: Math.min(parent.width, 920)
                                                 height: sysT.height + 20
                                                 radius: 14
                                                 color: Qt.alpha(root.pal.text, 0.05)
@@ -1291,7 +1293,7 @@ Scope {
                                             Row {
                                                 id: aiCol
                                                 visible: !mrow.you && !mrow.sys
-                                                width: Math.min(parent.width, 780)
+                                                width: parent.width
                                                 spacing: 14
                                                 Spark {
                                                     y: 1
@@ -1300,7 +1302,7 @@ Scope {
                                                 }
                                                 Column {
                                                     id: aiBody
-                                                    width: aiCol.width - 36
+                                                    width: aiCol.width - 40
                                                     spacing: 8
                                                     Working {
                                                         visible: mrow.modelData.live === true && mrow.modelData.text === ""

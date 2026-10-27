@@ -32,7 +32,7 @@ var groups = [
         { id: "movewin_up", label: "Move window up", keys: "SUPER + SHIFT + Up" },
         { id: "movewin_down", label: "Move window down", keys: "SUPER + SHIFT + Down" },
         { id: "swapsplit", label: "Swap split", keys: "SUPER + Y" },
-        { id: "layout", label: "Layout: dwindle / scrolling", keys: "SUPER + ALT + T" }
+        { id: "layout", label: "Layout: dwindle / scrolling / off", keys: "SUPER + ALT + T" }
     ] },
     { id: "workspaces", title: "Workspaces", items: [
         { label: "Go to workspace", kind: "text", keys: "Super + 1..9" },
