@@ -343,38 +343,55 @@ Scope {
         }
 
         // ---------- popups ----------
-        Column {
+        // ONE rounded box holds every popup: it grows when one arrives and shrinks when one leaves (the cards fold open / shut
+        // inside it), so its corners stay round the whole time and nothing jumps
+        Item {
             id: stack
-            // with the border: the cards sit against it (and flare into it), so they are spaced wider to keep the flares apart
+            // with the border: the box sits against it (and flares into it)
             x: root.pal.frameOn ? (root.atR ? (win.width - root.cardW - root.pal.frameT) : root.pal.frameT)
                                 : (root.atR ? (win.width - root.cardW - 30) : 30)
-            y: root.atB ? (win.height - implicitHeight - (root.pal.cornerOut ? root.pal.frameT : root.pal.frameOn ? root.pal.frameT + 16 : 30))
+            y: root.atB ? (win.height - height - (root.pal.cornerOut ? root.pal.frameT : root.pal.frameOn ? root.pal.frameT + 16 : 30))
                         : (root.pal.cornerOut ? root.pal.frameT : root.pal.frameOn ? root.pal.frameT + 16 : root.topY)
             width: root.cardW
-            spacing: root.toasts.length > 1 ? 0 : (root.pal.frameOn ? 28 : 16)
-            move: Transition { NumberAnimation { properties: "y"; duration: 560; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            height: col.height
 
-            Repeater {
-                model: ScriptModel { values: root.toasts }
-                delegate: NotifCard {
-                    required property var modelData
-                    required property int index
-                    // out of the corner: the card next to the screen corner is flush with the top / bottom border too
-                    cornerJoin: root.pal.cornerOut ? (root.atB ? (index === root.toasts.length - 1 ? "b" : "") : (index === 0 ? "t" : "")) : ""
-                    notif: modelData
-                    mergedAbove: root.toasts.length > 1 && index > 0
-                    mergedBelow: root.toasts.length > 1 && index < root.toasts.length - 1
-                    pal: root.pal
-                    avatar: root.avatar
-                    usePfp: root.usePfp
-                    override: root.toastSecs
-                    critSecs: root.critSecs
-                    stars: root.stars && root.cfg.toastStars
-                    fromRight: root.atR
-                    width: root.cardW
-                    onDismissed: root.dismiss(modelData)
-                    onTimedOut: root.toastTimedOut(modelData)
-                    onHideAll: root.hideToasts()
+            Glass {
+                anchors.fill: parent
+                visible: col.height > 1
+                pal: root.pal
+                joinH: root.pal.frameOn ? (root.atR ? "r" : "l") : ""
+                joinV: root.pal.cornerOut ? (root.atB ? "b" : "t") : ""
+                earR: 10
+                radius: root.pal.rLg
+                opacityBody: root.pal.glassSolid - 0.06
+            }
+
+            Column {
+                id: col
+                width: parent.width
+                spacing: 0
+
+                Repeater {
+                    model: ScriptModel { values: root.toasts }
+                    delegate: NotifCard {
+                        required property var modelData
+                        required property int index
+                        // out of the corner: the card next to the screen corner slides in from / out to that corner's border
+                        cornerJoin: root.pal.cornerOut ? (root.atB ? (index === root.toasts.length - 1 ? "b" : "") : (index === 0 ? "t" : "")) : ""
+                        notif: modelData
+                        stacked: root.toasts.length > 1
+                        pal: root.pal
+                        avatar: root.avatar
+                        usePfp: root.usePfp
+                        override: root.toastSecs
+                        critSecs: root.critSecs
+                        stars: root.stars && root.cfg.toastStars
+                        fromRight: root.atR
+                        width: root.cardW
+                        onDismissed: root.dismiss(modelData)
+                        onTimedOut: root.toastTimedOut(modelData)
+                        onHideAll: root.hideToasts()
+                    }
                 }
             }
         }

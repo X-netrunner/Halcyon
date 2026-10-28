@@ -20,12 +20,14 @@ Item {
     signal dismissed()      // the user clicked it: remove it everywhere
     signal timedOut()       // the countdown ran out: hide the popup only
     signal hideAll()        // right click
-    // several popups at once are ONE box: no gap, the corners that touch are square, a thin divider in the border colour between them
-    property bool mergedAbove: false     // another popup sits directly above this one
-    property bool mergedBelow: false     // another popup sits directly below this one
+    // several popups at once share ONE box (Notifs.qml draws it once, rounded, and it grows / shrinks with them): this card draws
+    // no surface of its own, it only opens (height 0 -> full) when it arrives and folds shut when it leaves, so the box never goes square
+    property bool stacked: false         // more than one popup is showing: no time-left bar
+    property real grow: 0                // 0 = folded shut, 1 = open
+    readonly property real fullH: content.implicitHeight + 36
     property bool fromRight: true   // the side of the screen the popups sit on: with the border around the screen they slide out of it
     property string cornerJoin: ""    // "t" / "b": this card is the one in the screen corner, flush with the top / bottom border too
-    readonly property real hideY: cornerJoin === "t" ? -(height + (pal ? pal.frameT : 0) + 30) : (cornerJoin === "b" ? (height + (pal ? pal.frameT : 0) + 30) : 0)
+    readonly property real hideY: cornerJoin === "t" ? -(fullH + (pal ? pal.frameT : 0) + 30) : (cornerJoin === "b" ? (fullH + (pal ? pal.frameT : 0) + 30) : 0)
     readonly property real hideX: (fromRight ? 1 : -1) * (width + (pal ? pal.frameT : 0) + 30)
 
     readonly property bool critical: notif ? notif.urgency === NotificationUrgency.Critical : false
@@ -46,7 +48,7 @@ Item {
         swipeAnim.to = dir * width * 1.1
         swipeAnim.start()
     }
-    NumberAnimation { id: swipeAnim; target: card; property: "swipeX"; duration: 180; easing.type: Easing.OutCubic; onFinished: card.finish() }
+    NumberAnimation { id: swipeAnim; target: card; property: "swipeX"; duration: 180; easing.type: Easing.OutCubic; onFinished: collapse.start() }
     NumberAnimation { id: swipeBack; target: card; property: "swipeX"; to: 0; duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curve }
     property bool closing: false
     property bool expired: false
@@ -60,7 +62,8 @@ Item {
     }
 
     width: 392
-    height: bubble.height
+    height: Math.round(fullH * grow)
+    clip: true                       // what slides out stays inside the box, and a card that folds shut hides its text
 
     function close(byTimeout) {
         if (closing) return
@@ -80,19 +83,33 @@ Item {
 
     Component.onCompleted: enter.start()
 
+    // arriving: slides in on a long soft landing (fast start, no bounce) while the box opens to make room
     ParallelAnimation {
         id: enter
-        NumberAnimation { target: bubble; property: "x"; from: card.pal.frameOn ? card.hideX : 36; to: 0; duration: 640; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curve }
-        NumberAnimation { target: bubble; property: "y"; from: card.pal.frameOn ? card.hideY : 0; to: 0; duration: 640; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curve }
-        NumberAnimation { target: bubble; property: "opacity"; from: card.pal.frameOn ? 1 : 0; to: 1; duration: 440; easing.type: Easing.InOutSine }
+        NumberAnimation { target: bubble; property: "x"; from: card.pal.frameOn ? card.hideX : 36; to: 0; duration: card.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.05, 0.7, 0.1, 1, 1, 1] }
+        NumberAnimation { target: bubble; property: "y"; from: card.pal.frameOn ? card.hideY : 0; to: 0; duration: card.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.05, 0.7, 0.1, 1, 1, 1] }
+        NumberAnimation { target: bubble; property: "opacity"; from: card.pal.frameOn ? 1 : 0; to: 1; duration: card.pal.dMed; easing.type: Easing.InOutSine }
+        NumberAnimation { target: card; property: "grow"; from: 0; to: 1; duration: card.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curve }
     }
+    // leaving: slides out on an accelerating curve; the card folds shut a moment later, so the ones below glide up and the box shrinks
+    // smoothly (it is one rounded box, so its corners stay round the whole time)
     SequentialAnimation {
         id: exit
         ParallelAnimation {
-            NumberAnimation { target: bubble; property: "x"; to: card.pal.frameOn ? card.hideX : 36; duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curveClose }
-            NumberAnimation { target: bubble; property: "y"; to: card.pal.frameOn ? card.hideY : 0; duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curveClose }
-            NumberAnimation { target: bubble; property: "opacity"; to: card.pal.frameOn ? 1 : 0; duration: 320; easing.type: Easing.InOutSine }
+            NumberAnimation { target: bubble; property: "x"; to: card.pal.frameOn ? card.hideX : 36; duration: card.pal.dMed + 60; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.3, 0, 0.8, 0.15, 1, 1] }
+            NumberAnimation { target: bubble; property: "y"; to: card.pal.frameOn ? card.hideY : 0; duration: card.pal.dMed + 60; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.3, 0, 0.8, 0.15, 1, 1] }
+            NumberAnimation { target: bubble; property: "opacity"; to: card.pal.frameOn ? 1 : 0; duration: card.pal.dMed; easing.type: Easing.InOutSine }
+            SequentialAnimation {
+                PauseAnimation { duration: Math.round(card.pal.dMed * 0.35) }
+                NumberAnimation { target: card; property: "grow"; to: 0; duration: card.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curveClose }
+            }
         }
+        ScriptAction { script: card.finish() }
+    }
+    // after a swipe the card is already out of sight: just fold it shut
+    SequentialAnimation {
+        id: collapse
+        NumberAnimation { target: card; property: "grow"; to: 0; duration: card.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curveClose }
         ScriptAction { script: card.finish() }
     }
     NumberAnimation {
@@ -107,21 +124,11 @@ Item {
         onFinished: card.close(true)
     }
 
-    Glass {
+    Item {
         id: bubble
         transform: Translate { x: card.swipeX }
-        pal: card.pal
-        joinH: card.pal.frameOn ? (card.fromRight ? "r" : "l") : ""
-        joinV: card.pal.frameOn ? card.cornerJoin : ""
-        earR: 10
         width: card.width
-        height: content.implicitHeight + 36
-        radius: card.pal.rLg
-        sqTop: card.mergedAbove
-        sqBot: card.mergedBelow
-        shadow: !card.mergedAbove
-        opacityBody: card.pal.glassSolid - 0.06
-        border.color: card.critical ? Qt.alpha(card.pal.bad, 0.6) : card.pal.line
+        height: card.fullH
 
         HoverHandler { id: hov }
 
@@ -147,6 +154,15 @@ Item {
             sizeScale: 1.2
             active: card.stars
             visible: card.stars
+        }
+
+        // urgent ones: a red stripe on the inner edge (the box around them is shared, so it has no outline of its own to turn red)
+        Rectangle {
+            visible: card.critical
+            x: 6; y: 12
+            width: 3; height: parent.height - 24
+            radius: 1.5
+            color: Qt.alpha(card.pal.bad, 0.8)
         }
 
         // click target sits underneath the content so the action chips keep their own clicks
@@ -244,18 +260,11 @@ Item {
             }
         }
 
-        // the divider between two popups
+        // time left (a lone popup only: with several the box stays calm)
         Rectangle {
-            visible: card.mergedAbove
-            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 22; rightMargin: 22 }
-            height: 2
-            radius: 1
-            color: Qt.alpha(card.pal.accent, 0.45)
-        }
-
-        // time left (a lone popup only: in a stack the divider takes its place)
-        Rectangle {
-            visible: card.dur > 0 && !card.mergedAbove && !card.mergedBelow
+            visible: card.dur > 0
+            opacity: card.stacked ? 0 : 1
+            Behavior on opacity { NumberAnimation { duration: card.pal.dMed; easing.type: Easing.InOutSine } }
             anchors { left: parent.left; bottom: parent.bottom; leftMargin: 24; bottomMargin: 8 }
             height: 2
             radius: 1
