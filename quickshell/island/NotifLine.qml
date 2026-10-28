@@ -52,7 +52,7 @@ Item {
         anchors { fill: parent; leftMargin: 62; bottomMargin: 6 }
         radius: row.pal.rSm
         color: Qt.alpha(row.pal.surfaceHi, hov.hovered ? 0.55 : 0)
-        Behavior on color { ColorAnimation { duration: row.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: row.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     }
     HoverHandler { id: hov }
     MouseArea { anchors.fill: parent; onClicked: { row.runDefault() } }
@@ -95,7 +95,7 @@ Item {
                 implicitWidth: 20; implicitHeight: 20; radius: 10
                 color: xMa.containsMouse ? Qt.alpha(row.pal.text, 0.12) : "transparent"
                 opacity: hov.hovered ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: row.pal.dFast } }
+                Behavior on opacity { NumberAnimation { duration: row.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Text { anchors.centerIn: parent; text: "✕"; color: xMa.containsMouse ? row.pal.text : row.pal.muted; font.pixelSize: 10 }
                 MouseArea { id: xMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: row.dismissRequested() }
             }

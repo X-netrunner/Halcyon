@@ -429,7 +429,7 @@ Scope {
         implicitHeight: 30
         radius: 15
         color: lbMa.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent"
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Row {
             id: lbRow
             anchors.centerIn: parent
@@ -449,7 +449,7 @@ Scope {
         radius: height / 2
         color: pbMa.containsMouse ? Qt.lighter(root.pal.accent, 1.08) : root.pal.accent
         scale: pbMa.pressed ? 0.97 : 1
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         Row {
             id: pbRow
@@ -517,7 +517,7 @@ Scope {
         signal toggled(bool v)
         width: 42; height: 24; radius: 12
         color: on ? root.pal.accent : Qt.alpha(root.pal.text, 0.18)
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Rectangle {
             width: 18; height: 18; radius: 9; y: 3
             x: sw.on ? 21 : 3
@@ -540,7 +540,7 @@ Scope {
         Rectangle {
             width: parent.width; height: 42; radius: 21
             color: pkMa.containsMouse || pk.opened ? Qt.alpha(root.pal.text, 0.09) : Qt.alpha(root.pal.text, 0.05)
-            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             Text { anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter } text: pk.title; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
             Row {
                 anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
@@ -691,7 +691,7 @@ Scope {
                                         height: 52
                                         radius: 14
                                         color: active ? Qt.alpha(root.pal.accent, 0.16) : (rowMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         MouseArea { id: rowMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openSession(srow.modelData.id) }
                                         Column {
                                             anchors { left: parent.left; right: acts.left; verticalCenter: parent.verticalCenter; leftMargin: 14; rightMargin: 6 }
@@ -805,7 +805,7 @@ Scope {
                                                 readonly property bool active: root.page === modelData[0]
                                                 width: pageCol.width; height: 42; radius: 14
                                                 color: active ? Qt.alpha(root.pal.accent, 0.16) : (pgMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
-                                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                 Text { anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter } text: modelData[1]; color: active ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: active ? Font.DemiBold : Font.Normal }
                                                 MouseArea { id: pgMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.page = modelData[0]; root.modelMenu = ""; root.keyOpen = "" } }
                                             }
@@ -1229,7 +1229,7 @@ Scope {
                                                     required property string modelData
                                                     width: sgT.implicitWidth + 28; height: 34; radius: 17
                                                     color: sgMa.containsMouse ? Qt.alpha(root.pal.accent, 0.16) : Qt.alpha(root.pal.text, 0.05)
-                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                     Text { id: sgT; anchors.centerIn: parent; text: modelData; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
                                                     MouseArea { id: sgMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.send(modelData) }
                                                 }
@@ -1348,7 +1348,7 @@ Scope {
                                                         Row {
                                                             spacing: 4
                                                             opacity: (mHover.hovered || mrow.showTools || mrow.showThink || mrow.index === root.msgCount - 1) ? 1 : 0
-                                                            Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                                                            Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                             LinkBtn { visible: (mrow.modelData.tools || []).length > 0; label: (mrow.showTools ? "Hide " : "") + (mrow.modelData.tools || []).length + (((mrow.modelData.tools || []).length === 1) ? " tool used" : " tools used"); onClicked: mrow.showTools = !mrow.showTools }
                                                             LinkBtn { visible: (mrow.modelData.think || "") !== ""; label: mrow.showThink ? "Hide the reasoning" : "Show the reasoning"; onClicked: mrow.showThink = !mrow.showThink }
                                                             LinkBtn { label: "Read aloud"; glyph: String.fromCodePoint(0xF057E); onClicked: root.speak(mrow.modelData.text) }
@@ -1430,7 +1430,7 @@ Scope {
                                         color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.75))
                                         border.width: root.pal.zen && !askIn.activeFocus ? 0 : 1
                                         border.color: askIn.activeFocus ? root.pal.lineFocus : root.pal.line
-                                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Flickable {
                                             id: askFl
                                             anchors { left: parent.left; right: sendBtn.left; top: parent.top; bottom: parent.bottom; leftMargin: 20; rightMargin: 10; topMargin: 14; bottomMargin: 14 }

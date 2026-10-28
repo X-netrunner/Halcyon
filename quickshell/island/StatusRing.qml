@@ -180,7 +180,7 @@ Item {
             radius: root.dotD / 2
             antialiasing: true
             color: on ? root.btTint : Qt.alpha(root.btTint, 0.32)
-            Behavior on color { ColorAnimation { duration: 250 } }
+            Behavior on color { ColorAnimation { duration: 250; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
     }
 

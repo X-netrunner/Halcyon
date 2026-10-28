@@ -19,8 +19,8 @@ Item {
         color: h.hovered ? Qt.alpha(h.pal.accent, 0.22) : "transparent"
         border.width: 1
         border.color: h.hovered ? h.pal.accent : Qt.alpha(h.pal.muted, 0.7)   // (only shown in the styles that keep the ?)
-        Behavior on color { ColorAnimation { duration: h.pal.dFast } }
-        Behavior on border.color { ColorAnimation { duration: h.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: h.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+        Behavior on border.color { ColorAnimation { duration: h.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             anchors.centerIn: parent
             text: "?"

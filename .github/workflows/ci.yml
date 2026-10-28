@@ -52,6 +52,8 @@ jobs:
         run: node tests/widgetdata-lock.test.js
       - name: settings groups (every group on exactly one page, known sections, section order)
         run: node tests/settings-groups.test.js
+      - name: Bar builder data (shape, side, capsules, old layouts still load)
+        run: node tests/bar-layout.test.js
       - name: QML types and double bindings (what qmllint cannot see without Quickshell's types; both stop the island at login)
         run: node tests/qml-types.test.js
       - name: security center Ask gate (only security questions and /test reach ai-firewall / ai-antivirus)

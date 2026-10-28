@@ -93,7 +93,7 @@ Item {
         border.width: row.pal.zen && !row.critical && row.flash < 0.02 ? 0 : 1
         border.color: row.critical ? Qt.alpha(row.pal.bad, 0.5)
                     : Qt.rgba(row.pal.accent.r, row.pal.accent.g, row.pal.accent.b, 0.06 + 0.45 * row.flash)
-        Behavior on color { ColorAnimation { duration: row.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: row.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
         // a soft accent wash fading in from the left edge: stronger on hover and while it is new
         Rectangle {
@@ -182,8 +182,8 @@ Item {
                         radius: 10
                         color: xMa.containsMouse ? Qt.alpha(row.pal.text, 0.12) : "transparent"
                         opacity: hov.hovered ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: row.pal.dFast } }
-                        Behavior on color { ColorAnimation { duration: row.pal.dFast } }
+                        Behavior on opacity { NumberAnimation { duration: row.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        Behavior on color { ColorAnimation { duration: row.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         Text {
                             anchors.centerIn: parent
                             text: "✕"

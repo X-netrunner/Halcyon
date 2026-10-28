@@ -45,7 +45,7 @@ Item {
             radius: width / 2
             antialiasing: true
             color: index < root.lit ? root.tint : Qt.alpha(root.tint, 0.28)
-            Behavior on color { ColorAnimation { duration: 250 } }
+            Behavior on color { ColorAnimation { duration: 250; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
     }
     Repeater {
@@ -59,7 +59,7 @@ Item {
             radius: width / 2
             antialiasing: true
             color: index < root.lit ? root.tint : Qt.alpha(root.tint, 0.28)
-            Behavior on color { ColorAnimation { duration: 250 } }
+            Behavior on color { ColorAnimation { duration: 250; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
     }
 }

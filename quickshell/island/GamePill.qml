@@ -107,7 +107,7 @@ Scope {
                 y: win.tabY
                 opacityBody: root.pal.glassSolid
                 opacity: win.out ? 1 : 0.55
-                Behavior on opacity { NumberAnimation { duration: 220 } }
+                Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 HoverHandler {
                     id: chipHover
                     onHoveredChanged: {
@@ -124,7 +124,7 @@ Scope {
                     radius: 1.5
                     color: root.recording ? "#e5484d" : root.pal.accent
                     opacity: win.out ? 0 : 0.9
-                    Behavior on opacity { NumberAnimation { duration: 180 } }
+                    Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
                 Row {
                     id: chipRow
@@ -133,7 +133,7 @@ Scope {
                     anchors.horizontalCenterOffset: root.right ? -3 : 3
                     spacing: 7
                     opacity: win.out ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 180 } }
+                    Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Rectangle {
                         visible: root.recording
                         anchors.verticalCenter: parent.verticalCenter
@@ -258,7 +258,7 @@ Scope {
                                 radius: 12
                                 color: btnMa.containsMouse ? Qt.alpha(root.pal.accent, 0.22)
                                      : (btn.modelData.hot ? Qt.alpha(btn.modelData.id === "record" ? "#e5484d" : root.pal.accent, 0.18) : Qt.alpha(root.pal.text, 0.05))
-                                Behavior on color { ColorAnimation { duration: 120 } }
+                                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 Column {
                                     anchors.centerIn: parent
                                     spacing: 3
@@ -288,7 +288,7 @@ Scope {
                         height: 32
                         radius: 16
                         color: stopMa.containsMouse ? Qt.alpha("#e5484d", 0.30) : Qt.alpha("#e5484d", 0.14)
-                        Behavior on color { ColorAnimation { duration: 120 } }
+                        Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         Text {
                             anchors.centerIn: parent
                             text: "Stop the game"

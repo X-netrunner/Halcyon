@@ -645,7 +645,7 @@ Item {
         custom: ov.starData
         strength: ov.open ? 1 : 0
         fit: small ? 0.9 : 0.82
-        Behavior on strength { NumberAnimation { duration: 500 } }
+        Behavior on strength { NumberAnimation { duration: 500; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     }
 
     // ---- floating dots. "load": every dot belongs to a workspace / window node and circles it, and the nodes that use the
@@ -960,8 +960,8 @@ Item {
                          : Qt.alpha(ov.pal.surface, 0.95)
                     border.width: nd.isRoot || nd.d.focused ? 1.5 : 1
                     border.color: Qt.alpha(nd.tint, nd.dropHot ? 1 : (nd.reachHot ? 0.7 : (nd.isRoot ? 0.7 : (nd.d.focused ? 0.95 : (ma.containsMouse ? 0.7 : 0.3)))))
-                    Behavior on color { ColorAnimation { duration: 160 } }
-                    Behavior on border.color { ColorAnimation { duration: 160 } }
+                    Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on border.color { ColorAnimation { duration: 160; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
 
                 // ---- laptop node: avatar + name + user@host + OS/model
@@ -1228,9 +1228,9 @@ Item {
         color: ov.dropIdx === -2 ? Qt.alpha(ov.pal.accent, 0.30) : Qt.alpha(ov.pal.surface, 0.85)
         border.width: 1
         border.color: ov.dropIdx === -2 ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.35)
-        Behavior on opacity { NumberAnimation { duration: ov.pal.dMed } }
+        Behavior on opacity { NumberAnimation { duration: ov.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Behavior on scale { NumberAnimation { duration: ov.pal.dFast; easing.type: Easing.OutCubic } }
-        Behavior on color { ColorAnimation { duration: ov.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: ov.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             anchors.centerIn: parent
             text: "+  New workspace " + ov.newWsId
@@ -1340,7 +1340,7 @@ Item {
                 radius: height / 2
                 color: ov.pal.accent
                 opacity: ov.compactSpecial ? 0.16 : 0
-                Behavior on opacity { NumberAnimation { duration: 220 } }
+                Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
             Rectangle {
                 id: tglBtn
@@ -1351,7 +1351,7 @@ Item {
                                          : (tglMa.containsMouse ? ov.pal.fillHover : ov.pal.fill)
                 border.width: ov.compactSpecial ? 1 : 0
                 border.color: Qt.alpha(ov.pal.accent, 0.55)
-                Behavior on color { ColorAnimation { duration: 160 } }
+                Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Text {
                     id: tglTxt
                     anchors.centerIn: parent
@@ -1426,7 +1426,7 @@ Item {
                 color: ov.pal.surface
                 border.width: ov.pal.zen && !nameIn.activeFocus ? 0 : 1
                 border.color: nameIn.activeFocus ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.25)
-                Behavior on border.color { ColorAnimation { duration: 140 } }
+                Behavior on border.color { ColorAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 TextInput {
                     id: nameIn
                     anchors.fill: parent
@@ -1454,7 +1454,7 @@ Item {
                     color: ov.pal.surface
                     border.width: ov.pal.zen && !avIn.activeFocus ? 0 : 1
                     border.color: avIn.activeFocus ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.25)
-                    Behavior on border.color { ColorAnimation { duration: 140 } }
+                    Behavior on border.color { ColorAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     TextInput {
                         id: avIn
                         anchors.fill: parent
@@ -1478,7 +1478,7 @@ Item {
                     color: browseMa.containsMouse ? Qt.alpha(ov.pal.accent, 0.28) : Qt.alpha(ov.pal.accent, 0.14)
                     border.width: 1
                     border.color: Qt.alpha(ov.pal.accent, 0.45)
-                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF024B) + "  Browse"; color: ov.pal.text; font.family: ov.pal.font; font.pixelSize: 12 }
                     MouseArea { id: browseMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ov.browseAvatar() }
                 }
@@ -1498,7 +1498,7 @@ Item {
                 Rectangle {
                     width: 78; height: 34; radius: 17
                     color: saveMa.containsMouse ? Qt.lighter(ov.pal.accent, 1.1) : ov.pal.accent
-                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text { anchors.centerIn: parent; text: "Save"; color: ov.pal.bg; font.family: ov.pal.uiFont; font.pixelSize: 12; font.weight: Font.DemiBold }
                     MouseArea { id: saveMa; anchors.fill: parent; hoverEnabled: true; onClicked: ov.saveProfile() }
                 }
