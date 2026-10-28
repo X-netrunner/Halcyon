@@ -607,8 +607,8 @@ Item {
     opacity: gestureActive ? Math.max(0.05, Math.min(1.0, gestureProgress)) : (open ? 1 : 0)
     scale: gestureActive ? (0.86 + 0.14 * Math.max(0.0, Math.min(1.15, gestureScale))) : 1.0
     visible: opacity > 0.01
-    Behavior on opacity { enabled: !ov.gestureActive; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-    Behavior on scale { enabled: !ov.gestureActive; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+    Behavior on opacity { enabled: !ov.gestureActive; NumberAnimation { duration: 360; easing.type: Easing.InOutSine } }
+    Behavior on scale { enabled: !ov.gestureActive; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
 
     Keys.onPressed: e => {
         if (e.key === Qt.Key_Escape && ov.dragState === "drag") { ov.cancelDrag(); e.accepted = true }
@@ -857,7 +857,7 @@ Item {
         readonly property real fy: sy + (ty - sy) * frac
         readonly property real dx: (fx - sx) * 0.5
         property real shown: live ? 1 : 0
-        Behavior on shown { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        Behavior on shown { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
         opacity: shown
         visible: shown > 0.01
 

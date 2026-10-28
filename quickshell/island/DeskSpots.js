@@ -30,7 +30,7 @@ function setTrig(opt, id, v) {
 var resetValues = {
     deskWall: true, deskBlur: 0, deskBg: "theme",
     deskStars: false, deskStarCount: 70, deskStarSpeed: 1, deskStarSize: 1, deskStarDir: "right", deskStarTone: "mix", deskStarTwinkle: true, deskStarShoot: false,
-    deskNotes: "off", notifSpot: "edge"
+    deskNotes: "off", notifSpot: "edge", boxOut: "corner"
 }
 
 // true when nothing of the desktop builder differs from the defaults (the "Reset" button greys out then)

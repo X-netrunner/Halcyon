@@ -43,6 +43,8 @@ hl.layer_rule({ match = { namespace = "notification" }, blur = true })
 -- off (no blur here either), Medium / High blur it (size and passes come from the preset: a light blur on Medium).
 local glass = {
     island = 0.40,
+    -- the border around the screen (ScreenFrame.qml): blurred like the bar, so the border and the bar are the same colour
+    ["island-frame"] = 0.40,
     ["island-notch"] = 0.40,
     ["island-panel"] = 0.55,
     ["island-notifs"] = 0.55,

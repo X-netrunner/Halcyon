@@ -832,7 +832,7 @@ Item {
                 border.width: 4
                 border.color: root.pal.accent
                 opacity: input.activeFocus && !root.pal.zen ? 0.07 : 0
-                Behavior on opacity { NumberAnimation { duration: 240 } }
+                Behavior on opacity { NumberAnimation { duration: 320; easing.type: Easing.InOutSine } }
             }
 
             Text {
@@ -928,7 +928,7 @@ Item {
                 radius: 12
                 // new: just the word, quietly ("Apps"), as the mode is a fact and not a button
                 color: root.pal.zen ? "transparent" : Qt.alpha(root.pal.accent, 0.14)
-                Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                 Text {
                     id: badgeTxt
                     anchors.centerIn: parent
@@ -1015,12 +1015,12 @@ Item {
                 // entrance: smooth, unified glide up + fade without jarring stagger
                 property real appear: 0
                 opacity: appear
-                transform: Translate { y: (1 - cell.appear) * 5 }
+                transform: Translate { y: (1 - cell.appear) * 8 }
                 Component.onCompleted: enterAnim.start()
                 NumberAnimation {
                     id: enterAnim
                     target: cell; property: "appear"; to: 1
-                    duration: 150
+                    duration: 260
                     easing.type: Easing.OutCubic
                 }
 
@@ -1028,7 +1028,7 @@ Item {
                     anchors.centerIn: parent
                     spacing: root.pal.zen ? 9 : 7
                     scale: ma.pressed ? 0.94 : 1
-                    Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+                    Behavior on scale { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
 
                     Image {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -1039,7 +1039,7 @@ Item {
                         asynchronous: true
                         smooth: true
                         scale: cell.cur ? 1.08 : (ma.containsMouse ? 1.04 : 1)
-                        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                        Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                     }
                     Text {
                         width: cell.width - 16
@@ -1109,7 +1109,7 @@ Item {
                 opacity: appear
                 transform: Translate { x: (1 - crow.appear) * 5 }
                 Component.onCompleted: cEnter.start()
-                NumberAnimation { id: cEnter; target: crow; property: "appear"; to: 1; duration: 130; easing.type: Easing.OutCubic }
+                NumberAnimation { id: cEnter; target: crow; property: "appear"; to: 1; duration: 220; easing.type: Easing.OutCubic }
 
                 Text {
                     id: cg

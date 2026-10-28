@@ -19,7 +19,7 @@ Scope {
     // the window stays a moment after it closes, so its fade-out plays (it used to vanish at once)
     property bool linger: false
     Connections { target: root; function onOpenChanged() { if (!root.open) { root.linger = true; lingerT.restart() } } }
-    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
     property string pending: ""
     signal session(string action)
 

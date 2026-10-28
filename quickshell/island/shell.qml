@@ -23,6 +23,11 @@ ShellRoot {
     // = the space BELOW it (to the windows): the same number, so the bar sits evenly. "low" is almost touching both.
     readonly property bool notchStyle: opt.barStyle === "notch" || opt.barStyle === "custom" || opt.barStyle === "off"      // custom = the bar builder (CustomBar.qml): the same hanging bar; off = no bar at all (the pages and the launcher still hang from the top edge)
     property bool notchHovered: false
+    // Settings > Bar style > Border around the screen: a frame (ScreenFrame.qml) the bar hangs from and the boxes slide out of
+    readonly property bool frameOn: opt.frame === true
+    readonly property int frameT: frameOn ? Math.max(4, Math.min(28, Math.round(Number(opt.frameW) || 12))) : 0
+    readonly property bool cornerOut: frameOn && opt.boxOut !== "side"      // boxes come out of the corner (Desktop builder), not just the side
+    readonly property int frameR: opt.frameR === undefined ? 22 : Math.max(0, Math.min(40, Math.round(Number(opt.frameR))))
     readonly property var padSet: ({ low: { h: 32, top: 3, gap: 3, x: 28 }, normal: { h: 44, top: 12, gap: 12, x: 56 }, high: { h: 54, top: 20, gap: 20, x: 76 } })[barPadding] || ({ h: 44, top: 12, gap: 12, x: 56 })
     property int notifMax: 5                 // popups on screen at once (Settings > Notifications); a new one past this hides the oldest popup (it stays in the centre)
     // notifications kept in the notification centre (Settings > Notifications, remembered); a new one past this replaces the oldest
@@ -122,6 +127,7 @@ ShellRoot {
         treeConstSize: 30,         // % of the tree's width / height the small constellation takes
         treeDots: "load",          // load | even | off : floating dots gather around the heaviest workspaces / windows, spread evenly, or none
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
+        frame: false, frameW: 12, frameR: 22, boxOut: "corner",   // a border around the screen: on/off, thickness (px), inner corner radius (px)
         barStyle: "island",        // island | notch | custom | off : the floating pill, or a bar hanging from the top edge (NotchBar.qml), or no bar (desktop widgets instead)
         notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
         notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchSpacing: "compact",
@@ -144,8 +150,7 @@ ShellRoot {
         dialogStarStyle: "none",   // moving | constellations | both | none : dialog star style (none by default: quiet, clean boxes)
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
         boxShadow: true,           // the soft shadow around every Glass box (Settings > Look; Glass.qml)
-        consoleMode: "terminal",   // terminal | chat | luna : what the console corner opens (Desktop builder > Console)
-        consoleLuna: false,        // legacy backward compat flag (Desktop builder > Console)
+        consoleMode: "terminal",   // terminal | chat : what the console corner opens (Desktop builder > Console). Old "luna" / consoleLuna settings count as chat: Luna is a provider in the chatbox now
         windowMode: "overlay",     // overlay | desktop : centres float above everything, or open as ordinary windows on the workspace (Host.qml)
         floatAll: false,           // every window floats, no tiling (scripts/floating-mode.sh, hyprland/rules.lua)
         uiStyle: "new",            // new | legacy | classic : the quiet redesign, the first calm look, the original (Settings > Look > Interface; Pal.zen / Pal.calm)
@@ -474,6 +479,8 @@ ShellRoot {
     readonly property bool utilClick: DS.trig(opt, "util", clickMode)
     readonly property bool appsClick: DS.trig(opt, "apps", clickMode)
     readonly property bool termClick: DS.trig(opt, "term", clickMode)
+    // Desktop builder > Console shows: the corner opens the AI chatbox (Luna, Ollama and the API providers live in its dropdown) instead of the terminal
+    readonly property bool chatOnly: opt.consoleMode === "chat" || opt.consoleMode === "luna" || opt.consoleLuna === true
     readonly property string sysmode: stats.sysmode || ""
     // Settings window (all remembered): look + motion + behaviour
     property real glassShift: 0
@@ -585,6 +592,9 @@ ShellRoot {
         termDrift: root.opt.termDrift
         cyclePaused: root.gaming
         hideHints: root.opt.hideHints !== false
+        frameOn: root.frameOn
+        frameT: root.frameT
+        cornerOut: root.cornerOut
     }
     readonly property var palObj: pal
 
@@ -1002,14 +1012,8 @@ ShellRoot {
         flyLoop: root.boxStarLoop
         sysmode: root.sysmode
         clickMode: root.termClick
-        lunaMode: root.opt.consoleMode === "luna" || root.opt.consoleLuna === true
-        chatMode: root.opt.consoleMode === "chat"
-        onLunaRequested: lunaCenter.toggle()
-        onChatRequested: quickChat.toggle()
-        onOpenChatRequested: {
-            quickTerm.close()
-            quickChat.toggle()
-        }
+        chatMode: root.chatOnly
+        onChatRequested: (tog, corner) => { if (!tog) quickChat.summon(); else if (corner) quickChat.cornerToggle(); else quickChat.toggle() }
         autoHide: root.autoHide
         starData: root.starData
         profileStars: root.profileStars
@@ -1027,9 +1031,12 @@ ShellRoot {
         clickMode: root.termClick
         autoHide: root.autoHide
         fsActive: root.fsQuiet
-        onOpenTerminalRequested: {
+        sysmode: root.sysmode
+        starData: root.starData
+        profileStars: root.profileStars
+        onOpenLunaRequested: {
             quickChat.close()
-            quickTerm.toggle()
+            lunaCenter.toggle()
         }
     }
 
@@ -2942,14 +2949,16 @@ ShellRoot {
         // FIXED height on purpose. Shrinking this surface while the bar is idle made every page open / close re-send the pointer
         // enter / leave, so the media / performance pages (and the boxes) could open and fold back by themselves. The masks below keep
         // the empty part click-through, and the blur rule ignores the transparent part, so it costs next to nothing.
-        implicitHeight: 620
+        implicitHeight: 620 + root.frameT
         // auto-hide frees the strip the bar reserves; otherwise windows start below the bar
         // Hyprland starts windows at (this zone + the outer gap), so the outer gap is taken off to get exactly padSet.gap between bar and windows
         // (it can not go lower than the outer gap itself: Settings > Look > Gaps)
-        exclusiveZone: (root.autoHide || root.notchStyle) ? 0 : Math.max(0, root.padSet.top + root.padSet.h + root.padSet.gap - root.gaps * 2)
+        // with a border: the island style (and "off") reserves its room from the border's width on; Notch / Custom leave that to the bar
+        exclusiveZone: ((root.autoHide || root.notchStyle) ? 0 : Math.max(0, root.padSet.top + root.padSet.h + root.padSet.gap - root.gaps * 2))
+                       + ((root.notchStyle && root.opt.barStyle !== "off") ? 0 : root.frameT)
         // style Notch: the bar (NotchBar) reserves the strip at the top, and a layer surface is normally placed BELOW the strips reserved by
         // others. This window must start at the very top edge so the pages hang from it, so it ignores them.
-        exclusionMode: root.notchStyle ? ExclusionMode.Ignore : ExclusionMode.Normal
+        exclusionMode: (root.notchStyle || root.frameOn) ? ExclusionMode.Ignore : ExclusionMode.Normal
         color: "transparent"
 
         WlrLayershell.namespace: "island"
@@ -3019,7 +3028,7 @@ ShellRoot {
             radius: island.radius
             spread: 22
             peak: 0.18
-            opacity: (root.notchStyle && root.page !== "home") ? 1 : 0
+            opacity: root.hangShape ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: pal.dMed } }
         }
         NotchShape {
@@ -3027,11 +3036,11 @@ ShellRoot {
             earR: root.notchEar
             cornR: island.radius
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 0
+            y: root.frameT
             width: island.width + root.notchEar * 2
             height: island.height
-            fillCol: Qt.alpha(pal.bg, Math.min(0.97, pal.glassBarOpen + 0.16))
-            opacity: (root.notchStyle && root.page !== "home") ? 1 : 0
+            fillCol: root.frameOn ? pal.frameCol : Qt.alpha(pal.bg, Math.min(0.97, pal.glassBarOpen + 0.16))
+            opacity: root.hangShape ? 1 : 0
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: pal.dMed } }
         }
@@ -3040,12 +3049,12 @@ ShellRoot {
             id: island
             pal: pal
             shadow: false           // drawn by the HaloShadow above (this item clips its content)
-            flat: root.notchStyle   // style Notch: the NotchShape behind it is the surface
+            flat: root.notchStyle || root.hangPage   // style Notch: the NotchShape behind it is the surface
             // light glass as the bar, a bit more solid once it grows into a page / the launcher
             opacityBody: root.page === "home" ? pal.glassBar : pal.glassBarOpen
             Behavior on opacityBody { NumberAnimation { duration: pal.dMed } }
             anchors.top: parent.top
-            anchors.topMargin: root.notchStyle ? 0 : (win.shown ? root.padSet.top : -(height + 30))
+            anchors.topMargin: (root.notchStyle || root.hangPage) ? root.frameT : (win.shown ? root.padSet.top + root.frameT : -(height + 30))
             anchors.horizontalCenter: parent.horizontalCenter
             clip: true
             // notch style: at rest the island is not there (the notch is); the pages drop down from under it
@@ -3053,7 +3062,18 @@ ShellRoot {
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: pal.dMed } }
 
-            width: root.page === "home" ? (root.notchStyle ? root.notchBodyW : home.implicitWidth + root.padSet.x)
+            // with the border around the screen the pages come out of the BORDER (they grow down from nothing at the page's own width);
+            // without it they grow out of the notch bar
+            readonly property real pageW: root.page === "media" ? 500
+                 : root.page === "perf" ? 720
+                 : root.page === "fw" ? 720
+                 : root.page === "cal" ? 660
+                 : root.page === "util" ? root.dropW
+                 : root.page === "notif" ? root.dropNotifW
+                 : launcher.wantedWidth
+            property real lastPageW: 500
+            onPageWChanged: if (root.page !== "home") lastPageW = pageW
+            width: root.page === "home" ? (root.notchStyle ? (root.frameOn ? island.lastPageW : root.notchBodyW) : home.implicitWidth + root.padSet.x)
                  : root.page === "media" ? 500
                  : root.page === "perf" ? 720
                  : root.page === "fw" ? 720
@@ -3061,15 +3081,15 @@ ShellRoot {
                  : root.page === "util" ? root.dropW
                  : root.page === "notif" ? root.dropNotifW
                  : launcher.wantedWidth
-            height: root.page === "home" ? (root.notchStyle ? root.notchBarH : root.padSet.h)
+            height: root.page === "home" ? (root.notchStyle ? (root.frameOn ? 0 : root.notchBarH) : root.padSet.h)
                   : (root.page === "media" ? 156
                   : root.page === "perf" ? 316
                   : root.page === "fw" ? 330
                   : root.page === "cal" ? 356
                   : root.page === "util" ? root.dropH
                   : root.page === "notif" ? root.dropNotifH
-                  : launcher.wantedHeight) + (root.notchStyle ? root.notchPad : 0)
-            radius: root.page === "home" ? (root.notchStyle ? root.notchEar : height / 2) : (root.notchStyle ? 26 : pal.rXl)
+                  : launcher.wantedHeight) + ((root.notchStyle || root.hangPage) ? root.notchPad : 0)
+            radius: root.page === "home" ? (root.notchStyle ? root.notchEar : height / 2) : ((root.notchStyle || root.hangPage) ? 26 : pal.rXl)
 
             property real dragX: 0
             property real dragY: 0
@@ -3166,7 +3186,7 @@ ShellRoot {
             Item {
                 id: pager
                 anchors.fill: parent
-                anchors.topMargin: root.notchStyle ? root.notchPad : 0
+                anchors.topMargin: (root.notchStyle || root.hangPage) ? root.notchPad : 0
                 x: island.dragX * 0.35
                 Behavior on x { enabled: !dragH.active; NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
@@ -3274,7 +3294,7 @@ ShellRoot {
                     anchors.fill: parent
                     pal: pal
                     cal: calendar
-                    notchStyle: root.notchStyle
+                    notchStyle: root.notchStyle || root.hangPage
                     opacity: root.page === "cal" ? 1 : 0
                     visible: opacity > 0.01
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
@@ -3476,7 +3496,7 @@ ShellRoot {
                 // fixed at the FINAL size and pinned to the top: the pill grows over it like a curtain. With
                 // anchors.fill the whole grid was re-laid out on every frame of the grow animation (that was the roughness).
                 anchors.top: parent.top
-                anchors.topMargin: 22 + (root.notchStyle ? root.notchPad : 0)
+                anchors.topMargin: 22 + ((root.notchStyle || root.hangPage) ? root.notchPad : 0)
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: launcher.wantedWidth - 44
                 height: launcher.wantedHeight - 44
@@ -3509,6 +3529,12 @@ ShellRoot {
     // The pages have 22 px of padding inside already. Here they sit right under the screen edge, so that is cut by 8 px (14 px left on top,
     // 22 px at the bottom). Negative = less room above the content. 0 would give the full 22 px, -14 would leave 8 px.
     readonly property int notchPad: -8
+    // a page (launcher / media / performance / calendar ...) that is open hangs from the top border in the notch silhouette: always in the
+    // Notch / Custom / Off styles, and with the border around the screen also in the Island style (it used to open as a floating box
+    // under the pill, not attached to the border)
+    readonly property bool hangPage: (notchStyle || frameOn) && page !== "home"
+    // the silhouette is drawn while a page hangs, and (Notch / Custom / Off with the border) while it is still folding back into the border
+    readonly property bool hangShape: hangPage || (frameOn && notchStyle && island.height > 2)
     property real notchBodyW: 260                   // width of the bar (set by NotchBar)
     // hovering the notch opens perf / media after a moment (Settings > Bar > When you hover the bar), like hovering the island
     Timer {
@@ -3536,6 +3562,7 @@ ShellRoot {
             clickMode: root.clickMode
             clock24: root.clock24
             gaps: root.gaps
+            frameT: root.frameT
             Component.onCompleted: root.notchBodyW = bodyWidth
             onBodyWidthChanged: root.notchBodyW = bodyWidth
             showStats: root.hoverAction === "stats" && root.notchHovered
@@ -3554,6 +3581,15 @@ ShellRoot {
             onPageStep: dir => root.go(dir)
             onHoverEdited: on => root.notchHovered = on
         }
+    }
+
+    // the border around the screen (Settings > Bar style): drawn above the boxes so they come out from under it
+    ScreenFrame {
+        pal: root.palObj
+        on: root.frameOn
+        t: root.frameT
+        r: root.frameR
+        hidden: root.fsQuiet
     }
 
     // style Custom: the same bar, with the widgets and places picked in Settings > Bar style > Bar builder
@@ -3577,6 +3613,7 @@ ShellRoot {
             clickMode: root.clickMode
             clock24: root.clock24
             gaps: root.gaps
+            frameT: root.frameT
             Component.onCompleted: root.notchBodyW = bodyWidth
             onBodyWidthChanged: root.notchBodyW = bodyWidth
             showStats: root.hoverAction === "stats" && root.notchHovered
@@ -3757,8 +3794,11 @@ ShellRoot {
             anchors.left: corner.atR ? undefined : parent.left
             anchors.bottom: corner.atB ? parent.bottom : undefined
             anchors.top: corner.atB ? undefined : parent.top
-            anchors.rightMargin: pal.boxEdge; anchors.leftMargin: pal.boxEdge
-            anchors.bottomMargin: pal.boxEdge; anchors.topMargin: pal.boxTop
+            // border around the screen: flush with it (and flaring into it), emerging from under it
+            anchors.rightMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.leftMargin: root.frameOn ? root.frameT : pal.boxEdge
+            anchors.bottomMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.topMargin: root.cornerOut ? root.frameT : pal.boxTop
+            joinH: root.frameOn ? (corner.atR ? "r" : "l") : ""
+            joinV: root.frameOn ? (corner.atB ? "b" : (root.cornerOut ? "t" : "")) : ""
             pal: pal
             active: corner.open
             stats: root.stats
@@ -3784,9 +3824,16 @@ ShellRoot {
             // hovering anything inside the panel keeps the whole box open (same idea as the notification centre)
             HoverHandler { onHoveredChanged: { corner.panelHover = hovered; corner.syncHover() } }
 
-            opacity: corner.reveal
-            visible: opacity > 0.01
-            scale: 0.94 + 0.06 * corner.reveal
+            // with the border: no fade / zoom, the box slides out from under the border it is attached to
+            property real slide: corner.reveal
+            Behavior on slide { NumberAnimation { duration: corner.open ? pal.dSlow : pal.dClose; easing.type: Easing.BezierSpline; easing.bezierCurve: corner.open ? pal.curve : pal.curveClose } }
+            opacity: root.frameOn ? 1 : corner.reveal
+            visible: root.frameOn ? slide > 0.002 : opacity > 0.01
+            scale: root.frameOn ? 1 : 0.97 + 0.03 * corner.reveal
+            transform: Translate {
+                x: root.frameOn ? (corner.atR ? 1 : -1) * (1 - panel.slide) * (panel.width + root.frameT + 30) : 0
+                y: root.cornerOut ? (corner.atB ? 1 : -1) * (1 - panel.slide) * (panel.height + root.frameT + 30) : 0     // out of the corner: along the top / bottom border too
+            }
             transformOrigin: corner.atB ? (corner.atR ? Item.BottomRight : Item.BottomLeft) : (corner.atR ? Item.TopRight : Item.TopLeft)
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
@@ -3962,16 +4009,25 @@ ShellRoot {
             anchors.left: appsWin.atR ? undefined : parent.left
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
-            anchors.rightMargin: pal.boxEdge; anchors.leftMargin: pal.boxEdge
-            anchors.bottomMargin: pal.boxEdge; anchors.topMargin: pal.boxTop
+            // border around the screen: flush with it (and flaring into it), emerging from under it
+            anchors.rightMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.leftMargin: root.frameOn ? root.frameT : pal.boxEdge
+            anchors.bottomMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.topMargin: root.cornerOut ? root.frameT : pal.boxTop
+            joinH: root.frameOn ? (appsWin.atR ? "r" : "l") : ""
+            joinV: root.frameOn ? (appsWin.atB ? "b" : (root.cornerOut ? "t" : "")) : ""
             pal: pal
             active: appsWin.open
 
             HoverHandler { onHoveredChanged: { appsWin.panelHover = hovered; appsWin.syncHover() } }
 
-            opacity: appsWin.reveal
-            visible: opacity > 0.01
-            scale: 0.94 + 0.06 * appsWin.reveal
+            property real slide: appsWin.reveal
+            Behavior on slide { NumberAnimation { duration: appsWin.open ? pal.dSlow : pal.dClose; easing.type: Easing.BezierSpline; easing.bezierCurve: appsWin.open ? pal.curve : pal.curveClose } }
+            opacity: root.frameOn ? 1 : appsWin.reveal
+            visible: root.frameOn ? slide > 0.002 : opacity > 0.01
+            scale: root.frameOn ? 1 : 0.97 + 0.03 * appsWin.reveal
+            transform: Translate {
+                x: root.frameOn ? (appsWin.atR ? 1 : -1) * (1 - bgPanel.slide) * (bgPanel.width + root.frameT + 30) : 0
+                y: root.cornerOut ? (appsWin.atB ? 1 : -1) * (1 - bgPanel.slide) * (bgPanel.height + root.frameT + 30) : 0     // out of the corner: along the top / bottom border too
+            }
             transformOrigin: appsWin.atB ? (appsWin.atR ? Item.BottomRight : Item.BottomLeft) : (appsWin.atR ? Item.TopRight : Item.TopLeft)
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }

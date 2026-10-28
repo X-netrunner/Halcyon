@@ -264,7 +264,7 @@ Scope {
             else surfLingerT.restart()
         }
     }
-    Timer { id: surfLingerT; interval: 420; onTriggered: { root.surfaceLinger = false; gc() } }
+    Timer { id: surfLingerT; interval: root.pal.dSlow + 100; onTriggered: { root.surfaceLinger = false; gc() } }
     readonly property bool needFullSurface: root.centerOpen || root.surfaceLinger || root.toasts.length > 0
 
     PanelWindow {
@@ -279,7 +279,8 @@ Scope {
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: "island-notifs"
-        WlrLayershell.layer: (root.toasts.length > 0 || root.centerOpen) ? WlrLayer.Overlay : WlrLayer.Top
+        // with the border around the screen the boxes stay UNDER the border (an overlay window would be drawn over it)
+        WlrLayershell.layer: (!root.pal.frameOn && (root.toasts.length > 0 || root.centerOpen)) ? WlrLayer.Overlay : WlrLayer.Top
 
         // only the edge trigger and the cards / centre take clicks; the rest of the strip is click-through
         // one fixed mask (the closed panel sits outside the window): swapping masks on open / close re-sent the pointer
@@ -344,23 +345,32 @@ Scope {
         // ---------- popups ----------
         Column {
             id: stack
-            x: root.atR ? (win.width - root.cardW - 30) : 30
-            y: root.atB ? (win.height - implicitHeight - 30) : root.topY
+            // with the border: the cards sit against it (and flare into it), so they are spaced wider to keep the flares apart
+            x: root.pal.frameOn ? (root.atR ? (win.width - root.cardW - root.pal.frameT) : root.pal.frameT)
+                                : (root.atR ? (win.width - root.cardW - 30) : 30)
+            y: root.atB ? (win.height - implicitHeight - (root.pal.cornerOut ? root.pal.frameT : root.pal.frameOn ? root.pal.frameT + 16 : 30))
+                        : (root.pal.cornerOut ? root.pal.frameT : root.pal.frameOn ? root.pal.frameT + 16 : root.topY)
             width: root.cardW
-            spacing: 16
-            move: Transition { NumberAnimation { properties: "y"; duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            spacing: root.toasts.length > 1 ? 0 : (root.pal.frameOn ? 28 : 16)
+            move: Transition { NumberAnimation { properties: "y"; duration: 560; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
 
             Repeater {
                 model: ScriptModel { values: root.toasts }
                 delegate: NotifCard {
                     required property var modelData
+                    required property int index
+                    // out of the corner: the card next to the screen corner is flush with the top / bottom border too
+                    cornerJoin: root.pal.cornerOut ? (root.atB ? (index === root.toasts.length - 1 ? "b" : "") : (index === 0 ? "t" : "")) : ""
                     notif: modelData
+                    mergedAbove: root.toasts.length > 1 && index > 0
+                    mergedBelow: root.toasts.length > 1 && index < root.toasts.length - 1
                     pal: root.pal
                     avatar: root.avatar
                     usePfp: root.usePfp
                     override: root.toastSecs
                     critSecs: root.critSecs
                     stars: root.stars && root.cfg.toastStars
+                    fromRight: root.atR
                     width: root.cardW
                     onDismissed: root.dismiss(modelData)
                     onTimedOut: root.toastTimedOut(modelData)
@@ -386,17 +396,25 @@ Scope {
             starData: root.starData
             profileStars: root.profileStars
             // corner mode pops out of the chosen corner; edge mode slides in from its screen edge
+            readonly property real edgeGap: root.pal.frameOn ? root.pal.frameT : root.pal.boxEdge     // flush with the border when there is one
+            joinH: root.pal.frameOn ? (root.atR ? "r" : "l") : ""
+            readonly property bool outCorner: root.pal.cornerOut && root.corner      // the centre only sits in a corner with the Corner trigger
+            joinV: outCorner ? (root.atB ? "b" : "t") : ""
+            property real slideY: root.reveal
+            Behavior on slideY { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            transform: Translate { y: panel.outCorner ? (root.atB ? 1 : -1) * (1 - panel.slideY) * (panel.height + root.pal.frameT + 40) : 0 }
             x: root.atR
-                ? (win.width - width - root.pal.boxEdge + (1 - root.reveal) * (width + 40))
-                : (root.pal.boxEdge - (1 - root.reveal) * (width + 40))
-            scale: root.corner ? 0.94 + 0.06 * root.reveal : 1
+                ? (win.width - width - edgeGap + (1 - root.reveal) * (width + 40))
+                : (edgeGap - (1 - root.reveal) * (width + 40))
+            scale: (root.corner && !root.pal.frameOn) ? 0.97 + 0.03 * root.reveal : 1
             transformOrigin: root.atB ? (root.atR ? Item.BottomRight : Item.BottomLeft) : (root.atR ? Item.TopRight : Item.TopLeft)
             Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-            y: cfg.vpos === "middle" ? Math.round((win.height - height) / 2)
+            y: outCorner ? (root.atB ? win.height - height - root.pal.frameT : root.pal.frameT)
+             : cfg.vpos === "middle" ? Math.round((win.height - height) / 2)
              : (root.atB || cfg.vpos === "bottom") ? win.height - height - Math.max(8, root.pal.boxTop + cfg.offY)
              : Math.max(8, root.pal.boxTop + cfg.offY)
-            opacity: Math.min(1, root.reveal * 1.6)
-            visible: opacity > 0.01
+            opacity: root.pal.frameOn ? 1 : Math.min(1, root.reveal * 1.6)
+            visible: root.pal.frameOn ? (root.atR ? x < win.width - 1 : x > -width + 1) : opacity > 0.01
             Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             border.color: root.sysmode === "lockdown" || root.sysmode === "stealth" ? Qt.alpha(root.pal.accent, 0.30) : root.pal.line

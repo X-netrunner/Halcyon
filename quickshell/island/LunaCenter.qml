@@ -55,7 +55,7 @@ Scope {
     readonly property bool asWindow: open && deskMode       // an ordinary window: Super+Q and opening another centre leave it alone (shell.qml)
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
-    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
     function flash(t) { note = t; noteT.restart() }
     Timer { id: noteT; interval: 5000; onTriggered: root.note = "" }
     function shortName(n) { n = String(n || ""); n = n.replace(/:latest$/, ""); var i = n.lastIndexOf("/"); return i >= 0 ? n.substring(i + 1) : n }

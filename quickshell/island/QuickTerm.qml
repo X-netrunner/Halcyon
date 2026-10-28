@@ -93,30 +93,23 @@ Scope {
     // ---------- open / close ----------
     readonly property bool typing: input.text !== ""
     readonly property bool mayAutoClose: !askPass && input.text === "" && (autoHide || (!clickMode && !pinned))
-    // Desktop builder > Console: the corner opens Luna's chat or AI chatbox instead of the terminal
-    property bool lunaMode: false
+    // Desktop builder > Console shows "AI Chatbox only": the corner and the console key open the AI chatbox instead of the terminal
     property bool chatMode: false
-    signal lunaRequested()
-    signal chatRequested()
-    signal openChatRequested()
-    Timer { id: lunaCool; interval: 1500 }
+    signal chatRequested(bool toggle, bool fromCorner)      // toggle = false: the pointer is on the corner (open it, never close it); fromCorner: a click on the corner (opens unpinned), not the key
     Timer { id: chatCool; interval: 1500 }
-    function askLuna() { if (lunaCool.running) return; lunaCool.restart(); root.lunaRequested() }
-    function askChat() { if (chatCool.running) return; chatCool.restart(); root.chatRequested() }
+    // the cooldown only stops the pointer resting on the corner from re-firing; a key press or a click always goes through
+    function askChat(tog, corner) { if (!tog && chatCool.running) return; chatCool.restart(); root.chatRequested(tog, corner === true) }
     function setHover(on) {
-        if (chatMode) { if (on && !clickMode) askChat(); return }
-        if (lunaMode) { if (on && !clickMode) askLuna(); return }
+        if (chatMode) { if (on && !clickMode) askChat(false); return }
         if (on) { closeT.stop(); if (!clickMode) { open = true; if (!focused) autoFocusT.restart() } }
         else { autoFocusT.stop(); if (mayAutoClose) { closeT.interval = 550; closeT.restart() } }
     }
     function cornerTap() {
-        if (chatMode) { askChat(); return }
-        if (lunaMode) { askLuna(); return }
+        if (chatMode) { askChat(true, true); return }
         if (open) close(); else { closeT.stop(); open = true; takeFocus() }
     }
     function toggle() {
-        if (chatMode) { askChat(); return }
-        if (lunaMode) { askLuna(); return }
+        if (chatMode) { askChat(true); return }
         if (open && focused) { close(); return }
         closeT.stop()
         open = true
@@ -538,7 +531,7 @@ Scope {
         if (open) { termLinger = true; termLingerT.stop() }
         else termLingerT.restart()
     }
-    Timer { id: termLingerT; interval: 420; onTriggered: { root.termLinger = false; gc() } }
+    Timer { id: termLingerT; interval: root.pal.dSlow + 160; onTriggered: { root.termLinger = false; gc() } }
 
     PanelWindow {
         id: win
@@ -552,7 +545,8 @@ Scope {
         // opened from a keybind / another window (run, prefill): over everything. It used to open UNDER the window that sent the
         // command (Startup & processes, Settings), and once it held the keyboard that window took no clicks: only Super + Q got out.
         // Opened by hovering the corner it stays on Top (changing the layer re-maps the surface, which would re-send enter / leave).
-        WlrLayershell.layer: root.pinned ? WlrLayer.Overlay : WlrLayer.Top
+        // (with the border around the screen it stays under the border, so it slides out from it)
+        WlrLayershell.layer: (root.pinned && !root.pal.frameOn) ? WlrLayer.Overlay : WlrLayer.Top
         // Exclusive while the pointer is over the console (Hyprland's follow_mouse would otherwise hand the keyboard to the
         // terminal beside it); the moment the pointer leaves it is on-demand again, so clicking another window just works
         // ...and while you are typing (text in the line, or answering a running command): the pointer drifting off the box must not
@@ -598,18 +592,26 @@ Scope {
             // left corners: 22 px from the screen's left edge, sliding in from the left; right corners: 18 px into a zone that is 40 px wider
             // than the box = 22 px from the right edge, sliding in from the right. Top: 90 px down (under the bar) and slides down from the
             // top; bottom: 22 px up from the bottom edge and slides up from below.
-            x: (root.atRight ? 18 + (1 - root.reveal) * (root.boxW * 0.5) : 22 - (1 - root.reveal) * (root.boxW * 0.5))
-            y: root.atBottom ? (zone.height - root.pal.boxEdge - height + (1 - root.reveal) * (height + root.pal.boxEdge + 14))
+            // border around the screen: flush with it, flared into it, sliding out from under it sideways
+            property real slide: root.reveal
+            Behavior on slide { NumberAnimation { duration: root.open ? root.pal.dSlow : root.pal.dClose; easing.type: Easing.BezierSpline; easing.bezierCurve: root.open ? root.pal.curve : root.pal.curveClose } }
+            joinH: root.pal.frameOn ? (root.atRight ? "r" : "l") : ""
+            joinV: root.pal.frameOn ? (root.atBottom ? "b" : (root.pal.cornerOut ? "t" : "")) : ""
+            transform: Translate { y: root.pal.cornerOut ? (root.atBottom ? 1 : -1) * (1 - box.slide) * (box.height + root.pal.frameT + 40) : 0 }
+            x: root.pal.frameOn ? (root.atRight ? 40 - root.pal.frameT + (1 - slide) * (root.boxW + 40) : root.pal.frameT - (1 - slide) * (root.boxW + 40))
+                                : (root.atRight ? 18 + (1 - root.reveal) * (root.boxW * 0.5) : 22 - (1 - root.reveal) * (root.boxW * 0.5))
+            y: root.pal.frameOn ? (root.atBottom ? zone.height - root.pal.frameT - height : (root.pal.cornerOut ? root.pal.frameT : root.pal.boxTop))
+             : root.atBottom ? (zone.height - root.pal.boxEdge - height + (1 - root.reveal) * (height + root.pal.boxEdge + 14))
                              : (root.pal.boxTop - (1 - root.reveal) * (height + root.pal.boxTop + 14))
             width: root.boxW
             height: Math.min(660, 40 + body.implicitHeight + 76)
             radius: root.pal.rLg
             opacityBody: 0.94
-            opacity: Math.min(1, root.reveal * 1.6)
-            visible: opacity > 0.01
+            opacity: root.pal.frameOn ? 1 : Math.min(1, root.reveal * 1.6)
+            visible: root.pal.frameOn ? slide > 0.002 : opacity > 0.01
             border.color: root.focused ? root.pal.lineFocus : Qt.alpha(root.pal.accent, 0.40)
-            Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-            Behavior on y { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            Behavior on x { enabled: !root.pal.frameOn; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+            Behavior on y { enabled: !root.pal.frameOn; NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
@@ -621,6 +623,7 @@ Scope {
 
             // High-contrast background backing to ensure text is crisp and readable
             Rectangle {
+                visible: !root.pal.frameOn          // (the border's own colour is the backing there)
                 anchors.fill: parent
                 radius: root.pal.rLg
                 color: Qt.rgba(0, 0, 0, 0.45)
@@ -664,23 +667,6 @@ Scope {
                     font.family: root.mono
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
-                }
-                Rectangle {
-                    anchors.left: termTitle.right; anchors.leftMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: !(root.pal.centred && root.busy)
-                    width: 44; height: 18; radius: 4
-                    color: aiSwHov.hovered ? Qt.alpha(root.pal.accent, 0.3) : Qt.alpha(root.pal.fg, 0.08)
-                    border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.25)
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✦ AI"
-                        color: root.pal.accent
-                        font.pixelSize: 10
-                        font.family: root.mono
-                    }
-                    HoverHandler { id: aiSwHov }
-                    TapHandler { onTapped: root.openChatRequested() }
                 }
                 Text {
                     anchors.centerIn: parent
