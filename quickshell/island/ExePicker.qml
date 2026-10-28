@@ -12,6 +12,8 @@ import Quickshell.Io
 //   because a game's program is often a few folders down (Binaries/Win64/...). Uninstallers and redistributables sink to the bottom.
 // Use:  ExePicker { anchors.fill: parent; pal: pal; onPicked: path => ...; onCancelled: ... }  then  openAt(pathOrFolder)
 // Other files: set exts (["pdf", "docx", ...]), noun ("file") and title; the Study Center picks its documents with it.
+// multi: true lets you tick several files (a click or Enter ticks, folders still open); the bar at the bottom shows how many are ticked
+// and "Ctrl+Enter" (or its button) hands them all to pickedMany(paths). Without multi, picked(path) is the one file, as before.
 Item {
     id: root
 
@@ -25,7 +27,11 @@ Item {
     property string noun: ".exe"            // what the texts call them
     property string title: "Choose the game"
     property int fileGlyph: 0xF0297         // the icon of a file row (a gamepad for games)
+    property bool multi: false              // tick several files, then confirm once
+    property var picks: []                  // the ticked paths (multi)
+    property string confirmLabel: "Add"     // the confirm button of multi mode: "<label> 3 files"
     signal picked(string path)
+    signal pickedMany(var paths)
     signal cancelled()
 
     readonly property string home: Quickshell.env("HOME")
@@ -63,9 +69,17 @@ Item {
         if (s === "") s = home + "/Downloads"
         else if (isExe(s)) s = parentOf(s)
         go(s)
+        picks = []
         open = true
         Qt.callLater(function () { fin.forceActiveFocus() })
     }
+    function ticked(path) { return picks.indexOf(path) >= 0 }
+    function tick(path) {
+        var c = picks.slice(), i = c.indexOf(path)
+        if (i >= 0) c.splice(i, 1); else c.push(path)
+        picks = c
+    }
+    function confirm() { if (picks.length > 0) pickedMany(picks.slice()) }
     function go(path) { deep = false; filter = ""; fin.text = ""; folderPath = path; cur = 0 }
     function goUp() { if (folderPath !== "/") go(parentOf(folderPath)) }
     function lookInside() {
@@ -76,6 +90,7 @@ Item {
     function choose(row) {
         if (!row) return
         if (row.dir) go(row.path)
+        else if (multi) tick(row.path)
         else picked(row.path)
     }
 
@@ -223,7 +238,7 @@ Item {
                 Hint {
                     pal: root.pal
                     Layout.fillWidth: true
-                    text: "Enter opens  ·  Backspace goes up  ·  Esc cancels"
+                    text: root.multi ? "Click to tick  ·  Ctrl+Enter adds  ·  Esc cancels" : "Enter opens  ·  Backspace goes up  ·  Esc cancels"
                     color: Qt.alpha(root.pal.muted, 0.8)
                     fontFamily: root.pal.uiFont
                     pixelSize: root.pal.tCap
@@ -290,7 +305,8 @@ Item {
                                 else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
                                     // a typed path: go there (a folder) or take it (an .exe)
                                     var t = root.expand(text)
-                                    if (t.indexOf("/") === 0) { if (root.isExe(t)) root.picked(t); else root.go(t) }
+                                    if (root.multi && (e.modifiers & Qt.ControlModifier)) root.confirm()
+                                    else if (t.indexOf("/") === 0) { if (root.isExe(t)) { if (root.multi) { if (!root.ticked(t)) root.tick(t); fin.text = "" } else root.picked(t) } else root.go(t) }
                                     else root.choose(root.rows[root.cur])
                                     e.accepted = true
                                 }
@@ -333,7 +349,8 @@ Item {
                         width: ListView.view.width
                         height: modelData.sub !== "" ? 48 : 40
                         radius: root.pal.rSm
-                        color: sel ? Qt.alpha(root.pal.accent, 0.16) : (rowMa.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
+                        readonly property bool ticked: root.multi && !modelData.dir && root.picks.indexOf(modelData.path) >= 0
+                        color: ticked ? Qt.alpha(root.pal.accent, 0.2) : (sel ? Qt.alpha(root.pal.accent, 0.16) : (rowMa.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent"))
                         opacity: modelData.helper ? 0.55 : 1
                         Text {
                             id: rg
@@ -352,8 +369,10 @@ Item {
                         Text {
                             id: tag
                             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                            text: row.modelData.dir ? String.fromCodePoint(0xF0142) : (row.modelData.helper ? "helper" : (row.sel ? "Enter to choose" : ""))
-                            color: root.pal.muted
+                            text: row.modelData.dir ? String.fromCodePoint(0xF0142)
+                                : (row.ticked ? String.fromCodePoint(0xF012C) + "  ticked"
+                                : (row.modelData.helper ? "helper" : (row.sel ? (root.multi ? "Enter to tick" : "Enter to choose") : "")))
+                            color: row.ticked ? root.pal.accent : root.pal.muted
                             font.family: row.modelData.dir ? root.pal.font : root.pal.uiFont
                             font.pixelSize: row.modelData.dir ? 14 : root.pal.tCap
                         }
@@ -380,6 +399,45 @@ Item {
                             color: root.pal.muted
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody
+                        }
+                    }
+                }
+
+                // multi: how many are ticked, and the one button that takes them all
+                Rectangle {
+                    Layout.fillWidth: true
+                    visible: root.multi
+                    implicitHeight: 48
+                    radius: root.pal.rMd
+                    color: Qt.alpha(root.pal.surface, 0.6)
+                    border.width: root.pal.zen ? 0 : 1
+                    border.color: root.pal.lineSoft
+                    RowLayout {
+                        anchors { fill: parent; leftMargin: 16; rightMargin: 8 }
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            text: root.picks.length === 0 ? "Tick one file for its own chat, or several to talk about them together"
+                                : (root.picks.length === 1 ? "1 file ticked: it gets a chat of its own" : root.picks.length + " files ticked: one chat about all of them")
+                            color: root.picks.length === 0 ? root.pal.muted : root.pal.text
+                            font.family: root.pal.uiFont
+                            font.pixelSize: root.pal.tCap + 1
+                        }
+                        Chip {
+                            visible: root.picks.length > 0
+                            pal: root.pal
+                            implicitHeight: 32
+                            label: "Clear"
+                            onClicked: { root.picks = []; fin.forceActiveFocus() }
+                        }
+                        Chip {
+                            pal: root.pal
+                            implicitHeight: 32
+                            label: root.picks.length === 0 ? root.confirmLabel : root.confirmLabel + " (" + root.picks.length + (root.picks.length === 1 ? " file)" : " files)")
+                            on: root.picks.length > 0
+                            opacity: root.picks.length > 0 ? 1 : 0.5
+                            onClicked: root.confirm()
                         }
                     }
                 }
