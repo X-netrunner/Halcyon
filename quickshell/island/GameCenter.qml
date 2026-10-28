@@ -599,7 +599,7 @@ Scope {
         color: danger ? Qt.alpha(root.pal.bad, pbMa.containsMouse ? 0.30 : 0.18)
                       : (pbMa.containsMouse && !disabled ? Qt.lighter(root.pal.accent, 1.08) : root.pal.accent)
         scale: pbMa.pressed && !disabled ? 0.97 : 1
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         Row {
             id: pbRow
@@ -634,7 +634,7 @@ Scope {
         implicitHeight: 32
         radius: 16
         color: on ? root.pal.accent : (tbMa.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent")
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             id: tbTxt
             anchors.centerIn: parent
@@ -734,7 +734,7 @@ Scope {
                                     color: Qt.alpha(root.noteBad ? root.pal.bad : root.pal.accent, 0.16)
                                     border.width: root.pal.bw
                                     border.color: Qt.alpha(root.noteBad ? root.pal.bad : root.pal.accent, 0.35)
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     Text {
                                         anchors.centerIn: parent
                                         text: String.fromCodePoint(0xF0297)
@@ -822,7 +822,7 @@ Scope {
                                         color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.8))
                                         border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                                         border.color: sin.activeFocus ? Qt.alpha(root.pal.accent, 0.7) : root.pal.lineSoft
-                                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Text {
                                             id: sGlyph
                                             anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
@@ -1058,7 +1058,7 @@ Scope {
                                                 asynchronous: true
                                                 cache: false
                                                 opacity: status === Image.Ready ? 1 : 0
-                                                Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
+                                                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                             }
                                             // the name, over a shade at the bottom of the art
                                             Rectangle {
@@ -1134,7 +1134,7 @@ Scope {
                                                 // new: only the chosen game is ringed, softly; the rest have no edge
                                                 border.width: cell.cur ? 2 : root.pal.bw
                                                 border.color: cell.cur ? Qt.alpha(root.pal.accent, root.pal.zen ? 0.75 : 1) : (cardMa.containsMouse ? Qt.alpha(root.pal.accent, 0.4) : root.pal.lineSoft)
-                                                Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                                                Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                             }
                                             MouseArea {
                                                 id: cardMa
@@ -1350,7 +1350,7 @@ Scope {
                                                             x: fsTrack.px(index); y: 5
                                                             width: fsTrack.px(index + 1) - x; height: 1
                                                             color: index < root.firstStage ? Qt.alpha(root.pal.accent, 0.7) : Qt.alpha(root.pal.text, 0.12)
-                                                            Behavior on color { ColorAnimation { duration: root.pal.dMed } }
+                                                            Behavior on color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                         }
                                                     }
                                                     Repeater {
@@ -1365,7 +1365,7 @@ Scope {
                                                                 x: fsTrack.px(fsStep.index) - width / 2; y: 5.5 - height / 2
                                                                 color: fsStep.index < root.firstStage ? root.pal.good : (fsStep.isCur ? root.pal.accent : Qt.alpha(root.pal.text, 0.25))
                                                                 scale: fsStep.isCur ? 0.85 + 0.3 * Math.abs(Math.sin(lpulse.tp * Math.PI)) : 1
-                                                                Behavior on width { NumberAnimation { duration: root.pal.dMed } }
+                                                                Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                             }
                                                             Text {
                                                                 y: 16
@@ -2058,7 +2058,7 @@ Scope {
                                     height: Math.max(24, dflick.visibleArea.heightRatio * (parent.height - 16))
                                     radius: 1.5
                                     color: Qt.alpha(root.pal.text, dflick.moving ? 0.35 : 0.16)
-                                    Behavior on color { ColorAnimation { duration: 200 } }
+                                    Behavior on color { ColorAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 }
                                 Rectangle { anchors.fill: parent; radius: drawer.radius; color: "transparent"; border.width: root.pal.bw; border.color: root.pal.lineSoft }
                             }

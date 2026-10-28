@@ -5,11 +5,12 @@ import "BarLayout.js" as BL
 
 // The bar builder window (Settings > Bar style > Bar builder > "Open the bar builder"). A dimmed overlay with one card on it.
 //
-//   The bar: the real bar, drawn the way it looks on the screen (same widgets, same sizes, same spacing, same Notch / Island shape),
-//            with the three places (left, middle, right) built in. Drag a widget along the bar to reorder it, onto another place
+//   The bar: the real bar, drawn the way it looks on the screen (same widgets, same sizes, same spacing, same Notch / Island / Rail shape),
+//            with the three places (left, middle, right) built in. It is always drawn lying flat: on a Left / Right bar the three places run
+//            from the top of the screen to the bottom (Left = top, Right = bottom) and the widgets stand upright there, as on the screen. Drag a widget along the bar to reorder it, onto another place
 //            to move it, onto the shelf to take it off. A light line shows where it will land; a dashed line marks the exact
 //            centre of the screen. Click a widget to give it its own padding.
-//   Above:   the bar's shape (Notch or Island) and the padding numbers: type a number, or use - / +, or leave "auto".
+//   Above:   the bar's shape (Notch, Island or Rail), the edge it sits on and the padding numbers: type a number, or use - / +, or leave "auto".
 //   Under:   the sizes of the left, middle and right, how a drop would change them, and a suggestion that evens the sides out.
 //   Shelf:   the widgets that are not on the bar.
 // Every change is saved and shown on the real bar at once.
@@ -47,7 +48,11 @@ Item {
     readonly property int barH: ({ low: 26, normal: 32, high: 40 })[barPadding] || 32
     readonly property var sp: BL.resolve(cur, barH, spacious)
     readonly property bool isl: cur.shape === "island"
-    readonly property real earR: isl ? 0 : Math.round(barH * 0.42)
+    readonly property bool rail: cur.shape === "rail"
+    // what the left and right place are called on this bar (Left / Right, or Top / Bottom on a Left / Right bar)
+    readonly property string nameL: BL.zoneTitle(cur, "left")
+    readonly property string nameR: BL.zoneTitle(cur, "right")
+    readonly property real earR: (isl || rail) ? 0 : Math.round(barH * 0.42)
     readonly property real cornR: isl ? barH / 2 : Math.round(barH * 0.42)
     readonly property int textPx: Math.round(barH * 0.44)
     readonly property int curH: Math.round(textPx * 1.3)
@@ -90,7 +95,7 @@ Item {
         var o = BL.place(cur, dragId, hoverZone, idx)
         var l = BL.zoneWidth(o, o.left, widthOf, gapL), r = BL.zoneWidth(o, o.right, widthOf, gapR)
         var d = Math.round(Math.abs(l - r))
-        return "Drop here:  Left " + px(l) + "  ·  Right " + px(r) + "  ·  " + (d <= 6 ? "✓ the sides match" : d + " px apart")
+        return "Drop here:  " + nameL + " " + px(l) + "  ·  " + nameR + " " + px(r) + "  ·  " + (d <= 6 ? "✓ the sides match" : d + " px apart")
     }
 
     // ---------------------------------------------------------------- dragging (pointer driven, so the drop line is ours)
@@ -473,7 +478,7 @@ Item {
                 Text {
                     anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14
                     font.letterSpacing: root.pal.zen ? 0 : 0.8
-                    text: (root.pal.zen ? "Preview  ×" : "PREVIEW  ×") + root.zoom.toFixed(1)
+                    text: (root.pal.zen ? "Preview  ×" : "PREVIEW  ×") + root.zoom.toFixed(1) + (BL.isVert(root.cur.side) ? "  ·  shown lying flat" : "")
                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
                 }
 
@@ -493,9 +498,9 @@ Item {
                         width: sideW * 2 + midW + root.sp.clear * 2 + root.sp.edge * 2 + root.earR * 2
                         height: root.barH
 
-                        // the body: flared corners hanging from the edge (Notch) or a rounded pill (Island)
+                        // the body: flared corners hanging from the edge (Notch), a rounded pill (Island) or a strip along the edge (Rail)
                         Rectangle {
-                            visible: root.isl
+                            visible: root.isl || root.rail
                             anchors.fill: parent
                             radius: root.cornR
                             color: root.pal.box(Qt.alpha(root.pal.surface, 0.9))
@@ -503,7 +508,7 @@ Item {
                             border.color: root.pal.line
                         }
                         Shape {
-                            visible: !root.isl
+                            visible: !root.isl && !root.rail
                             anchors.fill: parent
                             preferredRendererType: Shape.CurveRenderer
                             antialiasing: true
@@ -530,7 +535,7 @@ Item {
                             width: Math.max(root.minZone, rowL.width)
                             height: barBody.height
                             Rectangle { visible: root.dragId !== "" && root.hoverZone === "left"; anchors.fill: parent; anchors.margins: -3; radius: 9; color: Qt.alpha(root.pal.accent, 0.12); border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.6) }
-                            BbEmptyZone { bb: root; visible: root.cur.left.length === 0; title: "Left" }
+                            BbEmptyZone { bb: root; visible: root.cur.left.length === 0; title: root.nameL }
                             Row {
                                 id: rowL
                                 height: parent.height
@@ -548,7 +553,7 @@ Item {
                             width: Math.max(root.minZone, rowC.width)
                             height: barBody.height
                             Rectangle { visible: root.dragId !== "" && root.hoverZone === "center"; anchors.fill: parent; anchors.margins: -3; radius: 9; color: Qt.alpha(root.pal.accent, 0.12); border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.6) }
-                            BbEmptyZone { bb: root; visible: root.cur.center.length === 0; title: "Middle" }
+                            BbEmptyZone { bb: root; visible: root.cur.center.length === 0; title: BL.zoneTitle(root.cur, "center") }
                             Row {
                                 id: rowC
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -567,7 +572,7 @@ Item {
                             width: Math.max(root.minZone, rowR.width)
                             height: barBody.height
                             Rectangle { visible: root.dragId !== "" && root.hoverZone === "right"; anchors.fill: parent; anchors.margins: -3; radius: 9; color: Qt.alpha(root.pal.accent, 0.12); border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.6) }
-                            BbEmptyZone { bb: root; visible: root.cur.right.length === 0; title: "Right" }
+                            BbEmptyZone { bb: root; visible: root.cur.right.length === 0; title: root.nameR }
                             Row {
                                 id: rowR
                                 anchors.right: parent.right
@@ -634,8 +639,25 @@ Item {
                         Row {
                             spacing: 10
                             Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Shape"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Notch"; on: !root.isl; onClicked: root.edited(BL.setShape(root.cur, "notch")) }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Notch"; on: root.cur.shape === "notch"; onClicked: root.edited(BL.setShape(root.cur, "notch")) }
                             Chip { pal: root.pal; implicitHeight: 28; label: "Island"; on: root.isl; onClicked: root.edited(BL.setShape(root.cur, "island")) }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Rail"; on: root.rail; onClicked: root.edited(BL.setShape(root.cur, "rail")) }
+                        }
+                        Flow {
+                            width: parent.width
+                            spacing: 10
+                            Text { width: 96; height: 28; verticalAlignment: Text.AlignVCenter; text: "Side"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Top"; on: root.cur.side === "top"; onClicked: root.edited(BL.setSide(root.cur, "top")) }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Bottom"; on: root.cur.side === "bottom"; onClicked: root.edited(BL.setSide(root.cur, "bottom")) }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Left"; on: root.cur.side === "left"; onClicked: root.edited(BL.setSide(root.cur, "left")) }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Right"; on: root.cur.side === "right"; onClicked: root.edited(BL.setSide(root.cur, "right")) }
+                        }
+                        Row {
+                            visible: root.rail
+                            spacing: 10
+                            Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Capsules"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Off"; on: !root.cur.caps; onClicked: root.edited(BL.setCaps(root.cur, false)) }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "On"; on: root.cur.caps; onClicked: root.edited(BL.setCaps(root.cur, true)) }
                         }
                         BbNumBox { bb: root; labelW: 96; label: "Edge"; value: root.cur.edge; shown: root.sp.edge; maxV: BL.padMax.edge; onCommit: v => root.edited(BL.setNum(root.cur, "edge", v)) }
                         BbNumBox { bb: root; labelW: 96; label: "Gap"; value: root.cur.gap; shown: root.sp.gap; maxV: BL.padMax.gap; onCommit: v => root.edited(BL.setNum(root.cur, "gap", v)) }
@@ -671,7 +693,7 @@ Item {
                             width: parent.width
                             elide: Text.ElideRight
                             text: root.dragId !== "" ? root.dropText()
-                                  : "Left " + root.px(root.wLeft) + "   ·   Middle " + root.px(root.wMid) + "   ·   Right " + root.px(root.wRight)
+                                  : root.nameL + " " + root.px(root.wLeft) + "   ·   Middle " + root.px(root.wMid) + "   ·   " + root.nameR + " " + root.px(root.wRight)
                             color: root.dragId !== "" ? root.pal.accent : root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody
@@ -686,10 +708,10 @@ Item {
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tCap
                             text: Math.abs(root.diffLR) <= 6
-                                  ? "✓ Left and right match. The middle stays centred."
+                                  ? "✓ " + root.nameL + " and " + root.nameR.toLowerCase() + " match. The middle stays centred."
                                   : (root.tip !== null
-                                     ? (root.diffLR > 0 ? "Left" : "Right") + " is " + Math.round(Math.abs(root.diffLR)) + " px wider. Moving " + BL.nameOf(root.tip.id) + " to " + (root.tip.to === "left" ? "Left" : "Right") + " brings them to " + Math.round(root.tip.after) + " px apart."
-                                     : (root.diffLR > 0 ? "Left" : "Right") + " is " + Math.round(Math.abs(root.diffLR)) + " px wider. Try the spacing numbers, or move a widget by hand.")
+                                     ? (root.diffLR > 0 ? root.nameL : root.nameR) + " is " + Math.round(Math.abs(root.diffLR)) + " px wider. Moving " + BL.nameOf(root.tip.id) + " to " + (root.tip.to === "left" ? root.nameL : root.nameR) + " brings them to " + Math.round(root.tip.after) + " px apart."
+                                     : (root.diffLR > 0 ? root.nameL : root.nameR) + " is " + Math.round(Math.abs(root.diffLR)) + " px wider. Try the spacing numbers, or move a widget by hand.")
                         }
                         Chip {
                             visible: root.dragId === "" && root.tip !== null
@@ -741,8 +763,8 @@ Item {
                 color: hot ? Qt.alpha(root.pal.accent, 0.12) : Qt.alpha(root.pal.surface, 0.4)
                 border.width: hot ? 1.5 : 1
                 border.color: hot ? Qt.alpha(root.pal.accent, 0.9) : root.pal.line
-                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Column {
                     x: 22; y: 18
                     width: parent.width - 44

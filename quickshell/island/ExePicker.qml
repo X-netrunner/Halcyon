@@ -209,7 +209,7 @@ Item {
                         implicitHeight: 34
                         radius: root.pal.rSm
                         color: here ? Qt.alpha(root.pal.accent, 0.18) : (plMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
-                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         Row {
                             anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
                             spacing: 10

@@ -23,8 +23,8 @@ Item {
         border.width: root.pal.calm ? 0 : 1
         border.color: root.on ? root.pal.accent : root.pal.line
         scale: ma.pressed ? 0.95 : 1
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+        Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
 
         Rectangle {
@@ -37,8 +37,8 @@ Item {
             color: root.on ? root.pal.bg : root.pal.text
             opacity: root.on ? 1 : 0.85
             Behavior on x { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-            Behavior on width { NumberAnimation { duration: root.pal.dFast } }
-            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+            Behavior on width { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
     }
 

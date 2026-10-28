@@ -192,7 +192,7 @@ Scope {
                     antialiasing: true
                     border.width: bw
                     border.color: root.view ? "transparent" : Qt.alpha(Qt.darker(root.pal.bg, 1.7), 0.74)
-                    Behavior on border.color { ColorAnimation { duration: root.pal.dSlow } }
+                    Behavior on border.color { ColorAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
 
                 // light around the hole: a thin accent line and two fading halos, all following the hole.
@@ -200,7 +200,7 @@ Scope {
                 Item {
                     id: light
                     opacity: win.hasHole ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
+                    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     property real pulse: 1
                     SequentialAnimation on pulse {
                         running: root.open && win.hasHole && root.pal.motion > 0.3
@@ -519,7 +519,7 @@ Scope {
                                     transformOrigin: Item.Left
                                     rotation: Math.atan2(dy, dx) * 180 / Math.PI
                                     color: index < root.index ? Qt.alpha(root.pal.accent, 0.7) : Qt.alpha(root.pal.text, 0.12)
-                                    Behavior on color { ColorAnimation { duration: root.pal.dMed } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 }
                             }
                             Repeater {
@@ -532,7 +532,7 @@ Scope {
                                     x: prog.px(index) - width / 2; y: prog.py(index) - height / 2
                                     color: won ? root.pal.good : (index <= root.index ? root.pal.accent : Qt.alpha(root.pal.text, 0.25))
                                     scale: isCur ? 0.85 + 0.3 * light.pulse : 1
-                                    Behavior on width { NumberAnimation { duration: root.pal.dMed } }
+                                    Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 }
                             }
                         }
@@ -549,7 +549,7 @@ Scope {
                                 color: skipMa.containsMouse ? root.pal.text : root.pal.muted
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tCap
-                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 MouseArea { id: skipMa; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; onClicked: root.end(false) }
                             }
                             Row {
@@ -561,7 +561,7 @@ Scope {
                                     height: 32; radius: 16; width: backText.implicitWidth + 28
                                     color: backMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.95) : Qt.alpha(root.pal.surface, 0.9)
                                     border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     Text { id: backText; anchors.centerIn: parent; text: btns.chooser ? "Everything (" + root.steps.length + ")" : "Back"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                     MouseArea { id: backMa; anchors.fill: parent; hoverEnabled: true; onClicked: btns.chooser ? root.next() : root.back() }
                                 }
@@ -570,8 +570,8 @@ Scope {
                                     width: Math.max(84, nextText.implicitWidth + 32)
                                     scale: nextMa.pressed ? 0.96 : 1
                                     color: nextMa.containsMouse ? Qt.alpha(root.pal.accent, 0.95) : Qt.alpha(root.pal.accent, 0.85)
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                                    Behavior on scale { NumberAnimation { duration: root.pal.dFast } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                    Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     Text {
                                         id: nextText
                                         anchors.centerIn: parent

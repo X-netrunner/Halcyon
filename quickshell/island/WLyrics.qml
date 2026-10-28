@@ -144,14 +144,14 @@ WBase {
                 wrapMode: Text.WordWrap
                 horizontalAlignment: root.center ? Text.AlignHCenter : Text.AlignLeft
                 color: row.on ? (root.style === "karaoke" ? root.dim : root.fg) : root.dim
-                Behavior on color { ColorAnimation { duration: 300 } }
+                Behavior on color { ColorAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
             Item {
                 visible: row.on && root.style === "karaoke"
                 x: txt.x; y: txt.y
                 width: txt.width * root.prog; height: txt.height
                 clip: true
-                Behavior on width { NumberAnimation { duration: 260 } }
+                Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Text {
                     width: txt.width; height: txt.height
                     text: txt.text; font: txt.font; wrapMode: txt.wrapMode

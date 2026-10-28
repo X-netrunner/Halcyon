@@ -388,7 +388,7 @@ Scope {
                                 color: mi.cur ? Qt.alpha(root.pal.accent, 0.16) : (mma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent")
                                 border.width: mi.cur ? 1 : 0
                                 border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.45)
-                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 Text {
                                     anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter
                                     text: mi.modelData.title
@@ -598,7 +598,7 @@ Scope {
                                                         radius: root.roomy ? root.pal.rMd : 9
                                                         color: leaf.editing ? Qt.alpha(root.pal.accent, 0.12)
                                                              : (ma.containsMouse && leaf.modelData.editable ? (root.roomy ? root.pal.fillHover : Qt.alpha(root.pal.surfaceHi, 0.8)) : (root.roomy ? root.pal.group : "transparent"))
-                                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                                                         Row {
                                                             id: keyRow

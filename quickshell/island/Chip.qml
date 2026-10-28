@@ -25,8 +25,8 @@ Rectangle {
     border.width: pal.calm ? 0 : 1          // calm: a soft fill is enough
     border.color: (on || primary) ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft
     scale: ma.pressed ? 0.97 : 1
-    Behavior on color { ColorAnimation { duration: pal.dFast } }
-    Behavior on border.color { ColorAnimation { duration: pal.dFast } }
+    Behavior on color { ColorAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+    Behavior on border.color { ColorAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     Behavior on scale { NumberAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
     Row {
@@ -40,7 +40,7 @@ Rectangle {
             font.family: root.pal.font
             font.pixelSize: 15
             anchors.verticalCenter: parent.verticalCenter
-            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
         Text {
             visible: root.label !== ""
@@ -52,7 +52,7 @@ Rectangle {
             font.pixelSize: root.pal.tBody
             font.weight: Font.Medium
             anchors.verticalCenter: parent.verticalCenter
-            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
     }
     MouseArea {

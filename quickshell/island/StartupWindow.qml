@@ -135,7 +135,7 @@ Item {
                 width: parent.width * Math.max(0.01, Math.min(1, mt.value / (mt.limit * 1.5)))
                 color: mt.tone
                 Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
-                Behavior on color { ColorAnimation { duration: root.pal.dMed } }
+                Behavior on color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
             Rectangle { x: parent.width / 1.5 - 1; y: -3; width: 2; height: parent.height + 6; radius: 1; color: root.pal.text; opacity: 0.65 }
         }
@@ -440,7 +440,7 @@ Item {
                     color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.6)
                     border.width: root.pal.zen && !searchInput.activeFocus ? 0 : 1
                     border.color: searchInput.activeFocus ? root.pal.accent : root.pal.line
-                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 10; anchors.rightMargin: 8
@@ -638,8 +638,8 @@ Item {
                         color: rowHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, row.running ? 0.75 : 0.45)
                         border.width: root.pal.zen && !(rowHover.hovered) ? 0 : 1
                         border.color: rowHover.hovered ? Qt.alpha(root.pal.accent, 0.3) : root.pal.lineSoft
-                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         HoverHandler { id: rowHover }
 
                         RowLayout {
@@ -747,8 +747,8 @@ Item {
                         color: procHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.6)
                         border.width: root.pal.zen && !(procHover.hovered) ? 0 : 1
                         border.color: procHover.hovered ? Qt.alpha(root.pal.accent, 0.3) : root.pal.lineSoft
-                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         HoverHandler { id: procHover }
 
                         RowLayout {
@@ -829,8 +829,8 @@ Item {
                         color: tipHover.hovered ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.75)
                         border.width: root.pal.zen && !(tipHover.hovered) ? 0 : 1
                         border.color: tipHover.hovered ? Qt.alpha(root.pal.accent, 0.3) : root.pal.lineSoft
-                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         HoverHandler { id: tipHover }
 
                         Rectangle {

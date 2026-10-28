@@ -41,9 +41,9 @@ Item {
         border.color: lit ? Qt.alpha(pal.accent, 0.45) : pal.line
         opacity: live ? 1 : 0.28
         scale: (live && tap.pressed) ? 0.9 : 1
-        Behavior on opacity { NumberAnimation { duration: arrow.pal.dMed } }
-        Behavior on color { ColorAnimation { duration: arrow.pal.dFast } }
-        Behavior on border.color { ColorAnimation { duration: arrow.pal.dFast } }
+        Behavior on opacity { NumberAnimation { duration: arrow.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+        Behavior on color { ColorAnimation { duration: arrow.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+        Behavior on border.color { ColorAnimation { duration: arrow.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Behavior on scale { NumberAnimation { duration: arrow.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: arrow.pal.curve } }
 
         Text {
@@ -52,7 +52,7 @@ Item {
             color: arrow.lit ? arrow.pal.accent : arrow.pal.text
             font.family: arrow.pal.font
             font.pixelSize: 18
-            Behavior on color { ColorAnimation { duration: arrow.pal.dFast } }
+            Behavior on color { ColorAnimation { duration: arrow.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
         HoverHandler { id: hv; cursorShape: arrow.live ? Qt.PointingHandCursor : Qt.ArrowCursor }
         TapHandler { id: tap; gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: if (arrow.live) arrow.clicked() }

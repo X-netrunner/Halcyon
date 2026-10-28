@@ -51,7 +51,7 @@ WBase {
                         anchors.bottom: parent.bottom
                         width: parent.width; height: Math.max(width, parent.v * parent.height); radius: Math.min(width / 2, 4)
                         color: root.playing ? root.tone(parent.v) : root.track
-                        Behavior on height { NumberAnimation { duration: 70 } }
+                        Behavior on height { NumberAnimation { duration: 70; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
             }
@@ -72,7 +72,7 @@ WBase {
                         anchors.centerIn: parent
                         width: parent.width; height: Math.max(width, parent.v * parent.height); radius: Math.min(width / 2, 4)
                         color: root.playing ? root.tone(parent.v) : root.track
-                        Behavior on height { NumberAnimation { duration: 70 } }
+                        Behavior on height { NumberAnimation { duration: 70; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
             }
@@ -95,7 +95,7 @@ WBase {
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: (parent.height - height) * (1 - parent.v)
                         color: root.playing ? root.tone(parent.v) : root.track
-                        Behavior on y { NumberAnimation { duration: 70 } }
+                        Behavior on y { NumberAnimation { duration: 70; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
             }
@@ -145,7 +145,7 @@ WBase {
                         x: -width / 2; y: -(cc.r0 + height)
                         radius: width / 2
                         color: root.playing ? root.tone(parent.v) : root.track
-                        Behavior on height { NumberAnimation { duration: 70 } }
+                        Behavior on height { NumberAnimation { duration: 70; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
             }

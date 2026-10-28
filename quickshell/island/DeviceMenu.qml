@@ -182,7 +182,7 @@ Rectangle {
                                  : (ma.containsMouse ? Qt.alpha(root.pal.accent, 0.09) : "transparent")
                             border.width: row.modelData.active ? 1 : 0
                             border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.45)
-                            Behavior on color { ColorAnimation { duration: 120 } }
+                            Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                             Row {
                                 anchors { fill: parent; leftMargin: 10; rightMargin: 10 }

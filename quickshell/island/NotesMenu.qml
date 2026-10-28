@@ -560,8 +560,8 @@ Scope {
                 anchors.fill: parent
                 color: Qt.alpha(root.pal.bg, root.mode === "all" ? 0.45 : 0)
                 opacity: root.open ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
-                Behavior on color { ColorAnimation { duration: root.pal.dMed } }
+                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 MouseArea { anchors.fill: parent; onClicked: root.hide() }
             }
 
@@ -627,7 +627,7 @@ Scope {
                             visible: !root.pal.zen || root.flash        // new: only the "saved" blink, no ornament at rest
                             width: 8; height: 8; radius: 4
                             color: root.flash ? root.pal.good : root.pal.accent
-                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         }
                         // the notice (an error) or "Saved" shows whole under the title, not cut off at the right
                         BoxTitle {
@@ -681,7 +681,7 @@ Scope {
                         color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
                         border.width: root.pal.zen && !qin.activeFocus ? 0 : 1
                         border.color: qin.activeFocus ? root.pal.accent : root.pal.lineSoft
-                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                         Flickable {
                             id: fl
@@ -887,7 +887,7 @@ Scope {
                         color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
                         border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                         border.color: sin.activeFocus ? root.pal.accent : root.pal.lineSoft
-                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         TextInput {
                             id: sin
                             anchors.fill: parent
@@ -972,7 +972,7 @@ Scope {
                                 color: on ? Qt.alpha(root.pal.accent, 0.18) : (fma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.7))
                                 border.width: root.pal.zen && !(on) ? 0 : 1
                                 border.color: on ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
-                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 Text {
                                     id: fl2
                                     anchors.centerIn: parent
@@ -1048,7 +1048,7 @@ Scope {
                                         color: noteRow.modelData.done ? root.pal.accent : "transparent"
                                         border.width: 1.5
                                         border.color: noteRow.modelData.done ? root.pal.accent : root.pal.muted
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Loader {
                                             anchors.fill: parent
                                             active: !!noteRow.modelData.done
@@ -1317,7 +1317,7 @@ Scope {
                                         Layout.preferredWidth: 0
                                         spacing: 2
                                         opacity: rowHover.hovered ? 1 : 0.4
-                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Repeater {
                                             model: [
                                                 { k: "pin", t: noteRow.modelData.pinned ? "Unpin" : "Pin" },
@@ -1349,7 +1349,7 @@ Scope {
                                                     anchors.fill: parent
                                                     radius: 13
                                                     color: ama.containsMouse ? Qt.alpha(modelData.k === "del" ? root.pal.bad : root.pal.accent, 0.16) : "transparent"
-                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                     Text {
                                                         id: at
                                                         anchors.centerIn: parent
@@ -1465,7 +1465,7 @@ Scope {
                 radius: root.pal.rXl
                 opacityBody: root.pal.solid ? 1 : 0.92
                 opacity: root.composing ? an.reveal : 0
-                Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
+                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
                 onVisibleChanged: if (visible && root.composing) Qt.callLater(function () { cin.forceActiveFocus() })
                 Rectangle {

@@ -95,7 +95,7 @@ WBase {
                          : (cell.cur ? root.accent : (cell.n > 0 ? Qt.alpha(root.fg, 0.16) : root.track)))))
                     border.width: cell.st === "outline" ? 1 : (cell.st === "rings" ? 2 : 0)
                     border.color: cell.cur ? root.accent : (cell.n > 0 ? Qt.alpha(root.fg, 0.5) : Qt.alpha(root.dim, 0.5))
-                    Behavior on color { ColorAnimation { duration: 160 } }
+                    Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
                 // tabs: the lit tab has a bar under it
                 Rectangle {
@@ -124,7 +124,7 @@ WBase {
                         font.family: root.icons; font.pixelSize: root.sz(cell.st === "glow" ? 20 : 16)
                         color: cell.ink
                         scale: cell.st === "glow" && cell.cur ? 1.12 : 1
-                        Behavior on scale { NumberAnimation { duration: 160 } }
+                        Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     WLbl {
                         id: lbl

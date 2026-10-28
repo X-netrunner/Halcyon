@@ -172,7 +172,7 @@ RowLayout {
                     enabled: row.pal.motion > 0.01
                     NumberAnimation { duration: Math.round(row.pal.dMed * 1.15); easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve }
                 }
-                Behavior on opacity { NumberAnimation { duration: row.pal.dFast } }
+                Behavior on opacity { NumberAnimation { duration: row.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
 
             // the numbers and special icons sit in their own Row; the pill above floats over it, outside the layout
@@ -201,7 +201,7 @@ RowLayout {
                              : cItem.occ ? Qt.alpha(row.pal.accent, cMa.containsMouse ? 0.55 : 0.36)
                              : Qt.alpha(row.pal.text, cMa.containsMouse ? 0.28 : 0.14)
                         Behavior on height { enabled: row.pal.motion > 0.01; NumberAnimation { duration: Math.round(row.pal.dMed * 1.1); easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve } }
-                        Behavior on color { ColorAnimation { duration: row.pal.dMed } }
+                        Behavior on color { ColorAnimation { duration: row.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     MouseArea {
                         id: cMa
@@ -235,7 +235,7 @@ RowLayout {
                         anchors.fill: parent
                         radius: height / 2
                         color: (!wsItem.cur && wsMa.containsMouse) ? row.pal.surface : "transparent"
-                        Behavior on color { ColorAnimation { duration: row.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: row.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     Text {
                         anchors.centerIn: parent
@@ -244,7 +244,7 @@ RowLayout {
                         font.family: row.pal.uiFont
                         font.pixelSize: row.pal.tBody
                         font.weight: wsItem.cur ? Font.DemiBold : Font.Medium
-                        Behavior on color { ColorAnimation { duration: Math.round(row.pal.dMed * 0.8) } }
+                        Behavior on color { ColorAnimation { duration: Math.round(row.pal.dMed * 0.8); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     MouseArea { id: wsMa; anchors.fill: parent; hoverEnabled: true; onClicked: row.workspaceClicked(wsItem.modelData.id) }
                 }
@@ -264,7 +264,7 @@ RowLayout {
                         anchors.fill: parent
                         radius: height / 2
                         color: spItem.lit ? row.pal.accent2 : (spMa.containsMouse ? row.pal.surface : "transparent")
-                        Behavior on color { ColorAnimation { duration: row.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: row.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     Text {
                         anchors.centerIn: parent
@@ -272,7 +272,7 @@ RowLayout {
                         color: spItem.lit ? row.pal.bg : row.pal.muted
                         font.family: row.pal.font
                         font.pixelSize: 14
-                        Behavior on color { ColorAnimation { duration: row.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: row.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     MouseArea { id: spMa; anchors.fill: parent; hoverEnabled: true; onClicked: row.specialClicked(spItem.modelData.name) }
                 }
@@ -351,7 +351,7 @@ RowLayout {
                 clip: true
                 opacity: row.showStats ? 1 : 0
                 Behavior on implicitWidth { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve } }
-                Behavior on opacity { NumberAnimation { duration: row.pal.dMed } }
+                Behavior on opacity { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Row {
                     id: statsRow
                     anchors.verticalCenter: parent.verticalCenter

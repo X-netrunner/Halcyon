@@ -30,7 +30,7 @@ Rectangle {
                 height: 26
                 radius: 9
                 color: sel ? seg.pal.accent : (ma.containsMouse ? Qt.alpha(seg.pal.surfaceHi, 0.9) : "transparent")
-                Behavior on color { ColorAnimation { duration: seg.pal.dFast } }
+                Behavior on color { ColorAnimation { duration: seg.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Text {
                     id: lbl
                     anchors.centerIn: parent

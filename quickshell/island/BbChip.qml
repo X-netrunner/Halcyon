@@ -21,9 +21,9 @@ Rectangle {
     color: hot ? Qt.alpha(bb.pal.surfaceHi, 0.9) : Qt.alpha(bb.pal.surface, 0.8)
     border.width: bb.pal.zen && !(hot) ? 0 : 1
     border.color: hot ? Qt.alpha(bb.pal.accent, 0.7) : bb.pal.lineSoft
-    Behavior on color { ColorAnimation { duration: bb.pal.dFast } }
-    Behavior on border.color { ColorAnimation { duration: bb.pal.dFast } }
-    Behavior on opacity { NumberAnimation { duration: bb.pal.dFast } }
+    Behavior on color { ColorAnimation { duration: bb.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+    Behavior on border.color { ColorAnimation { duration: bb.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+    Behavior on opacity { NumberAnimation { duration: bb.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
     Rectangle { x: 11; anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: hot ? bb.pal.accent : bb.pal.muted; opacity: 0.7 }
     Text {
