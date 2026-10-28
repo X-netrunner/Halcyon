@@ -39,7 +39,7 @@ Item {
             strokeWidth: 0
             fillGradient: LinearGradient {
                 x1: 0; y1: 0; x2: 0; y2: Math.max(1, root.bh)
-                GradientStop { position: 0.0; color: Qt.alpha(root.pal.text, 0.05) }
+                GradientStop { position: 0.0; color: Qt.alpha(root.pal.text, root.pal.frameOn ? 0 : 0.05) }
                 GradientStop { position: 0.45; color: Qt.alpha(root.pal.text, 0.0) }
             }
             startX: 0; startY: 0
@@ -54,7 +54,7 @@ Item {
         }
         ShapePath {
             fillColor: "transparent"
-            strokeColor: root.pal.line
+            strokeColor: root.pal.frameOn ? "transparent" : root.pal.line
             strokeWidth: 1
             startX: 0; startY: 0
             PathArc { x: root.r; y: root.r; radiusX: root.r; radiusY: root.r; direction: PathArc.Clockwise }

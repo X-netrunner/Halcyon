@@ -20,6 +20,13 @@ Item {
     signal dismissed()      // the user clicked it: remove it everywhere
     signal timedOut()       // the countdown ran out: hide the popup only
     signal hideAll()        // right click
+    // several popups at once are ONE box: no gap, the corners that touch are square, a thin divider in the border colour between them
+    property bool mergedAbove: false     // another popup sits directly above this one
+    property bool mergedBelow: false     // another popup sits directly below this one
+    property bool fromRight: true   // the side of the screen the popups sit on: with the border around the screen they slide out of it
+    property string cornerJoin: ""    // "t" / "b": this card is the one in the screen corner, flush with the top / bottom border too
+    readonly property real hideY: cornerJoin === "t" ? -(height + (pal ? pal.frameT : 0) + 30) : (cornerJoin === "b" ? (height + (pal ? pal.frameT : 0) + 30) : 0)
+    readonly property real hideX: (fromRight ? 1 : -1) * (width + (pal ? pal.frameT : 0) + 30)
 
     readonly property bool critical: notif ? notif.urgency === NotificationUrgency.Critical : false
     readonly property int dur: critical ? critSecs * 1000
@@ -75,14 +82,16 @@ Item {
 
     ParallelAnimation {
         id: enter
-        NumberAnimation { target: bubble; property: "x"; from: 36; to: 0; duration: 480; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curve }
-        NumberAnimation { target: bubble; property: "opacity"; from: 0; to: 1; duration: 320; easing.type: Easing.OutSine }
+        NumberAnimation { target: bubble; property: "x"; from: card.pal.frameOn ? card.hideX : 36; to: 0; duration: 640; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curve }
+        NumberAnimation { target: bubble; property: "y"; from: card.pal.frameOn ? card.hideY : 0; to: 0; duration: 640; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curve }
+        NumberAnimation { target: bubble; property: "opacity"; from: card.pal.frameOn ? 1 : 0; to: 1; duration: 440; easing.type: Easing.InOutSine }
     }
     SequentialAnimation {
         id: exit
         ParallelAnimation {
-            NumberAnimation { target: bubble; property: "x"; to: 36; duration: 240; easing.type: Easing.InCubic }
-            NumberAnimation { target: bubble; property: "opacity"; to: 0; duration: 220 }
+            NumberAnimation { target: bubble; property: "x"; to: card.pal.frameOn ? card.hideX : 36; duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curveClose }
+            NumberAnimation { target: bubble; property: "y"; to: card.pal.frameOn ? card.hideY : 0; duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curveClose }
+            NumberAnimation { target: bubble; property: "opacity"; to: card.pal.frameOn ? 1 : 0; duration: 320; easing.type: Easing.InOutSine }
         }
         ScriptAction { script: card.finish() }
     }
@@ -102,9 +111,15 @@ Item {
         id: bubble
         transform: Translate { x: card.swipeX }
         pal: card.pal
+        joinH: card.pal.frameOn ? (card.fromRight ? "r" : "l") : ""
+        joinV: card.pal.frameOn ? card.cornerJoin : ""
+        earR: 10
         width: card.width
         height: content.implicitHeight + 36
         radius: card.pal.rLg
+        sqTop: card.mergedAbove
+        sqBot: card.mergedBelow
+        shadow: !card.mergedAbove
         opacityBody: card.pal.glassSolid - 0.06
         border.color: card.critical ? Qt.alpha(card.pal.bad, 0.6) : card.pal.line
 
@@ -229,9 +244,18 @@ Item {
             }
         }
 
-        // time left
+        // the divider between two popups
         Rectangle {
-            visible: card.dur > 0
+            visible: card.mergedAbove
+            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 22; rightMargin: 22 }
+            height: 2
+            radius: 1
+            color: Qt.alpha(card.pal.accent, 0.45)
+        }
+
+        // time left (a lone popup only: in a stack the divider takes its place)
+        Rectangle {
+            visible: card.dur > 0 && !card.mergedAbove && !card.mergedBelow
             anchors { left: parent.left; bottom: parent.bottom; leftMargin: 24; bottomMargin: 8 }
             height: 2
             radius: 1

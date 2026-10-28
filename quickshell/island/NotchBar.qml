@@ -129,10 +129,12 @@ PanelWindow {
     // click mode: if the pointer never reaches the bar after the click, let it go again
     Timer { id: graceT; interval: 2500; onTriggered: if (!hov.hovered) win.peek = false }
 
+    property int frameT: 0                   // the border around the screen (ScreenFrame.qml): the bar hangs from its inner edge
     anchors { top: true; left: true; right: true }
-    implicitHeight: barH + 34                       // room for the soft shadow under the bar
+    exclusionMode: frameT > 0 ? ExclusionMode.Ignore : ExclusionMode.Normal      // with a border it starts at the screen edge and sits `frameT` lower itself
+    implicitHeight: frameT + barH + 34                       // room for the soft shadow under the bar
     // windows start below the bar; Hyprland adds its outer gap on top of this zone, so that is taken off again
-    exclusiveZone: autoHide ? 0 : Math.max(0, barH + sizeSet.gap - gaps * 2)
+    exclusiveZone: frameT + (autoHide ? 0 : Math.max(0, barH + sizeSet.gap - gaps * 2))
     color: "transparent"
 
     WlrLayershell.namespace: "island-notch"
@@ -187,7 +189,7 @@ PanelWindow {
         width: bodyW + win.earR * 2
         height: win.barH
         anchors.horizontalCenter: parent.horizontalCenter
-        y: win.shown ? 0 : -(win.barH + 30)
+        y: win.shown ? win.frameT : -(win.barH + 30)
         Behavior on y { NumberAnimation { duration: win.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
         opacity: win.pageOpen ? 0.0 : 1.0
         Behavior on opacity { NumberAnimation { duration: win.pal.dMed } }
@@ -226,7 +228,8 @@ PanelWindow {
         }
 
         // ---- the outline: flare, straight side, rounded corner, bottom, rounded corner, straight side, flare
-        readonly property color fillCol: Qt.alpha(win.pal.bg, Math.min(0.97, win.pal.glassBar + 0.26))
+        // with the border around the screen the bar, the border and the boxes are all the one colour (Pal.frameCol)
+        readonly property color fillCol: win.frameT > 0 ? win.pal.frameCol : Qt.alpha(win.pal.bg, Math.min(0.97, win.pal.glassBar + 0.26))
         Shape {
             id: body
             anchors.fill: parent
@@ -253,7 +256,7 @@ PanelWindow {
                 strokeWidth: 0
                 fillGradient: LinearGradient {
                     x1: 0; y1: 0; x2: 0; y2: notch.bh
-                    GradientStop { position: 0.0; color: Qt.alpha(win.pal.text, 0.05) }
+                    GradientStop { position: 0.0; color: Qt.alpha(win.pal.text, win.pal.frameOn ? 0 : 0.05) }
                     GradientStop { position: 0.55; color: Qt.alpha(win.pal.text, 0.0) }
                 }
                 startX: 0; startY: 0
@@ -269,7 +272,7 @@ PanelWindow {
             // hairline: the same outline, open at the top (nothing is drawn along the screen edge)
             ShapePath {
                 fillColor: "transparent"
-                strokeColor: win.pal.line
+                strokeColor: win.pal.frameOn ? "transparent" : win.pal.line
                 strokeWidth: 1
                 startX: 0; startY: 0
                 PathArc { x: notch.r; y: notch.r; radiusX: notch.r; radiusY: notch.r; direction: PathArc.Clockwise }

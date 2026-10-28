@@ -86,7 +86,7 @@ Scope {
     }
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
-    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
 
     // the game started or ended (shell.qml): read the library again so the badges and play times are right
     onRunningIdChanged: {

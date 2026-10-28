@@ -17,7 +17,7 @@ Scope {
     // the window stays a moment after it closes, so its fade-out plays (it used to vanish at once)
     property bool linger: false
     Connections { target: root; function onOpenChanged() { if (!root.open) { root.linger = true; lingerT.restart() } } }
-    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
     property bool consoleOpen: false
     // the island's own picture picker over the Settings window (SetProfile's Browse): browseImage(start, function (path) {})
     property bool imgPickOpen: false
@@ -765,6 +765,9 @@ Scope {
             { type: "seg", adv: true, key: "pair:bt", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")] },
             { type: "seg", adv: true, key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch|custom" },
             { type: "seg", adv: true, key: "pair:spacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the time always dead centre. (Bar size and padding above is the bar's height and its distance from the edge.)", opts: [o("compact", "Compact"), o("spacious", "Spacious")] },
+            { type: "toggle", key: "opt:frame", label: "Border around the screen", desc: "A frame all around the screen, in the same colour as the bar. The Notch bar and the pages that drop from it are part of its top edge, and the notifications, utilities box, console, app menu and the other boxes slide out from under it. Windows stop at its inner edge. With the Custom style it is in the Bar builder.", when: "opt:barStyle=island|notch|off" },
+            { type: "slider", key: "opt:frameW", def: 12, label: "Border thickness", min: 4, max: 28, step: 1, unit: " px", when: "opt:frame=true&opt:barStyle=island|notch|off" },
+            { type: "slider", key: "opt:frameR", def: 22, label: "Border inner corners", desc: "How round the screen's corners are inside the border.", min: 0, max: 40, step: 1, unit: " px", when: "opt:frame=true&opt:barStyle=island|notch|off" },
             { type: "seg", adv: true, key: "opt:bgWhere", label: "Background apps dot", desc: "Where the dot that says apps are running in the background is shown. The box with the apps always opens bottom-left (on the bar, click the icon to open it).", opts: [o("corner", "Corner"), o("bar", "Bar")] }
         ] },
         { id: "barbehave", title: "Bar behaviour", section: "Bar & panels", items: [
@@ -2223,6 +2226,10 @@ Scope {
                 movingStars: root.opt.starsBar !== false
                 onClosed: root.builderOpen = false
                 onEdited: l => root.setting("opt:barLayout", l)
+                frameOn: root.get("opt:frame") === true
+                frameW: root.get("opt:frameW") !== undefined ? Number(root.get("opt:frameW")) : 12
+                frameR: root.get("opt:frameR") !== undefined ? Number(root.get("opt:frameR")) : 22
+                onFrameEdited: (k, v) => root.setting(k, v)
             }
         }
     }

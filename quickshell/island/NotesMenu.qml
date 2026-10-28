@@ -45,7 +45,7 @@ Scope {
     // the window outlives `open` for a moment so the panel can slide away
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
-    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
 
     // ---- Organise (scripts/halcyon-ai.py organise): tags, groups and duplicates. It first only PROPOSES; Apply carries the proposal out
     // (the script keeps a copy of notes.json from before as notes.json.bak-organise). Duplicates are found without the AI too.

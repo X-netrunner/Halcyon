@@ -188,7 +188,7 @@ Scope {
     }
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
-    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
 
     function nameOf(id) { for (var i = 0; i < docs.length; i++) if (docs[i].id === id) return docs[i].name; return "" }
     function docOf(id) { for (var i = 0; i < docs.length; i++) if (docs[i].id === id) return docs[i]; return null }
