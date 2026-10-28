@@ -18,9 +18,6 @@ Rectangle {
     property string joinH: ""
     property string joinV: ""
     property real earR: 16
-    // a stack of cards that read as one box: sqTop / sqBot make the top / bottom corners square (no round corner, no flare)
-    property bool sqTop: false
-    property bool sqBot: false
     readonly property bool joined: !!pal && pal.frameOn === true && (joinH !== "" || joinV !== "")
     // with the border on, a pane that is not tinted (notifications, utilities, console ...) is painted in the border's own colour,
     // so a floating card and a box that flares into the border are the same colour as the border and the notch
@@ -47,7 +44,7 @@ Rectangle {
         for (var k = 0; k < 4; k++) {
             var c = cs[k], before = c[3], after = c[4], first = (k === 0)
             var m = first ? "M" : "L"
-            if ((k < 2 && sqTop) || (k >= 2 && sqBot) || (before && after)) d += put(c, 0, 0, m)
+            if (before && after) d += put(c, 0, 0, m)
             else if (after) { d += put(c, 0, e, m) + arc(c, e, 0, -e, 0) }
             else if (before) { d += put(c, 0, -e, m) + arc(c, e, 0, e, 0) }
             else { d += put(c, 0, R, m) + arc(c, R, 1, R, 0) }
@@ -61,10 +58,6 @@ Rectangle {
     readonly property real sheenA: pal.light ? 0.50 : 0.055
     readonly property real edgeA: pal.light ? 0.90 : 0.20
 
-    topLeftRadius: sqTop ? 0 : radius
-    topRightRadius: sqTop ? 0 : radius
-    bottomLeftRadius: sqBot ? 0 : radius
-    bottomRightRadius: sqBot ? 0 : radius
     color: (flat || joined) ? "transparent" : (frameMatch ? pal.frameCol : Qt.alpha(Qt.tint(pal.bg, tint), opacityBody))
     // the calm style draws its own neutral hairline (below), so an accent outline a window asks for does not show there
     border.width: flat || joined || pal.calm ? 0 : 1
@@ -73,10 +66,6 @@ Rectangle {
         visible: !root.flat && !root.joined && root.pal.calm
         anchors.fill: parent
         radius: root.radius
-        topLeftRadius: root.topLeftRadius
-        topRightRadius: root.topRightRadius
-        bottomLeftRadius: root.bottomLeftRadius
-        bottomRightRadius: root.bottomRightRadius
         color: "transparent"
         border.width: 1             // the pane keeps its one hairline in every calm style; only what is inside it loses outlines
         border.color: root.pal.line
@@ -105,10 +94,6 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 1
         radius: Math.max(0, root.radius - 1)
-        topLeftRadius: Math.max(0, root.topLeftRadius - 1)
-        topRightRadius: Math.max(0, root.topRightRadius - 1)
-        bottomLeftRadius: Math.max(0, root.bottomLeftRadius - 1)
-        bottomRightRadius: Math.max(0, root.bottomRightRadius - 1)
         gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.alpha(root.sheenCol, root.sheenA) }
             GradientStop { position: 0.45; color: Qt.alpha(root.sheenCol, 0.0) }
