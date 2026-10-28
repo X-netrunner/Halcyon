@@ -29,6 +29,11 @@ Item {
     property bool profileStars: true
     property bool movingStars: true      // the few stars flying over the card (Settings > Look > Moving stars); the constellations are not drawn here
     signal edited(var layout)
+    // Border around the screen (ScreenFrame.qml): the on / off switch, thickness and inner corner radius live here now
+    property bool frameOn: false
+    property int frameW: 12
+    property int frameR: 22
+    signal frameEdited(string key, var value)
     signal closed()
 
     readonly property var cur: BL.normalize(layout)
@@ -635,6 +640,14 @@ Item {
                         BbNumBox { bb: root; labelW: 96; label: "Edge"; value: root.cur.edge; shown: root.sp.edge; maxV: BL.padMax.edge; onCommit: v => root.edited(BL.setNum(root.cur, "edge", v)) }
                         BbNumBox { bb: root; labelW: 96; label: "Gap"; value: root.cur.gap; shown: root.sp.gap; maxV: BL.padMax.gap; onCommit: v => root.edited(BL.setNum(root.cur, "gap", v)) }
                         BbNumBox { bb: root; labelW: 96; label: "Centre gap"; value: root.cur.clear; shown: root.sp.clear; maxV: BL.padMax.clear; onCommit: v => root.edited(BL.setNum(root.cur, "clear", v)) }
+                        Row {
+                            spacing: 10
+                            Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Screen border"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Off"; on: !root.frameOn; onClicked: root.frameEdited("opt:frame", false) }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "On"; on: root.frameOn; onClicked: root.frameEdited("opt:frame", true) }
+                        }
+                        BbNumBox { visible: root.frameOn; bb: root; labelW: 96; label: "Thickness"; value: root.frameW; shown: root.frameW; maxV: 28; onCommit: v => root.frameEdited("opt:frameW", v === null ? 12 : Math.max(4, v)) }
+                        BbNumBox { visible: root.frameOn; bb: root; labelW: 96; label: "Inner corners"; value: root.frameR; shown: root.frameR; maxV: 40; onCommit: v => root.frameEdited("opt:frameR", v === null ? 22 : v) }
                     }
                 }
 

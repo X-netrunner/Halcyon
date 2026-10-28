@@ -85,7 +85,7 @@ Scope {
 
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
-    Timer { id: lingerT; interval: 340; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
 
     // ---- a new song while the panel is open: read again, after a moment (the player updates title and artist one after the other)
     onTrackKeyChanged: { lyrStale = true; queStale = true; aiView = ""; aiOut = ""; aiFor = ""; if (open) songT.restart() }

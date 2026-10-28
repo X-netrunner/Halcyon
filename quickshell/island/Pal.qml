@@ -257,6 +257,13 @@ Scope {
     readonly property real glass: solid ? 1 : ((zen ? 0.90 : calm ? 0.85 : 0.80) + glassShift + glassBoost)
     readonly property real glassSolid: solid ? 1 : Math.min(1, 0.94 + glassShift + glassBoost)  // for things that must stay legible over anything (overlays)
     readonly property real glassBar: solid ? 1 : (0.58 + glassShift + glassBoost)      // the top bar at rest: lighter = more wallpaper shows through
+    // the border around the screen (ScreenFrame.qml) and everything that hangs from it: the notch bar and its pages share this one fill
+    readonly property color frameCol: Qt.alpha(bg, 1)
+    // set by shell.qml from Settings > Bar style > Border around the screen: when on, the boxes that open from a screen edge
+    // (Glass.qml: joinH / joinV) are drawn in frameCol and flare into the border instead of floating beside it
+    property bool frameOn: false
+    property int frameT: 0
+    property bool cornerOut: false          // Desktop builder > Boxes come out of: the corner (top / bottom AND side) instead of the side only
     readonly property real glassBarOpen: solid ? 1 : (0.74 + glassShift + glassBoost)  // the bar once it has grown into media / perf / the launcher
     // hairlines are neutral and work with every wallpaper; panels (Glass.qml) add a faint accent tint on top (lineTint)
     readonly property bool matchBox: !light && surfaceStyle === "match"     // box outlines in the accent colour too
@@ -374,13 +381,16 @@ Scope {
     property string lastRawPalette: ""
 
     // ---------- motion ----------
-    // one signature curve (easeOutQuint): fast start, long soft landing, never bounces
-    readonly property var curve: [0.22, 1, 0.36, 1, 1, 1]
+    // one signature curve (a soft ease-out: gentle start, long calm landing, never bounces)
+    readonly property var curve: [0.33, 0.85, 0.4, 1, 1, 1]
     // motion scales every island animation: 1 = normal, 0.5 = fast, 0 = instant (Gaming mode uses 0.25)
     property real motion: 1.0
-    readonly property int dFast: Math.round(160 * motion)
-    readonly property int dMed: Math.round(300 * motion)
-    readonly property int dSlow: Math.round(520 * motion)
+    readonly property int dFast: Math.round(200 * motion)
+    readonly property int dMed: Math.round(380 * motion)
+    readonly property int dSlow: Math.round(680 * motion)
+    // boxes folding back in: a touch quicker than they came out, and a gentle ease-in-out (starts soft, settles soft) instead of the sharp ease-out they open with
+    readonly property int dClose: Math.round(560 * motion)
+    readonly property var curveClose: [0.45, 0, 0.3, 1, 1, 1]
 
     Behavior on bg { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
     Behavior on surface { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }

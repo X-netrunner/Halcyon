@@ -606,6 +606,20 @@ Item {
                                     onPicked: id => root.moveBox(boxRow.modelData, id)
                                 }
                             }
+                            ChipRow {
+                                Layout.fillWidth: true
+                                pal: root.pal; label: "Boxes come out of"
+                                options: [["corner", "The corner (top / bottom and side)"], ["side", "The side only"]]
+                                current: (root.opt && root.opt.boxOut === "side") ? "side" : "corner"
+                                onPicked: id => root.put("boxOut", id)
+                            }
+                            Hint {
+                                pal: root.pal
+                                Layout.fillWidth: true
+                                visible: !root.pal.zen || !root.pal.hideHints
+                                text: "Needs the screen border (Bar builder). The corner: a box is attached to both borders of its corner and slides out of the corner. The side only: it is attached to the side border."
+                                color: root.pal.muted; fontFamily: root.pal.uiFont; pixelSize: 10
+                            }
                             // ---- how each box opens: its own hover / click, or like the rest (Settings > Edge boxes)
                             NbCap { pal: root.pal; text: root.pal.cap("OPENS ON") }
                             Hint {
@@ -632,12 +646,18 @@ Item {
                             ChipRow {
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Console shows"
-                                options: [["terminal", "Terminal"], ["chat", "AI Chatbox"], ["luna", "Luna's chat"]]
-                                current: (root.opt && root.opt.consoleMode) ? root.opt.consoleMode : ((root.opt && root.opt.consoleLuna === true) ? "luna" : "terminal")
+                                options: [["terminal", "Terminal"], ["chat", "AI Chatbox only"]]
+                                current: (root.opt && (root.opt.consoleMode === "chat" || root.opt.consoleMode === "luna" || root.opt.consoleLuna === true)) ? "chat" : "terminal"
                                 onPicked: id => {
                                     root.put("consoleMode", id)
-                                    root.put("consoleLuna", id === "luna")
+                                    root.put("consoleLuna", false)
                                 }
+                            }
+                            Hint {
+                                pal: root.pal
+                                Layout.fillWidth: true
+                                text: "AI Chatbox only: the console corner and key open the AI chatbox and never the terminal. Pick Luna, Ollama or any API from the dropdown at its top right."
+                                color: root.pal.muted; fontFamily: root.pal.uiFont; pixelSize: 10
                             }
                             ChipRow {
                                 Layout.fillWidth: true
