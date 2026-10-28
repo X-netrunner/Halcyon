@@ -650,7 +650,7 @@ Glass {
                         height: parent.height; radius: 2
                         color: root.pal.accent
                         width: parent.width * (root.focusInfo.total > 0 ? Math.max(0, Math.min(1, 1 - root.focusSecs / root.focusInfo.total)) : 0)
-                        Behavior on width { NumberAnimation { duration: 900 } }
+                        Behavior on width { NumberAnimation { duration: 900; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
 

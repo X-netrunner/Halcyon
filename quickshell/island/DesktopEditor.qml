@@ -205,7 +205,7 @@ PanelWindow {
             pal: win.pal
             visible: opacity > 0.01
             opacity: win.helpOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: win.pal.dFast } }
+            Behavior on opacity { NumberAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             anchors.right: parent.right; anchors.rightMargin: 24
             anchors.bottom: parent.bottom; anchors.bottomMargin: 34
             width: 300

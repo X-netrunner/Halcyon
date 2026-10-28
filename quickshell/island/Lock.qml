@@ -443,7 +443,7 @@ Scope {
                     color: root.pal.box(Qt.alpha(root.pal.surface, 0.85))
                     border.width: 1
                     border.color: root.failure !== "" ? root.pal.bad : (input.activeFocus ? root.pal.lineFocus : root.pal.line)
-                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                     SequentialAnimation {
                         id: shake

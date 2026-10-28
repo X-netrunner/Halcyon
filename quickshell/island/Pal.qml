@@ -381,8 +381,13 @@ Scope {
     property string lastRawPalette: ""
 
     // ---------- motion ----------
-    // one signature curve (a soft ease-out: gentle start, long calm landing, never bounces)
-    readonly property var curve: [0.33, 0.85, 0.4, 1, 1, 1]
+    // one signature curve: a gentle spring. It slips about 3 % past its target and settles slowly (calm, because the times below are long).
+    // curveSoft:
+    // curveCalm: no overshoot. A box joined to the screen border (frameOn) must not overshoot or it would pull away from the border
+    // for a moment, so the border uses the calm one. Want it bouncier? Raise the second number of curveSoft (1.32 = soft, 1.38 = a little more, 1.6 = playful, about 11 %).
+    readonly property var curveCalm: [0.33, 0.85, 0.4, 1, 1, 1]
+    readonly property var curveSoft: [0.34, 1.32, 0.3, 1, 1, 1]
+    readonly property var curve: frameOn ? curveCalm : curveSoft
     // motion scales every island animation: 1 = normal, 0.5 = fast, 0 = instant (Gaming mode uses 0.25)
     property real motion: 1.0
     readonly property int dFast: Math.round(200 * motion)

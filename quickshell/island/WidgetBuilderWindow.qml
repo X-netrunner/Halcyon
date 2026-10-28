@@ -638,7 +638,7 @@ Item {
                                                 width: (240 - 20 - 12) / 3; height: (150 - 20 - 12) / 3; radius: 9
                                                 color: spm.containsMouse ? Qt.alpha(root.pal.accent, 0.25) : Qt.alpha(root.pal.surface, 0.55)
                                                 border.width: 1; border.color: spm.containsMouse ? Qt.alpha(root.pal.accent, 0.6) : "transparent"
-                                                Behavior on color { ColorAnimation { duration: 120 } }
+                                                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                 Rectangle { anchors.centerIn: parent; width: 14; height: 6; radius: 3; color: spm.containsMouse ? root.pal.accent : Qt.alpha(root.pal.muted, 0.6) }
                                                 MouseArea { id: spm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.edit(WD.placeAt(root.layout, root.sel, parent.modelData[0]), false) }
                                                 HoverHandler { onHoveredChanged: if (hovered) spotTip.text = parent.modelData[1] }

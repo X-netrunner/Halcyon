@@ -3,7 +3,11 @@
 // The bar builder's data (Settings > Bar style = Custom). One list of widgets, three zones, and the rules for editing them.
 // The layout is saved in settings.json as opt.barLayout =
 //   { left: [ids], center: [ids], right: [ids],
-//     shape: "notch" | "island",          the bar's look: hangs from the top edge with flared corners, or floats as a rounded pill
+//     shape: "notch" | "island" | "rail", the bar's look: hangs from the edge with flared corners, floats as a rounded pill, or runs the whole
+//                                         length of the edge like a side bar (the Caelestia-style rail)
+//     side:  "top" | "bottom" | "left" | "right",   which edge of the screen the bar sits on (left / right bars stack their widgets top to bottom;
+//                                         the three places then read Top / Middle / Bottom, in the same order as Left / Middle / Right)
+//     caps:  true | false,                the rail only: every widget sits in its own soft capsule
 //     edge:  px | null,                   padding between the bar's ends and the first / last widget   (null = automatic)
 //     gap:   px | null,                   space between two widgets                                    (null = automatic)
 //     clear: px | null,                   space between the left / right widgets and the middle        (null = automatic)
@@ -11,7 +15,8 @@
 // Used by CustomBar.qml (draws it) and BarBuilder.qml (the editor in Settings).
 
 var zones = ["left", "center", "right"]
-var shapes = ["notch", "island"]
+var shapes = ["notch", "island", "rail"]
+var sides = ["top", "bottom", "left", "right"]
 var padKeys = ["edge", "gap", "clear"]
 var padMax = { edge: 80, gap: 60, clear: 120 }
 var widgetPadMax = 40
@@ -51,8 +56,18 @@ function defaults() {
         left: ["workspaces", "specials"],
         center: ["music", "clock"],
         right: ["bgapps", "focus", "caffeine", "status"],
-        shape: "notch", edge: null, gap: null, clear: null, pads: {}
+        shape: "notch", side: "top", caps: true, edge: null, gap: null, clear: null, pads: {}
     }
+}
+
+// a left or right bar stacks its widgets from the top to the bottom of the screen
+function isVert(side) { return side === "left" || side === "right" }
+
+// what the three places are called: Left / Middle / Right on a top or bottom bar, Top / Middle / Bottom on a left or right one
+function zoneTitle(l, zone) {
+    if (zone === "center") return "Middle"
+    var v = isVert(l && l.side)
+    return zone === "left" ? (v ? "Top" : "Left") : (v ? "Bottom" : "Right")
 }
 
 // px value or null (= automatic)
@@ -78,6 +93,8 @@ function normalize(l) {
         }
     }
     out.shape = shapes.indexOf(l.shape) >= 0 ? l.shape : "notch"
+    out.side = sides.indexOf(l.side) >= 0 ? l.side : "top"
+    out.caps = l.caps !== false
     out.edge = num(l.edge, padMax.edge)
     out.gap = num(l.gap, padMax.gap)
     out.clear = num(l.clear, padMax.clear)
@@ -94,12 +111,26 @@ function normalize(l) {
 function build(l, left, center, right) {
     var pads = {}
     for (var k in l.pads) pads[k] = l.pads[k]
-    return { left: left, center: center, right: right, shape: l.shape, edge: l.edge, gap: l.gap, clear: l.clear, pads: pads }
+    return { left: left, center: center, right: right, shape: l.shape, side: l.side, caps: l.caps, edge: l.edge, gap: l.gap, clear: l.clear, pads: pads }
 }
 
 function setShape(l, s) {
     var o = build(l, l.left.slice(), l.center.slice(), l.right.slice())
     o.shape = shapes.indexOf(s) >= 0 ? s : "notch"
+    return o
+}
+
+// which edge of the screen the bar sits on
+function setSide(l, s) {
+    var o = build(l, l.left.slice(), l.center.slice(), l.right.slice())
+    o.side = sides.indexOf(s) >= 0 ? s : "top"
+    return o
+}
+
+// the rail's capsules behind each widget (on / off)
+function setCaps(l, on) {
+    var o = build(l, l.left.slice(), l.center.slice(), l.right.slice())
+    o.caps = on !== false
     return o
 }
 

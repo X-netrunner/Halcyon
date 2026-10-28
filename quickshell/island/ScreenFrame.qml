@@ -13,7 +13,8 @@ import Quickshell.Wayland
 //   draw      one click-through window over the whole screen (overlay layer): a ring with rounded inner corners
 //   reserve   the left, right and bottom edge each get a 1 px window that only reserves the border's width, so tiled windows stop at the
 //             inner edge. The top edge is reserved by the bar itself (NotchBar / CustomBar / the island window in shell.qml), which
-//             start `t` px lower and add `t` to their own zone, so the bar sits against the inner edge.
+//             start `t` px lower and add `t` to their own zone, so the bar sits against the inner edge. A custom bar on the left, right or
+//             bottom edge does the same for ITS edge (`skip`), and the island window then reserves the top.
 //
 // A fullscreen window hides the frame (`hidden`); the reservation stays, Hyprland draws a fullscreen window over it anyway.
 Scope {
@@ -23,6 +24,7 @@ Scope {
     property int t: 12                 // thickness of the border in px
     property int r: 22                 // radius of the inner corners in px
     property bool hidden: false        // a window is fullscreen
+    property string skip: ""           // left | right | bottom: a bar sits on that edge and reserves the border's width there itself (CustomBar.qml)
 
     // ---- the ring
     PanelWindow {
@@ -71,7 +73,7 @@ Scope {
 
     // ---- the room it takes: left, right, bottom (the top belongs to the bar)
     PanelWindow {
-        visible: root.on
+        visible: root.on && root.skip !== "left"
         anchors { left: true; top: true; bottom: true }
         implicitWidth: 1
         exclusiveZone: root.t
@@ -81,7 +83,7 @@ Scope {
         mask: Region {}
     }
     PanelWindow {
-        visible: root.on
+        visible: root.on && root.skip !== "right"
         anchors { right: true; top: true; bottom: true }
         implicitWidth: 1
         exclusiveZone: root.t
@@ -91,7 +93,7 @@ Scope {
         mask: Region {}
     }
     PanelWindow {
-        visible: root.on
+        visible: root.on && root.skip !== "bottom"
         anchors { bottom: true; left: true; right: true }
         implicitHeight: 1
         exclusiveZone: root.t

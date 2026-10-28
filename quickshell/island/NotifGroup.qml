@@ -75,7 +75,7 @@ Rectangle {
                 implicitWidth: 20; implicitHeight: 20; radius: 10
                 color: xAll.containsMouse ? Qt.alpha(g.pal.text, 0.12) : "transparent"
                 opacity: ghov.hovered ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: g.pal.dFast } }
+                Behavior on opacity { NumberAnimation { duration: g.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Text { anchors.centerIn: parent; text: "✕"; color: xAll.containsMouse ? g.pal.text : g.pal.muted; font.pixelSize: 10 }
                 MouseArea { id: xAll; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: g.dismissAll() }
             }
@@ -96,7 +96,7 @@ Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: itc.implicitHeight + 22
 
-                Rectangle { anchors.fill: parent; anchors.topMargin: 2; radius: g.pal.rSm; color: Qt.alpha(g.pal.surfaceHi, ihov.hovered ? 0.55 : 0); Behavior on color { ColorAnimation { duration: g.pal.dFast } } }
+                Rectangle { anchors.fill: parent; anchors.topMargin: 2; radius: g.pal.rSm; color: Qt.alpha(g.pal.surfaceHi, ihov.hovered ? 0.55 : 0); Behavior on color { ColorAnimation { duration: g.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } } }
                 Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: 1; color: g.pal.lineSoft }
                 HoverHandler { id: ihov }
                 MouseArea {

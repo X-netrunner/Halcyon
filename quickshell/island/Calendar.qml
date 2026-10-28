@@ -543,7 +543,7 @@ Scope {
         width: 32; height: 32; radius: 16
         color: ma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.95) : Qt.alpha(root.pal.surface, 0.8)
         border.width: root.pal.calm ? 0 : 1; border.color: root.pal.line
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             id: gl
             anchors.centerIn: parent
@@ -565,8 +565,8 @@ Scope {
         scale: ma2.pressed ? 0.97 : 1
         color: primary ? Qt.alpha(root.pal.accent, ma2.containsMouse ? 0.95 : 0.85) : (ma2.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.95) : Qt.alpha(root.pal.surface, 0.85))
         border.width: primary ? 0 : 1; border.color: root.pal.line
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-        Behavior on scale { NumberAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+        Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text { id: t; anchors.centerIn: parent; text: pl.label; color: pl.primary ? root.pal.bg : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
         MouseArea { id: ma2; anchors.fill: parent; hoverEnabled: true; onClicked: pl.clicked() }
     }
@@ -643,7 +643,7 @@ Scope {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "▾"
                             rotation: root.monthPick ? 180 : 0
-                            Behavior on rotation { NumberAnimation { duration: root.pal.dFast } }
+                            Behavior on rotation { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                             color: monthTitle.hot ? root.pal.chosenText : root.pal.muted
                             font.family: root.pal.uiFont; font.pixelSize: 14
                         }
@@ -664,7 +664,7 @@ Scope {
                         opacity: root.monthPick ? 1 : 0
                         scale: root.monthPick ? 1 : 0.96
                         transformOrigin: Item.Top
-                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: monthTitle.y + monthTitle.height + 10
@@ -702,7 +702,7 @@ Scope {
                                         readonly property bool now: root.pickYear === root.today.getFullYear() && root.today.getMonth() === index
                                         width: (mmCol.width - 12) / 4; height: 36; radius: 18
                                         color: shown ? root.pal.chosenFill : (mcMa.containsMouse ? root.pal.fillHover : "transparent")
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Text {
                                             anchors.centerIn: parent
                                             text: mcell.modelData
@@ -855,7 +855,7 @@ Scope {
                                             color: cell.isSel ? (root.pal.zen ? root.pal.chosenFill : Qt.alpha(root.pal.accent, 0.22)) : (cm.containsMouse ? (root.pal.zen ? root.pal.fillHover : Qt.alpha(root.pal.surfaceHi, 0.7)) : "transparent")
                                             border.width: root.pal.zen ? 0 : cell.isSel ? 1.5 : (cell.isToday ? 1 : 0)      // new: a fill marks the chosen day, the accent number marks today
                                             border.color: cell.isSel ? root.pal.accent : Qt.alpha(root.pal.accent, 0.6)
-                                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         }
                                         Text {
                                             anchors.horizontalCenter: parent.horizontalCenter
@@ -1185,7 +1185,7 @@ Scope {
                                                 height: 32; radius: 16; width: rt.implicitWidth + 28
                                                 color: on ? Qt.alpha(root.pal.accent, 0.2) : (rm.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.95) : Qt.alpha(root.pal.surface, 0.85))
                                                 border.width: 1; border.color: on ? root.pal.accent : root.pal.line
-                                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                 Text { id: rt; anchors.centerIn: parent; text: rb.modelData.label; color: rb.on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                                 MouseArea { id: rm; anchors.fill: parent; hoverEnabled: true; onClicked: root.setRemind(rb.modelData.spec) }
                                             }

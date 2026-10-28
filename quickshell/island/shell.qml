@@ -22,6 +22,14 @@ ShellRoot {
     // Settings > Bar > Padding: low | normal | high  ->  bar height, side padding, and the space ABOVE the bar (to the screen edge)
     // = the space BELOW it (to the windows): the same number, so the bar sits evenly. "low" is almost touching both.
     readonly property bool notchStyle: opt.barStyle === "notch" || opt.barStyle === "custom" || opt.barStyle === "off"      // custom = the bar builder (CustomBar.qml): the same hanging bar; off = no bar at all (the pages and the launcher still hang from the top edge)
+    // Style Custom: which edge the bar sits on (Bar builder > Side). A bar that is not on the top edge leaves the top free, like Bar style = Off:
+    // the pages and the launcher still hang from the top edge, and the top of the border is reserved by the island window below.
+    readonly property string barSide: {
+        var l = opt.barLayout
+        var s = l ? l.side : ""
+        return (s === "bottom" || s === "left" || s === "right") ? s : "top"
+    }
+    readonly property bool topFree: opt.barStyle === "off" || (opt.barStyle === "custom" && barSide !== "top")
     property bool notchHovered: false
     // Settings > Bar style > Border around the screen: a frame (ScreenFrame.qml) the bar hangs from and the boxes slide out of
     readonly property bool frameOn: opt.frame === true
@@ -2432,7 +2440,7 @@ ShellRoot {
     readonly property var deskNeeds: WD.mergeNeeds(opt.deskWidgetsOn === false ? WD.needs(null) : WD.needs(WD.normalize(opt.deskWidgets)), lockNeeds)
     property bool deskEditing: false                     // "place them on the desktop" is open (DesktopEditor.qml)
     property string deskEditTarget: "desktop"            // ... and it works on this list: "desktop" or "lock" (the lock screen's widgets)
-    readonly property real deskTop: opt.barStyle === "off" ? 24 : 70
+    readonly property real deskTop: topFree ? 24 : 70
     function deskSetVol(f) { pendVol = f; vol = f * 100; if (!sliderT.running) sliderT.start() }
     function deskSetBright(f) { pendBright = f; bright = f * 100; if (!sliderT.running) sliderT.start() }
     function deskRun(cmd) { Quickshell.execDetached(["sh", "-c", cmd]) }
@@ -2955,7 +2963,7 @@ ShellRoot {
         // (it can not go lower than the outer gap itself: Settings > Look > Gaps)
         // with a border: the island style (and "off") reserves its room from the border's width on; Notch / Custom leave that to the bar
         exclusiveZone: ((root.autoHide || root.notchStyle) ? 0 : Math.max(0, root.padSet.top + root.padSet.h + root.padSet.gap - root.gaps * 2))
-                       + ((root.notchStyle && root.opt.barStyle !== "off") ? 0 : root.frameT)
+                       + ((root.notchStyle && !root.topFree) ? 0 : root.frameT)
         // style Notch: the bar (NotchBar) reserves the strip at the top, and a layer surface is normally placed BELOW the strips reserved by
         // others. This window must start at the very top edge so the pages hang from it, so it ignores them.
         exclusionMode: (root.notchStyle || root.frameOn) ? ExclusionMode.Ignore : ExclusionMode.Normal
@@ -3018,7 +3026,7 @@ ShellRoot {
             spread: 22
             peak: 0.18
             opacity: (win.shown && !root.notchStyle) ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: pal.dMed } }
+            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
 
         // style Notch: the same silhouette as the bar, for the pages. Its halo reaches above the screen edge so only the sides and bottom show.
@@ -3029,7 +3037,7 @@ ShellRoot {
             spread: 22
             peak: 0.18
             opacity: root.hangShape ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: pal.dMed } }
+            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
         NotchShape {
             pal: pal
@@ -3042,7 +3050,7 @@ ShellRoot {
             fillCol: root.frameOn ? pal.frameCol : Qt.alpha(pal.bg, Math.min(0.97, pal.glassBarOpen + 0.16))
             opacity: root.hangShape ? 1 : 0
             visible: opacity > 0.01
-            Behavior on opacity { NumberAnimation { duration: pal.dMed } }
+            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
 
         Glass {
@@ -3052,7 +3060,7 @@ ShellRoot {
             flat: root.notchStyle || root.hangPage   // style Notch: the NotchShape behind it is the surface
             // light glass as the bar, a bit more solid once it grows into a page / the launcher
             opacityBody: root.page === "home" ? pal.glassBar : pal.glassBarOpen
-            Behavior on opacityBody { NumberAnimation { duration: pal.dMed } }
+            Behavior on opacityBody { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             anchors.top: parent.top
             anchors.topMargin: (root.notchStyle || root.hangPage) ? root.frameT : (win.shown ? root.padSet.top + root.frameT : -(height + 30))
             anchors.horizontalCenter: parent.horizontalCenter
@@ -3060,7 +3068,7 @@ ShellRoot {
             // notch style: at rest the island is not there (the notch is); the pages drop down from under it
             opacity: (root.notchStyle && root.page === "home") ? 0 : 1
             visible: opacity > 0.01
-            Behavior on opacity { NumberAnimation { duration: pal.dMed } }
+            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
             // with the border around the screen the pages come out of the BORDER (they grow down from nothing at the page's own width);
             // without it they grow out of the notch bar
@@ -3586,6 +3594,7 @@ ShellRoot {
     // the border around the screen (Settings > Bar style): drawn above the boxes so they come out from under it
     ScreenFrame {
         pal: root.palObj
+        skip: root.opt.barStyle === "custom" ? root.barSide : ""      // the custom bar reserves the border's width on its own edge
         on: root.frameOn
         t: root.frameT
         r: root.frameR
