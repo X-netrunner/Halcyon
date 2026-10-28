@@ -3,11 +3,19 @@
 Everything stays on this machine: the text of your files is read here and the same local Ollama model as `ai` answers.
 
   halcyon-study.py add <file>...                read files into the library: PDF (scans are read with tesseract), Word / PowerPoint /
-                                                LibreOffice, EPUB, Markdown, text, code, HTML, and photos of pages (tesseract)
+                                                LibreOffice, EPUB, Markdown, text, code, HTML, and photos of pages (tesseract).
+                                                Everything given in ONE call becomes ONE chat: `add a.pdf` is a chat of its own,
+                                                `add a.pdf b.pdf` is one chat about both
   halcyon-study.py list                         the library
-  halcyon-study.py remove <id>                  forget a file (the file itself is never touched)
-  halcyon-study.py ask [--docs ID,ID] [--history JSON] [--model NAME|best] <question>
-                                                an answer from the files, with the pages it came from (all files when --docs is left out)
+  halcyon-study.py chats                        the chats (one per material, or per set of materials added together), newest first
+  halcyon-study.py chat-new --docs ID,ID        a chat about those files (the one that already exists for exactly that set, if any)
+  halcyon-study.py chat <chat> [--clear]        a chat's saved conversation (--clear starts it again, the files stay)
+  halcyon-study.py chat-rename <chat> <title>   give a chat a name of your own (an empty title goes back to the file's name)
+  halcyon-study.py chat-remove <chat>           delete a chat and forget the files no other chat uses (the files themselves are never touched)
+  halcyon-study.py remove <id>                  forget a file (the file itself is never touched); a chat left without files goes too
+  halcyon-study.py ask --chat CHAT [--model NAME|best] <question>
+                                                an answer from that chat's files only, with the pages it came from; the conversation is
+                                                kept in the chat. (Without --chat: --docs ID,ID or every file, and nothing is kept.)
   halcyon-study.py make summary|quiz|cards [--docs ID,ID] [--pages 3-9] [--n 10] [--fresh]
                                                 a revision summary, exam questions with answers, or flashcards (kept, so opening them
                                                 again is instant; --fresh writes new ones)
@@ -18,16 +26,15 @@ Everything stays on this machine: the text of your files is read here and the sa
   halcyon-study.py use auto|<model> [--reason auto|always|never] [--prefer balanced|quality|speed]
                                                 the Study Center's own model (the rest of Halcyon keeps its own); Auto = smart routing:
                                                 quick lookups go to a fast model, explanations, reasoning and summaries to the best one
-  halcyon-study.py chat [--clear]               the saved conversation (the window shows it again when it opens)
   halcyon-study.py grade --q Q --key EXPECTED --mine YOURS
                                                 mark your own answer to a quiz question: right / partly / wrong, and why
 
 --json (or --stream) prints one JSON object per line for the island:
-  {"type": "progress", "msg"}  {"type": "added", "doc"}  {"type": "sources", "sources": [{"doc", "name", "page", "unit"}]}
+  {"type": "progress", "msg"}  {"type": "added", "doc"}  {"type": "chat", "chat"} (after `add`)  {"type": "sources", "sources": [{"doc", "name", "page", "unit"}]}
   {"type": "tok", "t"}  {"type": "think", "t"} (the model's reasoning, apart from the answer)  {"type": "reset", "text"} (replace the
   answer so far)  {"type": "model", "model", "route", "why"}  {"type": "result", "mode", "text", "items"}  {"type": "error", "error"}
   {"type": "done", "secs"}
-The library lives in ~/.local/share/halcyon/study (index.json + the text of each file). Exit code 0 ok, 1 failed, 2 usage,
+The library lives in ~/.local/share/halcyon/study (index.json + the text of each file + chats.json, the chats). Exit code 0 ok, 1 failed, 2 usage,
 3 AI switched off / Ollama not running.
 """
 import contextlib
@@ -364,8 +371,10 @@ def cmd_add(args):
     files = [os.path.abspath(os.path.expanduser(a)) for a in args if not a.startswith("--")]
     if not files:
         raise Fail("add <file>...")
+    load_chats()                                    # first run of this version: files added earlier get their chats now, before these are added
     docs = load_index()
     bad = 0
+    batch = []                                      # the files of this call, in order: they become one chat
     for path in files:
         name = os.path.basename(path)
         try:
@@ -375,6 +384,7 @@ def cmd_add(args):
             old = next((d for d in docs if d.get("id") == did), None)
             if old and os.path.isfile(text_path(did)):
                 emit(type="added", doc=public(old), again=True)
+                batch.append(did)
                 continue
             # the same file changed since it was added: the old copy of its text goes
             for d in [d for d in docs if d.get("path") == path]:
@@ -398,9 +408,13 @@ def cmd_add(args):
             docs.insert(0, d)
             save_index(docs)
             emit(type="added", doc=public(d))
+            batch.append(did)
         except Fail as e:
             bad += 1
             emit(type="error", error=f"{name}: {e}", file=path)
+    if batch:
+        c, again = new_chat(list(dict.fromkeys(batch)))
+        emit(type="chat", chat=public_chat(c), again=again)
     return 1 if bad == len(files) else 0
 
 
@@ -419,6 +433,10 @@ def cmd_remove(args):
     for i in ids:
         forget(i)
     save_index([d for d in docs if d.get("id") not in ids])
+    cs = load_chats()
+    for c in cs:
+        c["docs"] = [i for i in c.get("docs", []) if i not in ids]
+    save_chats([c for c in cs if c["docs"]])        # a chat left without a file has nothing to talk about
     emit(type="done")
     return 0
 
@@ -905,14 +923,25 @@ SYSTEM_ASK = (
 
 
 def cmd_ask(args):
-    q = " ".join(a for a in strip_opts(args, ("--docs", "--history", "--pages", "--model"))).strip()
+    q = " ".join(a for a in strip_opts(args, ("--docs", "--history", "--pages", "--model", "--chat"))).strip()
     if not q:
-        raise Fail("ask <question>")
+        raise Fail("ask --chat <chat id> <question>")
+    chat_id, chat_turns = argval(args, "--chat", ""), []
+    if chat_id:
+        # a chat knows its own files and its own earlier questions: nothing else is read
+        if not valid_chat(chat_id):
+            raise Fail("that is not a chat id (halcyon study chats lists them)")
+        c = find_chat(chat_id)
+        chat_turns = c.get("turns") or []
+        args = [a for a in args if not a.startswith("--docs")] + ["--docs", ",".join(c.get("docs", []))]
     docs = pick_docs(args)
     need_ai()
     hist = []
-    with contextlib.suppress(ValueError, TypeError):
-        hist = json.loads(argval(args, "--history", "[]")) or []
+    if chat_id:
+        hist = [{"q": t.get("q"), "a": t.get("a"), "model": t.get("model")} for t in chat_turns if t.get("q") and t.get("a")]
+    else:
+        with contextlib.suppress(ValueError, TypeError):
+            hist = json.loads(argval(args, "--history", "[]")) or []
     hist = [h for h in hist if isinstance(h, dict) and h.get("q")][-3:]      # {q, a, model}
     prev = hist[-1]["q"] if hist else ""
     progress("looking through your files")
@@ -935,7 +964,7 @@ def cmd_ask(args):
             srcs.append({"doc": p["doc"], "name": p["name"], "page": p["page"], "unit": p["unit"]})
     emit(type="sources", sources=srcs)
     if not found:
-        msg = "Nothing in these files mentions that. Try other words, or pick more files on the left."
+        msg = "Nothing in this chat's files mentions that. Try other words, or start another chat for the other files."
         emit(type="tok", t=msg)
         emit(type="done", found=False)
         return 0
@@ -961,7 +990,8 @@ def cmd_ask(args):
     answer = chat_stream(msgs, model=model, think=think, num_predict=1200 if rt == "deep" else 900)
     secs = round(time.time() - t0)
     emit(type="done", found=True, secs=secs, model=model)
-    save_turn(q, answer, srcs, model, secs, [d["id"] for d in docs] if argval(args, "--docs", "") else [])
+    if chat_id:
+        save_turn(chat_id, q, answer, srcs, model, secs)
     return 0
 
 
@@ -1006,41 +1036,215 @@ def cmd_grade(args):
     return 0
 
 
-# ------------------------------------------------------------------------------------------------ the saved conversation
-CHAT = os.path.join(DATA, "chat.json")
+# ------------------------------------------------------------------------------------------------ the chats
+# One chat per material (or per set of materials added together). chats.json: {"v": 2, "chats": [
+#   {"id", "title" (empty = named after its file), "docs": [file ids], "created", "updated", "turns": [{q, a, sources, model, secs, at}]}]}
+CHATS = os.path.join(DATA, "chats.json")
+OLD_CHAT = os.path.join(DATA, "chat.json")        # the single conversation of the earlier version
+MAX_TURNS = 40
 
 
-def load_chat():
-    try:
-        with open(CHAT, "r", encoding="utf-8") as f:
-            c = json.load(f)
-        return c if isinstance(c, list) else []
-    except (OSError, ValueError):
-        return []
-
-
-def save_turn(q, a, srcs, model, secs, docs):
-    c = load_chat()
-    c.append({"q": q, "a": a, "sources": srcs, "model": model, "secs": secs, "docs": docs, "at": int(time.time())})
+def _write_chats(cs):
     os.makedirs(DATA, exist_ok=True)
-    tmp = CHAT + ".tmp"
+    tmp = CHATS + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(c[-40:], f, ensure_ascii=False)
-    os.replace(tmp, CHAT)
+        json.dump({"v": 2, "chats": cs}, f, ensure_ascii=False)
+    os.replace(tmp, CHATS)
+
+
+def load_chats():
+    try:
+        with open(CHATS, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        cs = d.get("chats") if isinstance(d, dict) else None
+        return [c for c in cs if isinstance(c, dict) and c.get("id")] if isinstance(cs, list) else []
+    except (OSError, ValueError):
+        pass
+    return migrate_chats()
+
+
+def migrate_chats():
+    """First run of this version: every file already in the library gets a chat of its own, and the one old conversation goes
+    to the chat of the files it was about (every file, when it was asked about all of them, becomes one chat with them all)."""
+    index = [d for d in load_index() if os.path.isfile(text_path(d.get("id", "")))]
+    now = int(time.time())
+    cs = []
+    old = []
+    try:
+        with open(OLD_CHAT, "r", encoding="utf-8") as f:
+            old = json.load(f)
+        old = old if isinstance(old, list) else []
+    except (OSError, ValueError):
+        old = []
+    ids = {d["id"] for d in index}
+    if old:
+        used = []
+        for t in old:
+            for i in (t.get("docs") or []):
+                if i in ids and i not in used:
+                    used.append(i)
+        docs = used or [d["id"] for d in index]
+        if docs:
+            turns = [{k: t.get(k) for k in ("q", "a", "sources", "model", "secs", "at")} for t in old if isinstance(t, dict)]
+            cs.append({"id": new_chat_id(), "title": "", "docs": docs, "created": now, "updated": now, "turns": turns[-MAX_TURNS:]})
+    taken = {i for c in cs for i in c["docs"]}
+    for d in index:
+        if d["id"] not in taken:
+            cs.append({"id": new_chat_id(), "title": "", "docs": [d["id"]], "created": d.get("added", now), "updated": d.get("added", now), "turns": []})
+    if cs or not os.path.isfile(INDEX):
+        with contextlib.suppress(OSError):
+            _write_chats(cs)
+            if os.path.isfile(OLD_CHAT):
+                os.replace(OLD_CHAT, OLD_CHAT + ".migrated")
+    return cs
+
+
+def new_chat_id():
+    return hashlib.sha1(f"{time.time_ns()}-{os.getpid()}".encode()).hexdigest()[:12]
+
+
+def save_chats(cs):
+    _write_chats(cs)
+
+
+def valid_chat(s):
+    return bool(re.fullmatch(r"[a-f0-9]{12}", s or ""))
+
+
+def find_chat(cid, cs=None):
+    cs = load_chats() if cs is None else cs
+    c = next((c for c in cs if c.get("id") == cid), None)
+    if not c:
+        raise Fail("that chat is not there any more")
+    return c
+
+
+def chat_title(c, byid):
+    if (c.get("title") or "").strip():
+        return c["title"].strip()
+    names = [byid[i]["name"] for i in c.get("docs", []) if i in byid]
+    if not names:
+        return "Empty chat"
+    return names[0] if len(names) == 1 else f"{names[0]} + {len(names) - 1} more"
+
+
+def public_chat(c):
+    byid = {d["id"]: d for d in load_index()}
+    docs = [public(byid[i]) for i in c.get("docs", []) if i in byid]
+    return {"id": c["id"], "title": chat_title(c, byid), "custom": bool((c.get("title") or "").strip()), "docs": docs,
+            "turns": len(c.get("turns") or []), "updated": c.get("updated", 0)}
+
+
+def new_chat(doc_ids, title=""):
+    """(chat, existed): the chat for exactly this set of files; made when there is none yet."""
+    cs = load_chats()
+    want = sorted(doc_ids)
+    for c in cs:
+        if sorted(c.get("docs", [])) == want:
+            c["updated"] = int(time.time())
+            save_chats(cs)
+            return c, True
+    now = int(time.time())
+    c = {"id": new_chat_id(), "title": title, "docs": list(doc_ids), "created": now, "updated": now, "turns": []}
+    cs.append(c)
+    save_chats(cs)
+    return c, False
+
+
+def save_turn(chat_id, q, a, srcs, model, secs):
+    cs = load_chats()
+    c = next((c for c in cs if c.get("id") == chat_id), None)
+    if not c:
+        return
+    c.setdefault("turns", []).append({"q": q, "a": a, "sources": srcs, "model": model, "secs": secs, "at": int(time.time())})
+    c["turns"] = c["turns"][-MAX_TURNS:]
+    c["updated"] = int(time.time())
+    save_chats(cs)
+
+
+def cmd_chats(args):
+    index = {d["id"]: d for d in load_index() if os.path.isfile(text_path(d.get("id", "")))}
+    cs = load_chats()
+    live = []
+    for c in cs:
+        c["docs"] = [i for i in c.get("docs", []) if i in index]      # a file that is gone leaves the chat
+        if c["docs"]:
+            live.append(c)
+    if len(live) != len(cs):
+        save_chats(live)
+    live.sort(key=lambda c: c.get("updated", 0), reverse=True)
+    out = [public_chat(c) for c in live]
+    if JSON_OUT:
+        model = ""
+        with contextlib.suppress(Exception):
+            model = ai().model_name()
+        print(json.dumps({"chats": out, "model": model, "exts": EXTS}, ensure_ascii=False))
+        return 0
+    if not out:
+        print("No chats yet. Add a file: halcyon study add notes.pdf")
+    for c in out:
+        print(f"{c['id']}  {c['title']}  ({len(c['docs'])} file{'s' if len(c['docs']) != 1 else ''}, {c['turns']} turns)")
+    return 0
+
+
+def cmd_chat_new(args):
+    ids = [i for i in argval(args, "--docs", "").split(",") if valid_id(i)]
+    have = {d["id"] for d in load_index() if os.path.isfile(text_path(d.get("id", "")))}
+    ids = [i for i in dict.fromkeys(ids) if i in have]
+    if not ids:
+        raise Fail("chat-new --docs ID,ID: those files are not in the library")
+    c, again = new_chat(ids)
+    emit(type="chat", chat=public_chat(c), again=again)
+    return 0
 
 
 def cmd_chat(args):
+    ids = [a for a in args if valid_chat(a)]
+    if not ids:
+        raise Fail("chat <chat id> [--clear]")
+    cs = load_chats()
+    c = find_chat(ids[0], cs)
     if "--clear" in args:
-        with contextlib.suppress(OSError):
-            os.remove(CHAT)
+        c["turns"] = []
+        save_chats(cs)
         emit(type="done")
         return 0
-    c = load_chat()
+    turns = c.get("turns") or []
     if JSON_OUT:
-        print(json.dumps({"turns": c}, ensure_ascii=False))
+        print(json.dumps({"turns": turns, "chat": public_chat(c)}, ensure_ascii=False))
     else:
-        for t in c:
+        for t in turns:
             print(f"> {t['q']}\n{t['a']}\n   ({t.get('model')}, {t.get('secs')} s)\n")
+    return 0
+
+
+def cmd_chat_rename(args):
+    ids = [a for a in args if valid_chat(a)]
+    if not ids:
+        raise Fail("chat-rename <chat id> <title>")
+    title = " ".join(a for a in args if a != ids[0] and not a.startswith("--")).strip()[:80]
+    cs = load_chats()
+    find_chat(ids[0], cs)["title"] = title
+    save_chats(cs)
+    emit(type="chat", chat=public_chat(find_chat(ids[0], cs)))
+    return 0
+
+
+def cmd_chat_remove(args):
+    ids = [a for a in args if valid_chat(a)]
+    if not ids:
+        raise Fail("chat-remove <chat id>")
+    cs = load_chats()
+    gone = find_chat(ids[0], cs)
+    rest = [c for c in cs if c is not gone]
+    used = {i for c in rest for i in c.get("docs", [])}
+    mine = [i for i in gone.get("docs", []) if i not in used]       # files that only this chat used leave the library too
+    save_chats(rest)
+    if mine:
+        for i in mine:
+            forget(i)
+        save_index([d for d in load_index() if d.get("id") not in mine])
+    emit(type="done")
     return 0
 
 
@@ -1198,7 +1402,8 @@ def main(argv):
         return 0 if argv else 2
     cmd, rest = argv[0], argv[1:]
     fn = {"add": cmd_add, "list": cmd_list, "ls": cmd_list, "remove": cmd_remove, "rm": cmd_remove, "ask": cmd_ask,
-          "make": cmd_make, "saved": cmd_saved, "open": cmd_open, "models": cmd_models, "use": cmd_use, "chat": cmd_chat, "grade": cmd_grade}.get(cmd)
+          "make": cmd_make, "saved": cmd_saved, "open": cmd_open, "models": cmd_models, "use": cmd_use, "chat": cmd_chat, "grade": cmd_grade,
+          "chats": cmd_chats, "chat-new": cmd_chat_new, "chat-rename": cmd_chat_rename, "chat-remove": cmd_chat_remove}.get(cmd)
     if not fn:
         print(__doc__, file=sys.stderr)
         return 2

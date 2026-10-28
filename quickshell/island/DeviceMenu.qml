@@ -16,6 +16,11 @@ Rectangle {
     property int maxHeight: 200
     // Wi-Fi password prompt: set askFor to an SSID and the input row appears
     property string askFor: ""
+    // Wi-Fi connection log (scripts/wifi-connect.sh): [{ lvl: "i" | "o" | "w" | "e", secs, text }], shown while connecting and after
+    property var log: []
+    property bool logBusy: false
+    property string logTitle: ""
+    signal logDismissed()
     signal picked(int index)
     signal powerToggled()
     signal rescanClicked()
@@ -125,6 +130,88 @@ Rectangle {
                 }
                 Chip { pal: root.pal; implicitHeight: 28; label: "Join"; on: true; onClicked: root.passwordSubmitted(pwIn.text) }
                 Chip { pal: root.pal; implicitHeight: 28; label: "✕"; onClicked: root.askCancelled() }
+            }
+        }
+
+        // what the connection is doing, step by step (obtaining the IP, authenticating ...)
+        Rectangle {
+            id: logBox
+            visible: root.log.length > 0
+            Layout.fillWidth: true
+            implicitHeight: Math.min(150, logCol.implicitHeight + 40)
+            radius: 13
+            color: Qt.alpha(root.pal.bg, 0.7)
+            border.width: 1
+            border.color: root.pal.lineSoft
+            clip: true
+            RowLayout {
+                id: logHead
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 12; rightMargin: 6; topMargin: 4 }
+                height: 26
+                spacing: 6
+                Text {
+                    visible: root.logBusy
+                    text: String.fromCodePoint(0xF0450)
+                    color: root.pal.accent
+                    font.family: root.pal.font
+                    font.pixelSize: 12
+                    NumberAnimation on rotation { running: root.logBusy && logBox.visible; from: 0; to: 360; duration: 1200; loops: Animation.Infinite }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    text: root.logBusy ? "Connecting to " + root.logTitle : root.logTitle
+                    color: root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: 11
+                }
+                Text {
+                    visible: !root.logBusy
+                    text: "✕"
+                    color: xma.containsMouse ? root.pal.text : root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: 12
+                    rightPadding: 4
+                    MouseArea { id: xma; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.logDismissed() }
+                }
+            }
+            Flickable {
+                id: logFl
+                anchors { left: parent.left; right: parent.right; top: logHead.bottom; bottom: parent.bottom; leftMargin: 12; rightMargin: 12; bottomMargin: 8 }
+                contentHeight: logCol.implicitHeight
+                clip: true
+                interactive: contentHeight > height
+                boundsBehavior: Flickable.StopAtBounds
+                onContentHeightChanged: contentY = Math.max(0, contentHeight - height)      // follow the newest line
+                Column {
+                    id: logCol
+                    width: logFl.width
+                    spacing: 2
+                    Repeater {
+                        model: root.log
+                        delegate: Row {
+                            required property var modelData
+                            width: logCol.width
+                            spacing: 8
+                            Text {
+                                width: 30
+                                horizontalAlignment: Text.AlignRight
+                                text: modelData.secs + "s"
+                                color: Qt.alpha(root.pal.muted, 0.7)
+                                font.family: root.pal.mono
+                                font.pixelSize: 10
+                            }
+                            Text {
+                                width: parent.width - 38
+                                wrapMode: Text.Wrap
+                                text: (modelData.lvl === "o" ? "\u2713 " : (modelData.lvl === "e" ? "\u2717 " : (modelData.lvl === "w" ? "! " : "\u00b7 "))) + modelData.text
+                                color: modelData.lvl === "o" ? root.pal.good : (modelData.lvl === "e" ? root.pal.bad : (modelData.lvl === "w" ? root.pal.warn : root.pal.text))
+                                font.family: root.pal.mono
+                                font.pixelSize: 10
+                            }
+                        }
+                    }
+                }
             }
         }
 

@@ -148,6 +148,39 @@ Glass {
         Quickshell.execDetached(["bash", Quickshell.shellPath("scripts/" + script)].concat(args))
     }
 
+    // ---- Wi-Fi connecting, step by step. scripts/wifi-connect.sh prints "<level>|<seconds>|<text>" for every step it takes (finding the
+    // network, authenticating, obtaining an IP, gateway, DNS, internet check); they are shown under the Wi-Fi list while it works.
+    // Settings > Notifications > Wi-Fi details > "Show each connection step" (opt.wifiVerbose, on by default) switches the box off; the connection is the same either way.
+    readonly property bool wifiVerbose: !(cfg && cfg.wifiVerbose === false)
+    property var wifiLog: []
+    property string wifiLogSsid: ""
+    property bool wifiWorking: wifiConn.running
+    function connectWifi(ssid, pw) {
+        if (wifiConn.running) return
+        wifiLog = []
+        wifiLogSsid = ssid
+        wifiHideT.stop()
+        wifiConn.command = ["bash", Quickshell.shellPath("scripts/wifi-connect.sh"), ssid].concat(pw ? [pw] : [])
+        wifiConn.running = true
+    }
+    Process {
+        id: wifiConn
+        stdout: SplitParser {
+            onRead: d => {
+                var i = d.indexOf("|"), j = d.indexOf("|", i + 1)
+                if (i < 0 || j < 0) return
+                var l = root.wifiLog.slice()
+                l.push({ lvl: d.substring(0, i), secs: d.substring(i + 1, j), text: d.substring(j + 1) })
+                root.wifiLog = l
+            }
+        }
+        onExited: code => {
+            root.later("wifi", 600)
+            if (code === 0) wifiHideT.restart()         // a success folds away by itself; a failure stays until you close it or try again
+        }
+    }
+    Timer { id: wifiHideT; interval: 9000; onTriggered: root.wifiLog = [] }
+
     readonly property var wifiItems: {
         var out = []
         var n = wifi.nets || []
@@ -368,17 +401,20 @@ Glass {
             onPowerToggled: { root.toggleWifi(); root.later("wifi", 1500) }
             onRescanClicked: { wifiProc.running = true }
             onFooterClicked: Quickshell.execDetached(["nm-connection-editor"])
+            log: root.wifiVerbose ? root.wifiLog : []
+            logBusy: root.wifiWorking
+            logTitle: root.wifiLogSsid
+            onLogDismissed: root.wifiLog = []
             onPicked: i => {
                 var n = root.wifi.nets[i]
-                if (n.active) return
+                if (n.active || root.wifiWorking) return
                 if (n.secure && !n.saved) { askFor = n.ssid; return }
-                root.sh("wifi-connect.sh", [n.ssid])
-                root.later("wifi", 3500)
+                root.connectWifi(n.ssid, "")
             }
             onPasswordSubmitted: pw => {
-                root.sh("wifi-connect.sh", [askFor, pw])
+                if (root.wifiWorking) return
+                root.connectWifi(askFor, pw)
                 askFor = ""
-                root.later("wifi", 5000)
             }
             onAskCancelled: askFor = ""
         }

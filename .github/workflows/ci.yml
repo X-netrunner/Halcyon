@@ -44,7 +44,7 @@ jobs:
         run: sudo apt-get install -y jq && bash tests/special.test.sh
       - name: settings export / import (round trip, import preview new / changed / same, hostile archives refused)
         run: bash tests/settings-io.test.sh
-      - name: game launcher (hgl: library, checksum-verified Proton install, scoped run, gaming-mode restore even when hgl is killed, Steam import, triage; system programs are fakes)
+      - name: "game launcher (hgl: library, checksum-verified Proton install, scoped run, gaming-mode restore even when hgl is killed, Steam import, triage; system programs are fakes)"
         run: cargo build --release -p hgl && HGL=target/release/hgl bash tests/hgl.test.sh
       - name: commands and widgets (halcyon CLI lists line up, every IPC call and launcher entry exists, every widget type has its file)
         run: node tests/commands-widgets.test.js
@@ -91,6 +91,10 @@ jobs:
         run: python3 tests/test_halcyon_control.py
       - name: cache trimmer (only Halcyon's own caches, oldest first, never while a build runs)
         run: python3 tests/test_cache_trim.py
+      - name: Study Center chats (one per material, files added together share one, each reads only its own files, old conversation migrated)
+        run: python3 tests/test_study_chats.py
+      - name: "Wi-Fi connect steps (fake nmcli: every step reported, failures explained, password never logged, saved profiles never deleted)"
+        run: bash tests/wifi-connect.test.sh
 
   qml:
     runs-on: ubuntu-latest

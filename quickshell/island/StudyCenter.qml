@@ -5,7 +5,9 @@ import Quickshell.Io
 import Quickshell.Wayland
 
 // Study Center.   >study in the launcher (also `island command study`, the IPC call `study`, `halcyon study`).
-// Your files on the left (PDF, Word, PowerPoint, EPUB, notes, code, photos of pages), and four ways to learn from them:
+// Chats on the left, one per material: add a PDF, Word, PowerPoint, EPUB, notes, code or a photo of a page and it gets a chat of its own;
+// several files added together share ONE chat. Every chat keeps its own files and its own conversation (nothing from another chat leaks in).
+// Four ways to learn from the open chat's files:
 //   Ask       a question in plain words; the answer comes only from the files, with the pages it used (click one to open it there)
 //   Summary   a revision summary            Quiz   exam questions, the answer under each        Cards   flashcards, click to turn
 // Everything goes through scripts/halcyon-study.py (the library in ~/.local/share/halcyon/study, the answers from the local
@@ -29,11 +31,15 @@ Scope {
     property var docs: []
     property bool loaded: false
     property string model: ""
-    property var sel: ({})                  // id -> true; nothing picked = every file
-    readonly property var selIds: { var o = []; for (var i = 0; i < docs.length; i++) if (sel[docs[i].id]) o.push(docs[i].id); return o }
-    readonly property string scopeText: docs.length === 0 ? "no files yet"
-        : (selIds.length === 0 ? (docs.length === 1 ? docs[0].name : (docs.length === 2 ? "both files" : "all " + docs.length + " files"))
-        : (selIds.length === 1 ? nameOf(selIds[0]) : selIds.length + " files"))
+    // chats: one per material (or per set of files added together), each with its own files and conversation (halcyon-study.py chats)
+    property var chats: []                  // [{ id, title, custom, docs: [{ id, name, ext, unit, pages, ocr }], turns, updated }], newest first
+    property string chatId: ""              // the open chat
+    property string renameId: ""            // the chat whose name is being edited in the list
+    readonly property var curChat: { for (var i = 0; i < chats.length; i++) if (chats[i].id === chatId) return chats[i]; return null }
+    readonly property var selIds: { var o = []; if (curChat) for (var i = 0; i < curChat.docs.length; i++) o.push(curChat.docs[i].id); return o }   // the open chat's files
+    readonly property string scopeText: !curChat ? (chats.length === 0 ? "no files yet" : "no chat open")
+        : (curChat.docs.length === 1 ? curChat.docs[0].name
+        : (curChat.docs.length === 2 ? curChat.docs[0].name + " and " + curChat.docs[1].name : curChat.docs.length + " files"))
     property string pickDir: ""
     property bool pickerOpen: false
     property string confirmRm: ""
@@ -92,13 +98,13 @@ Scope {
     function setPrefer(p) { prefer = p; useModel(["--prefer", p]) }
     function pull(n) { consoleRequested("ollama pull " + n) }    // the window stays; the console opens over it
 
-    // ---- the saved conversation: shown again when the window opens
+    // ---- the open chat's saved conversation: shown again when you open the chat
     Process {
         id: chatProc
-        command: ["python3", root.script, "chat", "--json"]
+        property string forId: ""
         stdout: StdioCollector {
             onStreamFinished: {
-                if (root.msgs.length > 0 || root.asking) return
+                if (chatProc.forId !== root.chatId || root.asking) return       // another chat was opened meanwhile
                 try {
                     var t = JSON.parse(text).turns || [], m = []
                     for (var i = 0; i < t.length; i++) {
@@ -109,6 +115,14 @@ Scope {
                 } catch (e) {}
             }
         }
+    }
+    function loadTurns() {
+        msgs = []
+        if (chatProc.running) chatProc.running = false
+        if (chatId === "") return
+        chatProc.forId = chatId
+        chatProc.command = ["python3", script, "chat", chatId, "--json"]
+        chatProc.running = true
     }
     property string status: ""              // "looking through your files" ...
 
@@ -175,10 +189,9 @@ Scope {
         note = ""
         reload()
         loadModels()
-        if (msgs.length === 0 && !chatProc.running) chatProc.running = true
         if (tab !== "ask") loadSaved()
     }
-    function hide() { open = false; pickerOpen = false; confirmRm = ""; modelsOpen = false }
+    function hide() { open = false; pickerOpen = false; confirmRm = ""; renameId = ""; modelsOpen = false }
     function toggle() { if (open) hide(); else show("") }
     function setTab(t) {
         tab = t
@@ -195,15 +208,25 @@ Scope {
     function flash(t, bad) { note = t; noteBad = bad === true; noteT.restart() }
     Timer { id: noteT; interval: 6000; onTriggered: root.note = "" }
     function docArgs() { return selIds.length > 0 ? ["--docs", selIds.join(",")] : [] }
-    function toggleSel(id) {
-        var c = {}
-        for (var k in sel) if (sel[k]) c[k] = true
-        if (c[id]) delete c[id]; else c[id] = true
-        sel = c
+    function openChat(id) {
+        if (id === chatId) return
+        if (asking) { flash("Wait for the answer (or stop it) before switching chats", true); return }
+        chatId = id
+        renameId = ""
+        confirmRm = ""
         made = { summary: null, quiz: null, cards: null }
+        pages = ""
+        loadTurns()
         if (tab !== "ask") loadSaved()
+        Qt.callLater(function () { root.focusRequested(root.tab === "ask" ? "ask" : "panel") })
     }
-    function selAll() { sel = ({}); made = { summary: null, quiz: null, cards: null }; if (tab !== "ask") loadSaved() }
+    function renameChat(id, title) {
+        renameId = ""
+        if (renameProc.running) return
+        renameProc.command = ["python3", script, "chat-rename", id].concat(String(title).trim() === "" ? [] : ["--", String(title).trim()])
+        renameProc.running = true
+    }
+    Process { id: renameProc; onExited: root.reload() }
     function glyphOf(ext) {
         if (ext === "pdf") return 0xF0226
         if (ext === "docx" || ext === "odt") return 0xF022C
@@ -249,37 +272,55 @@ Scope {
     }
 
     // ---------------------------------------------------------------- processes
-    function reload() { if (!listProc.running) listProc.running = true }
+    function reload() { if (!chatsProc.running) chatsProc.running = true }
+    property int staleTries: 0
+    Timer { id: reloadAgain; interval: 300; onTriggered: root.reload() }
     Process {
-        id: listProc
-        command: ["python3", root.script, "list", "--json"]
+        id: chatsProc
+        command: ["python3", root.script, "chats", "--json"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
                     var o = JSON.parse(text)
-                    root.docs = o.docs || []
+                    root.chats = o.chats || []
                     root.model = o.model || ""
-                    var c = {}
-                    for (var k in root.sel) if (root.sel[k] && root.docOf(k)) c[k] = true
-                    root.sel = c
+                    var seen = {}, flat = []                    // every file of every chat, once (the names of the sources under an answer)
+                    for (var i = 0; i < root.chats.length; i++)
+                        for (var j = 0; j < root.chats[i].docs.length; j++) {
+                            var d = root.chats[i].docs[j]
+                            if (!seen[d.id]) { seen[d.id] = true; flat.push(d) }
+                        }
+                    root.docs = flat
+                    if (root.curChat || root.asking) root.staleTries = 0
+                    else if (root.chatId !== "" && root.staleTries < 2) { root.staleTries++; reloadAgain.restart() }   // a chat made a moment ago is not in this older listing yet
+                    else {                                      // nothing open (first time, or the open chat is gone): the newest chat
+                        root.staleTries = 0
+                        root.chatId = root.chats.length > 0 ? root.chats[0].id : ""
+                        root.loadTurns()
+                    }
+                    if (root.tab !== "ask" && !root.made[root.tab]) root.loadSaved()
                 } catch (e) {}
                 root.loaded = true
             }
         }
     }
 
-    property var addQueue: []
-    function addFile(path) {
-        addQueue = addQueue.concat([path])
+    // Everything added in one go becomes ONE chat: a single file gets a chat of its own, several files share one.
+    property var addQueue: []               // batches of paths
+    function addFiles(paths) {
+        if (!paths || paths.length === 0) return
+        if (asking) { flash("Wait for the answer (or stop it) before adding files", true); return }
+        addQueue = addQueue.concat([paths])
         if (!addProc.running) nextAdd()
-        var d = path.lastIndexOf("/")
-        if (d > 0) pickDir = path.substring(0, d)
+        var d = String(paths[0]).lastIndexOf("/")
+        if (d > 0) pickDir = String(paths[0]).substring(0, d)
     }
+    function addFile(path) { addFiles([path]) }
     function nextAdd() {
         if (addQueue.length === 0) return
-        var p = addQueue[0]
+        var b = addQueue[0]
         addQueue = addQueue.slice(1)
-        addProc.command = ["python3", script, "add", "--json", p]
+        addProc.command = ["python3", script, "add", "--json"].concat(b)
         addProc.running = true
     }
     Process {
@@ -289,42 +330,41 @@ Scope {
                 var o = null
                 try { o = JSON.parse(d) } catch (e) { return }
                 if (o.type === "progress") root.makeMsg = o.msg
-                else if (o.type === "added") {
-                    root.flash(o.again ? o.doc.name + " is already here" : "Added " + o.doc.name + "  ·  " + root.unitText(o.doc), false)
-                    var c = {}
-                    c[o.doc.id] = true
-                    root.sel = c                        // a new file: the next question is about it
+                else if (o.type === "added") root.flash(o.again ? o.doc.name + " is already here" : "Added " + o.doc.name + "  ·  " + root.unitText(o.doc), false)
+                else if (o.type === "chat") {
+                    root.flash(o.again ? "Opened the chat for " + o.chat.title : "New chat: " + o.chat.title, false)
+                    root.chatId = o.chat.id                     // the new chat opens; the list catches up in reload() below
+                    root.renameId = ""
+                    root.made = { summary: null, quiz: null, cards: null }
+                    root.pages = ""
+                    root.loadTurns()
+                    root.focusRequested(root.tab === "ask" ? "ask" : "panel")
                 } else if (o.type === "error") root.flash(o.error, true)
             }
         }
         onExited: { root.makeMsg = ""; root.reload(); root.nextAdd() }
     }
-    function removeDoc(id) {
+    function removeChat(id) {
         confirmRm = ""
-        Quickshell.execDetached(["python3", script, "remove", id])
-        var c = {}
-        for (var k in sel) if (sel[k] && k !== id) c[k] = true
-        sel = c
-        docs = docs.filter(function (d) { return d.id !== id })
-        rmT.restart()
+        if (rmProc.running) return
+        if (asking && id === chatId) { flash("Stop the answer first", true); return }
+        rmProc.command = ["python3", script, "chat-remove", id]
+        rmProc.running = true
+        if (id === chatId) { chatId = ""; msgs = []; made = { summary: null, quiz: null, cards: null } }     // reload() opens the next one
     }
-    Timer { id: rmT; interval: 400; onTriggered: root.reload() }
+    Process { id: rmProc; onExited: root.reload() }
     function openDoc(id, page) { Quickshell.execDetached(["python3", script, "open", id].concat(page ? [String(page)] : [])) }
 
     // model: "" = Auto / the picked one, "best" = the best model (the "Ask the best model" link under a quick answer)
+    // The question goes to the open chat: it reads only that chat's files and remembers only that chat's earlier questions.
     function ask(q, model) {
         q = String(q || "").trim()
         if (q === "" || asking) return
-        if (docs.length === 0) { flash("Add a file first: the answers come from your files", true); return }
-        var hist = []
-        for (var i = 0; i + 1 < msgs.length; i++)
-            if (msgs[i].role === "you" && msgs[i + 1].role === "ai" && !msgs[i + 1].bad) hist.push({ q: msgs[i].text, a: msgs[i + 1].text, model: msgs[i + 1].model || "" })
-        hist = hist.slice(-3)
+        if (!curChat) { flash("Add a file first: the answers come from your files", true); return }
         msgs = msgs.concat([{ role: "you", text: q }, { role: "ai", text: "", sources: [], live: true, bad: false, model: "", secs: 0, why: "", route: "", think: "" }])
         status = "looking through your files"
         askSecs = 0
-        askProc.command = ["python3", script, "ask", "--json"].concat(docArgs()).concat(["--history", JSON.stringify(hist)])
-                          .concat(model ? ["--model", model] : []).concat(["--", q])
+        askProc.command = ["python3", script, "ask", "--json", "--chat", chatId].concat(model ? ["--model", model] : []).concat(["--", q])
         askProc.running = true
     }
     function stopAsk() { if (askProc.running) askProc.signal(15) }
@@ -361,12 +401,19 @@ Scope {
             root.flushPend()
             root.status = ""
             root.patchLast(function (c) { c.live = false; if (c.text === "") { c.text = "Stopped."; c.bad = true } })
+            root.reload()                       // the chat's question count and its place at the top of the list
         }
     }
-    function clearChat() { if (asking) return; msgs = []; Quickshell.execDetached(["python3", script, "chat", "--clear"]) }
+    function clearChat() {
+        if (asking || !curChat || clearProc.running) return
+        msgs = []
+        clearProc.command = ["python3", script, "chat", chatId, "--clear"]
+        clearProc.running = true
+    }
+    Process { id: clearProc; onExited: root.reload() }
 
     function make(fresh) {
-        if (making || docs.length === 0) return
+        if (making || selIds.length === 0) return
         makeMode = tab
         makeMsg = "starting"
         var a = ["python3", script, "make", tab, "--json"].concat(docArgs())
@@ -397,7 +444,7 @@ Scope {
         onExited: { root.makeMsg = ""; root.makeMode = "" }
     }
     function loadSaved() {
-        if (docs.length === 0 && loaded) return
+        if (selIds.length === 0) return
         var a = ["python3", script, "saved", tab, "--json"].concat(docArgs())
         if (pages.trim() !== "") a = a.concat(["--pages", pages.trim()])
         savedProc.mode = tab
@@ -506,7 +553,7 @@ Scope {
         Text {
             id: scTxt
             anchors.centerIn: parent
-            text: (root.selIds.length === 1 || root.docs.length === 1 ? "" : sc.src.name + "  ·  ") + (sc.src.unit === "image" ? "photo" : sc.src.unit + " " + sc.src.page)
+            text: (root.selIds.length === 1 ? "" : sc.src.name + "  ·  ") + (sc.src.unit === "image" ? "photo" : sc.src.unit + " " + sc.src.page)
             color: scMa.containsMouse ? root.pal.accent : root.pal.muted
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tCap
@@ -658,60 +705,86 @@ Scope {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Layout.topMargin: 6
-                                    Label { text: "Your files"; Layout.fillWidth: true }
-                                    LinkBtn {
-                                        visible: root.docs.length > 1 && root.selIds.length > 0
-                                        label: "Use all"
-                                        onClicked: root.selAll()
-                                    }
+                                    Label { text: "Chats"; Layout.fillWidth: true }
                                 }
 
                                 ListView {
                                     id: docList
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    visible: root.docs.length > 0
+                                    visible: root.chats.length > 0
                                     clip: true
                                     spacing: 4
                                     boundsBehavior: Flickable.StopAtBounds
-                                    model: root.docs
+                                    model: root.chats
                                     delegate: Rectangle {
                                         id: drow
                                         required property var modelData
-                                        readonly property bool on: !!root.sel[modelData.id]
+                                        readonly property bool on: modelData.id === root.chatId
                                         readonly property bool rm: root.confirmRm === modelData.id
+                                        readonly property bool ren: root.renameId === modelData.id
+                                        readonly property bool several: modelData.docs.length > 1
+                                        readonly property string sub: several ? modelData.docs.length + " files" : (modelData.docs.length === 1 ? root.unitText(modelData.docs[0]) : "")
                                         width: docList.width
                                         height: 54
                                         radius: root.pal.rMd
                                         color: on ? Qt.alpha(root.pal.accent, 0.13) : (dMa.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
                                         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                        MouseArea { id: dMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.toggleSel(drow.modelData.id) }
+                                        onRenChanged: if (ren) { renIn.text = modelData.title; renIn.forceActiveFocus(); renIn.selectAll() }
+                                        MouseArea { id: dMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (!drow.ren) root.openChat(drow.modelData.id) }
                                         Text {
                                             id: dg
                                             x: 12
                                             anchors.verticalCenter: parent.verticalCenter
-                                            text: String.fromCodePoint(root.glyphOf(drow.modelData.ext))
+                                            text: String.fromCodePoint(drow.several ? 0xF0222 : root.glyphOf(drow.modelData.docs.length > 0 ? drow.modelData.docs[0].ext : ""))
                                             color: drow.on ? root.pal.accent : root.pal.muted
                                             font.family: root.pal.font
                                             font.pixelSize: 20
                                         }
                                         Column {
-                                            anchors { left: dg.right; leftMargin: 12; right: dAct.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                                            anchors { left: dg.right; leftMargin: 12; right: dAct.visible ? dAct.left : parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
                                             spacing: 2
-                                            Text { width: parent.width; elide: Text.ElideRight; text: drow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: drow.on ? Font.DemiBold : Font.Normal }
-                                            Text { width: parent.width; elide: Text.ElideRight; text: drow.rm ? "Remove from the library?" : root.unitText(drow.modelData); color: drow.rm ? root.pal.warn : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                            Text { visible: !drow.ren; width: parent.width; elide: Text.ElideRight; text: drow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: drow.on ? Font.DemiBold : Font.Normal }
+                                            TextInput {
+                                                id: renIn
+                                                visible: drow.ren
+                                                width: parent.width
+                                                clip: true
+                                                color: root.pal.text
+                                                selectionColor: Qt.alpha(root.pal.accent, 0.4)
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tBody
+                                                maximumLength: 80
+                                                onAccepted: root.renameChat(drow.modelData.id, text)
+                                                Keys.onEscapePressed: root.renameId = ""
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                elide: Text.ElideRight
+                                                text: drow.rm ? "Delete this chat and its files?" : (drow.ren ? "Enter saves, Esc cancels" : drow.sub + (drow.modelData.turns > 0 ? "  \u00b7  " + drow.modelData.turns + (drow.modelData.turns === 1 ? " question" : " questions") : ""))
+                                                color: drow.rm ? root.pal.warn : root.pal.muted
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap
+                                            }
                                         }
                                         Row {
                                             id: dAct
                                             anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                                             spacing: 2
-                                            visible: dMa.containsMouse || drow.rm || rmA.containsMouse || rmB.containsMouse
+                                            visible: !drow.ren && (dMa.containsMouse || drow.rm || rnA.containsMouse || rmA.containsMouse || rmB.containsMouse)
                                             Rectangle {
                                                 width: 26; height: 26; radius: 13
                                                 visible: drow.rm
                                                 color: rmB.containsMouse ? Qt.alpha(root.pal.bad, 0.22) : "transparent"
                                                 Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF012C); color: root.pal.bad; font.family: root.pal.font; font.pixelSize: 15 }
-                                                MouseArea { id: rmB; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.removeDoc(drow.modelData.id) }
+                                                MouseArea { id: rmB; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.removeChat(drow.modelData.id) }
+                                            }
+                                            Rectangle {
+                                                width: 26; height: 26; radius: 13
+                                                visible: !drow.rm
+                                                color: rnA.containsMouse ? Qt.alpha(root.pal.text, 0.08) : "transparent"
+                                                Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF03EB); color: root.pal.muted; font.family: root.pal.font; font.pixelSize: 14 }
+                                                MouseArea { id: rnA; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.renameId = drow.modelData.id }
                                             }
                                             Rectangle {
                                                 width: 26; height: 26; radius: 13
@@ -727,13 +800,13 @@ Scope {
                                 Item {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    visible: root.docs.length === 0
+                                    visible: root.chats.length === 0
                                     Column {
                                         anchors.centerIn: parent
                                         width: parent.width - 8
                                         spacing: 8
-                                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.loaded ? "Nothing here yet" : ""; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
-                                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "Add lecture slides, a PDF, your notes or a photo of a page. They stay on this computer."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; lineHeight: 1.25 }
+                                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.loaded ? "No chats yet" : ""; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "Add lecture slides, a PDF, your notes or a photo of a page and it gets a chat of its own. Files added together share one chat. They stay on this computer."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; lineHeight: 1.25 }
                                     }
                                 }
 
@@ -744,7 +817,7 @@ Scope {
                                     Layout.maximumWidth: 242
                                     Layout.alignment: Qt.AlignHCenter
                                     glyph: String.fromCodePoint(0xF0415)
-                                    label: "Add files"
+                                    label: "New chat"
                                     onClicked: { root.pickerOpen = true; root.focusRequested("picker") }
                                 }
                             }
@@ -787,7 +860,7 @@ Scope {
                                 Text {
                                     Layout.maximumWidth: 320
                                     elide: Text.ElideRight
-                                    text: root.note !== "" ? root.note : "About " + root.scopeText
+                                    text: root.note !== "" ? root.note : (root.curChat ? "About " + root.scopeText : "")
                                     color: root.note !== "" ? (root.noteBad ? root.pal.bad : root.pal.accent) : root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap + 1
@@ -809,7 +882,7 @@ Scope {
                                     spacing: 14
                                     visible: root.msgs.length === 0
                                     Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.docs.length === 0 ? "Add a file to begin" : "What would you like to understand?"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.Medium }
-                                    Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; lineHeight: 1.3; text: root.docs.length === 0 ? "The answers come only from your own files, with the page each one is on." : "Answers come only from " + root.scopeText + ", with the pages they are on. Pick files on the left to narrow it down."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                    Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; lineHeight: 1.3; text: root.docs.length === 0 ? "The answers come only from your own files, with the page each one is on." : "Answers come only from " + root.scopeText + ", with the pages they are on. Each chat keeps its own files and conversation: use New chat for other material."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                     Flow {
                                         width: parent.width
                                         spacing: 8
@@ -978,7 +1051,7 @@ Scope {
                                     LinkBtn {
                                         anchors { right: sendBtn.left; rightMargin: 4; verticalCenter: parent.verticalCenter }
                                         visible: root.msgs.length > 0 && !root.asking && askIn.text.length === 0
-                                        label: "New chat"
+                                        label: "Clear chat"
                                         onClicked: root.clearChat()
                                     }
                                     RoundBtn {
@@ -1028,7 +1101,7 @@ Scope {
                                     Timer { id: savedT; interval: 500; onTriggered: { root.setMade(root.tab, null); root.loadSaved() } }
                                 }
                                 PrimaryBtn {
-                                    disabled: root.making || root.docs.length === 0
+                                    disabled: root.making || root.selIds.length === 0
                                     label: root.made[root.tab] ? "Write again" : (root.tab === "summary" ? "Write summary" : (root.tab === "quiz" ? "Write questions" : "Make cards"))
                                     glyph: String.fromCodePoint(root.made[root.tab] ? 0xF0450 : 0xF0674)
                                     onClicked: root.make(!!root.made[root.tab])
@@ -1484,8 +1557,10 @@ Scope {
                         exts: root.exts
                         noun: "study"
                         fileGlyph: 0xF0214
-                        title: "Add a file to study"
-                        onPicked: path => { root.pickerOpen = false; picker.open = false; root.addFile(path); qp.forceActiveFocus() }
+                        title: "Add files to study"
+                        multi: true                                    // one file = a chat of its own, several = one chat about all of them
+                        confirmLabel: "Start chat"
+                        onPickedMany: paths => { root.pickerOpen = false; picker.open = false; root.addFiles(paths); qp.forceActiveFocus() }
                         onCancelled: { root.pickerOpen = false; picker.open = false; qp.forceActiveFocus() }
                     }
                 }
