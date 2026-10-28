@@ -48,7 +48,7 @@ WBase {
                     color: mid ? root.accent : (bm.containsMouse ? root.track : "transparent")
                     opacity: root.has ? 1 : 0.35
                     scale: bm.pressed ? 0.93 : 1
-                    Behavior on scale { NumberAnimation { duration: 120 } }
+                    Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     WIco {
                         b: root
                         anchors.centerIn: parent

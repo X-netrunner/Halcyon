@@ -63,7 +63,7 @@ ColumnLayout {
             color: root.unfolded ? Qt.alpha(root.pal.accent, 0.14) : (btnMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.8))
             border.width: root.pal.zen && !(root.unfolded) ? 0 : 1
             border.color: root.unfolded ? Qt.alpha(root.pal.accent, 0.4) : root.pal.lineSoft
-            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             Text {
                 anchors.left: parent.left; anchors.leftMargin: 16
                 anchors.right: arrow.left; anchors.rightMargin: 8

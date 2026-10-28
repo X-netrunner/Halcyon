@@ -275,7 +275,7 @@ Scope {
                                         implicitHeight: 38
                                         radius: root.pal.zen ? height / 2 : 12
                                         color: on ? (root.pal.zen ? root.pal.chosenFill : Qt.alpha(root.pal.accent, 0.16)) : (tabMa.containsMouse ? root.pal.fill : "transparent")
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Row {
                                             anchors { left: parent.left; leftMargin: root.pal.zen ? 16 : 12; verticalCenter: parent.verticalCenter }
                                             spacing: 12

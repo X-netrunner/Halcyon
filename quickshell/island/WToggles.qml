@@ -90,8 +90,8 @@ WBase {
                 border.width: root.bare ? 0 : (root.outlined ? 1.5 : 1)
                 border.color: lit ? Qt.alpha(root.accent, 0.8) : Qt.alpha(root.fg, root.outlined ? 0.38 : 0.10)
                 scale: bm.pressed ? 0.95 : 1
-                Behavior on color { ColorAnimation { duration: 140 } }
-                Behavior on scale { NumberAnimation { duration: 120 } }
+                Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                 // glyphs: the lit one has a small dot under it
                 Rectangle {

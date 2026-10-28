@@ -121,7 +121,7 @@ ColumnLayout {
                 width: parent.width * Math.max(0.02, (am.pull ? am.pull.pct : 0) / 100)
                 height: parent.height; radius: 3
                 color: root && root.pal ? root.pal.accent : "#00bcd4"
-                Behavior on width { NumberAnimation { duration: 300 } }
+                Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
         }
     }

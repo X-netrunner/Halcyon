@@ -441,7 +441,7 @@ Scope {
         opacity: disabled ? 0.45 : 1
         color: pbMa.containsMouse && !disabled ? Qt.lighter(root.pal.accent, 1.08) : root.pal.accent
         scale: pbMa.pressed && !disabled ? 0.97 : 1
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         Row {
             id: pbRow
@@ -462,7 +462,7 @@ Scope {
         implicitHeight: 30
         radius: 15
         color: lbMa.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent"
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Row {
             id: lbRow
             anchors.centerIn: parent
@@ -481,7 +481,7 @@ Scope {
         implicitHeight: 32
         radius: 16
         color: on ? Qt.alpha(root.pal.accent, 0.18) : (tbMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             id: tbTxt
             anchors.centerIn: parent
@@ -684,7 +684,7 @@ Scope {
                                         height: 54
                                         radius: root.pal.rMd
                                         color: on ? Qt.alpha(root.pal.accent, 0.13) : (dMa.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         MouseArea { id: dMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.toggleSel(drow.modelData.id) }
                                         Text {
                                             id: dg
@@ -773,7 +773,7 @@ Scope {
                                     implicitHeight: 30
                                     radius: 15
                                     color: root.modelsOpen ? Qt.alpha(root.pal.accent, 0.16) : (mcMa.containsMouse ? root.pal.fillHover : root.pal.fill)
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     Row {
                                         id: mcRow
                                         anchors.centerIn: parent
@@ -952,7 +952,7 @@ Scope {
                                     color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.75))
                                     border.width: root.pal.zen && !askIn.activeFocus ? 0 : 1
                                     border.color: askIn.activeFocus ? root.pal.lineFocus : root.pal.line
-                                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     TextEdit {
                                         id: askIn
                                         anchors { left: parent.left; right: sendBtn.left; verticalCenter: parent.verticalCenter; leftMargin: 20; rightMargin: 10 }
@@ -1124,7 +1124,7 @@ Scope {
                                         height: qCol.height + 30
                                         radius: root.pal.rLg
                                         color: qMa.containsMouse ? Qt.alpha(root.pal.surface, 0.85) : Qt.alpha(root.pal.surface, 0.55)
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         MouseArea { id: qMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { var c = {}; for (var k in root.shown) c[k] = root.shown[k]; c[qrow.index] = !qrow.open; root.shown = c } }
                                         Column {
                                             id: qCol
@@ -1217,7 +1217,7 @@ Scope {
                                         color: root.cardBack ? Qt.alpha(root.pal.accent, 0.12) : Qt.alpha(root.pal.surface, 0.8)
                                         border.width: root.pal.zen && !(root.cardBack) ? 0 : 1
                                         border.color: root.cardBack ? Qt.alpha(root.pal.accent, 0.35) : root.pal.lineSoft
-                                        Behavior on color { ColorAnimation { duration: root.pal.dMed } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         transform: Rotation {
                                             origin.x: card.width / 2; origin.y: card.height / 2
                                             axis { x: 0; y: 1; z: 0 }
@@ -1270,7 +1270,7 @@ Scope {
                                         spacing: 10
                                         opacity: root.cardBack ? 1 : 0
                                         visible: opacity > 0.01
-                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         ActionChip { pal: root.pal; implicitHeight: 34; glyph: String.fromCodePoint(0xF0450); label: "Again"; onClicked: root.markCard(false) }
                                         ActionChip { pal: root.pal; implicitHeight: 34; glyph: String.fromCodePoint(0xF012C); label: "Knew it"; on: true; onClicked: root.markCard(true) }
                                     }
@@ -1321,7 +1321,7 @@ Scope {
                         pal: root.pal
                         visible: opacity > 0.01
                         opacity: root.modelsOpen ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         anchors { top: parent.top; right: parent.right; bottom: parent.bottom; topMargin: 70; rightMargin: 24; bottomMargin: 24 }
                         width: 440
                         radius: root.pal.rLg

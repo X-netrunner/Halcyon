@@ -1479,7 +1479,7 @@ Scope {
                                         anchors { fill: parent; topMargin: 2; bottomMargin: 2; rightMargin: 14 }
                                         radius: height / 2
                                         color: navItem.cur ? root.pal.chosenFill : (navMa.containsMouse ? root.pal.fill : "transparent")
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     }
                                     Rectangle {
                                         visible: !root.pal.calm
@@ -1947,7 +1947,7 @@ Scope {
                                             clip: height !== leaves.height      // only while folding; a clip node per group splits batching
                                             opacity: grp.shut ? 0 : 1
                                             Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-                                            Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
+                                            Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                                             Column {
                                                 id: leaves
@@ -1981,7 +1981,7 @@ Scope {
                                                             anchors { fill: content; margins: -10; rightMargin: -8 }
                                                             radius: 12
                                                             color: leafMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.45) : "transparent"
-                                                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                         }
                                                         MouseArea { id: leafMa; anchors.fill: content; hoverEnabled: true; acceptedButtons: Qt.NoButton }
                                                         // a disabled row: nothing in it can be clicked, hovering says what to turn on

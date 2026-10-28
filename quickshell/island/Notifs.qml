@@ -327,10 +327,10 @@ Scope {
                 border.width: badge ? 1.5 : 0
                 border.color: badge ? Qt.alpha(root.pal.line, 0.7) : Qt.alpha(root.pal.bg, 0.35)
                 opacity: (!root.centerOpen && (root.unread > 0 || root.dnd || root.clickMode)) ? (root.dnd ? 0.55 : (root.unread > 0 ? 0.95 : 0.22)) : 0
-                Behavior on opacity { NumberAnimation { duration: root.pal.dMed } }
+                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 // breathes while something is unread (edge bar only: the badge stays still so it reads cleanly)
                 SequentialAnimation on scale {
                     running: root.breathe && root.unread > 0 && !root.dnd && !root.centerOpen && !root.corner

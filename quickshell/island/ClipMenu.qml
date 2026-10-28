@@ -260,7 +260,7 @@ Scope {
         signal clicked()
         width: 26; height: 26; radius: 13
         color: rbMa.containsMouse ? Qt.alpha(root.pal.text, 0.10) : "transparent"
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text { anchors.centerIn: parent; text: String.fromCodePoint(rb.glyph); color: rb.lit ? root.pal.accent : (rbMa.containsMouse ? root.pal.text : root.pal.muted); font.family: root.pal.font; font.pixelSize: 14 }
         MouseArea { id: rbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: rb.clicked() }
     }
@@ -273,7 +273,7 @@ Scope {
         implicitHeight: 26
         radius: 13
         color: on ? Qt.alpha(root.pal.accent, 0.18) : (fcMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text { id: fcT; anchors.centerIn: parent; text: fc.label; color: fc.on ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: fc.on ? Font.DemiBold : Font.Normal }
         MouseArea { id: fcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.kindFilter = fc.key }
     }
@@ -360,7 +360,7 @@ Scope {
                                 visible: !root.pal.zen          // the new style: no icon tile in the header
                                 width: 36; height: 36; radius: 12
                                 color: Qt.alpha(root.note !== "" ? root.pal.good : root.pal.accent, 0.15)
-                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 Text {
                                     anchors.centerIn: parent
                                     text: String.fromCodePoint(root.note !== "" ? 0xF012C : 0xF0147)
@@ -387,7 +387,7 @@ Scope {
                             color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.7))
                             border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                             border.color: sin.activeFocus ? root.pal.lineFocus : root.pal.lineSoft
-                            Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                            Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                             Text {
                                 id: sGlyph
                                 x: 14
@@ -592,7 +592,7 @@ Scope {
                                         anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
                                         spacing: 0
                                         opacity: rowMa.containsMouse || row.cur ? 1 : 0
-                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast } }
+                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         RowBtn { visible: !row.modelData.image; glyph: 0xF0674; onClicked: root.aiOpen(row.modelData) }
                                         RowBtn { visible: !row.modelData.image; glyph: row.pinned ? 0xF0404 : 0xF0403; lit: row.pinned; onClicked: root.pinItem(row.modelData) }
                                         RowBtn { glyph: 0xF01B4; onClicked: root.deleteItem(row.modelData) }

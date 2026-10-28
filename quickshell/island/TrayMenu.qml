@@ -57,7 +57,7 @@ Item {
                         radius: root.pal.rMd
                         color: ma.pressed ? root.pal.surfaceHi : (ma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent")
                         opacity: entryCol.modelData.enabled ? 1 : 0.4
-                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                         Text {
                             id: mark

@@ -18,7 +18,7 @@ Row {
         width: 26; height: 26; radius: 13
         color: m.done ? m.pal.accent : (ca.containsMouse ? Qt.alpha(m.pal.surfaceHi, 0.95) : "transparent")
         border.width: 1.5; border.color: m.done ? m.pal.accent : Qt.alpha(m.pal.text, 0.45)
-        Behavior on color { ColorAnimation { duration: m.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: m.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             anchors.centerIn: parent; text: "✓"; visible: m.done || ca.containsMouse
             color: m.done ? m.pal.bg : Qt.alpha(m.pal.text, 0.6)
@@ -31,7 +31,7 @@ Row {
         height: 26; width: tl.implicitWidth + 18; radius: 13
         color: m.task ? Qt.alpha(m.pal.accent, 0.20) : (ta.containsMouse ? Qt.alpha(m.pal.surfaceHi, 0.95) : "transparent")
         border.width: 1; border.color: m.task ? m.pal.accent : m.pal.line
-        Behavior on color { ColorAnimation { duration: m.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: m.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             id: tl; anchors.centerIn: parent; text: "Task"
             color: m.task ? m.pal.accent : m.pal.muted

@@ -44,7 +44,7 @@ Item {
                     height: Math.max(3, bar.v * root.maxH)     // 3 x 3 = a dot
                     radius: width / 2
                     color: root.active ? Qt.alpha(root.pal.accent, 0.5 + 0.5 * bar.v) : Qt.alpha(root.pal.text, 0.30)
-                    Behavior on height { NumberAnimation { duration: 80 } }
+                    Behavior on height { NumberAnimation { duration: 80; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
             }
         }

@@ -124,7 +124,7 @@ ColumnLayout {
                 height: 34
                 radius: 8
                 color: rowMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent"
-                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Image {
                     id: ic
                     anchors.left: parent.left; anchors.leftMargin: 8; anchors.verticalCenter: parent.verticalCenter

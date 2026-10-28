@@ -107,8 +107,8 @@ Scope {
                                      : sure ? Qt.alpha(root.pal.accent, 0.30) : Qt.alpha(root.pal.surface, 0.95)
                                 border.width: root.pal.zen ? 0 : 1.5
                                 border.color: Qt.alpha(root.pal.accent, hot ? 0.95 : 0.35)
-                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                                Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 Text {
                                     anchors.centerIn: parent
                                     text: String.fromCodePoint(modelData.glyph)

@@ -17,7 +17,7 @@ Item {
     height: bb.barH
     width: mw.width + pad * 2
     opacity: carried ? 0.25 : 1
-    Behavior on opacity { NumberAnimation { duration: bb.pal.dFast } }
+    Behavior on opacity { NumberAnimation { duration: bb.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
     // the box of the widget with its padding
     Rectangle {
@@ -28,7 +28,7 @@ Item {
         color: sl.picked ? Qt.alpha(bb.pal.accent, 0.16) : (sl.hot ? Qt.alpha(bb.pal.accent, 0.10) : "transparent")
         border.width: (sl.picked || sl.hot) ? 1 : 0
         border.color: Qt.alpha(bb.pal.accent, sl.picked ? 0.9 : 0.5)
-        Behavior on color { ColorAnimation { duration: bb.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: bb.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     }
     // the widget itself (same drawing as MockW, written out here: an inline component can't use another inline component)
     Item {

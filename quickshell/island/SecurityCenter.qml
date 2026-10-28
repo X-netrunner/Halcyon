@@ -402,8 +402,8 @@ Scope {
         color: primary ? (bMa.containsMouse && !disabled ? Qt.lighter(root.pal.accent, 1.08) : root.pal.accent)
                        : (bMa.containsMouse && !disabled ? root.pal.fillHover : root.pal.fill)
         scale: bMa.pressed && !disabled ? 0.97 : 1
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-        Behavior on scale { NumberAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+        Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Row {
             id: bRow
             anchors.centerIn: parent
@@ -553,7 +553,7 @@ Scope {
         radius: root.pal.rMd
         opacity: available ? 1 : 0.4
         color: on ? Qt.alpha(root.pal.accent, 0.14) : (nvMa.containsMouse && available ? root.pal.fill : "transparent")
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Glyph { id: nvG; x: 14; anchors.verticalCenter: parent.verticalCenter; code: nv.glyph; font.pixelSize: 18; color: nv.on ? root.pal.accent : root.pal.muted }
         Text { anchors { left: nvG.right; leftMargin: 12; verticalCenter: parent.verticalCenter } text: nv.label; color: nv.on ? root.pal.text : Qt.alpha(root.pal.text, 0.85); font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: nv.on ? Font.DemiBold : Font.Medium }
         Rectangle {
@@ -643,7 +643,7 @@ Scope {
         radius: root.pal.rLg
         color: mcMa.containsMouse && available ? root.pal.fillHover : root.pal.fill
         opacity: available ? 1 : 0.45
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         MouseArea { id: mcMa; anchors.fill: parent; hoverEnabled: true; enabled: mc.available; cursorShape: Qt.PointingHandCursor; onClicked: root.setTab(mc.key) }
         ColumnLayout {
             anchors.fill: parent
@@ -1272,7 +1272,7 @@ Scope {
                                                     height: 32
                                                     radius: 16
                                                     color: on ? Qt.alpha(root.pal.accent, 0.2) : (ekMa.containsMouse ? root.pal.fill : "transparent")
-                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                     Row {
                                                         id: ekIn
                                                         anchors.centerIn: parent
@@ -1399,7 +1399,7 @@ Scope {
                                                     height: 28
                                                     radius: 14
                                                     color: on ? Qt.alpha(root.pal.accent, 0.2) : (tgMa.containsMouse ? root.pal.fill : "transparent")
-                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                     Row {
                                                         id: tgIn
                                                         anchors.centerIn: parent
@@ -1584,7 +1584,7 @@ Scope {
                                     color: root.pal.fill
                                     border.width: 1
                                     border.color: askIn.activeFocus ? root.pal.lineFocus : "transparent"
-                                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     Glyph { id: askG; x: 18; anchors.verticalCenter: parent.verticalCenter; code: root.askTarget === "firewall" ? 0xF1A11 : 0xF13B6; color: root.pal.accent }
                                     TextInput {
                                         id: askIn
@@ -1605,7 +1605,7 @@ Scope {
                                         width: 36; height: 36; radius: 18
                                         readonly property bool ready: askIn.text.trim() !== "" && !root.asking
                                         color: ready ? root.pal.accent : "transparent"
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Glyph { anchors.centerIn: parent; code: 0xF048A; font.pixelSize: 16; color: send.ready ? root.pal.bg : root.pal.muted }
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { root.ask(askIn.text); askIn.text = "" } }
                                     }

@@ -286,7 +286,7 @@ Item {
                                         color: slot.picked ? Qt.alpha(root.pal.accent, 0.35) : (slot.target && ma.containsMouse ? Qt.alpha(root.pal.accent, 0.25) : Qt.alpha(root.pal.bg, 0.72))
                                         border.width: slot.picked || slot.target ? 2 : 1
                                         border.color: slot.picked ? root.pal.accent : (slot.target ? Qt.alpha(root.pal.accent, 0.7) : root.pal.lineTint)
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Column {
                                             anchors.centerIn: parent
                                             spacing: 2
@@ -365,7 +365,7 @@ Item {
                                     color: on ? Qt.alpha(root.pal.accent, 0.15) : (tcMa.containsMouse ? root.pal.fillHover : root.pal.fill)
                                     border.width: root.pal.calm ? 0 : 1
                                     border.color: on ? Qt.alpha(root.pal.accent, 0.45) : root.pal.lineSoft
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     Text {
                                         id: tcG
                                         x: 16; anchors.verticalCenter: parent.verticalCenter

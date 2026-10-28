@@ -202,9 +202,9 @@ Scope {
                                     border.width: root.pal.zen && !(cma.containsMouse && ok) ? 0 : 1
                                     border.color: cma.containsMouse && ok ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
                                     scale: cma.pressed && ok ? 0.97 : 1
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
-                                    Behavior on scale { NumberAnimation { duration: root.pal.dFast } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                    Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                    Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                                     Column {
                                         anchors.centerIn: parent

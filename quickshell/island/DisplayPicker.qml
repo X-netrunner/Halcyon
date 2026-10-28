@@ -256,7 +256,7 @@ Scope {
                                         radius: root.pal.rMd
                                         opacity: usable ? 1 : 0.4
                                         color: isSelected && usable ? root.pal.chosenFill : "transparent"
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                                         RowLayout {
                                             anchors.fill: parent

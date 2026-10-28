@@ -383,7 +383,7 @@ Scope {
                                                             height: leaf.height - 6
                                                             radius: 12
                                                             color: ma.containsMouse && leaf.clickable ? Qt.alpha(root.pal.surfaceHi, 0.8) : "transparent"
-                                                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                                                             RowLayout {
                                                                 anchors.fill: parent

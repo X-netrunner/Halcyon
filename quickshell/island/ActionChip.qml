@@ -34,8 +34,8 @@ Rectangle {
     border.width: pal.zen || (pal.calm && !flashing) ? 0 : 1      // calm: no outline at rest (the tick flash still rings); new: never
     border.color: disabled ? Qt.alpha(pal.lineSoft, 0.5) : flashing ? pal.accent : ((on || primary) ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft)
     scale: ma.pressed && !disabled ? 0.95 : 1
-    Behavior on color { ColorAnimation { duration: pal.dFast } }
-    Behavior on border.color { ColorAnimation { duration: pal.dFast } }
+    Behavior on color { ColorAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+    Behavior on border.color { ColorAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     Behavior on scale { NumberAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
     Timer { id: doneT; interval: 1700; onTriggered: root.flashing = false }

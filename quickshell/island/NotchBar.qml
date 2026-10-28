@@ -192,7 +192,7 @@ PanelWindow {
         y: win.shown ? win.frameT : -(win.barH + 30)
         Behavior on y { NumberAnimation { duration: win.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
         opacity: win.pageOpen ? 0.0 : 1.0
-        Behavior on opacity { NumberAnimation { duration: win.pal.dMed } }
+        Behavior on opacity { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
         SystemClock { id: clock; precision: win.showSeconds ? SystemClock.Seconds : SystemClock.Minutes }
         readonly property string timeStr: Qt.formatDateTime(clock.date, (win.clock24 ? "HH:mm" : "hh:mm") + (win.showSeconds ? ":ss" : "") + (win.clock24 ? "" : " AP"))
@@ -351,7 +351,7 @@ PanelWindow {
                         color: spItem.lit ? win.ac : Qt.alpha(win.pal.text, spMa.containsMouse ? 0.8 : 0.5)
                         font.family: win.pal.font
                         font.pixelSize: win.icoH
-                        Behavior on color { ColorAnimation { duration: win.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     MouseArea {
                         id: spMa
@@ -394,7 +394,7 @@ PanelWindow {
                         readonly property bool occ: ws !== null && win.wsWindows(ws) > 0
                         width: cur ? win.curW : win.offW
                         height: notch.bh
-                        Behavior on width { NumberAnimation { duration: Math.round(win.pal.dMed * 1.1); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
+                        Behavior on width { NumberAnimation { duration: Math.round(win.pal.dSlow * 0.8); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
 
                         Rectangle {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -405,8 +405,8 @@ PanelWindow {
                             color: wsItem.cur ? win.ac
                                  : wsItem.occ ? Qt.alpha(win.ac, wsMa.containsMouse ? 0.55 : 0.36)
                                  : Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.28 : 0.14)
-                            Behavior on height { NumberAnimation { duration: Math.round(win.pal.dMed * 1.1); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
-                            Behavior on color { ColorAnimation { duration: win.pal.dMed } }
+                            Behavior on height { NumberAnimation { duration: Math.round(win.pal.dSlow * 0.8); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
+                            Behavior on color { ColorAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         }
                         MouseArea {
                             id: wsMa
@@ -494,7 +494,7 @@ PanelWindow {
                 clip: true
                 opacity: win.showStats ? 1 : 0
                 Behavior on implicitWidth { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
-                Behavior on opacity { NumberAnimation { duration: win.pal.dMed } }
+                Behavior on opacity { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Row {
                     id: statsRow
                     anchors.verticalCenter: parent.verticalCenter
@@ -696,7 +696,7 @@ PanelWindow {
                         radius: height / 2
                         antialiasing: true
                         color: win.stats.charging ? win.pal.good : ((win.stats.bat || 0) <= 20 ? win.pal.bad : win.ac)
-                        Behavior on width { NumberAnimation { duration: win.pal.dMed } }
+                        Behavior on width { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
                 Text {

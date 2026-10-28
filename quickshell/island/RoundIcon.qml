@@ -13,7 +13,7 @@ Rectangle {
     color: ma.containsMouse ? Qt.alpha(pal.accent, 0.2) : Qt.alpha(pal.bg, 0.5)
     border.width: pal.calm ? 0 : 1
     border.color: pal.line
-    Behavior on color { ColorAnimation { duration: ri.pal.dFast } }
+    Behavior on color { ColorAnimation { duration: ri.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
     Text { anchors.centerIn: parent; text: ri.glyph; color: ri.pal.text; font.family: ri.pal.font; font.pixelSize: 12 }
     MouseArea {

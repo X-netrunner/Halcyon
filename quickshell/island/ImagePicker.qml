@@ -127,7 +127,7 @@ Item {
                 width: 34; height: 34; radius: 17
                 color: upMa.containsMouse ? Qt.alpha(root.pal.accent, 0.28) : Qt.alpha(root.pal.accent, 0.14)
                 border.width: root.pal.bw; border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.4)
-                Behavior on color { ColorAnimation { duration: 120 } }
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF005D); color: root.pal.text; font.family: root.pal.font; font.pixelSize: 14 }
                 MouseArea { id: upMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.goUp() }
             }
@@ -157,7 +157,7 @@ Item {
                         height: 34; width: plTxt.implicitWidth + 24; radius: 17
                         color: here ? Qt.alpha(root.pal.accent, 0.30) : (plMa.containsMouse ? Qt.alpha(root.pal.accent, 0.18) : "transparent")
                         border.width: 1; border.color: Qt.alpha(root.pal.accent, here ? 0.6 : 0.3)
-                        Behavior on color { ColorAnimation { duration: 120 } }
+                        Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         Text { id: plTxt; anchors.centerIn: parent; text: modelData.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 12 }
                         MouseArea { id: plMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.folderPath = modelData.path }
                     }
@@ -192,7 +192,7 @@ Item {
                     color: cellMa.containsMouse ? Qt.alpha(root.pal.accent, 0.16) : "transparent"
                     border.width: cellMa.containsMouse ? 1 : 0
                     border.color: Qt.alpha(root.pal.accent, 0.5)
-                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                     // picture thumbnail (decoded small, so a big folder stays light)
                     Rectangle {
@@ -211,7 +211,7 @@ Item {
                             asynchronous: true
                             cache: false
                             opacity: status === Image.Ready ? 1 : 0
-                            Behavior on opacity { NumberAnimation { duration: 200 } }
+                            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         }
                     }
                     // folder

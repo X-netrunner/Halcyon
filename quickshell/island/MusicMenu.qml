@@ -309,7 +309,7 @@ Scope {
                             Rectangle {
                                 width: 8; height: 8; radius: 4
                                 color: root.busy ? root.pal.warn : (root.cur.ok ? root.pal.accent : root.pal.muted)
-                                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                             }
                             SegSwitch {
                                 pal: root.pal
@@ -431,7 +431,7 @@ Scope {
                                 lineHeight: 1.1
                                 Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
                                 Behavior on scale { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
-                                Behavior on color { ColorAnimation { duration: 300 } }
+                                Behavior on color { ColorAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                             }
                         }
 

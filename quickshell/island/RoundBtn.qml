@@ -17,7 +17,7 @@ Rectangle {
                    : (ma.containsMouse ? pal.surface : "transparent")
     scale: ma.pressed ? 0.94 : 1
     Behavior on scale { NumberAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
-    Behavior on color { ColorAnimation { duration: pal.dFast } }
+    Behavior on color { ColorAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
     Text {
         anchors.centerIn: parent

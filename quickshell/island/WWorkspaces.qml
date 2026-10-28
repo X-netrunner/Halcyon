@@ -55,7 +55,7 @@ WBase {
                     border.color: cell.cur ? root.accent : (cell.used ? Qt.alpha(root.fg, 0.55) : Qt.alpha(root.dim, 0.5))
                     opacity: cell.cur || cell.used ? 1 : 0.8
                     visible: root.style !== "roman" && !(root.style === "numbers" && !cell.cur)
-                    Behavior on color { ColorAnimation { duration: 160 } }
+                    Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
                 WLbl {
                     b: root

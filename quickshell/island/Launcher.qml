@@ -256,8 +256,8 @@ Item {
                 color: activeCat ? (root.pal.zen ? root.pal.chosenFill : Qt.alpha(root.pal.accent, 0.20)) : (catMa.containsMouse ? Qt.alpha(root.pal.text, 0.08) : Qt.alpha(root.pal.text, root.pal.zen ? 0.04 : 0.03))
                 border.width: root.pal.bw
                 border.color: activeCat ? Qt.alpha(root.pal.accent, 0.45) : Qt.alpha(root.pal.lineSoft, 0.4)
-                Behavior on color { ColorAnimation { duration: 120 } }
-                Behavior on border.color { ColorAnimation { duration: 120 } }
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on border.color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                 Text {
                     id: catText
@@ -267,7 +267,7 @@ Item {
                     font.pixelSize: root.pal.zen ? 11 : 10
                     font.weight: activeCat ? Font.DemiBold : Font.Normal
                     color: activeCat ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : (catMa.containsMouse ? root.pal.text : root.pal.muted)
-                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
 
                 MouseArea {
@@ -821,7 +821,7 @@ Item {
             color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.surface, 0.85)
             border.width: root.pal.bw
             border.color: input.activeFocus ? root.pal.lineFocus : root.pal.line
-            Behavior on border.color { ColorAnimation { duration: 180 } }
+            Behavior on border.color { ColorAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
             // soft glow while typing
             Rectangle {
@@ -987,7 +987,7 @@ Item {
             model: root.results
             boundsBehavior: Flickable.StopAtBounds
             highlightFollowsCurrentItem: true
-            highlightMoveDuration: 260
+            highlightMoveDuration: 340
             onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, GridView.Contain)
 
             // one pill that slides between apps instead of every cell lighting up on its own
@@ -1050,7 +1050,7 @@ Item {
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.zen ? 12 : 11
                         font.weight: cell.cur && !root.pal.zen ? Font.DemiBold : Font.Medium
-                        Behavior on color { ColorAnimation { duration: 140 } }
+                        Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
                 MouseArea {
@@ -1235,7 +1235,7 @@ Item {
                     color: openNow ? Qt.alpha(root.pal.accent, 0.25) : (infoMa.containsMouse ? Qt.alpha(root.pal.text, 0.10) : "transparent")
                     border.width: root.pal.zen && !openNow ? 0 : 1
                     border.color: openNow ? Qt.alpha(root.pal.accent, 0.55) : Qt.alpha(root.pal.lineSoft, 0.6)
-                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text {
                         anchors.centerIn: parent
                         text: String.fromCodePoint(0xF02FD)

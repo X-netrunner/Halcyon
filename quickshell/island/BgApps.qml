@@ -117,8 +117,8 @@ Glass {
                             color: Qt.alpha(root.pal.surface, hov.containsMouse ? 0.95 : 0.8)
                             border.width: root.pal.zen && !(appRow.showMenu) ? 0 : 1
                             border.color: appRow.showMenu ? Qt.alpha(root.pal.accent, 0.40) : root.pal.lineSoft
-                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                            Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                            Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                             MouseArea { id: hov; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
 
@@ -203,7 +203,7 @@ Glass {
                                     border.width: root.pal.zen && !(appRow.showMenu) ? 0 : 1
                                     border.color: appRow.showMenu ? Qt.alpha(root.pal.accent, 0.40) : root.pal.lineSoft
                                     scale: moreMa.pressed ? 0.95 : 1
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     Row {
                                         anchors.centerIn: parent
                                         spacing: 3
