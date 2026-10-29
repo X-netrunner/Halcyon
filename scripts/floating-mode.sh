@@ -1,9 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # floating-mode.sh on | off | toggle | status
-# Settings > Workspaces & windows > "No tiling": every window opens floating and keeps its own size and place, like an ordinary
-# window manager. hyprland/rules.lua reads the flag file at every start / reload and keeps one rule (halcyon_float_all) that this script
-# switches on and off live; windows that are already open are floated now (and tiled again on "off" - only the ones this script floated,
-# so mpv, Picture-in-Picture and the other windows that float by their own rule stay as they are).
+# Controlled via native helper `hal floating-mode` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" floating-mode "$@"
+fi
+
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/island"
 FLAG="$STATE/float-all"
 LIST="$STATE/float-all.list"
@@ -11,7 +13,6 @@ mkdir -p "$STATE"
 
 is_on() { [ "$(head -n1 "$FLAG" 2>/dev/null)" = "1" ]; }
 
-# every window of the normal workspaces: "address floating" per line (special workspaces and the island's own windows are left alone)
 clients() {
     hyprctl clients -j 2>/dev/null | python3 -c '
 import json, sys
@@ -25,11 +26,11 @@ for c in cs:
 '
 }
 
-toggle_float() {   # no action word: the dispatcher flips it, and we know the state before
+toggle_float() {
     hyprctl dispatch "hl.dsp.window.float({ window = \"address:$1\" })" >/dev/null 2>&1
 }
 
-set_rule() {       # $1 = true | false
+set_rule() {
     hyprctl eval "if halcyon_float_all then halcyon_float_all:set_enabled($1) end" >/dev/null 2>&1
 }
 

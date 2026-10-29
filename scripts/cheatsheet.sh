@@ -2,6 +2,12 @@
 # The cheatsheet is a tree inside the island now (quickshell/island/Cheatsheet.qml, data in Binds.js):
 # SUPER+/  |  launcher: ">shortcuts"  |  Settings > Shortcuts. This script just asks the island to show it.
 # If the island is not running it falls back to a plain fuzzel list of the defaults.
+# Controlled via native helper `hal cheatsheet` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" cheatsheet "$@"
+fi
+
 if quickshell ipc -p "$HOME/.config/Halcyon/quickshell/island" call island cheatsheet >/dev/null 2>&1; then exit 0; fi
 pkill -f 'fuzzel.*--prompt=Keys' 2>/dev/null && exit 0
 node_list=$(grep -o 'label: "[^"]*", keys: "[^"]*"' "$HOME/.config/Halcyon/quickshell/island/Binds.js" | sed 's/label: "\(.*\)", keys: "\(.*\)"/\2   \1/')
