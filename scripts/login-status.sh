@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # Helper for Halcyon Settings to detect and manage login manager / lock-screen autologin
+# Controlled via native helper `hal login-status` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" login-status "$@"
+fi
+
 action="${1:-status}"
 
 case "$action" in

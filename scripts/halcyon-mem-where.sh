@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # halcyon-mem-where.sh : WHERE Quickshell's memory is. halcyon-mem.sh says how much; this splits one process (default: the island)
 # by kind, using PSS (shared pages split fairly between the processes that map them).
-#   anon / heap    = the program's own data (QML objects, JS heap, decoded images, text)
-#   gpu / drivers  = Mesa / Vulkan / NVIDIA libraries and device memory mappings
-#   shm / memfd    = Wayland window buffers and GPU-less shared memory (one per window, per frame in flight)
-#   Qt / other libs, fonts, icons = the rest
+# Controlled via native helper `hal mem where` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" mem where "$@"
+fi
+
 pid=${1:-$(pgrep -x quickshell | head -n1)}
 [ -n "$pid" ] && [ -r /proc/$pid/smaps ] || { echo "no quickshell process found (pass a pid)"; exit 1; }
 echo "pid $pid: $(tr '\0' ' ' < /proc/$pid/cmdline | cut -c1-90)"

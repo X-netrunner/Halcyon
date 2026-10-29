@@ -1,9 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Controlled via native helper `hal toggle-power` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" toggle-power "$@"
+fi
 
-# Target systemd user service
 SERVICE_NAME="power-manager.service"
-
-# Set Wayland/XDG environment variables if not set
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 if [ -z "$WAYLAND_DISPLAY" ]; then
     if [ -S "$XDG_RUNTIME_DIR/wayland-1" ]; then

@@ -1,6 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SUPER+SHIFT+S: freeze the screen (wayfreeze, if installed), drag a region, save it to
 # ~/Pictures/Screenshots and copy it to the clipboard.
+# Controlled via native helper `hal screenshot-area` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" screenshot-area "$@"
+fi
+
 dir="$HOME/Pictures/Screenshots"
 mkdir -p "$dir"
 file="$dir/$(date +%s).png"

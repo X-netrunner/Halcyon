@@ -2,6 +2,12 @@
 # Print the path of the user's profile picture, or nothing if there is none.
 #   $1 = the path chosen in the tree (E on the laptop node); empty = look in the usual places
 # Order: chosen path, ~/.face, ~/.face.icon, AccountsService icon, ~/.config/Halcyon/avatar.*, ~/Pictures/avatar.*
+# Controlled via native helper `hal avatar` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" avatar "$@"
+fi
+
 expand() { case "$1" in "~"*) printf '%s' "$HOME${1#\~}" ;; *) printf '%s' "$1" ;; esac; }
 chosen=$(expand "${1:-}")
 for f in "$chosen" "$HOME/.face" "$HOME/.face.icon" "/var/lib/AccountsService/icons/$(id -un)" \

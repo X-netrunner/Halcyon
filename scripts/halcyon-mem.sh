@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # halcyon-mem.sh : what Halcyon really costs in RAM. Run it before and after a change (same apps open, a minute after login).
 # RSS counts shared library pages in every process that maps them; PSS splits those fairly, so PSS is the honest number.
+# Controlled via native helper `hal mem` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" mem "$@"
+fi
+
 printf '%-22s %6s %9s %9s\n' process pid 'RSS MB' 'PSS MB'
 tp=0; tr=0
-show() {   # label pid
+show() {
   local pid=$2 rss pss
   rss=$(awk '/^VmRSS:/{print int($2/1024)}' /proc/$pid/status 2>/dev/null)
   pss=$(awk '/^Pss:/{s+=$2} END{print int(s/1024)}' /proc/$pid/smaps_rollup 2>/dev/null)
