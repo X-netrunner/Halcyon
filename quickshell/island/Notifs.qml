@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.Notifications
 import "NotifLayout.js" as NL
+import "DeskSpots.js" as DS
 
 // Notification daemon + right-edge hover panel (like the bottom-right utilities box), popups and notification centre.
 // This owns org.freedesktop.Notifications, so only one notification daemon may be running (no dunst/mako).
@@ -49,6 +50,15 @@ Scope {
     readonly property bool atB: cornerId.charAt(0) === "b"
     property bool edgeOn: true              // false while the bar's drop-down is on (Settings > Bar > Drag the bar down): no edge strip, no edge box; popups still show
     property bool customZone: false         // the centre wakes from a wake spot (ActivationZone), not from its edge / corner
+    // set by shell.qml (DS.originOf): the tag the centre was dragged to in the Desktop builder (any edge, anywhere along it). The centre then
+    // opens from there (pAtR / pAtB say which side of the screen it is on); the popups (toasts) stay in the corner.
+    property var origin: ({ custom: false })
+    readonly property bool custom: origin.custom === true
+    readonly property bool oSide: custom && origin.side === true
+    readonly property bool oVert: custom && origin.side !== true
+    readonly property bool pAtR: custom ? origin.atR === true : atR
+    readonly property bool pAtB: custom ? origin.atB === true : atB
+    readonly property real oMargin: pal.frameOn ? pal.frameT + 12 : 16
     property bool clickMode: false          // Edge toggle: false = hover opens it, true = click the edge to open / close it
     property bool autoHide: false           // auto-hide on: it closes as soon as the pointer leaves, in either mode
     property string sysmode: ""             // lockdown / stealth get their background art
@@ -68,8 +78,10 @@ Scope {
     // where the centre sits on the screen (the guided tour spotlights it); null when the edge box is switched off
     function tourRect(sw) {
         if (!edgeOn) return null
-        var px = atR ? (sw - panel.width - pal.boxEdge) : pal.boxEdge
-        return { x: px, y: panel.y, w: panel.width, h: panel.height }
+        var px = pAtR ? (sw - panel.width - pal.boxEdge) : pal.boxEdge
+        if (oVert) px = DS.along(origin.pos, sw, panel.width, oMargin)
+        var py = oSide ? DS.along(origin.pos, win.height, panel.height, oMargin) : panel.y
+        return { x: px, y: py, w: panel.width, h: panel.height }
     }
 
     signal dndRequested(bool on)            // shell.qml owns the saved setting
@@ -271,7 +283,8 @@ Scope {
     PanelWindow {
         id: win
         visible: !root.cycling
-        anchors { top: true; bottom: true; right: root.atR; left: !root.atR }
+        // a centre that opens from a dragged tag uses the whole screen (the mask keeps all but the box click-through)
+        anchors { top: true; bottom: true; right: root.custom ? true : root.atR; left: root.custom ? true : !root.atR }
         // FIXED size on purpose. Shrinking this surface when idle made every open / close / toast re-send the pointer enter / leave
         // on the edge strip, so the centre popped in and out by itself. The mask below keeps the idle surface click-through, and
         // the blur rule ignores the transparent part (ignore_alpha), so an idle surface costs next to nothing.
@@ -415,24 +428,30 @@ Scope {
             profileStars: root.profileStars
             // corner mode pops out of the chosen corner; edge mode slides in from its screen edge
             readonly property real edgeGap: root.pal.frameOn ? root.pal.frameT : root.pal.boxEdge     // flush with the border when there is one
-            joinH: root.pal.frameOn ? (root.atR ? "r" : "l") : ""
-            readonly property bool outCorner: root.pal.cornerOut && root.corner      // the centre only sits in a corner with the Corner trigger
-            joinV: outCorner ? (root.atB ? "b" : "t") : ""
+            joinH: root.pal.frameOn ? (root.oVert ? "" : (root.pAtR ? "r" : "l")) : ""
+            readonly property bool outCorner: root.pal.cornerOut && root.corner && !root.custom      // the centre only sits in a corner with the Corner trigger
+            joinV: root.oVert ? (root.pal.frameOn ? (root.pAtB ? "b" : "t") : "") : (root.oSide ? "" : (outCorner ? (root.atB ? "b" : "t") : ""))
             property real slideY: root.reveal
             Behavior on slideY { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-            transform: Translate { y: panel.outCorner ? (root.atB ? 1 : -1) * (1 - panel.slideY) * (panel.height + root.pal.frameT + 40) : 0 }
-            x: root.atR
+            // out of a corner with the border: along the border too (out of a top / bottom edge it slides by its y, below, so the closed box is always outside the window)
+            transform: Translate { y: (!root.custom && panel.outCorner) ? (root.atB ? 1 : -1) * (1 - panel.slideY) * (panel.height + root.pal.frameT + 40) : 0 }
+            x: root.oVert ? DS.along(root.origin.pos, win.width, width, root.oMargin)
+             : root.pAtR
                 ? (win.width - width - edgeGap + (1 - root.reveal) * (width + 40))
                 : (edgeGap - (1 - root.reveal) * (width + 40))
-            scale: (root.corner && !root.pal.frameOn) ? 0.97 + 0.03 * root.reveal : 1
-            transformOrigin: root.atB ? (root.atR ? Item.BottomRight : Item.BottomLeft) : (root.atR ? Item.TopRight : Item.TopLeft)
+            scale: ((root.corner || root.custom) && !root.pal.frameOn) ? 0.97 + 0.03 * root.reveal : 1
+            transformOrigin: root.oSide ? (root.pAtR ? Item.Right : Item.Left) : root.oVert ? (root.pAtB ? Item.Bottom : Item.Top)
+                           : (root.atB ? (root.atR ? Item.BottomRight : Item.BottomLeft) : (root.atR ? Item.TopRight : Item.TopLeft))
             Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-            y: outCorner ? (root.atB ? win.height - height - root.pal.frameT : root.pal.frameT)
+            y: root.oSide ? DS.along(root.origin.pos, win.height, height, root.oMargin)
+             : root.oVert ? (root.pAtB ? win.height - height - edgeGap + (1 - panel.slideY) * (height + edgeGap + 40)
+                                       : (root.pal.frameOn ? root.pal.frameT : root.pal.boxTop) - (1 - panel.slideY) * (height + root.pal.boxTop + 40))
+             : outCorner ? (root.atB ? win.height - height - root.pal.frameT : root.pal.frameT)
              : cfg.vpos === "middle" ? Math.round((win.height - height) / 2)
              : (root.atB || cfg.vpos === "bottom") ? win.height - height - Math.max(8, root.pal.boxTop + cfg.offY)
              : Math.max(8, root.pal.boxTop + cfg.offY)
             opacity: root.pal.frameOn ? 1 : Math.min(1, root.reveal * 1.6)
-            visible: root.pal.frameOn ? (root.atR ? x < win.width - 1 : x > -width + 1) : opacity > 0.01
+            visible: root.pal.frameOn ? (root.oVert ? panel.slideY > 0.002 : (root.pAtR ? x < win.width - 1 : x > -width + 1)) : opacity > 0.01
             Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             border.color: root.sysmode === "lockdown" || root.sysmode === "stealth" ? Qt.alpha(root.pal.accent, 0.30) : root.pal.line

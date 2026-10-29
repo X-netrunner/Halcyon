@@ -67,6 +67,7 @@ Scope {
     property var env: null                 // the shell (shell.qml): the Widget builder previews the widgets with its live feeds
     signal editOnDesktop(string which)        // "desktop" or "lock": place the widgets of that screen (shell.qml opens the desktop editor on it)
     property string wallpaperPath: ""      // the wallpaper in use (shell.qml): the Desktop builder's little preview shows it
+    property bool borderAsk: false          // the bar was just turned off while the screen border is on: asks whether to turn the border off too
     property var opt: ({})                 // the extra settings (shell.qml "opt"): colour cycling, workspaces, clock, popups ...
     property bool avAiOn: false              // AI review of antivirus alerts is on (shell.qml reads it from scripts/antivirus-ai.sh)
     property var hyCur: ({})               // Hyprland values as they are now (shell.qml): where the sliders start
@@ -136,6 +137,11 @@ Scope {
     }
     function change(key, v) {
         noteUse(key)
+        if (key === "opt:barStyle" && v === "off" && root.opt && root.opt.frame === true) {      // the border is part of the bar's look: ask, do not decide
+            setting(key, v)
+            borderAsk = true
+            return
+        }
         if (typeof key === "string" && key.indexOf("pair:") === 0) {
             var pr = pairs[key.substring(5)]
             for (var i = 0; i < pr.length; i++) setting("opt:" + pr[i], v)
@@ -1341,8 +1347,56 @@ Scope {
                     onCancelled: root.imgPickOpen = false
                 }
             }
+            // the bar was turned off with the screen border on: keep the border or turn it off too
+            Rectangle {
+                z: 110
+                anchors.fill: parent
+                visible: root.borderAsk
+                color: Qt.alpha("#000000", 0.5)
+                MouseArea { anchors.fill: parent; hoverEnabled: true; onClicked: root.borderAsk = false }
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 380; height: askCol.implicitHeight + 40
+                    radius: 14
+                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.97))
+                    border.width: 1; border.color: root.pal.line
+                    MouseArea { anchors.fill: parent }
+                    Column {
+                        id: askCol
+                        anchors.fill: parent; anchors.margins: 20
+                        spacing: 14
+                        Text {
+                            width: parent.width
+                            text: "Turn the screen border off too?"
+                            color: root.pal.text; wrapMode: Text.WordWrap
+                            font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                        }
+                        Text {
+                            width: parent.width
+                            text: "The bar is off, but the frame around the screen is still on. It was drawn in the bar's colour and the boxes slide out from under it."
+                            color: root.pal.muted; wrapMode: Text.WordWrap
+                            font.family: root.pal.uiFont; font.pixelSize: 12
+                        }
+                        Row {
+                            spacing: 10
+                            Rectangle {
+                                width: 170; height: 34; radius: 10
+                                color: Qt.alpha(root.pal.accent, 0.22); border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.7)
+                                Text { anchors.centerIn: parent; text: "Turn the border off"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 12 }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { root.setting("opt:frame", false); root.borderAsk = false } }
+                            }
+                            Rectangle {
+                                width: 150; height: 34; radius: 10
+                                color: "transparent"; border.width: 1; border.color: root.pal.line
+                                Text { anchors.centerIn: parent; text: "Keep the border"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 12 }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.borderAsk = false }
+                            }
+                        }
+                    }
+                }
+            }
             focus: root.open
-            Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true } }
+            Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { if (root.borderAsk) root.borderAsk = false; else root.hide(); e.accepted = true } }
             // the search box must be focused from in here: `search` is not visible from the root scope (this window is built by a LazyLoader)
             Timer { running: root.open; interval: 80; onTriggered: if (!root.galleryOpen) search.forceActiveFocus() }
 

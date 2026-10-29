@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import Quickshell.Wayland
+import "DeskSpots.js" as DS
 
 // Top-left pop-out console for one-shot commands (sysmode switches, ls, ip a, ...).
 //
@@ -41,8 +42,15 @@ Scope {
     property bool autoHide: false
     // the corner the console opens from (Desktop builder > Where the boxes open): tl (default) | bl | br
     property string spot: "tl"
-    readonly property bool atRight: spot.charAt(1) === "r"
-    readonly property bool atBottom: spot.charAt(0) === "b"
+    // set by shell.qml (DS.originOf): the tag the console was dragged to in the Desktop builder (any edge, anywhere along it), else its corner
+    property var origin: ({ custom: false })
+    readonly property bool oSide: origin.custom === true && origin.side === true      // out of the left / right edge, offY down it
+    readonly property bool oVert: origin.custom === true && origin.side !== true      // out of the top / bottom edge, offX along it
+    readonly property bool atRight: origin.custom === true ? origin.atR === true : spot.charAt(1) === "r"
+    readonly property bool atBottom: origin.custom === true ? origin.atB === true : spot.charAt(0) === "b"
+    readonly property real oMargin: pal.frameOn ? pal.frameT + 12 : 16
+    readonly property real offY: oSide ? DS.along(origin.pos, win.height, box.height + 24, oMargin) : 0
+    readonly property real offX: oVert ? DS.along(origin.pos, win.width, boxW + 40, oMargin) : 0
 
     // narrow for the status, wide once there is output (long lines, pacman's tables)
     readonly property bool wide: out.count > 0 || busy
@@ -78,6 +86,8 @@ Scope {
     // where the console box sits on the screen (the guided tour spotlights it)
     function tourRect(sw, sh) {
         var h = Math.min(520, 40 + body.implicitHeight + 76)
+        if (oSide) return { x: atRight ? (sw || 1920) - 22 - boxW : 22, y: offY, w: boxW, h: h }
+        if (oVert) return { x: offX + 20, y: atBottom ? (sh || 1080) - pal.boxEdge - h : pal.boxTop, w: boxW, h: h }
         return { x: atRight ? (sw || 1920) - 22 - boxW : 22,
                  y: atBottom ? (sh || 1080) - pal.boxEdge - h : pal.boxTop, w: boxW, h: h }
     }
@@ -536,7 +546,8 @@ Scope {
 
     PanelWindow {
         id: win
-        anchors { top: !root.atBottom; bottom: root.atBottom; left: !root.atRight; right: root.atRight }
+        // a box on a side edge uses the whole height of the screen, one on the top / bottom edge the whole width (the mask keeps the rest click-through)
+        anchors { top: root.oSide ? true : !root.atBottom; bottom: root.oSide ? true : root.atBottom; left: root.oVert ? true : !root.atRight; right: root.oVert ? true : root.atRight }
         // fixed size: resizing on open / close re-sends enter / leave and made the console open and close by itself (mask = click-through)
         implicitWidth: 760 + 60               // the widest the box gets (the mask keeps the rest click-through)
         implicitHeight: 780
@@ -566,6 +577,8 @@ Scope {
             anchors.bottom: root.atBottom ? parent.bottom : undefined
             anchors.left: root.atRight ? undefined : parent.left
             anchors.right: root.atRight ? parent.right : undefined
+            anchors.topMargin: root.oSide ? root.offY : 0
+            anchors.leftMargin: root.oVert ? root.offX : 0
             width: root.shown ? root.boxW + 40 : (root.customZone ? 0 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14)))
             // top corner: down to the bottom of the box. bottom corner: the box's height plus its gaps (the box then sits on the bottom edge)
             height: root.shown ? (root.atBottom ? box.height + root.pal.boxEdge + 24 : box.y + box.height + 24) : (root.customZone ? 0 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14)))
@@ -596,12 +609,17 @@ Scope {
             // border around the screen: flush with it, flared into it, sliding out from under it sideways
             property real slide: root.reveal
             Behavior on slide { NumberAnimation { duration: root.open ? root.pal.dSlow : root.pal.dClose; easing.type: Easing.BezierSpline; easing.bezierCurve: root.open ? root.pal.curve : root.pal.curveClose } }
-            joinH: root.pal.frameOn ? (root.atRight ? "r" : "l") : ""
-            joinV: root.pal.frameOn ? (root.atBottom ? "b" : (root.pal.cornerOut ? "t" : "")) : ""
-            transform: Translate { y: root.pal.cornerOut ? (root.atBottom ? 1 : -1) * (1 - box.slide) * (box.height + root.pal.frameT + 40) : 0 }
-            x: root.pal.frameOn ? (root.atRight ? 40 - root.pal.frameT + (1 - slide) * (root.boxW + 40) : root.pal.frameT - (1 - slide) * (root.boxW + 40))
+            joinH: root.pal.frameOn ? (root.oVert ? "" : (root.atRight ? "r" : "l")) : ""
+            joinV: root.pal.frameOn ? (root.oSide ? "" : (root.oVert ? (root.atBottom ? "b" : "t") : (root.atBottom ? "b" : (root.pal.cornerOut ? "t" : "")))) : ""
+            // out of a corner with the border: along the border too; out of a top / bottom edge: it slides along its height
+            transform: Translate { y: (root.oVert ? root.pal.frameOn : (root.pal.cornerOut && !root.oSide)) ? (root.atBottom ? 1 : -1) * (1 - box.slide) * (box.height + root.pal.frameT + 40) : 0 }
+            x: root.oVert ? 20
+             : root.pal.frameOn ? (root.atRight ? 40 - root.pal.frameT + (1 - slide) * (root.boxW + 40) : root.pal.frameT - (1 - slide) * (root.boxW + 40))
                                 : (root.atRight ? 18 + (1 - root.reveal) * (root.boxW * 0.5) : 22 - (1 - root.reveal) * (root.boxW * 0.5))
-            y: root.pal.frameOn ? (root.atBottom ? zone.height - root.pal.frameT - height : (root.pal.cornerOut ? root.pal.frameT : root.pal.boxTop))
+            y: root.oSide ? 0
+             : root.oVert ? (root.atBottom ? zone.height - (root.pal.frameOn ? root.pal.frameT : root.pal.boxEdge) - height + (root.pal.frameOn ? 0 : (1 - root.reveal) * (height + root.pal.boxEdge + 14))
+                                           : (root.pal.frameOn ? root.pal.frameT : root.pal.boxTop - (1 - root.reveal) * (height + root.pal.boxTop + 14)))
+             : root.pal.frameOn ? (root.atBottom ? zone.height - root.pal.frameT - height : (root.pal.cornerOut ? root.pal.frameT : root.pal.boxTop))
              : root.atBottom ? (zone.height - root.pal.boxEdge - height + (1 - root.reveal) * (height + root.pal.boxEdge + 14))
                              : (root.pal.boxTop - (1 - root.reveal) * (height + root.pal.boxTop + 14))
             width: root.boxW

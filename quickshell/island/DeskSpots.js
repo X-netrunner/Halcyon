@@ -28,7 +28,7 @@ function setTrig(opt, id, v) {
 
 // WAKE SPOTS (Desktop builder: drag the tags on the screen picture). Where the pointer touches (hover) or clicks to wake a box is no longer
 // tied to its corner: opt.boxZone = { notif: { edge: "top" | "bottom" | "left" | "right", pos: 0..1 }, ... }, pos = how far along that edge (0 = the
-// top / left end, 1 = the bottom / right end). A box that is not in it wakes from its own corner as before. The box itself still opens from its corner.
+// top / left end, 1 = the bottom / right end). A box that is not in it wakes from its own corner as before. The box opens from that same spot (originOf).
 var edges = ["top", "bottom", "left", "right"]
 var edgeNames = { top: "top edge", bottom: "bottom edge", left: "left edge", right: "right edge" }
 var shortNames = { notif: "Notif", util: "Utils", apps: "Apps", term: "Console" }
@@ -49,6 +49,38 @@ function setZone(opt, id, edge, pos) {
         else delete o[id]
     }
     return o
+}
+// WHERE A BOX OPENS FROM. The tag you drag in the Desktop builder is both the wake spot and the place the box comes out of: a box with a
+// tag opens from that edge, at that place along it; a box without one opens from its corner (opt.boxSpots) as before.
+//   custom  true when the box has a tag          edge / pos  the tag             side  the edge is the left or right one (the box slides sideways)
+//   atR / atB   which side of the screen the box is anchored to (for a tag on the left / right edge atB is false and the box is placed
+//               by `along`; for a tag on the top / bottom edge atR is false and the box is placed by `along`)
+function originOf(opt, id, cornerId) {
+    var c = cornerId || defaults[id] || "tr"
+    var z = zoneOf(opt, id)
+    if (!z) return { custom: false, edge: "", pos: 0, side: false, atR: c.charAt(1) === "r", atB: c.charAt(0) === "b" }
+    var side = z.edge === "left" || z.edge === "right"
+    return { custom: true, edge: z.edge, pos: z.pos, side: side, atR: side ? z.edge === "right" : false, atB: side ? false : z.edge === "bottom" }
+}
+// Where a box starts along its edge (px from the start of the edge): the tag's 0..1 spread over the room the box leaves, so a tag at
+// 0 puts the box at the start and a tag at 1 at the end (the same rule that places the wake strip, ActivationZone.qml), and the box
+// is never pushed off the screen. len = the edge's length, boxLen = the box's length along it, margin = the gap kept at both ends.
+function along(pos, len, boxLen, margin) {
+    var p = Number(pos)
+    if (isNaN(p)) p = 0.5
+    p = Math.max(0, Math.min(1, p))
+    var m = Math.max(0, margin || 0)
+    var room = Math.max(0, len - 2 * m - boxLen)
+    return Math.round(m + p * room)
+}
+// The corner nearest to where a box opens from (the panels that sit beside the console, Notes / Clipboard / Screenshots / Music, only
+// need to know which side of the screen the console is on and whether it is in the upper or lower half).
+function cornerFor(opt, id, cornerId) {
+    var o = originOf(opt, id, cornerId)
+    if (!o.custom) return cornerId || defaults[id] || "tr"
+    var right = o.side ? o.edge === "right" : o.pos >= 0.5
+    var bottom = o.side ? o.pos >= 0.5 : o.edge === "bottom"
+    return (bottom ? "b" : "t") + (right ? "r" : "l")
 }
 function zoneText(opt, id) {
     var z = zoneOf(opt, id)
@@ -121,6 +153,6 @@ function boxAt(o, corner) {
 function summary(o, opt) {
     var c = normalize(o)
     var parts = []
-    for (var i = 0; i < order.length; i++) parts.push(names[order[i]] + ": " + cornerNames[c[order[i]]].toLowerCase() + (zoneOf(opt, order[i]) ? " (wakes at the " + zoneText(opt, order[i]) + ")" : ""))
+    for (var i = 0; i < order.length; i++) parts.push(names[order[i]] + ": " + (zoneOf(opt, order[i]) ? "opens from the " + zoneText(opt, order[i]) : cornerNames[c[order[i]]].toLowerCase()))
     return parts.join("  ·  ")
 }

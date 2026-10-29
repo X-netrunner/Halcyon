@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import Quickshell.Wayland
+import "DeskSpots.js" as DS
 
 // The AI chatbox: what the console corner opens when Desktop builder > Console shows "AI Chatbox".
 // It is drawn like the console (same glass box, constellation, mono type, `❯` prompt) and talks to one provider at a time:
@@ -34,8 +35,15 @@ Scope {
     property string spot: "tl"            // the corner it opens from: tl | bl | br
     property bool fsActive: false
 
-    readonly property bool atRight: spot.charAt(1) === "r"
-    readonly property bool atBottom: spot.charAt(0) === "b"
+    // set by shell.qml (DS.originOf): the tag the console was dragged to in the Desktop builder (any edge, anywhere along it), else its corner
+    property var origin: ({ custom: false })
+    readonly property bool oSide: origin.custom === true && origin.side === true
+    readonly property bool oVert: origin.custom === true && origin.side !== true
+    readonly property bool atRight: origin.custom === true ? origin.atR === true : spot.charAt(1) === "r"
+    readonly property bool atBottom: origin.custom === true ? origin.atB === true : spot.charAt(0) === "b"
+    readonly property real oMargin: pal.frameOn ? pal.frameT + 12 : 16
+    readonly property real offY: oSide ? DS.along(origin.pos, win.height, box.height + 24, oMargin) : 0
+    readonly property real offX: oVert ? DS.along(origin.pos, win.width, boxW + 40, oMargin) : 0
     readonly property int boxW: 620
     // the tallest the box ever gets: well under half the screen, so it never covers the work behind it (it grows with the conversation up to here, then scrolls)
     readonly property int fullH: Math.round(Math.min(440, Math.max(300, (win.screen ? win.screen.height : 1080) * 0.40)))
@@ -350,7 +358,7 @@ Scope {
     PanelWindow {
         id: win
         visible: root.linger
-        anchors { top: !root.atBottom; bottom: root.atBottom; left: !root.atRight; right: root.atRight }
+        anchors { top: root.oSide ? true : !root.atBottom; bottom: root.oSide ? true : root.atBottom; left: root.oVert ? true : !root.atRight; right: root.oVert ? true : root.atRight }
         implicitWidth: root.boxW + 60
         implicitHeight: root.fullH + root.pal.boxTop + 60
         color: "transparent"
@@ -370,6 +378,8 @@ Scope {
             anchors.bottom: root.atBottom ? parent.bottom : undefined
             anchors.left: root.atRight ? undefined : parent.left
             anchors.right: root.atRight ? parent.right : undefined
+            anchors.topMargin: root.oSide ? root.offY : 0
+            anchors.leftMargin: root.oVert ? root.offX : 0
             width: root.shown ? root.boxW + 40 : 0
             height: root.shown ? (root.atBottom ? box.height + root.pal.boxEdge + 24 : box.y + box.height + 24) : 0
             HoverHandler { onHoveredChanged: { root.zoneHover = hovered; root.setHover(hovered) } }
@@ -381,12 +391,16 @@ Scope {
                 // (from the corner or the side, as set in the Desktop builder); border off = floating, 22 px from the edge
                 property real slide: root.reveal
                 Behavior on slide { NumberAnimation { duration: root.open ? root.pal.dSlow : root.pal.dClose; easing.type: Easing.BezierSpline; easing.bezierCurve: root.open ? root.pal.curve : root.pal.curveClose } }
-                joinH: root.pal.frameOn ? (root.atRight ? "r" : "l") : ""
-                joinV: root.pal.frameOn ? (root.atBottom ? "b" : (root.pal.cornerOut ? "t" : "")) : ""
-                transform: Translate { y: root.pal.cornerOut ? (root.atBottom ? 1 : -1) * (1 - box.slide) * (box.height + root.pal.frameT + 40) : 0 }
-                x: root.pal.frameOn ? (root.atRight ? 40 - root.pal.frameT + (1 - slide) * (root.boxW + 40) : root.pal.frameT - (1 - slide) * (root.boxW + 40))
+                joinH: root.pal.frameOn ? (root.oVert ? "" : (root.atRight ? "r" : "l")) : ""
+                joinV: root.pal.frameOn ? (root.oSide ? "" : (root.oVert ? (root.atBottom ? "b" : "t") : (root.atBottom ? "b" : (root.pal.cornerOut ? "t" : "")))) : ""
+                transform: Translate { y: (root.oVert ? root.pal.frameOn : (root.pal.cornerOut && !root.oSide)) ? (root.atBottom ? 1 : -1) * (1 - box.slide) * (box.height + root.pal.frameT + 40) : 0 }
+                x: root.oVert ? 20
+                 : root.pal.frameOn ? (root.atRight ? 40 - root.pal.frameT + (1 - slide) * (root.boxW + 40) : root.pal.frameT - (1 - slide) * (root.boxW + 40))
                                     : (root.atRight ? 18 + (1 - root.reveal) * (root.boxW * 0.5) : 22 - (1 - root.reveal) * (root.boxW * 0.5))
-                y: root.pal.frameOn ? (root.atBottom ? zone.height - root.pal.frameT - height : (root.pal.cornerOut ? root.pal.frameT : root.pal.boxTop))
+                y: root.oSide ? 0
+                 : root.oVert ? (root.atBottom ? zone.height - (root.pal.frameOn ? root.pal.frameT : root.pal.boxEdge) - height + (root.pal.frameOn ? 0 : (1 - root.reveal) * (height + root.pal.boxEdge + 14))
+                                               : (root.pal.frameOn ? root.pal.frameT : root.pal.boxTop - (1 - root.reveal) * (height + root.pal.boxTop + 14)))
+                 : root.pal.frameOn ? (root.atBottom ? zone.height - root.pal.frameT - height : (root.pal.cornerOut ? root.pal.frameT : root.pal.boxTop))
                  : root.atBottom ? (zone.height - root.pal.boxEdge - height + (1 - root.reveal) * (height + root.pal.boxEdge + 14))
                                  : (root.pal.boxTop - (1 - root.reveal) * (height + root.pal.boxTop + 14))
                 width: root.boxW
