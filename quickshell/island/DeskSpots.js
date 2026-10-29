@@ -26,6 +26,39 @@ function setTrig(opt, id, v) {
     return o
 }
 
+// WAKE SPOTS (Desktop builder: drag the tags on the screen picture). Where the pointer touches (hover) or clicks to wake a box is no longer
+// tied to its corner: opt.boxZone = { notif: { edge: "top" | "bottom" | "left" | "right", pos: 0..1 }, ... }, pos = how far along that edge (0 = the
+// top / left end, 1 = the bottom / right end). A box that is not in it wakes from its own corner as before. The box itself still opens from its corner.
+var edges = ["top", "bottom", "left", "right"]
+var edgeNames = { top: "top edge", bottom: "bottom edge", left: "left edge", right: "right edge" }
+var shortNames = { notif: "Notif", util: "Utils", apps: "Apps", term: "Console" }
+// one valid zone or null
+function zoneOf(opt, id) {
+    var z = opt && opt.boxZone ? opt.boxZone[id] : null
+    if (!z || edges.indexOf(z.edge) < 0) return null
+    var p = Number(z.pos)
+    if (isNaN(p)) p = 0.5
+    return { edge: z.edge, pos: Math.max(0, Math.min(1, p)) }
+}
+// a copy of opt.boxZone with one box moved (edge = "" puts it back on its corner)
+function setZone(opt, id, edge, pos) {
+    var o = {}
+    for (var i = 0; i < order.length; i++) { var z = zoneOf(opt, order[i]); if (z) o[order[i]] = z }
+    if (order.indexOf(id) >= 0) {
+        if (edge && edges.indexOf(edge) >= 0) o[id] = { edge: edge, pos: Math.round(Math.max(0, Math.min(1, pos)) * 1000) / 1000 }
+        else delete o[id]
+    }
+    return o
+}
+function zoneText(opt, id) {
+    var z = zoneOf(opt, id)
+    return z ? edgeNames[z.edge] + ", " + Math.round(z.pos * 100) + " %" : "its corner"
+}
+function anyZone(opt) {
+    for (var i = 0; i < order.length; i++) if (zoneOf(opt, order[i])) return true
+    return false
+}
+
 // What "Reset the desktop" puts back (Settings > Desktop builder and the builder window use the same list; boxSpots is reset on its own)
 var resetValues = {
     deskWall: true, deskBlur: 0, deskBg: "theme",
@@ -40,6 +73,7 @@ function allDefault(opt) {
     // stars were off left the Reset button greyed out, although there was something to reset)
     for (var k in resetValues) if (opt[k] !== undefined && opt[k] !== resetValues[k]) return false
     if (opt.boxTrig && Object.keys(opt.boxTrig).length > 0) return false
+    if (anyZone(opt)) return false
     return isDefault(opt.boxSpots)
 }
 
@@ -84,9 +118,9 @@ function boxAt(o, corner) {
     return ""
 }
 
-function summary(o) {
+function summary(o, opt) {
     var c = normalize(o)
     var parts = []
-    for (var i = 0; i < order.length; i++) parts.push(names[order[i]] + ": " + cornerNames[c[order[i]]].toLowerCase())
+    for (var i = 0; i < order.length; i++) parts.push(names[order[i]] + ": " + cornerNames[c[order[i]]].toLowerCase() + (zoneOf(opt, order[i]) ? " (wakes at the " + zoneText(opt, order[i]) + ")" : ""))
     return parts.join("  ·  ")
 }

@@ -6,7 +6,7 @@
   gcal.py clear                 forget every calendar and the cached events
   gcal.py remind 10,0           minutes before the start that a notification is sent (0 = at the start); "off" = none
   gcal.py sync                  download every calendar and write the events of the next months to the cache
-  gcal.py events                print the cache (JSON)
+  gcal.py events                print the cache (JSON) plus the tasks from Notes that have a reminder time (read from Notes each time, never cached)
   gcal.py notify [flags]        the once-a-minute worker (the island runs it): reminders, nagging, auto Focus mode. Flags:
                                   --no-remind  --nag EVERY_MIN  --giveup MIN  --focus  --all-tasks
   gcal.py done ID | undone ID   mark an event as finished (stops the nagging); stored here only, never sent to Google
@@ -49,6 +49,8 @@ BIRTHDAYS_JSON = os.path.join(STATE, "birthdays.json")
 BIRTHDAYS_FILE = os.path.join(os.path.expanduser("~"), ".config", "Halcyon", "birthdays.txt")
 HOLIDAYS_JSON = os.path.join(STATE, "holidays.json")
 HOLIDAYS_FILE = os.path.join(os.path.expanduser("~"), ".config", "Halcyon", "holidays.txt")
+NOTES_FILE = os.path.join(os.path.expanduser("~"), ".local", "state", "island", "notes.json")   # Notes: a task with a time shows here
+NOTE_TASK_LEN = 1800      # a task from Notes has a time, not a length: it is drawn as 30 minutes
 SELF = os.path.abspath(__file__)
 FOCUS_SH = os.path.join(os.path.expanduser("~"), ".config", "Halcyon", "scripts", "focus.sh")
 BACK_DAYS = 35            # how far back / forward the cache reaches
@@ -536,6 +538,45 @@ def load_birthday_events(win_from, win_to):
     return events
 
 
+def load_note_task_events(win_from, win_to):
+    """Tasks from Notes that have a reminder time -> calendar events (read when asked, never stored in the cache, so a task
+    added a second ago is already there). Returns (events, ids of the ones already ticked off). Notes keeps sending its own
+    reminder at the time, so these are never given a second reminder by the calendar worker. Never raises."""
+    events, done_ids = [], []
+    try:
+        with open(NOTES_FILE, "r", encoding="utf-8") as f:
+            notes = json.load(f)
+    except Exception:
+        return events, done_ids
+    if not isinstance(notes, list):
+        return events, done_ids
+    for n in notes:
+        try:
+            if not isinstance(n, dict) or not n.get("task"):
+                continue
+            due = n.get("due")
+            if not isinstance(due, (int, float)) or isinstance(due, bool) or due <= 0:
+                continue                             # no time named (or "later today"): nothing to put on a day
+            s = int(due)
+            e = s + NOTE_TASK_LEN
+            if e <= win_from or s >= win_to:
+                continue
+            text = str(n.get("text") or "").strip()
+            title = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+            if not title:
+                continue
+            if len(title) > 90:
+                title = title[:89].rstrip() + "\u2026"
+            eid = hashlib.sha1(("note-task|%s|%d" % (n.get("id", title), s)).encode()).hexdigest()[:16]
+            events.append({"id": eid, "title": title, "start": s, "end": e, "allDay": False, "loc": "",
+                           "desc": "A task from Notes", "cal": "Notes"})
+            if n.get("done"):
+                done_ids.append(eid)
+        except Exception:
+            continue
+    return events, done_ids
+
+
 def load_holiday_events(win_from, win_to):
     events = []
     h_list = []
@@ -676,7 +717,7 @@ def cmd_sync():
     except Exception as he:
         errors.append("holidays: %s" % str(he)[:100])
 
-    if not c.get("calendars") and not events:
+    if not c.get("calendars") and not events and not load_note_task_events(wf, wt)[0]:
         print(json.dumps({"ok": False, "error": "no calendar, holidays or birthdays set up"}))
         return 1
 
@@ -697,11 +738,14 @@ def cmd_conf():
     cache = load(CACHE, {})
     has_birthdays = os.path.isfile(BIRTHDAYS_FILE) or bool(load(BIRTHDAYS_JSON, []))
     has_holidays = os.path.isfile(HOLIDAYS_FILE) or bool(load(HOLIDAYS_JSON, []))
-    configured = bool(c["calendars"]) or has_birthdays or has_holidays
+    _now = int(dt.datetime.now().timestamp())
+    has_notes = bool(load_note_task_events(_now - BACK_DAYS * 86400, _now + FORWARD_DAYS * 86400)[0])
+    configured = bool(c["calendars"]) or has_birthdays or has_holidays or has_notes
     print(json.dumps({"configured": configured, "count": len(c["calendars"]),
                       "names": [x.get("name", "") for x in c["calendars"]],
                       "has_holidays": has_holidays,
                       "has_birthdays": has_birthdays,
+                      "has_notes": has_notes,
                       "remind": c["remind"], "synced": cache.get("synced", 0), "error": cache.get("error", "")}))
 
 
@@ -1614,8 +1658,16 @@ def main(argv):
         return cmd_sync()
     elif a == "events":
         out = load(CACHE, {"synced": 0, "error": "", "events": []})
-        out["done"] = sorted(load(DONE, {}).keys())
-        out["tasks"] = sorted(load(TASKS, {}).keys())
+        done_ids = set(load(DONE, {}).keys())
+        task_ids = set(load(TASKS, {}).keys())
+        _now = int(dt.datetime.now().timestamp())
+        note_events, note_done = load_note_task_events(_now - BACK_DAYS * 86400, _now + FORWARD_DAYS * 86400)
+        if note_events:
+            out["events"] = sorted(list(out.get("events") or []) + note_events, key=lambda e: (e["start"], e["title"]))
+            task_ids.update(e["id"] for e in note_events)     # a note task is a task: it gets the Task mark in the calendar
+            done_ids.update(note_done)
+        out["done"] = sorted(done_ids)
+        out["tasks"] = sorted(task_ids)
         print(json.dumps(out))
     elif a == "notify":
         return cmd_notify(argv[2:])

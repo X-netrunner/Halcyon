@@ -61,6 +61,7 @@ RowLayout {
     readonly property bool btShown: net.bt === "on" && (btMode === "on" || (btMode === "connected" && (net.btdev || "") !== ""))
     property bool showStats: false       // Settings > Bar: CPU / memory / temperature slide out while the pointer is on the bar
     signal statusClicked()
+    signal statusPopup(string kind, Item item)   // a click on the Wi-Fi / Bluetooth / battery icon (shell.qml opens the pop-up under it)
     signal workspaceClicked(int wsId)
     signal workspaceScrolled(int dir)    // +1 = wheel up, -1 = wheel down (shell.qml runs ws-nav.sh; Settings > Workspaces > invert)
     signal specialClicked(string name)
@@ -470,6 +471,7 @@ RowLayout {
                     textColor: row.pal.text
                     textFont: row.pal.uiFont
                     textPx: row.pal.tBody
+                    MouseArea { anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor; onClicked: row.statusPopup("wifi", comboRing) }
                 }
                 WifiIcon {
                     visible: row.showWifi && !row.combo
@@ -479,6 +481,7 @@ RowLayout {
                     look: row.wifiLook
                     tint: row.pal.text
                     size: 14
+                    MouseArea { anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor; onClicked: row.statusPopup("wifi", parent) }
                 }
                 Text {
                     visible: row.btShown && !row.combo
@@ -487,6 +490,7 @@ RowLayout {
                     font.family: row.pal.font
                     font.pixelSize: 14
                     anchors.verticalCenter: parent.verticalCenter
+                    MouseArea { anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor; onClicked: row.statusPopup("bt", parent) }
                 }
                 Row {
                     visible: row.showBat && row.stats.hasBat === true && !row.combo
@@ -520,9 +524,9 @@ RowLayout {
                         font.weight: Font.Medium
                         anchors.verticalCenter: parent.verticalCenter
                     }
+                    TapHandler { onTapped: row.statusPopup("battery", parent) }
                 }
             }
-            MouseArea { anchors.fill: parent; onClicked: row.statusClicked() }
         }
     }
 
