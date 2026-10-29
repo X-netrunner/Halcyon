@@ -12,7 +12,9 @@ Item {
     required property var host
 
     readonly property real pad: BL.padOf(bar.lay, modelData)           // the padding typed for this widget in the builder
-    readonly property real capP: bar.caps ? 6 : 0                      // room inside a capsule, in the bar's direction
+    readonly property bool noCapsule: bar.rail && (modelData === "logo" || modelData === "power" || modelData === "music")
+    readonly property real capP: ((bar.caps && !noCapsule) ? (bar.rail && bar.vert ? 8 : 6) : (bar.rail ? 4 : 0))      // room inside a capsule, in the bar's direction
+                                 + ((bar.caps && !noCapsule && modelData === "workspaces") ? 5 : 0)                     // the workspaces get a little more
     readonly property var it: ld.item
     // the widget's length in the bar's direction (a left / right bar measures down, the others across)
     readonly property real along: (ld.status === Loader.Ready && it !== null) ? (bar.vert ? it.implicitHeight : it.implicitWidth) : 0
@@ -23,13 +25,15 @@ Item {
 
     // the capsule (a rail with "Capsules" on): as thick as the bar's normal height, with a few px of room to the rail's edge
     Rectangle {
-        visible: slot.bar.caps
+        visible: slot.bar.caps && !slot.noCapsule
         x: slot.bar.vert ? 4 : 0
         y: slot.bar.vert ? 0 : 4
         width: slot.bar.vert ? slot.width - 8 : slot.width
         height: slot.bar.vert ? slot.height : slot.height - 8
         radius: Math.min(width, height) / 2
         color: Qt.alpha(slot.bar.pal.text, 0.07)
+        border.width: slot.bar.pal.calm ? 0 : 1
+        border.color: Qt.alpha(slot.bar.pal.text, 0.05)
     }
 
     Loader {

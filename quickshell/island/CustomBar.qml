@@ -43,28 +43,42 @@ PanelWindow {
     property bool clock24: false
     property bool showStats: false            // Settings > Bar > "When you hover the bar" = Live stats
     property bool pageOpen: false             // the performance / media page or the launcher is open (bar is not clickable behind it)
+    // the pages and the launcher grow out of the TOP edge, so only a notch / island there steps aside for them. A rail (and any bar on
+    // another edge) has nothing in their way and stays.
+    readonly property bool hideOnPage: pageOpen && side === "top" && !rail
     property int gaps: 8                      // Hyprland's gaps (see exclusiveZone)
 
     signal workspaceClicked(int wsId)
     signal workspaceScrolled(int dir)         // +1 wheel up, -1 wheel down
     signal specialClicked(string name)
     signal statusClicked()
+    signal statusPopup(string kind, real along, real edge)   // a click on the Wi-Fi / Bluetooth / battery icon: the pop-up next to it (shell.qml StatusPop)
+    signal railPage(string which)             // rail: the pointer rested near the top ("media") or the bottom ("perf") of the rail
     signal pageDrop(int dir)                  // drag the bar towards the screen's inside (+1) / back (-1): the utilities box and notifications (Settings > Bar style)
     signal clockToggled(string what)          // right click on the time = 12 / 24 hour, middle click = seconds (shell.qml flips the setting)
     signal bgClicked()
     signal numLockClicked()                   // click on the Num Lock widget (shell.qml flips the key)
+    signal logoClicked()                      // click on the OS/Launcher logo (shell.qml toggles launcher)
+    signal powerClicked()                     // click on the Power button (shell.qml opens session menu)
     signal pageStep(int dir)                  // wheel / drag along the bar: -1 = media, +1 = performance (shell.qml go())
     signal hoverEdited(bool on)               // the pointer is on the bar / left it (shell.qml opens perf / media after a moment)
 
     // ---- layout: what is on the bar, where, and how it looks
     readonly property var lay: BL.normalize(opt.barLayout)
-    readonly property string side: lay.side                        // top | bottom | left | right
+    readonly property string side: (opt && opt.barStyle === "rail" && (!lay.side || lay.side === "top")) ? "left" : lay.side                        // top | bottom | left | right
     readonly property bool vert: side === "left" || side === "right"
     readonly property int inSign: (side === "bottom" || side === "right") ? -1 : 1        // +1: the screen's inside is towards +x / +y of the bar
-    readonly property bool rail: lay.shape === "rail"
-    readonly property bool isl: lay.shape === "island"
+    readonly property string shape: (opt && opt.barStyle === "rail") ? "rail" : lay.shape
+    readonly property bool rail: shape === "rail"
+    readonly property bool isl: shape === "island"
     readonly property bool caps: rail && lay.caps                   // a capsule behind every widget
     readonly property bool ears: frameT > 0                         // the border around the screen is on: the ends of a rail flare into it
+    readonly property bool band: rail && ears                       // ... and the rail draws the border's width on its own edge too
+    // what shell.qml tells the border: "do not draw your own edge on this side, the bar is there" (empty while the bar is auto-hidden)
+    readonly property string bandSide: (band && shown) ? side : ""
+    // special workspaces: "over" = no icons of their own, they show on top of the workspaces capsule while one is open
+    readonly property bool specOver: lay.spMode === "over"
+    readonly property bool specUp: specOver && activeSpecial !== ""
     readonly property color ac: {
         var m = opt.notchAccent || "theme"
         if (m === "theme") return pal.accent
@@ -121,17 +135,23 @@ PanelWindow {
     // the window is a strip along the bar's edge, the whole length of the screen
     readonly property int span: frameT + bt + edgeM + 34
     anchors { top: win.side !== "bottom"; bottom: win.side !== "top"; left: win.side !== "right"; right: win.side !== "left" }
-    exclusionMode: frameT > 0 ? ExclusionMode.Ignore : ExclusionMode.Normal
+    // A rail is drawn from the border's inner edge to the border's inner edge, so its window has to be as long as the screen. A window that
+    // reserves room is shrunk by the zones other windows reserve (the border), which left the rail short of the border: so the rail
+    // window ignores zones and RailReserve.qml (made in shell.qml) reserves the room instead (zoneWanted).
+    // (ExclusionMode.Ignore only means "reserve nothing": the window was still pushed away from the border by the room RailReserve keeps free.
+    // Normal with exclusiveZone -1 is the layer-shell value for "extend to the screen's edges, ignore every other window's zone".)
+    exclusionMode: (rail || exclusiveZone > 0) ? ExclusionMode.Normal : ExclusionMode.Ignore
     implicitWidth: vert ? span : 0
     implicitHeight: vert ? 0 : span
-    exclusiveZone: frameT + (autoHide ? 0 : Math.max(0, bt + edgeM + sizeSet.gap - gaps * 2))
+    readonly property int zoneWanted: frameT + (autoHide ? 0 : Math.max(0, bt + edgeM + sizeSet.gap - gaps * 2))
+    exclusiveZone: rail ? -1 : zoneWanted
     color: "transparent"
 
     WlrLayershell.namespace: "island-notch"
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-    mask: Region { regions: [ Region { item: strip }, Region { item: win.pageOpen ? null : notch } ] }
+    mask: Region { regions: [ Region { item: strip }, Region { item: win.hideOnPage ? null : notch } ] }
 
     // the strip along the screen's edge that brings an auto-hidden bar back
     Item {
@@ -153,6 +173,24 @@ PanelWindow {
 
     // a click on any status widget: the drop-down, or the performance page
     function statusTap() { if (dropOn) pageDrop(1); else statusClicked() }
+    // a click on the Wi-Fi ("wifi"), Bluetooth ("bt") or battery ("battery") icon: the pop-up opens next to that icon, on the side of the screen the
+    // bar is on. `along` = where the icon is along the bar (x on a top / bottom bar, y on a left / right one), `edge` = how far the bar's inner edge
+    // is from the screen edge. (The window is a strip along the whole edge, so its coordinates are the screen's along the bar.)
+    function popFor(kind, item) {
+        if (dropOn) { pageDrop(1); return }
+        var c = item.mapToItem(null, item.width / 2, item.height / 2)
+        var e = side === "top" ? notch.y + notch.bandT
+              : side === "bottom" ? win.height - notch.y
+              : side === "left" ? notch.x + notch.bandT
+              : win.width - notch.x
+        statusPopup(kind, vert ? c.y : c.x, e)
+    }
+    readonly property real edgeDist: (band ? 0 : frameT) + edgeM + notch.bandT      // how far the bar's inner edge is from the screen's edge
+    // rail: the pointer rests near the start / end of the rail
+    readonly property bool railHoverOn: rail && opt.railHover !== false
+    property string railZone: ""
+    Timer { id: railT; interval: 350; onTriggered: if (win.railZone !== "") win.railPage(win.railZone) }
+    onRailZoneChanged: { if (railZone !== "") railT.restart(); else railT.stop() }
 
     // ------------------------------------------------------------------ the bar
     Item {
@@ -160,9 +198,19 @@ PanelWindow {
 
         // "along" is the bar's direction (its length), "across" its thickness. The sizes below are the bar as drawn on a TOP edge (in `flat`).
         readonly property real bh: win.bt                                  // the bar's thickness
-        readonly property real boxT: win.bt + (win.rail && win.ears ? win.earR : 0)     // + the flares at the ends of a rail
+        // A rail with the border around the screen draws the border's own width on its edge as well (win.band): the border there is left to
+        // the rail, so border and bar are ONE dark band, nothing is laid over the widgets and the widgets can be centred in the whole band.
+        readonly property real bandT: win.bt + (win.band ? win.frameT : 0)
+        readonly property real boxT: bandT + (win.rail && win.ears ? win.earR : 0)     // + the flares at the ends of a rail
         readonly property real e: win.rail ? 0 : win.earR                  // the flare at each end of a notch (the widgets start after it)
         readonly property real winLen: win.vert ? win.height : win.width
+        // Where the widgets sit ACROSS the bar: centred in the band (rail + border). On a right / bottom rail the band is drawn at the
+        // far end of its box (the flares of the rail's ends take the other part), so the widgets move there too.
+        readonly property real crossOff: {
+            if (!win.band) return 0
+            var far = (win.side === "right" || win.side === "bottom")
+            return (far ? win.earR : 0) + win.frameT / 2
+        }
         readonly property real sideW: Math.max(leftZone.along, rightZone.along)
         readonly property real centerW: midBox.along
         readonly property real bodyW: sideW * 2 + centerW + (sideW > 0 ? (centerW > 0 ? win.groupGap * 2 : win.groupGap) : 0) + win.padX * 2
@@ -171,14 +219,14 @@ PanelWindow {
         Behavior on alongLen { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
 
         // how far the bar's near side is from the screen edge (slides out of the screen while the bar is hidden)
-        property real inset: win.shown ? win.edgeM + win.frameT : -(boxT + 30)
+        property real inset: win.shown ? win.edgeM + (win.band ? 0 : win.frameT) : -(boxT + 30)
         Behavior on inset { NumberAnimation { duration: win.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
 
         width: win.vert ? boxT : alongLen
         height: win.vert ? alongLen : boxT
         x: win.vert ? (win.side === "left" ? inset : win.width - inset - boxT) : Math.round((win.width - width) / 2)
         y: win.vert ? Math.round((win.height - height) / 2) : (win.side === "top" ? inset : win.height - inset - boxT)
-        opacity: win.pageOpen ? 0.0 : 1.0
+        opacity: win.hideOnPage ? 0.0 : 1.0
         Behavior on opacity { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
         SystemClock { id: clock; precision: win.showSeconds ? SystemClock.Seconds : SystemClock.Minutes }
@@ -202,6 +250,20 @@ PanelWindow {
             onHoveredChanged: {
                 win.hoverEdited(hovered)
                 if (hovered) { peekT.stop() } else peekT.restart()
+            }
+        }
+
+        // a rail: where the pointer rests along it picks the page. Near the start (top) = the music window, near the end (bottom) = performance.
+        HoverHandler {
+            id: railHov
+            enabled: win.railHoverOn
+            onHoveredChanged: if (!hovered) win.railZone = ""
+            onPointChanged: {
+                if (!hovered) return
+                var len = Math.max(1, win.vert ? notch.height : notch.width)
+                var f = (win.vert ? point.position.y : point.position.x) / len
+                var z = f < 0.22 ? "media" : (f > 0.78 ? "perf" : "")
+                if (z !== win.railZone) win.railZone = z
             }
         }
 
@@ -315,7 +377,7 @@ PanelWindow {
                 preferredRendererType: Shape.CurveRenderer
                 antialiasing: true
                 readonly property real fw: flat.width                       // length of the rail
-                readonly property real tt: notch.bh                         // thickness of the rail itself
+                readonly property real tt: notch.bandT                      // thickness of the rail itself (with the border: rail + border)
                 readonly property real rr: win.ears ? win.earR : win.cornR  // radius of a flare / of a corner
                 readonly property real yA: win.ears ? tt + rr : tt - rr     // where the end arcs meet the rail's two ends
 
@@ -346,7 +408,7 @@ PanelWindow {
             // a few drifting stars behind the widgets (Settings > Look > Moving stars)
             BarStars {
                 pal: win.pal
-                active: !win.pageOpen
+                active: !win.hideOnPage
                 visible: win.shown && win.opt.starsBar !== false
                 x: win.rail ? 12 : notch.r + notch.cr
                 y: 3
@@ -409,8 +471,11 @@ PanelWindow {
                 readonly property bool cur: ws !== null && ws.focused
                 readonly property bool occ: ws !== null && win.wsWindows(ws) > 0
                 // the capsule grows when it is the current one: along the bar, and across it
-                property real aLen: cur ? win.curW : win.offW
-                property real xLen: cur ? win.curH : win.offH
+                // on a rail (Caelestia style): focused is a tall 8x26 pill, occupied is 6x10 mini pill, empty is 6x6 dot
+                readonly property real railALen: cur ? 26 : (occ ? 10 : 6)
+                readonly property real railXLen: cur ? 8 : 6
+                property real aLen: win.rail ? railALen : (cur ? win.curW : win.offW)
+                property real xLen: win.rail ? railXLen : (cur ? win.curH : win.offH)
                 Behavior on aLen { NumberAnimation { duration: Math.round(win.pal.dSlow * 0.8); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
                 Behavior on xLen { NumberAnimation { duration: Math.round(win.pal.dSlow * 0.8); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
                 width: win.vert ? notch.bh : aLen
@@ -421,8 +486,8 @@ PanelWindow {
                     height: win.vert ? wsItem.aLen : wsItem.xLen
                     radius: Math.min(width, height) / 2
                     color: wsItem.cur ? win.ac
-                         : wsItem.occ ? Qt.alpha(win.ac, wsMa.containsMouse ? 0.55 : 0.36)
-                         : Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.28 : 0.14)
+                         : wsItem.occ ? (win.rail ? Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.90 : 0.70) : Qt.alpha(win.ac, wsMa.containsMouse ? 0.55 : 0.36))
+                         : (win.rail ? Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.45 : 0.22) : Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.28 : 0.14))
                     Behavior on color { ColorAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
                 MouseArea {
@@ -441,8 +506,11 @@ PanelWindow {
         Component { id: cWorkspaces
             Item {
                 id: wsBox
-                implicitWidth: win.vert ? notch.bh : wsFlow.along
-                implicitHeight: win.vert ? wsFlow.along : notch.bh
+                // Specials = "over workspaces": while a special workspace is open the workspaces step back and the open specials are
+                // stacked on top of them (a column on a left / right bar, a row on a top / bottom one). Nothing shows when none is open.
+                readonly property real along: win.specUp ? Math.max(wsFlow.along, ovFlow.along) : wsFlow.along
+                implicitWidth: win.vert ? notch.bh : along
+                implicitHeight: win.vert ? along : notch.bh
                 WheelHandler {
                     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                     onWheel: function (e) { if (e.angleDelta.y !== 0) win.workspaceScrolled(e.angleDelta.y > 0 ? 1 : -1) }
@@ -454,6 +522,24 @@ PanelWindow {
                     spacing: win.itemGap
                     model: win.wsCount
                     delegate: wsDelegate
+                    opacity: win.specUp ? 0.14 : 1
+                    scale: win.specUp ? 0.9 : 1
+                    Behavior on opacity { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on scale { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
+                }
+                // the special workspaces that are open (or shown now), on top
+                BarFlow {
+                    id: ovFlow
+                    anchors.centerIn: parent
+                    vert: win.vert
+                    spacing: win.itemGap
+                    model: win.specOver ? win.specials : []
+                    delegate: spDelegate
+                    opacity: win.specUp ? 1 : 0
+                    visible: opacity > 0.01
+                    scale: win.specUp ? 1 : 1.12
+                    Behavior on opacity { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on scale { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
                 }
             }
         }
@@ -487,14 +573,16 @@ PanelWindow {
         Component { id: cSpecials
             Item {
                 id: spBox
-                implicitWidth: win.vert ? notch.bh : spFlow.along
-                implicitHeight: win.vert ? spFlow.along : notch.bh
+                // "over workspaces": no icons of their own here (they show on the workspaces capsule)
+                implicitWidth: win.specOver ? 0 : (win.vert ? notch.bh : spFlow.along)
+                implicitHeight: win.specOver ? 0 : (win.vert ? spFlow.along : notch.bh)
+                visible: !win.specOver
                 BarFlow {
                     id: spFlow
                     anchors.centerIn: parent
                     vert: win.vert
                     spacing: win.itemGap
-                    model: win.specials
+                    model: win.specOver ? [] : win.specials
                     delegate: spDelegate
                 }
             }
@@ -504,7 +592,9 @@ PanelWindow {
         Component { id: cMusic
             Item {
                 id: musicBox
-                readonly property real aLen: win.opt.viz === "off" ? 0 : (win.vert ? viz.implicitHeight : viz.implicitWidth)
+                // on a left / right bar the bars are turned on their side: the room they need along the bar is their WIDTH (it was the height,
+                // so the capsule was a short stub and the bars stuck out of it, and the middle looked off-centre)
+                readonly property real aLen: win.opt.viz === "off" ? 0 : viz.implicitWidth
                 implicitWidth: win.vert ? notch.bh : aLen
                 implicitHeight: win.vert ? aLen : notch.bh
                 Visualizer {
@@ -519,6 +609,7 @@ PanelWindow {
         }
 
         // a left / right bar: hours over minutes (over seconds, and am / pm in 12 h)
+        // on a rail (Caelestia style): calendar icon on top, bold hours and minutes, lowercase am/pm
         Component { id: cClock
             Item {
                 id: clkBox
@@ -539,10 +630,20 @@ PanelWindow {
                     id: clkV
                     visible: win.vert
                     anchors.centerIn: parent
-                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.hourStr; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.textPx; font.weight: Font.DemiBold }
-                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.minStr; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.textPx; font.weight: Font.DemiBold }
+                    spacing: win.rail ? 2 : 0
+                    Text {
+                        visible: win.rail
+                        width: notch.bh
+                        horizontalAlignment: Text.AlignHCenter
+                        text: String.fromCodePoint(0xF00ED)
+                        color: win.ac
+                        font.family: win.pal.font
+                        font.pixelSize: Math.max(10, win.textPx - 1)
+                    }
+                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.hourStr; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.textPx + 1 : win.textPx; font.weight: Font.DemiBold }
+                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.minStr; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.textPx + 1 : win.textPx; font.weight: Font.DemiBold }
                     Text { visible: win.showSeconds; width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.secStr; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: Math.max(9, win.textPx - 3) }
-                    Text { visible: !win.clock24; width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.apStr; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: Math.max(9, win.textPx - 4) }
+                    Text { visible: !win.clock24; width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: win.rail ? notch.apStr.toLowerCase() : notch.apStr; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: Math.max(9, win.textPx - 4) }
                 }
                 TapHandler { acceptedButtons: Qt.LeftButton; onTapped: { if (win.calClock) win.clockClicked(); else win.statusTap() } }
                 TapHandler { acceptedButtons: Qt.RightButton; onTapped: win.clockToggled("24h") }
@@ -623,14 +724,16 @@ PanelWindow {
         }
 
         // (the battery percentage next to the ring is left out on a left / right bar: there is no room beside it)
+        // on a rail (Caelestia style): vertical stack with wifi, bluetooth (if on) and battery indicator
         Component { id: cStatus
             Item {
                 id: stsBox
-                readonly property real aLen: ring.any ? (win.vert ? ring.height : ring.width) : 0
+                readonly property real aLen: win.rail ? stsRailCol.implicitHeight : (ring.any ? (win.vert ? ring.height : ring.width) : 0)
                 implicitWidth: win.vert ? notch.bh : aLen
                 implicitHeight: win.vert ? aLen : notch.bh
                 StatusRing {
                     id: ring
+                    visible: !win.rail
                     anchors.centerIn: parent
                     pal: win.pal
                     net: win.net
@@ -645,7 +748,78 @@ PanelWindow {
                     textFont: win.pal.uiFont
                     textPx: Math.max(10, win.textPx - 2)
                 }
-                TapHandler { onTapped: win.statusTap() }
+                Column {
+                    id: stsRailCol
+                    visible: win.rail
+                    anchors.centerIn: parent
+                    spacing: 10
+                    readonly property int gp: win.icoH + 2
+                    readonly property bool wifiUp: win.net.eth || (win.net.wifi === "on" && (win.net.ssid || "") !== "")
+                    readonly property real sig: Number(win.net.signal || 0)
+                    readonly property int lvl: Math.max(0, Math.min(10, Math.round(Number(win.stats.bat || 0) / 10)))
+                    readonly property var batGlyphs: [0xF008E, 0xF007A, 0xF007B, 0xF007C, 0xF007D, 0xF007E, 0xF007F, 0xF0080, 0xF0081, 0xF0082, 0xF0079]
+                    readonly property var chgGlyphs: [0xF089F, 0xF089C, 0xF0086, 0xF0087, 0xF0088, 0xF089D, 0xF0089, 0xF089E, 0xF008A, 0xF008B, 0xF0085]
+                    // Caffeine: only while the screen is kept awake
+                    InkIcon {
+                        visible: win.caffeine
+                        width: notch.bh
+                        glyph: String.fromCodePoint(0xF0176)
+                        color: win.ac
+                        fontFamily: win.pal.font
+                        px: stsRailCol.gp
+                    }
+                    // Num Lock: a keyboard icon, lit while it is on (click = switch it)
+                    Item {
+                        width: notch.bh
+                        height: stsRailCol.gp + 8
+                        InkIcon {
+                            anchors.fill: parent
+                            glyph: String.fromCodePoint(0xF0313)
+                            color: win.numLock ? win.ac : Qt.alpha(win.pal.text, nlStsMa.containsMouse ? 0.8 : 0.45)
+                            fontFamily: win.pal.font
+                            px: stsRailCol.gp
+                            Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        }
+                        MouseArea { id: nlStsMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.numLockClicked() }
+                    }
+                    // Wi-Fi, Bluetooth, battery: a tap opens the quick settings
+                    Column {
+                        id: netCol
+                        spacing: stsRailCol.spacing
+                        // wifi: the strength shows in the symbol itself; cable for ethernet; crossed out while it is off
+                        InkIcon {
+                            width: notch.bh
+                            glyph: String.fromCodePoint(win.net.eth ? 0xF0200
+                                  : !stsRailCol.wifiUp ? 0xF05AA
+                                  : (stsRailCol.sig <= 0 || stsRailCol.sig > 75) ? 0xF0928 : (stsRailCol.sig > 50 ? 0xF0925 : (stsRailCol.sig > 25 ? 0xF0922 : 0xF091F)))
+                            color: stsRailCol.wifiUp ? win.ac : Qt.alpha(win.pal.text, 0.4)
+                            fontFamily: win.pal.font
+                            px: stsRailCol.gp
+                            TapHandler { onTapped: win.popFor("wifi", parent) }
+                        }
+                        // bluetooth (only while it is on; lit while a device is connected)
+                        InkIcon {
+                            visible: win.btShown
+                            width: notch.bh
+                            glyph: String.fromCodePoint((win.net.btdev || "") !== "" ? 0xF00B1 : 0xF00AF)
+                            color: (win.net.btdev || "") !== "" ? win.ac : Qt.alpha(win.ac, 0.5)
+                            fontFamily: win.pal.font
+                            px: stsRailCol.gp
+                            TapHandler { onTapped: win.popFor("bt", parent) }
+                        }
+                        // battery: the level in the symbol, a bolt while charging, red when low
+                        InkIcon {
+                            visible: win.stats.hasBat === true
+                            width: notch.bh
+                            glyph: String.fromCodePoint(win.stats.charging ? stsRailCol.chgGlyphs[stsRailCol.lvl] : stsRailCol.batGlyphs[stsRailCol.lvl])
+                            color: win.stats.charging ? win.pal.good : ((win.stats.bat || 0) <= 20 ? win.pal.bad : win.ac)
+                            fontFamily: win.pal.font
+                            px: stsRailCol.gp
+                            TapHandler { onTapped: win.popFor("battery", parent) }
+                        }
+                    }
+                }
+                TapHandler { enabled: !win.rail; onTapped: win.popFor("wifi", ring) }       // (on a rail each icon takes its own tap; Num Lock has its own)
             }
         }
 
@@ -664,7 +838,7 @@ PanelWindow {
                     offTint: Qt.alpha(win.ac, 0.3)
                     size: win.icoH
                 }
-                TapHandler { onTapped: win.statusTap() }
+                TapHandler { onTapped: win.popFor("wifi", wfBox) }
             }
         }
 
@@ -683,7 +857,7 @@ PanelWindow {
                     font.family: win.pal.font
                     font.pixelSize: win.icoH
                 }
-                TapHandler { onTapped: win.statusTap() }
+                TapHandler { onTapped: win.popFor("bt", btBox) }
             }
         }
 
@@ -729,7 +903,7 @@ PanelWindow {
                     font.pixelSize: Math.max(10, win.textPx - 2)
                     font.weight: Font.Medium
                 }
-                TapHandler { onTapped: win.statusTap() }
+                TapHandler { onTapped: win.popFor("battery", bat) }
             }
         }
 
@@ -748,10 +922,34 @@ PanelWindow {
         Component { id: cNumLock
             Item {
                 id: nlBox
-                implicitWidth: win.vert ? notch.bh : nlKey.width
-                implicitHeight: win.vert ? nlKey.height : notch.bh
+                implicitWidth: win.vert ? notch.bh : (win.rail ? 26 : nlKey.width)
+                implicitHeight: win.vert ? (win.rail ? 26 : nlKey.height) : notch.bh
+                // a rail (Caelestia style): just an icon, lit while Num Lock is on
+                Rectangle {
+                    visible: win.rail
+                    anchors.centerIn: parent
+                    width: 26; height: 26; radius: 13
+                    color: win.numLock ? Qt.alpha(win.ac, 0.20) : (nlRailMa.containsMouse ? Qt.alpha(win.pal.text, 0.09) : "transparent")
+                    Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Text {
+                        anchors.centerIn: parent
+                        text: String.fromCodePoint(0xF0313)
+                        color: win.numLock ? win.ac : Qt.alpha(win.pal.text, nlRailMa.containsMouse ? 0.8 : 0.45)
+                        font.family: win.pal.font
+                        font.pixelSize: win.icoH + 1
+                        Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    }
+                    MouseArea {
+                        id: nlRailMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: win.numLockClicked()
+                    }
+                }
                 Rectangle {
                     id: nlKey
+                    visible: !win.rail
                     anchors.centerIn: parent
                     width: nlText.implicitWidth + 12
                     height: Math.round(win.textPx * 1.35)
@@ -836,9 +1034,79 @@ PanelWindow {
             }
         }
 
+        // OS / Distro logo (opens launcher on click, Caelestia style)
+        Component { id: cLogo
+            Item {
+                id: logoBox
+                implicitWidth: win.vert ? notch.bh : win.icoH + 8
+                implicitHeight: win.vert ? win.icoH + 8 : notch.bh
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: Math.min(notch.bh - 4, win.icoH + 12)
+                    height: width
+                    radius: width / 2
+                    color: logoMa.containsMouse ? Qt.alpha(win.ac, 0.16) : "transparent"
+                    Behavior on color { ColorAnimation { duration: win.pal.dFast } }
+                    Text {
+                        anchors.centerIn: parent
+                        text: String.fromCodePoint(0xF08C7)
+                        color: logoMa.containsMouse ? win.ac : Qt.alpha(win.pal.text, 0.85)
+                        font.family: win.pal.font
+                        font.pixelSize: Math.round(win.icoH * 1.1)
+                        Behavior on color { ColorAnimation { duration: win.pal.dFast } }
+                    }
+                }
+                MouseArea {
+                    id: logoMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: win.logoClicked()
+                }
+            }
+        }
+
+        // Power button (opens session/power menu on click, Caelestia style)
+        Component { id: cPower
+            Item {
+                id: pwrBox
+                readonly property color errCol: win.pal.bad || "#f16061"
+                implicitWidth: win.vert ? notch.bh : win.icoH + 8
+                implicitHeight: win.vert ? win.icoH + 8 : notch.bh
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: Math.min(notch.bh - 4, win.icoH + 12)
+                    height: width
+                    radius: width / 2
+                    color: pwrMa.containsMouse ? Qt.alpha(pwrBox.errCol, 0.20) : (win.rail ? "transparent" : Qt.alpha(pwrBox.errCol, 0.10))
+                    border.width: (!win.rail && pwrMa.containsMouse) ? 1 : 0
+                    border.color: Qt.alpha(pwrBox.errCol, 0.45)
+                    Behavior on color { ColorAnimation { duration: win.pal.dFast } }
+                    Behavior on border.color { ColorAnimation { duration: win.pal.dFast } }
+                    Text {
+                        anchors.centerIn: parent
+                        text: String.fromCodePoint(0xF0425)
+                        color: pwrBox.errCol
+                        font.family: win.pal.font
+                        font.pixelSize: Math.round(win.icoH * (win.rail ? 1.45 : 1.05))
+                        font.weight: Font.Bold
+                    }
+                }
+                MouseArea {
+                    id: pwrMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: win.powerClicked()
+                }
+            }
+        }
+
         // widget id -> component
         function comp(id) {
             switch (id) {
+            case "logo": return cLogo
+            case "power": return cPower
             case "workspaces": return cWorkspaces
             case "specials": return cSpecials
             case "music": return cMusic
@@ -869,16 +1137,16 @@ PanelWindow {
             spacing: win.itemGap
             model: win.lay.left
             delegate: slotDelegate
-            x: win.vert ? 0 : notch.e + win.padX
-            y: win.vert ? notch.e + win.padX : 0
+            x: win.vert ? notch.crossOff : notch.e + win.padX
+            y: win.vert ? notch.e + win.padX : notch.crossOff
         }
         Item {
             id: midBox
             readonly property real along: midZone.along + (liveStats.visible ? (midZone.along > 0 ? win.midGap : 0) + liveStats.along : 0)
             width: win.vert ? win.bt : along
             height: win.vert ? along : win.bt
-            x: win.vert ? 0 : Math.round(notch.width / 2 - width / 2)
-            y: win.vert ? Math.round(notch.height / 2 - height / 2) : 0
+            x: win.vert ? notch.crossOff : Math.round(notch.width / 2 - width / 2)
+            y: win.vert ? Math.round(notch.height / 2 - height / 2) : notch.crossOff
             BarFlow {
                 id: midZone
                 vert: win.vert
@@ -914,8 +1182,8 @@ PanelWindow {
             spacing: win.rightGap
             model: win.lay.right
             delegate: slotDelegate
-            x: win.vert ? 0 : notch.width - notch.e - win.padX - width
-            y: win.vert ? notch.height - notch.e - win.padX - height : 0
+            x: win.vert ? notch.crossOff : notch.width - notch.e - win.padX - width
+            y: win.vert ? notch.height - notch.e - win.padX - height : notch.crossOff
         }
     }
 

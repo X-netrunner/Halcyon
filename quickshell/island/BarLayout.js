@@ -8,6 +8,7 @@
 //     side:  "top" | "bottom" | "left" | "right",   which edge of the screen the bar sits on (left / right bars stack their widgets top to bottom;
 //                                         the three places then read Top / Middle / Bottom, in the same order as Left / Middle / Right)
 //     caps:  true | false,                the rail only: every widget sits in its own soft capsule
+//     spMode: "bar" | "over",             special workspaces: own icons beside the workspaces, or stacked over them while one is open
 //     edge:  px | null,                   padding between the bar's ends and the first / last widget   (null = automatic)
 //     gap:   px | null,                   space between two widgets                                    (null = automatic)
 //     clear: px | null,                   space between the left / right widgets and the middle        (null = automatic)
@@ -22,20 +23,22 @@ var padMax = { edge: 80, gap: 60, clear: 120 }
 var widgetPadMax = 40
 
 var catalog = [
+    { id: "logo",       name: "Launcher logo",      short: "Logo",       hint: "OS / Distro logo (click = opens launcher)" },
     { id: "workspaces", name: "Workspaces",         short: "Workspaces", hint: "The capsules: the current one big and vivid" },
     { id: "specials",   name: "Special workspaces", short: "Specials",   hint: "Scratch, music, monitor ... icons (only the ones in use)" },
     { id: "music",      name: "Music bars",         short: "Music",      hint: "The visualizer; dots while nothing plays" },
     { id: "clock",      name: "Clock",              short: "Clock",      hint: "Click = drop-down, right click = 12 / 24 h, middle click = seconds" },
     { id: "date",       name: "Date",               short: "Date",       hint: "Day and date" },
     { id: "stats",      name: "CPU · RAM · TEMP",   short: "Stats",      hint: "Live numbers, always visible" },
-    { id: "status",     name: "Status ring",        short: "Status",     hint: "Wi-Fi, battery ring and Bluetooth dots in one round icon" },
+    { id: "status",     name: "Status ring / stack", short: "Status",     hint: "Wi-Fi, battery and volume/Bluetooth in one capsule" },
     { id: "wifi",       name: "Wi-Fi",              short: "Wi-Fi",      hint: "Look: Settings > Bar style > Wi-Fi look" },
     { id: "bluetooth",  name: "Bluetooth",          short: "BT",         hint: "Follows Settings > Bar style > Bluetooth" },
     { id: "battery",    name: "Battery",            short: "Battery",    hint: "A pill; the percentage is a switch in Bar style" },
     { id: "caffeine",   name: "Caffeine",           short: "Caffeine",   hint: "Shows only while the screen is kept awake" },
     { id: "numlock",    name: "Num Lock",           short: "Num Lock",   hint: "A switch: click to turn Num Lock on or off, lit while it is on" },
     { id: "focus",      name: "Focus timer",        short: "Focus",      hint: "Shows only while a Focus session runs" },
-    { id: "bgapps",     name: "Background apps",    short: "Bg apps",    hint: "How many apps are alive in the background (click = list)" }
+    { id: "bgapps",     name: "Background apps",    short: "Bg apps",    hint: "How many apps are alive in the background (click = list)" },
+    { id: "power",      name: "Power button",       short: "Power",      hint: "Quick power button (click = opens session menu)" }
 ]
 
 function nameOf(id) {
@@ -51,7 +54,17 @@ function hintOf(id) {
     return ""
 }
 
-function defaults() {
+function defaults(shape) {
+    if (shape === "rail") {
+        return {
+            // Caelestia's order: logo and workspaces at the top, the equaliser in the middle, then (bottom) background apps, the clock, the
+            // status capsule (Wi-Fi, Bluetooth, battery, with Caffeine and Num Lock folded in) and the power button
+            left: ["logo", "workspaces", "specials"],
+            center: ["music"],
+            right: ["bgapps", "clock", "status", "power"],
+            shape: "rail", side: "left", caps: true, edge: null, gap: null, clear: null, pads: {}, rv: 2
+        }
+    }
     return {
         left: ["workspaces", "specials"],
         center: ["music", "clock"],
@@ -94,7 +107,25 @@ function normalize(l) {
     }
     out.shape = shapes.indexOf(l.shape) >= 0 ? l.shape : "notch"
     out.side = sides.indexOf(l.side) >= 0 ? l.side : "top"
+    out.rv = Number(l.rv) || 0
+    // a rail saved before version 2 gets the Caelestia order once (Caffeine, Num Lock, Wi-Fi, Bluetooth and the battery live inside
+    // the status capsule on a rail; any other widget it had is kept, in front of the clock). Layouts the builder saves carry rv: 2.
+    if (out.shape === "rail" && out.rv < 2) {
+        var folded = { caffeine: 1, numlock: 1, wifi: 1, bluetooth: 1, battery: 1 }
+        var core = { logo: 1, workspaces: 1, specials: 1, music: 1, bgapps: 1, clock: 1, status: 1, power: 1 }
+        var extra = []
+        for (var zz = 0; zz < zones.length; zz++)
+            for (var q = 0; q < out[zones[zz]].length; q++) {
+                var xid = out[zones[zz]][q]
+                if (!core[xid] && !folded[xid]) extra.push(xid)
+            }
+        out.left = ["logo", "workspaces", "specials"]
+        out.center = ["music"]
+        out.right = ["bgapps"].concat(extra, ["clock", "status", "power"])
+        out.rv = 2
+    }
     out.caps = l.caps !== false
+    out.spMode = l.spMode === "over" ? "over" : "bar"
     out.edge = num(l.edge, padMax.edge)
     out.gap = num(l.gap, padMax.gap)
     out.clear = num(l.clear, padMax.clear)
@@ -111,7 +142,7 @@ function normalize(l) {
 function build(l, left, center, right) {
     var pads = {}
     for (var k in l.pads) pads[k] = l.pads[k]
-    return { left: left, center: center, right: right, shape: l.shape, side: l.side, caps: l.caps, edge: l.edge, gap: l.gap, clear: l.clear, pads: pads }
+    return { left: left, center: center, right: right, shape: l.shape, side: l.side, caps: l.caps, spMode: l.spMode, edge: l.edge, gap: l.gap, clear: l.clear, pads: pads, rv: l.rv }
 }
 
 function setShape(l, s) {
@@ -131,6 +162,14 @@ function setSide(l, s) {
 function setCaps(l, on) {
     var o = build(l, l.left.slice(), l.center.slice(), l.right.slice())
     o.caps = on !== false
+    return o
+}
+
+// where the special workspaces (scratch, music ...) show: "bar" = their own icons next to the workspaces (the old way), "over" = on top of the
+// workspaces capsule, and only while a special workspace is open (SUPER+S ...)
+function setSpMode(l, m) {
+    var o = build(l, l.left.slice(), l.center.slice(), l.right.slice())
+    o.spMode = m === "over" ? "over" : "bar"
     return o
 }
 
@@ -154,7 +193,7 @@ function padOf(l, id) { return l.pads && l.pads[id] ? l.pads[id] : 0 }
 // the numbers the bar really uses (the saved ones, or the automatic ones for this bar height and spacing)
 function resolve(l, barH, spacious) {
     return {
-        edge: l.edge !== null ? l.edge : Math.round(barH * (spacious ? 0.95 : 0.62)),
+        edge: l.edge !== null ? l.edge : (l.shape === "rail" ? 8 : Math.round(barH * (spacious ? 0.95 : 0.62))),
         gap: l.gap !== null ? l.gap : Math.max(4, Math.round(barH * (spacious ? 0.28 : 0.17))),
         clear: l.clear !== null ? l.clear : Math.round(barH * (spacious ? 1.1 : 0.3)),
         autoRightGap: Math.round(barH * (spacious ? 0.5 : 0.3)),

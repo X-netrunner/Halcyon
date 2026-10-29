@@ -48,6 +48,7 @@ Scope {
     readonly property bool atR: cornerId.charAt(1) === "r"
     readonly property bool atB: cornerId.charAt(0) === "b"
     property bool edgeOn: true              // false while the bar's drop-down is on (Settings > Bar > Drag the bar down): no edge strip, no edge box; popups still show
+    property bool customZone: false         // the centre wakes from a wake spot (ActivationZone), not from its edge / corner
     property bool clickMode: false          // Edge toggle: false = hover opens it, true = click the edge to open / close it
     property bool autoHide: false           // auto-hide on: it closes as soon as the pointer leaves, in either mode
     property string sysmode: ""             // lockdown / stealth get their background art
@@ -299,8 +300,8 @@ Scope {
             anchors.bottom: root.atB ? parent.bottom : undefined
             anchors.topMargin: root.corner ? 0 : (root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
             anchors.bottomMargin: root.corner ? 0 : (!root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
-            width: !root.edgeOn || root.asleep ? 0 : root.corner ? (root.clickMode ? 28 : 22) : (root.clickMode ? 16 : 12)
-            height: !root.edgeOn || root.asleep ? 0 : root.corner ? (root.clickMode ? 28 : 22) : 260
+            width: !root.edgeOn || root.asleep || root.customZone ? 0 : root.corner ? (root.clickMode ? 28 : 22) : (root.clickMode ? 16 : 12)
+            height: !root.edgeOn || root.asleep || root.customZone ? 0 : root.corner ? (root.clickMode ? 28 : 22) : 260
             clickMode: root.clickMode
             onHoverChanged: on => root.setHover(on)
             onTapped: root.toggleCenter()

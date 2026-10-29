@@ -71,6 +71,8 @@ jobs:
         run: python3 tests/test_task_detect.py
       - name: birthday import (date formats, invalid days like 02-30 are rejected, vCard and CSV)
         run: python3 tests/test_birthdays.py
+      - name: "Notes tasks in the calendar (only tasks with a time, first line is the title, ticked ones are done)"
+        run: python3 tests/test_note_tasks_calendar.py
       - name: everyday tools (colour formats, Wi-Fi QR text, mixer, VPN, updates, snippets, windows, phone, zoom; system programs are stubs)
         run: python3 tests/test_tools.py
       - name: safety check review (rkhunter / AIDE / Lynis noise rules, the verdicts, never "all good" from the model)
