@@ -273,6 +273,8 @@ Item {
                                     readonly property string boxId: DS.boxAt(root.opt ? root.opt.boxSpots : null, c)
                                     readonly property bool atRight: c.charAt(1) === "r"
                                     readonly property bool atBottom: c.charAt(0) === "b"
+                                    // a box with a tag opens from the tag, not from this corner
+                                    readonly property string cornerLabel: (boxId !== "" && DS.zoneOf(root.opt, boxId)) ? "opens at its tag" : DS.cornerNames[c]
                                     readonly property bool picked: boxId !== "" && boxId === root.pick
                                     readonly property bool target: root.pick !== "" && boxId !== root.pick
                                     z: 4
@@ -301,7 +303,7 @@ Item {
                                             }
                                             Text {
                                                 anchors.horizontalCenter: parent.horizontalCenter
-                                                text: slot.picked ? "pick a corner" : (slot.target ? "move here" : (slot.boxId === "notif" ? ((root.opt && root.opt.notifSpot === "corner" ? "corner trigger" : "edge trigger") + " · " + DS.cornerNames[slot.c]) : DS.cornerNames[slot.c]) + (DS.trig(root.opt, slot.boxId, root.globalClick) ? " · click" : " · hover"))
+                                                text: slot.picked ? "pick a corner" : (slot.target ? "move here" : (slot.boxId === "notif" ? ((root.opt && root.opt.notifSpot === "corner" ? "corner trigger" : "edge trigger") + " · " + slot.cornerLabel) : slot.cornerLabel) + (DS.trig(root.opt, slot.boxId, root.globalClick) ? " · click" : " · hover"))
                                                 color: slot.picked ? root.pal.accent : root.pal.muted
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 10
@@ -338,6 +340,27 @@ Item {
                                     readonly property real pos: dragging ? dPos : (zone ? zone.pos : (corner.charAt(1) === "l" ? 0 : 1))
                                     readonly property bool horiz: edge === "top" || edge === "bottom"
                                     z: 8
+                                    // the box as it will come out: flush with the tag's edge, at the tag's place along it (the same rule the real box uses,
+                                    // DS.along). Shown while the tag is dragged and for every box that has a tag.
+                                    Rectangle {
+                                        parent: scr
+                                        z: 5
+                                        visible: tag.zone !== null || tag.dragging
+                                        readonly property real gw: Math.min(scr.width * 0.27, 170)
+                                        readonly property real gh: Math.min(scr.height * 0.36, 118)
+                                        width: gw; height: gh; radius: 8
+                                        x: tag.edge === "left" ? 2 : tag.edge === "right" ? scr.width - gw - 2 : DS.along(tag.pos, scr.width, gw, 6)
+                                        y: tag.edge === "top" ? 2 : tag.edge === "bottom" ? scr.height - gh - 2 : DS.along(tag.pos, scr.height, gh, 6)
+                                        color: Qt.alpha(root.pal.accent, tag.dragging ? 0.20 : 0.12)
+                                        border.width: 1; border.color: Qt.alpha(root.pal.accent, tag.dragging ? 0.8 : 0.45)
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: DS.names[tag.modelData]
+                                            color: root.pal.text
+                                            opacity: 0.8
+                                            font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold
+                                        }
+                                    }
                                     width: 52; height: 18; radius: 9
                                     color: dragging ? root.pal.accent : Qt.alpha(root.pal.accent, zone ? 0.85 : 0.5)
                                     border.width: 1; border.color: Qt.alpha(root.pal.bg, 0.6)
@@ -380,7 +403,7 @@ Item {
                         anchors.leftMargin: 20; anchors.rightMargin: 20
                         // the new style says only what to do next while you are moving a box
                         text: root.pal.zen && root.pal.hideHints && root.pick === "" ? "" : root.lockT ? "Your lock screen widgets are drawn as boxes where they sit. \"Place them on the lock screen\" (right) moves and resizes the real ones. The boxes of the desktop (notifications, utilities ...) do not open on a locked screen."
-                              : (root.pick !== "" ? ("Now click the corner for " + DS.names[root.pick] + ". Esc cancels.") : "Click a box, then click the corner you want it to open from (a box dropped on a taken corner swaps places). Drag a small tag along any edge to choose where that box wakes; double-click a tag to put it back on its corner.")
+                              : (root.pick !== "" ? ("Now click the corner for " + DS.names[root.pick] + ". Esc cancels.") : "Click a box, then click the corner you want it to open from (a box dropped on a taken corner swaps places). Or drag a small tag along any edge: that box wakes there and opens from there (the faint box shows where). Double-click a tag to put the box back in its corner.")
                         color: root.pick !== "" && !root.lockT ? root.pal.accent : root.pal.muted
                         font.family: root.pal.uiFont
                         font.pixelSize: 11
@@ -639,7 +662,7 @@ Item {
                             NbCap { pal: root.pal; text: root.pal.cap("ACTIVATION ZONES  ·  WHERE THE BOXES OPEN") }
                             Text {
                                 Layout.fillWidth: true
-                                text: "Pick the corner each box opens from. Taking a used corner swaps the two."
+                                text: "Pick the corner each box opens from. Taking a used corner swaps the two. A box you gave a tag (drag it along an edge in the picture) wakes and opens from its tag instead."
                                 visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
