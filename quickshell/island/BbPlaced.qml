@@ -14,8 +14,11 @@ Item {
     readonly property bool carried: bb.dragId === wid
     readonly property bool hot: sma.containsMouse && bb.dragId === ""
     readonly property bool picked: bb.sel === wid
-    height: bb.barH
-    width: mw.width + pad * 2
+    // on a left / right bar the widgets are stacked in a column: the padding is then above and below, the widget is drawn as always
+    // (icon first, its text to the right), and the column's width is its widest widget
+    readonly property bool vert: bb.vert
+    height: vert ? bb.barH + pad * 2 : bb.barH
+    width: vert ? mw.width + 12 : mw.width + pad * 2
     opacity: carried ? 0.25 : 1
     Behavior on opacity { NumberAnimation { duration: bb.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
@@ -33,7 +36,8 @@ Item {
     // the widget itself (same drawing as MockW, written out here: an inline component can't use another inline component)
     Item {
         id: mw
-        x: sl.pad
+        x: sl.vert ? 6 : sl.pad
+        y: sl.vert ? sl.pad : 0
         height: bb.barH
         width: mld.item ? mld.item.implicitWidth : 0
         Loader { id: mld; height: bb.barH; sourceComponent: bb.mockFor(sl.wid) }

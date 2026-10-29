@@ -65,7 +65,7 @@ PanelWindow {
 
     // ---- layout: what is on the bar, where, and how it looks
     readonly property var lay: BL.normalize(opt.barLayout)
-    readonly property string side: (opt && opt.barStyle === "rail" && (!lay.side || lay.side === "top")) ? "left" : lay.side                        // top | bottom | left | right
+    readonly property string side: lay.side                        // top | bottom | left | right
     readonly property bool vert: side === "left" || side === "right"
     readonly property int inSign: (side === "bottom" || side === "right") ? -1 : 1        // +1: the screen's inside is towards +x / +y of the bar
     readonly property string shape: (opt && opt.barStyle === "rail") ? "rail" : lay.shape
@@ -728,7 +728,7 @@ PanelWindow {
         Component { id: cStatus
             Item {
                 id: stsBox
-                readonly property real aLen: win.rail ? stsRailCol.implicitHeight : (ring.any ? (win.vert ? ring.height : ring.width) : 0)
+                readonly property real aLen: win.rail ? (win.vert ? stsRailCol.implicitHeight : stsRailCol.implicitWidth) : (ring.any ? (win.vert ? ring.height : ring.width) : 0)
                 implicitWidth: win.vert ? notch.bh : aLen
                 implicitHeight: win.vert ? aLen : notch.bh
                 StatusRing {
@@ -748,10 +748,14 @@ PanelWindow {
                     textFont: win.pal.uiFont
                     textPx: Math.max(10, win.textPx - 2)
                 }
-                Column {
+                Grid {
                     id: stsRailCol
                     visible: win.rail
                     anchors.centerIn: parent
+                    // a left / right rail stacks the icons; a top / bottom rail lays them side by side
+                    flow: win.vert ? Grid.TopToBottom : Grid.LeftToRight
+                    rows: win.vert ? 100 : 1
+                    columns: win.vert ? 1 : 100
                     spacing: 10
                     readonly property int gp: win.icoH + 2
                     readonly property bool wifiUp: win.net.eth || (win.net.wifi === "on" && (win.net.ssid || "") !== "")
@@ -762,7 +766,7 @@ PanelWindow {
                     // Caffeine: only while the screen is kept awake
                     InkIcon {
                         visible: win.caffeine
-                        width: notch.bh
+                        width: win.vert ? notch.bh : implicitWidth
                         glyph: String.fromCodePoint(0xF0176)
                         color: win.ac
                         fontFamily: win.pal.font
@@ -770,7 +774,7 @@ PanelWindow {
                     }
                     // Num Lock: a keyboard icon, lit while it is on (click = switch it)
                     Item {
-                        width: notch.bh
+                        width: win.vert ? notch.bh : stsRailCol.gp + 8
                         height: stsRailCol.gp + 8
                         InkIcon {
                             anchors.fill: parent
@@ -783,12 +787,15 @@ PanelWindow {
                         MouseArea { id: nlStsMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.numLockClicked() }
                     }
                     // Wi-Fi, Bluetooth, battery: a tap opens the quick settings
-                    Column {
+                    Grid {
                         id: netCol
+                        flow: stsRailCol.flow
+                        rows: stsRailCol.rows
+                        columns: stsRailCol.columns
                         spacing: stsRailCol.spacing
                         // wifi: the strength shows in the symbol itself; cable for ethernet; crossed out while it is off
                         InkIcon {
-                            width: notch.bh
+                            width: win.vert ? notch.bh : implicitWidth
                             glyph: String.fromCodePoint(win.net.eth ? 0xF0200
                                   : !stsRailCol.wifiUp ? 0xF05AA
                                   : (stsRailCol.sig <= 0 || stsRailCol.sig > 75) ? 0xF0928 : (stsRailCol.sig > 50 ? 0xF0925 : (stsRailCol.sig > 25 ? 0xF0922 : 0xF091F)))
@@ -800,7 +807,7 @@ PanelWindow {
                         // bluetooth (only while it is on; lit while a device is connected)
                         InkIcon {
                             visible: win.btShown
-                            width: notch.bh
+                            width: win.vert ? notch.bh : implicitWidth
                             glyph: String.fromCodePoint((win.net.btdev || "") !== "" ? 0xF00B1 : 0xF00AF)
                             color: (win.net.btdev || "") !== "" ? win.ac : Qt.alpha(win.ac, 0.5)
                             fontFamily: win.pal.font
@@ -810,7 +817,7 @@ PanelWindow {
                         // battery: the level in the symbol, a bolt while charging, red when low
                         InkIcon {
                             visible: win.stats.hasBat === true
-                            width: notch.bh
+                            width: win.vert ? notch.bh : implicitWidth
                             glyph: String.fromCodePoint(win.stats.charging ? stsRailCol.chgGlyphs[stsRailCol.lvl] : stsRailCol.batGlyphs[stsRailCol.lvl])
                             color: win.stats.charging ? win.pal.good : ((win.stats.bat || 0) <= 20 ? win.pal.bad : win.ac)
                             fontFamily: win.pal.font
