@@ -1,8 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Super + Alt + W: the live wallpaper on / off. The island plays it (Wallpaper.qml: the Halcyon sky, or a video / GIF from
 # ~/Pictures/Wallpapers/live picked in Settings > Wallpaper > Live wallpaper), so nothing else has to be installed.
 #   toggle_livewallpaper.sh            on <-> off
 #   toggle_livewallpaper.sh <file|sky> switch to that one (and on)
+# Controlled via native helper `hal toggle-livewallpaper` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" toggle-livewallpaper "$@"
+fi
+
 ipc=(quickshell ipc -p "$HOME/.config/Halcyon/quickshell/island" call wallpaper)
 if [ -n "${1:-}" ]; then
     "${ipc[@]}" live "$1" >/dev/null 2>&1 || { notify-send -a Halcyon "Live wallpaper" "The island is not running"; exit 1; }

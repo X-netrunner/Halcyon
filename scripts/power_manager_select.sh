@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # Select the power manager: halcyon | power-profiles-daemon | tlp | auto-cpufreq | tuned
 # Only one of them may control the CPU, so the others are stopped (via the sudo helper halcyon-tune).
+# Controlled via native helper `hal power-manager-select` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" power-manager-select "$@"
+fi
+
 MGR="${1:-halcyon}"
-QUIET="${2:-}"      # "quiet": no "now using ..." popup (the island passes it at login, when it only re-applies your choice)
+QUIET="${2:-}"
 STATE_DIR="$HOME/.local/state/island"; mkdir -p "$STATE_DIR"
 note() { command -v notify-send >/dev/null && notify-send -a Halcyon -i battery "Power manager" "$1" -h string:x-canonical-private-synchronous:powermanager; }
 

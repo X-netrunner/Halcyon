@@ -2,8 +2,12 @@
 # Compiles one of the island's shaders with Qt's qsb into ~/.cache/halcyon/<name>.frag.qsb:
 #   build-shader.sh [branch]   branch.frag, the tree-view branches (without it: the CPU Shape branches)
 #   build-shader.sh sky        sky.frag, the Halcyon sky's dithered glow (without it: the Canvas gradients, which can band)
-# Prints the .qsb path when it is usable (freshly built, or an up-to-date one already there), nothing otherwise.
-# qsb comes with qt6-shadertools.
+# Controlled via native helper `hal build-shader` (src/hal).
+hal="$(dirname "$(readlink -f "$0")")/../../../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  exec "$hal" build-shader "$@"
+fi
+
 name="${1:-branch}"
 case "$name" in branch|sky) ;; *) exit 2 ;; esac
 src="$(dirname "$0")/../$name.frag"

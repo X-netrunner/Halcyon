@@ -111,4 +111,10 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    hal = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "bin", "hal")
+    if not (os.path.isfile(hal) and os.access(hal, os.X_OK)):
+        hal = os.path.expanduser("~/.config/Halcyon/bin/hal")
+    if os.path.isfile(hal) and os.access(hal, os.X_OK):
+        res = subprocess.run([hal, "cache-trim"] + sys.argv[1:])
+        sys.exit(res.returncode)
     sys.exit(main(sys.argv[1:]))

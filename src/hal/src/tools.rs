@@ -169,6 +169,7 @@ fn zlib_stored(data: &[u8]) -> Vec<u8> {
 }
 
 /// A solid-colour PNG, written by hand (no imaging library).
+#[allow(clippy::same_item_push)]
 pub fn swatch_png(rgb: (u8, u8, u8), size: u32) -> Vec<u8> {
     let mut raw = Vec::with_capacity((size * (size * 3 + 1)) as usize);
     for _ in 0..size {
