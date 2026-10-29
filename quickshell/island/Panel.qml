@@ -312,6 +312,7 @@ Glass {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
+            z: 3                    // above the rows below: the hover bubbles hang under the chips
             visible: root.shown("Wifi") || root.shown("Bt") || root.shown("Audio")
             Chip {
                 Layout.fillWidth: true
@@ -319,7 +320,11 @@ Glass {
                 pal: root.pal
                 maxLabel: 52
                 glyph: String.fromCodePoint(root.net.eth ? 0xF0200 : 0xF0928)
-                label: root.net.wifi === "on" ? (root.net.ssid || (root.net.eth ? "Ethernet" : "On")) : "Wi-Fi off"
+                label: ""                                    // calm: the icon alone (lit = on); the network name is in the hover bubble
+                tipAlign: "left"
+                tip: root.net.wifi !== "on" ? "Wi-Fi off  ·  click to turn on"
+                   : (root.net.ssid ? "Connected to " + root.net.ssid : (root.net.eth ? "Ethernet" : "Wi-Fi on, not connected"))
+                     + "  ·  right-click for networks"
                 on: root.net.wifi === "on" || root.menu === "wifi"
                 onClicked: { root.toggleWifi(); if (root.menu === "wifi") root.later("wifi", 1500) }
                 onRightClicked: root.toggleMenu("wifi")
@@ -330,7 +335,10 @@ Glass {
                 pal: root.pal
                 maxLabel: 52
                 glyph: String.fromCodePoint(0xF00AF)
-                label: root.net.bt === "on" ? (root.net.btdev ? (root.btBattery >= 0 ? root.btBattery + "%  " : "") + root.net.btdev : "On") : "BT off"
+                label: ""                                    // calm: the symbol alone (lit = on); device and battery are in the hover bubble
+                tip: root.net.bt !== "on" ? "Bluetooth off  ·  click to turn on"
+                   : (root.net.btdev ? root.net.btdev + (root.btBattery >= 0 ? "  ·  " + root.btBattery + "%" : "") : "Bluetooth on, no device")
+                     + "  ·  right-click for devices"
                 on: root.net.bt === "on" || root.menu === "bt"
                 onClicked: { root.toggleBt(); if (root.menu === "bt") root.later("bt", 1500) }
                 onRightClicked: root.toggleMenu("bt")
@@ -341,7 +349,9 @@ Glass {
                 pal: root.pal
                 maxLabel: 52
                 glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker")
-                label: root.defaultSink ? root.defaultSink.desc : "Audio"
+                label: ""                                    // calm: the icon alone; the speaker name is in the hover bubble
+                tipAlign: "right"
+                tip: (root.defaultSink ? root.defaultSink.desc : "Audio") + "  ·  click to choose, right-click to mute"
                 on: root.menu === "audio"
                 onClicked: root.toggleMenu("audio")
                 onRightClicked: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
@@ -352,6 +362,7 @@ Glass {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
+            z: 2
             visible: root.shown("Hotspot") || root.shown("Airplane") || (root.chargeLimit > 0 && root.shown("Charge"))
             Chip {
                 Layout.fillWidth: true
@@ -359,7 +370,9 @@ Glass {
                 pal: root.pal
                 maxLabel: 62
                 glyph: String.fromCodePoint(0xF0003)
-                label: "Hotspot"
+                label: ""
+                tipAlign: "left"
+                tip: root.hotspotOn ? "Hotspot on  ·  click to turn off" : "Hotspot off  ·  click to turn on"
                 on: root.hotspotOn
                 onClicked: root.toggleHotspot()
             }
@@ -369,7 +382,8 @@ Glass {
                 pal: root.pal
                 maxLabel: 62
                 glyph: String.fromCodePoint(0xF001D)
-                label: "Airplane"
+                label: ""
+                tip: root.airplaneOn ? "Airplane mode on  ·  click to bring Wi-Fi and Bluetooth back" : "Airplane mode  ·  switches Wi-Fi and Bluetooth off"
                 on: root.airplaneOn
                 onClicked: root.toggleAirplane()
             }
@@ -380,7 +394,10 @@ Glass {
                 maxLabel: 90                     // "Limit 80%" is wider than the 62 px the other tiles use (it was cut to "Limit 80...")
                 padX: 12
                 glyph: String.fromCodePoint(0xF0079)
-                label: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Limit " + root.chargeLimit + "%" : "Charge"
+                label: ""
+                tipAlign: "right"
+                tip: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Charge limit " + root.chargeLimit + "%  ·  protects the battery, click for full charge"
+                                                                   : "Full charge  ·  click to limit charging and protect the battery"
                 on: root.chargeLimit > 0 && root.chargeLimit < 100
                 onClicked: root.toggleChargeLimit()
             }
@@ -462,6 +479,7 @@ Glass {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
+            z: 1
             visible: root.shown("Mic")
             RoundBtn {
                 pal: root.pal
@@ -475,7 +493,8 @@ Glass {
                 pal: root.pal
                 maxLabel: 230
                 glyph: String.fromCodePoint(0xF0140)
-                label: root.defaultSource ? root.defaultSource.desc : "Microphone"
+                label: ""
+                tip: (root.defaultSource ? root.defaultSource.desc : "Microphone") + "  ·  click to choose, right-click to mute"
                 on: root.menu === "mic"
                 onClicked: root.toggleMenu("mic")
                 onRightClicked: root.toggleMic()

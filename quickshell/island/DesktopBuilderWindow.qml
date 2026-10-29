@@ -88,6 +88,7 @@ Item {
         for (var k in DS.resetValues) put(k, DS.resetValues[k])
         put("boxSpots", DS.clone(DS.defaults))
         put("boxTrig", ({}))
+        put("boxZone", ({}))
         root.pick = ""
     }
     function resetLock() {
@@ -320,6 +321,56 @@ Item {
                                     }
                                 }
                             }
+
+                            // ---- wake spots: drag a tag to any place on any edge; that is where the box wakes (hover / click). A tag on its
+                            // own corner = the default.
+                            Repeater {
+                                model: root.lockT ? [] : DS.order
+                                delegate: Rectangle {
+                                    id: tag
+                                    required property string modelData
+                                    readonly property var zone: DS.zoneOf(root.opt, modelData)
+                                    readonly property string corner: (root.spots && root.spots[modelData]) || "tr"
+                                    property bool dragging: false
+                                    property string dEdge: ""
+                                    property real dPos: 0
+                                    readonly property string edge: dragging ? dEdge : (zone ? zone.edge : (corner.charAt(0) === "t" ? "top" : "bottom"))
+                                    readonly property real pos: dragging ? dPos : (zone ? zone.pos : (corner.charAt(1) === "l" ? 0 : 1))
+                                    readonly property bool horiz: edge === "top" || edge === "bottom"
+                                    z: 8
+                                    width: 52; height: 18; radius: 9
+                                    color: dragging ? root.pal.accent : Qt.alpha(root.pal.accent, zone ? 0.85 : 0.5)
+                                    border.width: 1; border.color: Qt.alpha(root.pal.bg, 0.6)
+                                    x: edge === "left" ? 2 : edge === "right" ? scr.width - width - 2 : Math.round(pos * (scr.width - width))
+                                    y: edge === "top" ? 2 : edge === "bottom" ? scr.height - height - 2 : Math.round(pos * (scr.height - height))
+                                    Text { anchors.centerIn: parent; text: DS.shortNames[tag.modelData]; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold }
+                                    function follow(mx, my) {
+                                        var q = tagMa.mapToItem(scr, mx, my)
+                                        var d = { left: q.x, right: scr.width - q.x, top: q.y, bottom: scr.height - q.y }
+                                        var best = "top"
+                                        for (var e in d) if (d[e] < d[best]) best = e
+                                        dEdge = best
+                                        var f = (best === "top" || best === "bottom") ? q.x / scr.width : q.y / scr.height
+                                        dPos = Math.max(0, Math.min(1, f))
+                                    }
+                                    MouseArea {
+                                        id: tagMa
+                                        anchors.fill: parent
+                                        cursorShape: Qt.SizeAllCursor
+                                        onPressed: m => { tag.dragging = true; tag.follow(m.x, m.y) }
+                                        onPositionChanged: m => { if (pressed) tag.follow(m.x, m.y) }
+                                        onReleased: {
+                                            var e = tag.dEdge, f = tag.dPos, c = tag.corner
+                                            tag.dragging = false
+                                            var cl = c.charAt(1) === "l", ct = c.charAt(0) === "t"
+                                            var home = ((e === (ct ? "top" : "bottom")) && (cl ? f < 0.05 : f > 0.95))
+                                                    || ((e === (cl ? "left" : "right")) && (ct ? f < 0.05 : f > 0.95))
+                                            root.put("boxZone", home ? DS.setZone(root.opt, tag.modelData, "", 0) : DS.setZone(root.opt, tag.modelData, e, f))
+                                        }
+                                        onDoubleClicked: root.put("boxZone", DS.setZone(root.opt, tag.modelData, "", 0))
+                                    }
+                                }
+                            }
                         }
                     }
                     Text {
@@ -329,7 +380,7 @@ Item {
                         anchors.leftMargin: 20; anchors.rightMargin: 20
                         // the new style says only what to do next while you are moving a box
                         text: root.pal.zen && root.pal.hideHints && root.pick === "" ? "" : root.lockT ? "Your lock screen widgets are drawn as boxes where they sit. \"Place them on the lock screen\" (right) moves and resizes the real ones. The boxes of the desktop (notifications, utilities ...) do not open on a locked screen."
-                              : (root.pick !== "" ? ("Now click the corner for " + DS.names[root.pick] + ". Esc cancels.") : "Click a box, then click the corner you want it to open from. A box dropped on a taken corner swaps places with it.")
+                              : (root.pick !== "" ? ("Now click the corner for " + DS.names[root.pick] + ". Esc cancels.") : "Click a box, then click the corner you want it to open from (a box dropped on a taken corner swaps places). Drag a small tag along any edge to choose where that box wakes; double-click a tag to put it back on its corner.")
                         color: root.pick !== "" && !root.lockT ? root.pal.accent : root.pal.muted
                         font.family: root.pal.uiFont
                         font.pixelSize: 11
@@ -555,7 +606,7 @@ Item {
                             ChipRow {
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Bar"
-                                options: [["island", "Island"], ["notch", "Notch"], ["custom", "Custom"], ["off", "Off"]]
+                                options: [["island", "Island"], ["notch", "Notch"], ["rail", "Rail"], ["custom", "Custom"], ["off", "Off"]]
                                 current: root.barStyle
                                 onPicked: id => root.put("barStyle", id)
                             }

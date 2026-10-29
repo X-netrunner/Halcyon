@@ -659,6 +659,12 @@ Item {
                             Chip { pal: root.pal; implicitHeight: 28; label: "Off"; on: !root.cur.caps; onClicked: root.edited(BL.setCaps(root.cur, false)) }
                             Chip { pal: root.pal; implicitHeight: 28; label: "On"; on: root.cur.caps; onClicked: root.edited(BL.setCaps(root.cur, true)) }
                         }
+                        Row {
+                            spacing: 10
+                            Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Special workspaces"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; elide: Text.ElideRight }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Beside"; on: root.cur.spMode !== "over"; onClicked: root.edited(BL.setSpMode(root.cur, "bar")) }
+                            Chip { pal: root.pal; implicitHeight: 28; label: "Over workspaces"; on: root.cur.spMode === "over"; onClicked: root.edited(BL.setSpMode(root.cur, "over")) }
+                        }
                         BbNumBox { bb: root; labelW: 96; label: "Edge"; value: root.cur.edge; shown: root.sp.edge; maxV: BL.padMax.edge; onCommit: v => root.edited(BL.setNum(root.cur, "edge", v)) }
                         BbNumBox { bb: root; labelW: 96; label: "Gap"; value: root.cur.gap; shown: root.sp.gap; maxV: BL.padMax.gap; onCommit: v => root.edited(BL.setNum(root.cur, "gap", v)) }
                         BbNumBox { bb: root; labelW: 96; label: "Centre gap"; value: root.cur.clear; shown: root.sp.clear; maxV: BL.padMax.clear; onCommit: v => root.edited(BL.setNum(root.cur, "clear", v)) }

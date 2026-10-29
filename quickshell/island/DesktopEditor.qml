@@ -20,6 +20,9 @@ PanelWindow {
     property var opt: ({})
     property bool open: false
     property real topInset: 24
+    property real roomLeft: 0                  // room a rail keeps on the other edges (the widgets sit beside it, as on the desktop)
+    property real roomRight: 0
+    property real roomBottom: 0
     property string target: "desktop"          // "desktop" or "lock": which list you are placing (shell.qml deskEditTarget)
     readonly property bool lockT: target === "lock"
     signal commit(var data)
@@ -100,6 +103,7 @@ PanelWindow {
             editing: true
             selected: win.sel
             topInset: win.topInset
+            anchors.leftMargin: win.lockT ? 0 : win.roomLeft; anchors.rightMargin: win.lockT ? 0 : win.roomRight; anchors.bottomMargin: win.lockT ? 0 : win.roomBottom
             showGrid: win.gridOn; gridSize: win.gridPx; snapGrid: win.snapOn
             showCenter: win.centreOn; showThirds: win.thirdsOn; showSafe: win.safeOn; showMeasure: win.measureOn
             onSelectedRequested: uid => { win.sel = uid; win.adding = false }

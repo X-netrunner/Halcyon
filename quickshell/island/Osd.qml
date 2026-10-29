@@ -39,12 +39,16 @@ Scope {
                                   : (muted || value <= 0.001 ? String.fromCodePoint(0xF0581) : String.fromCodePoint(0xF057E))
     readonly property string title: kind === "bright" ? "Brightness" : (kind === "kbd" ? "Keyboard light" : (muted ? "Muted" : "Volume"))
     readonly property bool over: kind === "vol" && value > 1.001
+    // Border around the screen (Settings > Bar style): the bar does not float, it comes out from under the bottom border and flares
+    // into it (Glass.qml joinV), like the boxes do. Without the border nothing changes: the floating pill below.
+    readonly property bool joined: !!pal && pal.frameOn === true
+    readonly property int edge: joined ? Math.max(0, pal.frameT) : 34      // gap between the screen's bottom edge and the bar when shown
 
     LazyLoader {
         active: root.alive
         PanelWindow {
         id: win
-        visible: root.shown || card.opacity > 0.01
+        visible: root.shown || card.opacity > 0.01 || (root.joined && card.y < win.height)
         anchors { bottom: true }
         implicitWidth: 360
         implicitHeight: 120
@@ -59,12 +63,14 @@ Scope {
             id: card
             pal: root.pal
             width: 316
-            height: 56
-            radius: 28
+            height: root.joined ? 52 : 56
+            radius: root.joined ? 22 : 28
+            joinV: root.joined ? "b" : ""
             anchors.horizontalCenter: parent.horizontalCenter
             // slides up from below the edge, slides back down when done
-            y: root.shown ? parent.height - height - 34 : parent.height + 8
-            opacity: root.shown ? 1 : 0
+            // (with the border: flush on top of it, and it goes back down into it: no fade, it just disappears under the border)
+            y: root.shown ? parent.height - height - root.edge : parent.height + (root.joined ? 28 : 8)
+            opacity: (root.shown || root.joined) ? 1 : 0
             opacityBody: root.pal.glassSolid
             Behavior on y { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }

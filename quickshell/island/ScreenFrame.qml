@@ -25,6 +25,13 @@ Scope {
     property int r: 22                 // radius of the inner corners in px
     property bool hidden: false        // a window is fullscreen
     property string skip: ""           // left | right | bottom: a bar sits on that edge and reserves the border's width there itself (CustomBar.qml)
+    // left | right | top | bottom: a rail sits on that edge and draws the border's width there itself (CustomBar.qml: band). The ring leaves
+    // that edge out, so the border is never laid over the bar: bar and border are one band. Empty = no such bar (or it is auto-hidden).
+    property string bandSide: ""
+    property string _bandWas: ""
+    onBandSideChanged: if (bandSide !== "") _bandWas = bandSide
+    property real bandAmt: bandSide !== "" ? 1 : 0
+    Behavior on bandAmt { NumberAnimation { duration: root.pal ? root.pal.dSlow : 400; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal ? root.pal.curve : [0.34, 0.8, 0.34, 1, 1, 1] } }
 
     // ---- the ring
     PanelWindow {
@@ -42,6 +49,16 @@ Scope {
         readonly property real h: height
         readonly property real t: root.t
         readonly property real rr: Math.max(1, Math.min(root.r, (Math.min(width, height) - 2 * root.t) / 2))
+        // thickness of each edge of the ring: 0 on the edge the rail draws itself, and the inner corners next to it are square (a round
+        // corner there would show as a thin arc over the bar)
+        readonly property real tl: root._bandWas === "left" ? root.t * (1 - root.bandAmt) : root.t
+        readonly property real tr: root._bandWas === "right" ? root.t * (1 - root.bandAmt) : root.t
+        readonly property real tt: root._bandWas === "top" ? root.t * (1 - root.bandAmt) : root.t
+        readonly property real tb: root._bandWas === "bottom" ? root.t * (1 - root.bandAmt) : root.t
+        readonly property real rTL: Math.max(0.01, rr * Math.min(1, tl / root.t, tt / root.t))
+        readonly property real rTR: Math.max(0.01, rr * Math.min(1, tr / root.t, tt / root.t))
+        readonly property real rBR: Math.max(0.01, rr * Math.min(1, tr / root.t, tb / root.t))
+        readonly property real rBL: Math.max(0.01, rr * Math.min(1, tl / root.t, tb / root.t))
 
         Shape {
             anchors.fill: parent
@@ -58,15 +75,15 @@ Scope {
                 PathLine { x: ring.w; y: ring.h }
                 PathLine { x: 0; y: ring.h }
                 PathLine { x: 0; y: 0 }
-                PathMove { x: ring.t + ring.rr; y: ring.t }
-                PathArc { x: ring.t; y: ring.t + ring.rr; radiusX: ring.rr; radiusY: ring.rr; direction: PathArc.Counterclockwise }
-                PathLine { x: ring.t; y: ring.h - ring.t - ring.rr }
-                PathArc { x: ring.t + ring.rr; y: ring.h - ring.t; radiusX: ring.rr; radiusY: ring.rr; direction: PathArc.Counterclockwise }
-                PathLine { x: ring.w - ring.t - ring.rr; y: ring.h - ring.t }
-                PathArc { x: ring.w - ring.t; y: ring.h - ring.t - ring.rr; radiusX: ring.rr; radiusY: ring.rr; direction: PathArc.Counterclockwise }
-                PathLine { x: ring.w - ring.t; y: ring.t + ring.rr }
-                PathArc { x: ring.w - ring.t - ring.rr; y: ring.t; radiusX: ring.rr; radiusY: ring.rr; direction: PathArc.Counterclockwise }
-                PathLine { x: ring.t + ring.rr; y: ring.t }
+                PathMove { x: ring.tl + ring.rTL; y: ring.tt }
+                PathArc { x: ring.tl; y: ring.tt + ring.rTL; radiusX: ring.rTL; radiusY: ring.rTL; direction: PathArc.Counterclockwise }
+                PathLine { x: ring.tl; y: ring.h - ring.tb - ring.rBL }
+                PathArc { x: ring.tl + ring.rBL; y: ring.h - ring.tb; radiusX: ring.rBL; radiusY: ring.rBL; direction: PathArc.Counterclockwise }
+                PathLine { x: ring.w - ring.tr - ring.rBR; y: ring.h - ring.tb }
+                PathArc { x: ring.w - ring.tr; y: ring.h - ring.tb - ring.rBR; radiusX: ring.rBR; radiusY: ring.rBR; direction: PathArc.Counterclockwise }
+                PathLine { x: ring.w - ring.tr; y: ring.tt + ring.rTR }
+                PathArc { x: ring.w - ring.tr - ring.rTR; y: ring.tt; radiusX: ring.rTR; radiusY: ring.rTR; direction: PathArc.Counterclockwise }
+                PathLine { x: ring.tl + ring.rTL; y: ring.tt }
             }
         }
     }

@@ -40,6 +40,7 @@ PanelWindow {
     signal workspaceScrolled(int dir)         // +1 wheel up, -1 wheel down
     signal specialClicked(string name)
     signal statusClicked()
+    signal statusPopup(string kind, real along, real edge)   // a click on the Wi-Fi / Bluetooth / battery icon: the pop-up under it (shell.qml StatusPop)
     signal pageDrop(int dir)                  // drag the bar down (+1) / up (-1): the utilities box and notifications (Settings > Bar style)
     signal clockToggled(string what)          // right click on the time = 12 / 24 hour, middle click = seconds (shell.qml flips the setting)
     signal bgClicked()
@@ -131,7 +132,7 @@ PanelWindow {
 
     property int frameT: 0                   // the border around the screen (ScreenFrame.qml): the bar hangs from its inner edge
     anchors { top: true; left: true; right: true }
-    exclusionMode: frameT > 0 ? ExclusionMode.Ignore : ExclusionMode.Normal      // with a border it starts at the screen edge and sits `frameT` lower itself
+    exclusionMode: exclusiveZone > 0 ? ExclusionMode.Normal : ExclusionMode.Ignore
     implicitHeight: frameT + barH + 34                       // room for the soft shadow under the bar
     // windows start below the bar; Hyprland adds its outer gap on top of this zone, so that is taken off again
     exclusiveZone: frameT + (autoHide ? 0 : Math.max(0, barH + sizeSet.gap - gaps * 2))
@@ -161,6 +162,14 @@ PanelWindow {
             gesturePolicy: TapHandler.ReleaseWithinBounds
             onTapped: { peekT.stop(); win.peek = true; graceT.restart() }
         }
+    }
+
+    // a click on the Wi-Fi ("wifi"), Bluetooth ("bt") or battery ("battery") icon: the pop-up drops from the bar, under that icon.
+    // (The window is as wide as the screen, so the icon's x is the screen's x.)
+    function popFor(kind, item) {
+        if (dropOn) { pageDrop(1); return }
+        var c = item.mapToItem(null, item.width / 2, item.height / 2)
+        statusPopup(kind, c.x, notch.y + notch.height)
     }
 
     // ------------------------------------------------------------------ the bar
@@ -531,19 +540,7 @@ PanelWindow {
             active: win.playing
         }
 
-        // clicking the status icons opens the performance page (under the row, so the background-apps count keeps its own click)
-        MouseArea {
-            x: rightGroup.x + rightMain.x - 6
-            y: rightGroup.y + rightMain.y - 6
-            width: rightMain.width + 12
-            height: rightMain.height + 12
-            z: -1
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                if (win.dropOn) win.pageDrop(1)
-                else win.statusClicked()
-            }
-        }
+        // (each status icon has its own click below: Wi-Fi = the networks, Bluetooth = the devices, battery = the power mode)
 
         // right: background apps, caffeine, Wi-Fi, Bluetooth, battery (click = performance page).
         // All icons are rounded and smooth, as tall as an empty workspace capsule, and take the wallpaper colour.
@@ -637,6 +634,7 @@ PanelWindow {
                     textFont: win.pal.uiFont
                     textPx: Math.max(10, win.textPx - 2)
                 }
+                MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.popFor("wifi", parent) }
             }
 
             // Wi-Fi: bars, the classic symbol or dots (Settings > Bar style > Wi-Fi look)
@@ -654,6 +652,7 @@ PanelWindow {
                     offTint: Qt.alpha(win.ac, 0.3)
                     size: win.icoH
                 }
+                MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.popFor("wifi", parent) }
             }
 
             // Bluetooth: see Settings > Bar style > Bluetooth (off / only when connected / whenever it is on)
@@ -669,6 +668,7 @@ PanelWindow {
                     font.family: win.pal.font
                     font.pixelSize: win.icoH
                 }
+                MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.popFor("bt", parent) }
             }
 
             // battery: a smooth pill with a pill-shaped fill (green while charging, red when low)
@@ -711,6 +711,7 @@ PanelWindow {
                     font.pixelSize: Math.max(10, win.textPx - 2)
                     font.weight: Font.Medium
                 }
+                MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.popFor("battery", parent) }
             }
 
             }

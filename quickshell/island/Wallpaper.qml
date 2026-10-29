@@ -20,6 +20,9 @@ PanelWindow {
     property var env: null                  // the shell: the feeds and actions the desktop widgets use
     property bool widgetsHidden: false      // the desktop editor shows them itself while you place them
     property real widgetsTop: 24            // room kept free at the top (the bar)
+    property real widgetsLeft: 0            // room kept free on the other sides (a rail on that edge)
+    property real widgetsRight: 0
+    property real widgetsBottom: 0
     // Live wallpaper (Settings > Wallpaper > Live wallpaper, Super + Alt + W): opt.deskLive "on" shows opt.deskLivePick instead of the picture:
     // "sky" = the Halcyon sky (LiveSky.qml), else a video / GIF file (LiveVideo.qml). The picture is then not decoded at all. The colours
     // come from the file's thumbnail (scripts/live-wallpapers.sh); the sky keeps the colours of the last picture.
@@ -219,6 +222,7 @@ PanelWindow {
         env: wallpaper.env
         opt: wallpaper.opt
         topInset: wallpaper.widgetsTop
+        anchors.leftMargin: wallpaper.widgetsLeft; anchors.rightMargin: wallpaper.widgetsRight; anchors.bottomMargin: wallpaper.widgetsBottom
     }
 
     SequentialAnimation {

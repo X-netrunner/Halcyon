@@ -10,6 +10,9 @@ Rectangle {
     property bool primary: false       // the window's main action (Done, Save ...): solid accent in the new style, like `on` before
     property int maxLabel: 120
     property int padX: 16
+    property string tip: ""            // hover text (a calm icon-only chip says what it is here); shows after a short pause under the chip
+    property string tipAlign: "center" // center | left | right: which edge of the chip the bubble lines up with (keeps it inside the box)
+    property bool tipReady: false
     signal clicked()
     signal rightClicked()
 
@@ -61,5 +64,40 @@ Rectangle {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: m => m.button === Qt.RightButton ? root.rightClicked() : root.clicked()
+    }
+
+    Timer { id: tipT; interval: 380; onTriggered: root.tipReady = root.tip !== "" }
+    Connections {
+        target: ma
+        function onContainsMouseChanged() {
+            if (ma.containsMouse) tipT.restart()
+            else { tipT.stop(); root.tipReady = false }
+        }
+    }
+    Rectangle {
+        id: bubble
+        z: 100
+        visible: opacity > 0.01
+        opacity: root.tipReady && ma.containsMouse ? 1 : 0
+        y: root.height + 6
+        x: root.tipAlign === "left" ? 0 : root.tipAlign === "right" ? root.width - width : (root.width - width) / 2
+        width: tipText.width + 20
+        height: tipText.implicitHeight + 12
+        radius: 10
+        color: root.pal.bg
+        border.width: 1
+        border.color: root.pal.lineSoft
+        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.InOutSine } }
+        Text {
+            id: tipText
+            anchors.centerIn: parent
+            width: Math.min(implicitWidth, 220)
+            text: root.tip
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            color: root.pal.text
+            font.family: root.pal.uiFont
+            font.pixelSize: root.pal.tBody - 1
+        }
     }
 }

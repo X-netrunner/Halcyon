@@ -13,5 +13,6 @@ DesktopBuilder {
     onResetRequested: {
         for (var k in DS.resetValues) root.setting("opt:" + k, DS.resetValues[k])      // the same list the builder window resets
         root.setting("opt:boxSpots", null)
+        root.setting("opt:boxZone", null)
     }
 }

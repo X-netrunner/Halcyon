@@ -35,7 +35,7 @@ ColumnLayout {
         text: (db.wallOn ? ("Wallpaper on" + (db.opt && db.opt.deskBlur > 0 ? ", blurred " + db.opt.deskBlur + " %" : "")) : "Wallpaper off")
               + "  ·  " + (db.opt && db.opt.deskStars === true ? "Moving stars on" : "Moving stars off")
               + "  ·  " + db.widgetCount + (db.widgetCount === 1 ? " widget" : " widgets") + "  ·  " + db.barName
-              + "\n" + DS.summary(db.opt ? db.opt.boxSpots : null)
+              + "\n" + DS.summary(db.opt ? db.opt.boxSpots : null, db.opt)
         color: db.pal.text
         font.family: db.pal.uiFont
         font.pixelSize: db.pal.tCap

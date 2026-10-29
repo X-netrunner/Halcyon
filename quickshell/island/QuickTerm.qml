@@ -37,6 +37,7 @@ Scope {
     property var starData: null
     property bool profileStars: true
     property bool clickMode: false
+    property bool customZone: false                  // the console wakes from a wake spot (ActivationZone), not from its corner
     property bool autoHide: false
     // the corner the console opens from (Desktop builder > Where the boxes open): tl (default) | bl | br
     property string spot: "tl"
@@ -565,9 +566,9 @@ Scope {
             anchors.bottom: root.atBottom ? parent.bottom : undefined
             anchors.left: root.atRight ? undefined : parent.left
             anchors.right: root.atRight ? parent.right : undefined
-            width: root.shown ? root.boxW + 40 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14))
+            width: root.shown ? root.boxW + 40 : (root.customZone ? 0 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14)))
             // top corner: down to the bottom of the box. bottom corner: the box's height plus its gaps (the box then sits on the bottom edge)
-            height: root.shown ? (root.atBottom ? box.height + root.pal.boxEdge + 24 : box.y + box.height + 24) : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14))
+            height: root.shown ? (root.atBottom ? box.height + root.pal.boxEdge + 24 : box.y + box.height + 24) : (root.customZone ? 0 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14)))
             HoverHandler { enabled: !root.wsHasFullscreen; onHoveredChanged: { root.zoneHover = hovered; root.setHover(hovered) } }
 
             // click mode: a faint tab marks the corner

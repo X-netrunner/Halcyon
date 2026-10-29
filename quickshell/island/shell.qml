@@ -11,6 +11,7 @@ import "Binds.js" as Binds
 import "Tour.js" as TourData
 import "DeskSpots.js" as DS
 import "WidgetData.js" as WD
+import "BarLayout.js" as BL
 
 ShellRoot {
     id: root
@@ -21,15 +22,16 @@ ShellRoot {
     readonly property string powerService: "power-manager.service"
     // Settings > Bar > Padding: low | normal | high  ->  bar height, side padding, and the space ABOVE the bar (to the screen edge)
     // = the space BELOW it (to the windows): the same number, so the bar sits evenly. "low" is almost touching both.
-    readonly property bool notchStyle: opt.barStyle === "notch" || opt.barStyle === "custom" || opt.barStyle === "off"      // custom = the bar builder (CustomBar.qml): the same hanging bar; off = no bar at all (the pages and the launcher still hang from the top edge)
-    // Style Custom: which edge the bar sits on (Bar builder > Side). A bar that is not on the top edge leaves the top free, like Bar style = Off:
+    readonly property bool notchStyle: opt.barStyle === "notch" || opt.barStyle === "custom" || opt.barStyle === "rail" || opt.barStyle === "off"      // custom = the bar builder (CustomBar.qml): the same hanging bar; off = no bar at all (the pages and the launcher still hang from the top edge)
+    // Style Custom / Rail: which edge the bar sits on (Bar builder > Side). A bar that is not on the top edge leaves the top free, like Bar style = Off:
     // the pages and the launcher still hang from the top edge, and the top of the border is reserved by the island window below.
     readonly property string barSide: {
         var l = opt.barLayout
         var s = l ? l.side : ""
+        if (opt.barStyle === "rail" && (!s || s === "top")) return "left"
         return (s === "bottom" || s === "left" || s === "right") ? s : "top"
     }
-    readonly property bool topFree: opt.barStyle === "off" || (opt.barStyle === "custom" && barSide !== "top")
+    readonly property bool topFree: opt.barStyle === "off" || ((opt.barStyle === "custom" || opt.barStyle === "rail") && barSide !== "top")
     property bool notchHovered: false
     // Settings > Bar style > Border around the screen: a frame (ScreenFrame.qml) the bar hangs from and the boxes slide out of
     readonly property bool frameOn: opt.frame === true
@@ -196,6 +198,19 @@ ShellRoot {
         o[k] = v
         opt = o
         switch (k) {
+        case "barStyle":
+            if (v === "rail") {
+                var bl = opt.barLayout ? JSON.parse(JSON.stringify(opt.barLayout)) : BL.defaults("rail")
+                bl.shape = "rail"
+                bl.caps = true
+                if (!bl.side || bl.side === "top") bl.side = "left"
+                if (!bl.left || bl.left.length === 0) bl.left = ["logo", "workspaces", "specials"]
+                else if (bl.left.indexOf("logo") < 0) bl.left.unshift("logo")
+                if (!bl.right || bl.right.length === 0) bl.right = ["status", "power"]
+                else if (bl.right.indexOf("power") < 0) bl.right.push("power")
+                root.setOpt("barLayout", bl)
+            }
+            break
         case "wpSource": writeFlag("wallpaper-source", v); break    // scripts/wallpaper.sh reads these two on every change
         case "wpCat": writeFlag("wallpaper-cat", v); break
         case "wpBootNew": writeFlag("wallpaper-boot-new", v ? "1" : "0"); break
@@ -245,7 +260,8 @@ ShellRoot {
     // ~/.local/state/island tell them: bg-refresh (normal | relaxed | slow | auto) and stats-fast (1 while the performance page or the
     // bar's CPU / RAM / TEMP hover row can be on screen: stats.sh then keeps its normal pace). The scripts wait on a pipe in
     // $XDG_RUNTIME_DIR and writing the flags pokes that pipe, so a change shows within a second instead of after a slow wait.
-    readonly property bool statsFast: page === "perf" || hoverAction === "stats"
+    readonly property bool perfShown: page === "perf" || railPages.which === "perf"      // the performance page: on the island, or beside a rail
+    readonly property bool statsFast: perfShown || hoverAction === "stats"
     onStatsFastChanged: syncRefresh()
     function syncRefresh() {
         Quickshell.execDetached(["sh", "-c",
@@ -975,6 +991,81 @@ ShellRoot {
         onSession: a => root.session(a)
     }
 
+    // a click on the Wi-Fi / Bluetooth / battery icon of any bar: the networks / devices / power modes, next to the icon
+    StatusPop {
+        id: statusPop
+        pal: pal
+        net: root.net
+        stats: root.stats
+        profile: root.profile
+        autoPower: root.autoPower
+        onToggleWifi: root.toggleWifi()
+        onToggleBt: root.toggleBt()
+        onSetProfile: p => root.setProfile(p)
+        onSetAuto: root.setAuto()
+    }
+    function popStatus(kind, side, along, edge) {
+        if (dropOn) { dropShow("util"); return }
+        railPages.hide()
+        statusPop.show(kind, side, along, edge)
+    }
+    // the island (Home.qml) is inside the island window: its x is the screen's x, its bottom edge is where the pop-up starts
+    function homeStatusPopup(kind, item) {
+        if (dropOn) { dropShow("util"); return }
+        var c = item.mapToItem(null, item.width / 2, item.height / 2)
+        var b = island.mapToItem(null, 0, island.height)
+        popStatus(kind, "top", c.x, b.y)
+    }
+
+    // a rail bar: the music window (pointer near the top of the rail) and the performance window (near the bottom) come out sideways
+    readonly property bool railOn: customBarLoader.item !== null && customBarLoader.item.rail === true
+    RailPages {
+        id: railPages
+        pal: pal
+        player: root.player
+        stats: root.stats
+        gpu: root.gpu
+        specs: root.specs
+        disks: root.disks
+        net: root.net
+        profile: root.profile
+        profileLabel: root.profileLabel
+        autoPower: root.autoPower
+        autoNote: root.autoNote
+        sysmode: root.stats.sysmode || ""
+        side: customBarLoader.item ? customBarLoader.item.side : "left"
+        edge: customBarLoader.item ? customBarLoader.item.edgeDist : 0
+        railHeld: root.notchHovered
+        closeMs: root.opt.pageClose !== undefined ? root.opt.pageClose : 600
+        onToggleWifi: root.toggleWifi()
+        onToggleBt: root.toggleBt()
+        onSetProfile: p => root.setProfile(p)
+        onSetAuto: root.setAuto()
+        onOpenMusic: tab => { clipMenu.hide(); shotMenu.hide(); musicMenu.show(tab) }
+    }
+
+    // ---- wake spots: where each box wakes, anywhere on any edge (Desktop builder). No spot set = the box's own corner.
+    ActivationZone {
+        pal: pal; zone: root.boxZones.util; clickMode: root.utilClick; blocked: root.fsQuiet || root.dropOn
+        onHoverChanged: on => { corner.extHover = on; corner.syncHover() }
+        onTapped: corner.hovering = !corner.hovering
+    }
+    ActivationZone {
+        pal: pal; zone: root.boxZones.apps; clickMode: root.appsClick; blocked: root.fsQuiet
+        onHoverChanged: on => { appsWin.extHover = on; appsWin.syncHover() }
+        onTapped: appsWin.hovering = !appsWin.hovering
+    }
+    ActivationZone {
+        pal: pal; zone: root.boxZones.term; clickMode: root.termClick; blocked: root.fsQuiet
+        onHoverChanged: on => quickTerm.setHover(on)
+        onTapped: quickTerm.cornerTap()
+    }
+    ActivationZone {
+        pal: pal; zone: root.boxZones.notif; clickMode: root.notifClick; blocked: root.fsQuiet || root.dropOn
+        onHoverChanged: on => notifs.setHover(on)
+        onTapped: notifs.toggleCenter()
+    }
+
     DisplayPicker {
         id: displayPicker
         pal: pal
@@ -1001,6 +1092,7 @@ ShellRoot {
         asleep: root.fsQuiet
         edgeOn: !root.dropOn
         clickMode: root.notifClick
+        customZone: root.boxZones.notif !== null
         autoHide: root.autoHide
         sysmode: root.sysmode
         starData: root.starData
@@ -1015,6 +1107,7 @@ ShellRoot {
     QuickTerm {
         id: quickTerm
         pal: pal
+        customZone: root.boxZones.term !== null
         spot: root.boxSpots.term
         stars: root.opt.stars !== false && root.opt.starsTerm !== false
         flyCount: root.boxStarCount
@@ -1393,6 +1486,8 @@ ShellRoot {
     // Super tap can arrive twice (fast file trigger + IPC fallback, or both Super_L bind forms): only the first counts
     // which corner each corner box opens from (Desktop builder; DeskSpots.js keeps it one box per corner): { util, apps, term } = tl | bl | br
     readonly property var boxSpots: DS.normalize(opt ? opt.boxSpots : null)
+    // where each box wakes (Desktop builder wake spots): null = from its own corner
+    readonly property var boxZones: ({ notif: DS.zoneOf(opt, "notif"), util: DS.zoneOf(opt, "util"), apps: DS.zoneOf(opt, "apps"), term: DS.zoneOf(opt, "term") })
     property double lastSuperTap: 0
     // viaIpc: the fallback of scripts/super_tap.sh (it only runs when this island did not answer the trigger file in time).
     // It is ignored for a while after a tap that did work, because it can arrive late.
@@ -1810,7 +1905,7 @@ ShellRoot {
     readonly property bool numLockShown: {
         if (deskNeeds.numlock) return true
         var l = root.opt.barLayout
-        if (root.opt.barStyle !== "custom" || !l) return false
+        if ((root.opt.barStyle !== "custom" && root.opt.barStyle !== "rail") || !l) return false
         return [].concat(l.left || [], l.center || [], l.right || []).indexOf("numlock") >= 0
     }
     property string numLockLed: ""          // /sys/class/leds/...::numlock/brightness ("" = none, or not looked for yet)
@@ -2306,19 +2401,19 @@ ShellRoot {
     // after "Detect RAM details" (Settings): read the hardware list again once the password was given
     Timer { id: specsAgain; interval: 12000; onTriggered: { specsProc.running = false; specsProc.running = true } }
     Process {
-        running: (root.page === "perf" || root.deskNeeds.disk) && !root.lean
+        running: (root.perfShown || root.deskNeeds.disk) && !root.lean
         command: [root.hx, "disk", "10"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.disks = JSON.parse(d) } catch (e) {} } }
     }
     // every 2 s on the performance page, every 6 s for a desktop GPU widget alone: each read of an awake NVIDIA GPU starts
     // nvidia-smi (~40 ms of CPU)
     Process {
-        running: root.page === "perf" && !root.lean
+        running: root.perfShown && !root.lean
         command: ["bash", root.cfg + "/island/scripts/gpu.sh", "2"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.gpu = JSON.parse(d) } catch (e) {} } }
     }
     Process {
-        running: root.page !== "perf" && root.deskNeeds.gpu && !root.lean
+        running: !root.perfShown && root.deskNeeds.gpu && !root.lean
         command: ["bash", root.cfg + "/island/scripts/gpu.sh", "6"]
         stdout: SplitParser { property string last: ""; onRead: d => { if (d === last) return; last = d; try { root.gpu = JSON.parse(d) } catch (e) {} } }
     }
@@ -2407,7 +2502,7 @@ ShellRoot {
     // visualizer feed, only runs while something is playing AND a surface showing it is visible (bar style Off has no bar: the
     // media page and the desktop widget are the only readers, and the widget has its own cava below)
     Process {
-        running: root.playing && !root.gaming && !root.lean && !root.focusQuiet && root.opt.viz !== "off" && !root.vizHold && (root.page === "media" || (root.page === "home" && root.opt.barStyle !== "off" && (win.shown || root.notchStyle || root.opt.barStyle === "custom")))
+        running: root.playing && !root.gaming && !root.lean && !root.focusQuiet && root.opt.viz !== "off" && !root.vizHold && (root.page === "media" || (root.page === "home" && root.opt.barStyle !== "off" && (win.shown || root.notchStyle || root.opt.barStyle === "custom" || root.opt.barStyle === "rail")))
         command: ["cava", "-p", Quickshell.shellPath(root.opt.viz === "light" ? "cava-light.conf" : "cava.conf")]
         stdout: SplitParser {
             onRead: d => {
@@ -2442,6 +2537,12 @@ ShellRoot {
     property bool deskEditing: false                     // "place them on the desktop" is open (DesktopEditor.qml)
     property string deskEditTarget: "desktop"            // ... and it works on this list: "desktop" or "lock" (the lock screen's widgets)
     readonly property real deskTop: topFree ? 24 : 70
+    // a rail on the left / right / bottom edge: the desktop widgets sit beside it, not under it
+    readonly property var railBar: customBarLoader.item
+    readonly property bool railUp: railBar !== null && railBar.rail === true
+    readonly property real deskLeft: railUp && railBar.side === "left" ? railBar.zoneWanted : 0
+    readonly property real deskRight: railUp && railBar.side === "right" ? railBar.zoneWanted : 0
+    readonly property real deskBottom: railUp && railBar.side === "bottom" ? railBar.zoneWanted : 0
     function deskSetVol(f) { pendVol = f; vol = f * 100; if (!sliderT.running) sliderT.start() }
     function deskSetBright(f) { pendBright = f; bright = f * 100; if (!sliderT.running) sliderT.start() }
     function deskRun(cmd) { Quickshell.execDetached(["sh", "-c", cmd]) }
@@ -2729,7 +2830,7 @@ ShellRoot {
 
     // the wallpaper layer (circular reveal) lives in this same Quickshell process: one Qt/QML/GL stack instead of two.
     // `quickshell ipc -p ~/.config/Halcyon/quickshell/island call wallpaper next` still works (target "wallpaper" in Wallpaper.qml)
-    Wallpaper { id: wallpaperLayer; visible: !root.startHold; pal: pal; opt: root.opt; env: root; widgetsHidden: root.deskEditing; widgetsTop: root.deskTop }
+    Wallpaper { id: wallpaperLayer; visible: !root.startHold; pal: pal; opt: root.opt; env: root; widgetsHidden: root.deskEditing; widgetsTop: root.deskTop; widgetsLeft: root.deskLeft; widgetsRight: root.deskRight; widgetsBottom: root.deskBottom }
 
     // quickshell ipc -p ~/.config/Halcyon/quickshell/island call island <fn>
     IpcHandler {
@@ -2963,11 +3064,14 @@ ShellRoot {
         // Hyprland starts windows at (this zone + the outer gap), so the outer gap is taken off to get exactly padSet.gap between bar and windows
         // (it can not go lower than the outer gap itself: Settings > Look > Gaps)
         // with a border: the island style (and "off") reserves its room from the border's width on; Notch / Custom leave that to the bar
-        exclusiveZone: ((root.autoHide || root.notchStyle) ? 0 : Math.max(0, root.padSet.top + root.padSet.h + root.padSet.gap - root.gaps * 2))
+        readonly property int zoneWanted: ((root.autoHide || root.notchStyle) ? 0 : Math.max(0, root.padSet.top + root.padSet.h + root.padSet.gap - root.gaps * 2))
                        + ((root.notchStyle && !root.topFree) ? 0 : root.frameT)
-        // style Notch: the bar (NotchBar) reserves the strip at the top, and a layer surface is normally placed BELOW the strips reserved by
-        // others. This window must start at the very top edge so the pages hang from it, so it ignores them.
-        exclusionMode: (root.notchStyle || root.frameOn) ? ExclusionMode.Ignore : ExclusionMode.Normal
+        // A window that reserves nothing used to be exclusiveZone 0 + Ignore. Zone 0 still means "keep out of the room other bars reserve":
+        // when the launcher takes the keyboard focus the compositor re-arranges the layers and this window was pushed down by the notch
+        // bar's room (the page then hung 24-36 px under the border, with a gap). -1 is the layer-shell value for "ignore every other
+        // window's zone, extend to the screen's edges": the page always hangs from the very top edge, whatever else is on the screen.
+        exclusiveZone: zoneWanted > 0 ? zoneWanted : -1
+        exclusionMode: ExclusionMode.Normal
         color: "transparent"
 
         WlrLayershell.namespace: "island"
@@ -3082,7 +3186,7 @@ ShellRoot {
                  : launcher.wantedWidth
             property real lastPageW: 500
             onPageWChanged: if (root.page !== "home") lastPageW = pageW
-            width: root.page === "home" ? (root.notchStyle ? (root.frameOn ? island.lastPageW : root.notchBodyW) : home.implicitWidth + root.padSet.x)
+            width: root.page === "home" ? (root.notchStyle ? ((root.frameOn && !root.notchMorph) ? island.lastPageW : root.notchBodyW) : home.implicitWidth + root.padSet.x)
                  : root.page === "media" ? 500
                  : root.page === "perf" ? 720
                  : root.page === "fw" ? 720
@@ -3090,7 +3194,7 @@ ShellRoot {
                  : root.page === "util" ? root.dropW
                  : root.page === "notif" ? root.dropNotifW
                  : launcher.wantedWidth
-            height: root.page === "home" ? (root.notchStyle ? (root.frameOn ? 0 : root.notchBarH) : root.padSet.h)
+            height: root.page === "home" ? (root.notchStyle ? ((root.frameOn && !root.notchMorph) ? 0 : root.notchBarH) : root.padSet.h)
                   : (root.page === "media" ? 156
                   : root.page === "perf" ? 316
                   : root.page === "fw" ? 330
@@ -3242,6 +3346,7 @@ ShellRoot {
                     opacity: root.page === "home" ? 1 : 0
                     visible: opacity > 0.01
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                    onStatusPopup: (kind, item) => root.homeStatusPopup(kind, item)
                     onStatusClicked: {
                         if (root.dropOn) root.dropShow("util")
                         else root.page = (root.page === "perf" ? "home" : "perf")
@@ -3543,12 +3648,16 @@ ShellRoot {
     // under the pill, not attached to the border)
     readonly property bool hangPage: (notchStyle || frameOn) && page !== "home"
     // the silhouette is drawn while a page hangs, and (Notch / Custom / Off with the border) while it is still folding back into the border
-    readonly property bool hangShape: hangPage || (frameOn && notchStyle && island.height > 2)
+    readonly property bool hangShape: hangPage || (frameOn && notchStyle && island.height > (notchMorph ? notchBarH + 2 : 2))
+    // With a notch bar on the top edge the page is the notch itself growing into the page (and shrinking back into the bar): at rest the
+    // silhouette has the bar's size, so nothing is laid over the notch. Without it (rail / bar on another edge / no bar) the page grows out
+    // of the border as before.
+    readonly property bool notchMorph: notchStyle && (opt.barStyle === "notch" || (opt.barStyle === "custom" && customBarLoader.item !== null && customBarLoader.item.side === "top" && !customBarLoader.item.rail))
     property real notchBodyW: 260                   // width of the bar (set by NotchBar)
     // hovering the notch opens perf / media after a moment (Settings > Bar > When you hover the bar), like hovering the island
     Timer {
         interval: 350
-        running: root.notchStyle && root.notchHovered && root.page === "home" && !island.hoverSpent && (root.hoverAction === "perf" || root.hoverAction === "media")
+        running: root.notchStyle && !root.railOn && root.notchHovered && root.page === "home" && !island.hoverSpent && (root.hoverAction === "perf" || root.hoverAction === "media")
         onTriggered: { root.hoverOpened = true; root.page = root.hoverAction }
     }
     onNotchHoveredChanged: if (!notchHovered) island.hoverSpent = false
@@ -3583,6 +3692,7 @@ ShellRoot {
                 if (root.dropOn) root.dropShow("util")
                 else root.page = (root.page === "perf" ? "home" : "perf")
             }
+            onStatusPopup: (kind, along, edge) => root.popStatus(kind, "top", along, edge)
             onClockClicked: root.clockClicked()
             onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
             onBgClicked: appsWin.pinFor(9000)
@@ -3595,16 +3705,18 @@ ShellRoot {
     // the border around the screen (Settings > Bar style): drawn above the boxes so they come out from under it
     ScreenFrame {
         pal: root.palObj
-        skip: root.opt.barStyle === "custom" ? root.barSide : ""      // the custom bar reserves the border's width on its own edge
+        skip: (root.opt.barStyle === "custom" || root.opt.barStyle === "rail") ? root.barSide : ""      // the custom/rail bar reserves the border's width on its own edge
         on: root.frameOn
         t: root.frameT
         r: root.frameR
+        bandSide: customBarLoader.item ? customBarLoader.item.bandSide : ""       // a rail draws the border's width on its own edge
         hidden: root.fsQuiet
     }
 
-    // style Custom: the same bar, with the widgets and places picked in Settings > Bar style > Bar builder
+    // style Custom / Rail: the bar with the widgets and places picked in Settings > Bar style > Bar builder
     LazyLoader {
-        active: root.opt.barStyle === "custom"
+        id: customBarLoader
+        active: root.opt.barStyle === "custom" || root.opt.barStyle === "rail"
         CustomBar {
             pal: root.palObj
             stats: root.stats
@@ -3639,10 +3751,21 @@ ShellRoot {
             onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
             onBgClicked: appsWin.pinFor(9000)
             onNumLockClicked: root.toggleNumLock()
+            onLogoClicked: root.toggleLauncher()
+            onPowerClicked: powerMenu.show()
+            onStatusPopup: (kind, along, edge) => root.popStatus(kind, side, along, edge)
+            onRailPage: which => { if (root.page === "home" && !statusPop.open) railPages.show(which) }
             onPageDrop: dir => root.drop(dir)
-            onPageStep: dir => root.go(dir)
+            onPageStep: dir => { if (rail) railPages.step(dir); else root.go(dir) }
             onHoverEdited: on => root.notchHovered = on
         }
+    }
+
+    // a rail's own window ignores the zones of other windows (so it reaches the border); this reserves its room
+    RailReserve {
+        on: customBarLoader.item !== null && customBarLoader.item.rail === true
+        side: customBarLoader.item ? customBarLoader.item.side : "left"
+        zone: customBarLoader.item ? customBarLoader.item.zoneWanted : 0
     }
 
     // place the desktop widgets right on the screen (DesktopEditor.qml)
@@ -3655,6 +3778,7 @@ ShellRoot {
             open: root.deskEditing
             target: root.deskEditTarget
             topInset: root.deskEditTarget === "lock" ? 24 : root.deskTop
+            roomLeft: root.deskLeft; roomRight: root.deskRight; roomBottom: root.deskBottom
             onTargetPicked: t => root.deskEditTarget = (t === "lock") ? "lock" : "desktop"
             onCommit: d => root.setOpt(WD.keyOf(root.deskEditTarget), d)
             onOptToggled: (k, v) => root.setOpt(k, v)
@@ -3747,7 +3871,8 @@ ShellRoot {
         property bool hovering: false
         property bool zoneHover: false      // pointer in the corner / gap zone
         property bool panelHover: false     // pointer on the panel itself (its chips and sliders take hover away from the zone)
-        function syncHover() { setHover(zoneHover || panelHover) }
+        property bool extHover: false      // the wake spot (ActivationZone) has the pointer
+        function syncHover() { setHover(zoneHover || panelHover || extHover) }
         readonly property bool open: hovering
         readonly property real reveal: hovering ? 1 : 0
         // hover mode: touching the corner opens it and leaving closes it. click mode: click the corner to open / close it.
@@ -3771,8 +3896,8 @@ ShellRoot {
             anchors.left: corner.atR ? undefined : parent.left
             anchors.bottom: corner.atB ? parent.bottom : undefined
             anchors.top: corner.atB ? undefined : parent.top
-            width: corner.open ? panel.width + pal.boxEdge + 30 : (root.fsQuiet ? 0 : (root.utilClick ? 28 : 12))
-            height: corner.open ? panel.height + pal.boxEdge + 30 : (root.fsQuiet ? 0 : (root.utilClick ? 28 : 12))
+            width: corner.open ? panel.width + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.util) ? 0 : (root.utilClick ? 28 : 12))
+            height: corner.open ? panel.height + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.util) ? 0 : (root.utilClick ? 28 : 12))
             HoverHandler { onHoveredChanged: { corner.zoneHover = hovered; corner.syncHover() } }
             Rectangle {
                 visible: root.utilClick && !corner.open
@@ -3934,7 +4059,8 @@ ShellRoot {
         property bool hovering: false
         property bool zoneHover: false
         property bool panelHover: false
-        function syncHover() { setHover(zoneHover || panelHover) }
+        property bool extHover: false      // the wake spot (ActivationZone) has the pointer
+        function syncHover() { setHover(zoneHover || panelHover || extHover) }
         readonly property bool open: hovering
         readonly property real reveal: hovering ? 1 : 0
         property double blockUntil: 0
@@ -3952,8 +4078,8 @@ ShellRoot {
             anchors.left: appsWin.atR ? undefined : parent.left
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
-            width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : (root.fsQuiet ? 0 : (root.appsClick ? 28 : 12))
-            height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : (root.fsQuiet ? 0 : (root.appsClick ? 28 : 12))
+            width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.apps) ? 0 : (root.appsClick ? 28 : 12))
+            height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.apps) ? 0 : (root.appsClick ? 28 : 12))
             HoverHandler { onHoveredChanged: { appsWin.zoneHover = hovered; appsWin.syncHover() } }
             Rectangle {
                 visible: root.appsClick && !appsWin.open

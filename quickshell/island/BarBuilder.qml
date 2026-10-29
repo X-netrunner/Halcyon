@@ -61,6 +61,14 @@ ColumnLayout {
         Chip { pal: bb.pal; implicitHeight: 30; label: "On"; on: bb.cur.caps; onClicked: bb.edited(BL.setCaps(bb.cur, true)) }
     }
 
+    // ---- special workspaces: their own icons next to the workspaces, or on top of the workspaces while one is open
+    Row {
+        spacing: 8
+        Text { anchors.verticalCenter: parent.verticalCenter; text: "Specials"; color: bb.pal.muted; font.family: bb.pal.uiFont; font.pixelSize: 11 }
+        Chip { pal: bb.pal; implicitHeight: 30; label: "Beside"; on: bb.cur.spMode !== "over"; onClicked: bb.edited(BL.setSpMode(bb.cur, "bar")) }
+        Chip { pal: bb.pal; implicitHeight: 30; label: "Over workspaces"; on: bb.cur.spMode === "over"; onClicked: bb.edited(BL.setSpMode(bb.cur, "over")) }
+    }
+
     // ---- a small picture of the bar as it is now
     Rectangle {
         Layout.fillWidth: true

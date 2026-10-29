@@ -391,10 +391,10 @@ Scope {
     // motion scales every island animation: 1 = normal, 0.5 = fast, 0 = instant (Gaming mode uses 0.25)
     property real motion: 1.0
     readonly property int dFast: Math.round(200 * motion)
-    readonly property int dMed: Math.round(380 * motion)
-    readonly property int dSlow: Math.round(680 * motion)
+    readonly property int dMed: Math.round(300 * motion)
+    readonly property int dSlow: Math.round(420 * motion)
     // boxes folding back in: a touch quicker than they came out, and a gentle ease-in-out (starts soft, settles soft) instead of the sharp ease-out they open with
-    readonly property int dClose: Math.round(560 * motion)
+    readonly property int dClose: Math.round(320 * motion)
     readonly property var curveClose: [0.45, 0, 0.3, 1, 1, 1]
 
     Behavior on bg { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
