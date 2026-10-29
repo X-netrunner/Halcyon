@@ -28,7 +28,6 @@ ShellRoot {
     readonly property string barSide: {
         var l = opt.barLayout
         var s = l ? l.side : ""
-        if (opt.barStyle === "rail" && (!s || s === "top")) return "left"
         return (s === "bottom" || s === "left" || s === "right") ? s : "top"
     }
     readonly property bool topFree: opt.barStyle === "off" || ((opt.barStyle === "custom" || opt.barStyle === "rail") && barSide !== "top")
@@ -1086,6 +1085,7 @@ ShellRoot {
         look: root.opt.notifStyle === "timeline" || root.opt.notifStyle === "grouped" ? root.opt.notifStyle : "stack"
         spot: root.opt.notifSpot === "corner" ? "corner" : "edge"
         cornerId: (root.boxSpots && root.boxSpots.notif) || "tr"
+        origin: DS.originOf(root.opt, "notif", (root.boxSpots && root.boxSpots.notif) || "tr")
         dnd: root.dnd
         fsQuiet: root.fsQuiet && root.opt.dndFullscreen !== false
         gameQuiet: root.gameFs
@@ -1109,6 +1109,7 @@ ShellRoot {
         pal: pal
         customZone: root.boxZones.term !== null
         spot: root.boxSpots.term
+        origin: DS.originOf(root.opt, "term", root.boxSpots.term)
         stars: root.opt.stars !== false && root.opt.starsTerm !== false
         flyCount: root.boxStarCount
         flyLoop: root.boxStarLoop
@@ -1127,6 +1128,7 @@ ShellRoot {
         id: quickChat
         pal: pal
         spot: root.boxSpots.term
+        origin: DS.originOf(root.opt, "term", root.boxSpots.term)
         stars: root.opt.stars !== false && root.opt.starsTerm !== false
         flyCount: root.boxStarCount
         flyLoop: root.boxStarLoop
@@ -1182,7 +1184,7 @@ ShellRoot {
         id: notesMenu
         pal: pal
         opt: root.opt
-        spot: root.boxSpots.term
+        spot: DS.cornerFor(root.opt, "term", root.boxSpots.term)      // beside the console: the side it is on follows its tag
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
         sysmode: root.sysmode
         starData: root.starData
@@ -1194,7 +1196,7 @@ ShellRoot {
         id: clipMenu
         pal: pal
         opt: root.opt
-        spot: root.boxSpots.term
+        spot: DS.cornerFor(root.opt, "term", root.boxSpots.term)      // beside the console: the side it is on follows its tag
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
         sysmode: root.sysmode
         starData: root.starData
@@ -1250,7 +1252,7 @@ ShellRoot {
         id: shotMenu
         pal: pal
         opt: root.opt
-        spot: root.boxSpots.term
+        spot: DS.cornerFor(root.opt, "term", root.boxSpots.term)      // beside the console: the side it is on follows its tag
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
         sysmode: root.sysmode
         starData: root.starData
@@ -1262,7 +1264,7 @@ ShellRoot {
         id: musicMenu
         pal: pal
         opt: root.opt
-        spot: root.boxSpots.term
+        spot: DS.cornerFor(root.opt, "term", root.boxSpots.term)      // beside the console: the side it is on follows its tag
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
         sysmode: root.sysmode
         starData: root.starData
@@ -1441,6 +1443,8 @@ ShellRoot {
         case "bar": case "perf": case "media": case "fw": return tourBarRect()          // pages are the island itself, grown
         case "corner":
             if (dropOn) return null
+            if (corner.oSide) return { x: corner.atR ? sw - (frameOn ? frameT : pal.boxEdge) - panel.width : (frameOn ? frameT : pal.boxEdge), y: corner.offY, w: panel.width, h: panel.height }
+            if (corner.oVert) return { x: corner.offX, y: corner.atB ? sh - (frameOn ? frameT : pal.boxEdge) - panel.height : (frameOn ? frameT : pal.boxTop), w: panel.width, h: panel.height }
             return { x: corner.atR ? sw - pal.boxEdge - panel.width : pal.boxEdge,
                      y: corner.atB ? sh - pal.boxEdge - panel.height : pal.boxTop, w: panel.width, h: panel.height }
         case "notifs": return notifs.tourRect(sw)
@@ -2536,13 +2540,14 @@ ShellRoot {
     readonly property var deskNeeds: WD.mergeNeeds(opt.deskWidgetsOn === false ? WD.needs(null) : WD.needs(WD.normalize(opt.deskWidgets)), lockNeeds)
     property bool deskEditing: false                     // "place them on the desktop" is open (DesktopEditor.qml)
     property string deskEditTarget: "desktop"            // ... and it works on this list: "desktop" or "lock" (the lock screen's widgets)
-    readonly property real deskTop: topFree ? 24 : 70
-    // a rail on the left / right / bottom edge: the desktop widgets sit beside it, not under it
+    // the desktop widgets keep clear of the screen border too (frameT is 0 with the border off)
+    readonly property real deskTop: ((railUp && railBar.side === "top") ? railBar.zoneWanted + 16 : (topFree ? 24 : 70)) + frameT
+    // a rail on any edge: the desktop widgets sit beside it, not under it
     readonly property var railBar: customBarLoader.item
     readonly property bool railUp: railBar !== null && railBar.rail === true
-    readonly property real deskLeft: railUp && railBar.side === "left" ? railBar.zoneWanted : 0
-    readonly property real deskRight: railUp && railBar.side === "right" ? railBar.zoneWanted : 0
-    readonly property real deskBottom: railUp && railBar.side === "bottom" ? railBar.zoneWanted : 0
+    readonly property real deskLeft: (railUp && railBar.side === "left" ? railBar.zoneWanted : 0) + frameT
+    readonly property real deskRight: (railUp && railBar.side === "right" ? railBar.zoneWanted : 0) + frameT
+    readonly property real deskBottom: (railUp && railBar.side === "bottom" ? railBar.zoneWanted : 0) + frameT
     function deskSetVol(f) { pendVol = f; vol = f * 100; if (!sliderT.running) sliderT.start() }
     function deskSetBright(f) { pendBright = f; bright = f * 100; if (!sliderT.running) sliderT.start() }
     function deskRun(cmd) { Quickshell.execDetached(["sh", "-c", cmd]) }
@@ -3844,9 +3849,17 @@ ShellRoot {
 
         // the corner it opens from (Desktop builder > Where the boxes open): default bottom-right
         readonly property string spot: root.boxSpots.util
-        readonly property bool atR: spot.charAt(1) === "r"
-        readonly property bool atB: spot.charAt(0) === "b"
-        anchors { top: !corner.atB; bottom: corner.atB; left: !corner.atR; right: corner.atR }
+        // it opens from the tag you dragged in the Desktop builder (any edge, anywhere along it); with no tag, from its corner
+        readonly property var org: DS.originOf(root.opt, "util", spot)
+        readonly property bool atR: org.atR
+        readonly property bool atB: org.atB
+        readonly property bool oSide: org.custom && org.side        // out of the left / right edge, at offY down it
+        readonly property bool oVert: org.custom && !org.side       // out of the top / bottom edge, at offX along it
+        readonly property real oMargin: root.frameOn ? root.frameT + 12 : 16
+        readonly property real offY: oSide ? DS.along(org.pos, corner.height, panel.height + 30, oMargin) : 0
+        readonly property real offX: oVert ? DS.along(org.pos, corner.width, panel.width + 30, oMargin) : 0
+        // a box on a side edge uses the whole height of the screen, one on the top / bottom edge the whole width (the mask keeps the rest click-through)
+        anchors { top: corner.oSide ? true : !corner.atB; bottom: corner.oSide ? true : corner.atB; left: corner.oVert ? true : !corner.atR; right: corner.oVert ? true : corner.atR }
         // FIXED size on purpose: it used to grow / shrink with the box (48 px tab <-> full size). Each resize made the compositor
         // re-pick the pointer focus, so a pointer parked in the corner got a leave + enter, which closed and re-opened the box
         // over and over. The input region (mask below) is what keeps the surface from catching clicks while it is closed.
@@ -3896,6 +3909,8 @@ ShellRoot {
             anchors.left: corner.atR ? undefined : parent.left
             anchors.bottom: corner.atB ? parent.bottom : undefined
             anchors.top: corner.atB ? undefined : parent.top
+            anchors.topMargin: corner.oSide ? corner.offY : 0
+            anchors.leftMargin: corner.oVert ? corner.offX : 0
             width: corner.open ? panel.width + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.util) ? 0 : (root.utilClick ? 28 : 12))
             height: corner.open ? panel.height + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.util) ? 0 : (root.utilClick ? 28 : 12))
             HoverHandler { onHoveredChanged: { corner.zoneHover = hovered; corner.syncHover() } }
@@ -3930,10 +3945,11 @@ ShellRoot {
             anchors.bottom: corner.atB ? parent.bottom : undefined
             anchors.top: corner.atB ? undefined : parent.top
             // border around the screen: flush with it (and flaring into it), emerging from under it
-            anchors.rightMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.leftMargin: root.frameOn ? root.frameT : pal.boxEdge
-            anchors.bottomMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.topMargin: root.cornerOut ? root.frameT : pal.boxTop
-            joinH: root.frameOn ? (corner.atR ? "r" : "l") : ""
-            joinV: root.frameOn ? (corner.atB ? "b" : (root.cornerOut ? "t" : "")) : ""
+            anchors.rightMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.leftMargin: corner.oVert ? corner.offX : (root.frameOn ? root.frameT : pal.boxEdge)
+            anchors.bottomMargin: root.frameOn ? root.frameT : pal.boxEdge
+            anchors.topMargin: corner.oSide ? corner.offY : (corner.oVert ? (root.frameOn ? root.frameT : pal.boxTop) : (root.cornerOut ? root.frameT : pal.boxTop))
+            joinH: root.frameOn ? (corner.oVert ? "" : (corner.atR ? "r" : "l")) : ""
+            joinV: root.frameOn ? (corner.oSide ? "" : (corner.oVert ? (corner.atB ? "b" : "t") : (corner.atB ? "b" : (root.cornerOut ? "t" : "")))) : ""
             pal: pal
             active: corner.open
             stats: root.stats
@@ -3966,10 +3982,12 @@ ShellRoot {
             visible: root.frameOn ? slide > 0.002 : opacity > 0.01
             scale: root.frameOn ? 1 : 0.97 + 0.03 * corner.reveal
             transform: Translate {
-                x: root.frameOn ? (corner.atR ? 1 : -1) * (1 - panel.slide) * (panel.width + root.frameT + 30) : 0
-                y: root.cornerOut ? (corner.atB ? 1 : -1) * (1 - panel.slide) * (panel.height + root.frameT + 30) : 0     // out of the corner: along the top / bottom border too
+                x: (root.frameOn && !corner.oVert) ? (corner.atR ? 1 : -1) * (1 - panel.slide) * (panel.width + root.frameT + 30) : 0
+                // out of the corner: along the top / bottom border too; out of a top / bottom edge it slides along its height instead
+                y: (corner.oVert ? root.frameOn : (root.cornerOut && !corner.oSide)) ? (corner.atB ? 1 : -1) * (1 - panel.slide) * (panel.height + root.frameT + 30) : 0
             }
-            transformOrigin: corner.atB ? (corner.atR ? Item.BottomRight : Item.BottomLeft) : (corner.atR ? Item.TopRight : Item.TopLeft)
+            transformOrigin: corner.oSide ? (corner.atR ? Item.Right : Item.Left) : corner.oVert ? (corner.atB ? Item.Bottom : Item.Top)
+                           : (corner.atB ? (corner.atR ? Item.BottomRight : Item.BottomLeft) : (corner.atR ? Item.TopRight : Item.TopLeft))
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
@@ -4034,9 +4052,16 @@ ShellRoot {
 
         // the corner it opens from (Desktop builder > Where the boxes open): default bottom-left
         readonly property string spot: root.boxSpots.apps
-        readonly property bool atR: spot.charAt(1) === "r"
-        readonly property bool atB: spot.charAt(0) === "b"
-        anchors { top: !appsWin.atB; bottom: appsWin.atB; left: !appsWin.atR; right: appsWin.atR }
+        // opens from its tag (any edge, anywhere along it); with no tag, from its corner (see the utilities box)
+        readonly property var org: DS.originOf(root.opt, "apps", spot)
+        readonly property bool atR: org.atR
+        readonly property bool atB: org.atB
+        readonly property bool oSide: org.custom && org.side
+        readonly property bool oVert: org.custom && !org.side
+        readonly property real oMargin: root.frameOn ? root.frameT + 12 : 16
+        readonly property real offY: oSide ? DS.along(org.pos, appsWin.height, bgPanel.height + 30, oMargin) : 0
+        readonly property real offX: oVert ? DS.along(org.pos, appsWin.width, bgPanel.width + 30, oMargin) : 0
+        anchors { top: appsWin.oSide ? true : !appsWin.atB; bottom: appsWin.oSide ? true : appsWin.atB; left: appsWin.oVert ? true : !appsWin.atR; right: appsWin.oVert ? true : appsWin.atR }
         // fixed size, see the utilities box (a surface that resizes under a parked pointer makes the box flicker)
         property bool appsLinger: false
         property bool pinnedOpen: false     // opened by the Apps button / a command (pinFor), not by hovering the corner
@@ -4078,6 +4103,8 @@ ShellRoot {
             anchors.left: appsWin.atR ? undefined : parent.left
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
+            anchors.topMargin: appsWin.oSide ? appsWin.offY : 0
+            anchors.leftMargin: appsWin.oVert ? appsWin.offX : 0
             width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.apps) ? 0 : (root.appsClick ? 28 : 12))
             height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.apps) ? 0 : (root.appsClick ? 28 : 12))
             HoverHandler { onHoveredChanged: { appsWin.zoneHover = hovered; appsWin.syncHover() } }
@@ -4112,7 +4139,7 @@ ShellRoot {
             anchors.left: appsWin.atR ? undefined : parent.left
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
-            anchors.rightMargin: 6; anchors.leftMargin: 6; anchors.bottomMargin: 6; anchors.topMargin: 6
+            anchors.rightMargin: 6; anchors.leftMargin: 6 + (appsWin.oVert ? appsWin.offX : 0); anchors.bottomMargin: 6; anchors.topMargin: 6 + (appsWin.oSide ? appsWin.offY : 0)
             width: 11
             height: 11
 
@@ -4146,10 +4173,11 @@ ShellRoot {
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
             // border around the screen: flush with it (and flaring into it), emerging from under it
-            anchors.rightMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.leftMargin: root.frameOn ? root.frameT : pal.boxEdge
-            anchors.bottomMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.topMargin: root.cornerOut ? root.frameT : pal.boxTop
-            joinH: root.frameOn ? (appsWin.atR ? "r" : "l") : ""
-            joinV: root.frameOn ? (appsWin.atB ? "b" : (root.cornerOut ? "t" : "")) : ""
+            anchors.rightMargin: root.frameOn ? root.frameT : pal.boxEdge; anchors.leftMargin: appsWin.oVert ? appsWin.offX : (root.frameOn ? root.frameT : pal.boxEdge)
+            anchors.bottomMargin: root.frameOn ? root.frameT : pal.boxEdge
+            anchors.topMargin: appsWin.oSide ? appsWin.offY : (appsWin.oVert ? (root.frameOn ? root.frameT : pal.boxTop) : (root.cornerOut ? root.frameT : pal.boxTop))
+            joinH: root.frameOn ? (appsWin.oVert ? "" : (appsWin.atR ? "r" : "l")) : ""
+            joinV: root.frameOn ? (appsWin.oSide ? "" : (appsWin.oVert ? (appsWin.atB ? "b" : "t") : (appsWin.atB ? "b" : (root.cornerOut ? "t" : "")))) : ""
             pal: pal
             active: appsWin.open
 
@@ -4161,10 +4189,11 @@ ShellRoot {
             visible: root.frameOn ? slide > 0.002 : opacity > 0.01
             scale: root.frameOn ? 1 : 0.97 + 0.03 * appsWin.reveal
             transform: Translate {
-                x: root.frameOn ? (appsWin.atR ? 1 : -1) * (1 - bgPanel.slide) * (bgPanel.width + root.frameT + 30) : 0
-                y: root.cornerOut ? (appsWin.atB ? 1 : -1) * (1 - bgPanel.slide) * (bgPanel.height + root.frameT + 30) : 0     // out of the corner: along the top / bottom border too
+                x: (root.frameOn && !appsWin.oVert) ? (appsWin.atR ? 1 : -1) * (1 - bgPanel.slide) * (bgPanel.width + root.frameT + 30) : 0
+                y: (appsWin.oVert ? root.frameOn : (root.cornerOut && !appsWin.oSide)) ? (appsWin.atB ? 1 : -1) * (1 - bgPanel.slide) * (bgPanel.height + root.frameT + 30) : 0
             }
-            transformOrigin: appsWin.atB ? (appsWin.atR ? Item.BottomRight : Item.BottomLeft) : (appsWin.atR ? Item.TopRight : Item.TopLeft)
+            transformOrigin: appsWin.oSide ? (appsWin.atR ? Item.Right : Item.Left) : appsWin.oVert ? (appsWin.atB ? Item.Bottom : Item.Top)
+                           : (appsWin.atB ? (appsWin.atR ? Item.BottomRight : Item.BottomLeft) : (appsWin.atR ? Item.TopRight : Item.TopLeft))
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
         }

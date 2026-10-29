@@ -49,6 +49,9 @@ Item {
     readonly property var sp: BL.resolve(cur, barH, spacious)
     readonly property bool isl: cur.shape === "island"
     readonly property bool rail: cur.shape === "rail"
+    // a Left / Right bar: the preview is drawn upright, on that edge of a small screen, its three places stacked Top / Middle / Bottom
+    readonly property bool vert: BL.isVert(cur.side)
+    readonly property string longWord: vert ? "longer" : "wider"
     // what the left and right place are called on this bar (Left / Right, or Top / Bottom on a Left / Right bar)
     readonly property string nameL: BL.zoneTitle(cur, "left")
     readonly property string nameR: BL.zoneTitle(cur, "right")
@@ -65,8 +68,12 @@ Item {
     readonly property int gapC: cur.gap !== null ? cur.gap : sp.autoMidGap
     readonly property int gapR: cur.gap !== null ? cur.gap : sp.autoRightGap
     readonly property int minZone: 76                         // an empty place is shown this wide so there is something to drop on
+    readonly property int minZoneV: 120                       // ... and on an upright bar this wide (it has to hold "Middle · drop here")
+    readonly property int minZoneH: 56                        // ... and this tall
     // the picture is drawn bigger or smaller to fit the card; every number you read or type is in real screen pixels
     readonly property real zoom: Math.max(0.6, Math.min(1.7, (stage.width - 48) / Math.max(1, barBody.width)))
+    // the upright bar is drawn to fit the height of the stage
+    readonly property real zoomV: Math.max(0.5, Math.min(1.4, (stage.height - 44) / Math.max(1, vBody.height)))
 
     readonly property var fakeNet: ({ wifi: "on", ssid: "Home", signal: 80, bt: "on", btdev: "Buds", btn: 1, eth: false })
     readonly property var fakeStats: ({ hasBat: true, bat: 72, charging: false, cpu: 12, memGb: "6.1", mem: 38, temp: 54 })
@@ -75,6 +82,7 @@ Item {
 
     // ---------------------------------------------------------------- sizes and the symmetry help
     function widthOf(id) {
+        if (vert) return barH                  // upright: a widget's length along the bar is its height (the padding is added by BL.zoneWidth)
         var ch = meas.children
         for (var i = 0; i < ch.length; i++) if (ch[i].wid === id) return ch[i].width
         return 40
@@ -111,8 +119,8 @@ Item {
     property string selId: ""                  // the widget picked for padding
     readonly property string sel: BL.placed(cur, selId) ? selId : ""
 
-    function zoneItem(k) { return k === "left" ? zoneL : (k === "center" ? zoneC : zoneR) }
-    function rowOf(k) { return k === "left" ? rowL : (k === "center" ? rowC : rowR) }
+    function zoneItem(k) { if (vert) return k === "left" ? zoneT : (k === "center" ? zoneM : zoneB); return k === "left" ? zoneL : (k === "center" ? zoneC : zoneR) }
+    function rowOf(k) { if (vert) return k === "left" ? colT : (k === "center" ? colM : colB); return k === "left" ? rowL : (k === "center" ? rowC : rowR) }
     function gapFor(k) { return k === "left" ? gapL : (k === "center" ? gapC : gapR) }
     function slotsOf(k) {
         var out = [], ch = rowOf(k).children
@@ -136,6 +144,20 @@ Item {
         insIdx = best.idx + (before ? 0 : 1)
         insX = zi.x + row.x + (before ? best.x - g / 2 : best.x + best.width + g / 2) - 1
     }
+    // the same as aim() for an upright bar: the pointer's height decides where in the column it would land; insX is then the drop line's y
+    function aimV(zk, py) {
+        var kids = slotsOf(zk), zi = zoneItem(zk), col = rowOf(zk), g = gapFor(zk)
+        if (kids.length === 0) { insIdx = 0; insX = zi.y + zi.height / 2 - 1; return }
+        var best = kids[0], bd = 1e12
+        for (var i = 0; i < kids.length; i++) {
+            var d = Math.abs(py - (zi.y + col.y + kids[i].y + kids[i].height / 2))
+            if (d < bd) { bd = d; best = kids[i] }
+        }
+        var cy = zi.y + col.y + best.y + best.height / 2
+        var before = py < cy
+        insIdx = best.idx + (before ? 0 : 1)
+        insX = zi.y + col.y + (before ? best.y - g / 2 : best.y + best.height + g / 2) - 1
+    }
     function beginDrag(id, zone, idx, x, y) {
         dragId = id; dragFrom = zone; dragFromIdx = idx
         hint = BL.nameOf(id) + ": " + BL.hintOf(id)
@@ -143,6 +165,16 @@ Item {
     }
     function moveDrag(x, y) {
         dragX = x; dragY = y
+        if (vert) {
+            var q = vBody.mapFromItem(root, x, y)
+            var zv = ""
+            if (q.x >= -34 && q.x <= vBody.width + 34 && q.y >= -16 && q.y <= vBody.height + 16)
+                zv = q.y < zoneM.y - 6 ? "left" : (q.y > zoneM.y + zoneM.height + 6 ? "right" : "center")
+            else if (inside(wTray, x, y)) zv = "tray"
+            hoverZone = zv
+            if (zv !== "" && zv !== "tray") aimV(zv, q.y)
+            return
+        }
         var p = barBody.mapFromItem(root, x, y)
         var z = ""
         if (p.x >= -16 && p.x <= barBody.width + 16 && p.y >= -34 && p.y <= barBody.height + 34)
@@ -466,7 +498,7 @@ Item {
             Rectangle {
                 id: stage
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.round(root.barH * root.zoom) + (root.isl ? 72 : 60)
+                Layout.preferredHeight: root.vert ? 300 : Math.round(root.barH * root.zoom) + (root.isl ? 72 : 60)
                 radius: root.pal.rLg
                 color: Qt.alpha(root.pal.bg, 0.55)
                 border.width: root.pal.calm ? 0 : 1
@@ -474,16 +506,17 @@ Item {
                 clip: true
 
                 // the top edge of the screen
-                Rectangle { visible: !root.isl; anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; height: 2; color: Qt.alpha(root.pal.accent, 0.35) }
+                Rectangle { visible: !root.isl && !root.vert; anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; height: 2; color: Qt.alpha(root.pal.accent, 0.35) }
                 Text {
                     anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14
                     font.letterSpacing: root.pal.zen ? 0 : 0.8
-                    text: (root.pal.zen ? "Preview  ×" : "PREVIEW  ×") + root.zoom.toFixed(1) + (BL.isVert(root.cur.side) ? "  ·  shown lying flat" : "")
+                    text: (root.pal.zen ? "Preview  ×" : "PREVIEW  ×") + (root.vert ? root.zoomV : root.zoom).toFixed(1) + (root.vert ? "  ·  " + root.cur.side + " edge" : "")
                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
                 }
 
                 Item {
                     id: zoomBox
+                    visible: !root.vert
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: root.isl ? 20 : 4
                     width: barBody.width * root.zoom
@@ -596,16 +629,162 @@ Item {
                     }
                 }
 
+
+                // ---- an upright bar (Left / Right): a small screen with the bar on its edge. Every widget is drawn as always (its icon, then its
+                // text to the right), the three places are stacked Top / Middle / Bottom, and the drop line is horizontal.
+                Item {
+                    id: vStage
+                    visible: root.vert
+                    anchors.fill: parent
+
+                    Rectangle {
+                        id: vScreen
+                        anchors.centerIn: parent
+                        height: parent.height - 24
+                        width: Math.min(parent.width - 40, Math.round(height * 1.7))
+                        radius: 10
+                        color: Qt.alpha(root.pal.surface, 0.18)
+                        border.width: 1
+                        border.color: Qt.alpha(root.pal.accent, 0.22)
+                    }
+                    // the edge the bar sits on
+                    Rectangle {
+                        width: 2; height: vScreen.height
+                        x: root.cur.side === "left" ? vScreen.x : vScreen.x + vScreen.width - 2
+                        y: vScreen.y
+                        color: Qt.alpha(root.pal.accent, 0.35)
+                    }
+
+                    Item {
+                        id: vZoom
+                        x: root.cur.side === "left" ? vScreen.x + 8 : vScreen.x + vScreen.width - width - 8
+                        y: vScreen.y + Math.round((vScreen.height - height) / 2)
+                        width: vBody.width * root.zoomV
+                        height: vBody.height * root.zoomV
+
+                        Item {
+                            id: vBody
+                            transformOrigin: Item.TopLeft
+                            scale: root.zoomV
+                            readonly property real colW: Math.max(root.minZoneV, colT.width, colM.width, colB.width)     // as wide as the widest widget
+                            readonly property real sideH: Math.max(root.minZoneH, colT.height, colB.height)
+                            readonly property real midH: Math.max(root.minZoneH, colM.height)
+                            width: colW + 12
+                            height: sideH * 2 + midH + root.sp.clear * 2 + root.sp.edge * 2
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: root.isl ? Math.min(root.cornR, 20) : Math.min(root.cornR, 14)
+                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.9))
+                                border.width: root.pal.calm ? 0 : 1
+                                border.color: root.pal.line
+                            }
+
+                            // top: grows down from the top end
+                            Item {
+                                id: zoneT
+                                x: 6; y: root.sp.edge
+                                width: vBody.colW
+                                height: Math.max(root.minZoneH, colT.height)
+                                Rectangle { visible: root.dragId !== "" && root.hoverZone === "left"; anchors.fill: parent; anchors.margins: -3; radius: 9; color: Qt.alpha(root.pal.accent, 0.12); border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.6) }
+                                BbEmptyZone { bb: root; visible: root.cur.left.length === 0; title: root.nameL }
+                                Column {
+                                    id: colT
+                                    spacing: root.gapL
+                                    Repeater {
+                                        model: root.cur.left
+                                        delegate: BbPlaced { bb: root; required property string modelData; required property int index; wid: modelData; zone: "left"; idx: index }
+                                    }
+                                }
+                            }
+                            // middle: always centred on the screen's height
+                            Item {
+                                id: zoneM
+                                x: 6
+                                y: Math.round(vBody.height / 2 - height / 2)
+                                width: vBody.colW
+                                height: Math.max(root.minZoneH, colM.height)
+                                Rectangle { visible: root.dragId !== "" && root.hoverZone === "center"; anchors.fill: parent; anchors.margins: -3; radius: 9; color: Qt.alpha(root.pal.accent, 0.12); border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.6) }
+                                BbEmptyZone { bb: root; visible: root.cur.center.length === 0; title: BL.zoneTitle(root.cur, "center") }
+                                Column {
+                                    id: colM
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: root.gapC
+                                    Repeater {
+                                        model: root.cur.center
+                                        delegate: BbPlaced { bb: root; required property string modelData; required property int index; wid: modelData; zone: "center"; idx: index }
+                                    }
+                                }
+                            }
+                            // bottom: grows up from the bottom end
+                            Item {
+                                id: zoneB
+                                x: 6
+                                y: vBody.height - root.sp.edge - height
+                                width: vBody.colW
+                                height: Math.max(root.minZoneH, colB.height)
+                                Rectangle { visible: root.dragId !== "" && root.hoverZone === "right"; anchors.fill: parent; anchors.margins: -3; radius: 9; color: Qt.alpha(root.pal.accent, 0.12); border.width: 1; border.color: Qt.alpha(root.pal.accent, 0.6) }
+                                BbEmptyZone { bb: root; visible: root.cur.right.length === 0; title: root.nameR }
+                                Column {
+                                    id: colB
+                                    anchors.bottom: parent.bottom
+                                    spacing: root.gapR
+                                    Repeater {
+                                        model: root.cur.right
+                                        delegate: BbPlaced { bb: root; required property string modelData; required property int index; wid: modelData; zone: "right"; idx: index }
+                                    }
+                                }
+                            }
+
+                            // where the widget would land (a line across the column)
+                            Rectangle {
+                                visible: root.vert && root.dragId !== "" && root.hoverZone !== "" && root.hoverZone !== "tray"
+                                x: 6; y: root.insX
+                                width: vBody.colW; height: 2; radius: 1
+                                color: root.pal.accent
+                                z: 10
+                            }
+                        }
+                    }
+
+                    // what each place is called, written on the screen side of the bar (to its right on a Left bar)
+                    Text {
+                        text: root.nameL
+                        x: root.cur.side === "left" ? vZoom.x + vZoom.width + 12 : vZoom.x - 12 - width
+                        y: vZoom.y + (zoneT.y + 6) * root.zoomV
+                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
+                    }
+                    Text {
+                        text: BL.zoneTitle(root.cur, "center")
+                        x: root.cur.side === "left" ? vZoom.x + vZoom.width + 12 : vZoom.x - 12 - width
+                        y: vZoom.y + (zoneM.y + zoneM.height / 2) * root.zoomV - height / 2
+                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
+                    }
+                    Text {
+                        text: root.nameR
+                        x: root.cur.side === "left" ? vZoom.x + vZoom.width + 12 : vZoom.x - 12 - width
+                        y: vZoom.y + (zoneB.y + zoneB.height - 6) * root.zoomV - height
+                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10
+                    }
+                    // the exact middle of the screen's height, while a widget is carried
+                    Rectangle {
+                        visible: root.dragId !== ""
+                        x: vScreen.x; y: vScreen.y + Math.round(vScreen.height / 2) - 0.5
+                        width: vScreen.width; height: 1
+                        color: Qt.alpha(root.pal.accent, 0.4)
+                    }
+                }
+
                 // the exact centre of the screen
                 Rectangle {
-                    visible: root.dragId !== ""
+                    visible: root.dragId !== "" && !root.vert
                     x: Math.round(stage.width / 2) - 0.5
                     y: 0
                     width: 1; height: stage.height
                     color: Qt.alpha(root.pal.accent, 0.4)
                 }
                 Text {
-                    visible: root.dragId !== ""
+                    visible: root.dragId !== "" && !root.vert
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 8
@@ -716,8 +895,8 @@ Item {
                             text: Math.abs(root.diffLR) <= 6
                                   ? "✓ " + root.nameL + " and " + root.nameR.toLowerCase() + " match. The middle stays centred."
                                   : (root.tip !== null
-                                     ? (root.diffLR > 0 ? root.nameL : root.nameR) + " is " + Math.round(Math.abs(root.diffLR)) + " px wider. Moving " + BL.nameOf(root.tip.id) + " to " + (root.tip.to === "left" ? root.nameL : root.nameR) + " brings them to " + Math.round(root.tip.after) + " px apart."
-                                     : (root.diffLR > 0 ? root.nameL : root.nameR) + " is " + Math.round(Math.abs(root.diffLR)) + " px wider. Try the spacing numbers, or move a widget by hand.")
+                                     ? (root.diffLR > 0 ? root.nameL : root.nameR) + " is " + Math.round(Math.abs(root.diffLR)) + " px " + root.longWord + ". Moving " + BL.nameOf(root.tip.id) + " to " + (root.tip.to === "left" ? root.nameL : root.nameR) + " brings them to " + Math.round(root.tip.after) + " px apart."
+                                     : (root.diffLR > 0 ? root.nameL : root.nameR) + " is " + Math.round(Math.abs(root.diffLR)) + " px " + root.longWord + ". Try the spacing numbers, or move a widget by hand.")
                         }
                         Chip {
                             visible: root.dragId === "" && root.tip !== null
