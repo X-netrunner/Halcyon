@@ -1,9 +1,9 @@
 //! hal filemap : high-speed system filesystem mapping, categorization & instant search engine
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 const IGNORED_DIRS: &[&str] = &[
     ".cache", ".git", "node_modules", "target", "__pycache__", ".cargo/registry",
@@ -15,6 +15,9 @@ const IGNORED_DIRS: &[&str] = &[
 const IGNORED_NAMES: &[&str] = &[
     ".git", ".cache", "node_modules", "target", "__pycache__", "venv", ".venv",
 ];
+
+/// The cached index is rebuilt when it is older than this.
+const CACHE_MAX_AGE: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug, Clone)]
 pub struct FileEntry {
@@ -41,16 +44,32 @@ fn luna_filemap_json() -> PathBuf {
     home_dir().join(".local/share/luna/filemap.json")
 }
 
+/// Is this directory one to skip? Matches whole path components (`target` must not hide `~/Projects/target-practice`).
 fn should_ignore_dir(name: &str, full_path: &str) -> bool {
     if IGNORED_NAMES.contains(&name) {
         return true;
     }
-    for ign in IGNORED_DIRS {
-        if full_path.contains(ign) {
-            return true;
+    IGNORED_DIRS.iter().any(|ign| {
+        if ign.contains('/') {
+            full_path.strip_suffix(ign).is_some_and(|rest| rest.ends_with('/'))
+        } else {
+            name == *ign
         }
+    })
+}
+
+/// Write via a temp file and rename, so a reader never sees a half-written file.
+fn write_atomic(path: &Path, data: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension("tmp");
+    fs::write(&tmp, data)?;
+    fs::rename(&tmp, path)
+}
+
+fn rel_to_home(path_str: &str, home_str: &str) -> String {
+    match path_str.strip_prefix(home_str) {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => format!("~{}", rest),
+        _ => path_str.to_string(),
     }
-    false
 }
 
 fn categorize(path: &str, is_dir: bool) -> &'static str {
@@ -107,36 +126,41 @@ fn scan_directory(root: &Path, max_depth: usize, current_depth: usize, out: &mut
             Ok(t) => t,
             Err(_) => continue,
         };
+        // A symlink (stow / dotfile managers use them for ~/.config) is classified by what it points to.
+        // Linked directories are listed but not entered, which also rules out symlink loops.
+        let (is_dir, is_file, followed) = if file_type.is_symlink() {
+            match fs::metadata(&path) {
+                Ok(m) => (m.is_dir(), m.is_file(), true),
+                Err(_) => continue, // dangling link
+            }
+        } else {
+            (file_type.is_dir(), file_type.is_file(), false)
+        };
 
-        if file_type.is_dir() {
+        if is_dir {
             if should_ignore_dir(&name, &path_str) {
                 continue;
             }
-            let rel = if path_str.starts_with(&home_str) {
-                format!("~{}", &path_str[home_str.len()..])
-            } else {
-                path_str.clone()
-            };
             out.push(FileEntry {
+                rel_path: rel_to_home(&path_str, &home_str),
                 path: path_str,
-                rel_path: rel,
                 category: "directory".to_string(),
                 size: 0,
                 is_dir: true,
             });
-            scan_directory(&path, max_depth, current_depth + 1, out);
-        } else if file_type.is_file() {
-            let metadata = entry.metadata().ok();
-            let size = metadata.map(|m| m.len()).unwrap_or(0);
-            let cat = categorize(&path_str, false).to_string();
-            let rel = if path_str.starts_with(&home_str) {
-                format!("~{}", &path_str[home_str.len()..])
+            if !followed {
+                scan_directory(&path, max_depth, current_depth + 1, out);
+            }
+        } else if is_file {
+            let size = if followed {
+                fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
             } else {
-                path_str.clone()
+                entry.metadata().map(|m| m.len()).unwrap_or(0)
             };
+            let cat = categorize(&path_str, false).to_string();
             out.push(FileEntry {
+                rel_path: rel_to_home(&path_str, &home_str),
                 path: path_str,
-                rel_path: rel,
                 category: cat,
                 size,
                 is_dir: false,
@@ -204,19 +228,19 @@ fn save_json(files: &[FileEntry]) {
     }
     json.push_str("]\n");
 
-    let _ = fs::write(&p, &json);
+    let _ = write_atomic(&p, &json);
 
     // Also mirror to Luna directory
     let lp = luna_filemap_json();
     if let Some(parent) = lp.parent() {
         let _ = fs::create_dir_all(parent);
-        let _ = fs::write(&lp, &json);
+        let _ = write_atomic(&lp, &json);
     }
 }
 
 fn save_markdown(files: &[FileEntry]) {
     let p = state_filemap_md();
-    let mut counts: HashMap<&str, usize> = HashMap::new();
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     for f in files {
         if !f.is_dir {
             *counts.entry(&f.category).or_insert(0) += 1;
@@ -256,7 +280,7 @@ fn save_markdown(files: &[FileEntry]) {
         md.push_str(&format!("- `{}`\n", f.rel_path));
     }
 
-    let _ = fs::write(&p, md);
+    let _ = write_atomic(&p, &md);
 }
 
 fn sync_to_luna(files: &[FileEntry]) {
@@ -273,11 +297,16 @@ fn sync_to_luna(files: &[FileEntry]) {
     let date_str = crate::util::out("date", &["+%Y-%m-%d"]);
     let date_clean = date_str.trim();
 
+    // Never rewrite a memory file we cannot read as a JSON array: LUNA would lose everything it remembers.
     let mut existing_mem: Vec<crate::json::Json> = Vec::new();
     if let Ok(content) = fs::read_to_string(&luna_mem_file) {
-        if let Some(crate::json::Json::Arr(items)) = crate::json::parse(&content) {
-            existing_mem = items;
+        match crate::json::parse(&content) {
+            Some(crate::json::Json::Arr(items)) => existing_mem = items,
+            _ => return,
         }
+    }
+    if let Some(parent) = luna_mem_file.parent() {
+        let _ = fs::create_dir_all(parent);
     }
 
     existing_mem.retain(|item| {
@@ -303,18 +332,23 @@ fn sync_to_luna(files: &[FileEntry]) {
         let category = item.str("category").unwrap_or("system");
         json_out.push_str("  {\n");
         json_out.push_str(&format!("    \"content\": {},\n", serde_escape(content)));
-        json_out.push_str(&format!("    \"added\": \"{}\",\n", added_dt));
-        json_out.push_str(&format!("    \"category\": \"{}\"\n", category));
+        json_out.push_str(&format!("    \"added\": {},\n", serde_escape(added_dt)));
+        json_out.push_str(&format!("    \"category\": {}\n", serde_escape(category)));
         json_out.push_str(if i + 1 < existing_mem.len() { "  },\n" } else { "  }\n" });
     }
     json_out.push_str("]\n");
 
-    let _ = fs::write(&luna_mem_file, json_out);
+    let _ = write_atomic(&luna_mem_file, &json_out);
 }
 
 fn load_or_generate() -> Vec<FileEntry> {
     let p = state_filemap_json();
-    if !p.exists() {
+    let fresh = fs::metadata(&p)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| SystemTime::now().duration_since(t).ok())
+        .is_some_and(|age| age < CACHE_MAX_AGE);
+    if !fresh {
         return generate_filemap();
     }
     if let Ok(content) = fs::read_to_string(&p) {
@@ -345,7 +379,7 @@ fn load_or_generate() -> Vec<FileEntry> {
 pub fn search(query: &str) -> String {
     let files = load_or_generate();
     let q = query.to_lowercase();
-    let mut matches: Vec<&FileEntry> = files
+    let matches: Vec<&FileEntry> = files
         .iter()
         .filter(|f| f.path.to_lowercase().contains(&q) || f.rel_path.to_lowercase().contains(&q))
         .collect();
@@ -419,6 +453,7 @@ fn serde_escape(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
             other => out.push(other),
         }
     }

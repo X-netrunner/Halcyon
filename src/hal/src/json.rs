@@ -31,6 +31,13 @@ impl Json {
             _ => None,
         }
     }
+    /// A boolean member.
+    pub fn bool(&self, key: &str) -> Option<bool> {
+        match self.get(key)? {
+            Json::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
     /// The elements of an array (empty for anything else).
     pub fn items(&self) -> &[Json] {
         match self {

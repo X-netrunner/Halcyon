@@ -80,7 +80,9 @@
 #                          AIFW_REPO / AIFW_REV below, or a local checkout: AIFW_SRC=~/Projects/ai-firewall ./install.sh
 #   --luna / --no-luna     the extra: LUNA, a local AI assistant in Rust (https://github.com/X-netrunner/LUNA-AI), built from the
 #                          commit pinned below (LUNA_REV) into ~/.local/bin/luna. Asked on the first install and with --choose
-#                          (default no), then remembered. Only the program is installed: its daemon is never switched on for you.
+#                          (default no), then remembered. The program is installed and the Ollama models her tiers use are pulled
+#                          (qwen3:8b, phi4-mini, nomic-embed-text, qwen2.5vl:3b and the two abliterated coder/security models, about 26 GB;
+#                          LUNA_MODELS="a b" picks others, LUNA_MODELS=none skips). Her daemon is never switched on for you.
 #   --luna-voice / --no-luna-voice  with LUNA: also give her a voice (scripts/luna-voice-setup.sh: the Kokoro model, about 330 MB from the
 #                          kokoro-onnx GitHub release, a small Python environment, her [voice] config). Asked after the LUNA question, default no.
 #   --firewall ID          ai | ufw | none (default ufw). ai = ai-firewall (eBPF, replaces ufw, page in the Security center), built
@@ -2844,7 +2846,66 @@ install_luna_voice() {
         || { warn_later "LUNA's voice was not set up. Try by hand: bash $vs"; return 0; }
     log_success "LUNA voice ready: turn on \"Read her answers aloud\" under Voice & Audio in her settings"
 }
+# ---- LUNA's models: she is only useful once the Ollama models her tiers point at are on this machine, so they are pulled here.
+# The list is the stack in luna.toml (main / fast / deep / security / embeddings / vision) plus any model named in an existing
+# ~/.config/luna/luna.toml, so a config you edited is followed. Already-present models are skipped. About 26 GB in total: override
+# with LUNA_MODELS="name name ..." (replaces the list) or LUNA_MODELS=none (skip). Retry later: ./install.sh --luna
+LUNA_MODELS_DEFAULT="qwen3:8b phi4-mini nomic-embed-text qwen2.5vl:3b richardyoung/qwen2.5-coder-14b-instruct-abliterated richardyoung/qwythos-9b-abliterated"
+install_luna_models() {
+    local cfg="$TARGET_HOME/.config/luna/luna.toml" want="" m have="" pulled=0 failed=0 present
+    if [[ "${LUNA_MODELS:-}" == "none" ]]; then log_info "LUNA models: skipped (LUNA_MODELS=none)"; return 0; fi
+    if [[ -n "${LUNA_MODELS:-}" ]]; then want="$LUNA_MODELS"
+    else
+        want="$LUNA_MODELS_DEFAULT"
+        if [[ -f "$cfg" ]]; then
+            # model names from the config: model, fast_model, deep_model, security_model, *_abliterated, *_unrestricted, embedding_model, [vision] model
+            want+=" $(grep -E '^[[:space:]]*(model|fast_model|deep_model|security_model|security_model_abliterated|deep_model_unrestricted|embedding_model)[[:space:]]*=' "$cfg" 2>/dev/null \
+                | sed -E 's/^[^=]*=[[:space:]]*"([^"]+)".*$/\1/' | tr '\n' ' ')"
+        else
+            want+=" qwen2.5:7b-instruct"     # the model LUNA's built-in default config uses, until a luna.toml exists
+        fi
+    fi
+    # one name each: ":latest" and the bare name are the same model in Ollama
+    local -a list=(); local seen=" "
+    for m in $want; do
+        m="${m%:latest}"
+        [[ "$m" =~ ^[A-Za-z0-9._:/@+-]{1,100}$ ]] || { warn_later "LUNA models: '$m' is not a valid Ollama model name, skipped"; continue; }
+        [[ "$seen" == *" $m "* ]] && continue
+        seen+="$m "; list+=("$m")
+    done
+    [[ ${#list[@]} -gt 0 ]] || return 0
+    log_info "LUNA models (${#list[@]}): ${list[*]}"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        for m in "${list[@]}"; do run_as_user_cmd "LUNA: ollama pull $m" ollama pull "$m"; done
+        return 0
+    fi
+    if declare -F setup_ollama >/dev/null 2>&1; then setup_ollama || true; fi    # defined in step 5; not there with --no-packages
+    if ! run_as_user which ollama >/dev/null 2>&1 && ! command -v ollama >/dev/null 2>&1; then
+        warn_later "LUNA models were not pulled: Ollama is not installed. Install it ($(pkg_hint ollama)), then run ./install.sh --luna"; return 0
+    fi
+    local _i
+    for _i in $(seq 1 30); do     # the service needs a moment before it answers
+        curl -fsS --max-time 2 -o /dev/null http://127.0.0.1:11434/api/tags 2>/dev/null && break
+        sleep 1
+    done
+    if ! curl -fsS --max-time 2 -o /dev/null http://127.0.0.1:11434/api/tags 2>/dev/null; then
+        warn_later "LUNA models were not pulled: Ollama is not answering on 127.0.0.1:11434. Start it (systemctl enable --now ollama), then run ./install.sh --luna"; return 0
+    fi
+    have=" $(run_as_user ollama list 2>/dev/null | awk 'NR>1{print $1}' | sed 's/:latest$//' | tr '\n' ' ') "
+    for m in "${list[@]}"; do
+        present=false; [[ "$have" == *" $m "* ]] && present=true
+        if [[ "$present" == "true" ]]; then log_success "LUNA model already there: $m"; continue; fi
+        if run_as_user_cmd "LUNA: pulling $m (this can take a while)" ollama pull "$m"; then
+            pulled=$((pulled+1)); log_success "LUNA model installed: $m"
+        else
+            failed=$((failed+1)); warn_later "LUNA model $m was not downloaded. Retry: ollama pull $m"
+        fi
+    done
+    log_info "LUNA models: $pulled pulled, $failed failed, the rest were already installed"
+    return 0
+}
 [[ "$INSTALL_LUNA" == "true" ]] && install_luna
+[[ "$INSTALL_LUNA" == "true" ]] && install_luna_models
 [[ "$INSTALL_LUNA" == "true" && "$INSTALL_LUNA_VOICE" == "true" ]] && install_luna_voice
 
 # ---- the Security center's modules: ai-firewall and ai-antivirus. Each is built as you from a source folder (or a
