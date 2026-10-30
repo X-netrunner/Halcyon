@@ -311,8 +311,10 @@ Scope {
             anchors.left: !root.atR ? parent.left : undefined
             anchors.top: !root.atB ? parent.top : undefined
             anchors.bottom: root.atB ? parent.bottom : undefined
-            anchors.topMargin: root.corner ? 0 : (root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
-            anchors.bottomMargin: root.corner ? 0 : (!root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
+            anchors.rightMargin: root.pal.insR
+            anchors.leftMargin: root.pal.insL
+            anchors.topMargin: root.corner ? root.pal.insT : (root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
+            anchors.bottomMargin: root.corner ? root.pal.insB : (!root.atB ? 0 : (cfg.vpos === "middle" ? Math.round((win.height - 260) / 2) : root.pal.boxTop))
             width: !root.edgeOn || root.asleep || root.customZone ? 0 : root.corner ? (root.clickMode ? 28 : 22) : (root.clickMode ? 16 : 12)
             height: !root.edgeOn || root.asleep || root.customZone ? 0 : root.corner ? (root.clickMode ? 28 : 22) : 260
             clickMode: root.clickMode
