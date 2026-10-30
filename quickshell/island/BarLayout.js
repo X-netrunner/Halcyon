@@ -201,6 +201,31 @@ function resolve(l, barH, spacious) {
     }
 }
 
+// The rail's numbers. CustomBar.qml, BarSlot.qml and the Bar builder's preview all read them, so the preview and the bar agree.
+// Learned from Caelestia's side bar: a 40 px capsule in a slightly wider rail, one calm size for every icon, small tight text,
+// roomy capsules (12 px of air inside) and a clear gap between capsules.   (barH = 26 / 32 / 40 for low / normal / high)
+function railMetrics(barH) {
+    var ico = Math.round(barH * 0.6)
+    return {
+        thick: barH + 16,                                 // the rail across: the capsule and a gutter on each side
+        gutter: 4,                                        // capsule to the rail's edge
+        capW: barH + 8,                                   // the capsule across (= thick - 2 * gutter)
+        capPad: 12,                                       // air inside a capsule, along a left / right rail
+        capPadH: 10,                                      // ... along a top / bottom rail
+        gap: Math.max(6, Math.round(barH * 0.25)),        // between two capsules
+        dotGap: 6,                                        // between workspace dots
+        ico: ico,                                         // every icon of the rail except the logo
+        logo: Math.round(barH * 0.6),                     // the arch logo keeps its size
+        icoCell: ico + 3,                                 // the room one status icon takes (they all take the same)
+        icoGap: 4,                                        // between two status icons
+        clockPx: Math.max(10, Math.round(barH * 0.46)),   // hours / minutes
+        smallPx: Math.max(9, Math.round(barH * 0.36)),    // am / pm, day, month
+        powerPx: Math.round(barH * 0.56),
+        dotOnW: Math.round(barH * 0.3), dotOnH: Math.round(barH * 0.75),     // the workspace you are on: a tall pill
+        dotOcc: Math.round(barH * 0.25), dotOff: Math.round(barH * 0.19)     // one with windows / an empty one: round dots
+    }
+}
+
 function copy(l) {
     return build(l, l.left.slice(), l.center.slice(), l.right.slice())
 }

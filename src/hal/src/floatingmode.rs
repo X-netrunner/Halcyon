@@ -17,6 +17,36 @@ fn is_on() -> bool {
 struct ClientInfo {
     address: String,
     floating: bool,
+    class: String,
+    title: String,
+    pinned: bool,
+    ws_id: f64,
+}
+
+fn is_natural_floating(class: &str, title: &str) -> bool {
+    const NATURAL_CLASSES: &[&str] = &[
+        "mpv",
+        "pavucontrol",
+        "blueman-manager",
+        "nm-connection-editor",
+        "qalculate-gtk",
+        "gnome-calculator",
+        "org.gnome.Calculator",
+        "file-roller",
+        "org.gnome.FileRoller",
+        "ark",
+        "hyprland-share-picker",
+        "xdg-desktop-portal-gtk",
+        "zenity",
+        "yad",
+        "org.kde.polkit-kde-authentication-agent-1",
+        "polkit-gnome-authentication-agent-1",
+        "org.quickshell",
+    ];
+    if title.contains("Picture-in-Picture") || class.contains("pinentry") {
+        return true;
+    }
+    NATURAL_CLASSES.contains(&class)
 }
 
 fn get_clients() -> Vec<ClientInfo> {
@@ -34,9 +64,15 @@ fn get_clients() -> Vec<ClientInfo> {
             if mapped && ws_id > 0.0 && !pinned {
                 if let Some(addr) = item.str("address") {
                     let floating = item.get("floating") == Some(&crate::json::Json::Bool(true));
+                    let class = item.str("class").unwrap_or("").to_string();
+                    let title = item.str("title").unwrap_or("").to_string();
                     result.push(ClientInfo {
                         address: addr.to_string(),
                         floating,
+                        class,
+                        title,
+                        pinned,
+                        ws_id,
                     });
                 }
             }
@@ -66,7 +102,7 @@ fn mode_on() -> i32 {
     let mut saved = String::new();
     let clients = get_clients();
     for c in clients {
-        if !c.floating {
+        if !c.floating && !c.pinned && c.ws_id > 0.0 {
             toggle_float(&c.address);
             saved.push_str(&format!("{}\n", c.address));
         }
@@ -81,12 +117,18 @@ fn mode_off() -> i32 {
     set_rule(false);
 
     let saved_text = fs::read_to_string(&list_file).unwrap_or_default();
-    let saved_addrs: Vec<&str> = saved_text.lines().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    let saved_addrs: Vec<&str> = saved_text
+        .lines()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
 
-    if !saved_addrs.is_empty() {
-        let clients = get_clients();
-        for c in clients {
-            if c.floating && saved_addrs.contains(&c.address.as_str()) {
+    let clients = get_clients();
+    for c in clients {
+        if c.floating && !c.pinned && c.ws_id > 0.0 {
+            let should_unfloat = saved_addrs.contains(&c.address.as_str())
+                || !is_natural_floating(&c.class, &c.title);
+            if should_unfloat {
                 toggle_float(&c.address);
             }
         }

@@ -62,7 +62,8 @@ Item {
     readonly property int curW: Math.round(curH * 0.55)
     readonly property int offH: Math.round(curH * 0.85)
     readonly property int offW: Math.round(curW * 0.8)
-    readonly property int icoH: offH
+    readonly property var rm: BL.railMetrics(barH)                    // the rail's numbers: the same ones CustomBar.qml / BarSlot.qml use
+    readonly property int icoH: rail ? rm.ico : offH
     readonly property int comboSize: Math.round(barH * 0.78)
     readonly property int gapL: sp.gap
     readonly property int gapC: cur.gap !== null ? cur.gap : sp.autoMidGap
@@ -224,19 +225,22 @@ Item {
     Component { id: mWorkspaces
         Row {
             height: root.barH
-            spacing: root.gapL
+            spacing: root.rail ? root.rm.dotGap : root.gapL
             Repeater {
                 model: 5
                 delegate: Item {
                     required property int index
-                    width: index === 0 ? root.curW : root.offW
+                    // a rail draws the dots the way the real rail does (a tall pill, round dots), in the accent only
+                    readonly property real dw: root.rail ? (index === 0 ? root.rm.dotOnH : (index < 3 ? root.rm.dotOcc : root.rm.dotOff)) : (index === 0 ? root.curW : root.offW)
+                    readonly property real dh: root.rail ? (index === 0 ? root.rm.dotOnW : (index < 3 ? root.rm.dotOcc : root.rm.dotOff)) : (index === 0 ? root.curH : root.offH)
+                    width: dw
                     height: root.barH
                     Rectangle {
                         anchors.centerIn: parent
-                        width: parent.width
-                        height: index === 0 ? root.curH : root.offH
-                        radius: width / 2
-                        color: index === 0 ? root.pal.accent : (index < 3 ? Qt.alpha(root.pal.accent, 0.36) : Qt.alpha(root.pal.text, 0.14))
+                        width: parent.dw
+                        height: parent.dh
+                        radius: Math.min(width, height) / 2
+                        color: index === 0 ? root.pal.accent : (root.rail ? Qt.alpha(root.pal.accent, index < 3 ? 0.55 : 0.22) : (index < 3 ? Qt.alpha(root.pal.accent, 0.36) : Qt.alpha(root.pal.text, 0.14)))
                     }
                 }
             }
@@ -276,9 +280,9 @@ Item {
             height: root.barH
             verticalAlignment: Text.AlignVCenter
             text: root.nowTime
-            color: root.pal.text
+            color: root.rail ? root.pal.accent2 : root.pal.text
             font.family: root.pal.uiFont
-            font.pixelSize: root.textPx
+            font.pixelSize: root.rail ? root.rm.clockPx + 1 : root.textPx
             font.weight: Font.DemiBold
         }
     }
@@ -287,9 +291,9 @@ Item {
             height: root.barH
             verticalAlignment: Text.AlignVCenter
             text: root.nowDate
-            color: root.pal.muted
+            color: root.rail ? Qt.alpha(root.pal.accent2, 0.8) : root.pal.muted
             font.family: root.pal.uiFont
-            font.pixelSize: Math.max(10, root.textPx - 2)
+            font.pixelSize: root.rail ? root.rm.smallPx + 1 : Math.max(10, root.textPx - 2)
         }
     }
     Component { id: mStats
@@ -311,9 +315,32 @@ Item {
     Component { id: mStatus
         Item {
             height: root.barH
-            implicitWidth: ring.width
+            implicitWidth: root.rail ? railIcons.width : ring.width
+            // a rail: the same icons the real rail's status capsule has, all one size and one hue (BL.railMetrics)
+            Row {
+                id: railIcons
+                visible: root.rail
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: root.rm.icoGap
+                Repeater {
+                    model: [0xF0313, 0xF0928, 0xF00B1, 0xF0080]
+                    delegate: Item {
+                        required property int index
+                        required property var modelData
+                        width: root.rm.icoCell; height: root.barH
+                        Text {
+                            anchors.centerIn: parent
+                            text: String.fromCodePoint(parent.modelData)
+                            color: parent.index === 0 ? Qt.alpha(root.pal.accent, 0.40) : root.pal.accent
+                            font.family: root.pal.font
+                            font.pixelSize: root.rm.ico
+                        }
+                    }
+                }
+            }
             StatusRing {
                 id: ring
+                visible: !root.rail
                 anchors.verticalCenter: parent.verticalCenter
                 pal: root.pal
                 net: root.fakeNet

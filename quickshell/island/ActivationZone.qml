@@ -15,6 +15,7 @@ Scope {
     property bool clickMode: false
     property bool blocked: false            // a fullscreen window: nothing wakes
     property int graceMs: 1100
+    property int lenHover: 120              // hover mode: how long the strip is along the edge (px)
     signal hoverChanged(bool on)
     signal tapped()
 
@@ -32,7 +33,7 @@ Scope {
             readonly property string edge: root.zone ? root.zone.edge : "right"
             readonly property bool vert: edge === "left" || edge === "right"
             readonly property int thick: root.clickMode ? 28 : 14
-            readonly property int len: root.clickMode ? 44 : 120
+            readonly property int len: root.clickMode ? 44 : root.lenHover
             // a strip along the whole edge (click-through everywhere except the spot itself)
             anchors { top: edge !== "bottom"; bottom: edge !== "top"; left: edge !== "right"; right: edge !== "left" }
             implicitWidth: vert ? thick : 0

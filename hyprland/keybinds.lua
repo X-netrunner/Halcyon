@@ -62,12 +62,17 @@ for _, d in ipairs({ { "left", "Left" }, { "right", "Right" }, { "up", "Up" }, {
     bind("movewin_" .. d[1], "SUPER + SHIFT + " .. d[2], hl.dsp.window.move({ direction = d[1] }))
 end
 
--- Mouse: hold SUPER and drag. Right button = move the window, left button = resize it (buttons are in variables.lua:
--- kbMouseMove / kbMouseResize). On a floating window it moves / resizes freely; on a tiled one, moving drops it onto
--- another tile (it swaps) and resizing drags the split. They are plain binds with { mouse = true } on purpose: the
--- cheatsheet only lists them (kind "text"), it does not remap them.
-hl.bind(vars.kbMouseMove, hl.dsp.window.drag(), { mouse = true })
-hl.bind(vars.kbMouseResize, hl.dsp.window.resize(), { mouse = true })
+-- Mouse / Touchpad window dragging & resizing with SUPER:
+-- SUPER + Left Click (or touchpad 1-finger tap/drag): moves the window (ideal when windows have no titlebars)
+-- SUPER + Right Click (or touchpad 2-finger drag): resizes the window
+hl.bind("SUPER + mouse:272", hl.dsp.window.drag(), { mouse = true })
+hl.bind("SUPER + mouse:273", hl.dsp.window.resize(), { mouse = true })
+if vars.kbMouseMove and vars.kbMouseMove ~= "SUPER + mouse:272" and vars.kbMouseMove ~= "SUPER + mouse:273" then
+    pcall(hl.bind, vars.kbMouseMove, hl.dsp.window.drag(), { mouse = true })
+end
+if vars.kbMouseResize and vars.kbMouseResize ~= "SUPER + mouse:272" and vars.kbMouseResize ~= "SUPER + mouse:273" then
+    pcall(hl.bind, vars.kbMouseResize, hl.dsp.window.resize(), { mouse = true })
+end
 
 -- Workspaces 1-9  (SUPER+N goes to workspace N, SUPER+ALT+N moves the window there)
 for i = 1, 9 do

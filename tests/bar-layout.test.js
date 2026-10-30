@@ -5,7 +5,7 @@ const file = path.join(__dirname, "..", "quickshell", "island", "BarLayout.js")
 const src = fs.readFileSync(file, "utf8").replace(/^\.pragma library.*$/m, "")
 const ctx = {}
 vm.createContext(ctx)
-vm.runInContext(src + "\nthis.BL = { normalize, defaults, setShape, setSide, setCaps, setNum, setPad, place, add, remove, hop, isVert, zoneTitle, sides, shapes, bestMove, zoneWidth }", ctx)
+vm.runInContext(src + "\nthis.BL = { normalize, defaults, setShape, setSide, setCaps, setNum, setPad, place, add, remove, hop, isVert, zoneTitle, sides, shapes, bestMove, zoneWidth, railMetrics }", ctx)
 const BL = ctx.BL
 
 let bad = 0
@@ -56,6 +56,17 @@ eq([BL.zoneTitle({ side: "left" }, "left"), BL.zoneTitle({ side: "right" }, "cen
 // the default layout is a top notch
 const d = BL.defaults()
 eq([d.shape, d.side, d.caps], ["notch", "top", true], "defaults")
+
+// the rail's numbers: the capsule plus its two gutters is the rail; every size grows with the bar size; the focused dot is the tallest
+for (const h of [26, 32, 40]) {
+  const m = BL.railMetrics(h)
+  eq(m.capW + 2 * m.gutter, m.thick, "rail: capsule + gutters = thickness (barH " + h + ")")
+  eq(m.icoCell > m.ico && m.dotOnH > m.dotOcc && m.dotOcc > m.dotOff, true, "rail: icon cell and dot sizes are ordered (barH " + h + ")")
+  eq(m.clockPx * 2 + m.ico + 8 < 400, true, "rail: clock stays small (barH " + h + ")")
+  eq(m.dotOnW <= m.capW - 16, true, "rail: the focused dot fits the capsule (barH " + h + ")")
+}
+eq(BL.railMetrics(32).thick, 48, "rail: 48 px at the normal bar size")
+eq(BL.railMetrics(32).capW, 40, "rail: a 40 px capsule at the normal bar size, like Caelestia's")
 
 if (bad) { console.log(bad + " failed"); process.exit(1) }
 console.log("bar-layout: ok")

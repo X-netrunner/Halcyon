@@ -138,6 +138,7 @@ ShellRoot {
         treeDots: "load",          // load | even | off : floating dots gather around the heaviest workspaces / windows, spread evenly, or none
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
         frame: false, frameW: 12, frameR: 22, boxOut: "corner",   // a border around the screen: on/off, thickness (px), inner corner radius (px)
+        perfLook: "sky",           // sky | orbit | pulse | tiles : the look of the rail dashboard's Performance tab (PerfTab.qml; Settings > Bar)
         barStyle: "island",        // island | notch | custom | off : the floating pill, or a bar hanging from the top edge (NotchBar.qml), or no bar (desktop widgets instead)
         notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
         notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchSpacing: "compact",
@@ -1003,6 +1004,17 @@ ShellRoot {
         onSetProfile: p => root.setProfile(p)
         onSetAuto: root.setAuto()
     }
+    // the wake spot at the top middle of the screen: resting the pointer on it drops the dashboard (Calendar in the spotlight). It is the
+    // ONLY way a rail opens the dashboard: resting the pointer on the rail, scrolling or dragging along it do nothing any more.
+    property bool dashZoneOn: false
+    ActivationZone {
+        pal: pal
+        zone: root.railOn ? ({ edge: "top", pos: 0.5 }) : null
+        lenHover: 280
+        graceMs: 400
+        blocked: root.fsQuiet || root.page !== "home" || statusPop.open
+        onHoverChanged: on => { root.dashZoneOn = on; if (on && !railPages.open) railPages.show("cal") }
+    }
     function popStatus(kind, side, along, edge) {
         if (dropOn) { dropShow("util"); return }
         railPages.hide()
@@ -1022,11 +1034,14 @@ ShellRoot {
         id: railPages
         pal: pal
         player: root.player
+        cava: root.cava
         stats: root.stats
         gpu: root.gpu
         specs: root.specs
         disks: root.disks
         net: root.net
+        cal: calendar
+        perfLook: root.opt.perfLook || "sky"
         profile: root.profile
         profileLabel: root.profileLabel
         autoPower: root.autoPower
@@ -1034,7 +1049,9 @@ ShellRoot {
         sysmode: root.stats.sysmode || ""
         side: customBarLoader.item ? customBarLoader.item.side : "left"
         edge: customBarLoader.item ? customBarLoader.item.edgeDist : 0
-        railHeld: root.notchHovered
+        frameT: root.frameT
+        railHeld: root.dashZoneOn
+        onOpenCalendar: calendar.show()
         closeMs: root.opt.pageClose !== undefined ? root.opt.pageClose : 600
         onToggleWifi: root.toggleWifi()
         onToggleBt: root.toggleBt()
@@ -3759,9 +3776,8 @@ ShellRoot {
             onLogoClicked: root.toggleLauncher()
             onPowerClicked: powerMenu.show()
             onStatusPopup: (kind, along, edge) => root.popStatus(kind, side, along, edge)
-            onRailPage: which => { if (root.page === "home" && !statusPop.open) railPages.show(which) }
             onPageDrop: dir => root.drop(dir)
-            onPageStep: dir => { if (rail) railPages.step(dir); else root.go(dir) }
+            onPageStep: dir => { if (!rail) root.go(dir) }
             onHoverEdited: on => root.notchHovered = on
         }
     }
