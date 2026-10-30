@@ -22,7 +22,7 @@ except ValueError:
     sys.exit(0)
 for c in cs:
     if c.get("mapped") and c.get("workspace", {}).get("id", 0) > 0 and not c.get("pinned"):
-        print(c["address"], 1 if c.get("floating") else 0)
+        print(c["address"], 1 if c.get("floating") else 0, c.get("class", ""), c.get("title", ""))
 '
 }
 
@@ -39,7 +39,7 @@ case "${1:-status}" in
         printf '1\n' > "$FLAG"
         set_rule true
         : > "$LIST"
-        clients | while read -r addr fl; do
+        clients | while read -r addr fl cls ttl; do
             [ "$fl" = 0 ] || continue
             toggle_float "$addr"
             printf '%s\n' "$addr" >> "$LIST"
@@ -48,12 +48,22 @@ case "${1:-status}" in
     off)
         printf '0\n' > "$FLAG"
         set_rule false
-        if [ -s "$LIST" ]; then
-            clients | while read -r addr fl; do
-                [ "$fl" = 1 ] || continue
-                grep -qx "$addr" "$LIST" && toggle_float "$addr"
-            done
-        fi
+        saved=""
+        [ -s "$LIST" ] && saved=$(cat "$LIST")
+        clients | while read -r addr fl cls ttl; do
+            [ "$fl" = 1 ] || continue
+            case "$cls" in
+                pavucontrol|blueman-manager|nm-connection-editor|qalculate-gtk|gnome-calculator|org.gnome.Calculator|file-roller|org.gnome.FileRoller|ark|hyprland-share-picker|xdg-desktop-portal-gtk|zenity|yad|*polkit*|org.quickshell|mpv)
+                    continue
+                    ;;
+            esac
+            case "$ttl" in
+                *Picture-in-Picture*)
+                    continue
+                    ;;
+            esac
+            toggle_float "$addr"
+        done
         : > "$LIST"
         ;;
     toggle)
