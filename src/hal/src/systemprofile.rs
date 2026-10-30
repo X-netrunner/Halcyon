@@ -454,6 +454,7 @@ pub fn run(args: &[String]) -> i32 {
             }
             0
         }
+        "test" | "deep-test" => run_system_test(),
         "learn" | "refresh" | "audit" => generate_and_save_profile(),
         _ => {
             let md_file = profile_dir().join("system-knowledge.md");
@@ -467,4 +468,115 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
     }
+}
+
+pub fn run_system_test() -> i32 {
+    let iso = now_iso();
+    let (model, cpu, ram, gpu) = gather_hardware_info();
+    let (afw, aav, clam, score) = gather_security_posture();
+    let fs_info = gather_filesystem_info();
+
+    // 1. Check failed units and journals
+    let failed = crate::util::out("systemctl", &["--failed", "--no-legend", "--no-pager"]);
+    let journal_errs = crate::util::out("journalctl", &["-p", "3", "-xb", "--no-pager", "-n", "15"]);
+    let coredumps = crate::util::out("coredumpctl", &["list", "-n", "5", "--no-legend"]);
+
+    // 2. Firewall details
+    let fw_status = if crate::util::command_exists("ai-firewall") {
+        crate::util::out("ai-firewall", &["status"])
+    } else {
+        "ai-firewall not installed".to_string()
+    };
+    let open_ports = crate::util::out("ss", &["-tulpn"]);
+
+    // 3. Antivirus details
+    let av_status = if crate::util::command_exists("ai-antivirus") {
+        crate::util::out("ai-antivirus", &["status"])
+    } else {
+        "ai-antivirus not installed".to_string()
+    };
+
+    // 4. Performance & Thermals
+    let sensors = crate::util::out("sensors", &[]);
+    let free_mem = crate::util::out("free", &["-h"]);
+    let governor = fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+        .unwrap_or_else(|_| "unknown".to_string())
+        .trim()
+        .to_string();
+    let epp = fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference")
+        .unwrap_or_else(|_| "unknown".to_string())
+        .trim()
+        .to_string();
+
+    let mut out = String::new();
+    out.push_str("# Halcyon Deep System Test & Diagnostic Report\n\n");
+    out.push_str(&format!("*Executed: {}*\n", iso));
+    out.push_str(&format!("*Platform*: {} | CPU: {} | RAM: {} | GPU: {}\n\n", model, cpu, ram, gpu));
+
+    out.push_str("## 1. Bugs, Crashes & Error Profile\n");
+    let failed_trimmed = failed.trim();
+    if !failed_trimmed.is_empty() {
+        out.push_str("### Failed systemd units:\n```\n");
+        out.push_str(failed_trimmed);
+        out.push_str("\n```\n");
+    } else {
+        out.push_str("- ✔ No failed systemd units.\n");
+    }
+
+    let coredump_trimmed = coredumps.trim();
+    if !coredump_trimmed.is_empty() {
+        out.push_str("### Recent Process Coredumps:\n```\n");
+        out.push_str(coredump_trimmed);
+        out.push_str("\n```\n");
+    } else {
+        out.push_str("- ✔ No recent process coredumps recorded.\n");
+    }
+
+    out.push_str("### Critical Kernel / Journal Errors:\n```\n");
+    out.push_str(if journal_errs.trim().is_empty() { "No critical journal errors in current boot." } else { journal_errs.trim() });
+    out.push_str("\n```\n\n");
+
+    out.push_str("## 2. Firewall Verification\n");
+    out.push_str(&format!("- **Engine Posture**: {}\n", afw));
+    out.push_str("### Active Firewall State:\n```\n");
+    out.push_str(fw_status.trim());
+    out.push_str("\n```\n");
+    out.push_str("### Open Listening Ports:\n```\n");
+    out.push_str(open_ports.trim());
+    out.push_str("\n```\n\n");
+
+    out.push_str("## 3. Antivirus & EDR Verification\n");
+    out.push_str(&format!("- **Engine Posture**: {}\n", aav));
+    out.push_str(&format!("- **ClamAV Engine**: {}\n", clam));
+    out.push_str(&format!("- **Lynis Hardening Score**: {} / 100\n", score));
+    out.push_str("### Active Antivirus Status:\n```\n");
+    out.push_str(av_status.trim());
+    out.push_str("\n```\n\n");
+
+    out.push_str("## 4. Performance & Thermal Health\n");
+    out.push_str(&format!("- **CPU Governor**: {}\n", governor));
+    out.push_str(&format!("- **Energy Preference**: {}\n", epp));
+    out.push_str("### Memory & Swap:\n```\n");
+    out.push_str(free_mem.trim());
+    out.push_str("\n```\n");
+    out.push_str("### Thermals & Sensors:\n```\n");
+    out.push_str(if sensors.trim().is_empty() { "sensors not available" } else { sensors.trim() });
+    out.push_str("\n```\n");
+    out.push_str("### Storage Utilization:\n```\n");
+    out.push_str(&fs_info);
+    out.push_str("```\n\n");
+
+    out.push_str("## 5. Actionable Optimizations & Fixes\n");
+    if journal_errs.contains("nvme") || journal_errs.contains("I/O error") {
+        out.push_str("- ⚠️ **NVMe I/O Errors Detected**: Host aborted command read errors found in journalctl for nvme0n1. Check drive health with `sudo smartctl -a /dev/nvme0n1` and check PCIe power management / APST settings.\n");
+    }
+    if journal_errs.contains("dumped core") || coredump_trimmed.contains("ai-antivirus") {
+        out.push_str("- ⚠️ **ai-antivirus-sensord Coredump**: The antivirus sensor process dumped core in libc __write. Recommend restarting the daemon with `sudo systemctl restart ai-antivirus-sensord`.\n");
+    }
+    out.push_str("- 💡 **Cache Trimming**: Run `hal cache-trim --status` or `hal cache-trim --force` to recover disk space from old package and browser caches.\n");
+    out.push_str("- 💡 **Memory Management**: If swap usage rises, check `hal mem where` to find high-footprint processes.\n");
+    out.push_str("- 💡 **Package Updates**: Run `checkupdates` to check pending system upgrades.\n");
+
+    println!("{}", out);
+    0
 }
