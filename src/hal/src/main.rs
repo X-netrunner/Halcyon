@@ -40,6 +40,7 @@
 //!   hal cache-trim ...     <- scripts/cache-trim.py
 //!   hal timeline ...       <- scripts/timeline.py
 //!   hal system-profile ... <- scripts/halcyon-control.py (deep system audit & knowledge engine)
+//!   hal keep-clear         <- keeps floating windows out of the border and the bar (scripts/keep-clear.sh)
 //!   hal ping
 
 mod audioset;
@@ -62,6 +63,7 @@ mod idledim;
 mod identity;
 mod input;
 mod json;
+mod keepclear;
 pub mod light;
 mod loginstatus;
 mod loginwatchdog;
@@ -182,6 +184,7 @@ fn main() {
             systemprofile::run(&v)
         }
         Some("filemap") | Some("system-filemap") => filemap::run(rest),
+        Some("keep-clear") | Some("keepclear") => keepclear::run(),
         Some("ping") => 0,
         _ => {
             usage();

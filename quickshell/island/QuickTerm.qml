@@ -577,8 +577,10 @@ Scope {
             anchors.bottom: root.atBottom ? parent.bottom : undefined
             anchors.left: root.atRight ? undefined : parent.left
             anchors.right: root.atRight ? parent.right : undefined
-            anchors.topMargin: root.oSide ? root.offY : 0
-            anchors.leftMargin: root.oVert ? root.offX : 0
+            anchors.topMargin: root.oSide ? root.offY : (root.shown ? 0 : root.pal.insT)
+            anchors.leftMargin: root.oVert ? root.offX : (root.shown ? 0 : root.pal.insL)
+            anchors.rightMargin: root.shown ? 0 : root.pal.insR
+            anchors.bottomMargin: root.shown ? 0 : root.pal.insB
             width: root.shown ? root.boxW + 40 : (root.customZone ? 0 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14)))
             // top corner: down to the bottom of the box. bottom corner: the box's height plus its gaps (the box then sits on the bottom edge)
             height: root.shown ? (root.atBottom ? box.height + root.pal.boxEdge + 24 : box.y + box.height + 24) : (root.customZone ? 0 : (root.clickMode ? 28 : (root.wsHasFullscreen ? 0 : 14)))

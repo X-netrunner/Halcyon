@@ -13,7 +13,7 @@ import QtQuick
 //   all the time (the newest point is the live value) instead of stepping once a second.
 //   Cost: one Canvas, redrawn about 28 times a second and ONLY while the tab is on screen (`active`); a closed box does nothing. With
 //   Motion turned right down (gaming mode) it is drawn once per change and does not animate.
-// The same inputs and signals as PerfPage.qml (the island's page); this tab only reads, so the four signals are never emitted here.
+// The same inputs and signals as PerfClassic.qml (the island's page); this tab only reads, so the four signals are never emitted here.
 Item {
     id: root
     property var pal

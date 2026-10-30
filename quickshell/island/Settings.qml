@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
 import "DeskSpots.js" as DS
+import "BarLayout.js" as BL
 
 // Rice settings: one centred window, blurred backdrop, "node" cards in the same look as the SUPER+TAB tree.
 // Everything here is applied live and remembered (settings.json); Hyprland values are re-applied when the island starts.
@@ -145,6 +146,14 @@ Scope {
         if (typeof key === "string" && key.indexOf("pair:") === 0) {
             var pr = pairs[key.substring(5)]
             for (var i = 0; i < pr.length; i++) setting("opt:" + pr[i], v)
+            return
+        }
+        if (typeof key === "string" && key.indexOf("bl:") === 0) {       // one field of the bar's layout; BarLayout.js keeps the rest of it as it is
+            var bk = key.substring(3)
+            var b0 = BL.normalize(opt ? opt.barLayout : null)
+            var b1 = bk === "shape" ? BL.setShape(b0, v) : bk === "side" ? BL.setSide(b0, v) : bk === "rstyle" ? BL.setRStyle(b0, v)
+                   : bk === "caps" ? BL.setCaps(b0, v) : bk === "spMode" ? BL.setSpMode(b0, v) : null
+            if (b1) setting("opt:barLayout", b1)
             return
         }
         if (typeof key === "string" && key.indexOf("fc:") === 0) {
@@ -758,20 +767,27 @@ Scope {
             { type: "acts", label: "Your own ASCII art", desc: "Copy some ASCII art, then Paste from clipboard: it is saved and the greeting switches to Custom. Edit file opens it in your editor. Write @C1@ (accent colour) or @C2@ (grey) in the text to colour parts of it; colour codes that are already in the text keep working. Up to 40 rows. Preview shows the greeting in a terminal.", btns: [{ id: "greeting-paste", btn: "Paste from clipboard", done: "Saved" }, { id: "greeting-edit", btn: "Edit file", done: "", close: true }, { id: "greeting-preview", btn: "Preview", done: "" }] }
         ] },
         { id: "bar", title: "Bar", section: "Bar & panels", items: [
-            { type: "seg", key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Rail: a strip along the whole edge (the Caelestia-style side bar) with an optional capsule behind every widget. Custom: you choose the shape (Notch, Island or Rail), what is on the bar, where it goes and how much padding it has (Bar builder below). Off: no bar at all, put clock, workspaces, stats and the rest on the desktop as widgets (Widget builder); the launcher and the pages still open from the top edge. Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("rail", "Rail"), o("custom", "Custom"), o("off", "Off")] },
-            { type: "custom", name: "barBuilder", when: "opt:barStyle=custom||opt:barStyle=rail" },
-            { type: "chips", label: "Show in the bar", desc: "Special icons: scratch, music, monitor ... (only the ones that exist). Music bars: only while something plays. Battery % needs the battery or the combined icon.", opts: [ch("pair:ws", "Workspaces", "opt:barStyle=island|notch"), ch("pair:specials", "Special icons", "opt:barStyle=island|notch"), ch("pair:viz", "Music bars", "opt:barStyle=island|notch"), ch("pair:wifi", "Wi-Fi", "opt:barStyle=island|notch"), ch("pair:bat", "Battery", "opt:barStyle=island|notch"), ch("pair:batPct", "Battery %"), ch("pair:caffeine", "Caffeine icon", "opt:barStyle=island|notch")] },
+            { type: "seg", drop: true, key: "opt:barStyle", label: "Style", desc: "Island: the floating pill (default). Notch: a bar that hangs from the top edge of the screen with flared corners; workspaces on the left, time in the middle, Wi-Fi, Bluetooth and battery on the right. Rail: a strip along the whole edge (the Caelestia-style side bar) with an optional capsule behind every widget. Custom: you choose the shape (Notch, Island or Rail), what is on the bar, where it goes and how much padding it has (the rows below, and the Bar builder window). Off: no bar at all, put clock, workspaces, stats and the rest on the desktop as widgets (Widget builder); the launcher and the pages still open from the top edge. Everything else (pages, launcher, panels) works the same in all of them.", opts: [o("island", "Island"), o("notch", "Notch"), o("rail", "Rail"), o("custom", "Custom"), o("off", "Off")] },
+            { type: "seg", drop: true, key: "bl:shape", label: "Shape", desc: "The shape of a Custom bar: Notch (hangs from the top edge, flared corners), Island (a floating pill) or Rail (a strip along an edge of the screen).", opts: [o("notch", "Notch"), o("island", "Island"), o("rail", "Rail")], when: "opt:barStyle=custom" },
+            { type: "seg", drop: true, key: "bl:side", label: "Screen edge", desc: "Which edge of the screen the bar sits on. A bar that is not on the top edge leaves the top free: the pages and the launcher still hang from it.", opts: [o("top", "Top"), o("bottom", "Bottom"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=rail||opt:barStyle=custom" },
+            { type: "seg", drop: true, key: "bl:rstyle", label: "Rail look", desc: "Capsules: a strip along the whole edge with a soft capsule per group. Floating pill: one detached, fully rounded rail. Bare icons: no background at all, the icons sit on the desktop. Split islands: three separate pills (top, middle, bottom).", opts: [o("capsules", "Capsules"), o("pill", "Floating pill"), o("bare", "Bare icons"), o("split", "Split islands")], when: "bl:isRail=true" },
+            { type: "toggle", key: "bl:caps", label: "Capsule behind every widget", desc: "Only for the Capsules look: a soft capsule behind each group of widgets. Off: the strip alone.", when: "bl:isRail=true&bl:rstyle=capsules" },
+            { type: "seg", drop: true, key: "bl:spMode", label: "Special workspaces", desc: "Beside: their own icons next to the workspaces (the old way). Over workspaces: shown on top of the workspaces, and only while one of them is open (SUPER+S ...).", opts: [o("bar", "Beside"), o("over", "Over workspaces")], when: "opt:barStyle=rail||opt:barStyle=custom" },
             { type: "seg", key: "barPadding", label: "Bar size and padding", desc: "How tall the bar is. Island: also how far it floats from the top edge and the space at its sides.", opts: [o("low", "Low"), o("normal", "Normal"), o("high", "High")] },
+            { type: "seg", adv: true, key: "pair:spacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the time always dead centre. (Bar size and padding above is the bar's height and its distance from the edge.)", opts: [o("compact", "Compact"), o("spacious", "Spacious")] },
+            { type: "custom", name: "barBuilder" }
+        ] },
+        { id: "barwidgets", title: "Bar contents", section: "Bar & panels", items: [
+            { type: "chips", drop: true, label: "Show in the bar", desc: "Special icons: scratch, music, monitor ... (only the ones that exist). Music bars: only while something plays. Battery % needs the battery or the combined icon.", opts: [ch("pair:ws", "Workspaces", "opt:barStyle=island|notch"), ch("pair:specials", "Special icons", "opt:barStyle=island|notch"), ch("pair:viz", "Music bars", "opt:barStyle=island|notch"), ch("pair:wifi", "Wi-Fi", "opt:barStyle=island|notch"), ch("pair:bat", "Battery", "opt:barStyle=island|notch"), ch("pair:batPct", "Battery %"), ch("pair:caffeine", "Caffeine icon", "opt:barStyle=island|notch")] },
             { type: "seg", key: "opt:islWsLook", label: "Workspace look", desc: "Numbers: the island's own 1 2 3 ... with a sliding pill. Capsules: the notch look, small vertical capsules, the current one big and vivid.", opts: [o("numbers", "Numbers"), o("capsules", "Capsules")], when: "opt:barStyle=island" },
             { type: "toggle", key: "pair:combo", label: "Combined status icon", desc: "Wi-Fi, battery and Bluetooth in one round icon: Wi-Fi in the middle (lit by the signal), the battery as a ring around it, and a dot under it for each connected Bluetooth device. Off: three separate icons.", when: "opt:barStyle=island|notch" },
-            { type: "seg", adv: true, key: "pair:wsMin", label: "Capsules always shown", desc: "Workspaces 1 to N are always drawn as capsules (empty ones dim, ones with windows faded, the current one big and vivid). More show up when you use them. The notch always draws capsules; the island only with the capsule look.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")] },
+            { type: "seg", drop: true, adv: true, key: "pair:wsMin", label: "Capsules always shown", desc: "Workspaces 1 to N are always drawn as capsules (empty ones dim, ones with windows faded, the current one big and vivid). More show up when you use them. The notch always draws capsules; the island only with the capsule look.", opts: [o(3, "3"), o(4, "4"), o(5, "5"), o(6, "6"), o(8, "8")] },
             { type: "seg", adv: true, key: "opt:notchSpecialsSide", label: "Special icons side", desc: "Auto: when the clock is kept centred, the icons go to whichever side has free room, so the bar does not grow. Left / Right: always that side of the clock.", opts: [o("auto", "Auto"), o("left", "Left"), o("right", "Right")], when: "opt:barStyle=notch&pair:specials=true" },
             { type: "seg", adv: true, key: "opt:viz", label: "Music bars quality", desc: "Full: the six bars move at 30 fps. Light: the same bars at 15 fps, about half the work. Off: the bars stay flat and the visualizer program (cava) is not started. Applies at once.", opts: [o("full", "Full"), o("light", "Light"), o("off", "Off")] },
             { type: "seg", adv: true, key: "pair:wifiStyle", label: "Wi-Fi look", desc: "Symbol is the classic icon. Bars and dots light up with the signal strength. (Not used by the combined icon.)", opts: [o("symbol", "Symbol"), o("bars", "Bars"), o("dots", "Dots")], when: "pair:combo=false||opt:barStyle=custom||opt:barStyle=rail" },
             { type: "seg", adv: true, key: "pair:bt", label: "Bluetooth", desc: "Connected: only while a device is connected. Always: whenever Bluetooth is on. In the combined icon these are the dots under the ring.", opts: [o("off", "Never"), o("connected", "When connected"), o("on", "Always")] },
             { type: "seg", adv: true, key: "opt:notchAccent", label: "Notch accent colour", desc: "Colour of the workspace capsules, Wi-Fi, Bluetooth and battery. Vivid: the wallpaper's accent made clearer and more saturated. Theme: the same soft accent as the island. Second: the wallpaper's second colour.", opts: [o("vivid", "Vivid"), o("theme", "Theme"), o("accent2", "Second")], when: "opt:barStyle=notch|custom|rail" },
-            { type: "seg", adv: true, key: "pair:spacing", label: "Bar spacing", desc: "Compact: everything close together. Spacious: roomier gaps and padding, with the time always dead centre. (Bar size and padding above is the bar's height and its distance from the edge.)", opts: [o("compact", "Compact"), o("spacious", "Spacious")] },
-            { type: "seg", adv: true, key: "opt:bgWhere", label: "Background apps dot", desc: "Where the dot that says apps are running in the background is shown. The box with the apps always opens bottom-left (on the bar, click the icon to open it).", opts: [o("corner", "Corner"), o("bar", "Bar")] }
+            { type: "seg", adv: true, key: "opt:bgWhere", label: "Background apps dot", desc: "Where the dot that says apps are running in the background is shown. The box with the apps opens bottom-left (on the bar, click the icon to open it); on a rail the icon above the clock opens it as a menu next to the rail instead.", opts: [o("corner", "Corner"), o("bar", "Bar")] }
         ] },
         { id: "frame", title: "Screen border", section: "Bar & panels", items: [
             { type: "toggle", key: "opt:frame", label: "Border around the screen", desc: "A frame all around the screen, in the same colour as the bar. The Notch bar and the pages that drop from it are part of its top edge, and the notifications, utilities box, console, app menu and the other boxes slide out from under it. Windows stop at its inner edge." },
@@ -781,11 +797,11 @@ Scope {
         { id: "barbehave", title: "Bar behaviour", section: "Bar & panels", items: [
             { type: "seg", key: "opt:dropDown", label: "Drag the bar down", desc: "Pull the bar down (or use the little handle under the open page) to get the utilities box inside the bar. Swipe pages: the notifications are the next page to the right. Swipe sideways, tap the arrows or the tabs, or press Left / Right (click the box once first). Side by side: the notifications sit next to the utilities box. Drag up, or tap the handle, to go back. While this is on, the corner utilities box and the right-edge notification box are switched off. Off: the boxes stay in their corners.", opts: [o("off", "Off"), o("stack", "Swipe pages"), o("side", "Side by side")] },
             { type: "toggle", key: "autoHide", label: "Auto-hide the bar" },
-            { type: "seg", key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
+            { type: "seg", drop: true, key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
             { type: "seg", adv: true, key: "barScroll", label: "Scroll / swipe on the bar to change page", opts: [o("low", "Long swipe"), o("medium", "Medium"), o("high", "Sensitive")] },
-            { type: "seg", adv: true, key: "opt:scrollLinger", label: "Page stays after scrolling", desc: "When you open the performance / media page by scrolling or two-finger swiping the bar, how long it stays after the pointer leaves the bar.", opts: [o(1500, "Short"), o(3000, "Normal"), o(6000, "Long"), o(12000, "Very long")] },
-            { type: "seg", key: "opt:perfLook", label: "Performance tab look", desc: "How the Performance tab of the dashboard (rail bar) is drawn. Sky: a constellation, every part a star, the battery is Halcyon's star. Orbit: four rings round one centre. Pulse: five lanes with a glowing wave each, the battery a tank of light. Tiles: a bento of soft tiles, a gauge, blocks, a dot ring, a donut and two network waves. Same numbers in all of them.", opts: [o("sky", "Sky"), o("orbit", "Orbit"), o("pulse", "Pulse"), o("tiles", "Tiles")], when: "opt:barStyle=rail" },
-            { type: "seg", adv: true, key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")], when: "hoverAction=perf|media" },
+            { type: "seg", adv: true, drop: true, key: "opt:scrollLinger", label: "Page stays after scrolling", desc: "When you open the performance / media page by scrolling or two-finger swiping the bar, how long it stays after the pointer leaves the bar.", opts: [o(1500, "Short"), o(3000, "Normal"), o(6000, "Long"), o(12000, "Very long")] },
+            { type: "seg", drop: true, key: "opt:perfLook", label: "Performance tab look", desc: "How the Performance tab is drawn, on every bar (rail dashboard, island and notch page). Auto: Sky beside a rail, Classic on the island and the notch. Classic: rings, spec rows and disk bars. Sky: a constellation, every part a star, the battery is Halcyon's star. Orbit: four rings round one centre. Pulse: five lanes with a glowing wave each, the battery a tank of light. Tiles: a bento of soft tiles, a gauge, blocks, a dot ring, a donut and two network waves. Sea: a calm sea with a buoy for each part, a sun on the light theme and a moon and stars on the dark one (also the battery). Forecast: one short sentence (All calm, Getting busy, Running hot), the temperature and five tiles with a bar each. Radar: a pentagon of the five parts with the last minute's average as a dashed shape behind it. Cockpit: instruments, a big CPU dial with a temperature arc, four small rings and a row of indicator lamps. Recorder: the last five minutes on one graph, with the power and sysmode changes marked; rest the pointer on it to read the values. Editorial: one huge number, the load of the busiest part, with a quiet table of the rest beside it. Stars: six live four-point stars that drift and twinkle, brighter and bigger with more load, dimmer with less. Same numbers in all of them.", opts: [o("auto", "Auto"), o("sky", "Sky"), o("orbit", "Orbit"), o("pulse", "Pulse"), o("tiles", "Tiles"), o("sea", "Sea"), o("forecast", "Forecast"), o("radar", "Radar"), o("cockpit", "Cockpit"), o("recorder", "Recorder"), o("editorial", "Editorial"), o("stars", "Stars"), o("classic", "Classic")] },
+            { type: "seg", adv: true, drop: true, key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")], when: "hoverAction=perf|media" },
         ] },
         { id: "clock", title: "Clock", section: "Bar & panels", items: [
             { type: "seg", key: "clock24", label: "Time format", opts: [o(false, "12 hour"), o(true, "24 hour")] },
@@ -1022,6 +1038,11 @@ Scope {
             var rw = key.substring(7)
             return (remind && remind[rw + "_REMIND"]) ? String(remind[rw + "_EVERY"]) : "off"
         }
+        if (key.indexOf("bl:") === 0) {              // the bar's own layout (opt.barLayout): shape, side, rstyle, caps, spMode; isRail = the bar is a rail now
+            var bl = BL.normalize(opt ? opt.barLayout : null)
+            if (key === "bl:isRail") return !!opt && (opt.barStyle === "rail" || (opt.barStyle === "custom" && bl.shape === "rail"))
+            return bl[key.substring(3)]
+        }
         if (key.indexOf("pair:") === 0) {            // the value of the bar that is showing now (both get written together)
             var pr = pairs[key.substring(5)]
             return opt ? opt[(opt.barStyle === "notch" || opt.barStyle === "custom" || opt.barStyle === "rail") ? pr[1] : pr[0]] : undefined
@@ -1095,6 +1116,36 @@ Scope {
         return (m.signed && x >= 0 ? "+" : "") + t + (m.unit || "")
     }
     function same(a, b) { return a === b || (typeof a === "number" && typeof b === "number" && Math.abs(a - b) < 0.0001) }
+    // ---- drop-down rows (item.drop: true on a seg or chips row): SDrop.qml shows them instead of a row of buttons
+    // the entries of the menu: a seg lists every choice (the present one is on); chips list the switches that are shown now
+    function dropItems(m) {
+        var out = []
+        if (!m || !m.opts) return out
+        for (var i = 0; i < m.opts.length; i++) {
+            var q = m.opts[i]
+            if (m.type === "chips") {
+                if (q.when && !whenOk(q.when)) continue
+                out.push({ t: q.t, on: !!get(q.k), idx: i })
+            } else {
+                out.push({ t: q.t, on: same(get(m.key), q.v), idx: i })
+            }
+        }
+        return out
+    }
+    // the text on the closed menu: the choice, or how many of the switches are on
+    function dropSummary(m) {
+        var it = dropItems(m), n = 0, name = ""
+        for (var i = 0; i < it.length; i++) if (it[i].on) { n++; if (name === "") name = it[i].t }
+        if (m.type === "chips") return n === 0 ? "None" : (n === it.length ? "All " + n : n + " of " + it.length + " on")
+        return name !== "" ? name : "Choose"
+    }
+    function dropPick(m, i) {
+        var it = dropItems(m)
+        if (i < 0 || i >= it.length) return
+        var q = m.opts[it[i].idx]
+        if (m.type === "chips") change(q.k, !get(q.k))
+        else change(m.key, q.v)
+    }
     function boolVal(m) {
         if (m.type === "tool") return !!tools[m.key]
         var v = get(m.key)
@@ -1116,7 +1167,7 @@ Scope {
         { id: "Discover", sub: "The settings you use most, everything Halcyon can do, and the guided tour.", groups: ["often", "discover"] },
         { id: "Appearance", sub: "Look, your profile, colours, wallpaper, transparency and motion.", groups: ["look", "profile", "colours", "wallpaper", "glass", "motion"] },
         { id: "Stars & splash", sub: "Constellations, the splash, the weekly sky, time of day and the terminal greeting.", groups: ["growth", "signature", "greeting"] },
-        { id: "Bar", sub: "The bar, how it behaves, and the clock.", groups: ["bar", "barbehave", "frame", "clock"] },
+        { id: "Bar", sub: "The bar: its look and edge, what is on it, how it behaves, the border and the clock.", groups: ["bar", "barwidgets", "barbehave", "frame", "clock"] },
         { id: "Panels", sub: "Notifications, the edge boxes, the volume bar and the utilities box.", groups: ["notifications", "osd", "utilbox"] },
         { id: "Desktop", sub: "The desktop and widget builders, workspaces and windows.", groups: ["desktop", "widgets", "workspaces"] },
         { id: "Productivity", sub: "Focus mode, the calendar, notes and recording.", groups: ["focus", "calendar", "notes", "recording"] },
@@ -1641,7 +1692,7 @@ Scope {
                                                     property bool descOpen: false
                                                     property bool descPeek: false
                                                     readonly property bool child: pr.m.when !== undefined && root.query === ""      // depends on the row above: a short branch
-                                                    readonly property bool shortSeg: pr.m.type === "seg" && pr.m.opts.length <= 3 && pr.m.opts.every(function (x) { return String(x.t).length <= 14 })
+                                                    readonly property bool shortSeg: pr.m.type === "seg" && pr.m.drop !== true && pr.m.opts.length <= 3 && pr.m.opts.every(function (x) { return String(x.t).length <= 14 })
                                                     readonly property bool side: pr.m.type === "toggle" || pr.m.type === "tool" || pr.m.type === "action" || pr.m.type === "slider" || pr.shortSeg
                                                     width: rowsCol.width
                                                     height: body.implicitHeight + (root.pal.zen ? 36 : root.pal.calm ? 34 : 28)
@@ -1748,10 +1799,10 @@ Scope {
                                                         // the wide ones sit under the label: long option lists, several switches in one row
                                                         Flow {
                                                             Layout.fillWidth: true
-                                                            visible: (pr.m.type === "seg" && !pr.shortSeg) || pr.m.type === "chips"
+                                                            visible: pr.m.drop !== true && ((pr.m.type === "seg" && !pr.shortSeg) || pr.m.type === "chips")
                                                             spacing: 10
                                                             Repeater {
-                                                                model: ((pr.m.type === "seg" && !pr.shortSeg) || pr.m.type === "chips") ? pr.m.opts : []
+                                                                model: (pr.m.drop !== true && ((pr.m.type === "seg" && !pr.shortSeg) || pr.m.type === "chips")) ? pr.m.opts : []
                                                                 delegate: SChip {
                                                                     required property var modelData
                                                                     visible: pr.m.type !== "chips" || !modelData.when || root.whenOk(modelData.when)
@@ -1761,6 +1812,17 @@ Scope {
                                                                     onClicked: pr.m.type === "chips" ? root.change(modelData.k, !root.get(modelData.k)) : root.change(pr.m.key, modelData.v)
                                                                 }
                                                             }
+                                                        }
+                                                        // a drop-down instead of a row of buttons (item.drop)
+                                                        SDrop {
+                                                            Layout.preferredWidth: 300
+                                                            Layout.alignment: Qt.AlignLeft
+                                                            visible: pr.m.drop === true
+                                                            pal: root.pal
+                                                            multi: pr.m.type === "chips"
+                                                            items: pr.m.drop === true ? root.dropItems(pr.m) : []
+                                                            summary: pr.m.drop === true ? root.dropSummary(pr.m) : ""
+                                                            onPicked: i => root.dropPick(pr.m, i)
                                                         }
                                                         Flow {
                                                             Layout.fillWidth: true
@@ -2120,10 +2182,10 @@ Scope {
                                                             // pick one (seg) / switch several on and off (chips: every chip flips its own key)
                                                             Flow {
                                                                 Layout.fillWidth: true
-                                                                visible: leaf.m.type === "seg" || leaf.m.type === "chips"
+                                                                visible: leaf.m.drop !== true && (leaf.m.type === "seg" || leaf.m.type === "chips")
                                                                 spacing: 10
                                                                 Repeater {
-                                                                    model: (leaf.m.type === "seg" || leaf.m.type === "chips") ? leaf.m.opts : []
+                                                                    model: (leaf.m.drop !== true && (leaf.m.type === "seg" || leaf.m.type === "chips")) ? leaf.m.opts : []
                                                                     delegate: SChip {
                                                                         required property var modelData
                                                                         visible: leaf.m.type !== "chips" || !modelData.when || root.whenOk(modelData.when)
@@ -2133,6 +2195,18 @@ Scope {
                                                                         onClicked: leaf.m.type === "chips" ? root.change(modelData.k, !root.get(modelData.k)) : root.change(leaf.m.key, modelData.v)
                                                                     }
                                                                 }
+                                                            }
+
+                                                            // a drop-down instead of a row of buttons (item.drop)
+                                                            SDrop {
+                                                                Layout.preferredWidth: 300
+                                                                Layout.alignment: Qt.AlignLeft
+                                                                visible: leaf.m.drop === true
+                                                                pal: root.pal
+                                                                multi: leaf.m.type === "chips"
+                                                                items: leaf.m.drop === true ? root.dropItems(leaf.m) : []
+                                                                summary: leaf.m.drop === true ? root.dropSummary(leaf.m) : ""
+                                                                onPicked: i => root.dropPick(leaf.m, i)
                                                             }
 
                                                             // several buttons in one row
