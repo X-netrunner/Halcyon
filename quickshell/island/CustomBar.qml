@@ -53,14 +53,13 @@ PanelWindow {
     signal specialClicked(string name)
     signal statusClicked()
     signal statusPopup(string kind, real along, real edge)   // a click on the Wi-Fi / Bluetooth / battery icon: the pop-up next to it (shell.qml StatusPop)
-    signal railPage(string which)             // rail: the pointer rested near the top ("media") or the bottom ("perf") of the rail
     signal pageDrop(int dir)                  // drag the bar towards the screen's inside (+1) / back (-1): the utilities box and notifications (Settings > Bar style)
     signal clockToggled(string what)          // right click on the time = 12 / 24 hour, middle click = seconds (shell.qml flips the setting)
     signal bgClicked()
     signal numLockClicked()                   // click on the Num Lock widget (shell.qml flips the key)
     signal logoClicked()                      // click on the OS/Launcher logo (shell.qml toggles launcher)
     signal powerClicked()                     // click on the Power button (shell.qml opens session menu)
-    signal pageStep(int dir)                  // wheel / drag along the bar: -1 = media, +1 = performance (shell.qml go())
+    signal pageStep(int dir)                  // wheel / drag along the bar: -1 = media, +1 = performance (shell.qml go()); a rail never sends it
     signal hoverEdited(bool on)               // the pointer is on the bar / left it (shell.qml opens perf / media after a moment)
 
     // ---- layout: what is on the bar, where, and how it looks
@@ -94,10 +93,13 @@ PanelWindow {
     readonly property bool spacious: opt.notchSpacing === "spacious"
     readonly property var sp: BL.resolve(lay, barH, spacious)
     // a typed gap is used everywhere; otherwise each zone keeps its own automatic one
-    readonly property int midGap: lay.gap !== null ? lay.gap : sp.autoMidGap
+    // (a rail keeps a clear gap between its capsules, see BL.railMetrics; the dots of the workspaces sit closer: innerGap)
+    readonly property int midGap: lay.gap !== null ? lay.gap : (rail ? rm.gap : sp.autoMidGap)
     readonly property int groupGap: sp.clear
     readonly property int itemGap: sp.gap
-    readonly property int rightGap: lay.gap !== null ? lay.gap : sp.autoRightGap
+    readonly property int zoneGap: (rail && lay.gap === null) ? rm.gap : sp.gap
+    readonly property int innerGap: rail ? (lay.gap !== null ? lay.gap : rm.dotGap) : sp.gap
+    readonly property int rightGap: lay.gap !== null ? lay.gap : (rail ? rm.gap : sp.autoRightGap)
     readonly property bool showBatPct: opt.notchBatPct === true
     signal clockClicked()                 // a left click on the time while Settings > Calendar > Clock click is on
     readonly property bool calClock: opt.calOn !== false && opt.calClock !== false
@@ -106,9 +108,10 @@ PanelWindow {
     // ---- size (Bar size and padding): the same numbers as the Notch
     readonly property var sizeSet: ({ low: { h: 26, gap: 3 }, normal: { h: 32, gap: 8 }, high: { h: 40, gap: 12 } })[barPadding] || ({ h: 32, gap: 8 })
     readonly property int barH: sizeSet.h
-    // how thick the bar is, across (its height on a top / bottom bar, its width on a left / right one). A rail is a little thicker: its
-    // widgets sit in capsules with room around them.
-    readonly property int bt: rail ? barH + 8 : barH
+    // how thick the bar is, across (its height on a top / bottom bar, its width on a left / right one). A rail is thicker: its
+    // widgets sit in capsules (barH + 8 wide, like Caelestia's 40 px ones) with a 4 px gutter on each side.
+    readonly property var rm: BL.railMetrics(barH)
+    readonly property int bt: rail ? rm.thick : barH
     readonly property real earR: isl ? 0 : Math.round(barH * 0.42)             // the flare of the notch (the island has none)
     readonly property real cornR: isl ? barH / 2 : Math.round(barH * 0.42)
     readonly property int edgeM: isl ? Math.max(4, sizeSet.gap) : 0             // the island floats a little away from the screen edge
@@ -118,7 +121,7 @@ PanelWindow {
     readonly property int curW: Math.round(curH * 0.55)
     readonly property int offH: Math.round(curH * 0.85)
     readonly property int offW: Math.round(curW * 0.8)
-    readonly property int icoH: offH
+    readonly property int icoH: rail ? rm.ico : offH                          // a rail has one calm icon size (BL.railMetrics)
     readonly property int comboSize: Math.round(barH * 0.78)
 
     // what shell.qml needs to know: how wide the bar is while it hangs from the TOP (the pages grow out of it). A bar on another edge,
@@ -186,11 +189,8 @@ PanelWindow {
         statusPopup(kind, vert ? c.y : c.x, e)
     }
     readonly property real edgeDist: (band ? 0 : frameT) + edgeM + notch.bandT      // how far the bar's inner edge is from the screen's edge
-    // rail: the pointer rests near the start / end of the rail
-    readonly property bool railHoverOn: rail && opt.railHover !== false
-    property string railZone: ""
-    Timer { id: railT; interval: 350; onTriggered: if (win.railZone !== "") win.railPage(win.railZone) }
-    onRailZoneChanged: { if (railZone !== "") railT.restart(); else railT.stop() }
+    // (a rail does not open the Media / Performance tabs any more, neither by resting the pointer near its ends nor by scrolling or
+    // dragging along it: the tabs come from the wake spot at the top middle of the screen only, see shell.qml)
 
     // ------------------------------------------------------------------ the bar
     Item {
@@ -209,7 +209,8 @@ PanelWindow {
         readonly property real crossOff: {
             if (!win.band) return 0
             var far = (win.side === "right" || win.side === "bottom")
-            return (far ? win.earR : 0) + win.frameT / 2
+            // (-1 on a left / top rail: measured on a screenshot, the capsule sat 1 px too far in, gaps of 9 and 7 px)
+            return (far ? win.earR : 0) + win.frameT / 2 - (far ? 0 : 1)
         }
         readonly property real sideW: Math.max(leftZone.along, rightZone.along)
         readonly property real centerW: midBox.along
@@ -250,20 +251,6 @@ PanelWindow {
             onHoveredChanged: {
                 win.hoverEdited(hovered)
                 if (hovered) { peekT.stop() } else peekT.restart()
-            }
-        }
-
-        // a rail: where the pointer rests along it picks the page. Near the start (top) = the music window, near the end (bottom) = performance.
-        HoverHandler {
-            id: railHov
-            enabled: win.railHoverOn
-            onHoveredChanged: if (!hovered) win.railZone = ""
-            onPointChanged: {
-                if (!hovered) return
-                var len = Math.max(1, win.vert ? notch.height : notch.width)
-                var f = (win.vert ? point.position.y : point.position.x) / len
-                var z = f < 0.22 ? "media" : (f > 0.78 ? "perf" : "")
-                if (z !== win.railZone) win.railZone = z
             }
         }
 
@@ -423,6 +410,7 @@ PanelWindow {
         Timer { id: wheelCool; interval: 450 }
         Timer { id: wheelReset; interval: 300; onTriggered: notch.wheelAcc = 0 }
         WheelHandler {
+            enabled: !win.rail                                         // a rail has no pages to step through
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             onWheel: e => {
                 if (wheelCool.running) return
@@ -453,6 +441,7 @@ PanelWindow {
                 var al = win.vert ? dy : dx                                    // along the bar
                 var cr = (win.vert ? dx : dy) * win.inSign                     // across it, + = towards the screen's inside
                 if (win.dropOn && Math.abs(cr) > Math.abs(al) && Math.abs(cr) > 40) win.pageDrop(cr > 0 ? 1 : -1)
+                else if (win.rail) return                                      // (a rail only has the drop-down drag above)
                 else if (al < -50) win.pageStep(1)
                 else if (al > 50) win.pageStep(-1)
             }
@@ -471,9 +460,9 @@ PanelWindow {
                 readonly property bool cur: ws !== null && ws.focused
                 readonly property bool occ: ws !== null && win.wsWindows(ws) > 0
                 // the capsule grows when it is the current one: along the bar, and across it
-                // on a rail (Caelestia style): focused is a tall 8x26 pill, occupied is 6x10 mini pill, empty is 6x6 dot
-                readonly property real railALen: cur ? 26 : (occ ? 10 : 6)
-                readonly property real railXLen: cur ? 8 : 6
+                // on a rail (Caelestia style): the focused one is a tall pill, one with windows a round dot, an empty one a smaller dot
+                readonly property real railALen: cur ? win.rm.dotOnH : (occ ? win.rm.dotOcc : win.rm.dotOff)
+                readonly property real railXLen: cur ? win.rm.dotOnW : (occ ? win.rm.dotOcc : win.rm.dotOff)
                 property real aLen: win.rail ? railALen : (cur ? win.curW : win.offW)
                 property real xLen: win.rail ? railXLen : (cur ? win.curH : win.offH)
                 Behavior on aLen { NumberAnimation { duration: Math.round(win.pal.dSlow * 0.8); easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
@@ -486,8 +475,8 @@ PanelWindow {
                     height: win.vert ? wsItem.aLen : wsItem.xLen
                     radius: Math.min(width, height) / 2
                     color: wsItem.cur ? win.ac
-                         : wsItem.occ ? (win.rail ? Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.90 : 0.70) : Qt.alpha(win.ac, wsMa.containsMouse ? 0.55 : 0.36))
-                         : (win.rail ? Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.45 : 0.22) : Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.28 : 0.14))
+                         : wsItem.occ ? (win.rail ? Qt.alpha(win.ac, wsMa.containsMouse ? 0.80 : 0.55) : Qt.alpha(win.ac, wsMa.containsMouse ? 0.55 : 0.36))
+                         : (win.rail ? Qt.alpha(win.ac, wsMa.containsMouse ? 0.45 : 0.22) : Qt.alpha(win.pal.text, wsMa.containsMouse ? 0.28 : 0.14))
                     Behavior on color { ColorAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
                 MouseArea {
@@ -519,7 +508,7 @@ PanelWindow {
                     id: wsFlow
                     anchors.centerIn: parent
                     vert: win.vert
-                    spacing: win.itemGap
+                    spacing: win.innerGap
                     model: win.wsCount
                     delegate: wsDelegate
                     opacity: win.specUp ? 0.14 : 1
@@ -532,7 +521,7 @@ PanelWindow {
                     id: ovFlow
                     anchors.centerIn: parent
                     vert: win.vert
-                    spacing: win.itemGap
+                    spacing: win.innerGap
                     model: win.specOver ? win.specials : []
                     delegate: spDelegate
                     opacity: win.specUp ? 1 : 0
@@ -581,7 +570,7 @@ PanelWindow {
                     id: spFlow
                     anchors.centerIn: parent
                     vert: win.vert
-                    spacing: win.itemGap
+                    spacing: win.innerGap
                     model: win.specOver ? [] : win.specials
                     delegate: spDelegate
                 }
@@ -609,7 +598,9 @@ PanelWindow {
         }
 
         // a left / right bar: hours over minutes (over seconds, and am / pm in 12 h)
-        // on a rail (Caelestia style): calendar icon on top, bold hours and minutes, lowercase am/pm
+        // on a rail (like Caelestia's clock): ONE colour for the whole clock, a calendar icon over small, tight hours and minutes,
+        // lowercase am / pm; the numbers are small (12 px) so they sit calmly in the 40 px capsule
+        readonly property color railTint: win.pal.accent2
         Component { id: cClock
             Item {
                 id: clkBox
@@ -621,29 +612,32 @@ PanelWindow {
                     height: notch.bh
                     verticalAlignment: Text.AlignVCenter
                     text: notch.timeStr
-                    color: win.pal.text
+                    color: win.rail ? notch.railTint : win.pal.text
                     font.family: win.pal.uiFont
-                    font.pixelSize: win.textPx
+                    font.pixelSize: win.rail ? win.rm.clockPx + 1 : win.textPx
                     font.weight: Font.DemiBold
                 }
                 Column {
                     id: clkV
                     visible: win.vert
                     anchors.centerIn: parent
-                    spacing: win.rail ? 2 : 0
+                    spacing: win.rail ? 3 : 0
                     Text {
                         visible: win.rail
                         width: notch.bh
                         horizontalAlignment: Text.AlignHCenter
                         text: String.fromCodePoint(0xF00ED)
-                        color: win.ac
+                        color: notch.railTint
                         font.family: win.pal.font
-                        font.pixelSize: Math.max(10, win.textPx - 1)
+                        font.pixelSize: win.rm.clockPx + 2
                     }
-                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.hourStr; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.textPx + 1 : win.textPx; font.weight: Font.DemiBold }
-                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.minStr; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.textPx + 1 : win.textPx; font.weight: Font.DemiBold }
-                    Text { visible: win.showSeconds; width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.secStr; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: Math.max(9, win.textPx - 3) }
-                    Text { visible: !win.clock24; width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: win.rail ? notch.apStr.toLowerCase() : notch.apStr; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: Math.max(9, win.textPx - 4) }
+                    Column {
+                        spacing: 0
+                        Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.hourStr; color: win.rail ? notch.railTint : win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.clockPx : win.textPx; font.weight: Font.DemiBold; lineHeight: win.rail ? 0.92 : 1.0; lineHeightMode: Text.ProportionalHeight }
+                        Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.minStr; color: win.rail ? notch.railTint : win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.clockPx : win.textPx; font.weight: Font.DemiBold; lineHeight: win.rail ? 0.92 : 1.0; lineHeightMode: Text.ProportionalHeight }
+                        Text { visible: win.showSeconds; width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.secStr; color: win.rail ? Qt.alpha(notch.railTint, 0.7) : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.smallPx : Math.max(9, win.textPx - 3); lineHeight: win.rail ? 0.92 : 1.0; lineHeightMode: Text.ProportionalHeight }
+                    }
+                    Text { visible: !win.clock24; width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: win.rail ? notch.apStr.toLowerCase() : notch.apStr; color: win.rail ? Qt.alpha(notch.railTint, 0.75) : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.smallPx : Math.max(9, win.textPx - 4) }
                 }
                 TapHandler { acceptedButtons: Qt.LeftButton; onTapped: { if (win.calClock) win.clockClicked(); else win.statusTap() } }
                 TapHandler { acceptedButtons: Qt.RightButton; onTapped: win.clockToggled("24h") }
@@ -662,17 +656,17 @@ PanelWindow {
                     height: notch.bh
                     verticalAlignment: Text.AlignVCenter
                     text: notch.dateStr
-                    color: win.pal.muted
+                    color: win.rail ? Qt.alpha(notch.railTint, 0.8) : win.pal.muted
                     font.family: win.pal.uiFont
-                    font.pixelSize: Math.max(10, win.textPx - 2)
+                    font.pixelSize: win.rail ? win.rm.smallPx + 1 : Math.max(10, win.textPx - 2)
                 }
                 Column {
                     id: dateV
                     visible: win.vert
                     anchors.centerIn: parent
-                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.dayStr; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: Math.max(9, win.textPx - 3) }
-                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.dayNumStr; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: Math.max(10, win.textPx - 1); font.weight: Font.DemiBold }
-                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.monStr; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: Math.max(9, win.textPx - 3) }
+                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.dayStr; color: win.rail ? Qt.alpha(notch.railTint, 0.75) : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.smallPx : Math.max(9, win.textPx - 3) }
+                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.dayNumStr; color: win.rail ? notch.railTint : win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.clockPx : Math.max(10, win.textPx - 1); font.weight: Font.DemiBold }
+                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.monStr; color: win.rail ? Qt.alpha(notch.railTint, 0.75) : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.smallPx : Math.max(9, win.textPx - 3) }
                 }
             }
         }
@@ -748,6 +742,8 @@ PanelWindow {
                     textFont: win.pal.uiFont
                     textPx: Math.max(10, win.textPx - 2)
                 }
+                // a rail: every status icon is the same size in a cell of the same size, one hue (the accent) for all of them: lit = the
+                // accent, quiet = the accent at 40 %. Only the battery speaks another colour (green charging, red low).
                 Grid {
                     id: stsRailCol
                     visible: win.rail
@@ -756,8 +752,9 @@ PanelWindow {
                     flow: win.vert ? Grid.TopToBottom : Grid.LeftToRight
                     rows: win.vert ? 100 : 1
                     columns: win.vert ? 1 : 100
-                    spacing: 10
-                    readonly property int gp: win.icoH + 2
+                    spacing: win.rm.icoGap
+                    readonly property int px: win.rm.ico
+                    readonly property int cell: win.rm.icoCell
                     readonly property bool wifiUp: win.net.eth || (win.net.wifi === "on" && (win.net.ssid || "") !== "")
                     readonly property real sig: Number(win.net.signal || 0)
                     readonly property int lvl: Math.max(0, Math.min(10, Math.round(Number(win.stats.bat || 0) / 10)))
@@ -766,64 +763,57 @@ PanelWindow {
                     // Caffeine: only while the screen is kept awake
                     InkIcon {
                         visible: win.caffeine
-                        width: win.vert ? notch.bh : implicitWidth
+                        width: win.vert ? notch.bh : stsRailCol.cell
+                        height: win.vert ? stsRailCol.cell : notch.bh
                         glyph: String.fromCodePoint(0xF0176)
                         color: win.ac
                         fontFamily: win.pal.font
-                        px: stsRailCol.gp
+                        px: stsRailCol.px
                     }
                     // Num Lock: a keyboard icon, lit while it is on (click = switch it)
-                    Item {
-                        width: win.vert ? notch.bh : stsRailCol.gp + 8
-                        height: stsRailCol.gp + 8
-                        InkIcon {
-                            anchors.fill: parent
-                            glyph: String.fromCodePoint(0xF0313)
-                            color: win.numLock ? win.ac : Qt.alpha(win.pal.text, nlStsMa.containsMouse ? 0.8 : 0.45)
-                            fontFamily: win.pal.font
-                            px: stsRailCol.gp
-                            Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                        }
+                    InkIcon {
+                        width: win.vert ? notch.bh : stsRailCol.cell
+                        height: win.vert ? stsRailCol.cell : notch.bh
+                        glyph: String.fromCodePoint(0xF0313)
+                        color: win.numLock ? win.ac : Qt.alpha(win.ac, nlStsMa.containsMouse ? 0.65 : 0.40)
+                        fontFamily: win.pal.font
+                        px: stsRailCol.px
+                        Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         MouseArea { id: nlStsMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.numLockClicked() }
                     }
-                    // Wi-Fi, Bluetooth, battery: a tap opens the quick settings
-                    Grid {
-                        id: netCol
-                        flow: stsRailCol.flow
-                        rows: stsRailCol.rows
-                        columns: stsRailCol.columns
-                        spacing: stsRailCol.spacing
-                        // wifi: the strength shows in the symbol itself; cable for ethernet; crossed out while it is off
-                        InkIcon {
-                            width: win.vert ? notch.bh : implicitWidth
-                            glyph: String.fromCodePoint(win.net.eth ? 0xF0200
-                                  : !stsRailCol.wifiUp ? 0xF05AA
-                                  : (stsRailCol.sig <= 0 || stsRailCol.sig > 75) ? 0xF0928 : (stsRailCol.sig > 50 ? 0xF0925 : (stsRailCol.sig > 25 ? 0xF0922 : 0xF091F)))
-                            color: stsRailCol.wifiUp ? win.ac : Qt.alpha(win.pal.text, 0.4)
-                            fontFamily: win.pal.font
-                            px: stsRailCol.gp
-                            TapHandler { onTapped: win.popFor("wifi", parent) }
-                        }
-                        // bluetooth (only while it is on; lit while a device is connected)
-                        InkIcon {
-                            visible: win.btShown
-                            width: win.vert ? notch.bh : implicitWidth
-                            glyph: String.fromCodePoint((win.net.btdev || "") !== "" ? 0xF00B1 : 0xF00AF)
-                            color: (win.net.btdev || "") !== "" ? win.ac : Qt.alpha(win.ac, 0.5)
-                            fontFamily: win.pal.font
-                            px: stsRailCol.gp
-                            TapHandler { onTapped: win.popFor("bt", parent) }
-                        }
-                        // battery: the level in the symbol, a bolt while charging, red when low
-                        InkIcon {
-                            visible: win.stats.hasBat === true
-                            width: win.vert ? notch.bh : implicitWidth
-                            glyph: String.fromCodePoint(win.stats.charging ? stsRailCol.chgGlyphs[stsRailCol.lvl] : stsRailCol.batGlyphs[stsRailCol.lvl])
-                            color: win.stats.charging ? win.pal.good : ((win.stats.bat || 0) <= 20 ? win.pal.bad : win.ac)
-                            fontFamily: win.pal.font
-                            px: stsRailCol.gp
-                            TapHandler { onTapped: win.popFor("battery", parent) }
-                        }
+                    // Wi-Fi: the strength shows in the symbol itself; cable for ethernet; crossed out while it is off
+                    InkIcon {
+                        width: win.vert ? notch.bh : stsRailCol.cell
+                        height: win.vert ? stsRailCol.cell : notch.bh
+                        glyph: String.fromCodePoint(win.net.eth ? 0xF0200
+                              : !stsRailCol.wifiUp ? 0xF05AA
+                              : (stsRailCol.sig <= 0 || stsRailCol.sig > 75) ? 0xF0928 : (stsRailCol.sig > 50 ? 0xF0925 : (stsRailCol.sig > 25 ? 0xF0922 : 0xF091F)))
+                        color: stsRailCol.wifiUp ? win.ac : Qt.alpha(win.ac, 0.40)
+                        fontFamily: win.pal.font
+                        px: stsRailCol.px
+                        TapHandler { onTapped: win.popFor("wifi", parent) }
+                    }
+                    // bluetooth (only while it is on; lit while a device is connected)
+                    InkIcon {
+                        visible: win.btShown
+                        width: win.vert ? notch.bh : stsRailCol.cell
+                        height: win.vert ? stsRailCol.cell : notch.bh
+                        glyph: String.fromCodePoint((win.net.btdev || "") !== "" ? 0xF00B1 : 0xF00AF)
+                        color: (win.net.btdev || "") !== "" ? win.ac : Qt.alpha(win.ac, 0.50)
+                        fontFamily: win.pal.font
+                        px: stsRailCol.px
+                        TapHandler { onTapped: win.popFor("bt", parent) }
+                    }
+                    // battery: the level in the symbol, a bolt while charging, red when low
+                    InkIcon {
+                        visible: win.stats.hasBat === true
+                        width: win.vert ? notch.bh : stsRailCol.cell
+                        height: win.vert ? stsRailCol.cell : notch.bh
+                        glyph: String.fromCodePoint(win.stats.charging ? stsRailCol.chgGlyphs[stsRailCol.lvl] : stsRailCol.batGlyphs[stsRailCol.lvl])
+                        color: win.stats.charging ? win.pal.good : ((win.stats.bat || 0) <= 20 ? win.pal.bad : win.ac)
+                        fontFamily: win.pal.font
+                        px: stsRailCol.px
+                        TapHandler { onTapped: win.popFor("battery", parent) }
                     }
                 }
                 TapHandler { enabled: !win.rail; onTapped: win.popFor("wifi", ring) }       // (on a rail each icon takes its own tap; Num Lock has its own)
@@ -929,21 +919,21 @@ PanelWindow {
         Component { id: cNumLock
             Item {
                 id: nlBox
-                implicitWidth: win.vert ? notch.bh : (win.rail ? 26 : nlKey.width)
-                implicitHeight: win.vert ? (win.rail ? 26 : nlKey.height) : notch.bh
+                implicitWidth: win.vert ? notch.bh : (win.rail ? win.rm.icoCell + 6 : nlKey.width)
+                implicitHeight: win.vert ? (win.rail ? win.rm.icoCell + 6 : nlKey.height) : notch.bh
                 // a rail (Caelestia style): just an icon, lit while Num Lock is on
                 Rectangle {
                     visible: win.rail
                     anchors.centerIn: parent
-                    width: 26; height: 26; radius: 13
-                    color: win.numLock ? Qt.alpha(win.ac, 0.20) : (nlRailMa.containsMouse ? Qt.alpha(win.pal.text, 0.09) : "transparent")
+                    width: win.rm.icoCell + 6; height: win.rm.icoCell + 6; radius: width / 2
+                    color: win.numLock ? Qt.alpha(win.ac, 0.20) : (nlRailMa.containsMouse ? Qt.alpha(win.ac, 0.12) : "transparent")
                     Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text {
                         anchors.centerIn: parent
                         text: String.fromCodePoint(0xF0313)
-                        color: win.numLock ? win.ac : Qt.alpha(win.pal.text, nlRailMa.containsMouse ? 0.8 : 0.45)
+                        color: win.numLock ? win.ac : Qt.alpha(win.ac, nlRailMa.containsMouse ? 0.65 : 0.40)
                         font.family: win.pal.font
-                        font.pixelSize: win.icoH + 1
+                        font.pixelSize: win.icoH
                         Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     MouseArea {
@@ -1045,11 +1035,12 @@ PanelWindow {
         Component { id: cLogo
             Item {
                 id: logoBox
-                implicitWidth: win.vert ? notch.bh : win.icoH + 8
-                implicitHeight: win.vert ? win.icoH + 8 : notch.bh
+                readonly property int lg: win.rail ? win.rm.logo : win.icoH       // the arch logo does not grow with the other rail icons
+                implicitWidth: win.vert ? notch.bh : lg + (win.rail ? 14 : 8)
+                implicitHeight: win.vert ? lg + (win.rail ? 14 : 8) : notch.bh
                 Rectangle {
                     anchors.centerIn: parent
-                    width: Math.min(notch.bh - 4, win.icoH + 12)
+                    width: Math.min(notch.bh - 4, lg + (win.rail ? 14 : 12))
                     height: width
                     radius: width / 2
                     color: logoMa.containsMouse ? Qt.alpha(win.ac, 0.16) : "transparent"
@@ -1057,9 +1048,9 @@ PanelWindow {
                     Text {
                         anchors.centerIn: parent
                         text: String.fromCodePoint(0xF08C7)
-                        color: logoMa.containsMouse ? win.ac : Qt.alpha(win.pal.text, 0.85)
+                        color: logoMa.containsMouse ? win.ac : (win.rail ? notch.railTint : Qt.alpha(win.pal.text, 0.85))
                         font.family: win.pal.font
-                        font.pixelSize: Math.round(win.icoH * 1.1)
+                        font.pixelSize: win.rail ? lg + 2 : Math.round(win.icoH * 1.1)
                         Behavior on color { ColorAnimation { duration: win.pal.dFast } }
                     }
                 }
@@ -1078,11 +1069,11 @@ PanelWindow {
             Item {
                 id: pwrBox
                 readonly property color errCol: win.pal.bad || "#f16061"
-                implicitWidth: win.vert ? notch.bh : win.icoH + 8
-                implicitHeight: win.vert ? win.icoH + 8 : notch.bh
+                implicitWidth: win.vert ? notch.bh : win.icoH + (win.rail ? 14 : 8)
+                implicitHeight: win.vert ? win.icoH + (win.rail ? 14 : 8) : notch.bh
                 Rectangle {
                     anchors.centerIn: parent
-                    width: Math.min(notch.bh - 4, win.icoH + 12)
+                    width: Math.min(notch.bh - 4, win.icoH + (win.rail ? 14 : 12))
                     height: width
                     radius: width / 2
                     color: pwrMa.containsMouse ? Qt.alpha(pwrBox.errCol, 0.20) : (win.rail ? "transparent" : Qt.alpha(pwrBox.errCol, 0.10))
@@ -1095,7 +1086,7 @@ PanelWindow {
                         text: String.fromCodePoint(0xF0425)
                         color: pwrBox.errCol
                         font.family: win.pal.font
-                        font.pixelSize: Math.round(win.icoH * (win.rail ? 1.45 : 1.05))
+                        font.pixelSize: win.rail ? win.rm.powerPx : Math.round(win.icoH * 1.05)
                         font.weight: Font.Bold
                     }
                 }
@@ -1141,7 +1132,7 @@ PanelWindow {
         BarFlow {
             id: leftZone
             vert: win.vert
-            spacing: win.itemGap
+            spacing: win.zoneGap
             model: win.lay.left
             delegate: slotDelegate
             x: win.vert ? notch.crossOff : notch.e + win.padX

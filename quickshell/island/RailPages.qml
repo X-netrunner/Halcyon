@@ -2,22 +2,27 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 
-// The music and the performance page for a RAIL bar. On the island and the notch those pages grow down out of the top edge; a rail
-// is on the side, so here they come out sideways, next to the rail:
-//   rest the pointer near the TOP of the rail = the music window (up in the corner)
-//   rest it near the BOTTOM of the rail       = the performance window (down in the corner)
-//   (a bar along the top / bottom edge: the start = music, the end = performance, the pages drop / rise from the bar)
-// They are the same pages as the island's (MediaPage.qml, PerfPage.qml). The window folds back after the pointer has left both the
-// rail and the page for Settings > Bar > "Page closes" ms (opt.pageClose; 0 = it stays until Esc / a click elsewhere).
+// The dashboard of a RAIL bar: ONE box with three tabs, Media | Calendar | Performance (Dashboard.qml; learned from Caelestia's dashboard).
+// It drops from the TOP edge of the screen, centred, whichever edge the rail is on (with the border around the screen it hangs from the
+// border and flares into it, without it it floats a few px below the edge).
+//   rest the pointer on the wake spot at the top middle of the screen (ActivationZone in shell.qml) = it opens on Calendar, in the spotlight
+//   the rail itself does NOT open it (no resting near its ends, no scrolling or dragging along it): the wake spot is the only way in
+//   click a tab, scroll over the tab strip, or press Left / Right to switch. Esc closes it (after a click in the box, so it has the keyboard).
+// The same pages as the island's (MediaPage.qml, PerfPage.qml) are still what the island and the notch show: they grow out of the top edge
+// at their own size and shell.qml's page switching is untouched. The box folds back after the pointer has left the wake spot and
+// the box for Settings > Bar > "Page closes" ms (opt.pageClose; 0 = it stays until Esc / a click elsewhere).
 Scope {
     id: root
     property var pal
     property var player: null
+    property var cava: []                    // the six cava values (shell.qml): the ring round the cover
     property var stats: ({})
     property var gpu: ({ gpu: 0, state: "none" })
     property var specs: ({})
     property var disks: ({ disks: [] })
     property var net: ({})
+    property var cal: null                   // the Calendar scope (Calendar.qml): the Calendar tab's month and events
+    property string perfLook: "sky"          // the Performance tab's look (opt.perfLook): sky | orbit | pulse | tiles
     property string profile: "balanced"
     property string profileLabel: "Balanced"
     property bool autoPower: false
@@ -25,9 +30,10 @@ Scope {
     property string sysmode: ""
     property string side: "left"             // the rail's edge
     property real edge: 0                    // how far the rail's inner edge is from the screen edge (px)
-    property bool railHeld: false            // the pointer is on the rail
+    property real frameT: 0                  // thickness of the border around the screen (0 = none): the box hangs from it
+    property bool railHeld: false            // the pointer is on the rail or on the top wake spot
     property int closeMs: 600
-    property string which: ""                // "" (closed) | media | perf
+    property string which: ""                // "" (closed) | media | cal | perf   (shell.qml reads it: perfShown)
     readonly property bool open: which !== ""
     property bool linger: false
 
@@ -36,15 +42,20 @@ Scope {
     signal setProfile(string p)
     signal setAuto()
     signal openMusic(string tab)
+    signal openCalendar()
 
-    function show(w) { if (w !== "media" && w !== "perf") return; which = w; held = true }
+    readonly property var order: ["media", "cal", "perf"]
+    function show(w) { if (order.indexOf(w) < 0) return; which = w; held = true }
     function hide() { which = "" }
-    // wheel / drag along the rail: the same two pages, one step at a time
-    function step(dir) { show(dir < 0 ? "media" : "perf") }
+    // wheel / drag along the rail, Left / Right: one tab at a time (a closed box opens on Calendar first)
+    function step(dir) { if (!open) { show("cal"); return } show(order[Math.max(0, Math.min(2, tabIdx + (dir < 0 ? -1 : 1)))]) }
+    // the tab that is shown; while the box folds away it keeps the last one (which is "" then). Calendar is the one it opens on.
+    property int tabIdx: 1
+    onWhichChanged: { var i = order.indexOf(which); if (i >= 0) tabIdx = i }
     onOpenChanged: { if (open) { linger = true; lingerT.stop() } else lingerT.restart() }
-    Timer { id: lingerT; interval: 400; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: root.pal.dClose + 140; onTriggered: root.linger = false }
 
-    // the page stays while the pointer is on the rail or on the page; it folds back shortly after it has left both
+    // the box stays while the pointer is on the rail or on the box; it folds back shortly after it has left both
     property bool held: false
     property bool cardHover: false
     Timer {
@@ -63,75 +74,92 @@ Scope {
             color: "transparent"
             WlrLayershell.namespace: "island-railpage"
             WlrLayershell.layer: WlrLayer.Top
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-            mask: Region { item: card }
+            // a click in the box gives it the keyboard (Esc closes it); it never takes the keyboard from the app you are typing in on its own
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+            mask: Region { item: root.open ? clipper : null }
+
+            Shortcut { sequence: "Escape"; onActivated: root.hide() }
+            Shortcut { sequence: "Left"; enabled: root.open; onActivated: root.step(-1) }
+            Shortcut { sequence: "Right"; enabled: root.open; onActivated: root.step(1) }
 
             Item {
                 id: area
                 anchors.fill: parent
 
-                Rectangle {
-                    id: card
-                    readonly property real gap: 8
-                    readonly property bool vertBar: root.side === "left" || root.side === "right"
-                    width: root.which === "perf" ? 720 : 500
-                    height: root.which === "perf" ? 316 : 156
-                    radius: root.pal.rXl
-                    color: Qt.alpha(root.pal.bg, root.pal.glassBarOpen !== undefined ? Math.max(0.82, root.pal.glassBarOpen) : 0.92)
-                    border.width: 1
-                    border.color: root.pal.lineSoft
+                readonly property bool joined: root.pal.frameOn === true
+                readonly property real gap: joined ? 0 : 8                  // hung from the border: flush; else a little away from the edge
+                readonly property real fl: joined ? 16 : 0                  // how far the flares reach along the edge (Glass.qml earR)
+                // 0 = folded into the top edge, 1 = out: it opens on the soft spring and folds on the closing ease
+                property real shown: root.open ? 1 : 0
+                Behavior on shown {
+                    NumberAnimation {
+                        duration: root.open ? root.pal.dSlow : root.pal.dClose
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: root.open ? root.pal.curve : root.pal.curveClose
+                    }
+                }
+
+                readonly property real dw: surface.width
+                readonly property real dh: surface.height
+                // where the box rests: hung from the top edge (below the rail when the rail is on top), centred on the screen
+                readonly property real bx: Math.round((area.width - dw) / 2)
+                readonly property real by: (root.side === "top" ? root.edge : root.frameT) + gap
+
+                // the window the box slides out of: the box's own rectangle (plus the flares along the rail), so it comes out of the rail
+                Item {
+                    id: clipper
                     clip: true
-                    // music: up in the corner, performance: down in the corner (a top / bottom bar: left end / right end)
-                    x: {
-                        if (root.side === "left") return root.edge + gap
-                        if (root.side === "right") return area.width - root.edge - width - gap
-                        return root.which === "perf" ? area.width - width - 16 : 16
-                    }
-                    y: {
-                        if (root.side === "top") return root.edge + gap
-                        if (root.side === "bottom") return area.height - root.edge - height - gap
-                        return root.which === "perf" ? area.height - height - 16 : 16
-                    }
-                    transformOrigin: root.side === "left" ? Item.Left : root.side === "right" ? Item.Right : root.side === "top" ? Item.Top : Item.Bottom
-                    opacity: root.open ? 1 : 0
-                    scale: root.open ? 1 : 0.92
-                    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
-                    Behavior on scale { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-                    Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-                    Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                    x: area.bx - area.fl
+                    y: area.by
+                    width: area.dw + area.fl * 2
+                    height: area.dh
+                    opacity: Math.min(1, area.shown * 1.8)
 
-                    HoverHandler { onHoveredChanged: root.cardHover = hovered }
-                    Keys.onEscapePressed: root.hide()
+                    Glass {
+                        id: surface
+                        pal: root.pal
+                        opacityBody: Math.max(0.86, root.pal.glassBarOpen)
+                        radius: root.pal.rXl
+                        joinV: area.joined ? "t" : ""
+                        width: dash.implicitWidth
+                        height: dash.implicitHeight
+                        // folded: pushed up into the top edge by its own height; the clip hides the part that is above its window.
+                        // (x / y are inside the clipper: sideways the flares need `fl` of room, downwards the box slides)
+                        readonly property real travel: height + area.gap
+                        readonly property real off: (1 - area.shown) * travel
+                        x: area.fl
+                        y: -off
 
-                    MediaPage {
-                        anchors.fill: parent
-                        pal: root.pal
-                        player: root.player
-                        opacity: root.which === "media" ? 1 : 0
-                        visible: opacity > 0.01
-                        Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
-                        onOpenMusic: tab => { root.hide(); root.openMusic(tab) }
-                    }
-                    PerfPage {
-                        anchors.fill: parent
-                        pal: root.pal
-                        stats: root.stats
-                        gpu: root.gpu
-                        specs: root.specs
-                        disks: root.disks
-                        net: root.net
-                        profile: root.profile
-                        profileLabel: root.profileLabel
-                        autoPower: root.autoPower
-                        autoNote: root.autoNote
-                        sysmode: root.sysmode
-                        opacity: root.which === "perf" ? 1 : 0
-                        visible: opacity > 0.01
-                        Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
-                        onToggleWifi: root.toggleWifi()
-                        onToggleBt: root.toggleBt()
-                        onSetProfile: p => root.setProfile(p)
-                        onSetAuto: root.setAuto()
+                        HoverHandler { onHoveredChanged: root.cardHover = hovered }
+
+                        Dashboard {
+                            id: dash
+                            anchors.fill: parent
+                            pal: root.pal
+                            player: root.player
+                            cava: root.cava
+                            stats: root.stats
+                            gpu: root.gpu
+                            specs: root.specs
+                            disks: root.disks
+                            net: root.net
+                            cal: root.cal
+                            perfLook: root.perfLook
+                            profile: root.profile
+                            profileLabel: root.profileLabel
+                            autoPower: root.autoPower
+                            autoNote: root.autoNote
+                            sysmode: root.sysmode
+                            tab: root.tabIdx
+                            open: root.open
+                            onTabPicked: i => root.show(root.order[i])
+                            onOpenCalendar: { root.hide(); root.openCalendar() }
+                            onOpenMusic: tab => { root.hide(); root.openMusic(tab) }
+                            onToggleWifi: root.toggleWifi()
+                            onToggleBt: root.toggleBt()
+                            onSetProfile: p => root.setProfile(p)
+                            onSetAuto: root.setAuto()
+                        }
                     }
                 }
             }

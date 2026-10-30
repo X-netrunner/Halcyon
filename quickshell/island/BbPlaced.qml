@@ -33,6 +33,15 @@ Item {
         border.color: Qt.alpha(bb.pal.accent, sl.picked ? 0.9 : 0.5)
         Behavior on color { ColorAnimation { duration: bb.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     }
+    // a rail with capsules: the soft capsule the real rail puts behind the widget (BarSlot.qml)
+    Rectangle {
+        visible: bb.rail && bb.cur.caps && wid !== "logo" && wid !== "power" && wid !== "music"
+        anchors.fill: parent
+        anchors.topMargin: 2
+        anchors.bottomMargin: 2
+        radius: height / 2
+        color: Qt.alpha(bb.pal.text, bb.pal.light ? 0.075 : 0.085)
+    }
     // the widget itself (same drawing as MockW, written out here: an inline component can't use another inline component)
     Item {
         id: mw
