@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 
+// The look 'classic' of the Performance tab: rings, spec rows and disk bars, as the island's page always drew them (PerfTab.qml loads it).
 Item {
     id: root
     property var pal

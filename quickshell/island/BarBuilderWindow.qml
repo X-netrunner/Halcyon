@@ -560,9 +560,9 @@ Item {
 
                         // the body: flared corners hanging from the edge (Notch), a rounded pill (Island) or a strip along the edge (Rail)
                         Rectangle {
-                            visible: root.isl || root.rail
+                            visible: root.isl || (root.rail && root.cur.rstyle !== "bare")
                             anchors.fill: parent
-                            radius: root.cornR
+                            radius: (root.rail && (root.cur.rstyle === "pill" || root.cur.rstyle === "split")) ? root.barH / 2 : root.cornR
                             color: root.pal.box(Qt.alpha(root.pal.surface, 0.9))
                             border.width: root.pal.calm ? 0 : 1
                             border.color: root.pal.line
@@ -858,8 +858,18 @@ Item {
                             Chip { pal: root.pal; implicitHeight: 28; label: "Left"; on: root.cur.side === "left"; onClicked: root.edited(BL.setSide(root.cur, "left")) }
                             Chip { pal: root.pal; implicitHeight: 28; label: "Right"; on: root.cur.side === "right"; onClicked: root.edited(BL.setSide(root.cur, "right")) }
                         }
-                        Row {
+                        Flow {
                             visible: root.rail
+                            width: parent.width
+                            spacing: 10
+                            Text { width: 96; height: 28; verticalAlignment: Text.AlignVCenter; text: "Rail look"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                            Repeater {
+                                model: BL.railStyles
+                                delegate: Chip { required property var modelData; pal: root.pal; implicitHeight: 28; label: modelData.name; on: root.cur.rstyle === modelData.id; onClicked: root.edited(BL.setRStyle(root.cur, modelData.id)) }
+                            }
+                        }
+                        Row {
+                            visible: root.rail && root.cur.rstyle === "capsules"
                             spacing: 10
                             Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Capsules"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                             Chip { pal: root.pal; implicitHeight: 28; label: "Off"; on: !root.cur.caps; onClicked: root.edited(BL.setCaps(root.cur, false)) }
