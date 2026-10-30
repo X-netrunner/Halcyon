@@ -840,58 +840,43 @@ Item {
                         id: styleCol
                         x: 22; y: 20
                         width: parent.width - 44
-                        spacing: 14
-                        Text { text: root.pal.cap("STYLE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.2 : 0.8 }
-                        Row {
-                            spacing: 10
-                            Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Shape"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Notch"; on: root.cur.shape === "notch"; onClicked: root.edited(BL.setShape(root.cur, "notch")) }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Island"; on: root.isl; onClicked: root.edited(BL.setShape(root.cur, "island")) }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Rail"; on: root.rail; onClicked: root.edited(BL.setShape(root.cur, "rail")) }
+                        spacing: 6
+                        Text { text: root.pal.cap("SHAPE AND PLACE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.2 : 0.8; bottomPadding: 4 }
+                        BbRow {
+                            bb: root; label: "Shape"
+                            SegSwitch { pal: root.pal; options: [{ k: "notch", t: "Notch" }, { k: "island", t: "Island" }, { k: "rail", t: "Rail" }]; current: root.cur.shape; onPicked: k => root.edited(BL.setShape(root.cur, k)) }
                         }
-                        Flow {
-                            width: parent.width
-                            spacing: 10
-                            Text { width: 96; height: 28; verticalAlignment: Text.AlignVCenter; text: "Side"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Top"; on: root.cur.side === "top"; onClicked: root.edited(BL.setSide(root.cur, "top")) }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Bottom"; on: root.cur.side === "bottom"; onClicked: root.edited(BL.setSide(root.cur, "bottom")) }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Left"; on: root.cur.side === "left"; onClicked: root.edited(BL.setSide(root.cur, "left")) }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Right"; on: root.cur.side === "right"; onClicked: root.edited(BL.setSide(root.cur, "right")) }
+                        BbRow {
+                            bb: root; label: "Screen edge"
+                            SegSwitch { pal: root.pal; options: [{ k: "top", t: "Top" }, { k: "bottom", t: "Bottom" }, { k: "left", t: "Left" }, { k: "right", t: "Right" }]; current: root.cur.side; onPicked: k => root.edited(BL.setSide(root.cur, k)) }
                         }
-                        Flow {
+                        BbRow {
                             visible: root.rail
-                            width: parent.width
-                            spacing: 10
-                            Text { width: 96; height: 28; verticalAlignment: Text.AlignVCenter; text: "Rail look"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                            Repeater {
-                                model: BL.railStyles
-                                delegate: Chip { required property var modelData; pal: root.pal; implicitHeight: 28; label: modelData.name; on: root.cur.rstyle === modelData.id; onClicked: root.edited(BL.setRStyle(root.cur, modelData.id)) }
-                            }
+                            bb: root; label: "Rail look"
+                            SegSwitch { pal: root.pal; options: [{ k: "capsules", t: "Capsules" }, { k: "pill", t: "Pill" }, { k: "bare", t: "Bare" }, { k: "split", t: "Split" }]; current: root.cur.rstyle; onPicked: k => root.edited(BL.setRStyle(root.cur, k)) }
                         }
-                        Row {
+                        BbRow {
                             visible: root.rail && root.cur.rstyle === "capsules"
-                            spacing: 10
-                            Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Capsules"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Off"; on: !root.cur.caps; onClicked: root.edited(BL.setCaps(root.cur, false)) }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "On"; on: root.cur.caps; onClicked: root.edited(BL.setCaps(root.cur, true)) }
+                            bb: root; label: "Capsules"
+                            Toggle { pal: root.pal; on: root.cur.caps; onToggled: root.edited(BL.setCaps(root.cur, !root.cur.caps)) }
                         }
-                        Row {
-                            spacing: 10
-                            Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Special workspaces"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; elide: Text.ElideRight }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Beside"; on: root.cur.spMode !== "over"; onClicked: root.edited(BL.setSpMode(root.cur, "bar")) }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Over workspaces"; on: root.cur.spMode === "over"; onClicked: root.edited(BL.setSpMode(root.cur, "over")) }
+                        BbRow {
+                            bb: root; label: "Special spaces"
+                            SegSwitch { pal: root.pal; options: [{ k: "bar", t: "Beside" }, { k: "over", t: "Over workspaces" }]; current: root.cur.spMode === "over" ? "over" : "bar"; onPicked: k => root.edited(BL.setSpMode(root.cur, k)) }
                         }
-                        BbNumBox { bb: root; labelW: 96; label: "Edge"; value: root.cur.edge; shown: root.sp.edge; maxV: BL.padMax.edge; onCommit: v => root.edited(BL.setNum(root.cur, "edge", v)) }
-                        BbNumBox { bb: root; labelW: 96; label: "Gap"; value: root.cur.gap; shown: root.sp.gap; maxV: BL.padMax.gap; onCommit: v => root.edited(BL.setNum(root.cur, "gap", v)) }
-                        BbNumBox { bb: root; labelW: 96; label: "Centre gap"; value: root.cur.clear; shown: root.sp.clear; maxV: BL.padMax.clear; onCommit: v => root.edited(BL.setNum(root.cur, "clear", v)) }
-                        Row {
-                            spacing: 10
-                            Text { width: 96; anchors.verticalCenter: parent.verticalCenter; text: "Screen border"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "Off"; on: !root.frameOn; onClicked: root.frameEdited("opt:frame", false) }
-                            Chip { pal: root.pal; implicitHeight: 28; label: "On"; on: root.frameOn; onClicked: root.frameEdited("opt:frame", true) }
+                        Rectangle { width: parent.width; height: 1; color: root.pal.lineSoft }
+                        Text { text: root.pal.cap("SPACING"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.2 : 0.8; topPadding: 4; bottomPadding: 4 }
+                        BbRow { bb: root; label: "From the edge"; BbNumBox { bb: root; value: root.cur.edge; shown: root.sp.edge; maxV: BL.padMax.edge; onCommit: v => root.edited(BL.setNum(root.cur, "edge", v)) } }
+                        BbRow { bb: root; label: "Between widgets"; BbNumBox { bb: root; value: root.cur.gap; shown: root.sp.gap; maxV: BL.padMax.gap; onCommit: v => root.edited(BL.setNum(root.cur, "gap", v)) } }
+                        BbRow { bb: root; label: "Centre gap"; BbNumBox { bb: root; value: root.cur.clear; shown: root.sp.clear; maxV: BL.padMax.clear; onCommit: v => root.edited(BL.setNum(root.cur, "clear", v)) } }
+                        Rectangle { width: parent.width; height: 1; color: root.pal.lineSoft }
+                        Text { text: root.pal.cap("SCREEN BORDER"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.2 : 0.8; topPadding: 4; bottomPadding: 4 }
+                        BbRow {
+                            bb: root; label: "Border"
+                            Toggle { pal: root.pal; on: root.frameOn; onToggled: root.frameEdited("opt:frame", !root.frameOn) }
                         }
-                        BbNumBox { visible: root.frameOn; bb: root; labelW: 96; label: "Thickness"; value: root.frameW; shown: root.frameW; maxV: 28; onCommit: v => root.frameEdited("opt:frameW", v === null ? 12 : Math.max(4, v)) }
-                        BbNumBox { visible: root.frameOn; bb: root; labelW: 96; label: "Inner corners"; value: root.frameR; shown: root.frameR; maxV: 40; onCommit: v => root.frameEdited("opt:frameR", v === null ? 22 : v) }
+                        BbRow { visible: root.frameOn; bb: root; label: "Thickness"; BbNumBox { bb: root; value: root.frameW; shown: root.frameW; maxV: 28; onCommit: v => root.frameEdited("opt:frameW", v === null ? 12 : Math.max(4, v)) } }
+                        BbRow { visible: root.frameOn; bb: root; label: "Inner corners"; BbNumBox { bb: root; value: root.frameR; shown: root.frameR; maxV: 40; onCommit: v => root.frameEdited("opt:frameR", v === null ? 22 : v) } }
                     }
                 }
 
@@ -911,15 +896,39 @@ Item {
                         width: parent.width - 44
                         spacing: 12
                         Text { text: root.pal.cap("BALANCE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.2 : 0.8 }
+                        // while a widget is carried: what the drop would do; at rest: the three sizes as small tiles
                         Text {
+                            visible: root.dragId !== ""
                             width: parent.width
                             elide: Text.ElideRight
-                            text: root.dragId !== "" ? root.dropText()
-                                  : root.nameL + " " + root.px(root.wLeft) + "   ·   Middle " + root.px(root.wMid) + "   ·   " + root.nameR + " " + root.px(root.wRight)
-                            color: root.dragId !== "" ? root.pal.accent : root.pal.text
+                            text: root.dropText()
+                            color: root.pal.accent
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody
                             font.weight: Font.DemiBold
+                        }
+                        Row {
+                            visible: root.dragId === ""
+                            width: parent.width
+                            spacing: 8
+                            Repeater {
+                                model: [{ t: root.nameL, v: root.wLeft }, { t: "Middle", v: root.wMid }, { t: root.nameR, v: root.wRight }]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: (balCol.width - 16) / 3
+                                    height: 54
+                                    radius: root.pal.rSm
+                                    color: Qt.alpha(root.pal.text, 0.05)
+                                    border.width: 1
+                                    border.color: root.pal.lineSoft
+                                    Column {
+                                        anchors.centerIn: parent
+                                        spacing: 3
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.t; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.px(modelData.v); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                    }
+                                }
+                            }
                         }
                         Text {
                             visible: root.dragId === ""
