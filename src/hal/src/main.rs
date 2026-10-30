@@ -53,6 +53,7 @@ mod cheatsheet;
 mod clipstore;
 mod close;
 mod extradim;
+mod filemap;
 mod floatingmode;
 mod gestures;
 mod gpumode;
@@ -124,7 +125,9 @@ fn usage() {
          \x20 screenshot-area\n\
          \x20 cache-trim [--force|--status]\n\
          \x20 timeline [conf|status]\n\
-         \x20 system-profile [summary|json|learn]\n\
+         \x20 system-profile [summary|json|learn|test]\n\
+         \x20 system-test\n\
+         \x20 filemap [generate|search <query>|locate <cat>|summary]\n\
          \x20 ping"
     );
 }
@@ -173,6 +176,12 @@ fn main() {
         Some("cache-trim") | Some("cachetrim") => cachetrim::run(rest),
         Some("timeline") => timeline::run(rest),
         Some("system-profile") | Some("systemprofile") => systemprofile::run(rest),
+        Some("system-test") | Some("systemtest") | Some("test-system") => {
+            let mut v = vec!["test".to_string()];
+            v.extend_from_slice(rest);
+            systemprofile::run(&v)
+        }
+        Some("filemap") | Some("system-filemap") => filemap::run(rest),
         Some("ping") => 0,
         _ => {
             usage();
