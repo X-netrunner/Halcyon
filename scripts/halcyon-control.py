@@ -318,6 +318,22 @@ def a_learn_system(args):
     return "Could not run hal system-profile learn (binary not found or error)."
 
 
+def a_test_system(args):
+    """Exhaustive deep audit of system bugs, optimizations, firewall, antivirus, and performance."""
+    hal_bin = os.path.join(RICE, "bin", "hal")
+    if not (os.path.isfile(hal_bin) and os.access(hal_bin, os.X_OK)):
+        hal_bin = shutil.which("hal") or hal_bin
+    if os.path.isfile(hal_bin) and os.access(hal_bin, os.X_OK):
+        code, out = run([hal_bin, "system-profile", "test"], timeout=60)
+        if code == 0 and out.strip():
+            return clip(out)
+    if shutil.which("hal"):
+        code, out = run(["hal", "system-test"], timeout=60)
+        if code == 0 and out.strip():
+            return clip(out)
+    return "Could not run hal system-profile test (binary not found or error)."
+
+
 # ============================================================================================= DO (Halcyon's own state)
 def a_open(args):
     if not args:
@@ -516,8 +532,10 @@ ACTIONS = {
         "sysmode": (a_sysmode, "", "the current sysmode profile and its checks"),
         "updates": (a_updates, "", "pending pacman updates"),
         "luna": (a_luna_status, "", "is Luna's window ready, how many chats"),
-        "system-profile": (a_system_profile, "[summary|json|learn]", "complete architecture, hardware, defensive security posture (Lynis/Firewall/EDR), command habits and error profile"),
+        "system-profile": (a_system_profile, "[summary|json|learn|test]", "complete architecture, hardware, defensive security posture (Lynis/Firewall/EDR), command habits and error profile"),
         "learn-system": (a_learn_system, "", "deep audit of filesystem, security, antivirus durability, habits, defaults, and syncs permanent memory"),
+        "test-system": (a_test_system, "", "exhaustive deep audit of system bugs, optimizations, firewall, antivirus, and performance"),
+        "system-test": (a_test_system, "", "alias for test-system"),
     },
     "do": {
         "open": (a_open, "COMMAND_ID", "open any Halcyon window or run a launcher command by id (closeTop closes the top window)"),
@@ -555,7 +573,7 @@ def manual():
         "You operate it with three tools, never by guessing shell commands:",
         "- halcyon_info ACTION ARGS: read only. Start with `overview`; then `docs WORDS` for any how-do-I question, `settings WORDS` for a "
         "Settings row and its key, `catalog` for every window/command id, `notes`, `calendar`, `firewall`, `antivirus`, `clamav`, `sysmode`, `updates`, "
-        "`system-profile` (hardware, defaults, Lynis security score, firewall/EDR posture, command habits, and kernel diagnostics), and `learn-system` (deep audit that learns and syncs knowledge).",
+        "`system-profile` (hardware, defaults, Lynis security score, firewall/EDR posture, command habits, and kernel diagnostics), `learn-system` (deep audit that learns and syncs knowledge), and `test-system` (exhaustive deep audit of bugs, optimizations, firewall, antivirus, and performance).",
         "- halcyon_do ACTION ARGS: changes Halcyon itself: `open ID` (any window or command), `set opt:KEY VALUE`, `gaming on|off`, `dnd on|off`, "
         "`profile NAME`, `note add|del|done|pin|due ...`, `calendar sync`, `connect-calendar URL`. Needs the user's switch (Luna settings > Control Halcyon).",
         "- halcyon_security ACTION ARGS: firewall and antivirus state: `fw-ban IP`, `fw-unban IP`, `fw-open|fw-close tcp PORT`, `av-scan PATH`, "
