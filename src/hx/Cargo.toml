@@ -8,4 +8,3 @@ description = "Halcyon helper multitool: island data feeds, sysmode status, IDS,
 serde_json = "1"
 regex = "1"
 libc = "0.2"
-flate2 = "1.1.10"
