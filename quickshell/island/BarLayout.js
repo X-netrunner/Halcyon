@@ -7,7 +7,9 @@
 //                                         length of the edge like a side bar (the Caelestia-style rail)
 //     side:  "top" | "bottom" | "left" | "right",   which edge of the screen the bar sits on (left / right bars stack their widgets top to bottom;
 //                                         the three places then read Top / Middle / Bottom, in the same order as Left / Middle / Right)
-//     caps:  true | false,                the rail only: every widget sits in its own soft capsule
+//     caps:  true | false,                the rail only: every widget sits in its own soft capsule (only with rstyle "capsules")
+//     rstyle: "capsules" | "pill" | "bare" | "split",   the rail's look: a strip along the whole edge with capsules (the default), one floating
+//                                         pill, no background at all (icons only), or three separate floating pills (one per place)
 //     spMode: "bar" | "over",             special workspaces: own icons beside the workspaces, or stacked over them while one is open
 //     edge:  px | null,                   padding between the bar's ends and the first / last widget   (null = automatic)
 //     gap:   px | null,                   space between two widgets                                    (null = automatic)
@@ -17,6 +19,12 @@
 
 var zones = ["left", "center", "right"]
 var shapes = ["notch", "island", "rail"]
+var railStyles = [
+    { id: "capsules", name: "Capsules", hint: "A strip along the whole edge, a soft capsule per group" },
+    { id: "pill",     name: "Floating pill", hint: "One detached, fully rounded rail" },
+    { id: "bare",     name: "Bare icons", hint: "No background at all, icons only" },
+    { id: "split",    name: "Split islands", hint: "Three separate pills: top, middle and bottom" }
+]
 var sides = ["top", "bottom", "left", "right"]
 var padKeys = ["edge", "gap", "clear"]
 var padMax = { edge: 80, gap: 60, clear: 120 }
@@ -62,7 +70,7 @@ function defaults(shape) {
             left: ["logo", "workspaces", "specials"],
             center: ["music"],
             right: ["bgapps", "clock", "status", "power"],
-            shape: "rail", side: "left", caps: true, edge: null, gap: null, clear: null, pads: {}, rv: 2
+            shape: "rail", side: "left", caps: true, rstyle: "capsules", edge: null, gap: null, clear: null, pads: {}, rv: 2
         }
     }
     return {
@@ -125,6 +133,9 @@ function normalize(l) {
         out.rv = 2
     }
     out.caps = l.caps !== false
+    var rs = "capsules"
+    for (var ri = 0; ri < railStyles.length; ri++) if (railStyles[ri].id === l.rstyle) rs = l.rstyle
+    out.rstyle = rs
     out.spMode = l.spMode === "over" ? "over" : "bar"
     out.edge = num(l.edge, padMax.edge)
     out.gap = num(l.gap, padMax.gap)
@@ -142,7 +153,7 @@ function normalize(l) {
 function build(l, left, center, right) {
     var pads = {}
     for (var k in l.pads) pads[k] = l.pads[k]
-    return { left: left, center: center, right: right, shape: l.shape, side: l.side, caps: l.caps, spMode: l.spMode, edge: l.edge, gap: l.gap, clear: l.clear, pads: pads, rv: l.rv }
+    return { left: left, center: center, right: right, shape: l.shape, side: l.side, caps: l.caps, rstyle: l.rstyle, spMode: l.spMode, edge: l.edge, gap: l.gap, clear: l.clear, pads: pads, rv: l.rv }
 }
 
 function setShape(l, s) {
@@ -162,6 +173,14 @@ function setSide(l, s) {
 function setCaps(l, on) {
     var o = build(l, l.left.slice(), l.center.slice(), l.right.slice())
     o.caps = on !== false
+    return o
+}
+
+// the rail's look: capsules | pill | bare | split
+function setRStyle(l, s) {
+    var o = build(l, l.left.slice(), l.center.slice(), l.right.slice())
+    o.rstyle = "capsules"
+    for (var i = 0; i < railStyles.length; i++) if (railStyles[i].id === s) o.rstyle = s
     return o
 }
 

@@ -263,6 +263,12 @@ Scope {
     // (Glass.qml: joinH / joinV) are drawn in frameCol and flare into the border instead of floating beside it
     property bool frameOn: false
     property int frameT: 0
+    // how far in from each screen edge the wake spots of the corner boxes start: 0 = on the screen edge, on the border. Only the edge a rail
+    // sits on has a value (the rail's band), so the rail never blocks a spot
+    property real insL: 0
+    property real insT: 0
+    property real insR: 0
+    property real insB: 0
     property bool cornerOut: false          // Desktop builder > Boxes come out of: the corner (top / bottom AND side) instead of the side only
     readonly property real glassBarOpen: solid ? 1 : (0.74 + glassShift + glassBoost)  // the bar once it has grown into media / perf / the launcher
     // hairlines are neutral and work with every wallpaper; panels (Glass.qml) add a faint accent tint on top (lineTint)

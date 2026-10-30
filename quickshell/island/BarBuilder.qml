@@ -2,16 +2,19 @@ import QtQuick
 import QtQuick.Layouts
 import "BarLayout.js" as BL
 
-// Settings > Bar style > Bar builder (only while Style = Custom): the bar's shape (Notch, Island or Rail), the edge of the screen it sits
-// on (Top, Bottom, Left or Right), a small picture of the bar as it is now and the button that opens the builder window
-// (BarBuilderWindow.qml, where widgets are dragged into place and the padding is typed). The picture follows every change at once.
+// Settings > Bar, last row: a small picture of the bar as it is now, the button that opens the builder window (BarBuilderWindow.qml,
+// where widgets are dragged into place and the padding is typed) and Reset. Shape, edge, rail look, capsules, special workspaces and
+// the Performance tab look are ordinary rows of Settings > Bar now (drop-down menus; the `bl:` keys of Settings.qml), so nothing
+// is set twice. The picture follows every change at once.
 ColumnLayout {
     id: bb
     property var pal
     property var layout: null                  // opt.barLayout (anything: it is cleaned up here)
+    property string barStyle: "island"        // opt.barStyle: only Rail and Custom bars have a layout to edit
     signal edited(var layout)
     signal openRequested()
 
+    readonly property bool editable: barStyle === "rail" || barStyle === "custom"
     readonly property var cur: BL.normalize(layout)
     // on a Left / Right bar the three places run from the top of the screen to the bottom
     readonly property var zoneInfo: [
@@ -23,54 +26,19 @@ ColumnLayout {
     width: parent ? parent.width : 0
     spacing: 12
 
-    Hint {
-        pal: bb.pal
+    Text {
+        visible: !bb.editable
         Layout.fillWidth: true
-        text: "Shape, side, widgets and padding of the bar. Drag widgets along it to move them, onto the shelf to remove them."
+        wrapMode: Text.WordWrap
+        text: "The present bar is the " + bb.barStyle + ": it has no layout to edit. Set Style to Rail or Custom to place the widgets yourself."
         color: bb.pal.muted
-        fontFamily: bb.pal.uiFont
-        pixelSize: 10
+        font.family: bb.pal.uiFont
+        font.pixelSize: 11
     }
 
-    // ---- the shape
-    Row {
-        spacing: 8
-        Text { anchors.verticalCenter: parent.verticalCenter; text: "Shape"; color: bb.pal.muted; font.family: bb.pal.uiFont; font.pixelSize: 11 }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Notch"; on: bb.cur.shape === "notch"; onClicked: bb.edited(BL.setShape(bb.cur, "notch")) }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Island"; on: bb.cur.shape === "island"; onClicked: bb.edited(BL.setShape(bb.cur, "island")) }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Rail"; on: bb.cur.shape === "rail"; onClicked: bb.edited(BL.setShape(bb.cur, "rail")) }
-    }
-
-    // ---- the edge of the screen
-    Flow {
-        Layout.fillWidth: true
-        spacing: 8
-        Text { height: 30; verticalAlignment: Text.AlignVCenter; text: "Side"; color: bb.pal.muted; font.family: bb.pal.uiFont; font.pixelSize: 11 }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Top"; on: bb.cur.side === "top"; onClicked: bb.edited(BL.setSide(bb.cur, "top")) }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Bottom"; on: bb.cur.side === "bottom"; onClicked: bb.edited(BL.setSide(bb.cur, "bottom")) }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Left"; on: bb.cur.side === "left"; onClicked: bb.edited(BL.setSide(bb.cur, "left")) }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Right"; on: bb.cur.side === "right"; onClicked: bb.edited(BL.setSide(bb.cur, "right")) }
-    }
-
-    // ---- the rail: a soft capsule behind every widget, or none
-    Row {
-        visible: bb.cur.shape === "rail"
-        spacing: 8
-        Text { anchors.verticalCenter: parent.verticalCenter; text: "Capsules"; color: bb.pal.muted; font.family: bb.pal.uiFont; font.pixelSize: 11 }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Off"; on: !bb.cur.caps; onClicked: bb.edited(BL.setCaps(bb.cur, false)) }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "On"; on: bb.cur.caps; onClicked: bb.edited(BL.setCaps(bb.cur, true)) }
-    }
-
-    // ---- special workspaces: their own icons next to the workspaces, or on top of the workspaces while one is open
-    Row {
-        spacing: 8
-        Text { anchors.verticalCenter: parent.verticalCenter; text: "Specials"; color: bb.pal.muted; font.family: bb.pal.uiFont; font.pixelSize: 11 }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Beside"; on: bb.cur.spMode !== "over"; onClicked: bb.edited(BL.setSpMode(bb.cur, "bar")) }
-        Chip { pal: bb.pal; implicitHeight: 30; label: "Over workspaces"; on: bb.cur.spMode === "over"; onClicked: bb.edited(BL.setSpMode(bb.cur, "over")) }
-    }
-
-    // ---- a small picture of the bar as it is now
+    // a small picture of the bar as it is now
     Rectangle {
+        visible: bb.editable
         Layout.fillWidth: true
         implicitHeight: pvRow.implicitHeight + 20
         radius: bb.cur.shape === "island" ? implicitHeight / 2 : 14
@@ -124,6 +92,7 @@ ColumnLayout {
     }
 
     Flow {
+        visible: bb.editable
         Layout.fillWidth: true
         spacing: 12
         ActionChip { pal: bb.pal; label: "Open the bar builder"; on: true; onClicked: bb.openRequested() }

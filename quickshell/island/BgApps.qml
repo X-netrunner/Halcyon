@@ -40,6 +40,7 @@ Glass {
     onActiveChanged: if (!active) closeAll.restart()
     Timer { id: closeAll; interval: 1; onTriggered: root.collapseAll() }
     signal collapseAll()
+    signal opened()                         // "Open" raised an app (the pop-out next to a rail closes itself on it)
 
     MouseArea { anchors.fill: parent }      // swallow clicks
 
@@ -191,7 +192,7 @@ Glass {
                                     Layout.alignment: Qt.AlignVCenter
                                     pal: root.pal; implicitHeight: 28; label: "Open"; on: true
                                     // some tray apps only offer a menu (activate() does nothing for them): "Open" shows that menu instead of doing nothing
-                                    onClicked: { if (appRow.modelData.onlyMenu === true && appRow.modelData.hasMenu) appRow.showMenu = true; else appRow.modelData.activate() }
+                                    onClicked: { if (appRow.modelData.onlyMenu === true && appRow.modelData.hasMenu) appRow.showMenu = true; else { appRow.modelData.activate(); root.opened() } }
                                 }
                                 // round "more" button (three dots): the app's own menu; right click = the app's secondary action
                                 Rectangle {

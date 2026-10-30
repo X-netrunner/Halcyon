@@ -35,7 +35,7 @@ Item {
     }
     // a rail with capsules: the soft capsule the real rail puts behind the widget (BarSlot.qml)
     Rectangle {
-        visible: bb.rail && bb.cur.caps && wid !== "logo" && wid !== "power" && wid !== "music"
+        visible: bb.rail && bb.cur.caps && bb.cur.rstyle === "capsules" && wid !== "logo" && wid !== "power" && wid !== "music"
         anchors.fill: parent
         anchors.topMargin: 2
         anchors.bottomMargin: 2

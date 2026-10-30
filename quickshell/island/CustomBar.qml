@@ -56,6 +56,7 @@ PanelWindow {
     signal pageDrop(int dir)                  // drag the bar towards the screen's inside (+1) / back (-1): the utilities box and notifications (Settings > Bar style)
     signal clockToggled(string what)          // right click on the time = 12 / 24 hour, middle click = seconds (shell.qml flips the setting)
     signal bgClicked()
+    signal bgPopup(real along, real edge)     // a click on the background-apps icon of a rail: the menu next to it (shell.qml BgPop)
     signal numLockClicked()                   // click on the Num Lock widget (shell.qml flips the key)
     signal logoClicked()                      // click on the OS/Launcher logo (shell.qml toggles launcher)
     signal powerClicked()                     // click on the Power button (shell.qml opens session menu)
@@ -70,8 +71,14 @@ PanelWindow {
     readonly property string shape: (opt && opt.barStyle === "rail") ? "rail" : lay.shape
     readonly property bool rail: shape === "rail"
     readonly property bool isl: shape === "island"
-    readonly property bool caps: rail && lay.caps                   // a capsule behind every widget
-    readonly property bool ears: frameT > 0                         // the border around the screen is on: the ends of a rail flare into it
+    // the rail's look (BarLayout.js rstyle): capsules = a strip along the whole edge; pill = one floating pill; bare = icons only, no
+    // background; split = three floating pills, one per place
+    readonly property string rstyle: rail ? lay.rstyle : "capsules"
+    readonly property bool floatRail: rail && (rstyle === "pill" || rstyle === "split")
+    readonly property bool bareRail: rail && rstyle === "bare"
+    readonly property bool splitRail: rail && rstyle === "split"
+    readonly property bool caps: rail && lay.caps && rstyle === "capsules"     // a capsule behind every widget
+    readonly property bool ears: frameT > 0 && !floatRail && !bareRail         // the border around the screen is on: the ends of a rail flare into it
     readonly property bool band: rail && ears                       // ... and the rail draws the border's width on its own edge too
     // what shell.qml tells the border: "do not draw your own edge on this side, the bar is there" (empty while the bar is auto-hidden)
     readonly property string bandSide: (band && shown) ? side : ""
@@ -112,9 +119,9 @@ PanelWindow {
     // widgets sit in capsules (barH + 8 wide, like Caelestia's 40 px ones) with a 4 px gutter on each side.
     readonly property var rm: BL.railMetrics(barH)
     readonly property int bt: rail ? rm.thick : barH
-    readonly property real earR: isl ? 0 : Math.round(barH * 0.42)             // the flare of the notch (the island has none)
-    readonly property real cornR: isl ? barH / 2 : Math.round(barH * 0.42)
-    readonly property int edgeM: isl ? Math.max(4, sizeSet.gap) : 0             // the island floats a little away from the screen edge
+    readonly property real earR: (isl || floatRail) ? 0 : Math.round(barH * 0.42)             // the flare of the notch (the island and the floating rails have none)
+    readonly property real cornR: isl ? barH / 2 : (floatRail ? bt / 2 : Math.round(barH * 0.42))
+    readonly property int edgeM: (isl || floatRail) ? Math.max(4, sizeSet.gap) : 0             // the island and the floating rails float a little away from the screen edge
     readonly property int padX: sp.edge
     readonly property int textPx: Math.round(barH * 0.44)
     readonly property int curH: Math.round(textPx * 1.3)
@@ -188,6 +195,15 @@ PanelWindow {
               : win.width - notch.x
         statusPopup(kind, vert ? c.y : c.x, e)
     }
+    // the background-apps icon: on a rail the app list pops out beside the bar, level with the icon (Caelestia style); other bars open the
+    // bottom-left box as before
+    function popBg(item) {
+        if (!rail) { bgClicked(); return }
+        var c = item.mapToItem(null, item.width / 2, item.height / 2)
+        var e = side === "left" ? notch.x + notch.bandT : win.width - notch.x
+        if (side === "top" || side === "bottom") { bgClicked(); return }
+        bgPopup(c.y, e)
+    }
     readonly property real edgeDist: (band ? 0 : frameT) + edgeM + notch.bandT      // how far the bar's inner edge is from the screen's edge
     // (a rail does not open the Media / Performance tabs any more, neither by resting the pointer near its ends nor by scrolling or
     // dragging along it: the tabs come from the wake spot at the top middle of the screen only, see shell.qml)
@@ -216,7 +232,7 @@ PanelWindow {
         readonly property real centerW: midBox.along
         readonly property real bodyW: sideW * 2 + centerW + (sideW > 0 ? (centerW > 0 ? win.groupGap * 2 : win.groupGap) : 0) + win.padX * 2
         // a notch / island is as long as its content; a rail is as long as the edge (inside the border)
-        property real alongLen: win.rail ? Math.max(0, winLen - 2 * win.frameT) : bodyW + e * 2
+        property real alongLen: win.rail ? Math.max(0, winLen - 2 * win.frameT - (win.floatRail ? 2 * win.edgeM : 0)) : bodyW + e * 2
         Behavior on alongLen { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: win.pal.curve } }
 
         // how far the bar's near side is from the screen edge (slides out of the screen while the bar is hidden)
@@ -271,7 +287,7 @@ PanelWindow {
                 width: win.rail ? flat.width : notch.bw
                 y: win.isl ? 0 : -60
                 height: notch.bh + (win.isl ? 0 : 60)
-                visible: win.shown
+                visible: win.shown && !win.bareRail && !win.splitRail
                 HaloShadow {
                     anchors.fill: parent
                     radius: notch.cr
@@ -283,7 +299,7 @@ PanelWindow {
             // ---- the outline: flare, straight side, rounded corner, free side, rounded corner, straight side, flare
             // the island: one rounded pill with a hairline all around
             Rectangle {
-                visible: win.isl
+                visible: win.isl || (win.rail && win.rstyle === "pill")
                 anchors.fill: parent
                 radius: notch.cr
                 color: notch.fillCol
@@ -359,7 +375,7 @@ PanelWindow {
             // fillets, like the ears of a notch); without it the free side has rounded corners.
             Shape {
                 id: railBody
-                visible: win.rail
+                visible: win.rail && !win.floatRail && !win.bareRail
                 anchors.fill: parent
                 preferredRendererType: Shape.CurveRenderer
                 antialiasing: true
@@ -396,7 +412,7 @@ PanelWindow {
             BarStars {
                 pal: win.pal
                 active: !win.hideOnPage
-                visible: win.shown && win.opt.starsBar !== false
+                visible: win.shown && win.opt.starsBar !== false && !win.bareRail && !win.splitRail
                 x: win.rail ? 12 : notch.r + notch.cr
                 y: 3
                 width: Math.max(0, win.rail ? flat.width - 24 : notch.bw - notch.cr * 2)
@@ -1027,7 +1043,7 @@ PanelWindow {
                         border.width: 1.5; border.color: Qt.alpha(win.pal.bg, 0.9)
                     }
                 }
-                MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.bgClicked() }
+                MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.popBg(bgBox) }
             }
         }
 
@@ -1129,6 +1145,23 @@ PanelWindow {
         }
 
         // ---- the three places: left = the start of the bar, middle = always centred, right = the end of the bar
+        // split rail: one floating pill behind each place (the left / middle / right zones, drawn upright, not turned)
+        Repeater {
+            model: win.splitRail ? [leftZone, midBox, rightZone] : []
+            delegate: Rectangle {
+                required property var modelData
+                readonly property real endPad: 6
+                visible: modelData.along > 0
+                x: win.vert ? modelData.x : modelData.x - endPad
+                y: win.vert ? modelData.y - endPad : modelData.y
+                width: win.vert ? win.bt : modelData.along + endPad * 2
+                height: win.vert ? modelData.along + endPad * 2 : win.bt
+                radius: Math.min(width, height) / 2
+                color: notch.fillCol
+                border.width: win.pal.calm ? 0 : 1
+                border.color: win.pal.line
+            }
+        }
         BarFlow {
             id: leftZone
             vert: win.vert

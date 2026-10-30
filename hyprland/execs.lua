@@ -28,6 +28,8 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("st=$HOME/.cache/island/kbuildsycoca.stamp; if [ ! -f \"$st\" ] || [ /usr/share/applications -nt \"$st\" ] || [ $HOME/.local/share/applications -nt \"$st\" ] || [ /etc/xdg/menus -nt \"$st\" ]; then ( if [ -f /etc/xdg/menus/arch-applications.menu ]; then XDG_MENU_PREFIX=arch- kbuildsycoca6 --noincremental; elif [ -f /etc/xdg/menus/kf6-applications.menu ]; then XDG_MENU_PREFIX=kf6- kbuildsycoca6 --noincremental; else kbuildsycoca6 --noincremental; fi ) && touch \"$st\"; fi &")
     -- started from the tty1 login (launch/halcyon-login.sh)? then make sure the lock screen really came up
     hl.exec_cmd(rice .. "/scripts/login-watchdog.sh &")
+    -- floating windows (Picture-in-Picture ...) stay out of the screen border and the bar (hal keep-clear; one copy only)
+    hl.exec_cmd(rice .. "/scripts/keep-clear.sh &")
     -- idle lock + sleep, set in Settings > Sleep & lock (scripts/idle.sh runs hypridle with its own config)
     hl.exec_cmd(rice .. "/scripts/idle.sh start &")
 end)

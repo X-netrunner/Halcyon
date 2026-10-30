@@ -38,6 +38,8 @@ Scope {
             anchors { top: edge !== "bottom"; bottom: edge !== "top"; left: edge !== "right"; right: edge !== "left" }
             implicitWidth: vert ? thick : 0
             implicitHeight: vert ? 0 : thick
+            // the spot sits inside the border / bar: never on top of them (Pal.ins*: the border, or the rail's band on its own edge)
+            margins { left: root.pal ? root.pal.insL : 0; top: root.pal ? root.pal.insT : 0; right: root.pal ? root.pal.insR : 0; bottom: root.pal ? root.pal.insB : 0 }
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             WlrLayershell.namespace: "island-wake"

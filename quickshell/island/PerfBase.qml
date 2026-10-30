@@ -1,6 +1,6 @@
 import QtQuick
 
-// The shared data of the Performance tab's newer looks (PerfOrbit, PerfPulse, PerfTiles). PerfTab.qml picks the look and hands each one
+// The shared data of the Performance tab's newer looks (PerfOrbit, PerfPulse, PerfTiles, PerfRadar, PerfCockpit ...), and, only when a look sets `wantLong`, the last five minutes and the recent changes (`events`). PerfTab.qml picks the look and hands each one
 // itself as `src`; everything below only READS from it (the four signals of the tab are never emitted by a look).
 //   - the loads (CPU, memory, GPU, storage, network) as 0 .. 1 numbers, and eased copies (sCpu ...) that glide instead of jumping
 //   - the last minute of every load, sampled once a second (cpuHist ...), only while the tab is on screen
@@ -133,6 +133,57 @@ Item {
         }
     }
 
+    // ------------------------------------------------------------ the last five minutes (only for a look that asks: Flight Recorder)
+    // One point every 5 seconds, 60 points, sampled ONLY while `wantLong` is true, so the other looks cost nothing. A look sets
+    // `wantLong: true` while it is loaded. The values are the eased loads (network = the larger of down and up).
+    property bool wantLong: false
+    readonly property int longSamples: 60
+    property var longCpu: []
+    property var longMem: []
+    property var longGpu: []
+    property var longNet: []
+    function pushedLong(a, v) { var b = a.slice(); b.push(v); if (b.length > base.longSamples) b.shift(); return b }
+    Timer {
+        interval: 5000
+        repeat: true
+        running: base.wantLong && base.active && base.visible
+        triggeredOnStart: true
+        onTriggered: {
+            base.longCpu = base.pushedLong(base.longCpu, base.sCpu)
+            base.longMem = base.pushedLong(base.longMem, base.sMem)
+            base.longGpu = base.pushedLong(base.longGpu, base.sGpu)
+            base.longNet = base.pushedLong(base.longNet, Math.max(base.sDown, base.sUp))
+            base.pruneEvents()
+        }
+    }
+
+    // What changed while the tab was open: { atMs, text } (for example "Power: Balanced -> Performance"), newest last, at most 8,
+    // nothing older than 5 minutes. Only a change seen while the tab is on screen counts; opening the tab starts from what is set then.
+    property var events: []
+    property string lastProfile: ""
+    property string lastSysmode: ""
+    function pruneEvents() {
+        var cut = Date.now() - 300000
+        var e = base.events.filter(function (x) { return x.atMs >= cut })
+        if (e.length > 8) e = e.slice(e.length - 8)
+        if (e.length !== base.events.length) base.events = e
+    }
+    function noteEvent(text) {
+        var e = base.events.slice()
+        e.push({ atMs: Date.now(), text: text })
+        base.events = e
+        base.pruneEvents()
+    }
+    onProfileLabelChanged: {
+        if (active && lastProfile !== "" && lastProfile !== profileLabel) noteEvent("Power: " + lastProfile + " -> " + profileLabel)
+        lastProfile = profileLabel
+    }
+    onSysmodeChanged: {
+        if (active && lastSysmode !== sysmode) noteEvent("Sysmode: " + (lastSysmode !== "" ? lastSysmode : "none") + " -> " + (sysmode !== "" ? sysmode : "none"))
+        lastSysmode = sysmode
+    }
+    Component.onCompleted: { lastProfile = profileLabel; lastSysmode = sysmode }
+
     // ------------------------------------------------------------ the clock of the looks
     signal frame()
     property real t: 0
@@ -166,6 +217,7 @@ Item {
     }
     onIntroChanged: if (!live) frame()
     onActiveChanged: {
+        if (active) { lastProfile = profileLabel; lastSysmode = sysmode }
         if (active) { if (pal && pal.motion > 0.3) introAnim.restart(); else { introAnim.stop(); intro = 1 } }
         frame()
     }

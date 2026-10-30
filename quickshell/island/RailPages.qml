@@ -8,7 +8,7 @@ import Quickshell.Wayland
 //   rest the pointer on the wake spot at the top middle of the screen (ActivationZone in shell.qml) = it opens on Calendar, in the spotlight
 //   the rail itself does NOT open it (no resting near its ends, no scrolling or dragging along it): the wake spot is the only way in
 //   click a tab, scroll over the tab strip, or press Left / Right to switch. Esc closes it (after a click in the box, so it has the keyboard).
-// The same pages as the island's (MediaPage.qml, PerfPage.qml) are still what the island and the notch show: they grow out of the top edge
+// The same pages as the island's (MediaPage.qml, PerfTab.qml) are still what the island and the notch show: they grow out of the top edge
 // at their own size and shell.qml's page switching is untouched. The box folds back after the pointer has left the wake spot and
 // the box for Settings > Bar > "Page closes" ms (opt.pageClose; 0 = it stays until Esc / a click elsewhere).
 Scope {
@@ -22,7 +22,7 @@ Scope {
     property var disks: ({ disks: [] })
     property var net: ({})
     property var cal: null                   // the Calendar scope (Calendar.qml): the Calendar tab's month and events
-    property string perfLook: "sky"          // the Performance tab's look (opt.perfLook): sky | orbit | pulse | tiles
+    property string perfLook: "sky"          // the Performance tab's look (opt.perfLook): sky | orbit | pulse | tiles | sea | forecast | radar | cockpit | recorder | editorial | stars | classic (shell.qml resolves 'auto')
     property string profile: "balanced"
     property string profileLabel: "Balanced"
     property bool autoPower: false

@@ -138,7 +138,7 @@ ShellRoot {
         treeDots: "load",          // load | even | off : floating dots gather around the heaviest workspaces / windows, spread evenly, or none
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
         frame: false, frameW: 12, frameR: 22, boxOut: "corner",   // a border around the screen: on/off, thickness (px), inner corner radius (px)
-        perfLook: "sky",           // sky | orbit | pulse | tiles : the look of the rail dashboard's Performance tab (PerfTab.qml; Settings > Bar)
+        perfLook: "auto",          // auto | sky | orbit | pulse | tiles | sea | forecast | radar | cockpit | recorder | editorial | stars | classic : the look of the Performance tab on every bar (auto: rail = sky, island / notch = classic) (PerfTab.qml; Settings > Bar)
         barStyle: "island",        // island | notch | custom | off : the floating pill, or a bar hanging from the top edge (NotchBar.qml), or no bar (desktop widgets instead)
         notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
         notchWifi: true, notchBtMode: "connected", notchWifiStyle: "bars", notchSpacing: "compact",
@@ -620,6 +620,7 @@ ShellRoot {
         frameOn: root.frameOn
         frameT: root.frameT
         cornerOut: root.cornerOut
+        insL: root.insL; insT: root.insT; insR: root.insR; insB: root.insB
     }
     readonly property var palObj: pal
 
@@ -1004,6 +1005,11 @@ ShellRoot {
         onSetProfile: p => root.setProfile(p)
         onSetAuto: root.setAuto()
     }
+    // the background apps of a rail as a pop-out next to the icon above the clock (the other bars open the bottom-left box)
+    BgPop {
+        id: bgPop
+        pal: pal
+    }
     // the wake spot at the top middle of the screen: resting the pointer on it drops the dashboard (Calendar in the spotlight). It is the
     // ONLY way a rail opens the dashboard: resting the pointer on the rail, scrolling or dragging along it do nothing any more.
     property bool dashZoneOn: false
@@ -1012,13 +1018,19 @@ ShellRoot {
         zone: root.railOn ? ({ edge: "top", pos: 0.5 }) : null
         lenHover: 280
         graceMs: 400
-        blocked: root.fsQuiet || root.page !== "home" || statusPop.open
+        blocked: root.fsQuiet || root.page !== "home" || statusPop.open || bgPop.open
         onHoverChanged: on => { root.dashZoneOn = on; if (on && !railPages.open) railPages.show("cal") }
     }
     function popStatus(kind, side, along, edge) {
         if (dropOn) { dropShow("util"); return }
         railPages.hide()
+        bgPop.hide()
         statusPop.show(kind, side, along, edge)
+    }
+    function popBg(side, along, edge) {
+        railPages.hide()
+        statusPop.hide()
+        bgPop.show(side, along, edge)
     }
     // the island (Home.qml) is inside the island window: its x is the screen's x, its bottom edge is where the pop-up starts
     function homeStatusPopup(kind, item) {
@@ -1028,6 +1040,13 @@ ShellRoot {
         popStatus(kind, "top", c.x, b.y)
     }
 
+    // the Performance tab's look, resolved in this ONE place for the rail's dashboard and the island / notch page: 'auto' = sky beside a rail,
+    // classic (rings, specs, disks) on the island and the notch
+    readonly property string perfLookNow: {
+        var l = String(opt.perfLook || "auto")
+        if (l === "auto") return railOn ? "sky" : "classic"
+        return l
+    }
     // a rail bar: the music window (pointer near the top of the rail) and the performance window (near the bottom) come out sideways
     readonly property bool railOn: customBarLoader.item !== null && customBarLoader.item.rail === true
     RailPages {
@@ -1041,7 +1060,7 @@ ShellRoot {
         disks: root.disks
         net: root.net
         cal: calendar
-        perfLook: root.opt.perfLook || "sky"
+        perfLook: root.perfLookNow
         profile: root.profile
         profileLabel: root.profileLabel
         autoPower: root.autoPower
@@ -1067,7 +1086,7 @@ ShellRoot {
         onTapped: corner.hovering = !corner.hovering
     }
     ActivationZone {
-        pal: pal; zone: root.boxZones.apps; clickMode: root.appsClick; blocked: root.fsQuiet
+        pal: pal; zone: root.boxZones.apps; clickMode: root.appsClick; blocked: root.fsQuiet || root.railOn
         onHoverChanged: on => { appsWin.extHover = on; appsWin.syncHover() }
         onTapped: appsWin.hovering = !appsWin.hovering
     }
@@ -2562,6 +2581,13 @@ ShellRoot {
     // a rail on any edge: the desktop widgets sit beside it, not under it
     readonly property var railBar: customBarLoader.item
     readonly property bool railUp: railBar !== null && railBar.rail === true
+    // where the wake spots of the corner boxes (notifications, utilities, console, apps) start on each edge: right at the screen edge, ON the
+    // border, like before the rail. Only on the edge a rail sits on do they move in, to the rail's band (it already includes the border), so
+    // the rail never blocks them
+    readonly property real insL: (railUp && railBar.side === "left") ? railBar.zoneWanted : 0
+    readonly property real insT: (railUp && railBar.side === "top") ? railBar.zoneWanted : 0
+    readonly property real insR: (railUp && railBar.side === "right") ? railBar.zoneWanted : 0
+    readonly property real insB: (railUp && railBar.side === "bottom") ? railBar.zoneWanted : 0
     readonly property real deskLeft: (railUp && railBar.side === "left" ? railBar.zoneWanted : 0) + frameT
     readonly property real deskRight: (railUp && railBar.side === "right" ? railBar.zoneWanted : 0) + frameT
     readonly property real deskBottom: (railUp && railBar.side === "bottom" ? railBar.zoneWanted : 0) + frameT
@@ -2914,6 +2940,14 @@ ShellRoot {
         function lockdesktopedit(): void { root.deskEditTarget = "lock"; root.deskEditing = !root.deskEditing }
         function bar(): void { root.setOpt("barStyle", root.opt.barStyle === "off" ? "island" : "off") }      // the top bar on / off
         function setopt(key: string, json: string): void { try { root.setOpt(key, JSON.parse(json)) } catch (e) {} }     // any opt.* by hand / from scripts: setopt hideHints true
+        // preview a Performance tab look: `qs ipc call island perfLook forecast` (or auto); returns the name, or an error with the valid names
+        function perfLook(name: string): string {
+            var ok = ["auto", "sky", "orbit", "pulse", "tiles", "sea", "forecast", "radar", "cockpit", "recorder", "editorial", "stars", "classic"]
+            var n = String(name).trim().toLowerCase()
+            if (ok.indexOf(n) < 0) return "error: unknown look '" + name + "'. Valid: " + ok.join(", ")
+            root.setOpt("perfLook", n)
+            return n
+        }
         function gallery(): void { settingsWin.openGallery() }
         function startup(): void { settingsWin.openStartup() }
         function splash(): void { splashPreview.play() }
@@ -3392,8 +3426,11 @@ ShellRoot {
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
                 }
 
-                PerfPage {
-                    anchors.fill: parent
+                PerfTab {
+                    width: 704
+                    height: 316
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
                     pal: pal
                     stats: root.stats
                     gpu: root.gpu
@@ -3405,6 +3442,8 @@ ShellRoot {
                     autoPower: root.autoPower
                     autoNote: root.autoNote
                     sysmode: root.stats.sysmode || ""
+                    look: root.perfLookNow
+                    active: root.page === "perf"
                     opacity: root.page === "perf" ? 1 : 0
                     visible: opacity > 0.01
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
@@ -3772,6 +3811,7 @@ ShellRoot {
             onClockClicked: root.clockClicked()
             onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
             onBgClicked: appsWin.pinFor(9000)
+            onBgPopup: (along, edge) => root.popBg(side, along, edge)
             onNumLockClicked: root.toggleNumLock()
             onLogoClicked: root.toggleLauncher()
             onPowerClicked: powerMenu.show()
@@ -3925,8 +3965,10 @@ ShellRoot {
             anchors.left: corner.atR ? undefined : parent.left
             anchors.bottom: corner.atB ? parent.bottom : undefined
             anchors.top: corner.atB ? undefined : parent.top
-            anchors.topMargin: corner.oSide ? corner.offY : 0
-            anchors.leftMargin: corner.oVert ? corner.offX : 0
+            anchors.topMargin: corner.oSide ? corner.offY : (corner.open ? 0 : root.insT)
+            anchors.leftMargin: corner.oVert ? corner.offX : (corner.open ? 0 : root.insL)
+            anchors.rightMargin: corner.open ? 0 : root.insR
+            anchors.bottomMargin: corner.open ? 0 : root.insB
             width: corner.open ? panel.width + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.util) ? 0 : (root.utilClick ? 28 : 12))
             height: corner.open ? panel.height + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.util) ? 0 : (root.utilClick ? 28 : 12))
             HoverHandler { onHoveredChanged: { corner.zoneHover = hovered; corner.syncHover() } }
@@ -4119,10 +4161,13 @@ ShellRoot {
             anchors.left: appsWin.atR ? undefined : parent.left
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
-            anchors.topMargin: appsWin.oSide ? appsWin.offY : 0
-            anchors.leftMargin: appsWin.oVert ? appsWin.offX : 0
-            width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.apps) ? 0 : (root.appsClick ? 28 : 12))
-            height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.apps) ? 0 : (root.appsClick ? 28 : 12))
+            anchors.topMargin: appsWin.oSide ? appsWin.offY : (appsWin.open ? 0 : root.insT)
+            anchors.leftMargin: appsWin.oVert ? appsWin.offX : (appsWin.open ? 0 : root.insL)
+            anchors.rightMargin: appsWin.open ? 0 : root.insR
+            anchors.bottomMargin: appsWin.open ? 0 : root.insB
+            // a rail has the background-apps icon (BgPop): no corner spot for it
+            width: appsWin.open ? bgPanel.width + pal.boxEdge + 30 : ((root.fsQuiet || root.railOn || root.boxZones.apps) ? 0 : (root.appsClick ? 28 : 12))
+            height: appsWin.open ? bgPanel.height + pal.boxEdge + 30 : ((root.fsQuiet || root.railOn || root.boxZones.apps) ? 0 : (root.appsClick ? 28 : 12))
             HoverHandler { onHoveredChanged: { appsWin.zoneHover = hovered; appsWin.syncHover() } }
             Rectangle {
                 visible: root.appsClick && !appsWin.open
@@ -4150,12 +4195,12 @@ ShellRoot {
 
         // apps alive in the background: a small dot on the corner while the box is closed (the box itself lists them)
         Item {
-            visible: bgPanel.count > 0 && !appsWin.open && root.opt.bgWhere === "corner"
+            visible: bgPanel.count > 0 && !appsWin.open && !root.railOn && root.opt.bgWhere === "corner"
             anchors.right: appsWin.atR ? parent.right : undefined
             anchors.left: appsWin.atR ? undefined : parent.left
             anchors.bottom: appsWin.atB ? parent.bottom : undefined
             anchors.top: appsWin.atB ? undefined : parent.top
-            anchors.rightMargin: 6; anchors.leftMargin: 6 + (appsWin.oVert ? appsWin.offX : 0); anchors.bottomMargin: 6; anchors.topMargin: 6 + (appsWin.oSide ? appsWin.offY : 0)
+            anchors.rightMargin: 6 + root.insR; anchors.leftMargin: 6 + (appsWin.oVert ? appsWin.offX : root.insL); anchors.bottomMargin: 6 + root.insB; anchors.topMargin: 6 + (appsWin.oSide ? appsWin.offY : root.insT)
             width: 11
             height: 11
 

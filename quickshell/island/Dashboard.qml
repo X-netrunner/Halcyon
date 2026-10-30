@@ -24,7 +24,7 @@ Item {
     property string autoNote: ""
     property string sysmode: ""
     property var cal: null                   // the Calendar scope (Calendar.qml): the month, the events
-    property string perfLook: "sky"          // the Performance tab's look: sky | orbit | pulse | tiles (Settings > Bar; PerfTab.qml)
+    property string perfLook: "sky"          // the Performance tab's look: sky | orbit | pulse | tiles | sea | forecast | radar | cockpit | recorder | editorial | stars | classic (shell.qml resolves 'auto') (Settings > Bar; PerfTab.qml)
     property int tab: 1                      // 0 = Media, 1 = Calendar (the default), 2 = Performance
     property bool open: false                // the box is shown: the tabs only read / sample while it is
 
