@@ -53,6 +53,7 @@ ShellRoot {
     // ---- the rest of the Settings tree. Settings.qml reads / writes these by key ("opt:<key>" and "hy:<key>"), they are saved in
     // settings.json (under "opt" / "hy") and applied below (setOpt / applyHypr)
     property var opt: ({
+        launcherStyle: "classic", // classic | spotlight : the look of the app menu (Settings > Keyboard & launcher > Launcher style)
         launchSpeed: "quick",      // normal | quick | instant : how fast the launcher grows out of the bar (root.launchK)
         accentMode: "fixed",       // fixed | cycle : the accent is the wallpaper's main colour, or drifts through all of its colours
         cycleSecs: 30,             // seconds from one wallpaper colour to the next
@@ -152,6 +153,8 @@ ShellRoot {
         treeDots: "load",          // load | even | off : floating dots gather around the heaviest workspaces / windows, spread evenly, or none
         lines: "gpu",              // gpu | cpu : who draws the constellation lines and the tree branches (gpu = plain quads + a small shader, no path tessellation)
         frame: false, frameW: 12, frameR: 22, boxOut: "corner",   // a border around the screen: on/off, thickness (px), inner corner radius (px)
+        dashStyle: "tabs",         // tabs | bento | command : the box that drops from the top middle beside a rail bar (Settings > Bar > Dashboard style; RailPages.qml, Dashboard.qml)
+        dashStrip: true,           // the stat strip (CPU, memory, GPU, temperature, what is playing) under the Calendar page of the Tabs style
         perfLook: "auto",          // auto | sky | orbit | pulse | tiles | sea | forecast | radar | cockpit | recorder | editorial | stars | classic : the look of the Performance tab on every bar (auto: rail = sky, island / notch = classic) (PerfTab.qml; Settings > Bar)
         barStyle: "island",        // island | notch | custom | off : the floating pill, or a bar hanging from the top edge (NotchBar.qml), or no bar (desktop widgets instead)
         notchTime: true, notchAccent: "theme", notchWs: true, notchWsMin: 5, notchSpecials: true, notchSpecialsSide: "auto", notchViz: true, notchDate: false,   // what the notch shows (Settings > Bar style)
@@ -1133,6 +1136,14 @@ ShellRoot {
         edge: customBarLoader.item ? customBarLoader.item.edgeDist : 0
         frameT: root.frameT
         railHeld: root.dashZoneOn
+        dashStyle: root.opt.dashStyle || "tabs"
+        dashStrip: root.opt.dashStrip !== false
+        wifiOn: root.net.wifi === "on"
+        btOn: root.net.bt === "on"
+        dndOn: root.dnd
+        caffeineOn: root.caffeine
+        onOpenLauncher: { railPages.hide(); root.overviewOpen = false; root.page = "launcher" }
+        onRunCmd: id => root.runCommand(id)
         onOpenCalendar: calendar.show()
         closeMs: root.opt.pageClose !== undefined ? root.opt.pageClose : 600
         onToggleWifi: root.toggleWifi()
@@ -3741,6 +3752,7 @@ ShellRoot {
                 width: launcher.wantedWidth - 44
                 height: launcher.wantedHeight - 44
                 pal: pal
+                style: root.opt.launcherStyle || "classic"
                 runningGame: root.gameId
                 firewallInstalled: root.fwInstalled
                 antivirusInstalled: root.avInstalled
