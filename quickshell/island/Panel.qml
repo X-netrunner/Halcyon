@@ -25,6 +25,16 @@ Glass {
     property bool focusPomo: false           // Pomodoro for the next session
     property int focusBlocked: 0             // how many apps are on the block list
     property bool focusOpen: false           // the Focus section is folded into one row; click it to open the picker / controls
+    // flyout: the Focus controls open in their own card beside the box (shell.qml turns this on for the corner box, which has
+    // room next to it) instead of unfolding inside it. flyLeft = the card sits to the left of the box, flyBottom = it lines up with
+    // the box's bottom edge (else its top edge).
+    property bool flyout: false
+    property bool flyLeft: true
+    property bool flyBottom: true
+    readonly property bool flyHovered: focusFly.hovered
+    readonly property bool flyShown: flyout && focusOpen && shown("Focus")
+    readonly property real flyGap: focusFly.attached ? 0 : 8             // joined to the box: no gap
+    readonly property real flyExtra: focusFly.width + 8                  // how much room the card needs beside the box
     property real mic: 0
     property bool micMuted: false
     property real vol: 0
@@ -39,6 +49,24 @@ Glass {
     property var audio: ({ sinks: [], sources: [] })
     property int btBattery: -1              // battery % of the connected Bluetooth device, -1 = unknown
     property bool hotspotOn: false
+    property int hotClients: 0              // devices connected to the hotspot (the Tiles style shows them as stars)
+    // Settings > Behaviour > Utilities box > Layout: tiles (icon tiles with stars) | split (two tall sliders + round buttons) | classic (the old pills)
+    readonly property string uStyle: cfg && (cfg.utilStyle === "split" || cfg.utilStyle === "classic") ? cfg.utilStyle : "tiles"
+    readonly property bool classic: uStyle === "classic"
+    readonly property bool tiles: uStyle === "tiles"
+    readonly property bool split: uStyle === "split"
+    readonly property bool btPercent: !!(cfg && cfg.utilBtShow === "percent")
+    readonly property bool wifiLinked: net.wifi === "on" && !net.eth && (net.ssid || "") !== ""
+    readonly property int wifiStars: Math.max(1, Math.min(5, Math.ceil((Number(net.signal) || 0) / 20)))
+    readonly property int btStars: btBattery < 0 ? -1 : Math.max(1, Math.min(5, Math.ceil(btBattery / 20)))
+    readonly property var powerModes: [
+        { id: "auto", g: 0xF0674, tip: "Auto  ·  the power manager decides (load, battery, heat)" },
+        { id: "power-saver", g: 0xF032A, tip: "Saver  ·  longest battery life" },
+        { id: "balanced", g: 0xF05D1, tip: "Balanced" },
+        { id: "performance", g: 0xF0241, tip: "Performance  ·  fastest, uses more power" }
+    ]
+    function modeOn(id) { return id === "auto" ? autoPower : profile === id }
+    function modeSet(id) { if (id === "auto") setAuto(); else setProfile(id) }
     property var cfg: ({})                  // shell.qml opt: the uHide* switches (Settings > Behaviour > Utilities box: what to leave out of this box)
     function shown(id) { return !(cfg && cfg["uHide" + id] === true) }
     property int chargeLimit: 0             // 0 = this laptop has no charge limit, else the limit now (100 = full charge)
@@ -59,12 +87,13 @@ Glass {
     }
     onActiveChanged: {
         if (active) { audioProc.running = true; refreshExtras() }      // fills the Audio chip and the second row
-        else { menu = ""; wifiMenu.askFor = "" }
+        else { menu = ""; wifiMenu.askFor = ""; if (flyout) focusOpen = false }
     }
     function refreshExtras() {
         batProc.running = true
         hotProc.running = true
         chargeProc.running = true
+        if (hotspotOn) clientProc.running = true
     }
     readonly property string btDevKey: net.btdev || ""
     onBtDevKeyChanged: { btBattery = -1; if (active) batProc.running = true }
@@ -80,6 +109,16 @@ Glass {
         stdout: StdioCollector { onStreamFinished: root.hotspotOn = text.trim() === "1" }
     }
     Timer { id: hotAgain; interval: 4000; onTriggered: hotProc.running = true }
+    // how many devices are on the hotspot: iw's station list, or the neighbour table when iw is not installed
+    Process {
+        id: clientProc
+        command: ["bash", "-c", "d=$(nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2==\"wifi\"{print $1;exit}'); [ -n \"$d\" ] || { echo 0; exit; }; "
+                 + "if command -v iw >/dev/null 2>&1; then iw dev \"$d\" station dump 2>/dev/null | grep -c '^Station'; "
+                 + "else ip -4 neigh show dev \"$d\" 2>/dev/null | grep -Ec 'REACHABLE|STALE|DELAY'; fi"]
+        stdout: StdioCollector { onStreamFinished: { var n = parseInt(text); root.hotClients = isNaN(n) ? 0 : Math.max(0, n) } }
+    }
+    Timer { interval: 8000; repeat: true; running: root.active && root.hotspotOn && !root.classic; onTriggered: clientProc.running = true }
+    onHotspotOnChanged: { if (hotspotOn && active) clientProc.running = true; else hotClients = 0 }
     Process {
         id: chargeProc
         command: ["bash", Quickshell.shellPath("scripts/charge-limit.sh"), "status"]
@@ -300,6 +339,29 @@ Glass {
     MouseArea { anchors.fill: parent }
 
 
+    // the Focus card beside the box (see `flyout` above)
+    FocusFlyout {
+        id: focusFly
+        pal: root.pal
+        shown: root.flyShown
+        toLeft: root.flyLeft
+        atBottom: root.flyBottom
+        joinV: root.joinV
+        anchors.right: root.flyLeft ? parent.left : undefined
+        anchors.left: root.flyLeft ? undefined : parent.right
+        anchors.rightMargin: root.flyGap; anchors.leftMargin: root.flyGap
+        // the card lines up with the box's edge; the pad around it (room for the flares) hangs over
+        anchors.bottom: root.flyBottom ? parent.bottom : undefined
+        anchors.top: root.flyBottom ? undefined : parent.top
+        anchors.bottomMargin: -focusFly.pad; anchors.topMargin: -focusFly.pad
+        focusInfo: root.focusInfo; focusSecs: root.focusSecs; focusText: root.focusText
+        focusMins: root.focusMins; focusPomo: root.focusPomo; focusBlocked: root.focusBlocked
+        onFocusStart: (m, p) => root.focusStart(m, p)
+        onFocusCommand: w => root.focusCommand(w)
+        onFocusPick: (m, p) => root.focusPick(m, p)
+        onOpenFocusSettings: root.openFocusSettings()
+    }
+
     ColumnLayout {
         id: col
         anchors.left: parent.left
@@ -310,10 +372,11 @@ Glass {
 
         // connectivity: Wi-Fi / Bluetooth click = on / off, right-click = the list (scan and pick); Audio click = the list, right-click = mute
         RowLayout {
+            HoverRaise {}
             Layout.fillWidth: true
             spacing: 8
             z: 3                    // above the rows below: the hover bubbles hang under the chips
-            visible: root.shown("Wifi") || root.shown("Bt") || root.shown("Audio")
+            visible: root.classic && (root.shown("Wifi") || root.shown("Bt") || root.shown("Audio"))
             Chip {
                 Layout.fillWidth: true
                 visible: root.shown("Wifi")
@@ -360,10 +423,11 @@ Glass {
 
         // hotspot, airplane mode, charge limit (the last only on laptops that have one)
         RowLayout {
+            HoverRaise {}
             Layout.fillWidth: true
             spacing: 8
             z: 2
-            visible: root.shown("Hotspot") || root.shown("Airplane") || (root.chargeLimit > 0 && root.shown("Charge"))
+            visible: root.classic && (root.shown("Hotspot") || root.shown("Airplane") || (root.chargeLimit > 0 && root.shown("Charge")))
             Chip {
                 Layout.fillWidth: true
                 visible: root.shown("Hotspot")
@@ -400,6 +464,214 @@ Glass {
                                                                    : "Full charge  ·  click to limit charging and protect the battery"
                 on: root.chargeLimit > 0 && root.chargeLimit < 100
                 onClicked: root.toggleChargeLimit()
+            }
+        }
+
+        // ===== style "Tiles": icon tiles; a connected network shows its signal as stars, Bluetooth its battery, the hotspot its devices
+        GridLayout {
+            HoverRaise {}
+            Layout.fillWidth: true
+            visible: root.tiles
+            columns: 3
+            columnSpacing: 8
+            rowSpacing: 8
+            z: 3
+            UTile {
+                Layout.fillWidth: true; Layout.preferredHeight: 64
+                visible: root.shown("Wifi")
+                pal: root.pal
+                glyph: String.fromCodePoint(root.net.eth ? 0xF0200 : 0xF0928)
+                stars: root.wifiLinked ? root.wifiStars : -1
+                caption: root.net.wifi !== "on" && !root.net.eth ? "Off" : (root.net.eth ? "Wired" : "Wi-Fi")
+                tipAlign: "left"
+                tip: root.net.wifi !== "on" ? "Wi-Fi off  ·  click to turn on"
+                   : (root.net.ssid ? "Connected to " + root.net.ssid + "  ·  signal " + Math.round(Number(root.net.signal) || 0) + "%" : (root.net.eth ? "Ethernet" : "Wi-Fi on, not connected"))
+                     + "  ·  right-click for networks"
+                on: root.net.wifi === "on" || root.menu === "wifi"
+                onClicked: { root.toggleWifi(); if (root.menu === "wifi") root.later("wifi", 1500) }
+                onRightClicked: root.toggleMenu("wifi")
+            }
+            UTile {
+                Layout.fillWidth: true; Layout.preferredHeight: 64
+                visible: root.shown("Bt")
+                pal: root.pal
+                glyph: String.fromCodePoint(0xF00AF)
+                readonly property bool linked: root.net.bt === "on" && !!root.net.btdev
+                stars: linked && !root.btPercent ? root.btStars : -1
+                caption: root.net.bt !== "on" ? "Off" : (!root.net.btdev ? "Bluetooth" : (root.btBattery >= 0 ? root.btBattery + "%" : "Connected"))
+                tip: root.net.bt !== "on" ? "Bluetooth off  ·  click to turn on"
+                   : (root.net.btdev ? root.net.btdev + (root.btBattery >= 0 ? "  ·  battery " + root.btBattery + "%" : "") : "Bluetooth on, no device")
+                     + "  ·  right-click for devices"
+                on: root.net.bt === "on" || root.menu === "bt"
+                onClicked: { root.toggleBt(); if (root.menu === "bt") root.later("bt", 1500) }
+                onRightClicked: root.toggleMenu("bt")
+            }
+            UTile {
+                Layout.fillWidth: true; Layout.preferredHeight: 64
+                visible: root.shown("Audio")
+                pal: root.pal
+                glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker")
+                caption: root.muted ? "Muted" : Math.round(root.vol) + "%"
+                tipAlign: "right"
+                tip: (root.defaultSink ? root.defaultSink.desc : "Audio") + "  ·  click to choose, right-click to mute"
+                on: root.menu === "audio"
+                onClicked: root.toggleMenu("audio")
+                onRightClicked: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+            }
+            UTile {
+                Layout.fillWidth: true; Layout.preferredHeight: 64
+                visible: root.shown("Hotspot")
+                pal: root.pal
+                glyph: String.fromCodePoint(0xF0003)
+                stars: root.hotspotOn ? Math.min(5, root.hotClients) : -1
+                caption: "Off"
+                tipAlign: "left"
+                tip: root.hotspotOn ? "Hotspot on  ·  " + root.hotClients + (root.hotClients === 1 ? " device" : " devices") + " connected  ·  click to turn off" : "Hotspot off  ·  click to turn on"
+                on: root.hotspotOn
+                onClicked: root.toggleHotspot()
+            }
+            UTile {
+                Layout.fillWidth: true; Layout.preferredHeight: 64
+                visible: root.shown("Airplane")
+                pal: root.pal
+                glyph: String.fromCodePoint(0xF001D)
+                caption: "Airplane"
+                tip: root.airplaneOn ? "Airplane mode on  ·  click to bring Wi-Fi and Bluetooth back" : "Airplane mode  ·  switches Wi-Fi and Bluetooth off"
+                on: root.airplaneOn
+                onClicked: root.toggleAirplane()
+            }
+            UTile {
+                Layout.fillWidth: true; Layout.preferredHeight: 64
+                visible: root.chargeLimit > 0 && root.shown("Charge")
+                pal: root.pal
+                glyph: String.fromCodePoint(0xF0079)
+                caption: root.chargeLimit > 0 && root.chargeLimit < 100 ? root.chargeLimit + "%" : "Full"
+                tipAlign: "right"
+                tip: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Charge limit " + root.chargeLimit + "%  ·  protects the battery, click for full charge"
+                                                                   : "Full charge  ·  click to limit charging and protect the battery"
+                on: root.chargeLimit > 0 && root.chargeLimit < 100
+                onClicked: root.toggleChargeLimit()
+            }
+        }
+
+        // ===== style "Split": two tall sliders (volume, brightness) beside round buttons and the four power modes
+        RowLayout {
+            HoverRaise {}
+            Layout.fillWidth: true
+            visible: root.split
+            spacing: 12
+            z: 3
+            RowLayout {
+                spacing: 8
+                VBar {
+                    visible: root.shown("Volume")
+                    Layout.preferredWidth: 52; Layout.preferredHeight: 176
+                    pal: root.pal
+                    glyph: String.fromCodePoint(root.muted ? 0xF0581 : 0xF057E)
+                    value: root.vol / 100
+                    dimmed: root.muted
+                    onMoved: v => root.volumeMoved(v)
+                    onGlyphClicked: root.toggleMute()
+                }
+                VBar {
+                    visible: root.shown("Bright")
+                    Layout.preferredWidth: 52; Layout.preferredHeight: 176
+                    pal: root.pal
+                    glyph: String.fromCodePoint(root.extraDim ? 0xF058F : 0xF00DF)
+                    value: root.bright / 100
+                    dimmed: root.extraDim
+                    onMoved: v => root.brightnessMoved(v)
+                    onGlyphClicked: root.toggleExtraDim()
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 176
+                spacing: 10
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 3
+                    columnSpacing: 6
+                    rowSpacing: 8
+                    Chip {
+                        Layout.preferredWidth: 44; Layout.preferredHeight: 44; Layout.alignment: Qt.AlignHCenter
+                        visible: root.shown("Wifi"); pal: root.pal; padX: 0; label: ""
+                        glyph: String.fromCodePoint(root.net.eth ? 0xF0200 : 0xF0928)
+                        tipAlign: "left"
+                        tip: root.net.wifi !== "on" ? "Wi-Fi off  ·  click to turn on"
+                           : (root.net.ssid ? "Connected to " + root.net.ssid : (root.net.eth ? "Ethernet" : "Wi-Fi on, not connected")) + "  ·  right-click for networks"
+                        on: root.net.wifi === "on" || root.menu === "wifi"
+                        onClicked: { root.toggleWifi(); if (root.menu === "wifi") root.later("wifi", 1500) }
+                        onRightClicked: root.toggleMenu("wifi")
+                    }
+                    Chip {
+                        Layout.preferredWidth: 44; Layout.preferredHeight: 44; Layout.alignment: Qt.AlignHCenter
+                        visible: root.shown("Bt"); pal: root.pal; padX: 0; label: ""
+                        glyph: String.fromCodePoint(0xF00AF)
+                        tip: root.net.bt !== "on" ? "Bluetooth off  ·  click to turn on"
+                           : (root.net.btdev ? root.net.btdev + (root.btBattery >= 0 ? "  ·  " + root.btBattery + "%" : "") : "Bluetooth on, no device") + "  ·  right-click for devices"
+                        on: root.net.bt === "on" || root.menu === "bt"
+                        onClicked: { root.toggleBt(); if (root.menu === "bt") root.later("bt", 1500) }
+                        onRightClicked: root.toggleMenu("bt")
+                    }
+                    Chip {
+                        Layout.preferredWidth: 44; Layout.preferredHeight: 44; Layout.alignment: Qt.AlignHCenter
+                        visible: root.shown("Audio"); pal: root.pal; padX: 0; label: ""
+                        glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker")
+                        tipAlign: "right"
+                        tip: (root.defaultSink ? root.defaultSink.desc : "Audio") + "  ·  click to choose, right-click to mute"
+                        on: root.menu === "audio"
+                        onClicked: root.toggleMenu("audio")
+                        onRightClicked: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+                    }
+                    Chip {
+                        Layout.preferredWidth: 44; Layout.preferredHeight: 44; Layout.alignment: Qt.AlignHCenter
+                        visible: root.shown("Hotspot"); pal: root.pal; padX: 0; label: ""
+                        glyph: String.fromCodePoint(0xF0003)
+                        tipAlign: "left"
+                        tip: root.hotspotOn ? "Hotspot on  ·  " + root.hotClients + " connected  ·  click to turn off" : "Hotspot off  ·  click to turn on"
+                        on: root.hotspotOn
+                        onClicked: root.toggleHotspot()
+                    }
+                    Chip {
+                        Layout.preferredWidth: 44; Layout.preferredHeight: 44; Layout.alignment: Qt.AlignHCenter
+                        visible: root.shown("Airplane"); pal: root.pal; padX: 0; label: ""
+                        glyph: String.fromCodePoint(0xF001D)
+                        tip: root.airplaneOn ? "Airplane mode on  ·  click to bring Wi-Fi and Bluetooth back" : "Airplane mode  ·  switches Wi-Fi and Bluetooth off"
+                        on: root.airplaneOn
+                        onClicked: root.toggleAirplane()
+                    }
+                    Chip {
+                        Layout.preferredWidth: 44; Layout.preferredHeight: 44; Layout.alignment: Qt.AlignHCenter
+                        visible: root.shown("Mic"); pal: root.pal; padX: 0; label: ""
+                        glyph: String.fromCodePoint(root.micMuted ? 0xF036D : 0xF036C)
+                        tipAlign: "right"
+                        tip: (root.micMuted ? "Microphone muted" : (root.defaultSource ? root.defaultSource.desc : "Microphone")) + "  ·  click to mute, right-click to choose"
+                        on: !root.micMuted
+                        onClicked: root.toggleMic()
+                        onRightClicked: root.toggleMenu("mic")
+                    }
+                }
+                Item { Layout.fillHeight: true }
+                GridLayout {
+                    Layout.fillWidth: true
+                    visible: root.shown("Power")
+                    columns: 2
+                    columnSpacing: 6
+                    rowSpacing: 6
+                    Repeater {
+                        model: root.powerModes
+                        delegate: Chip {
+                            required property var modelData
+                            Layout.fillWidth: true; Layout.preferredHeight: 34
+                            pal: root.pal; label: ""; padX: 0
+                            glyph: String.fromCodePoint(modelData.g)
+                            tip: modelData.tip; tipAlign: "right"
+                            on: root.modeOn(modelData.id)
+                            onClicked: root.modeSet(modelData.id)
+                        }
+                    }
+                }
             }
         }
 
@@ -477,10 +749,11 @@ Glass {
 
         // microphone: pick the input device (round button = mute / unmute, right-click the chip = mute too)
         RowLayout {
+            HoverRaise {}
             Layout.fillWidth: true
             spacing: 8
             z: 1
-            visible: root.shown("Mic")
+            visible: root.classic && root.shown("Mic")
             RoundBtn {
                 pal: root.pal
                 size: 36
@@ -516,10 +789,36 @@ Glass {
             }
         }
 
-        // volume + brightness
+        // volume + brightness (Tiles: the mic button sits at the end of the volume line)
+        RowLayout {
+            HoverRaise {}
+            Layout.fillWidth: true
+            visible: root.tiles && (root.shown("Volume") || root.shown("Mic"))
+            spacing: 8
+            Slider {
+                Layout.fillWidth: true
+                visible: root.shown("Volume")
+                pal: root.pal
+                glyph: String.fromCodePoint(root.muted ? 0xF0581 : 0xF057E)
+                value: root.vol / 100
+                dimmed: root.muted
+                onMoved: v => root.volumeMoved(v)
+                onGlyphClicked: root.toggleMute()
+            }
+            Chip {
+                Layout.preferredWidth: 36; Layout.preferredHeight: 36
+                visible: root.shown("Mic"); pal: root.pal; padX: 0; label: ""
+                glyph: String.fromCodePoint(root.micMuted ? 0xF036D : 0xF036C)
+                tipAlign: "right"
+                tip: (root.micMuted ? "Microphone muted" : (root.defaultSource ? root.defaultSource.desc : "Microphone")) + "  ·  click to mute, right-click to choose"
+                on: !root.micMuted
+                onClicked: root.toggleMic()
+                onRightClicked: root.toggleMenu("mic")
+            }
+        }
         Slider {
             Layout.fillWidth: true
-            visible: root.shown("Volume")
+            visible: root.classic && root.shown("Volume")
             pal: root.pal
             glyph: String.fromCodePoint(root.muted ? 0xF0581 : 0xF057E)
             value: root.vol / 100
@@ -528,9 +827,10 @@ Glass {
             onGlyphClicked: root.toggleMute()
         }
         RowLayout {
+            HoverRaise {}
             Layout.fillWidth: true
             spacing: 8
-            visible: root.shown("Bright") || root.shown("ExtraDim")
+            visible: !root.split && (root.shown("Bright") || root.shown("ExtraDim"))
             Slider {
                 Layout.fillWidth: true
                 visible: root.shown("Bright")
@@ -546,7 +846,8 @@ Glass {
                 Layout.fillWidth: !root.shown("Bright")
                 visible: root.shown("ExtraDim")
                 pal: root.pal
-                label: "Extra dim"
+                label: root.classic ? "Extra dim" : ""
+                tip: "Extra dim  ·  dims the screen below its lowest brightness"
                 glyph: String.fromCodePoint(0xF058F)
                 on: root.extraDim
                 onClicked: root.toggleExtraDim()
@@ -554,23 +855,80 @@ Glass {
         }
 
         // power mode
-        Text { text: root.pal.cap("POWER MODE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.2 : 1.4; Layout.topMargin: 10; visible: root.shown("Power") }
+        Text { visible: root.classic && root.shown("Power"); text: root.pal.cap("POWER MODE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.2 : 1.4; Layout.topMargin: 10 }
         RowLayout {
+            HoverRaise {}
             Layout.fillWidth: true
             spacing: 8
-            visible: root.shown("Power")
+            visible: root.classic && root.shown("Power")
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Auto"; on: root.autoPower; onClicked: root.setAuto() }
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Saver"; on: root.profile === "power-saver"; onClicked: root.setProfile("power-saver") }
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Balanced"; on: root.profile === "balanced"; onClicked: root.setProfile("balanced") }
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Perf"; on: root.profile === "performance"; onClicked: root.setProfile("performance") }
         }
 
-        // caffeine (click = on / off, right-click = on for one hour) and the background-apps box (bottom-left corner)
+        // power mode as four icons (Tiles); Split has them inside its block. The words are in the hover bubble.
         RowLayout {
+            HoverRaise {}
+            Layout.fillWidth: true
+            visible: root.tiles && root.shown("Power")
+            spacing: 8
+            Repeater {
+                model: root.powerModes
+                delegate: Chip {
+                    required property var modelData
+                    required property int index
+                    Layout.fillWidth: true; Layout.preferredHeight: 38
+                    pal: root.pal; label: ""; padX: 0
+                    glyph: String.fromCodePoint(modelData.g)
+                    tip: modelData.tip; tipAlign: index === 0 ? "left" : (index === 3 ? "right" : "center")
+                    on: root.modeOn(modelData.id)
+                    onClicked: root.modeSet(modelData.id)
+                }
+            }
+        }
+
+        // two rows (Tiles and Split), so nothing is cramped: the switches as icons (caffeine, record, focus, gaming), then the
+        // places you open, with their names (settings, power)
+        RowLayout {
+            HoverRaise {}
+            Layout.fillWidth: true
+            Layout.topMargin: 6
+            visible: !root.classic
+            spacing: 8
+            z: 2
+            Chip { Layout.fillWidth: true; Layout.preferredHeight: 40; visible: root.shown("Caffeine"); pal: root.pal; padX: 0; label: ""; glyph: String.fromCodePoint(0xF0176)
+                tipAlign: "left"; tip: root.caffeine ? "Caffeine on  ·  click to turn off" : "Caffeine  ·  keeps the screen awake  ·  right-click for one hour"
+                on: root.caffeine; onClicked: root.toggleCaffeine(); onRightClicked: root.caffeineHour() }
+            Chip { Layout.fillWidth: true; Layout.preferredHeight: 40; visible: root.shown("Record"); pal: root.pal; padX: 0; label: ""; glyph: String.fromCodePoint(0xF0481)
+                tip: root.isRecording ? "Recording  ·  click to stop" : "Record the screen"
+                on: root.isRecording; onClicked: root.toggleRecord() }
+            Chip { Layout.fillWidth: true; Layout.preferredHeight: 40; visible: root.shown("Focus"); pal: root.pal; padX: 0; label: ""; glyph: String.fromCodePoint(0xF051B)
+                tip: root.focusInfo.on ? "Focus  ·  " + root.focusText : "Focus  ·  a timer with do-not-disturb"
+                on: root.focusInfo.on || root.focusOpen; onClicked: root.focusOpen = !root.focusOpen }
+            Chip { Layout.fillWidth: true; Layout.preferredHeight: 40; pal: root.pal; padX: 0; label: ""; glyph: String.fromCodePoint(0xF0297)
+                tipAlign: "right"; tip: root.gaming ? "Gaming mode on  ·  click to turn off" : "Gaming mode"
+                on: root.gaming; onClicked: root.toggleGaming() }
+        }
+        RowLayout {
+            HoverRaise {}
+            Layout.fillWidth: true
+            visible: !root.classic
+            spacing: 8
+            z: 2
+            Chip { Layout.fillWidth: true; Layout.preferredHeight: 36; pal: root.pal; glyph: String.fromCodePoint(0xF0493); label: "Settings"
+                tip: "Settings"; onClicked: root.openSettings() }
+            Chip { Layout.fillWidth: true; Layout.preferredHeight: 36; pal: root.pal; primary: true; glyph: String.fromCodePoint(0xF0425); label: "Power"
+                tipAlign: "right"; tip: "Lock, log out, restart, shut down"; onClicked: root.openPower() }
+        }
+
+        // caffeine (click = on / off, right-click = on for one hour) and record
+        RowLayout {
+            HoverRaise {}
             Layout.fillWidth: true
             Layout.topMargin: 10
             spacing: 8
-            visible: root.shown("Caffeine") || root.shown("Record") || root.shown("Apps")
+            visible: root.classic && (root.shown("Caffeine") || root.shown("Record"))
             Chip {
                 Layout.fillWidth: true; pal: root.pal
                 visible: root.shown("Caffeine")
@@ -588,7 +946,6 @@ Glass {
                 on: root.isRecording
                 onClicked: root.toggleRecord()
             }
-            Chip { Layout.fillWidth: true; visible: root.shown("Apps"); pal: root.pal; glyph: String.fromCodePoint(0xF003B); label: "Apps"; onClicked: root.openApps() }
         }
 
         // focus mode: a timer + do-not-disturb + closing the apps on the block list (scripts/focus.sh)
@@ -596,133 +953,36 @@ Glass {
         Chip {
             Layout.fillWidth: true
             Layout.topMargin: 10
-            visible: root.shown("Focus")
+            visible: root.shown("Focus") && (root.classic || root.focusInfo.on)
             pal: root.pal
             glyph: String.fromCodePoint(0xF051B)
             label: (root.focusInfo.on
                     ? root.focusText + "  ·  " + (root.focusInfo.paused ? "Paused" : (root.focusInfo.phase === "work" ? "Focusing" : "Break"))
-                    : "Focus") + (root.focusOpen ? "   \u25B4" : "   \u25BE")
+                    : "Focus") + (root.flyout ? ((root.flyLeft === !root.focusOpen) ? "   \u25C2" : "   \u25B8")
+                                 : (root.focusOpen ? "   \u25B4" : "   \u25BE"))
             on: root.focusInfo.on || root.focusOpen
             onClicked: root.focusOpen = !root.focusOpen
         }
 
-        // idle: pick a length, then start
-        ColumnLayout {
+        // the Focus controls, folded into the box (when they do not open beside it)
+        FocusBody {
             Layout.fillWidth: true
-            spacing: 8
-            visible: root.shown("Focus") && !root.focusInfo.on && root.focusOpen
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Repeater {
-                    model: [25, 50, 90]
-                    delegate: Chip {
-                        required property int modelData
-                        Layout.fillWidth: true; pal: root.pal
-                        label: modelData + "m"
-                        on: root.focusMins === modelData
-                        onClicked: root.focusPick(modelData, root.focusPomo)
-                    }
-                }
-                Chip {
-                    Layout.fillWidth: true; pal: root.pal
-                    label: "Pomodoro"
-                    on: root.focusPomo
-                    onClicked: root.focusPick(root.focusMins, !root.focusPomo)
-                }
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Chip {
-                    Layout.fillWidth: true; pal: root.pal
-                    glyph: String.fromCodePoint(0xF040A)
-                    label: "Start focus"
-                    onClicked: root.focusStart(root.focusMins, root.focusPomo)
-                }
-                Chip {
-                    Layout.fillWidth: true; pal: root.pal
-                    glyph: String.fromCodePoint(0xF009E)
-                    label: root.focusBlocked > 0 ? "Blocked apps · " + root.focusBlocked : "Block apps"
-                    onClicked: root.openFocusSettings()
-                }
-            }
+            visible: root.shown("Focus") && root.focusOpen && !root.flyout
+            pal: root.pal
+            focusInfo: root.focusInfo; focusSecs: root.focusSecs; focusText: root.focusText
+            focusMins: root.focusMins; focusPomo: root.focusPomo; focusBlocked: root.focusBlocked
+            onFocusStart: (m, p) => root.focusStart(m, p)
+            onFocusCommand: w => root.focusCommand(w)
+            onFocusPick: (m, p) => root.focusPick(m, p)
+            onOpenFocusSettings: root.openFocusSettings()
         }
 
-        // running: a countdown card with the phase, a progress line and the controls
-        Rectangle {
-            Layout.fillWidth: true
-            visible: root.shown("Focus") && root.focusInfo.on && root.focusOpen
-            implicitHeight: runCol.implicitHeight + 24
-            radius: root.pal.rLg
-            color: Qt.alpha(root.pal.accent, 0.10)
-            border.width: root.pal.bw
-            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
 
-            ColumnLayout {
-                id: runCol
-                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                anchors.margins: 12
-                spacing: 10
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-                    Text {
-                        text: root.focusText
-                        color: root.pal.text
-                        font.family: root.pal.uiFont; font.pixelSize: 30; font.weight: Font.DemiBold
-                        opacity: root.focusInfo.paused ? 0.55 : 1
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 1
-                        Text {
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                            text: root.focusInfo.paused ? "Paused" : (root.focusInfo.phase === "work" ? "Focusing" : (root.focusInfo.phase === "long" ? "Long break" : "Break"))
-                            color: root.pal.accent
-                            font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                            text: (root.focusInfo.pomodoro ? "Round " + root.focusInfo.cycle + " of " + root.focusInfo.cycles + " · " : "")
-                                  + (root.focusInfo.blocking ? "apps blocked" : "apps allowed")
-                                  + (root.focusInfo.closed > 0 ? " · " + root.focusInfo.closed + " closed" : "")
-                            color: root.pal.muted
-                            font.family: root.pal.uiFont; font.pixelSize: 11
-                        }
-                    }
-                }
-
-                // progress of the running phase
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 4; radius: 2
-                    color: Qt.alpha(root.pal.text, 0.10)
-                    Rectangle {
-                        height: parent.height; radius: 2
-                        color: root.pal.accent
-                        width: parent.width * (root.focusInfo.total > 0 ? Math.max(0, Math.min(1, 1 - root.focusSecs / root.focusInfo.total)) : 0)
-                        Behavior on width { NumberAnimation { duration: 900; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    Chip { Layout.fillWidth: true; pal: root.pal; label: root.focusInfo.paused ? "Resume" : "Pause"; onClicked: root.focusCommand(root.focusInfo.paused ? "resume" : "pause") }
-                    Chip { Layout.fillWidth: true; pal: root.pal; label: "+5 min"; onClicked: root.focusCommand("add 5") }
-                    Chip { Layout.fillWidth: true; pal: root.pal; label: root.focusInfo.pomodoro ? "Skip" : "Done"; onClicked: root.focusCommand("skip") }
-                    RoundBtn { pal: root.pal; glyph: String.fromCodePoint(0xF0156); size: 36; onClicked: root.focusCommand("stop") }
-                }
-            }
-        }
-
-        // one quiet row: settings gear, gaming mode, power button
+        // one quiet row: settings gear, gaming mode, power button (classic style; the others have these in their icon row)
         RowLayout {
+            HoverRaise {}
             Layout.fillWidth: true
+            visible: root.classic
             Layout.topMargin: 10
             spacing: 8
             Chip { Layout.fillWidth: true; pal: root.pal; glyph: String.fromCodePoint(0xF0493); label: "Settings"; onClicked: root.openSettings() }

@@ -18,7 +18,7 @@
 #                                         foot / Thunar / Spotify / Discord become the default terminal / files / music / chat
 #                                         (only for a kind you have not chosen yourself in Settings > Default apps).
 #                                         browser= / files= / editor= are what you picked in the installer: those always win
-#     user-setup.sh save-choices K=V...   remember the installer's picks (~/.local/state/island/install-choices.env: BROWSER FILES EDITOR MUSIC SYSMODE SAFETY_CHECK PROMPT WHISPER WHISPER_MODEL VLM VLM_MODEL RESOURCE_MODE RESOURCE_OFFSET RENDERER PLYMOUTH LUNA FIREWALL ANTIVIRUS SECURITY_MODEL LOCK_LOGIN)
+#     user-setup.sh save-choices K=V...   remember the installer's picks (~/.local/state/island/install-choices.env: BROWSER FILES EDITOR MUSIC SYSMODE SAFETY_CHECK PROMPT WHISPER WHISPER_MODEL VLM VLM_MODEL RESOURCE_MODE RESOURCE_OFFSET RENDERER PLYMOUTH LUNA FIREWALL ANTIVIRUS SECURITY_MODEL LOCK_LOGIN LOGIN_MODE LOCK_MODE)
 #     user-setup.sh resource-seed PRESET LIMMODE RAM_MB CPU_PCT
 #                                         the resource use picked in the installer (low|medium|high, manual|auto, the RAM / CPU limits): written
 #                                         once to ~/.local/state/island/resource-seed.json, the island applies it on its next start and deletes it
@@ -419,7 +419,7 @@ save_choices() {
   mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
   for a in "$@"; do
     k=${a%%=*}
-    case "$k" in BROWSER|FILES|EDITOR|MUSIC|SYSMODE|SAFETY_CHECK|PROMPT|LLM|LLM_MODEL|WHISPER|WHISPER_MODEL|VLM|VLM_MODEL|RESOURCE_MODE|RESOURCE_OFFSET|RENDERER|PLYMOUTH|LUNA|FIREWALL|ANTIVIRUS|SECURITY_MODEL|LOCK_LOGIN) ;; *) continue ;; esac
+    case "$k" in BROWSER|FILES|EDITOR|MUSIC|SYSMODE|SAFETY_CHECK|PROMPT|LLM|LLM_MODEL|WHISPER|WHISPER_MODEL|VLM|VLM_MODEL|RESOURCE_MODE|RESOURCE_OFFSET|RENDERER|PLYMOUTH|LUNA|FIREWALL|ANTIVIRUS|SECURITY_MODEL|LOCK_LOGIN|LOGIN_MODE|LOCK_MODE) ;; *) continue ;; esac
     grep -v "^$k=" "$f" > "$f.new" 2>/dev/null; printf '%s="%s"\n' "$k" "${a#*=}" >> "$f.new"; mv "$f.new" "$f"
   done
   ok "your choices are saved in ~/.local/state/island/install-choices.env"

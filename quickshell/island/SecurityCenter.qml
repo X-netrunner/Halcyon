@@ -124,6 +124,99 @@ Scope {
         stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") root.flash(text.trim().replace(/^error: /, ""), true) }
         onExited: root.refresh()
     }
+    // ---- what the responder did, would do, or holds back for you: quarantine a file, freeze / isolate a program, block an address.
+    // The notifications ("Would quarantine", "N more notifications were held back. See: ai-antivirus actions") point here.
+    //   pending   waits for your OK          -> Approve / Reject (sudo, in the console)
+    //   dry_run   held back: alert-only mode recorded what it WOULD do; nothing was touched
+    //   executed  done                       -> Undo (thaw, restore the quarantined file, lift the block), except kill
+    property var avActions: []
+    readonly property var avHeld: avActions.filter(function (a) { return a.action !== "notify" })
+    readonly property int avPending: avActions.filter(function (a) { return a.status === "pending" }).length
+    // The list is read as your user. When the log is root-only (you are not in group ai-antivirus yet, or not since you last logged in) that
+    // fails: the reason is kept in avActErr, and "Unlock with password" reads the same list once with pkexec (a snapshot: it is not polled,
+    // so the password is asked only when you ask for it).
+    property string avActErr: ""
+    property bool avActSudo: false
+    // `actions --json` prints one JSON object per line like `alerts --json`; a JSON array (or {actions: [...]}) is read too
+    function parseActs(text) {
+        var out = [], t = String(text).trim()
+        if (t === "") return out
+        var whole = null
+        try { whole = JSON.parse(t) } catch (e) { whole = null }
+        if (whole !== null) {
+            if (Array.isArray(whole)) out = whole
+            else if (whole && Array.isArray(whole.actions)) out = whole.actions
+            else if (whole && typeof whole === "object") out = [whole]
+        } else {
+            var lines = t.split("\n")
+            for (var i = 0; i < lines.length; i++) {
+                if (lines[i].trim() === "") continue
+                try { var o = JSON.parse(lines[i]); if (o && typeof o === "object") out.push(o) } catch (e) {}
+            }
+        }
+        out.sort(function (a, b) { return (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1) || (b.ts_ns || 0) - (a.ts_ns || 0) })
+        return out
+    }
+    readonly property bool avActLocked: avActErr !== "" && avActions.length === 0 && !avActSudo
+    Process {
+        id: avActProc
+        command: ["ai-antivirus", "actions", "--json", "-n", "60"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (root.avActSudo) return                 // the password snapshot stays until you reload it
+                root.avActions = root.parseActs(text)
+            }
+        }
+        stderr: StdioCollector { onStreamFinished: { if (!root.avActSudo) root.avActErr = text.trim().replace(/^error: /, "").split("\n")[0] } }
+    }
+    Process {
+        id: avActRootProc
+        stdout: StdioCollector { id: avActRootOut }
+        stderr: StdioCollector { id: avActRootErr }
+        onExited: code => Qt.callLater(function () {
+            root.show("antivirus")
+            if (code === 0) {
+                root.avActions = root.parseActs(avActRootOut.text)
+                root.avActSudo = true
+                root.avActErr = ""
+            } else if (code !== 126) {
+                // no polkit agent, or pkexec failed for any other reason: the same list with sudo in the console (the console
+                // always works; you type the password there). The reason is said here too.
+                var why = avActRootErr.text.trim().replace(/^error: /i, "").split("\n")[0]
+                root.flash(why !== "" ? why : "Could not unlock the list here, opening it in the console", true)
+                root.consoleRequested("sudo " + root.shq(root.avBin) + " actions -n 100")
+            }
+        })
+    }
+    function avActUnlock() {
+        if (avActRootProc.running || !hasAv) return
+        avActRootProc.command = ["pkexec", avBin, "actions", "--json", "-n", "100"]
+        hide()                                           // the password window would sit under this one
+        avActRootProc.running = true
+    }
+    function actVerb(a) {
+        var v = { quarantine: ["Quarantine", "Quarantined"], freeze: ["Freeze", "Frozen"], isolate: ["Isolate", "Isolated"], block: ["Block", "Blocked"],
+                  kill: ["Stop", "Stopped"], thaw: ["Thaw", "Thawed"] }[a.action] || [a.action, a.action]
+        var what = a.target && a.target.kind === "file" ? " file" : (a.target && a.target.kind === "ip" ? " address" : (a.target && a.target.kind === "process" ? " program" : ""))
+        if (a.status === "executed") return v[1] + what
+        if (a.status === "pending") return v[0] + what + "?"
+        if (a.status === "dry_run") return "Held back: would " + v[0].toLowerCase() + what
+        if (a.status === "undone") return v[0] + what + " (undone)"
+        if (a.status === "rejected") return v[0] + what + " (rejected)"
+        if (a.status === "failed") return v[0] + what + " failed"
+        return v[0] + what + " (" + a.status + ")"
+    }
+    function actTarget(t) {
+        if (!t) return ""
+        if (t.kind === "file") return String(t.path || "").replace(/^\/home\/[^/]+\//, "~/")
+        if (t.kind === "process") return (t.exe ? String(t.exe).replace(/^\/home\/[^/]+\//, "~/") : "") + (t.pid ? "  (pid " + t.pid + ")" : "")
+        if (t.kind === "ip") return String(t.addr || "")
+        return ""
+    }
+    function actTone(a) {
+        return a.status === "pending" ? pal.warn : (a.status === "executed" ? pal.bad : (a.status === "failed" ? pal.bad : (a.status === "dry_run" ? pal.accent : pal.muted)))
+    }
+    function actRun(verb, id) { consoleRequested("sudo " + shq(avBin) + " " + verb + " " + Number(id)) }
     function ack(ids) {
         if (avAckProc.running) return
         avAckProc.command = ids === "all" ? ["ai-antivirus", "ack", "--all"] : ["ai-antivirus", "ack"].concat(ids.map(String))
@@ -235,21 +328,23 @@ Scope {
         if (hasFw && !fwProc.running) fwProc.running = true
         if (hasAv && !avProc.running) avProc.running = true
         if (hasAv && !avAlertsProc.running) avAlertsProc.running = true
+        if (hasAv && !avActSudo && !avActProc.running) avActProc.running = true
     }
     Timer { interval: 2000; repeat: true; running: root.open && root.hasFw; onTriggered: if (!fwProc.running) fwProc.running = true }
     Timer {
         interval: 6000; repeat: true; running: root.open && root.hasAv
-        onTriggered: { if (!avProc.running) avProc.running = true; if (!avAlertsProc.running) avAlertsProc.running = true }
+        onTriggered: { if (!avProc.running) avProc.running = true; if (!avAlertsProc.running) avAlertsProc.running = true; if (!root.avActSudo && !avActProc.running) avActProc.running = true }
     }
 
     // ---- both at once: the overview's headline and its feed
     readonly property int down: (hasFw && !fwAlive ? 1 : 0) + (hasAv && av !== null && !avRunning ? 1 : 0)
-    readonly property string overall: !detected ? "" : (!hasFw && !hasAv ? "Not installed" : (down > 0 ? "Needs attention" : (avUnacked > 0 ? "Review alerts" : "Protected")))
-    readonly property color overallColor: !hasFw && !hasAv ? pal.muted : (down > 0 ? pal.bad : (avUnacked > 0 ? pal.warn : pal.good))
+    readonly property string overall: !detected ? "" : (!hasFw && !hasAv ? "Not installed" : (down > 0 ? "Needs attention" : (avPending > 0 ? "Waiting for your OK" : (avUnacked > 0 ? "Review alerts" : "Protected"))))
+    readonly property color overallColor: !hasFw && !hasAv ? pal.muted : (down > 0 ? pal.bad : (avUnacked > 0 || avPending > 0 ? pal.warn : pal.good))
     readonly property var feed: {
         var out = []
         if (fw) (fw.recent || []).forEach(function (d) { out.push({ at: d.at_unix, who: "firewall", title: d.reason + "  " + d.ip, sub: d.ports, tone: d.enforced ? "bad" : "warn" }) })
         avAlerts.forEach(function (a) { out.push({ at: a.ts_ns / 1e9, who: "antivirus", title: a.title, sub: a.detail && a.detail.exe ? a.detail.exe : a.rule_id, tone: a.severity }) })
+        avHeld.forEach(function (a) { out.push({ at: a.ts_ns / 1e9, who: "antivirus", title: root.actVerb(a), sub: root.actTarget(a.target) || (a.rule_id || ""), tone: a.status === "pending" ? "medium" : (a.status === "executed" ? "high" : "low") }) })
         out.sort(function (a, b) { return b.at - a.at })
         return out.slice(0, 8)
     }
@@ -505,7 +600,11 @@ Scope {
         property bool mono: false
         property int actGlyph: 0
         property color actTone: root.pal.muted
+        property int act2Glyph: 0            // a second button left of the first (e.g. Reject next to Approve)
+        property color act2Tone: root.pal.muted
+        property bool actAlways: false       // show the buttons all the time, not only on hover
         signal act()
+        signal act2()
         height: 48
         radius: root.pal.rSm
         color: lrMa.containsMouse ? root.pal.fill : "transparent"
@@ -513,7 +612,7 @@ Scope {
         Rectangle { id: lrMark; x: 8; width: 3; height: 26; radius: 2; anchors.verticalCenter: parent.verticalCenter; color: lr.mark }
         Text { id: lrLead; visible: lr.lead !== ""; anchors { left: lrMark.right; leftMargin: 10; verticalCenter: parent.verticalCenter } width: 40; text: lr.lead; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
         Column {
-            anchors { left: lr.lead !== "" ? lrLead.right : lrMark.right; leftMargin: lr.lead !== "" ? 4 : 12; right: lrAct.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            anchors { left: lr.lead !== "" ? lrLead.right : lrMark.right; leftMargin: lr.lead !== "" ? 4 : 12; right: lrAct2.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
             spacing: 1
             Text { width: parent.width; elide: Text.ElideRight; text: lr.title; color: root.pal.text; font.family: lr.mono ? root.pal.mono : root.pal.uiFont; font.pixelSize: root.pal.tBody - 1 }
             Small { width: parent.width; text: lr.sub; visible: text !== ""; font.pixelSize: root.pal.tCap }
@@ -521,11 +620,20 @@ Scope {
         RowIcon {
             id: lrAct
             anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
-            visible: lr.actGlyph !== 0 && lrMa.containsMouse
+            visible: lr.actGlyph !== 0 && (lr.actAlways || lrMa.containsMouse)
             width: lr.actGlyph !== 0 ? 28 : 0
             glyph: lr.actGlyph
             tone: lr.actTone
             onClicked: lr.act()
+        }
+        RowIcon {
+            id: lrAct2
+            anchors { right: lrAct.left; rightMargin: lr.act2Glyph !== 0 ? 4 : 0; verticalCenter: parent.verticalCenter }
+            visible: lr.act2Glyph !== 0 && (lr.actAlways || lrMa.containsMouse)
+            width: lr.act2Glyph !== 0 ? 28 : 0
+            glyph: lr.act2Glyph
+            tone: lr.act2Tone
+            onClicked: lr.act2()
         }
     }
     // a centred quiet note for an empty list
@@ -763,7 +871,7 @@ Scope {
                                 }
                                 NavRow { key: "overview"; label: "Overview"; glyph: 0xF0570; tone: root.overallColor }
                                 NavRow { key: "firewall"; label: "Firewall"; glyph: 0xF1A11; tone: root.fwColor; available: root.hasFw || !root.detected }
-                                NavRow { key: "antivirus"; label: "Antivirus"; glyph: 0xF13B6; tone: root.avColor; badge: root.avUnacked; available: root.hasAv || !root.detected }
+                                NavRow { key: "antivirus"; label: "Antivirus"; glyph: 0xF13B6; tone: root.avColor; badge: root.avUnacked + root.avPending; available: root.hasAv || !root.detected }
                                 NavRow { key: "exceptions"; label: "Exceptions"; glyph: 0xF0780; available: root.hasAv || !root.detected }
                                 NavRow { key: "ask"; label: "Ask"; glyph: 0xF0B79; available: root.hasFw || root.hasAv || !root.detected }
                                 NavRow { key: "clamav"; label: "ClamAV"; glyph: 0xF0668; tone: root.clam !== null ? root.clamColor : "transparent"; available: root.hasClam || !root.detected }
@@ -1008,7 +1116,7 @@ Scope {
                                     Stat { divider: false; label: "Critical · 24h"; value: parent.parent.a ? String(parent.parent.a.critical) : "-"; tone: root.pal.bad }
                                     Stat { label: "High · 24h"; value: parent.parent.a ? String(parent.parent.a.high) : "-"; tone: Qt.lighter(root.pal.bad, 1.15) }
                                     Stat { label: "Medium · 24h"; value: parent.parent.a ? String(parent.parent.a.medium) : "-"; tone: root.pal.warn }
-                                    Stat { label: "To review"; value: root.avKnown ? String(root.avUnacked) : "-"; sub: root.av && root.av.pending_actions ? root.av.pending_actions + " pending" : ""; tone: root.pal.text }
+                                    Stat { label: "To review"; value: root.avKnown ? String(root.avUnacked) : "-"; sub: root.avPending > 0 ? root.avPending + " waiting for your OK" : (root.av && root.av.pending_actions ? root.av.pending_actions + " pending" : ""); tone: root.pal.text }
                                 }
 
                                 Flow {
@@ -1071,6 +1179,56 @@ Scope {
                                                 Small { text: (modelData.findings || []).map(function (f) { return f.detail || f.kind }).join(", "); color: root.pal.bad; width: scCol.width - fPath.width - 10 }
                                             }
                                         }
+                                    }
+                                }
+
+                                // what the antivirus held back, quarantined, froze or isolated (the notifications point here). Always on this page, so a
+                                // quarantined file can be found and restored from here (the ↶ button: `ai-antivirus undo <id>`, in the console with sudo)
+                                Section {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 34 + 50 * Math.min(4, Math.max(1, root.avHeld.length))
+                                    title: "Held back, quarantined and isolated"
+                                    extra: root.avPending > 0 ? root.avPending + " waiting for your OK" : (root.avHeld.length > 0 ? String(root.avHeld.length) : "")
+                                    action: root.avActLocked ? "Unlock with password" : (root.avActSudo ? "Reload (password)" : "Full list")
+                                    onActed: { if (root.avActLocked || root.avActSudo) root.avActUnlock(); else root.consoleRequested("ai-antivirus actions -n 100") }
+                                    ListView {
+                                        anchors.fill: parent
+                                        clip: true
+                                        spacing: 2
+                                        boundsBehavior: Flickable.StopAtBounds
+                                        model: root.avHeld
+                                        delegate: ListRow {
+                                            required property var modelData
+                                            readonly property bool waiting: modelData.status === "pending"
+                                            readonly property bool undoable: modelData.status === "executed" && modelData.action !== "kill"
+                                            width: ListView.view.width
+                                            title: root.actVerb(modelData)
+                                            sub: [root.actTarget(modelData.target), modelData.rule_id || "", root.ago(modelData.ts_ns / 1e9) + " ago",
+                                                  undoable ? "↶ undo" + (modelData.action === "quarantine" ? " restores the file" : "") : "",
+                                                  modelData.error ? "error: " + modelData.error : ""].filter(function (x) { return x !== "" }).join("  ·  ")
+                                            mark: root.actTone(modelData)
+                                            actAlways: waiting || undoable
+                                            // pending: Approve (✓) and Reject (✕); done: Undo (restore the file, thaw, lift the block). Each opens the console (sudo).
+                                            actGlyph: waiting ? 0xF012C : (undoable ? 0xF054C : 0)
+                                            actTone: waiting ? root.pal.good : root.pal.accent
+                                            act2Glyph: waiting ? 0xF0156 : 0
+                                            act2Tone: root.pal.bad
+                                            onAct: root.actRun(waiting ? "approve" : "undo", modelData.id)
+                                            onAct2: root.actRun("reject", modelData.id)
+                                        }
+                                    }
+                                    Btn {
+                                        visible: root.avActLocked
+                                        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
+                                        label: "Let my user read it (then log in again)"
+                                        glyph: 0xF0306
+                                        onClicked: root.consoleRequested("getent group ai-antivirus >/dev/null && sudo usermod -aG ai-antivirus \"$USER\" && echo \"done: log out and in again, then the alerts and this list load without a password\" || echo \"this system has no group ai-antivirus: use Unlock with password\"")
+                                    }
+                                    Empty {
+                                        visible: root.avHeld.length === 0
+                                        glyph: root.avActLocked ? 0xF033E : 0xF0565
+                                        tone: root.avActLocked ? root.pal.warn : root.pal.good
+                                        text: root.avActLocked ? "The action log is not readable as your user" : "Nothing held back"
                                     }
                                 }
 

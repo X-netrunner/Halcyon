@@ -44,6 +44,12 @@
 #   --lock-login           use the lock screen as login screen even if a login manager exists
 #   --no-lock-login        never set that up (you log in on the text console and start Halcyon by hand)
 #   --remove-lock-login    undo it: no more auto-login on tty1, tty1 is an ordinary text login again
+#   --greeter              a real login manager: greetd with Halcyon's own login screen (scripts/halcyon-greeter.sh), instead of the
+#                          tty1 auto-login. Your old display manager is only switched off and can be put back
+#   --remove-greeter       undo it: the old login manager (or the text console) comes back
+#   --login-mode MODE      what happens at BOOT: greeter (Halcyon login manager, no widgets) | lock (auto-login + the lock screen, widgets allowed) | keep
+#   --lock-mode MODE       what the screen is after SLEEP / when you lock: login (the login-screen look, no widgets) | lock (the lock screen, widgets allowed) | keep
+#                          (both are asked once on a first install, and again with --choose; Settings > Login screen / Lock screen change them later)
 #   --no-apps              do not install foot / Discord / a music player (and no file manager unless you ask for one)
 #   --browser ID           firefox | zen | librewolf | floorp | chromium | brave | vivaldi | chrome | qutebrowser | keep
 #   --files ID[,ID]        thunar | yazi | dolphin | nautilus | nemo | pcmanfm | none   (the first one opens folders: SUPER+E)
@@ -163,7 +169,7 @@ SECURITY_MODEL="${SECURITY_MODEL:-}"   # the assistants' local model: empty = th
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
 PICK_PROMPT=""; FIRST_INSTALL=false        # your shell prompt: keep | colours | halcyon (see choose_prompt); FIRST_INSTALL: nothing was chosen on this machine yet
-LINK_CONFIG=false; REQUESTED_USER=""; TTY_AUTOSTART=false; LOCK_LOGIN=auto; REMOVE_LOGIN=false
+LINK_CONFIG=false; REQUESTED_USER=""; TTY_AUTOSTART=false; LOCK_LOGIN=auto; REMOVE_LOGIN=false; GREETER=false; REMOVE_GREETER=false; LOGIN_MODE=""; LOCK_MODE=""
 
 WARNINGS=()          # non-fatal problems, listed again at the end
 FAILED_PKGS=()       # packages that could not be installed
@@ -281,6 +287,12 @@ while [[ $# -gt 0 ]]; do
         --lock-login)       LOCK_LOGIN=1 ;;
         --no-lock-login)    LOCK_LOGIN=0 ;;
         --remove-lock-login) REMOVE_LOGIN=true ;;
+        --greeter)          GREETER=true ;;
+        --login-mode)       shift; LOGIN_MODE="${1:-}"; [[ "$LOGIN_MODE" =~ ^(greeter|lock|keep)$ ]] || die "--login-mode needs greeter, lock or keep" ;;
+        --login-mode=*)     LOGIN_MODE="${1#--login-mode=}"; [[ "$LOGIN_MODE" =~ ^(greeter|lock|keep)$ ]] || die "--login-mode needs greeter, lock or keep" ;;
+        --lock-mode)        shift; LOCK_MODE="${1:-}"; [[ "$LOCK_MODE" =~ ^(login|lock|keep)$ ]] || die "--lock-mode needs login, lock or keep" ;;
+        --lock-mode=*)      LOCK_MODE="${1#--lock-mode=}"; [[ "$LOCK_MODE" =~ ^(login|lock|keep)$ ]] || die "--lock-mode needs login, lock or keep" ;;
+        --remove-greeter)   REMOVE_GREETER=true ;;
         -v|--verbose)       VERBOSE=true ;;
         -q|--quiet)         VERBOSE=false ;;
         --no-apps)          INSTALL_APPS=false ;;
@@ -553,6 +565,13 @@ if [[ "$REMOVE_LOGIN" == "true" ]]; then
     have_systemd && as_root systemctl daemon-reload || true
     user_setup login-remove || true
     log_success "tty1 auto-login and the start-on-login lines are removed; from the next boot tty1 asks for a user name and password again."
+    exit 0
+fi
+
+# ---- --remove-greeter: the old login manager (or the text console) comes back
+if [[ "$REMOVE_GREETER" == "true" ]]; then
+    log_step "Removing the Halcyon login screen"
+    run_as_user bash "$TARGET_RICE/scripts/halcyon-greeter.sh" remove || log_warn "Could not remove it: run  $TARGET_RICE/scripts/halcyon-greeter.sh remove  yourself."
     exit 0
 fi
 
@@ -2351,6 +2370,41 @@ have_dm() {
 }
 dm_name() { basename "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null; }
 
+# ---- the two login questions: how do you log in at BOOT, and what do you see after SLEEP / when you lock
+#   boot:   Halcyon login manager (greetd + greeter/shell.qml, no widgets)   |  auto-login + the lock screen (widgets allowed)
+#   sleep:  the login-screen look (no widgets)                               |  the lock screen (widgets allowed)
+# Asked once (answers are remembered); ./install.sh --choose asks again. A flag skips the question.
+SAVED_LM="$(saved_choice LOGIN_MODE)"; SAVED_SM="$(saved_choice LOCK_MODE)"
+if [[ -z "$LOGIN_MODE" ]]; then
+    if [[ "$GREETER" == "true" ]]; then LOGIN_MODE=greeter
+    elif [[ "$LOCK_LOGIN" == "1" ]]; then LOGIN_MODE=lock
+    elif [[ "$AUTO_CONFIRM" != "true" && -t 0 && ( "$CHOOSE" == "true" || -z "$SAVED_LM" ) ]]; then
+        menu_pick LOGIN_MODE "At boot: how do you log in?" "${SAVED_LM:-keep}" 0 \
+            "greeter|Halcyon login manager|greetd + Halcyon's own login screen, pretty and locked down (no widgets)" \
+            "lock|Auto-login + lock screen|tty1 logs you in, Halcyon starts locked; the lock screen can show widgets" \
+            "keep|Leave it as it is|nothing changes"
+        LOGIN_MODE="${LOGIN_MODE%% *}"
+    fi
+fi
+[[ "$LOGIN_MODE" == "greeter" ]] && GREETER=true
+[[ "$LOGIN_MODE" == "lock" && "$LOCK_LOGIN" == "auto" ]] && LOCK_LOGIN=1
+if [[ -z "$LOCK_MODE" ]]; then
+    if [[ "$AUTO_CONFIRM" != "true" && -t 0 && ( "$CHOOSE" == "true" || -z "$SAVED_SM" ) ]]; then
+        menu_pick LOCK_MODE "After sleep / when you lock: what do you see?" "${SAVED_SM:-keep}" 0 \
+            "login|Login-screen look|the same screen as the login manager, no widgets" \
+            "lock|Lock screen|the full lock screen: your own widgets, media card, Wi-Fi and battery" \
+            "keep|Leave it as it is|nothing changes"
+        LOCK_MODE="${LOCK_MODE%% *}"
+    fi
+fi
+SAVE_MODES=()
+[[ -n "$LOGIN_MODE" && "$LOGIN_MODE" != "keep" ]] && SAVE_MODES+=("LOGIN_MODE=$LOGIN_MODE")
+[[ -n "$LOCK_MODE" && "$LOCK_MODE" != "keep" ]] && SAVE_MODES+=("LOCK_MODE=$LOCK_MODE")
+if [[ ${#SAVE_MODES[@]} -gt 0 && "$DRY_RUN" != "true" ]]; then user_setup save-choices "${SAVE_MODES[@]}" || true; fi
+if [[ -n "$LOCK_MODE" && "$LOCK_MODE" != "keep" ]]; then
+    try run_as_user_cmd "Lock screen after sleep: $LOCK_MODE" bash "$TARGET_RICE/scripts/halcyon-greeter.sh" lockmode "$LOCK_MODE"
+fi
+[[ "$GREETER" == "true" ]] && LOCK_LOGIN=0      # greetd is the login screen: no tty1 auto-login next to it
 WANT_LOCK_LOGIN=false
 LOCK_LOGIN_SAVE=""      # yes | no: your answer, remembered in install-choices.env (LOCK_LOGIN) so it is asked once
 if have_dm; then
@@ -2369,7 +2423,7 @@ else
         # Opt-in only. It used to be "yes" by default (and --yes always said yes), so a machine whose Halcyon did not start
         # right booted straight into a broken desktop with no text console in sight. Now it is only set up when you ask for it.
         echo "   Optional: Halcyon can use its own lock screen as the login screen: tty1 logs you in by itself, Halcyon starts ALREADY"
-        echo "   LOCKED (with a short splash of moving stars and the Halcyon sparkle first; Settings > Power & lock > Login splash turns it off),"
+        echo "   LOCKED (with a short splash of moving stars and the Halcyon sparkle first; Settings > Lock screen > Splash turns it off),"
         echo "   and you type your password on the lock screen. Other consoles (Ctrl+Alt+F2) stay normal text logins."
         echo "   Undo any time: ./install.sh --remove-lock-login"
         if [[ "$AUTO_CONFIRM" != "true" && -t 0 ]]; then
@@ -2415,6 +2469,40 @@ if [[ "$WANT_LOCK_LOGIN" == "true" ]]; then
         fi
     else
         warn_later "Your login shell is not bash, zsh or fish, so the lock-screen login was NOT set up (auto-login without it would leave an open shell). Start Halcyon with: start-halcyon"
+    fi
+fi
+
+# ---- --greeter: greetd + Halcyon's own login screen
+# What it needs: greetd (the login service), cage (a one-window compositor the login screen runs in) and seatd (a fallback seat
+# service: without logind or seatd the session dies with "[libseat] could not connect to socket /run/seatd.sock").
+# halcyon-greeter.sh install then writes /etc/greetd/config.toml, adds pam_systemd to greetd's PAM file when it is missing,
+# starts seatd, puts you and the greeter in the 'seat' group, and enables greetd for the next boot.
+if [[ "$GREETER" == "true" ]]; then
+    if [[ "$HYPR_CONFIG_OK" == "no" ]]; then
+        warn_later "The Halcyon login screen was NOT set up: Hyprland reports errors in the config, and logging in would put you in a broken desktop. Fix them, then run ./install.sh --greeter."
+    else
+        [[ "$PACKAGES" == "true" ]] && install_pkgs greetd cage seatd
+        if [[ $EUID -eq 0 ]]; then
+            try run_cmd "Setting up the Halcyon login screen (greetd, cage, seatd)" env HALCYON_GREETER_OWNER="$TARGET_USER" HALCYON_DIR="$TARGET_RICE" \
+                bash "$TARGET_RICE/scripts/halcyon-greeter.sh" install
+        else
+            try run_as_user_cmd "Setting up the Halcyon login screen (greetd, cage, seatd)" bash "$TARGET_RICE/scripts/halcyon-greeter.sh" install
+        fi
+        if [[ "$DRY_RUN" != "true" ]]; then
+            unit_enabled greetd.service && log_success "Login manager: greetd is enabled for the next boot." \
+                || warn_later "greetd is not enabled: run  $TARGET_RICE/scripts/halcyon-greeter.sh install  as $TARGET_USER and read what it says."
+            [[ -S /run/seatd.sock ]] || systemctl is-active --quiet systemd-logind.service \
+                || warn_later "Neither seatd nor systemd-logind is running: the session may not start. Run  $TARGET_RICE/scripts/halcyon-greeter.sh doctor"
+        fi
+    fi
+fi
+# the login screen already installed earlier (greetd with Halcyon's config): it runs the root-owned copy in /usr/local/share/halcyon-greeter,
+# so every update has to copy the new files there, or the boot login screen keeps running the old ones
+if [[ "$GREETER" != "true" && "$DRY_RUN" != "true" && -f /usr/local/share/halcyon-greeter/shell.qml ]] && grep -q "# halcyon-greeter" /etc/greetd/config.toml 2>/dev/null; then
+    if [[ $EUID -eq 0 ]]; then
+        try run_cmd "Updating the Halcyon login screen files" env HALCYON_DIR="$TARGET_RICE" bash "$TARGET_RICE/scripts/halcyon-greeter.sh" refresh
+    else
+        try run_as_user_cmd "Updating the Halcyon login screen files" bash "$TARGET_RICE/scripts/halcyon-greeter.sh" refresh
     fi
 fi
 
@@ -3218,6 +3306,7 @@ echo -e "${BOLD}Start it${RESET}"
 [[ "$NEED_REBOOT" == "true" ]] && echo -e "  ${CYAN}•${RESET} ${YELLOW}Reboot first${RESET}: a new graphics / keyboard driver was installed and loads at boot."
 echo -e "  ${CYAN}•${RESET} Login screen: pick the ${BOLD}Halcyon${RESET} session (or ${BOLD}Hyprland${RESET}: it loads Halcyon too)."
 echo -e "  ${CYAN}•${RESET} From a text console: run ${BOLD}start-halcyon${RESET}"
+[[ "$GREETER" == "true" ]] && echo -e "  ${CYAN}•${RESET} Halcyon login screen: set up for the next boot. Try it now: ${BOLD}scripts/halcyon-greeter.sh preview${RESET} (password: preview). Undo: ./install.sh --remove-greeter"
 [[ "$WANT_LOCK_LOGIN" == "true" ]] && echo -e "  ${CYAN}•${RESET} Lock-screen login is on: just reboot, Halcyon starts locked. (undo: ./install.sh --remove-lock-login; skip it once: touch ~/.cache/island/no-autostart)"
 echo -e "  ${CYAN}•${RESET} Login splash (moving stars and the Halcyon sparkle): on by default, once per login; it also plays on unlock and (folding shut) on shutdown. See it now: ${BOLD}halcyon splash${RESET}  (turn it off: Settings > Power & lock)"
 echo -e "  ${CYAN}•${RESET} Weekly sky (your week as stars, savable as a picture): ${BOLD}halcyon weekly-sky${RESET}.  Wallpaper that follows the sun: Settings > Splash, sky & time of day"
