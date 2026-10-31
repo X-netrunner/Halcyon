@@ -203,3 +203,31 @@ The wallpaper layer used to be a second Quickshell instance (`quickshell/wallpap
 - **Notifications:** "Quiet while a window is fullscreen" (Settings > Notifications): no popups during fullscreen video / games; Halcyon's own and urgent ones still show.
 - **Click outside** closes the launcher, and the utilities / background-apps boxes in click mode (or when opened by a keybind).
 
+## Login screen (greetd) and the two login choices
+
+Two separate choices (asked once at install, again with `./install.sh --choose`; later in Settings > Power & lock):
+
+| | Halcyon way | Other way |
+|---|---|---|
+| **At boot** (`--login-mode`, `opt.loginMode`) | `greeter`: **Halcyon login manager**, greetd + `greeter/shell.qml` (Quickshell in `cage`), no widgets | `lock`: auto-login on tty1 + the lock screen (hyprlock is only its fallback), widgets allowed |
+| **After sleep / when locked** (`--lock-mode`, `opt.lockMode`) | `login`: the login-screen look, **no widgets** | `lock`: the full lock screen, widgets allowed |
+
+**Widgets exist on the lock screen only.** The login manager and the login-screen look never show the Widget builder's widgets, the media card or the Switch-user button (the greeter has only the clock, the picture, the password and small switches: background, constellation, clock, seconds, battery, Wi-Fi name, power buttons, session name).
+
+Boot choice: `./install.sh --login-mode greeter|lock` (or `--greeter`), or Settings > Login screen > *At boot* then **Apply** (opens a terminal, one sudo prompt). Undo: `./install.sh --remove-greeter`. The old display manager is only switched off. If the greeter ever breaks, Ctrl+Alt+F2 is a plain text login. Try it without logging out: `scripts/halcyon-greeter.sh preview` (type `preview` + Enter).
+
+Look: the lock screen's twin. Same layout, fonts, sizes, colours and password pill, and the same constellation art (your picture as stars, the stealth / lockdown art, drifting and flying stars: Backdrop / ModeArt / BarStars are the island's own files, copied at install). The island writes its look to ~/.cache/island/greeter-look.json and the sync service copies it to the greeter. The background follows the lock screen's (Settings > Power & lock > Login screen background: same as lock / wallpaper / solid). No card, no greeting.
+
+Switching: bottom left, **Switch user** opens the list of accounts (with their pictures) and the desktop chip lists every Wayland session (Halcyon, Hyprland, Plasma ...). Left / Right and Tab do the same from the keyboard. The picture is the one you chose in Halcyon.
+
+Constellation: Settings > Lock screen has ONE switch for the constellation; it turns it on or off on the lock screen and the login screen together. (The faint shapes that shone as you typed are gone from both screens.)
+
+After an update: the boot login screen runs the root-owned copy in `/usr/local/share/halcyon-greeter`, not this folder. `install.sh` (and so `update.sh`) now copies the new files there when the login manager is installed; `scripts/halcyon-greeter.sh refresh` does the same by hand, `status` says when the installed copy is out of date, and `doctor` checks greetd, cage, the greeter user, the config, the session file and prints greetd's journal for this boot.
+
+Security model:
+- The greeter runs as the unprivileged `greeter` user and never reads your home. Passwords go to greetd over its socket (PAM) and are not stored; the box is cleared before PAM asks, a conversation nobody answers is cancelled after 60 s, and wrong passwords slow down (greetd and `pam_faillock` apply their own limits too).
+- **A file you can write never decides who logs in or what runs.** Users come from `getent`, sessions from root-owned `/usr/share/wayland-sessions`, both read by root-owned `users.sh` / `sessions.sh`. `theme.json` (yours) only decorates: colours, switches, and pictures that must live inside `/var/lib/halcyon-greeter`.
+- Pictures are re-encoded (ImageMagick, when installed) before the greeter decodes them.
+- Greeter files in `/usr/local/share/halcyon-greeter` are root-owned; `/etc/greetd/config.toml` is backed up and restored by `--remove-greeter`.
+- `halcyon-greeter.sh status` shows whether `pam_faillock` is active.
+- **"[libseat] could not connect to socket /run/seatd.sock" at login:** the session found no seat (no logind session from PAM and seatd not running). `scripts/halcyon-greeter.sh doctor` adds pam_systemd to greetd's PAM file if it is missing, installs and starts seatd, and puts you in the seat group. Install runs the same check.
