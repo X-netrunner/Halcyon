@@ -260,7 +260,12 @@ FloatingWindow {
             var env = ["XDG_SESSION_TYPE=wayland", "HALCYON_FROM_GREETER=1"]
             if (win.curSess.desk) env.push("XDG_CURRENT_DESKTOP=" + win.curSess.desk.replace(/;+$/, "").replace(/;/g, ":"))
             if (win.curSess.id) env.push("XDG_SESSION_DESKTOP=" + win.curSess.id)
-            Greetd.launch(["/bin/sh", "-c", "exec " + win.curSess.exec], env, true)
+            // greetd runs "exec $@" through a shell with $@ UNQUOTED: each argument is split at spaces and its quotes are not re-read.
+            // So only plain words go over: the installed wrapper (root-owned, it logs to ~/.cache/island/greeter-session.log and
+            // ends with the exit code), then the session's Exec split at whitespace. Never put a script or `sh -c "..."` in one argument.
+            var words = String(win.curSess.exec).trim().split(/\s+/).filter(function (w) { return w !== "" })
+            if (words.length === 0) { win.failure = "This session has no command"; win.leaving = false; win.busy = false; return }
+            Greetd.launch(["/usr/local/share/halcyon-greeter/halcyon-session"].concat(words), env, true)
         }
     }
 

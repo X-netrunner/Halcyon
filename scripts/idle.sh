@@ -6,17 +6,17 @@
 # own ~/.config/hypr/hypridle.conf is not touched. hypridle honours Caffeine (systemd-inhibit), so a caffeinated
 # session never locks or sleeps.
 #   idle.sh start             write the config from the saved values and (re)start hypridle   (autostart runs this)
-#   idle.sh apply LOCK SLEEP [DIM]  minutes, 0 = never; restarts hypridle only if something changed
+#   idle.sh apply LOCK SLEEP [DIM] [AV_AI]  minutes, 0 = never; restarts hypridle only if something changed
 state="$HOME/.local/state/island"; envf="$state/idle.env"; conf="$state/hypridle.conf"
 mkdir -p "$state"
-IDLE_LOCK=5; IDLE_SLEEP=30; IDLE_DIM=3
+IDLE_LOCK=5; IDLE_SLEEP=30; IDLE_DIM=3; AV_AI_IDLE=5
 [ -f "$envf" ] && . "$envf"
 
 num() { case "$1" in ''|*[!0-9]*) echo "$2" ;; *) echo "$1" ;; esac; }
 
 write_conf() {
-  local lock sleep_m dim
-  lock=$(num "$IDLE_LOCK" 5); sleep_m=$(num "$IDLE_SLEEP" 30); dim=$(num "$IDLE_DIM" 3)
+  local lock sleep_m dim avi
+  lock=$(num "$IDLE_LOCK" 5); sleep_m=$(num "$IDLE_SLEEP" 30); dim=$(num "$IDLE_DIM" 3); avi=$(num "$AV_AI_IDLE" 5)
   # sleep is counted from when you stop touching the computer, so it has to come after the lock
   if [ "$lock" -gt 0 ] && [ "$sleep_m" -gt 0 ] && [ "$sleep_m" -le "$lock" ]; then sleep_m=$((lock + 1)); fi
   local lockcmd="$HOME/.config/Halcyon/scripts/lock.sh"
@@ -29,6 +29,12 @@ write_conf() {
       echo; echo "listener {"; echo "    timeout = $((dim * 60))"
       echo "    on-timeout = $HOME/.config/Halcyon/scripts/idle-dim.sh dim"
       echo "    on-resume = $HOME/.config/Halcyon/scripts/idle-dim.sh undim"; echo "}"
+    fi
+    # AI Antivirus analyzer (local model): paused while you work, runs once the computer has been idle this long (0 = always runs)
+    if [ "$avi" -gt 0 ]; then
+      echo; echo "listener {"; echo "    timeout = $((avi * 60))"
+      echo "    on-timeout = $HOME/.config/Halcyon/scripts/av-ai-idle.sh idle"
+      echo "    on-resume = $HOME/.config/Halcyon/scripts/av-ai-idle.sh active"; echo "}"
     fi
     if [ "$lock" -gt 0 ]; then
       echo; echo "listener {"; echo "    timeout = $((lock * 60))"; echo "    on-timeout = $lockcmd"; echo "}"
@@ -48,11 +54,13 @@ restart() {
 
 case "$1" in
   start)
-    write_conf "$conf"; restart ;;
+    write_conf "$conf"; restart
+    bash "$(dirname "$(readlink -f "$0")")/av-ai-idle.sh" active >/dev/null 2>&1 & ;;
   apply)
-    IDLE_LOCK=$(num "$2" 5); IDLE_SLEEP=$(num "$3" 30); IDLE_DIM=$(num "$4" "${IDLE_DIM:-3}")
-    printf 'IDLE_LOCK=%s\nIDLE_SLEEP=%s\nIDLE_DIM=%s\n' "$IDLE_LOCK" "$IDLE_SLEEP" "$IDLE_DIM" > "$envf"
+    IDLE_LOCK=$(num "$2" 5); IDLE_SLEEP=$(num "$3" 30); IDLE_DIM=$(num "$4" "${IDLE_DIM:-3}"); AV_AI_IDLE=$(num "$5" "${AV_AI_IDLE:-5}")
+    printf 'IDLE_LOCK=%s\nIDLE_SLEEP=%s\nIDLE_DIM=%s\nAV_AI_IDLE=%s\n' "$IDLE_LOCK" "$IDLE_SLEEP" "$IDLE_DIM" "$AV_AI_IDLE" > "$envf"
     write_conf "$conf.new"
-    if ! cmp -s "$conf" "$conf.new" || ! pgrep -x hypridle >/dev/null; then mv "$conf.new" "$conf"; restart; else rm -f "$conf.new"; fi ;;
-  *) echo "usage: idle.sh start | apply LOCK_MIN SLEEP_MIN [DIM_MIN]   (0 = never)" >&2; exit 2 ;;
+    if ! cmp -s "$conf" "$conf.new" || ! pgrep -x hypridle >/dev/null; then mv "$conf.new" "$conf"; restart; else rm -f "$conf.new"; fi
+    bash "$(dirname "$(readlink -f "$0")")/av-ai-idle.sh" active >/dev/null 2>&1 & ;;
+  *) echo "usage: idle.sh start | apply LOCK_MIN SLEEP_MIN [DIM_MIN [AV_AI_MIN]]   (0 = never)" >&2; exit 2 ;;
 esac

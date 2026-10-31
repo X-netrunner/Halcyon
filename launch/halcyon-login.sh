@@ -11,6 +11,13 @@
 #   * opt out any time:  touch ~/.cache/island/no-autostart   (then tty1 is an ordinary shell)
 state="$HOME/.cache/island"
 mkdir -p "$state"
+# Started by the Halcyon login manager (greeter/shell.qml sets HALCYON_FROM_GREETER): the password was already typed there, so
+# this is NOT the tty1 auto-login. A profile snippet left over from it must not lock the desktop a second time or arm the watchdog
+# (which ends Hyprland when the lock never engages): drop the flag and start the desktop as it is.
+if [ "${HALCYON_FROM_GREETER:-}" = 1 ]; then
+  rm -f "$state/lock-on-start"
+  exec "$(dirname "$(readlink -f "$0")")/halcyon.sh"
+fi
 # The boot splash is still on screen (Plymouth leaves its last frame until Hyprland draws, and the tty1 getty does not reset the
 # console): no cursor, no echo of keys pressed while it loads. text_console brings the text back before anything is printed.
 if [ -t 0 ]; then printf '\033[?25l'; stty -echo 2>/dev/null; fi
