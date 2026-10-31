@@ -48,6 +48,8 @@ Round 3 on Settings: the Tree layout and the Interface Legacy / Classic choices 
 
 Round 4: the Debug page became **Debug / Advanced** and holds every advanced row (one box per original group); the per-group fold and the header chip are gone. **untested** on screen.
 
+Round 5: choice rows with 4+ buttons became drop-downs (36 rows plus the six app pickers); sounds and previews moved to Debug / Advanced. **untested** on screen.
+
 ## Next surfaces (open)
 
 | Surface | Idea | Status |
@@ -63,6 +65,7 @@ Round 4: the Debug page became **Debug / Advanced** and holds every advanced row
 
 ## Log
 
+- 2026-10-31: Drop-downs for long button rows, app pickers as drop-downs, previews and sounds to Debug / Advanced (round 5). Files: `Settings.qml`, `SetApps.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Debug / Advanced page collects all advanced rows (round 4). Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Settings slimmed: Tree layout and Interface Legacy / Classic removed, Disabled box for bar-only rows, Debug page (round 3). Files: `Settings.qml`, `shell.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Launcher style Classic / Spotlight and the Settings left menu under headings (round 2). Files: `Launcher.qml`, `shell.qml`, `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
