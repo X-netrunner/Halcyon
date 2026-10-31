@@ -7,7 +7,8 @@ import Quickshell.Wayland
 // border and flares into it, without it it floats a few px below the edge).
 //   rest the pointer on the wake spot at the top middle of the screen (ActivationZone in shell.qml) = it opens on Calendar, in the spotlight
 //   the rail itself does NOT open it (no resting near its ends, no scrolling or dragging along it): the wake spot is the only way in
-//   click a tab, scroll over the tab strip, or press Left / Right to switch. Esc closes it (after a click in the box, so it has the keyboard).
+//   click a tab, scroll over the tab strip, or press Left / Right to switch (Tabs style only; Settings > Bar > Dashboard style picks Tabs, Bento or Command,
+//   see Dashboard.qml). Esc closes it (after a click in the box, so it has the keyboard).
 // The same pages as the island's (MediaPage.qml, PerfTab.qml) are still what the island and the notch show: they grow out of the top edge
 // at their own size and shell.qml's page switching is untouched. The box folds back after the pointer has left the wake spot and
 // the box for Settings > Bar > "Page closes" ms (opt.pageClose; 0 = it stays until Esc / a click elsewhere).
@@ -34,6 +35,13 @@ Scope {
     property bool railHeld: false            // the pointer is on the rail or on the top wake spot
     property int closeMs: 600
     property string which: ""                // "" (closed) | media | cal | perf   (shell.qml reads it: perfShown)
+    property string dashStyle: "tabs"        // opt.dashStyle: tabs | bento | command (anything else counts as tabs)
+    property bool dashStrip: true            // opt.dashStrip: the stat strip under the Calendar page of the Tabs style
+    property bool wifiOn: false              // the state of the switches of the Bento and Command styles (shell.qml)
+    property bool btOn: false
+    property bool dndOn: false
+    property bool caffeineOn: false
+    readonly property string styleNow: (dashStyle === "bento" || dashStyle === "command") ? dashStyle : "tabs"
     readonly property bool open: which !== ""
     property bool linger: false
 
@@ -43,12 +51,14 @@ Scope {
     signal setAuto()
     signal openMusic(string tab)
     signal openCalendar()
+    signal openLauncher()
+    signal runCmd(string id)
 
     readonly property var order: ["media", "cal", "perf"]
     function show(w) { if (order.indexOf(w) < 0) return; which = w; held = true }
     function hide() { which = "" }
     // wheel / drag along the rail, Left / Right: one tab at a time (a closed box opens on Calendar first)
-    function step(dir) { if (!open) { show("cal"); return } show(order[Math.max(0, Math.min(2, tabIdx + (dir < 0 ? -1 : 1)))]) }
+    function step(dir) { if (!open) { show("cal"); return } if (styleNow !== "tabs") return show(order[Math.max(0, Math.min(2, tabIdx + (dir < 0 ? -1 : 1)))]) }
     // the tab that is shown; while the box folds away it keeps the last one (which is "" then). Calendar is the one it opens on.
     property int tabIdx: 1
     onWhichChanged: { var i = order.indexOf(which); if (i >= 0) tabIdx = i }
@@ -79,8 +89,9 @@ Scope {
             mask: Region { item: root.open ? clipper : null }
 
             Shortcut { sequence: "Escape"; onActivated: root.hide() }
-            Shortcut { sequence: "Left"; enabled: root.open; onActivated: root.step(-1) }
-            Shortcut { sequence: "Right"; enabled: root.open; onActivated: root.step(1) }
+            Shortcut { sequence: "Left"; enabled: root.open && root.styleNow === "tabs"; onActivated: root.step(-1) }
+            Shortcut { sequence: "Right"; enabled: root.open && root.styleNow === "tabs"; onActivated: root.step(1) }
+            Shortcut { sequence: "Return"; enabled: root.open && root.styleNow === "command"; onActivated: root.openLauncher() }
 
             Item {
                 id: area
@@ -152,6 +163,12 @@ Scope {
                             sysmode: root.sysmode
                             tab: root.tabIdx
                             open: root.open
+                            style: root.styleNow
+                            showStats: root.dashStrip
+                            wifiOn: root.wifiOn; btOn: root.btOn; dndOn: root.dndOn; caffeineOn: root.caffeineOn
+                            onOpenLauncher: root.openLauncher()
+                            onRunCmd: id => root.runCmd(id)
+                            onLaunch: id => { root.hide(); root.runCmd(id) }
                             onTabPicked: i => root.show(root.order[i])
                             onOpenCalendar: { root.hide(); root.openCalendar() }
                             onOpenMusic: tab => { root.hide(); root.openMusic(tab) }
