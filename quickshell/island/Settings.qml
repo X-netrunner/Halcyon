@@ -801,6 +801,8 @@ Scope {
             { type: "seg", drop: true, key: "hoverAction", label: "When you hover the bar", desc: "Stats: CPU, memory and temperature slide out. Performance / Media: that page opens by itself.", opts: [o("none", "Nothing"), o("stats", "Live stats"), o("perf", "Performance"), o("media", "Media")] },
             { type: "seg", adv: true, key: "barScroll", label: "Scroll / swipe on the bar to change page", opts: [o("low", "Long swipe"), o("medium", "Medium"), o("high", "Sensitive")] },
             { type: "seg", adv: true, drop: true, key: "opt:scrollLinger", label: "Page stays after scrolling", desc: "When you open the performance / media page by scrolling or two-finger swiping the bar, how long it stays after the pointer leaves the bar.", opts: [o(1500, "Short"), o(3000, "Normal"), o(6000, "Long"), o(12000, "Very long")] },
+            { type: "seg", drop: true, key: "opt:dashStyle", label: "Dashboard style", desc: "The box that drops from the top middle of the screen beside a Rail bar. Tabs: Media, Calendar and Performance, one page at a time (Left / Right switch). Bento: no tabs, today's agenda, what is playing, CPU and memory and four quick switches in one grid. Command: a search bar that opens the launcher, five quick switches, a short list of places and what is next.", opts: [o("tabs", "Tabs"), o("bento", "Bento"), o("command", "Command")], when: "bl:isRail=true" },
+            { type: "toggle", key: "opt:dashStrip", label: "Stat strip under the calendar", desc: "Tabs style: CPU, memory, GPU, temperature and what is playing, in a row under the Calendar page.", when: "bl:isRail=true&opt:dashStyle=tabs" },
             { type: "seg", drop: true, key: "opt:perfLook", label: "Performance tab look", desc: "How the Performance tab is drawn, on every bar (rail dashboard, island and notch page). Auto: Sky beside a rail, Classic on the island and the notch. Classic: rings, spec rows and disk bars. Sky: a constellation, every part a star, the battery is Halcyon's star. Orbit: four rings round one centre. Pulse: five lanes with a glowing wave each, the battery a tank of light. Tiles: a bento of soft tiles, a gauge, blocks, a dot ring, a donut and two network waves. Sea: a calm sea with a buoy for each part, a sun on the light theme and a moon and stars on the dark one (also the battery). Forecast: one short sentence (All calm, Getting busy, Running hot), the temperature and five tiles with a bar each. Radar: a pentagon of the five parts with the last minute's average as a dashed shape behind it. Cockpit: instruments, a big CPU dial with a temperature arc, four small rings and a row of indicator lamps. Recorder: the last five minutes on one graph, with the power and sysmode changes marked; rest the pointer on it to read the values. Editorial: one huge number, the load of the busiest part, with a quiet table of the rest beside it. Stars: six live four-point stars that drift and twinkle, brighter and bigger with more load, dimmer with less. Same numbers in all of them.", opts: [o("auto", "Auto"), o("sky", "Sky"), o("orbit", "Orbit"), o("pulse", "Pulse"), o("tiles", "Tiles"), o("sea", "Sea"), o("forecast", "Forecast"), o("radar", "Radar"), o("cockpit", "Cockpit"), o("recorder", "Recorder"), o("editorial", "Editorial"), o("stars", "Stars"), o("classic", "Classic")] },
             { type: "seg", adv: true, drop: true, key: "opt:pageClose", label: "Performance / media page closes", desc: "How long the page stays after the pointer leaves the bar. Instant folds back at once.", opts: [o(150, "Instant"), o(600, "Fast"), o(1500, "Normal"), o(4000, "Slow")], when: "hoverAction=perf|media" },
         ] },
@@ -910,6 +912,7 @@ Scope {
             { type: "toggle", adv: true, key: "st:GESTURES", label: "Edge gestures", desc: "Slide along a touchpad edge: right = volume, top = brightness, left = previous / next track. Off stops the helper at once (and it stays off after login); the normal touchpad keeps working. SUPER+ALT+G only mutes them for a moment." },
         ] },
         { id: "keyboard", title: "Keyboard & launcher", section: "Input & power", items: [
+            { type: "seg", key: "opt:launcherStyle", label: "Launcher style", desc: "Classic: the grid of app icons (the present look). Spotlight: one calm list under a search pill, best match first; Up / Down move the selection.", opts: [o("classic", "Classic"), o("spotlight", "Spotlight")] },
             { type: "toggle", key: "superTap", label: "Tap Super to open the launcher" },
             { type: "seg", key: "opt:launchSpeed", label: "Launcher speed", desc: "How fast the launcher grows out of the bar. Tapping Super opens it when the key comes UP: the desktop cannot tell a lone tap from the start of Super+T until then, so opening on the press would make every Super shortcut flash the launcher. What can be cut is the animation after that: Quick is about half the time, Instant is a short snap.", opts: [o("normal", "Normal"), o("quick", "Quick"), o("instant", "Instant")], when: "superTap=true" },
             { type: "slider", adv: true, key: "hy:repeatDelay", def: 600, label: "Key repeat delay", min: 150, max: 800, step: 10, unit: " ms" },
@@ -1192,14 +1195,28 @@ Scope {
         { id: "Bar", sub: "The bar: its look and edge, what is on it, how it behaves, the border and the clock.", groups: ["bar", "barwidgets", "barbehave", "frame", "clock"] },
         { id: "Panels", sub: "Notifications, the edge boxes, the volume bar and the utilities box.", groups: ["notifications", "osd", "utilbox"] },
         { id: "Desktop", sub: "The desktop and widget builders, workspaces and windows.", groups: ["desktop", "widgets", "workspaces"] },
-        { id: "Productivity", sub: "Focus mode, the calendar, notes and recording.", groups: ["focus", "calendar", "notes", "recording"] },
-        { id: "AI", sub: "The local AI helpers: the master switch, the model, the daily brief and the error explainer.", groups: ["ai"] },
+        { id: "Productivity", sub: "Focus mode, the calendar, notes, recording and the local AI helpers.", groups: ["focus", "calendar", "notes", "recording", "ai"] },
         { id: "Input & power", sub: "Mouse, touchpad, gestures, mouse buttons, keyboard, power and the lock screen.", groups: ["mouse", "keyboard", "gestures", "mousebtn", "power", "lockscreen", "loginscreen"] },
         { id: "Performance", sub: "Profiles, safe mode, speed, memory limits, the tree view and suggestions.", groups: ["performance", "treeview", "profiles", "suggestions"] },
-        { id: "System", sub: "Preferences, timeouts, login manager, startup and apps.", groups: ["sysoptions", "startup", "apps"] },
-        { id: "Backup", sub: "Backups and restore, with reminders.", groups: ["backup"] },
+        { id: "System", sub: "Preferences, timeouts, startup, apps, backups and restore.", groups: ["sysoptions", "startup", "apps", "backup"] },
         { id: "Security", sub: "The antivirus, the firewall, the safety check and their reminders.", groups: ["security", "firewall"] }
     ]
+    // the left menu reads as a few headings with their pages under them (every page id appears once; tests/settings-groups.test.js checks it)
+    readonly property var navHeads: [
+        { head: "Start", ids: ["Discover"] },
+        { head: "Look and feel", ids: ["Appearance", "Stars & splash"] },
+        { head: "Shell", ids: ["Bar", "Panels", "Desktop"] },
+        { head: "Tools", ids: ["Productivity", "Input & power"] },
+        { head: "System", ids: ["Performance", "System", "Security"] }
+    ]
+    readonly property var navRows: {
+        var out = []
+        for (var h = 0; h < navHeads.length; h++) {
+            out.push({ id: "", head: navHeads[h].head })
+            for (var i = 0; i < navHeads[h].ids.length; i++) out.push({ id: navHeads[h].ids[i], head: "" })
+        }
+        return out
+    }
     property string page: "Discover"
     function pageOf(gid) { for (var i = 0; i < pages.length; i++) if (pages[i].groups.indexOf(gid) >= 0) return pages[i].id; return "Appearance" }
     function pageInfo(id) { for (var i = 0; i < pages.length; i++) if (pages[i].id === id) return pages[i]; return pages[0] }
@@ -1597,23 +1614,30 @@ Scope {
                             id: navCol
                             width: parent.width
                             Repeater {
-                                model: root.pages
+                                model: root.navRows
                                 delegate: Item {
                                     id: navItem
                                     required property var modelData
-                                    readonly property bool cur: root.query === "" && root.page === navItem.modelData.id
+                                    readonly property bool isHead: navItem.modelData.head !== ""
+                                    readonly property bool cur: !isHead && root.query === "" && root.page === navItem.modelData.id
                                     width: navCol.width
-                                    height: root.pal.calm ? 38 : 40
+                                    height: isHead ? 34 : (root.pal.calm ? 38 : 40)
+                                    Text {
+                                        visible: navItem.isHead
+                                        x: 16; anchors { bottom: parent.bottom; bottomMargin: 4 }
+                                        text: navItem.modelData.head.toUpperCase()
+                                        color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 1.2
+                                    }
                                     // calm: a soft pill under the current page instead of the trunk and its dots
                                     Rectangle {
-                                        visible: root.pal.calm
+                                        visible: root.pal.calm && !navItem.isHead
                                         anchors { fill: parent; topMargin: 2; bottomMargin: 2; rightMargin: 14 }
                                         radius: height / 2
                                         color: navItem.cur ? root.pal.chosenFill : (navMa.containsMouse ? root.pal.fill : "transparent")
                                         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     }
                                     Rectangle {
-                                        visible: !root.pal.calm
+                                        visible: !root.pal.calm && !navItem.isHead
                                         x: 1; anchors.verticalCenter: parent.verticalCenter
                                         width: 9; height: 9; radius: 4.5
                                         color: navItem.cur ? root.pal.accent : root.pal.bg
@@ -1621,13 +1645,14 @@ Scope {
                                         Rectangle { visible: navItem.cur; anchors.centerIn: parent; width: 17; height: 17; radius: 8.5; color: "transparent"; border.width: 4; border.color: Qt.alpha(root.pal.accent, 0.2) }
                                     }
                                     Text {
+                                        visible: !navItem.isHead
                                         x: root.pal.calm ? 16 : 28; anchors.verticalCenter: parent.verticalCenter
                                         text: navItem.modelData.id
                                         color: navItem.cur ? (root.pal.zen ? root.pal.chosenText : root.pal.calm ? root.pal.accent : root.pal.text) : (navMa.containsMouse ? root.pal.text : (root.pal.zen ? Qt.alpha(root.pal.text, 0.78) : root.pal.muted))
                                         font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1
                                         font.weight: navItem.cur ? Font.Medium : Font.Normal
                                     }
-                                    MouseArea { id: navMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { if (search.text !== "") search.text = ""; root.query = ""; root.page = navItem.modelData.id; pscroll.contentY = 0 } }
+                                    MouseArea { id: navMa; enabled: !navItem.isHead; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { if (search.text !== "") search.text = ""; root.query = ""; root.page = navItem.modelData.id; pscroll.contentY = 0 } }
                                 }
                             }
                         }

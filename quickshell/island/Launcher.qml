@@ -15,6 +15,15 @@ Item {
     id: root
     property var pal
     property bool active: false
+    property string style: "classic"     // classic | spotlight (shell.qml opt.launcherStyle; Settings > Keyboard & launcher > Launcher style)
+    readonly property bool spot: style === "spotlight"
+    function moveSel(d) {                  // Up / Down in the apps view: Spotlight is a plain list, the classic look is a grid
+        var n = results.length
+        if (n === 0) return
+        if (spot) grid.currentIndex = Math.max(0, Math.min(n - 1, Math.max(0, grid.currentIndex) + d))
+        else if (d > 0) grid.moveCurrentIndexDown()
+        else grid.moveCurrentIndexUp()
+    }
     signal closeRequested()
     signal commandRequested(string cmdId)
 
@@ -220,7 +229,7 @@ Item {
     // ---- size the bar should grow to (the island follows these)
     readonly property int rows: mode === "all" ? Math.max(1, Math.min(4, Math.ceil(results.length / 6)))
                               : (query.trim() === "" ? 2 : Math.max(1, Math.min(3, Math.ceil(results.length / 6))))
-    readonly property real wantedWidth: gridMode ? 680 : 540
+    readonly property real wantedWidth: gridMode ? (spot ? 580 : 680) : 540
     readonly property int searchH: pal.zen ? 52 : 46
     readonly property int footH: pal.zen && mode === "cmd" ? 22 : 16          // the new style puts the command groups down there
     readonly property real wantedHeight: {
@@ -229,6 +238,7 @@ Item {
         if (mode === "calc") return 36 + searchH + 12 + 64
         if (aiMode) return 36 + searchH + 12 + Math.max(64, aiBox.implicitHeight) + 12 + 16
         if (mode === "cmd") return base + Math.max(1, Math.min(7, cmdResults.length)) * 46 + (infoIdx >= 0 && cmdResults[infoIdx] ? infoBox.height + 12 : 0)
+        if (spot && gridMode) return base + (results.length === 0 ? 40 : Math.min(6, results.length) * 52 + 4)
         return base + (results.length === 0 ? 40 : rows * (pal.zen ? 96 : 92))
     }
 
@@ -883,22 +893,22 @@ Item {
                     else if (e.key === Qt.Key_Down) {
                         if (cmd) { cmdList.incrementCurrentIndex(); root.pendingConfirm = "" }
                         else if (ctrl && hist) root.histStep(-1)
-                        else if (ctrl) { if (!calc) grid.moveCurrentIndexDown() }
-                        else if (nav) grid.moveCurrentIndexDown()
+                        else if (ctrl) { if (!calc) root.moveSel(1) }
+                        else if (nav) root.moveSel(1)
                         else root.histStep(-1)
                         e.accepted = true
                     }
                     else if (e.key === Qt.Key_Up) {
                         if (cmd) { cmdList.decrementCurrentIndex(); root.pendingConfirm = "" }
                         else if (ctrl && hist) root.histStep(1)
-                        else if (ctrl) { if (!calc) grid.moveCurrentIndexUp() }
-                        else if (nav) grid.moveCurrentIndexUp()
+                        else if (ctrl) { if (!calc) root.moveSel(-1) }
+                        else if (nav) root.moveSel(-1)
                         else root.histStep(1)
                         e.accepted = true
                     }
                     else if (cmd && ctrl && e.key === Qt.Key_F) { root.toggleFav(cmdList.currentIndex); e.accepted = true }
-                    else if (nav && plain && e.key === Qt.Key_Right) { grid.moveCurrentIndexRight(); e.accepted = true }
-                    else if (nav && plain && e.key === Qt.Key_Left) { grid.moveCurrentIndexLeft(); e.accepted = true }
+                    else if (nav && plain && !root.spot && e.key === Qt.Key_Right) { grid.moveCurrentIndexRight(); e.accepted = true }
+                    else if (nav && plain && !root.spot && e.key === Qt.Key_Left) { grid.moveCurrentIndexLeft(); e.accepted = true }
                     else if (e.key === Qt.Key_Tab || (ctrl && e.key === Qt.Key_N)) {
                         if (cmd) { cmdList.incrementCurrentIndex(); root.pendingConfirm = "" } else if (!calc) root.stepResult(1)
                         e.accepted = true
@@ -978,7 +988,7 @@ Item {
         // ---------- apps ----------
         GridView {
             id: grid
-            visible: root.gridMode && root.results.length > 0
+            visible: root.gridMode && !root.spot && root.results.length > 0
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -1062,6 +1072,79 @@ Item {
                         if (Math.abs(g.x - root.hx) > 1 || Math.abs(g.y - root.hy) > 1) { root.hx = g.x; root.hy = g.y; grid.currentIndex = cell.index }
                     }
                     onClicked: root.launch(cell.index)
+                }
+            }
+        }
+        // ---------- apps, Spotlight style: one calm list, best match first (the grid above only holds the selection here) ----------
+        ListView {
+            id: slist
+            visible: root.gridMode && root.spot && root.results.length > 0
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: 2
+            model: root.spot ? root.results : []
+            currentIndex: grid.currentIndex
+            boundsBehavior: Flickable.StopAtBounds
+            onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+            delegate: Item {
+                id: srow
+                required property var modelData
+                required property int index
+                readonly property bool cur: index === grid.currentIndex
+                width: slist.width
+                height: 50
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 14
+                    color: srow.cur ? Qt.alpha(root.pal.accent, 0.13) : (sma.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                }
+                Row {
+                    anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                    spacing: 12
+                    Image {
+                        width: 30; height: 30
+                        sourceSize: Qt.size(60, 60)
+                        source: root.iconFor(srow.modelData)
+                        asynchronous: true
+                        smooth: true
+                    }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        Text {
+                            text: srow.modelData.name
+                            color: root.pal.text
+                            font.family: root.pal.uiFont
+                            font.pixelSize: 14
+                            font.weight: srow.cur ? Font.DemiBold : Font.Medium
+                        }
+                        Text {
+                            visible: srow.index === 0 && root.query.trim() !== ""
+                            text: "Best match"
+                            color: root.pal.muted
+                            font.family: root.pal.uiFont
+                            font.pixelSize: 11
+                        }
+                    }
+                }
+                Text {
+                    visible: srow.cur
+                    anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                    text: "Enter"
+                    color: root.pal.muted
+                    font.family: root.pal.uiFont
+                    font.pixelSize: 11
+                }
+                MouseArea {
+                    id: sma
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onPositionChanged: m => {
+                        var g = mapToItem(root, m.x, m.y)
+                        if (Math.abs(g.x - root.hx) > 1 || Math.abs(g.y - root.hy) > 1) { root.hx = g.x; root.hy = g.y; grid.currentIndex = srow.index }
+                    }
+                    onClicked: root.launch(srow.index)
                 }
             }
         }
