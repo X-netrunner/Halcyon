@@ -218,7 +218,9 @@ Boot choice: `./install.sh --login-mode greeter|lock` (or `--greeter`), or Setti
 
 Look: the lock screen's twin. Same layout, fonts, sizes, colours and password pill, and the same constellation art (your picture as stars, the stealth / lockdown art, drifting and flying stars: Backdrop / ModeArt / BarStars are the island's own files, copied at install). The island writes its look to ~/.cache/island/greeter-look.json and the sync service copies it to the greeter. The background follows the lock screen's (Settings > Power & lock > Login screen background: same as lock / wallpaper / solid). No card, no greeting.
 
-Switching: bottom left, **Switch user** opens the list of accounts (with their pictures) and the desktop chip lists every Wayland session (Halcyon, Hyprland, Plasma ...). Left / Right and Tab do the same from the keyboard. The picture is the one you chose in Halcyon.
+Switching: bottom left, **Switch user** opens the list of accounts (with their pictures) and the desktop chip lists every Wayland session (Halcyon, Hyprland, Plasma ...). Both chips have a ‹ and a › on their sides: press one to step to the previous / next account or desktop without opening the list, and the picture and name (or the desktop chip) turn in from that side. Left / Right and Tab do the same from the keyboard. The picture is the one you chose in Halcyon.
+
+The lock screen has a round **power button** at the bottom right (Settings > Power & lock > Power button, on by default): pressed, it opens Sleep, Restart and Shut down. Restart and Shut down need a second click within 3 seconds. The screen stays locked.
 
 Constellation: Settings > Lock screen has ONE switch for the constellation; it turns it on or off on the lock screen and the login screen together. (The faint shapes that shone as you typed are gone from both screens.)
 

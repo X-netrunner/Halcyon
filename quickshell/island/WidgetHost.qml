@@ -463,14 +463,27 @@ Item {
         }
     }
 
-    // the name and the small buttons above a picked widget (kept the same size whatever the widget's size)
+    // the name and the small buttons next to a picked widget (kept the same size whatever the widget's size).
+    // They sit above the widget, but a widget at the top of the screen has no room there (the row went past the screen edge, or under
+    // the bar / border, and could not be seen or clicked): then they sit BELOW it. Sideways they are pushed back inside the free area
+    // (past the margin / border) when the widget is near the right edge. topInset / bottomInset already include the border and the bar.
     Row {
+        id: chipRow
         visible: host.editing && host.selected
         z: 60
         spacing: 6
-        x: 0
-        y: -(height + 8) / Math.max(0.5, host.k)
-        scale: 1 / Math.max(0.5, host.k)
+        readonly property real kk: Math.max(0.5, host.k)
+        // on screen the row is `height` + 8 px tall (the 1/k scale cancels the widget's own scale)
+        readonly property bool fitsAbove: host.y - (height + 8) >= host.topInset
+        readonly property bool fitsBelow: host.y + host.vh + 8 + height <= host.screenH - host.bottomInset
+        readonly property bool below: !fitsAbove && fitsBelow
+        // when it fits neither way (a tall widget filling the area) it goes inside the widget's top edge instead of off screen
+        readonly property bool inside: !fitsAbove && !fitsBelow
+        // shift, in screen px, that keeps the row between the left margin and the right margin
+        readonly property real shiftPx: Math.max(-(host.x - host.margin), Math.min(0, host.screenW - host.margin - host.x - width))
+        x: shiftPx / kk
+        y: below ? (host.height + 8 / kk) : (inside ? 8 / kk : -(height + 8) / kk)
+        scale: 1 / kk
         transformOrigin: Item.TopLeft
         Rectangle {
             height: 26; width: nameT.implicitWidth + 20; radius: 13

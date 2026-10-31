@@ -37,6 +37,7 @@ Scope {
     property bool plain: false            // set by shell.qml (Settings > Power & lock > After sleep = Login-screen look): no widgets of any kind
     property bool widgets: false          // battery / Wi-Fi / notification count (a COUNT only, never the text) and the media card
     property bool allowSwitch: false      // the "Switch user" button
+    property bool allowPower: true        // the power button, bottom right: Sleep / Restart / Shut down (Settings > Power & lock > Power button)
     property var player: null             // the MPRIS player the island already follows (null = nothing playing)
     property bool hasBat: false
     property int batPct: 0
@@ -55,6 +56,24 @@ Scope {
     readonly property var deskTypes: deskShow ? WD.typeSet(deskLayout) : ({})
     property var sessions: []             // other sessions on this seat: [{ id, user, tty }] (scripts/switch-user.sh list)
     property bool switchOpen: false
+    // ---- the power button: opens Sleep / Restart / Shut down, like the desktop's power menu. Restart and Shut down ask twice (the
+    // first click arms it for 3 s), so one stray click cannot switch the machine off. The session stays locked through all of them.
+    property bool powerOpen: false
+    property string powerArmed: ""
+    function powerAct(id) {
+        if (id !== "suspend" && powerArmed !== id) { powerArmed = id; powerArmT.restart(); return }
+        powerOpen = false; powerArmed = ""
+        Quickshell.execDetached(["systemctl", id === "shutdown" ? "poweroff" : (id === "reboot" ? "reboot" : "suspend")])
+    }
+    Timer { id: powerArmT; interval: 3000; onTriggered: root.powerArmed = "" }
+    Timer { id: powerCloseT; interval: 12000; running: root.powerOpen; onTriggered: { root.powerOpen = false; root.powerArmed = "" } }
+    component Glyph: Text {
+        property int code: 0
+        text: String.fromCodePoint(code)
+        font.family: root.pal.font
+        font.pixelSize: 16
+        color: root.pal.muted
+    }
     readonly property string switchScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/switch-user.sh"
     function mediaAct(a) {
         var p = player
@@ -188,7 +207,7 @@ Scope {
         // a PAM error is not a guess, so it does not count as a miss
         onError: err => { root.busy = false; root.buffer = ""; root.failure = "Could not check the password"; root.shakeTick++ }
     }
-    onLockedChanged: { switchOpen = false; if (!locked) { buffer = ""; failure = ""; busy = false; splashArm = false; splashSkip = false; pam.abort() } }
+    onLockedChanged: { switchOpen = false; powerOpen = false; powerArmed = ""; if (!locked) { buffer = ""; failure = ""; busy = false; splashArm = false; splashSkip = false; pam.abort() } }
 
     SystemClock { id: clock; precision: SystemClock.Seconds }
 
@@ -713,6 +732,74 @@ Scope {
                             anchors.fill: parent
                             hoverEnabled: true
                             onClicked: { root.switchOpen = !root.switchOpen; if (root.switchOpen) sessList.running = true }
+                        }
+                    }
+                }
+            }
+
+            // ---- Power, bottom right: one round button; pressed, it opens Sleep / Restart / Shut down above it
+            Item {
+                visible: root.allowPower
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.rightMargin: 32
+                anchors.bottomMargin: 30
+                width: pwCol.width
+                height: pwCol.height
+                opacity: surf.appear
+                Column {
+                    id: pwCol
+                    spacing: 8
+                    Rectangle {
+                        id: pwList
+                        anchors.right: parent.right
+                        visible: root.powerOpen
+                        width: 190
+                        height: pwItems.height + 16
+                        radius: 14
+                        color: root.pal.box(Qt.alpha(root.pal.surface, 0.92))
+                        border.width: root.pal.bw
+                        border.color: root.pal.line
+                        Column {
+                            id: pwItems
+                            x: 8; y: 8
+                            width: parent.width - 16
+                            spacing: 2
+                            Repeater {
+                                model: [{ id: "suspend", t: "Sleep", g: 0xF04B2 }, { id: "reboot", t: "Restart", g: 0xF0709 }, { id: "shutdown", t: "Shut down", g: 0xF0425 }]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    readonly property bool armed: root.powerArmed === modelData.id
+                                    width: pwItems.width; height: 36; radius: 10
+                                    color: armed ? Qt.alpha(root.pal.bad, 0.28) : (pwMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : "transparent")
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Glyph { x: 10; anchors.verticalCenter: parent.verticalCenter; code: modelData.g; font.pixelSize: 16; color: armed ? root.pal.bad : root.pal.accent }
+                                    Text {
+                                        x: 38; anchors.verticalCenter: parent.verticalCenter
+                                        text: armed ? "Click again to confirm" : modelData.t
+                                        color: armed ? root.pal.bad : root.pal.text
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                    }
+                                    MouseArea { id: pwMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.powerAct(modelData.id) }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        anchors.right: parent.right
+                        width: 38; height: 38; radius: 19
+                        color: pwBtnMa.containsMouse || root.powerOpen ? Qt.alpha(root.pal.accent, 0.22) : Qt.alpha(root.pal.surface, 0.7)
+                        border.width: root.pal.bw
+                        border.color: root.pal.line
+                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                        Glyph { anchors.centerIn: parent; code: 0xF0425; font.pixelSize: 18; color: root.pal.text }
+                        MouseArea {
+                            id: pwBtnMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { root.powerOpen = !root.powerOpen; root.powerArmed = "" }
                         }
                     }
                 }
