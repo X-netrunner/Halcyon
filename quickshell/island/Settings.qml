@@ -685,8 +685,6 @@ Scope {
         ] },
         { id: "look", title: "Look", section: "Appearance", items: [
             { type: "seg", key: "opt:keysStyle", label: "Shortcuts layout", desc: "Tree: every shortcut on a branching tree. Pages: a menu of groups on the left and one group at a time. Same shortcuts in both; the chip in the Shortcuts header switches too.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
-            { type: "seg", key: "opt:settingsStyle", label: "Settings layout", desc: "Tree: the branching view. Pages: a menu on the left and one page at a time. Same settings in both.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
-            { type: "seg", key: "opt:uiStyle", label: "Interface", desc: "New: one quiet pane, no outlines, pill buttons, the main action in solid accent and no explanations (ask > instead). Legacy: the first calm look, with a hairline around every box. Classic: the original, with the glass sheen and accent outlines.", opts: [o("new", "New"), o("legacy", "Legacy"), o("classic", "Classic")] },
             { type: "toggle", key: "opt:hideHints", label: "Hide explanations", desc: "Once you know your way around: the explanations under settings, the key hints at the bottom of the boxes and the help lines in widgets shrink to a small ? on the side. Hover it (or click it here) to read them again." },
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
             { type: "toggle", key: "opt:boxShadow", label: "Soft shadow around boxes", desc: "The faint dark glow the notification box, utility box, console and the windows cast on the wallpaper. Off = none; the boxes keep their frosted glass." },
@@ -1043,6 +1041,13 @@ Scope {
             { type: "acts", needs: "firewall", label: "ai-firewall", desc: "Halcyon's firewall: incoming connections are refused unless you open a port, and anything that scans or floods this machine is banned for a while (longer each time). Firewall Center (also >firewall in the launcher): a live graph, bans, rules and profiles, blocklist feeds, history, and an assistant that explains network problems. Status page: the quick view in the island. Terminal dashboard: the same live view in a terminal.", btns: [{ id: "fw-center", btn: "Firewall Center", done: "", close: true }, { id: "fw-page", btn: "Status page", done: "", close: true }, { id: "fw-top", btn: "Terminal dashboard", done: "Opening…" }] },
             { type: "action", needs: "firewall", id: "fw-doctor", label: "Network doctor", btn: "Check the network", done: "Opening…", desc: "Checks the firewall, the internet, DNS and VM / container networking, and offers a fix for each problem it can solve (you confirm each one). Opens a terminal; asks for your admin password." },
             { type: "action", adv: true, needs: "firewall", id: "fw-config", label: "Firewall config", btn: "Edit config", done: "", desc: "/etc/ai-firewall/config.toml: open ports, ping, trusted and blocked addresses, how quickly it bans, the assistant's model. Saved changes apply within 3 seconds; a broken edit is ignored and the last good config stays." }
+        ] },
+        { id: "debug", title: "Debug & diagnostics", section: "Debug / Advanced", items: [
+            { type: "acts", label: "Doctor", desc: "Why does Halcyon not look or work right? Checks Hyprland, Quickshell, the config, drivers and the helpers. Check only reads; Check and fix asks before every repair (scripts/halcyon-doctor.sh).", btns: [{ id: "dbg-doctor", btn: "Check", done: "Opening…" }, { id: "dbg-doctor-fix", btn: "Check and fix", done: "Opening…" }] },
+            { type: "acts", label: "Self-test", desc: "The project's own checks run on this machine. Quick: shell and Python syntax and the QML lint, what breaks a login. Full: everything, plus the live checks (scripts/halcyon-selftest.sh). Read-only.", btns: [{ id: "dbg-selftest-quick", btn: "Quick", done: "Opening…" }, { id: "dbg-selftest", btn: "Full", done: "Opening…" }] },
+            { type: "acts", label: "Memory", desc: "What uses RAM: every Halcyon process now, or a longer look at where the memory really sits (scripts/halcyon-mem.sh, halcyon-mem-where.sh).", btns: [{ id: "mem-report", btn: "Now", done: "Opening…" }, { id: "dbg-memwhere", btn: "Where it sits", done: "Opening…" }] },
+            { type: "acts", label: "Island log", desc: "The last lines of the Quickshell log, the first place to look when the island misbehaves.", btns: [{ id: "dbg-log", btn: "Show log", done: "Opening…" }] },
+            { type: "acts", label: "Safe mode", desc: "If the desktop is slow or will not draw: turns the heavy effects off and reloads the island. Your values are saved first (the same switch as in Performance).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading...", when: "fx:safe=false" }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring...", when: "fx:safe=true" }] }
         ] }
     ]
 
@@ -1181,12 +1186,12 @@ Scope {
     property string query: ""
     property bool scrolling: false          // true while the list is moving: the starfield / pulses pause so scrolling gets the whole frame
     property string section: ""             // "" = every section; else Appearance | Bar & panels | Desktop | Input & power | Performance | System
-    readonly property var sections: ["Discover", "Appearance", "Stars & splash", "Bar & panels", "Desktop", "Productivity", "Input & power", "Performance", "System"]
+    readonly property var sections: ["Discover", "Appearance", "Stars & splash", "Bar & panels", "Desktop", "Productivity", "Input & power", "Performance", "System", "Debug / Advanced"]
     property var collapsed: ({ apps: true, growth: true, gestures: true, mousebtn: true, treeview: true })
 
     // ---- two layouts: "tree" (the branching view, the default) and "pages" (a menu on the left, one page at a time).
     // Both read the same groups / items and write through the same change(), so nothing is lost by switching.
-    readonly property bool pagesMode: opt && opt.settingsStyle === "pages"
+    readonly property bool pagesMode: true      // the Tree layout was removed; the Pages layout is the only one (the tree code below is dead and can go later)
     // every group sits on exactly ONE page (tests/settings-groups.test.js checks it); the pages follow the section tabs of the tree
     readonly property var pages: [
         { id: "Discover", sub: "The settings you use most, everything Halcyon can do, and the guided tour.", groups: ["often", "discover"] },
@@ -1199,7 +1204,8 @@ Scope {
         { id: "Input & power", sub: "Mouse, touchpad, gestures, mouse buttons, keyboard, power and the lock screen.", groups: ["mouse", "keyboard", "gestures", "mousebtn", "power", "lockscreen", "loginscreen"] },
         { id: "Performance", sub: "Profiles, safe mode, speed, memory limits, the tree view and suggestions.", groups: ["performance", "treeview", "profiles", "suggestions"] },
         { id: "System", sub: "Preferences, timeouts, startup, apps, backups and restore.", groups: ["sysoptions", "startup", "apps", "backup"] },
-        { id: "Security", sub: "The antivirus, the firewall, the safety check and their reminders.", groups: ["security", "firewall"] }
+        { id: "Security", sub: "The antivirus, the firewall, the safety check and their reminders.", groups: ["security", "firewall"] },
+        { id: "Debug / Advanced", sub: "Every advanced option, plus the doctor, the self-test, memory and log tools. Nothing here is needed day to day.", groups: ["debug"] }
     ]
     // the left menu reads as a few headings with their pages under them (every page id appears once; tests/settings-groups.test.js checks it)
     readonly property var navHeads: [
@@ -1207,7 +1213,7 @@ Scope {
         { head: "Look and feel", ids: ["Appearance", "Stars & splash"] },
         { head: "Shell", ids: ["Bar", "Panels", "Desktop"] },
         { head: "Tools", ids: ["Productivity", "Input & power"] },
-        { head: "System", ids: ["Performance", "System", "Security"] }
+        { head: "System", ids: ["Performance", "System", "Security", "Debug / Advanced"] }
     ]
     readonly property var navRows: {
         var out = []
@@ -1218,7 +1224,7 @@ Scope {
         return out
     }
     property string page: "Discover"
-    function pageOf(gid) { for (var i = 0; i < pages.length; i++) if (pages[i].groups.indexOf(gid) >= 0) return pages[i].id; return "Appearance" }
+    function pageOf(gid) { if (gid === "disabledbar") return "Bar"; if (String(gid).indexOf("adv:") === 0) return "Debug / Advanced"; for (var i = 0; i < pages.length; i++) if (pages[i].groups.indexOf(gid) >= 0) return pages[i].id; return "Appearance" }
     function pageInfo(id) { for (var i = 0; i < pages.length; i++) if (pages[i].id === id) return pages[i]; return pages[0] }
     // "Advanced" rows: items marked adv: true stay behind a fold in each group (a search always finds them; advAll shows them everywhere)
     property bool advAll: false
@@ -1248,13 +1254,27 @@ Scope {
     }
     // cached results (plain objects that are only mutated, never re-assigned): the filter / column functions hand back the SAME
     // array when nothing changed, because a Repeater tears down and rebuilds every delegate whenever its model is replaced
+    // bar off: the rows that only mean something with a bar are not hidden but gathered, greyed out, in one "Disabled" box at the bottom of the Bar page
+    readonly property var barOnlyGroups: ["barwidgets", "barbehave"]
+    readonly property string barOffWhy: "Needs a bar. Pick a bar style (not Off) in Bar > Style to use this."
     readonly property var _fc: ({ sig: "", out: [] })
     readonly property var _cc: ({ sig: "", out: [] })
     readonly property var groupsNow: {
         var q = query.toLowerCase().trim()
-        var out = [], sig = ""
+        var out = [], advOut = [], sig = "", offBar = [], barOff = (q === "" && get("opt:barStyle") === "off")
         for (var g = 0; g < groups.length; g++) {
-            var grp = groups[g], items = [], idx = "", advN = 0, dis = [], didx = ""
+            var grp = groups[g], items = [], idx = "", advN = 0, dis = [], didx = "", advList = [], advIdx = ""
+            if (barOff && barOnlyGroups.indexOf(grp.id) >= 0) {
+                for (var bi = 0; bi < grp.items.length; bi++) {
+                    var bit = grp.items[bi]
+                    if (bit.type === "custom" || bit.type === "divider") continue
+                    var bc = {}
+                    for (var bk in bit) bc[bk] = bit[bk]
+                    delete bc.when; bc.dis = barOffWhy
+                    offBar.push(bc)
+                }
+                continue
+            }
             if (grp.id === "often") {                      // not in a search (the rows show in their own groups there)
                 if (q !== "" || oftenItems.length === 0 || (!pagesMode && section !== "" && grp.section !== section)) continue
                 out.push({ id: grp.id, title: grp.title, section: grp.section, items: oftenItems, advN: 0, advShow: false })
@@ -1267,7 +1287,12 @@ Scope {
             for (var i = 0; i < grp.items.length; i++) {
                 var it = grp.items[i]
                 if (it.when && !whenOk(it.when)) {
-                    if (it.soft === true && q === "" && (it.adv !== true || advShow)) {      // kept, but greyed out under "Disabled"
+                    if (barOff && it.type !== "custom" && /barStyle|bl:/.test(it.when)) {
+                        var oc = {}
+                        for (var ok2 in it) oc[ok2] = it[ok2]
+                        delete oc.when; oc.dis = barOffWhy
+                        offBar.push(oc)
+                    } else if (it.soft === true && q === "" && it.adv !== true) {      // kept, but greyed out under "Disabled"
                         var dc = {}
                         for (var dk in it) dc[dk] = it[dk]
                         delete dc.when
@@ -1277,7 +1302,7 @@ Scope {
                     continue
                 }
                 if (q !== "" && itemText(grp, it).indexOf(q) < 0) continue
-                if (q === "" && it.adv === true) { advN++; if (!advShow) continue }
+                if (q === "" && it.adv === true) { advList.push(it); advIdx += i + ","; continue }      // advanced rows live on the Debug / Advanced page (a search still finds them here)
                 items.push(it); idx += i + ","
             }
             if (items.length > 0 && dis.length > 0) {
@@ -1285,7 +1310,13 @@ Scope {
                 for (var dd = 0; dd < dis.length; dd++) items.push(dis[dd])
                 idx += "D" + didx
             }
+            if (advList.length > 0) { advOut.push({ id: "adv:" + grp.id, title: grp.title, section: "Debug / Advanced", items: advList, advN: 0, advShow: true }); sig += "adv:" + grp.id + ":" + advIdx + ";" }
             if (items.length > 0) { out.push({ id: grp.id, title: grp.title, section: grp.section, items: items, advN: advN, advShow: advShow }); sig += grp.id + ":" + idx + advN + (advShow ? "A" : "a") + ";" }
+        }
+        for (var ao = 0; ao < advOut.length; ao++) out.push(advOut[ao])
+        if (offBar.length > 0) {
+            out.push({ id: "disabledbar", title: "Disabled: these need a bar", section: "Bar & panels", items: offBar, advN: 0, advShow: true })
+            sig += "OFFBAR" + offBar.length + ";"
         }
         if (sig === _fc.sig) return _fc.out
         _fc.sig = sig; _fc.out = out
@@ -1294,8 +1325,8 @@ Scope {
     readonly property var _pc: ({ out: [] })
     readonly property var pageGroupsNow: {
         var src = groupsNow, ids = null, out = []
-        if (query === "") ids = pageInfo(page).groups
-        for (var g = 0; g < src.length; g++) if (ids === null || ids.indexOf(src[g].id) >= 0) out.push(src[g])
+        if (query === "") ids = page === "Bar" ? pageInfo(page).groups.concat(["disabledbar"]) : pageInfo(page).groups
+        for (var g = 0; g < src.length; g++) if (ids === null || ids.indexOf(src[g].id) >= 0 || (page === "Debug / Advanced" && src[g].id.indexOf("adv:") === 0)) out.push(src[g])
         var prev = _pc.out, same = prev.length === out.length
         for (var i = 0; same && i < out.length; i++) if (prev[i] !== out[i]) same = false
         if (same) return prev
@@ -1570,11 +1601,7 @@ Scope {
                     }
                     Text { visible: !root.pal.zen || root.query !== ""; text: root.shownCount + " settings"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                     Item { Layout.fillWidth: true }
-                    SChip { pal: root.pal; label: root.advAll ? "Advanced: shown" : "Advanced: hidden"; on: root.advAll; onClicked: root.advAll = !root.advAll }
-                    SChip { pal: root.pal; label: root.pagesMode ? "Tree view" : "Pages view"; onClicked: root.setting("opt:settingsStyle", root.pagesMode ? "tree" : "pages") }
-                    SChip { visible: !root.pagesMode; pal: root.pal; label: "Collapse all"; onClicked: root.setAll(true) }
-                    SChip { visible: !root.pagesMode; pal: root.pal; label: "Expand all"; onClicked: root.setAll(false) }
-                    RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
+                                        RoundBtn { pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
                 }
 
                 // ---------------- section tabs: All / Appearance / Stars & splash / Bar & panels / Desktop / Productivity / Input & power / Performance / System
@@ -1699,7 +1726,7 @@ Scope {
                                 width: parent.width
                                 topPadding: 6; bottomPadding: 22
                                 visible: !(root.pal.zen && root.pal.hideHints && root.query === "")
-                                text: root.query === "" ? root.pageInfo(root.page).sub + "  Rarely used options sit behind Advanced." : root.shownCount + " settings match, from every page."
+                                text: root.query === "" ? root.pageInfo(root.page).sub + "  Rarely used options are on the Debug / Advanced page." : root.shownCount + " settings match, from every page."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; wrapMode: Text.WordWrap
                             }
 
