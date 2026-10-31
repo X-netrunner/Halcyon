@@ -44,6 +44,10 @@ Console and background apps: kept as they are (decided; the mock-ups are not bui
 
 Pages layout (already the default): left menu regrouped under Start / Look and feel / Shell / Tools / System, 11 pages (AI is in Productivity, Backup in System). **untested** on screen. Open: calmer groups inside the long pages, search-first header.
 
+Round 3 on Settings: the Tree layout and the Interface Legacy / Classic choices are removed; a greyed Disabled box (bar off) sits at the bottom of the Bar page; a Debug page holds the doctor, self-test, memory, log and safe mode. **untested** on screen.
+
+Round 4: the Debug page became **Debug / Advanced** and holds every advanced row (one box per original group); the per-group fold and the header chip are gone. **untested** on screen.
+
 ## Next surfaces (open)
 
 | Surface | Idea | Status |
@@ -59,5 +63,7 @@ Pages layout (already the default): left menu regrouped under Start / Look and f
 
 ## Log
 
+- 2026-10-31: Debug / Advanced page collects all advanced rows (round 4). Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
+- 2026-10-31: Settings slimmed: Tree layout and Interface Legacy / Classic removed, Disabled box for bar-only rows, Debug page (round 3). Files: `Settings.qml`, `shell.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Launcher style Classic / Spotlight and the Settings left menu under headings (round 2). Files: `Launcher.qml`, `shell.qml`, `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Dashboard styles Tabs / Bento / Command added with a Settings picker and the stat-strip switch (round 1). Files: `Dashboard.qml`, `DashStrip.qml`, `DashBento.qml`, `DashCommand.qml`, `DashBtn.qml`, `RailPages.qml`, `shell.qml`, `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
