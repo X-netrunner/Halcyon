@@ -494,6 +494,26 @@ Scope {
     // 3 s while the idle status rows are what you see, a slow 15 s once the console holds output
     Timer { interval: out.count === 0 ? 3000 : 15000; running: root.shown; repeat: true; triggeredOnStart: true; onTriggered: if (!statusProc.running) statusProc.running = true }
 
+    // the Wi-Fi network (a row of the status list) and the Bluetooth devices (title line) you are connected to (polled only while the box shows)
+    property string netWifi: ""
+    property string netBt: ""
+    Process {
+        id: netProc
+        command: ["sh", "-c",
+            "w=$(nmcli -t -f ACTIVE,SSID dev wifi 2>/dev/null | sed -n 's/^yes://p' | head -n1); [ -n \"$w\" ] || w=$(iwgetid -r 2>/dev/null); "
+          + "b=$(bluetoothctl devices Connected 2>/dev/null | sed -n 's/^Device [0-9A-Fa-f:]* //p' | paste -sd, -); "
+          + "if [ -z \"$b\" ] && command -v bluetoothctl >/dev/null 2>&1; then b=$(bluetoothctl devices 2>/dev/null | while read -r _ mac name; do bluetoothctl info \"$mac\" 2>/dev/null | grep -q 'Connected: yes' && printf '%s\\n' \"$name\"; done | paste -sd, -); fi; "
+          + "printf '%s\\n%s\\n' \"$w\" \"$b\""]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var l = text.split("\n")
+                root.netWifi = (l[0] || "").trim().slice(0, 28)
+                root.netBt = (l[1] || "").trim().slice(0, 40)
+            }
+        }
+    }
+    Timer { interval: 10000; running: root.shown; repeat: true; triggeredOnStart: true; onTriggered: if (!netProc.running) netProc.running = true }
+
     function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
     function dot(on, label) {
         return "<font color='" + (on ? pal.good : pal.muted) + "'>" + (on ? "●" : "○") + "</font> " + esc(label)
@@ -511,6 +531,7 @@ Scope {
             row("ids", dot(!!s.ids, s.ids ? "active" : "off")),
             row("cowrie", dot(!!s.cowrie, s.cowrie ? "active" : "off")),
             row("decoy wifi", dot(!!s.decoyWifi, s.decoyWifi ? s.decoyWifi : "off")),
+            row("wifi", dot(netWifi !== "", netWifi !== "" ? netWifi : "not connected")),     // the network you are on (was in the title line)
             "&nbsp;",
             row(">ids hit", ": " + num(s.idsAlerts)),
             row(">alerts", ": " + (rd ? num(s.today) + " today · " + num(s.alerts) + " total" : "–")),
@@ -697,7 +718,34 @@ Scope {
                     font.family: root.mono
                     font.pixelSize: 11
                 }
+                // the Bluetooth device you are connected to, just left of the mode (the Wi-Fi network is a row of the status list below) (hidden while a command runs: that line takes the middle)
+                Row {
+                    id: netRow
+                    anchors.right: modeTag.left
+                    anchors.rightMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 12
+                    visible: !root.busy && root.netBt !== ""
+                    // room between the title and the mode tag, shared by what is connected (long names are cut with ...)
+                    readonly property real avail: head.width - modeTag.width - 14 - (root.pal.centred ? (head.width + termTitle.width) / 2 + 12 : termTitle.width + 16)
+                    readonly property real each: Math.max(28, avail - 24)
+                    Row {
+                        visible: root.netBt !== ""
+                        spacing: 5
+                        anchors.verticalCenter: parent.verticalCenter
+                        Text { text: String.fromCodePoint(0xF00AF); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                            text: root.netBt
+                            color: root.pal.muted
+                            font.family: root.mono; font.pixelSize: 11
+                            elide: Text.ElideRight
+                            width: Math.min(implicitWidth, netRow.each)
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                }
                 Text {
+                    id: modeTag
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     text: (root.sysmode !== "" ? root.sysmode : "no mode")

@@ -82,6 +82,32 @@ fi
 # From the tty1 login (launch/halcyon-login.sh) the console still shows the boot splash: Hyprland's start-up text (its logo and
 # log lines) would be drawn over it, so it goes to the launch log instead
 if [ "${HALCYON_LOGIN_LOCK:-}" = 1 ]; then exec >>"$log" 2>&1; fi
+# Started by the Halcyon login manager (greeter/shell.qml sets HALCYON_FROM_GREETER): nobody is looking at this session's output, and a
+# session that dies at once leaves nothing behind but "session closed" in the greetd journal. So it all goes to the launch log: the
+# environment the session got, what Hyprland printed, how it ended, and Hyprland's own log / crash report.
+if [ "${HALCYON_FROM_GREETER:-}" = 1 ]; then
+  {
+    echo "-- started by the login manager as $(id -un) (uid $(id -u)), tty: $(tty 2>&1)"
+    echo "-- XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-} ($(ls -ld "${XDG_RUNTIME_DIR:-/nonexistent}" 2>&1 | cut -c1-60))"
+    echo "-- XDG_SESSION_ID=${XDG_SESSION_ID:-unset} XDG_SEAT=${XDG_SEAT:-unset} XDG_VTNR=${XDG_VTNR:-unset} XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-unset} DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unset}"
+    echo "-- groups: $(id -Gn)"
+    command -v loginctl >/dev/null 2>&1 && loginctl show-session "${XDG_SESSION_ID:-self}" -p Type -p Class -p Active -p State -p Seat -p VTNr 2>&1 | tr '\n' ' ' | sed 's/^/-- logind: /'; echo
+    echo "-- libseat: $(ls -l /run/seatd.sock 2>&1 | cut -c1-70)"
+  } >> "$log" 2>&1
+  t0=$(date +%s)
+  if command -v start-hyprland >/dev/null 2>&1; then start-hyprland >>"$log" 2>&1
+  elif command -v Hyprland >/dev/null 2>&1; then Hyprland >>"$log" 2>&1
+  else echo "Hyprland is not installed" >>"$log"; false; fi
+  rc=$?
+  {
+    echo "== $(date '+%F %T')  Hyprland ended: exit $rc after $(( $(date +%s) - t0 )) s"
+    hl=$(ls -t "${XDG_RUNTIME_DIR:-/nonexistent}"/hypr/*/hyprland.log 2>/dev/null | head -n1)
+    [ -n "$hl" ] && { echo "-- last lines of $hl:"; tail -n 25 "$hl"; }
+    cr=$(ls -t "$HOME"/.cache/hyprland/hyprlandCrashReport*.txt 2>/dev/null | head -n1)
+    [ -n "$cr" ] && [ $(( $(date +%s) - $(stat -c %Y "$cr") )) -lt 120 ] && echo "-- crash report: $cr"
+  } >> "$log" 2>&1
+  exit "$rc"
+fi
 if command -v start-hyprland >/dev/null 2>&1; then exec start-hyprland; fi     # Hyprland's own start wrapper (0.53 and newer)
 if command -v Hyprland >/dev/null 2>&1; then exec Hyprland; fi
 text_console
