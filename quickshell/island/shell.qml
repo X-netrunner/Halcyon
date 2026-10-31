@@ -133,6 +133,7 @@ ShellRoot {
         todStrength: 60,           // 0 .. 100 : how strong that grade is (100 = full dusk orange / deep night blue)
         splash: true,              // the login splash (Splash.qml: moving stars + the Halcyon sparkle) plays on the lock screen when it is also the login screen; Settings > Power & lock
         clipAtCursor: true,        // ON by default. Super + V opens the clipboard panel at the mouse pointer (like Windows); off = on the side of the screen
+        lockPower: true,           // ON by default. The lock screen's power button (bottom right): Sleep / Restart / Shut down
         lockSwitch: false,         // OFF by default. On = the lock screen has a "Switch user" button (other logged-in users, or a login screen for someone else)
         limMode: "manual",         // manual | auto : Settings > Performance > Limits. auto = the RAM / CPU limits are learned from your own use (startup-view.py adapt-sample, every 5 min)
         resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
@@ -898,6 +899,7 @@ ShellRoot {
         plain: root.opt.lockMode === "login"          // Settings > Power & lock > After sleep: the login-screen look, no widgets of any kind
         widgets: root.opt.lockWidgets === true && root.opt.lockMode !== "login"
         allowSwitch: root.opt.lockSwitch === true && root.opt.lockMode !== "login"
+        allowPower: root.opt.lockPower !== false
         splash: root.opt.splash !== false && root.opt.splashLock !== false
         splashSound: root.opt.splashSound === true
         splashDim: root.opt.splashDim !== undefined ? root.opt.splashDim : 0.75

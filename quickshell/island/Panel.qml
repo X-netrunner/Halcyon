@@ -379,11 +379,14 @@ Glass {
             visible: root.classic && (root.shown("Wifi") || root.shown("Bt") || root.shown("Audio"))
             Chip {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 150               // room for the network name; Bluetooth and Audio stay icon-only and share the rest
                 visible: root.shown("Wifi")
                 pal: root.pal
-                maxLabel: 52
+                maxLabel: 130
                 glyph: String.fromCodePoint(root.net.eth ? 0xF0200 : 0xF0928)
-                label: ""                                    // calm: the icon alone (lit = on); the network name is in the hover bubble
+                // quick view (classic): the connected network's name is right on the pill, so opening the box answers "which Wi-Fi am I on?"
+                // Off = the icon alone (unlit); the signal and the rest stay in the hover bubble
+                label: root.net.wifi === "on" ? (root.net.ssid ? root.net.ssid : (root.net.eth ? "Ethernet" : "Not connected")) : ""
                 tipAlign: "left"
                 tip: root.net.wifi !== "on" ? "Wi-Fi off  ·  click to turn on"
                    : (root.net.ssid ? "Connected to " + root.net.ssid : (root.net.eth ? "Ethernet" : "Wi-Fi on, not connected"))
@@ -394,6 +397,7 @@ Glass {
             }
             Chip {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 60
                 visible: root.shown("Bt")
                 pal: root.pal
                 maxLabel: 52
@@ -408,6 +412,7 @@ Glass {
             }
             Chip {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 60
                 visible: root.shown("Audio")
                 pal: root.pal
                 maxLabel: 52
