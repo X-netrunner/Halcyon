@@ -660,6 +660,8 @@ Scope {
                             source: root.stagedImage !== "" ? "file://" + root.stagedImage : ""
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
+                            sourceSize.width: 640            // a pasted screenshot can be 4K or more: decode only what the small preview shows
+                            sourceSize.height: 640
                             cache: false
                         }
                         RoundBtn {
