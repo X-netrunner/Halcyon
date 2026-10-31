@@ -18,24 +18,44 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: 10
             Text { text: appRow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+            // a drop-down instead of a row of buttons: closed it shows the app in use
+            SDrop {
+                id: appDrop
+                readonly property var list: root.apps[appRow.modelData.kind] || []
+                Layout.preferredWidth: 300
+                Layout.alignment: Qt.AlignLeft
+                visible: list.length > 0
+                pal: root.pal
+                items: {
+                    var out = []
+                    for (var i = 0; i < list.length; i++)
+                        out.push({ t: list[i].name, on: !!(root.apps.current && root.apps.current[appRow.modelData.kind] === list[i].id) })
+                    return out
+                }
+                summary: {
+                    for (var i = 0; i < items.length; i++) if (items[i].on) return items[i].t
+                    return "Choose"
+                }
+                onPicked: i => root.setApp(appRow.modelData.kind, list[i].id)
+            }
+            Text {
+                visible: (root.apps[appRow.modelData.kind] || []).length === 0
+                text: "none installed"
+                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+            }
+            // websites you added yourself: × takes one away again
             Flow {
+                visible: appRow.modelData.kind === "chat"
                 Layout.fillWidth: true
                 spacing: 12
                 Repeater {
-                    model: root.apps[appRow.modelData.kind] || []
+                    model: (root.apps.chat || []).filter(function (a) { return a.custom === true })
                     delegate: Row {
                         id: appChip
                         required property var modelData
                         spacing: 4
-                        SChip {
-                            pal: root.pal
-                            label: appChip.modelData.name
-                            on: root.apps.current && root.apps.current[appRow.modelData.kind] === appChip.modelData.id
-                            onClicked: root.setApp(appRow.modelData.kind, appChip.modelData.id)
-                        }
-                        // a website you added yourself: × takes it away again
+                        SChip { pal: root.pal; label: appChip.modelData.name; on: false; onClicked: {} }
                         Text {
-                            visible: appChip.modelData.custom === true
                             anchors.verticalCenter: parent.verticalCenter
                             text: "×"
                             color: rmMa.containsMouse ? root.pal.accent : root.pal.muted
@@ -43,11 +63,6 @@ ColumnLayout {
                             MouseArea { id: rmMa; anchors.fill: parent; anchors.margins: -5; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.removeWebApp(appChip.modelData.id) }
                         }
                     }
-                }
-                Text {
-                    visible: (root.apps[appRow.modelData.kind] || []).length === 0
-                    text: "none installed"
-                    color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
                 }
             }
             // Chat only: any website, opened in your browser as its own window (WhatsApp Web is already in the list)
