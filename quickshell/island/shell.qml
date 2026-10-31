@@ -44,6 +44,7 @@ ShellRoot {
     // idle: lock the screen after N minutes, sleep after N minutes (0 = never). Settings > Sleep & lock, applied by scripts/idle.sh
     property int idleLock: 5
     property int idleSleep: 30
+    property int avIdle: 5                 // minutes the computer must sit idle before the AI Antivirus analyzer (local model) works; 0 = it always runs
     property int idleDim: 3                // minutes until the screen dims to its minimum and the keyboard light goes off (0 = never)
     property bool idleTouched: false
     property bool osdOn: true              // the volume / brightness bar that slides in on every change
@@ -674,6 +675,7 @@ ShellRoot {
         idleLock: root.idleLock
         idleSleep: root.idleSleep
         idleDim: root.idleDim
+        avIdle: root.avIdle
         osdOn: root.osdOn
         theme: root.theme
         compactWs: root.compactWs
@@ -792,7 +794,7 @@ ShellRoot {
         onExited: Quickshell.reload(false)
     }
     // ---- volume / brightness / keyboard-light bar: slides up from the bottom edge on every change (Osd.qml)
-    Osd { id: osd; pal: pal; enabled: root.osdOn; holdMs: root.opt.osdHold }
+    Osd { id: osd; pal: pal; enabled: root.osdOn; fullscreen: root.fsQuiet; holdMs: root.opt.osdHold }
     // brightness + keyboard light: scripts/osd-watch.sh prints a line when either changes (silent while the idle dim is active)
     Process {
         running: root.osdOn
@@ -1690,7 +1692,7 @@ ShellRoot {
                                  JSON.stringify({ autoHide: autoHide, autoPower: autoPower, compactSpecial: compactSpecial, dnd: dnd, edgeMode: edgeMode, glassShift: glassShift, motion: motion, rounding: rounding, gaps: gaps, blur: blur, shadows: shadows,
                                                   hyprAnim: hyprAnim, profileStars: profileStars, hyprTouched: hyprTouched,
                                                   profileName: profileName, profileAvatar: profileAvatar, routeApps: routeApps, routeShow: routeShow,
-                                                  notifHistoryMax: notifHistoryMax, notifMax: notifMax, idleLock: idleLock, idleSleep: idleSleep, idleDim: idleDim, osdOn: osdOn, idleTouched: idleTouched,
+                                                  notifHistoryMax: notifHistoryMax, notifMax: notifMax, idleLock: idleLock, idleSleep: idleSleep, idleDim: idleDim, avIdle: avIdle, osdOn: osdOn, idleTouched: idleTouched,
                                                   clock24: clock24, growthOn: growthOn, growthMin: growthMin, superTap: superTap, termFollow: termFollow, colorBoost: colorBoost,
                                                   theme: theme, themeTouched: themeTouched, scrollTouch: scrollTouch, scrollMouse: scrollMouse, scrollTouched: scrollTouched,
                                                   barScroll: barScroll, barPadding: barPadding, powerMgr: powerMgr, hoverAction: hoverAction, compactWs: compactWs, opt: opt, hy: hy })])
@@ -1751,6 +1753,7 @@ ShellRoot {
         case "idleLock": idleLock = v; idleTouched = true; applyIdle(); break
         case "idleSleep": idleSleep = v; idleTouched = true; applyIdle(); break
         case "idleDim": idleDim = v; idleTouched = true; applyIdle(); break
+        case "avIdle": avIdle = v; idleTouched = true; applyIdle(); break
         case "osdOn": osdOn = v; break
         case "glassShift": glassShift = v; break
         case "motion": motion = v; break
@@ -1838,7 +1841,7 @@ ShellRoot {
         }
     }
     function applyIdle() {
-        Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/idle.sh", "apply", String(idleLock), String(idleSleep), String(idleDim)])
+        Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/idle.sh", "apply", String(idleLock), String(idleSleep), String(idleDim), String(avIdle)])
     }
     // Hyprland values are pushed live with `hyprctl eval` (same mechanism as scripts/toggle_layout.sh), batched so a
     // dragged slider does not spawn a process per pixel; not while Gaming mode owns them.
@@ -2371,6 +2374,7 @@ ShellRoot {
                     if (s.idleLock !== undefined) root.idleLock = s.idleLock
                     if (s.idleSleep !== undefined) root.idleSleep = s.idleSleep
                     if (s.idleDim !== undefined) root.idleDim = s.idleDim
+                    if (s.avIdle !== undefined) root.avIdle = s.avIdle
                     root.osdOn = s.osdOn !== false
                     root.idleTouched = !!s.idleTouched
                     if (root.idleTouched) root.applyIdle()      // otherwise the autostart (idle.sh start) uses its defaults
