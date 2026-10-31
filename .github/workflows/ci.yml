@@ -99,6 +99,8 @@ jobs:
         run: python3 tests/test_study_chats.py
       - name: "Wi-Fi connect steps (fake nmcli: every step reported, failures explained, password never logged, saved profiles never deleted)"
         run: bash tests/wifi-connect.test.sh
+      - name: "Login screen launch (greetd splits arguments at spaces: only plain words may be passed, the wrapper logs and keeps the exit code)"
+        run: bash tests/greeter-launch.test.sh
 
   qml:
     runs-on: ubuntu-latest

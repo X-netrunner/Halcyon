@@ -63,7 +63,7 @@ login_add_fish() {   # fish has no ~/.bash_profile: its own conf.d file (runs fo
   local f; f=$(login_fish_file); mkdir -p "$(dirname "$f")"
   cat > "$f" <<FISH
 $SNIP_MARK (install.sh; undo with ./install.sh --remove-lock-login)
-if status is-login; and test -z "\$WAYLAND_DISPLAY"; and test -z "\$DISPLAY"; and test (tty) = /dev/tty1; and not test -e "\$HOME/.cache/island/no-autostart"
+if status is-login; and test -z "\$HALCYON_FROM_GREETER"; and test -z "\$WAYLAND_DISPLAY"; and test -z "\$DISPLAY"; and test (tty) = /dev/tty1; and not test -e "\$HOME/.cache/island/no-autostart"
     exec "$RICE/launch/halcyon-login.sh"
 end
 FISH
@@ -87,7 +87,7 @@ login_add() {   # 0 = the lines are in place
         { [ -f "$HOME/.profile" ] && echo '[ -f ~/.profile ] && . ~/.profile'; echo '[ -f ~/.bashrc ] && . ~/.bashrc'; } >> "$f"
       fi
     fi
-    printf '\n%s (install.sh; undo with ./install.sh --remove-lock-login)\nif [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ] && [ "$(tty)" = /dev/tty1 ] && [ ! -e "$HOME/.cache/island/no-autostart" ]; then\n  exec "%s/launch/halcyon-login.sh"\nfi\n' "$SNIP_MARK" "$RICE" >> "$f"
+    printf '\n%s (install.sh; undo with ./install.sh --remove-lock-login)\nif [ -z "${HALCYON_FROM_GREETER:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ] && [ "$(tty)" = /dev/tty1 ] && [ ! -e "$HOME/.cache/island/no-autostart" ]; then\n  exec "%s/launch/halcyon-login.sh"\nfi\n' "$SNIP_MARK" "$RICE" >> "$f"
   fi
   grep -q "halcyon-login.sh" "$f" 2>/dev/null
 }
