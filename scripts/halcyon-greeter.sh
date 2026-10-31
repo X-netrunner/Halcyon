@@ -30,25 +30,27 @@ have() { command -v "$1" >/dev/null 2>&1; }
 as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 die() { say "halcyon-greeter: $*" >&2; exit 1; }
 
+OWN="shell.qml users.sh sessions.sh halcyon-session"   # the greeter's own files (halcyon-session is the executable wrapper greetd runs)
 ART="Backdrop.qml ModeArt.qml BarStars.qml StarData.js LiveSky.qml"       # the lock screen's own art (constellation, sky): one source of truth, copied from the island
 stage() {           # stage DIR: the greeter's files plus the shared art, as plain copies
   local d="$1" f
-  for f in shell.qml users.sh sessions.sh; do cp -f "$SRC/$f" "$d/$f" || return 1; done
+  for f in $OWN; do cp -f "$SRC/$f" "$d/$f" || return 1; done
   for f in $ART; do cp -f "$RICE/quickshell/island/$f" "$d/$f" || { say "missing $RICE/quickshell/island/$f"; return 1; }; done
 }
 
+mode_of() { case "$1" in halcyon-session) echo 755 ;; *) echo 644 ;; esac; }
 share_stale() {     # 0 = the installed copy differs from this folder's files (or has a leftover); 1 = current, or not installed
   local d f stale=1
   [ -f "$SHARE/shell.qml" ] || return 1
   d="$(mktemp -d)" && stage "$d" >/dev/null 2>&1 || { rm -rf "$d"; return 1; }
-  for f in shell.qml users.sh sessions.sh $ART; do cmp -s "$d/$f" "$SHARE/$f" || stale=0; done
+  for f in $OWN $ART; do cmp -s "$d/$f" "$SHARE/$f" || stale=0; done
   [ -e "$SHARE/Geometry.qml" ] && stale=0
   rm -rf "$d"; return $stale
 }
 share_refresh() {   # copy the files over the root-owned copy (the boot login screen runs THAT copy, not this folder)
   local tmp f
   tmp="$(mktemp -d)" && stage "$tmp" || { say "could not stage the greeter files"; return 1; }
-  for f in shell.qml users.sh sessions.sh $ART; do as_root install -m 644 -o root -g root "$tmp/$f" "$SHARE/$f" || { say "could not copy $f"; rm -rf "$tmp"; return 1; }; done
+  for f in $OWN $ART; do as_root install -m "$(mode_of "$f")" -o root -g root "$tmp/$f" "$SHARE/$f" || { say "could not copy $f"; rm -rf "$tmp"; return 1; }; done
   as_root rm -f "$SHARE/Geometry.qml"
   rm -rf "$tmp"
 }
@@ -256,7 +258,7 @@ case "${1:-}" in
     # the greeter, the data folder (yours: sync needs no root) and the greeter's own state folder
     as_root install -d -m 755 "$SHARE"
     tmp="$(mktemp -d)" && stage "$tmp" || die "could not stage the greeter files"
-    for f in shell.qml users.sh sessions.sh $ART; do as_root install -m 644 -o root -g root "$tmp/$f" "$SHARE/$f" || die "could not copy $f"; done
+    for f in $OWN $ART; do as_root install -m "$(mode_of "$f")" -o root -g root "$tmp/$f" "$SHARE/$f" || die "could not copy $f"; done
     rm -rf "$tmp"
     as_root install -d -m 755 -o "$OWNER" "$VAR"
     as_root install -d -m 755 -o greeter "$VAR/state"
@@ -304,6 +306,15 @@ CFG
   doctor)        # re-check the seat and PAM (the \"[libseat] could not connect to socket /run/seatd.sock\" login failure) and repair them
     [ "$(id -u)" -ne 0 ] || die "run this as your own user (it asks for sudo)."
     seat_fix
+    # greetd and the tty1 auto-login of the lock-screen login both want tty1: with both set, the session opens and dies at once
+    if grep -q "$MARK" "$CONF" 2>/dev/null; then
+      if [ -f "$GETTY" ]; then
+        say "tty1 auto-login was still set next to greetd (they fight over tty1, and the session dies): removing the auto-login."
+        as_root rm -f "$GETTY"; as_root rmdir "$(dirname "$GETTY")" 2>/dev/null; as_root systemctl daemon-reload
+      fi
+      [ -x "$here/user-setup.sh" ] && "$here/user-setup.sh" login-remove >/dev/null 2>&1
+      rm -f "$HOME/.cache/island/lock-on-start"
+    fi
     say ""
     say "Login screen checks:"
     for b in greetd cage quickshell; do have "$b" && say "  $b: installed" || say "  $b: MISSING (the login screen cannot start without it)"; done
@@ -318,6 +329,10 @@ CFG
     [ -s "$VAR/theme.json" ] && say "  theme: synced $(date -r "$VAR/theme.json" '+%F %T')" || say "  theme: never synced (run: $0 sync)"
     [ -x /usr/local/bin/start-halcyon ] && say "  start-halcyon: present" || say "  start-halcyon: MISSING (the Halcyon session has nothing to start: run ./install.sh)"
     [ -f /usr/share/wayland-sessions/halcyon.desktop ] && say "  Halcyon session file: present" || say "  Halcyon session file: MISSING (run ./install.sh)"
+    [ -x "$SHARE/halcyon-session" ] && say "  halcyon-session wrapper: present" || say "  halcyon-session wrapper: MISSING or not executable in $SHARE (run: $0 refresh): every login would end at once"
+    if grep -E 'Greetd\.launch' "$SRC/shell.qml" 2>/dev/null | grep -q -- '"-c"'; then
+      say "  greeter: Greetd.launch passes a shell script as ONE argument (greetd splits it at spaces and the session dies at once): update Halcyon"
+    fi
     say ""
     say "What greetd printed during this boot (the login screen's own errors are here):"
     as_root journalctl -b -u greetd.service --no-pager -n 30 2>/dev/null | sed 's/^/  | /' || true
@@ -335,6 +350,10 @@ CFG
       fi
       say "  log last written: $(date -r "$lg" '+%F %T')"
     else say "  (empty: the session never reached launch/halcyon.sh)"; fi
+    say "How the last session started from the login screen ended (~/.cache/island/greeter-session.log; written by the login screen's session wrapper):"
+    gs="$HOME/.cache/island/greeter-session.log"
+    if [ -s "$gs" ]; then tail -n 14 "$gs" | sed 's/^/  | /'; say "  log last written: $(date -r "$gs" '+%F %T')"
+    else say "  (nothing yet: either no login was tried since this was installed, or the session died BEFORE its first line, i.e. while greetd sourced /etc/profile or ~/.profile, or in PAM)"; fi
     say "Hyprland crash reports: $(ls -t "$HOME"/.cache/hyprland/hyprlandCrashReport*.txt 2>/dev/null | head -n3 | tr '\n' ' ')"
     say ""
     say "logind session type of your last login: $(loginctl show-session "$XDG_SESSION_ID" -p Type -p Active -p Remote 2>/dev/null | tr '\n' ' ')"

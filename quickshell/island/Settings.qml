@@ -56,6 +56,7 @@ Scope {
     property int idleLock: 5
     property int idleSleep: 30
     property int idleDim: 3
+    property int avIdle: 5
     property bool osdOn: true
     property string theme: "dark"          // dark | light
     property bool compactWs: true          // windows on workspace 3 move to 1 when nothing is before them
@@ -925,6 +926,7 @@ Scope {
             { type: "seg", key: "powerMgr", label: "Power manager", desc: "Which program controls CPU power. Only one runs at a time; the others are stopped. Halcyon Auto drives power-profiles-daemon by itself.", opts: [o("halcyon", "Halcyon Auto"), o("power-profiles-daemon", "power-profiles-daemon"), o("tlp", "TLP"), o("auto-cpufreq", "auto-cpufreq"), o("tuned", "Tuned")] },
             { type: "seg", key: "idleDim", label: "Dim the screen and keyboard light after", opts: [o(0, "Never"), o(1, "1 min"), o(2, "2 min"), o(3, "3 min"), o(5, "5 min"), o(10, "10 min")] },
             { type: "seg", key: "idleLock", label: "Lock the screen after", opts: [o(0, "Never"), o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")] },
+            { type: "seg", key: "avIdle", label: "AI Antivirus comments only when idle for", desc: "The local model that explains antivirus alerts waits until you have not touched the computer for this long, and stops when you come back, so it never heats the machine while you work. The antivirus itself keeps protecting. Needs hypridle.", opts: [o(0, "Always"), o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")] },
             { type: "seg", key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] },
             { type: "tool", adv: true, key: "wifips", label: "Wi-Fi power saving", desc: "On saves battery. Off gives the lowest latency (Gaming mode switches it off by itself)." }
         ] },

@@ -9,6 +9,7 @@ Scope {
     id: root
     property var pal
     property bool enabled: true
+    property bool fullscreen: false   // a window is fullscreen (shell.qml): no border to come out of, so the legacy floating pill is used
     property int holdMs: 1700
 
     property string kind: "vol"
@@ -41,7 +42,7 @@ Scope {
     readonly property bool over: kind === "vol" && value > 1.001
     // Border around the screen (Settings > Bar style): the bar does not float, it comes out from under the bottom border and flares
     // into it (Glass.qml joinV), like the boxes do. Without the border nothing changes: the floating pill below.
-    readonly property bool joined: !!pal && pal.frameOn === true
+    readonly property bool joined: !!pal && pal.frameOn === true && !fullscreen
     readonly property int edge: joined ? Math.max(0, pal.frameT) : 34      // gap between the screen's bottom edge and the bar when shown
 
     LazyLoader {

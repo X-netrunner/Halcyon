@@ -32,22 +32,28 @@ ColumnLayout {
         id: run
         property string pw: ""
         property int code: 0
+        // the result is handled when the exit AND both output streams are in (a fixed wait after the exit can be too short)
+        property string soT: ""
+        property string seT: ""
+        property bool soDone: false
+        property bool seDone: false
+        property bool exitedOnce: false
+        function finishCheck() { if (exitedOnce && soDone && seDone) { exitedOnce = false; fin.trigger() } }
         stdinEnabled: true
         command: ["sudo", "-k", "-S", "-p", "", "bash", root.autoScript].concat(sa.wanted === "off" ? ["off"] : ["on", String(sa.effDays()), Quickshell.env("USER")])
-        stdout: StdioCollector { id: so }
-        stderr: StdioCollector { id: se }
-        onRunningChanged: if (running && pw !== "") { write(pw + "\n"); pw = "" }
-        onExited: (c, st) => { code = c; fin.restart() }
+        stdout: StdioCollector { onStreamFinished: { run.soT = text; run.soDone = true; run.finishCheck() } }
+        stderr: StdioCollector { onStreamFinished: { run.seT = text; run.seDone = true; run.finishCheck() } }
+        onRunningChanged: { if (running) { soT = ""; seT = ""; soDone = false; seDone = false; exitedOnce = false } if (running && pw !== "") { write(pw + "\n"); pw = "" } }
+        onExited: (c, st) => { code = c; exitedOnce = true; finishCheck() }
     }
-    Timer {            // a moment after the exit, so the output has been collected
+    QtObject {           // runs once the process has ended and its output is complete (run.finishCheck)
         id: fin
-        interval: 250
-        onTriggered: {
+        function trigger() {
             sa.busy = false
-            var err = String(se.text || "").trim()
+            var err = String(run.seT || "").trim()
             if (run.code === 0) {
                 sa.wanted = ""
-                sa.msg = String(so.text || "").trim().split("\n").pop()
+                sa.msg = String(run.soT || "").trim().split("\n").pop()
                 sa.bad = false
             } else if (err.indexOf("incorrect password") >= 0 || err.indexOf("no password was provided") >= 0 || err.indexOf("Sorry, try again") >= 0 || err.indexOf("a password is required") >= 0) {
                 sa.msg = "That password is not right. Try again."

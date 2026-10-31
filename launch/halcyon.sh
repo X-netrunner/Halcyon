@@ -17,6 +17,10 @@ cfg="${HYPRLAND_CONFIG:-}"
 [ -n "$cfg" ] && [ -f "$cfg" ] || cfg="$RICE/hyprland.lua"
 export HYPRLAND_CONFIG="$cfg"
 
+# A session from the Halcyon login manager is already logged in: a stale lock-on-start flag (left by an earlier tty1 auto-login that
+# did not get to use it) would lock the desktop again, or make scripts/login-watchdog.sh end Hyprland ~20 s after it started.
+if [ "${HALCYON_FROM_GREETER:-}" = 1 ]; then rm -f "$HOME/.cache/island/lock-on-start"; unset HALCYON_LOGIN_LOCK; fi
+
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 if [ ! -d "$XDG_RUNTIME_DIR" ]; then mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null && chmod 700 "$XDG_RUNTIME_DIR"; fi
 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_DESKTOP=Hyprland
