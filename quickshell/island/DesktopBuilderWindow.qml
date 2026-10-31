@@ -804,7 +804,7 @@ Item {
                                 Layout.fillWidth: true
                                 visible: !root.starsMaster || !root.splashMaster
                                 text: (!root.starsMaster ? "The constellations need their master switch (Settings > Appearance > Constellations). " : "")
-                                      + (!root.splashMaster ? "The splash needs the Splash animation switch (Settings > Power & lock)." : "")
+                                      + (!root.splashMaster ? "The splash needs the Splash animation switch (Settings > Lock screen)." : "")
                                 color: root.pal.warn; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
 

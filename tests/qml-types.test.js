@@ -10,7 +10,7 @@ const dir = path.join(__dirname, "..", "quickshell", "island")
 const EXTERNAL = new Set(`AnimatedImage Binding MediaPlayer VideoOutput Behavior Canvas ClippingRectangle ColorAnimation Column ColumnLayout Component Connections DragHandler FileView
   Flickable Flow FocusScope FolderListModel FrameAnimation Gradient GradientStop Grid GridLayout GridView HoverHandler Image IntValidator
   IpcHandler Item LazyLoader LinearGradient ListModel ListView Loader MouseArea MultiEffect NotificationServer NumberAnimation PamContext
-  PanelWindow ParallelAnimation Path PathAngleArc PathArc PathAttribute PathCubic PathLine PathMove PathSvg PathView PauseAnimation Process
+  PanelWindow ParallelAnimation Path PathAngleArc PathArc PathAttribute PathCubic PathLine PathMove PathPolyline PathSvg PathView PauseAnimation Process
   QsMenuOpener QtObject RadialGradient Rectangle Region Repeater RotationAnimator Row RowLayout Scope ScriptAction ScriptModel
   SequentialAnimation ShaderEffect ShaderEffectSource Shape ShapePath ShellRoot Shortcut SplitParser StdioCollector SystemClock TapHandler Text TextEdit
   TextInput TextMetrics Timer Transition Translate WheelHandler WlSessionLock WlSessionLockSurface

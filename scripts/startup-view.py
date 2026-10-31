@@ -381,7 +381,7 @@ def mem_advice(it, inside, o, procs):
         actions.append(dict(t="toggle", id=i, label="Turn off " + it["name"]))
     elif i == "cat:power":
         causes.append("The power manager is a small program; more than a few MB means it is holding results it should drop, or it is stuck.")
-        actions.append(pt("Use another one", "Settings > Power & lock > Power manager: pick power-profiles-daemon or another manager, then it is stopped."))
+        actions.append(pt("Use another one", "Settings > Power & sleep > Power manager: pick power-profiles-daemon or another manager, then it is stopped."))
     else:
         causes.append("%s is larger than a helper like it normally is." % it["name"])
     return causes, actions
@@ -431,7 +431,7 @@ def cpu_advice(it, inside, o, procs):
     elif i == "cat:power":
         causes.append("The power manager wakes up on a timer and starts short helper programs (nvidia-smi, powerprofilesctl) every time; the helpers' CPU is counted with it.")
         causes.append("A tight loop or a very short poll interval makes it busy even when nothing changes.")
-        actions.append(pt("Use another one", "Settings > Power & lock > Power manager: choose another manager while you look into it."))
+        actions.append(pt("Use another one", "Settings > Power & sleep > Power manager: choose another manager while you look into it."))
         actions.append(pt("Check its interval", "Look at the poll interval in src/power-manager (the main loop sleep) and make it longer; 2-5 s is plenty."))
     elif i == "cat:gestures":
         causes.append("The touchpad edge-gesture service reads the touchpad all the time; a loop without waiting for events keeps a core busy.")

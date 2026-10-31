@@ -18,7 +18,7 @@ import "WidgetData.js" as WD
 Scope {
     id: root
     property var pal
-    property bool stars: true             // constellations in this box (Settings > Constellations)
+    property bool stars: true             // the constellation (Settings > Lock screen: one switch for the lock AND the login screen)
     property int flyCount: 0              // moving stars drifting in this box (0 = none): set by shell.qml from Resource use
     property int flyLoop: 150000          // ms for one slow pass of them
     property string sysmode: ""
@@ -34,6 +34,7 @@ Scope {
     property string avatarPath: ""
     property bool locked: false
     // ---- extras on the lock screen (all fed by shell.qml; "Lock screen widgets" / "Switch user button" in Settings > Power & lock)
+    property bool plain: false            // set by shell.qml (Settings > Power & lock > After sleep = Login-screen look): no widgets of any kind
     property bool widgets: false          // battery / Wi-Fi / notification count (a COUNT only, never the text) and the media card
     property bool allowSwitch: false      // the "Switch user" button
     property var player: null             // the MPRIS player the island already follows (null = nothing playing)
@@ -49,7 +50,7 @@ Scope {
     property var deskEnv: null            // shell.qml lockEnv
     property real deskLum: 0.05           // how bright this screen's background is (shell.qml lockBackLum), for the widgets' readability colours
     readonly property var deskLayout: locked ? WD.normalizeFor(deskOpt ? deskOpt.lockDeskWidgets : null, "lock") : ({ items: [] })
-    readonly property bool deskShow: locked && deskEnv !== null && WD.isOn(deskOpt, "lock") && deskLayout.items.length > 0
+    readonly property bool deskShow: !plain && locked && deskEnv !== null && WD.isOn(deskOpt, "lock") && deskLayout.items.length > 0
     // what you placed: the lock screen's own battery / Wi-Fi line and media card step aside for a widget of the same kind
     readonly property var deskTypes: deskShow ? WD.typeSet(deskLayout) : ({})
     property var sessions: []             // other sessions on this seat: [{ id, user, tty }] (scripts/switch-user.sh list)

@@ -108,6 +108,18 @@ ShellRoot {
         lockBg: "solid",           // solid | wallpaper | sky : the plain theme colour, the current wallpaper blurred, or the splash's drifting stars (Lock.qml)
         lockBlur: 40,              // blur radius of that wallpaper (4 .. 64)
         lockTint: 0.55,            // how opaque the theme-colour sheet over the blurred wallpaper is (0 = wallpaper as it is .. 0.95); yours to set
+        greeterBg: "lock",         // lock | wallpaper | solid : the login screen (greetd greeter, greeter/shell.qml) copies the lock screen's background, or forces the blurred wallpaper / the plain theme colour
+        greeterAvatar: true,       // your picture (ring + ripples) above the name on the login screen
+        greeterClock: true,        // clock and date on the login screen
+        greeterSeconds: false,     // seconds in that clock
+        greeterPower: true,        // Sleep / Restart / Shut down
+        greeterSession: true,      // the session name (Tab changes it)
+        greeterBattery: false,     // battery level (system data only)
+        greeterWifi: false,        // Wi-Fi name (system data only)
+        utilStyle: "tiles",        // tiles | split | classic : the utilities box (bottom-right corner): icon tiles with stars, two tall sliders + round buttons, or the old text pills (Panel.qml)
+        utilBtShow: "stars",       // stars | percent : what the Bluetooth tile shows for the connected device
+        lockMode: "lock",          // lock | login : after sleep / when locked: the lock screen (widgets allowed) or the login-screen look (no widgets at all)
+        loginMode: "keep",         // keep | greeter | lock : what happens at BOOT (Settings > Power & lock > At boot; "Apply" runs scripts/halcyon-greeter.sh apply in a terminal)
         lockWidgets: false,        // OFF by default: the lock screen is just the clock + password. On = battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
         splashLock: true,          // the splash on the lock screen that is also the login screen (Lock.qml); needs the master `splash` switch
         splashDim: 0.75,           // 0 .. 0.9 : how dark the screen gets while any splash plays (a black veil under the stars; Splash.qml)
@@ -693,6 +705,8 @@ ShellRoot {
             else if (id === "reset-look") root.resetLook()
             else if (id === "startup-view") settingsWin.openStartup()
             else if (id === "splash-preview") splashPreview.play()
+            else if (id === "login-apply") { var gs = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", gs + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1/halcyon-greeter.sh\" apply; echo; read -n1 -r -p 'Press any key to close '", "x", gs]) }
+            else if (id === "greeter-preview") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-greeter.sh", "preview"])
             else if (id === "splash-unlock-preview") splashPreview.playMode("unlock")
             else if (id === "splash-shutdown-preview") splashPreview.playMode("shutdown")
             else if (id === "plymouth-install" || id === "plymouth-remove") { var pm = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", pm + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1/halcyon-plymouth.sh\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", pm, id === "plymouth-install" ? "install" : "remove"]) }
@@ -820,10 +834,54 @@ ShellRoot {
     Component.onCompleted: { volRead.running = true; startTapWatch(); fxPause.running = true }     // fxPause: a crash during Focus must not leave the video wallpaper frozen
 
     // our own lock screen (replaces hyprlock): SUPER+L, power menu > Lock, `>lock`, scripts/lock.sh
+    // ---- the login screen (greetd greeter, greeter/shell.qml) is the lock screen's twin. Everything it needs to look exactly the same
+    // (palette, fonts, sizes, the picture constellation, flying stars, sysmode art, the lock screen's background settings) is written
+    // to ~/.cache/island/greeter-look.json a moment after anything changes; scripts/halcyon-greeter.sh sync copies it to the greeter.
+    function lookJson() {
+        var c = function (x) { return String(x) }
+        return JSON.stringify({
+            v: 1, zen: pal.zen, calm: pal.calm, solid: pal.solid, light: pal.light, uiFont: pal.uiFont,
+            tCap: pal.tCap, tBody: pal.tBody, tTitle: pal.tTitle, tDisplay: pal.tDisplay,
+            bg: c(pal.bg), surface: c(pal.surface), accent: c(pal.accent), accent2: c(pal.accent2), text: c(pal.text), muted: c(pal.muted), bad: c(pal.bad),
+            boxFill: c(pal.box(Qt.alpha(pal.surface, 0.85))), line: c(pal.line), lineFocus: c(pal.lineFocus),
+            motion: pal.motion, decor: pal.decor, starSlow: pal.starSlow, growthOn: pal.growthOn, growth: pal.growth,
+            artQuality: pal.artQuality, artFps: pal.artFps, gpuLines: pal.gpuLines,
+            stars: lockScreen.stars, ringFill: c(pal.box(Qt.alpha(pal.surface, 0.9))),
+            flyCount: root.boxStarCount, flyLoop: root.boxStarLoop,
+            sysmode: root.sysmode, profileStars: root.profileStars, starData: root.starData,
+            name: lockScreen.name, user: Quickshell.env("USER"), avatar: root.avatarPath,
+            bgMode: lockScreen.bgMode, blur: lockScreen.blurRadius, tint: lockScreen.tint
+        })
+    }
+    Process {
+        id: lookProc
+        stdinEnabled: true
+        command: ["sh", "-c", "d=\"$HOME/.cache/island\"; mkdir -p \"$d\"; head -n 1 > \"$d/greeter-look.json.tmp\" && mv -f \"$d/greeter-look.json.tmp\" \"$d/greeter-look.json\""]
+    }
+    Timer {
+        id: lookT
+        interval: 3000
+        onTriggered: { if (!root.settingsLoaded || lookProc.running) return; lookProc.running = true; lookProc.write(root.lookJson() + "\n") }
+    }
+    // (in a Connections block: shell.qml already has its own onProfileNameChanged / onSettingsLoadedChanged further up, and a second
+    // handler of the same name on the same object stops the whole island from loading: "Property value set multiple times")
+    Connections {
+        target: root
+        function onOptChanged() { lookT.restart() }
+        function onStarDataChanged() { lookT.restart() }
+        function onSysmodeChanged() { lookT.restart() }
+        function onProfileNameChanged() { lookT.restart() }
+        function onAvatarPathChanged() { lookT.restart() }
+        function onSettingsLoadedChanged() { if (root.settingsLoaded) lookT.restart() }
+    }
+    Connections { target: pal; function onAccentChanged() { lookT.restart() } function onBgChanged() { lookT.restart() } function onUiFontChanged() { lookT.restart() } }
+
     Lock {
         id: lockScreen
         pal: pal
-        stars: root.opt.stars !== false && root.opt.starsLock !== false
+        // one switch for the lock screen AND the login screen (Settings > Lock screen, or the Lock screen builder): not tied to the
+        // "Constellations in the boxes" master switch, so turning it on here always shows them on both screens
+        stars: root.opt.starsLock !== false
         flyCount: root.boxStarCount
         flyLoop: root.boxStarLoop
         sysmode: root.sysmode
@@ -835,8 +893,9 @@ ShellRoot {
         wallpaper: wallpaperLayer.currentPath
         blurRadius: root.opt.lockBlur !== undefined ? root.opt.lockBlur : 40
         tint: root.opt.lockTint !== undefined ? root.opt.lockTint : 0.55
-        widgets: root.opt.lockWidgets === true
-        allowSwitch: root.opt.lockSwitch === true
+        plain: root.opt.lockMode === "login"          // Settings > Power & lock > After sleep: the login-screen look, no widgets of any kind
+        widgets: root.opt.lockWidgets === true && root.opt.lockMode !== "login"
+        allowSwitch: root.opt.lockSwitch === true && root.opt.lockMode !== "login"
         splash: root.opt.splash !== false && root.opt.splashLock !== false
         splashSound: root.opt.splashSound === true
         splashDim: root.opt.splashDim !== undefined ? root.opt.splashDim : 0.75
@@ -3927,7 +3986,8 @@ ShellRoot {
         }
         Timer { id: cornerLingerT; interval: 900; onTriggered: { corner.cornerLinger = false; gc() } }
         // fixed size (see the note above): never resized, so opening / closing never makes the compositor re-send enter / leave
-        implicitWidth: pal.boxW + pal.boxEdge + 30
+        // (wide enough for the Focus card that opens beside the box; the mask below keeps that room click-through until it is shown)
+        implicitWidth: pal.boxW + pal.boxEdge + 30 + panel.flyExtra
         implicitHeight: 1000
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
@@ -3969,7 +4029,7 @@ ShellRoot {
             anchors.leftMargin: corner.oVert ? corner.offX : (corner.open ? 0 : root.insL)
             anchors.rightMargin: corner.open ? 0 : root.insR
             anchors.bottomMargin: corner.open ? 0 : root.insB
-            width: corner.open ? panel.width + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.util) ? 0 : (root.utilClick ? 28 : 12))
+            width: corner.open ? panel.width + pal.boxEdge + 30 + (panel.flyShown ? panel.flyExtra : 0) : ((root.fsQuiet || root.boxZones.util) ? 0 : (root.utilClick ? 28 : 12))
             height: corner.open ? panel.height + pal.boxEdge + 30 : ((root.fsQuiet || root.boxZones.util) ? 0 : (root.utilClick ? 28 : 12))
             HoverHandler { onHoveredChanged: { corner.zoneHover = hovered; corner.syncHover() } }
             Rectangle {
@@ -4029,9 +4089,14 @@ ShellRoot {
             muted: root.muted
             bright: root.bright
             cfg: root.opt
+            // Focus opens as its own card beside the box (toward the middle of the screen) rather than unfolding inside it
+            flyout: true
+            flyLeft: corner.atR
+            flyBottom: corner.atB
 
-            // hovering anything inside the panel keeps the whole box open (same idea as the notification centre)
-            HoverHandler { onHoveredChanged: { corner.panelHover = hovered; corner.syncHover() } }
+            // hovering anything inside the panel (or its Focus card) keeps the whole box open (same idea as the notification centre)
+            HoverHandler { id: panelHH; onHoveredChanged: { corner.panelHover = hovered || panel.flyHovered; corner.syncHover() } }
+            onFlyHoveredChanged: { corner.panelHover = panelHH.hovered || panel.flyHovered; corner.syncHover() }
 
             // with the border: no fade / zoom, the box slides out from under the border it is attached to
             property real slide: corner.reveal

@@ -66,7 +66,23 @@ Rectangle {
         onClicked: m => m.button === Qt.RightButton ? root.rightClicked() : root.clicked()
     }
 
-    Timer { id: tipT; interval: 380; onTriggered: root.tipReady = root.tip !== "" }
+    // the hover bubble: the first part of the text (before the first "  ·  ") is the name, the rest a quieter second line; it hangs
+    // under the chip, or above it when there is no room below (a chip on the bottom row of a box at the bottom of the screen)
+    readonly property var tipParts: String(tip).split("  ·  ")
+    readonly property string tipTitle: tipParts[0]
+    readonly property string tipMore: tipParts.slice(1).join("  ·  ")
+    property bool tipAbove: false
+    Timer {
+        id: tipT; interval: 380
+        onTriggered: {
+            var win = root.Window.window
+            if (win) {
+                var p = root.mapToItem(null, 0, root.height)
+                root.tipAbove = p.y + bubble.height + 10 > win.height
+            }
+            root.tipReady = root.tip !== ""
+        }
+    }
     Connections {
         target: ma
         function onContainsMouseChanged() {
@@ -79,25 +95,38 @@ Rectangle {
         z: 100
         visible: opacity > 0.01
         opacity: root.tipReady && ma.containsMouse ? 1 : 0
-        y: root.height + 6
+        y: root.tipAbove ? -height - 5 : root.height + 5
         x: root.tipAlign === "left" ? 0 : root.tipAlign === "right" ? root.width - width : (root.width - width) / 2
-        width: tipText.width + 20
-        height: tipText.implicitHeight + 12
-        radius: 10
+        width: Math.max(tipHead.implicitWidth, tipSub.visible ? tipSub.width : 0) + 18
+        height: tipCol.implicitHeight + 10
+        radius: 9
         color: root.pal.bg
         border.width: 1
-        border.color: root.pal.lineSoft
+        border.color: root.pal.line
         Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.InOutSine } }
-        Text {
-            id: tipText
+        Column {
+            id: tipCol
             anchors.centerIn: parent
-            width: Math.min(implicitWidth, 220)
-            text: root.tip
-            wrapMode: Text.WordWrap
-            horizontalAlignment: Text.AlignHCenter
-            color: root.pal.text
-            font.family: root.pal.uiFont
-            font.pixelSize: root.pal.tBody - 1
+            spacing: 1
+            Text {
+                id: tipHead
+                anchors.horizontalCenter: tipSub.visible ? undefined : parent.horizontalCenter
+                text: root.tipTitle
+                color: root.pal.text
+                font.family: root.pal.uiFont
+                font.pixelSize: root.pal.tBody - 1
+                font.weight: Font.Medium
+            }
+            Text {
+                id: tipSub
+                visible: root.tipMore !== ""
+                width: Math.min(implicitWidth, 190)
+                text: root.tipMore
+                wrapMode: Text.WordWrap
+                color: root.pal.muted
+                font.family: root.pal.uiFont
+                font.pixelSize: root.pal.tCap
+            }
         }
     }
 }
