@@ -201,13 +201,24 @@ FloatingWindow {
         pending = ""; notice = ""; busy = false; buffer = ""
         if (!win.preview && Greetd.state !== GreetdState.Inactive) Greetd.cancelSession()
     }
+    // Changing the user or the desktop turns the old one away and the new one in, like a card stepping round in the wallpaper
+    // gallery: `spin` runs 1 -> 0 on every change, spinDir (+1 / -1) is the side it comes from (the arrow you pressed).
+    property real spin: 0              // the user: the picture, the name
+    property int spinDir: 1
+    property real sspin: 0             // the desktop (session): its chip
+    property int sdir: 1
+    NumberAnimation { id: spinAnim; target: win; property: "spin"; from: 1; to: 0; duration: 420; easing.type: Easing.OutCubic }
+    NumberAnimation { id: sspinAnim; target: win; property: "sspin"; from: 1; to: 0; duration: 360; easing.type: Easing.OutCubic }
+    function spinUser(d) { spinDir = d >= 0 ? 1 : -1; if (pal.motion > 0.05) spinAnim.restart() }
+    function spinSession(d) { sdir = d >= 0 ? 1 : -1; if (pal.motion > 0.05) sspinAnim.restart() }
     function cycleUser(d) {
         if (users.length < 2 || busy || leaving) return
         resetAuth(); userIdx = (userIdx + d + users.length) % users.length
+        spinUser(d)
         failure = ""; kick(false)
         for (var s = 0; s < sessions.length; s++) if (sessions[s].name === lastSession && curUser.name === lastUser) sessIdx = s
     }
-    function cycleSession(d) { if (sessions.length > 1) sessIdx = (sessIdx + d + sessions.length) % sessions.length }
+    function cycleSession(d) { if (sessions.length > 1) { sessIdx = (sessIdx + d + sessions.length) % sessions.length; spinSession(d) } }
 
     function submit() {
         if (busy || leaving) return
@@ -411,6 +422,11 @@ FloatingWindow {
             visible: win.optAvatar
             anchors.horizontalCenter: parent.horizontalCenter
             width: 104; height: 104
+            opacity: 1 - 0.75 * win.spin
+            transform: [
+                Rotation { origin.x: 52; origin.y: 52; axis { x: 0; y: 1; z: 0 } angle: win.spinDir * 80 * win.spin },
+                Translate { x: win.spinDir * 46 * win.spin }
+            ]
             Rectangle {
                 id: ripple
                 anchors.fill: parent; radius: width / 2
@@ -481,6 +497,7 @@ FloatingWindow {
 
         // name; with more than one user, quiet arrows on both sides (Left / Right work too)
         Row {
+            id: nameRow
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 16
             Text {
@@ -496,6 +513,11 @@ FloatingWindow {
                 font.family: pal.uiFont
                 font.pixelSize: pal.tDisplay
                 font.weight: Font.DemiBold
+                opacity: 1 - 0.85 * win.spin
+                transform: [
+                    Rotation { origin.x: width / 2; origin.y: height / 2; axis { x: 0; y: 1; z: 0 } angle: win.spinDir * 80 * win.spin },
+                    Translate { x: win.spinDir * 60 * win.spin }
+                ]
             }
             Text {
                 visible: win.users.length > 1
@@ -656,27 +678,52 @@ FloatingWindow {
     // "Switch user"; each opens a small list above it. Left / Right and Tab still work from the keyboard. Power stays bottom right.
     property string menu: ""              // "" | "user" | "session"
     function pickUser(i) { if (i !== userIdx) cycleUser(i - userIdx); menu = ""; input.forceActiveFocus() }
-    function pickSession(i) { sessIdx = i; menu = ""; input.forceActiveFocus() }
+    function pickSession(i) { if (i !== sessIdx) { spinSession(i - sessIdx); sessIdx = i } menu = ""; input.forceActiveFocus() }
     component SwChip: Rectangle {
         id: chip
         property string label: ""
         property string glyph: ""
         property bool on: false
+        property bool arrows: false            // a ‹ and a › on the sides: step to the previous / next one without opening the list
+        property real slide: 0                 // 1 -> 0 on every change (win.spin / win.sspin): the label turns in from slideDir's side
+        property int slideDir: 1
         signal clicked()
+        signal prev()
+        signal next()
         width: chipRow.implicitWidth + 30; height: 34; radius: 17
         color: chipMa.containsMouse || on ? Qt.alpha(pal.accent, 0.22) : Qt.alpha(pal.surface, 0.7)
         border.width: 1
         border.color: pal.line
         Behavior on color { ColorAnimation { duration: pal.dFast } }
+        MouseArea { id: chipMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: chip.clicked() }
         Row {
             id: chipRow
             anchors.centerIn: parent
             spacing: 8
+            Text {
+                visible: chip.arrows
+                anchors.verticalCenter: parent.verticalCenter
+                text: "‹"; color: arrL.containsMouse ? pal.text : pal.muted; font.family: pal.uiFont; font.pixelSize: pal.tCap + 5
+                MouseArea { id: arrL; anchors.fill: parent; anchors.margins: -7; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: chip.prev() }
+            }
             Text { visible: chip.glyph !== ""; anchors.verticalCenter: parent.verticalCenter; text: chip.glyph; color: pal.accent; font.family: pal.uiFont; font.pixelSize: pal.tCap + 2 }
-            Text { anchors.verticalCenter: parent.verticalCenter; text: chip.label; color: pal.text; font.family: pal.uiFont; font.pixelSize: pal.tCap + 1 }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: chip.label; color: pal.text; font.family: pal.uiFont; font.pixelSize: pal.tCap + 1
+                opacity: 1 - 0.85 * chip.slide
+                transform: [
+                    Rotation { origin.x: width / 2; origin.y: height / 2; axis { x: 0; y: 1; z: 0 } angle: chip.slideDir * 80 * chip.slide },
+                    Translate { x: chip.slideDir * 18 * chip.slide }
+                ]
+            }
             Text { anchors.verticalCenter: parent.verticalCenter; text: chip.on ? "▾" : "▴"; color: pal.muted; font.family: pal.uiFont; font.pixelSize: pal.tCap }
+            Text {
+                visible: chip.arrows
+                anchors.verticalCenter: parent.verticalCenter
+                text: "›"; color: arrR.containsMouse ? pal.text : pal.muted; font.family: pal.uiFont; font.pixelSize: pal.tCap + 5
+                MouseArea { id: arrR; anchors.fill: parent; anchors.margins: -7; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: chip.next() }
+            }
         }
-        MouseArea { id: chipMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: chip.clicked() }
     }
     component SwRow: Rectangle {
         id: sr
@@ -776,6 +823,9 @@ FloatingWindow {
                     glyph: "◎"
                     label: win.users.length > 1 ? "Switch user" : win.curUser.name
                     on: win.menu === "user"
+                    arrows: win.users.length > 1
+                    onPrev: { win.cycleUser(-1); input.forceActiveFocus() }
+                    onNext: { win.cycleUser(1); input.forceActiveFocus() }
                     onClicked: { win.menu = win.menu === "user" ? "" : "user"; input.forceActiveFocus() }
                 }
                 SwChip {
@@ -783,6 +833,10 @@ FloatingWindow {
                     glyph: "▣"
                     label: win.curSess.name
                     on: win.menu === "session"
+                    arrows: win.sessions.length > 1
+                    slide: win.sspin; slideDir: win.sdir
+                    onPrev: { win.cycleSession(-1); input.forceActiveFocus() }
+                    onNext: { win.cycleSession(1); input.forceActiveFocus() }
                     onClicked: { win.menu = win.menu === "session" ? "" : "session"; input.forceActiveFocus() }
                 }
             }
