@@ -166,6 +166,13 @@ Scope {
     //   open   only after the pointer has stayed on the strip for a moment (openT)
     //   close  only after it has been away for a moment (closeT)
     //   after closing, the strip ignores the pointer for a short while (lockT)
+    // The edge strip and the panel are two things that each report the pointer. Moving from the strip onto the panel gives
+    // "panel entered" and "strip left" in either order; when the strip's "left" came last it started the close timer while the
+    // pointer was on the panel, and the centre closed under it. So each reports into its own flag and only the sum counts.
+    property bool stripHover: false
+    property bool panelHover: false
+    readonly property bool pointerOn: stripHover || panelHover
+    onPointerOnChanged: setHover(pointerOn)
     function setHover(on) {
         if (!edgeOn) return
         if (on && asleep) return
@@ -182,7 +189,9 @@ Scope {
     }
     Timer { id: openT; interval: 140; onTriggered: root.centerOpen = true }
     Timer { id: lockT; interval: 600 }
-    Timer { id: closeT; interval: 700; onTriggered: root.centerOpen = false }
+    // never close under the pointer: a centre opened from the keyboard (or a timer that was running when the pointer arrived) stays
+    // while the pointer is on it; the pointer leaving starts the timer again
+    Timer { id: closeT; interval: 700; onTriggered: { if (!root.pointerOn) root.centerOpen = false } }
 
     // the unread bar used to breathe for as long as anything stayed unread: an endless animation = a new frame on every refresh,
     // all day. It now breathes for a few seconds after each new notification and then rests (the bar itself stays lit).
@@ -318,7 +327,7 @@ Scope {
             width: !root.edgeOn || root.asleep || root.customZone ? 0 : root.corner ? (root.clickMode ? 28 : 22) : (root.clickMode ? 16 : 12)
             height: !root.edgeOn || root.asleep || root.customZone ? 0 : root.corner ? (root.clickMode ? 28 : 22) : 260
             clickMode: root.clickMode
-            onHoverChanged: on => root.setHover(on)
+            onHoverChanged: on => root.stripHover = on
             onTapped: root.toggleCenter()
 
             // unread / do-not-disturb hint.
@@ -458,7 +467,7 @@ Scope {
             Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
             border.color: root.sysmode === "lockdown" || root.sysmode === "stealth" ? Qt.alpha(root.pal.accent, 0.30) : root.pal.line
 
-            HoverHandler { onHoveredChanged: root.setHover(hovered) }
+            HoverHandler { onHoveredChanged: root.panelHover = hovered }
             MouseArea { z: -1; anchors.fill: parent }      // swallow clicks (under the content, so the buttons keep theirs)
 
             onDndRequested: on => root.dndRequested(on)
