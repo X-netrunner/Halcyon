@@ -2458,6 +2458,12 @@ if [[ "$WANT_LOCK_LOGIN" != "true" && -f "$GETTY_DROPIN" ]] && ! getty_dropin | 
         log_success "Lock-screen login updated: tty1 no longer shows text between the boot splash and the lock screen."
     fi
 fi
+# tty1 auto-login and greetd (Halcyon's login manager) both want tty1: with both on, greetd's session fights the auto-login one and dies
+# at once. Choosing the lock-screen login therefore turns Halcyon's greetd off (halcyon-greeter.sh remove puts the old login manager back).
+if [[ "$WANT_LOCK_LOGIN" == "true" && "$DRY_RUN" != "true" ]] && grep -q "# halcyon-greeter" /etc/greetd/config.toml 2>/dev/null; then
+    log_info "Halcyon's login manager (greetd) is on: switching it off, tty1 auto-login replaces it."
+    try run_as_user_cmd "Turning the Halcyon login manager off" bash "$TARGET_RICE/scripts/halcyon-greeter.sh" remove
+fi
 if [[ "$WANT_LOCK_LOGIN" == "true" ]]; then
     if user_setup login-add; then
         if getty_dropin | write_root_file "$GETTY_DROPIN" 644; then

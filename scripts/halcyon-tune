@@ -7,6 +7,8 @@
 #                                        the antivirus keeps protecting at a low CPU / disk priority, its extras pause (SEC_* below)
 #   halcyon-tune game-off                put every one of those back to what it was before game-on
 #   halcyon-tune wifi-ps on|off          Wi-Fi power saving on every wireless interface
+#   halcyon-tune av-ai pause|resume      stop / start the AI Antivirus analyzer (the local model that explains alerts): scripts/av-ai-idle.sh
+#                                        pauses it while you work and resumes it when the computer has been idle for a while
 #   halcyon-tune pm <manager>            halcyon | power-profiles-daemon | tlp | auto-cpufreq | tuned: only this one may run
 #
 # It takes no file names, no paths and no free text: every argument is checked against a fixed list below.
@@ -98,6 +100,25 @@ game_off() {
   return 0
 }
 
+# AI Antivirus analyzer: only runs while the computer is idle (scripts/av-ai-idle.sh, driven by hypridle). Pausing stops the unit (the
+# model is released by Ollama's own keep-alive a few minutes later); resuming starts it again, but only when AI review is switched on
+# in the config, the antivirus engine is the one running, and Gaming mode is not on (game-off starts it then).
+AI_UNIT=ai-antivirus-analyzer.service
+AI_CONF=/etc/ai-antivirus/ai-antivirus.toml
+ai_enabled() {
+  awk '/^\[/{s=$0} s=="[ai]" && $1=="enabled" {sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]*#.*$/, ""); gsub(/[\x27"]/, ""); print; exit}' "$AI_CONF" 2>/dev/null
+}
+av_ai() {
+  case "$1" in
+    pause)  systemctl is-active --quiet "$AI_UNIT" && systemctl stop "$AI_UNIT" >/dev/null 2>&1 ;;
+    resume) [ -f "$SAVE" ] && return 0
+            [ "$(ai_enabled)" = true ] || return 0
+            systemctl is-active --quiet ai-antivirus-engined.service || return 0
+            systemctl is-active --quiet "$AI_UNIT" || systemctl start "$AI_UNIT" >/dev/null 2>&1 ;;
+  esac
+  return 0
+}
+
 # `iw ... set power_save` only changes the card for now: a reconnect, a reboot or a driver reload goes back to the default. So the
 # choice is also written for NetworkManager, which applies wifi.powersave (2 = off, 3 = on) every time it brings a connection up.
 # The file name sorts last, so it also wins over a distro file such as default-wifi-powersave-on.conf. No NetworkManager, no file.
@@ -138,7 +159,8 @@ pm() {
 case "${1:-}" in
   game-on)  game_on ;;
   game-off) game_off ;;
+  av-ai)    case "${2:-}" in pause|resume) av_ai "$2" ;; *) echo "usage: halcyon-tune av-ai pause|resume" >&2; exit 2 ;; esac ;;
   wifi-ps)  case "${2:-}" in on|off) wifi_ps "$2" ;; *) echo "usage: halcyon-tune wifi-ps on|off" >&2; exit 2 ;; esac ;;
   pm)       case "${2:-}" in halcyon|power-profiles-daemon|tlp|auto-cpufreq|tuned) pm "$2" ;; *) echo "unknown power manager" >&2; exit 2 ;; esac ;;
-  *)        echo "usage: halcyon-tune game-on | game-off | wifi-ps on|off | pm <halcyon|power-profiles-daemon|tlp|auto-cpufreq|tuned>" >&2; exit 2 ;;
+  *)        echo "usage: halcyon-tune game-on | game-off | av-ai pause|resume | wifi-ps on|off | pm <halcyon|power-profiles-daemon|tlp|auto-cpufreq|tuned>" >&2; exit 2 ;;
 esac

@@ -176,7 +176,16 @@ Scope {
         target: Hyprland
         function onRawEvent(event) {
             if (event.name === "openwindow") root.focused = false
+            // another window took the focus (a click on it, alt-tab, a new window): close the console too, unless it is in use
+            else if (event.name === "activewindowv2" && root.open && !root.grabKeys) focusLossT.restart()
         }
+    }
+    // not while the pointer is over it, text is typed, a password is asked or a command runs; a short beat so the focus
+    // change that came from opening the console itself (or a click inside it) does not count
+    Timer {
+        id: focusLossT
+        interval: 250
+        onTriggered: if (root.open && !root.grabKeys && !root.zoneHover && !root.askPass && !root.busy && !root.typing) root.close()
     }
 
     // ---------- output ----------
