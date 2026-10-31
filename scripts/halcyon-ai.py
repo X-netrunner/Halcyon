@@ -25,14 +25,16 @@ off (Settings > Performance > AI features). Nothing leaves this machine (`update
                                                 positives), "confirm this" and "look at this", and says plainly whether everything is
                                                 good. The verdict comes from fixed rules, so it works with the AI off; the model only
                                                 explains what is left.
-  halcyon-ai.py clamav test | scan [FOLDER] | exceptions | forget N
+  halcyon-ai.py clamav test | scan [FOLDER] | exceptions | forget N | allow FILE SIGNATURE
                                                 Security center > ClamAV: test that ClamAV works (installed, fresh signatures, updater
                                                 running, detects the harmless EICAR test file), or scan a folder in your home (default
                                                 Downloads). Fixes are commands from a fixed list for you to run; the model only orders
                                                 and explains them. After a scan the model judges each finding from facts about the file
                                                 (never its contents); a guessing signature (heuristic, PUA) it calls a false positive
                                                 becomes a hash-pinned exception (~/.local/state/island/clamav-exceptions.json; `forget N`
-                                                removes one). Named malware signatures are never excepted. Works with the AI off.
+                                                removes one). Named malware signatures are never excepted by the model. `allow FILE SIGNATURE` is YOUR decision (the Allow button
+                                                on a finding): the same hash-pinned exception, for a file in your home, whatever the signature.
+                                                Works with the AI off.
   halcyon-ai.py organise [--apply]             notes: tags, groups and duplicates. Without --apply it only proposes (and saves the
                                                 proposal); --apply carries out the saved proposal (a backup of notes.json is kept first)
   halcyon-ai.py lyrics meaning [--title T --artist A --album B --duration S --url U]
@@ -2090,7 +2092,20 @@ def cmd_clamav(args):
         clam_save_exceptions(items)
         return {"text": f"Removed the exception for {gone['path']} ({gone['signature']}).", "kind": "exceptions", "exceptions": items, "good": True,
                 "headline": f"{len(items)} ClamAV exception" + ("" if len(items) == 1 else "s"), "summary": "", "ai": False, "fixes": []}
-    raise Fail("Use: clamav test | scan [folder in your home] | exceptions | forget N")
+    if what == "allow" and len(words) > 2:
+        path = os.path.realpath(words[1])
+        sig = " ".join(words[2:])[:200]
+        if not (path == HOME or path.startswith(HOME + os.sep)):
+            raise Fail("Only files in your home can be allowed from here.")
+        if not os.path.isfile(path):
+            raise Fail(f"No such file: {path}")
+        f = clam_facts(path, sig)
+        if not f["sha256"]:
+            raise Fail("The file could not be read or is too big to pin by its hash, so it cannot be allowed.")
+        clam_add_exception(f, "allowed by you", "you")
+        return {"text": f"Allowed {path} ({sig}). It is reported again if the file changes.", "kind": "allow", "file": path,
+                "signature": sig, "good": True, "headline": "Allowed", "summary": "", "ai": False, "fixes": []}
+    raise Fail("Use: clamav test | scan [folder in your home] | exceptions | forget N | allow FILE SIGNATURE")
 
 
 # ------------------------------------------------------------------------------------------------ howto: a guide to Halcyon itself
