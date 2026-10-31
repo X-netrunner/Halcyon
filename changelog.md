@@ -1,3 +1,12 @@
+- **Debug page is now "Debug / Advanced": every advanced option lives there** (`quickshell/island/Settings.qml`, `UIUX-REWORK.md`).
+  **Asked for:** keep the normal pages clean; the advanced features all in one place.
+  **Now:** the 92 rows marked advanced are no longer folded behind "Advanced" in each group; they are listed on the **Debug / Advanced** page (System heading), one box per original group (Bar, Performance, Notifications ...), under the Debug tools. The "Advanced: hidden" chip and the per-group "Advanced" fold are gone. A search still finds an advanced row and shows it in its own group.
+  Tested: `tests/settings-groups.test.js`, `settings-drop.test.js`, `qml-types.test.js`. **Untested on screen** (no Quickshell here).
+- **Slimmer Settings: Tree layout, Interface Legacy / Classic removed; a greyed "Disabled" box for bar-only rows; a Debug page** (`quickshell/island/Settings.qml`, `shell.qml`, `UIUX-REWORK.md`).
+  **Asked for:** remove features that are not wanted, grey out what only works with a bar when the bar is off, and one place for the debug tools.
+  **Now:** Settings has only the Pages layout (the Tree view, its chips and the "Settings layout" row are gone; the old tree code is still in the file, unused). The "Interface" row is gone and the quiet look is always used (Legacy and Classic removed). With the bar set to Off, Bar contents, Bar behaviour and every row that only applies to a Rail / Custom bar are not hidden but listed greyed out in a box **Disabled: these need a bar** at the bottom of the Bar page. New **Debug** page (System heading): Doctor (check / check and fix), Self-test (quick / full), Memory, Island log, Safe mode.
+  Not removed yet (waiting for a choice): the extra Performance tab looks.
+  Tested: `tests/settings-groups.test.js`, `settings-drop.test.js`, `qml-types.test.js`. **Untested on screen** (no Quickshell here).
 - **Launcher style: Classic (the grid, default) or Spotlight; Settings left menu regrouped under headings** (`quickshell/island/Launcher.qml`, `shell.qml`, `Settings.qml`, `UIUX-REWORK.md`).
   **Asked for:** keep the present app menu as a choice and add the Spotlight look; leave the console and the background apps as they are; the Settings window felt chaotic.
   **Now:** `opt.launcherStyle` = `classic` (the grid, unchanged) or `spotlight` (one list under the search pill, best match first, Up / Down move, Enter opens, the mouse follows). Picker: Settings > Keyboard & launcher > Launcher style. Commands (`>`), calculator and AI modes look the same in both.

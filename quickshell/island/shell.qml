@@ -611,7 +611,7 @@ ShellRoot {
         id: pal
         light: root.theme === "light"
         surfaceStyle: root.opt.surface || "tint"
-        uiStyle: root.opt.uiStyle === "legacy" || root.opt.uiStyle === "classic" ? root.opt.uiStyle : "new"
+        uiStyle: "new"          // Legacy and Classic were removed from Settings; only the quiet look is left
         deskWin: root.opt.windowMode === "desktop"
         boxShadow: root.opt.boxShadow !== false
         glassShift: root.glassShift
@@ -726,6 +726,10 @@ ShellRoot {
             else if (id === "rec-last") Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/screen-record.sh", "last"])
             else if (id === "rec-toggle") root.toggleRecording()
             else if (id === "mem-report") quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-mem.sh")
+            else if (id === "dbg-doctor" || id === "dbg-doctor-fix") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-doctor.sh" + (id === "dbg-doctor-fix" ? " --fix" : "")) }
+            else if (id === "dbg-selftest" || id === "dbg-selftest-quick") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-selftest.sh" + (id === "dbg-selftest-quick" ? " --quick" : "")) }
+            else if (id === "dbg-memwhere") quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-mem-where.sh")
+            else if (id === "dbg-log") { settingsWin.hide(); quickTerm.run("bash -c \"(qs log 2>/dev/null || quickshell log 2>/dev/null) | tail -n 300; echo; read -n1 -r -p 'Press any key to close'\"") }
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
