@@ -227,6 +227,7 @@ Scope {
     property var avOpenKeys: ({})
     function toggleOpen(k) { var m = Object.assign({}, avOpenKeys); m[k] = !m[k]; avOpenKeys = m }
     function sevRank(s) { return s === "critical" ? 4 : (s === "high" ? 3 : (s === "medium" ? 2 : 1)) }
+    function rawOf(a) { var d = a.detail || {}; return String(d.exe || d.path || d.file || "") }
     function whereOf(a) { var d = a.detail || {}; return String(d.exe || d.path || d.file || d.cmdline || d.target || d.dst || "").replace(/^\/home\/[^/]+\//, "~/") }
     readonly property var avSevN: {
         var n = { all: avAlerts.length, critical: 0, high: 0, medium: 0 }
@@ -240,13 +241,15 @@ Scope {
             if (sev !== "all" && a.severity !== sev) return
             var k = (a.rule_id || "") + "|" + (a.title || "")
             var g = map[k]
-            if (!g) { g = map[k] = { key: k, title: a.title, rule_id: a.rule_id, severity: a.severity, count: 0, ts: 0, ids: [], where: [] }; order.push(g) }
+            if (!g) { g = map[k] = { key: k, title: a.title, rule_id: a.rule_id, severity: a.severity, count: 0, ts: 0, ids: [], where: [], raw: [] }; order.push(g) }
             g.count++; g.ids.push(a.id)
             var t = a.ts_ns / 1e9
             if (t > g.ts) g.ts = t
             if (sevRank(a.severity) > sevRank(g.severity)) g.severity = a.severity
             var w = whereOf(a)
             if (w !== "" && g.where.length < 12 && g.where.indexOf(w) < 0) g.where.push(w)
+            var r = rawOf(a)
+            if (r.charAt(0) === "/" && g.raw.length < 12 && g.raw.indexOf(r) < 0) g.raw.push(r)
         })
         order.sort(function (x, y) { return (sevRank(y.severity) - sevRank(x.severity)) || (y.ts - x.ts) })
         return order
@@ -490,7 +493,86 @@ Scope {
     function actTone(a) {
         return a.status === "pending" ? pal.warn : (a.status === "executed" ? pal.bad : (a.status === "failed" ? pal.bad : (a.status === "dry_run" ? pal.accent : pal.muted)))
     }
-    function actRun(verb, id) { consoleRequested("sudo " + shq(avBin) + " " + verb + " " + Number(id)) }
+    // ---- changes that need root (approve, reject, undo, allow): done HERE. A bar asks for the password, sudo runs `ai-antivirus ...`
+    // and the answer shows in this window. The console is no longer opened. The password goes in on stdin, never on a command line.
+    property var admJob: null                 // { steps: [[args...], ...], title, detail, button, ackIds }
+    property string admErr: ""
+    property bool admCancelled: false
+    property int admCode: -1
+    property string admOutT: ""
+    property string admErrT: ""
+    property bool admExited: false
+    property bool admOutDone: false
+    property bool admErrDone: false
+    readonly property bool admBusy: admProc.running
+    signal admFocusRequested()
+    function admAsk(job) {
+        if (admBusy || !hasAv) return
+        admErr = ""; admJob = job
+        Qt.callLater(function () { root.admFocusRequested() })
+    }
+    function admCancel() {
+        if (admProc.running) { admCancelled = true; admProc.running = false }
+        admJob = null; admErr = ""
+    }
+    function admSubmit(pw) {
+        if (pw === "" || admBusy || admJob === null) return
+        admErr = ""
+        admOutT = ""; admErrT = ""; admCode = -1
+        admExited = false; admOutDone = false; admErrDone = false
+        // one sudo for every step of the job (one password); a wrong password fails once instead of retrying three times
+        var script = admJob.steps.map(function (st) { return "\"$1\" " + st.map(shq).join(" ") }).join(" && ")
+        admProc.command = ["timeout", "-k", "3", "40", "sh", "-c",
+            "IFS= read -r pw; printf '%s\\n' \"$pw\" | sudo -S -p '' -- /bin/sh -c \"$1\" sh \"$2\"",
+            "sh", script, avBin]
+        admProc.running = true
+        admProc.write(pw + "\n")
+    }
+    function admFinish() {
+        if (!admExited || !admOutDone || !admErrDone) return
+        admExited = false
+        if (admCancelled) { admCancelled = false; return }
+        var code = admCode, lines = admErrT.split("\n").map(function (l) { return l.trim() }).filter(function (l) { return l !== "" }), all = lines.join(" ")
+        if (code === 0) {
+            var job = admJob
+            admJob = null; admErr = ""
+            var first = admOutT.trim().split("\n")[0]
+            flash(first !== "" ? first : job.title + ": done", false)
+            if (job.ackIds && job.ackIds.length > 0 && !avSnap) ack(job.ackIds)
+            else if (avSnap) flash((first !== "" ? first + " " : "") + "Done. Press Reload to see it.", false)
+            refresh()
+            return
+        }
+        if (/incorrect password|try again|no password was provided|authentication failure/i.test(all)) admErr = "That password did not work. Try again."
+        else if (/not in the sudoers|not allowed to run sudo|may not run sudo/i.test(all)) admErr = "This user is not allowed to use sudo."
+        else if (/sudo: (command )?not found/i.test(all)) admErr = "sudo is not installed."
+        else if (/faillock|temporarily locked|account is locked/i.test(all)) admErr = "The account is locked for a few minutes after wrong passwords. Wait, then try again."
+        else if (code === 124 || code === 137 || code === 143) admErr = "It took too long and was stopped. Try again."
+        else admErr = (lines.length > 0 ? lines[0].replace(/^error: /i, "") : "ai-antivirus stopped with exit code " + code).slice(0, 200)
+        Qt.callLater(function () { root.admFocusRequested() })
+    }
+    Process {
+        id: admProc
+        stdinEnabled: true
+        stdout: StdioCollector { onStreamFinished: { root.admOutT = text; root.admOutDone = true; root.admFinish() } }
+        stderr: StdioCollector { onStreamFinished: { root.admErrT = text; root.admErrDone = true; root.admFinish() } }
+        onExited: code => { root.admCode = code; root.admExited = true; root.admFinish() }
+    }
+    function actRun(verb, id, a) {
+        var what = a ? actVerb(a).replace(/\?$/, "") + (actTarget(a.target) !== "" ? ": " + actTarget(a.target) : "") : ""
+        var text = { approve: ["Approve", "Carry it out", "The antivirus will do what it asked: " + what],
+                     reject: ["Reject", "Leave it alone", "Nothing is quarantined, frozen or blocked. It stays as it is. " + what],
+                     undo: ["Undo", "Undo it", "Put it back as it was. " + what] }[verb] || [verb, "Run", what]
+        admAsk({ steps: [[verb, String(Number(id))]], title: text[0], button: text[1], detail: text[2], ackIds: [] })
+    }
+    // Allow: the antivirus stops reporting this program (an exception), and its alerts are acknowledged
+    function allowAlerts(g) {
+        if (!g.raw || g.raw.length === 0) { flash("This alert has no program path to allow.", true); return }
+        var steps = g.raw.slice(0, 8).map(function (r) { return ["exceptions", "add", "program", r, "--name", "Allowed from Security center"] })
+        admAsk({ steps: steps, title: "Allow " + g.title, button: "Allow it",
+                 detail: "The antivirus will stop reporting " + (g.raw.length > 1 ? g.raw.length + " programs" : g.raw[0].replace(/^\/home\/[^/]+\//, "~/")) +
+                         ". Remove it later on the Exceptions page. Malware found by hash or YARA is still reported.", ackIds: g.ids })
+    }
     function ack(ids) {
         if (avAckProc.running) return
         var args = ids === "all" ? ["ack", "--all"] : ["ack"].concat(ids.map(String))
@@ -541,6 +623,39 @@ Scope {
         clamProc.command = ["python3", aiScript, "clamav", what].concat(dir ? [dir] : []).concat(["--json"])
         clamProc.running = true
     }
+    // Allow one finding (your decision): a hash-pinned exception, no password needed (it lives in your own state folder).
+    // The first click asks "Sure?", the second does it. It is reported again if the file changes.
+    property string clamConfirm: ""
+    function clamAllow(file, sig) {
+        var k = file + "|" + sig
+        if (clamAllowProc.running) return
+        if (clamConfirm !== k) { clamConfirm = k; clamConfirmT.restart(); return }
+        clamConfirm = ""
+        clamAllowProc.file = file; clamAllowProc.sig = sig
+        clamAllowProc.command = ["python3", aiScript, "clamav", "allow", file, sig, "--json"]
+        clamAllowProc.running = true
+    }
+    Timer { id: clamConfirmT; interval: 6000; onTriggered: root.clamConfirm = "" }
+    Process {
+        id: clamAllowProc
+        property string file: ""
+        property string sig: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var d = null
+                try { d = JSON.parse(text) } catch (e) { d = null }
+                if (!d || !d.ok) { root.flash(d && d.error ? d.error : "Could not allow it.", true); return }
+                var c = Object.assign({}, root.clam)
+                var f = clamAllowProc.file, s = clamAllowProc.sig
+                c.found = (c.found || []).filter(function (x) { return !(x.file === f && x.signature === s) })
+                c.excepted = (c.excepted || []).concat([{ file: f, signature: s, status: "excepted", note: "allowed by you" }])
+                c.headline = c.found.length > 0 ? c.found.length + " found" : "Nothing left to review"
+                c.good = c.found.length === 0
+                root.clam = c
+                root.flash(d.text || "Allowed.", false)
+            }
+        }
+    }
     function clamForget(n) { clamRun("forget", String(n)) }      // answers with the updated list
     // a fix that is a command (not an instruction such as the NixOS one) can be opened in the console
     function runnable(cmd) { return /^(sudo |clamscan |mkdir |xdg-open )/.test(String(cmd || "")) }
@@ -569,11 +684,10 @@ Scope {
     function shq(a) { return "'" + String(a).replace(/'/g, "'\\''") + "'" }
     // args: ["add", kind, match, "--name", name] | ["remove", match] | ["reset"]
     function excChange(args) {
-        if (excEdit.running || agentProc.running || avRootProc.running || !hasAv) return
-        avUnlockVia = "pkexec"
-        excEdit.args = args
-        avUnlockStep = "agent"; agentFor = "exc"
-        agentProc.running = true             // a polkit agent has to be running first, or pkexec has nowhere to ask
+        if (admBusy || !hasAv) return
+        var verb = args[0], what = args[0] === "add" ? "Allow " + args[2] : (args[0] === "remove" ? "Stop allowing " + args[1] : "Reset the exceptions to the defaults")
+        var more = verb === "add" ? "The antivirus will stop reporting it." : (verb === "remove" ? "The antivirus will report it again." : "Your own exceptions are removed.")
+        admAsk({ steps: [["exceptions"].concat(args)], title: what, button: verb === "add" ? "Allow it" : "Do it", detail: more, ackIds: [] })
     }
     function excAdd(kind, match, name) {
         match = String(match).trim(); name = String(name).trim()
@@ -642,6 +756,39 @@ Scope {
     readonly property int down: (hasFw && !fwAlive ? 1 : 0) + (hasAv && av !== null && !avRunning ? 1 : 0)
     readonly property string overall: !detected ? "" : (!hasFw && !hasAv ? "Not installed" : (down > 0 ? "Needs attention" : (avLocked ? "Alerts are locked" : (avPending > 0 ? "Waiting for your OK" : (avUnacked > 0 ? "Review alerts" : "Protected")))))
     readonly property color overallColor: !hasFw && !hasAv ? pal.muted : (down > 0 ? pal.bad : (avUnacked > 0 || avPending > 0 || avLocked ? pal.warn : pal.good))
+    // ---- the smart overview: one sentence about how things are, and at most three things that need you (each with ONE button)
+    readonly property var ovTodo: {
+        var t = []
+        if (hasFw && !fwAlive) t.push({ key: "fw", tone: "bad", glyph: 0xF1A11, title: "Firewall is not responding", sub: "Open it to see why.", btn: "Open" })
+        if (hasAv && av !== null && !avRunning) t.push({ key: "avdown", tone: "bad", glyph: 0xF13B6, title: "Antivirus is not running", sub: "Nothing is being watched right now.", btn: "Open" })
+        if (avLocked) t.push({ key: "unlock", tone: "warn", glyph: 0xF033E, title: "Alerts are locked", sub: "Unlock once with your password to read them.", btn: "Unlock" })
+        if (avPending > 0) t.push({ key: "held", tone: "warn", glyph: 0xF0026, title: avPending + (avPending === 1 ? " action waits" : " actions wait") + " for your OK", sub: "Approve it, or reject it to leave things as they are.", btn: "Review" })
+        if (!avLocked && avUnacked > 0) t.push({ key: "alerts", tone: avAlerts.some(function (a) { return a.severity === "critical" || a.severity === "high" }) ? "bad" : "warn", glyph: 0xF0026, title: avUnacked + (avUnacked === 1 ? " alert" : " alerts") + " to review", sub: "Allow what you trust, acknowledge the rest.", btn: "Review" })
+        return t.slice(0, 3)
+    }
+    readonly property var ovTiles: [
+        { key: "firewall", name: "Firewall", glyph: 0xF1A11, ok: hasFw, tone: fwColor,
+          line: fwState + (posture !== "" && posture !== "secure" ? "  ·  " + posture : ""),
+          figure: fw ? count((fw.dropped_policy || 0) + (fw.dropped_blocklist || 0) + (fw.dropped_feed || 0)) + " blocked" : "" },
+        { key: "antivirus", name: "Antivirus", glyph: 0xF13B6, ok: hasAv, tone: avColor,
+          line: avState + (av && av.mode ? "  ·  " + av.mode : ""),
+          figure: !avKnown ? "locked" : (avUnacked > 0 ? avUnacked + " to review" : "all clear") }
+    ]
+    readonly property bool ovCalm: detected && ovTodo.length === 0
+    readonly property string ovHead: !detected ? "" : (ovTodo.length === 0 ? "You're protected" : (ovTodo.length === 1 ? "One thing needs you" : ovTodo.length + " things need you"))
+    readonly property string ovSub: {
+        if (!detected) return ""
+        if (ovTodo.length > 0) return "Here is what to do next."
+        var a = [hasFw ? (fwState === "Protecting" ? "Firewall is protecting" : "Firewall is " + fwState.toLowerCase()) : "", hasAv ? "antivirus is " + avState.toLowerCase() : ""].filter(function (x) { return x !== "" })
+        return a.length > 0 ? cap(a.join(", ")) + ". Nothing needs you." : "Nothing needs you."
+    }
+    function ovGo(key) {
+        if (key === "fw") setTab("firewall")
+        else if (key === "avdown") setTab("antivirus")
+        else if (key === "unlock") { setTab("antivirus"); avUnlock() }
+        else if (key === "held") { avView = "held"; setTab("antivirus") }
+        else if (key === "alerts") { avView = "alerts"; setTab("antivirus") }
+    }
     readonly property var feed: {
         var out = []
         if (fw) (fw.recent || []).forEach(function (d) { out.push({ at: d.at_unix, who: "firewall", title: d.reason + "  " + d.ip, sub: d.ports, tone: d.enforced ? "bad" : "warn" }) })
@@ -751,7 +898,7 @@ Scope {
         detectProc.running = true
         Qt.callLater(function () { root.focusRequested(root.tab === "ask" ? "ask" : "panel") })
     }
-    function hide() { open = false }
+    function hide() { if (admJob !== null) admCancel(); open = false }
     function toggle() { if (open) hide(); else show("overview") }
     function setTab(t) {
         tab = t
@@ -1063,6 +1210,7 @@ Scope {
         }
     }
     // a module on the overview: its state, three figures and its main action; the card opens its page
+    // a module on the overview (no longer used by the overview; kept for reference)
     component ModuleCard: Rectangle {
         id: mc
         property string key: ""
@@ -1238,6 +1386,80 @@ Scope {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
 
+                            // ---- asks for the password for an approve / reject / undo / allow, and does it here
+                            Rectangle {
+                                id: admBar
+                                z: 100
+                                visible: root.admJob !== null
+                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 20 }
+                                implicitHeight: admCol.implicitHeight + 28
+                                height: implicitHeight
+                                radius: root.pal.rLg
+                                color: Qt.rgba(root.pal.bg.r, root.pal.bg.g, root.pal.bg.b, 0.98)
+                                border.width: 1
+                                border.color: Qt.alpha(root.admErr !== "" ? root.pal.bad : root.pal.accent, 0.5)
+                                MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
+                                Column {
+                                    id: admCol
+                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14; leftMargin: 18; rightMargin: 18 }
+                                    spacing: 8
+                                    Text {
+                                        width: parent.width
+                                        elide: Text.ElideRight
+                                        text: root.admJob ? root.admJob.title : ""
+                                        color: root.pal.text
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        visible: text !== ""
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 3
+                                        elide: Text.ElideRight
+                                        textFormat: Text.PlainText
+                                        text: root.admErr !== "" ? root.admErr : (root.admJob ? root.admJob.detail : "")
+                                        color: root.admErr !== "" ? root.pal.bad : Qt.alpha(root.pal.text, 0.75)
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody - 1
+                                    }
+                                    Row {
+                                        spacing: 8
+                                        Rectangle {
+                                            width: Math.min(300, admCol.width - 260)
+                                            height: 40
+                                            radius: 20
+                                            color: root.pal.fill
+                                            border.width: 1
+                                            border.color: admPw.activeFocus ? root.pal.lineFocus : "transparent"
+                                            TextInput {
+                                                id: admPw
+                                                anchors { left: parent.left; leftMargin: 16; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                                echoMode: TextInput.Password
+                                                passwordCharacter: "\u2022"
+                                                enabled: !root.admBusy
+                                                color: root.pal.text
+                                                selectionColor: Qt.alpha(root.pal.accent, 0.35)
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tBody
+                                                clip: true
+                                                maximumLength: 256
+                                                Text { visible: parent.text === "" && !parent.activeFocus; text: "Your password (for sudo)"; color: root.pal.muted; font: parent.font }
+                                                function go() { var pw = text; text = ""; root.admSubmit(pw) }
+                                                onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
+                                                Keys.onReturnPressed: go()
+                                                Keys.onEnterPressed: go()
+                                                Keys.onEscapePressed: { text = ""; root.admCancel() }
+                                                Connections { target: root; function onAdmFocusRequested() { admPw.text = ""; admPw.forceActiveFocus() } }
+                                            }
+                                        }
+                                        Btn { label: root.admBusy ? "Working…" : (root.admJob ? root.admJob.button : ""); glyph: 0xF012C; primary: true; disabled: root.admBusy; onClicked: admPw.go() }
+                                        Btn { label: "Cancel"; glyph: 0xF0156; onClicked: { admPw.text = ""; root.admCancel() } }
+                                    }
+                                }
+                            }
+
                             // ---- nothing installed
                             Empty {
                                 visible: root.detected && !root.hasFw && !root.hasAv && !root.hasClam
@@ -1246,79 +1468,221 @@ Scope {
                                 text: "Not installed"
                             }
 
-                            // ---- overview
+                            // ---- overview: how things are in one sentence, what needs you, and little else
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 28
-                                spacing: 22
+                                anchors.margins: 32
+                                spacing: 18
                                 visible: root.tab === "overview" && (root.hasFw || root.hasAv)
 
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.bottomMargin: 4
                                     spacing: 18
                                     Rectangle {
-                                        width: 64; height: 64; radius: 22
-                                        color: Qt.alpha(root.overallColor, 0.15)
-                                        Glyph { anchors.centerIn: parent; code: 0xF0565; font.pixelSize: 32; color: root.overallColor }
+                                        id: ovIcon
+                                        width: 68; height: 68; radius: 24
+                                        color: Qt.alpha(root.overallColor, 0.14)
+                                        Behavior on color { ColorAnimation { duration: 400 } }
+                                        Glyph { anchors.centerIn: parent; code: root.ovCalm ? 0xF0565 : 0xF0026; font.pixelSize: 32; color: root.overallColor }
+                                        SequentialAnimation on scale {
+                                            running: root.open && root.tab === "overview" && !root.ovCalm && !root.pal.calm
+                                            loops: Animation.Infinite
+                                            NumberAnimation { to: 1.06; duration: 1100; easing.type: Easing.InOutSine }
+                                            NumberAnimation { to: 1.0; duration: 1100; easing.type: Easing.InOutSine }
+                                            onRunningChanged: if (!running) ovIcon.scale = 1
+                                        }
                                     }
                                     Column {
                                         Layout.fillWidth: true
-                                        spacing: 3
-                                        Text { text: root.overall; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 10; font.weight: Font.DemiBold }
-                                        Small {
-                                            width: parent.width
-                                            text: [root.hasFw ? root.bansCount + (root.bansCount === 1 ? " ban" : " bans") : "",
-                                                   root.hasAv ? (!root.avKnown ? "alerts unreadable" : (root.avUnacked > 0 ? root.avUnacked + " to review" : "no open alerts")) : "",
-                                                   root.hasFw && root.fwAlive ? root.fwRate.passed + " pkt/s" : ""].filter(function (x) { return x !== "" }).join("  ·  ")
+                                        spacing: 4
+                                        Text { text: root.ovHead; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 10; font.weight: Font.DemiBold }
+                                        Text { width: parent.width; elide: Text.ElideRight; text: root.ovSub; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    visible: root.ovTodo.length > 0
+                                    Repeater {
+                                        model: root.ovTodo
+                                        delegate: Rectangle {
+                                            id: td
+                                            required property var modelData
+                                            readonly property color accentCol: modelData.tone === "bad" ? root.pal.bad : root.pal.warn
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 68
+                                            radius: root.pal.rLg
+                                            color: Qt.alpha(accentCol, tdMa.containsMouse ? 0.14 : 0.09)
+                                            MouseArea {
+                                                id: tdMa
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.ovGo(td.modelData.key)
+                                            }
+                                            Rectangle {
+                                                id: tdIc
+                                                x: 14
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 40
+                                                height: 40
+                                                radius: 14
+                                                color: Qt.alpha(td.accentCol, 0.18)
+                                                Glyph {
+                                                    anchors.centerIn: parent
+                                                    code: td.modelData.glyph
+                                                    font.pixelSize: 20
+                                                    color: td.accentCol
+                                                }
+                                            }
+                                            Column {
+                                                anchors.left: tdIc.right
+                                                anchors.leftMargin: 14
+                                                anchors.right: tdBtn.left
+                                                anchors.rightMargin: 12
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 2
+                                                Text {
+                                                    width: parent.width
+                                                    elide: Text.ElideRight
+                                                    text: td.modelData.title
+                                                    color: root.pal.text
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tBody
+                                                    font.weight: Font.Medium
+                                                }
+                                                Small {
+                                                    width: parent.width
+                                                    text: td.modelData.sub
+                                                }
+                                            }
+                                            Btn {
+                                                id: tdBtn
+                                                anchors.right: parent.right
+                                                anchors.rightMargin: 14
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                label: td.modelData.btn
+                                                primary: true
+                                                onClicked: root.ovGo(td.modelData.key)
+                                            }
                                         }
                                     }
                                 }
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 14
-                                    ModuleCard {
-                                        key: "firewall"; name: "Firewall"; glyph: 0xF1A11
-                                        status: root.fwState + (root.posture !== "" && root.posture !== "secure" ? "  ·  " + root.posture : "")
-                                        tone: root.fwColor; available: root.hasFw
-                                        figures: [[root.count(root.fw ? root.fw.passed : 0), "passed", root.pal.text],
-                                                  [root.count(root.fw ? (root.fw.dropped_policy || 0) + (root.fw.dropped_blocklist || 0) + (root.fw.dropped_feed || 0) : 0), "dropped", root.pal.warn],
-                                                  [String(root.bansCount), "banned", root.bansCount > 0 ? root.pal.bad : root.pal.text]]
-                                        Btn { label: "Test"; glyph: 0xF0668; onClicked: root.runTest("all") }
-                                    }
-                                    ModuleCard {
-                                        key: "antivirus"; name: "Antivirus"; glyph: 0xF13B6
-                                        status: root.avState + (root.av && root.av.mode ? "  ·  " + root.av.mode : "")
-                                        tone: root.avColor; available: root.hasAv
-                                        readonly property var a: root.av && root.av.alerts_24h ? root.av.alerts_24h : null
-                                        figures: [[a ? String((a.critical || 0) + (a.high || 0)) : "-", "high · 24h", a && (a.critical || a.high) ? root.pal.bad : root.pal.text],
-                                                  [a ? String(a.medium || 0) : "-", "medium · 24h", a && a.medium ? root.pal.warn : root.pal.text],
-                                                  [root.avKnown ? String(root.avUnacked) : "-", "to review", root.avUnacked > 0 ? root.pal.warn : root.pal.text]]
-                                        Btn { label: root.scanning ? "Scanning…" : "Scan Downloads"; glyph: 0xF1276; disabled: root.scanning; onClicked: { root.setTab("antivirus"); root.scan("Downloads") } }
+                                    spacing: 12
+                                    Repeater {
+                                        model: root.ovTiles
+                                        delegate: Rectangle {
+                                            id: ot
+                                            required property var modelData
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 74
+                                            radius: root.pal.rLg
+                                            color: otMa.containsMouse && modelData.ok ? root.pal.fillHover : root.pal.fill
+                                            opacity: modelData.ok ? 1 : 0.45
+                                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                            MouseArea {
+                                                id: otMa
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                enabled: ot.modelData.ok
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.setTab(ot.modelData.key)
+                                            }
+                                            Rectangle {
+                                                id: otIc
+                                                x: 14
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 38
+                                                height: 38
+                                                radius: 13
+                                                color: Qt.alpha(ot.modelData.tone, 0.15)
+                                                Glyph {
+                                                    anchors.centerIn: parent
+                                                    code: ot.modelData.glyph
+                                                    font.pixelSize: 19
+                                                    color: ot.modelData.tone
+                                                }
+                                            }
+                                            Column {
+                                                anchors.left: otIc.right
+                                                anchors.leftMargin: 12
+                                                anchors.right: otFig.left
+                                                anchors.rightMargin: 8
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 2
+                                                Text {
+                                                    width: parent.width
+                                                    elide: Text.ElideRight
+                                                    text: ot.modelData.name
+                                                    color: root.pal.text
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tBody
+                                                    font.weight: Font.DemiBold
+                                                }
+                                                Row {
+                                                    spacing: 6
+                                                    Dot {
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        color: ot.modelData.tone
+                                                        width: 6
+                                                        height: 6
+                                                        radius: 3
+                                                    }
+                                                    Small { text: ot.modelData.line }
+                                                }
+                                            }
+                                            Small {
+                                                id: otFig
+                                                anchors.right: otArrow.left
+                                                anchors.rightMargin: 8
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: ot.modelData.figure
+                                                color: root.pal.text
+                                            }
+                                            Glyph {
+                                                id: otArrow
+                                                anchors.right: parent.right
+                                                anchors.rightMargin: 14
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                code: 0xF0142
+                                                font.pixelSize: 18
+                                                opacity: otMa.containsMouse ? 1 : 0.5
+                                            }
+                                        }
                                     }
                                 }
 
-                                Section {
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    title: "Recent"
-                                    ListView {
-                                        anchors.fill: parent
-                                        clip: true
-                                        spacing: 2
-                                        boundsBehavior: Flickable.StopAtBounds
-                                        model: root.feed
+                                    spacing: 8
+                                    Btn { visible: root.hasAv || root.hasClam; label: root.scanning ? "Scanning…" : "Scan Downloads"; glyph: 0xF1276; disabled: root.scanning; onClicked: { root.setTab("antivirus"); root.scan("Downloads") } }
+                                    Btn { visible: root.hasFw; label: "Test firewall"; glyph: 0xF0668; onClicked: root.runTest("all") }
+                                    Item { Layout.fillWidth: true }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    visible: root.feed.length > 0
+                                    Label { Layout.leftMargin: 4; Layout.bottomMargin: 4; text: "Latest" }
+                                    Repeater {
+                                        model: root.feed.slice(0, 3)
                                         delegate: ListRow {
                                             required property var modelData
-                                            width: ListView.view.width
+                                            Layout.fillWidth: true
                                             lead: root.ago(modelData.at)
                                             title: modelData.title
                                             sub: (modelData.who === "firewall" ? "Firewall" : "Antivirus") + "  ·  " + modelData.sub
                                             mark: root.sevColor(modelData.tone)
                                         }
                                     }
-                                    Empty { visible: root.feed.length === 0; text: "Quiet" }
                                 }
+                                Item { Layout.fillHeight: true }
                             }
 
                             // ---- firewall
@@ -1737,8 +2101,11 @@ Scope {
                                                 actAlways: true
                                                 actGlyph: 0xF012C
                                                 actTone: root.pal.good
+                                                act2Glyph: ag.modelData.raw.length > 0 ? 0xF0565 : 0      // shield-check: Allow
+                                                act2Tone: root.pal.accent
                                                 onClicked: root.toggleOpen(ag.modelData.key)
                                                 onAct: root.ack(ag.modelData.ids)
+                                                onAct2: root.allowAlerts(ag.modelData)
                                             }
                                             Text {
                                                 id: agWhere
@@ -1794,14 +2161,14 @@ Scope {
                                                 chip: hg.waiting ? "Needs OK" : (hg.act.status === "dry_run" ? "Alert-only" : (hg.act.status === "executed" ? "Done" : root.cap(hg.act.status)))
                                                 chipTone: root.actTone(hg.act)
                                                 actAlways: hg.waiting || hg.undoable
-                                                // pending: Approve (✓) and Reject (✕); done: Undo. Each opens the console (sudo).
+                                                // pending: Approve (✓) and Reject (✕, leaves the file alone); done: Undo. Each asks for the password in this window.
                                                 actGlyph: hg.waiting ? 0xF012C : (hg.undoable ? 0xF054C : 0)
                                                 actTone: hg.waiting ? root.pal.good : root.pal.accent
                                                 act2Glyph: hg.waiting ? 0xF0156 : 0
                                                 act2Tone: root.pal.bad
                                                 onClicked: root.toggleOpen(hg.modelData.key)
-                                                onAct: root.actRun(hg.waiting ? "approve" : "undo", hg.act.id)
-                                                onAct2: root.actRun("reject", hg.act.id)
+                                                onAct: root.actRun(hg.waiting ? "approve" : "undo", hg.act.id, hg.act)
+                                                onAct2: root.actRun("reject", hg.act.id, hg.act)
                                             }
                                             Text {
                                                 id: hgWhere
@@ -1886,6 +2253,15 @@ Scope {
                                             Text { id: cfP; text: modelData.file.replace(/^\/home\/[^/]+\//, "~/"); color: root.pal.text; font.family: root.pal.mono; font.pixelSize: root.pal.tCap + 1; width: Math.min(implicitWidth, 460); elide: Text.ElideMiddle }
                                             Small { text: modelData.signature; color: root.pal.bad }
                                             Small { visible: (modelData.note || "") !== ""; text: modelData.status.replace("_", " ") + ": " + modelData.note }
+                                            Btn {
+                                                readonly property string k: modelData.file + "|" + modelData.signature
+                                                height: 26; implicitHeight: 26
+                                                label: root.clamConfirm === k ? "Sure? Allow it" : "Allow"
+                                                glyph: 0xF0565
+                                                primary: root.clamConfirm === k
+                                                disabled: clamAllowProc.running
+                                                onClicked: root.clamAllow(modelData.file, modelData.signature)
+                                            }
                                         }
                                     }
                                 }
