@@ -45,7 +45,7 @@ WBase {
         property real lp: root.ph
         property bool sth: root.south
         property color lc: root.fg
-        property color gc: root.accent
+        property color glowC: root.accent
         readonly property real cx: width / 2
         readonly property real cy: height / 2
         readonly property real r: Math.max(2, width / 2 - Math.max(3, width * 0.07))

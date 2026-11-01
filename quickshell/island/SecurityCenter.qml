@@ -1311,7 +1311,7 @@ Scope {
                     function onFocusRequested(what) { if (what === "ask") askIn.forceActiveFocus(); else qp.forceActiveFocus() }
                 }
 
-                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
+                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * Math.max(0, Math.min(1, qp.reveal))) }
 
                 Glass {
                     id: panel
@@ -2312,8 +2312,9 @@ Scope {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     visible: root.clam === null || root.clam.kind !== "exceptions"
-                                    title: "Fixes"
-                                    extra: root.clam && root.clam.fixes ? String(root.clam.fixes.length) : ""
+                                    // the heading only once there is something under it (before a test the empty state speaks alone)
+                                    title: root.clam && root.clam.fixes && root.clam.fixes.length > 0 ? "Fixes" : ""
+                                    extra: root.clam && root.clam.fixes && root.clam.fixes.length > 0 ? String(root.clam.fixes.length) : ""
                                     ListView {
                                         anchors.fill: parent
                                         clip: true

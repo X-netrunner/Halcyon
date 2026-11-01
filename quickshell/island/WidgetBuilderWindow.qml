@@ -339,13 +339,13 @@ Item {
                             active: root.open && root.liveSky
                             sourceComponent: LiveSky { pal: root.pal }
                             layer.enabled: root.pvBack === "soft"
-                            layer.effect: MultiEffect { blurEnabled: true; blurMax: 48; blur: 0.75; saturation: -0.15; autoPaddingEnabled: false }
+                            layer.effect: MultiEffect { blurEnabled: true; blurMax: 24; blur: 0.5; saturation: -0.1; autoPaddingEnabled: false }
                         }
                         Image {
                             id: wallPv
                             anchors.fill: parent
                             layer.enabled: root.pvBack === "soft"
-                            layer.effect: MultiEffect { blurEnabled: true; blurMax: 48; blur: 0.75; saturation: -0.15; autoPaddingEnabled: false }
+                            layer.effect: MultiEffect { blurEnabled: true; blurMax: 24; blur: 0.5; saturation: -0.1; autoPaddingEnabled: false }
                             visible: !root.liveSky
                             source: root.backPath !== "" && root.open && !root.liveSky ? "file://" + encodeURI(root.backPath).replace(/#/g, "%23").replace(/\?/g, "%3F") : ""
                             sourceSize: Qt.size(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)))
@@ -358,7 +358,7 @@ Item {
                             color: "black"
                             readonly property string mode: (root.opt && root.opt.widgetDim) || "wall"
                             opacity: (mode === "off" ? 0.08 : Math.max(0.1, Math.min(0.8, root.opt && root.opt.widgetDimAmt !== undefined ? Number(root.opt.widgetDimAmt) : 0.35)))
-                                     + (root.pvBack === "soft" ? 0.22 : 0)
+                                     + (root.pvBack === "soft" ? 0.12 : 0)
                         }
                     }
                     // what is behind the preview

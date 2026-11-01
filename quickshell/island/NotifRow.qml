@@ -11,6 +11,7 @@ Item {
     property var pal
     property var notif
     property string avatar: ""    // profile picture shown as the notification picture ("" = none)
+    property string iconMode: "symbol"
     property bool usePfp: true
     property real arrived: 0      // ms timestamp, set by Notifs.qml
     property real now: 0          // ticks while the centre is open, so "5m" stays fresh
@@ -146,6 +147,7 @@ Item {
                 notif: row.notif
                 avatar: row.avatar
                 usePfp: row.usePfp
+                mode: row.iconMode
                 size: 40
                 tone: row.tone
             }

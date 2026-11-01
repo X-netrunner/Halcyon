@@ -54,10 +54,11 @@ What the exceptions do:
 - The exceptions only match these two exact script paths. They do not match `bash`, `sudo` or any folder.
   ai-antivirus refuses broader exceptions anyway.
 
-What they do **not** cover: running the installer from your own checkout as `./install.sh` or `bash install.sh`. The antivirus
-only matches absolute script paths, so a relative path never matches. You then see the AV-B-0005 notifications, which is
-harmless. To except your checkout as well, add its absolute path the same way, for example
-`sudo ai-antivirus exceptions add program '~/Halcyon/install.sh' --name "Halcyon installer (checkout)"`.
+The checkout you run the installer from (`./install.sh` in `~/Halcyon`, say) gets a third exception with its absolute path, as
+long as it is inside your home and not in a world-writable folder; ai-antivirus resolves `./install.sh` against the working
+directory (never a path with `..`). With the antivirus already installed, all of them are added at the start of the run, before
+any unit is written, so re-installs and updates are not reported. AUR helpers are built under `~/.cache`, not `/tmp`, so AV-B-0013
+does not fire either.
 
 The trade-off: an exception trusts what runs under the script. Malware that already runs as you could edit
 `~/.config/Halcyon/install.sh` and run it, and its systemd writes would then not be reported. If that matters more to you

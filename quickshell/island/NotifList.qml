@@ -92,6 +92,7 @@ ListView {
                     pal: list.pal
                     avatar: list.notifs.avatar
                     usePfp: list.notifs.usePfp
+                    iconMode: list.notifs.iconMode || "symbol"
                     arrived: list.arrivedMap[cell.modelData.n.id] || 0
                     now: list.now
                     onDismissRequested: list.dismissRequested(cell.modelData.n)
@@ -126,6 +127,7 @@ ListView {
                     app: cell.modelData.app
                     items: cell.modelData.items
                     arrivedMap: list.arrivedMap
+                    iconMode: list.notifs.iconMode || "symbol"
                     now: list.now
                     onDismissItem: n => list.dismissRequested(n)
                     onDismissAll: { var all = cell.modelData.items.slice(); for (var i = 0; i < all.length; i++) list.dismissRequested(all[i]) }

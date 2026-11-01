@@ -44,6 +44,24 @@ Scope {
     property bool batCharging: false
     property string ssid: ""
     property int notifCount: 0
+    property bool clock24: true           // shell.qml: the bar's Time format (Settings > Bar > Clock), so both clocks agree
+    // Caps Lock: asked from Hyprland (hyprctl devices) a moment after each key and when the screen locks; shown under the password
+    property bool capsOn: false
+    Process {
+        id: capsProc
+        command: ["hyprctl", "devices", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var k = JSON.parse(text).keyboards || [], on = false
+                    for (var i = 0; i < k.length; i++) if (k[i].capsLock === true && k[i].main !== false) on = true
+                    root.capsOn = on
+                } catch (e) { root.capsOn = false }
+            }
+        }
+    }
+    Timer { id: capsT; interval: 180; onTriggered: if (root.locked && !capsProc.running) capsProc.running = true }
+    onBufferChanged: if (locked) capsT.restart()
     // ---- the widgets you built for this screen (Settings > Appearance > Widget builder > Lock screen; placed with the desktop editor)
     // They only SHOW things: shell.qml hands over `lockEnv` (the same numbers, but every action does nothing), and each widget has a click shield
     // (WidgetHost.inert). Every widget type may be here; WidgetData.js marks the private ones where you add them.
@@ -67,13 +85,6 @@ Scope {
     }
     Timer { id: powerArmT; interval: 3000; onTriggered: root.powerArmed = "" }
     Timer { id: powerCloseT; interval: 12000; running: root.powerOpen; onTriggered: { root.powerOpen = false; root.powerArmed = "" } }
-    component Glyph: Text {
-        property int code: 0
-        text: String.fromCodePoint(code)
-        font.family: root.pal.font
-        font.pixelSize: 16
-        color: root.pal.muted
-    }
     readonly property string switchScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/switch-user.sh"
     function mediaAct(a) {
         var p = player
@@ -207,7 +218,7 @@ Scope {
         // a PAM error is not a guess, so it does not count as a miss
         onError: err => { root.busy = false; root.buffer = ""; root.failure = "Could not check the password"; root.shakeTick++ }
     }
-    onLockedChanged: { switchOpen = false; powerOpen = false; powerArmed = ""; if (!locked) { buffer = ""; failure = ""; busy = false; splashArm = false; splashSkip = false; pam.abort() } }
+    onLockedChanged: { if (locked) capsT.restart(); else capsOn = false; switchOpen = false; powerOpen = false; powerArmed = ""; if (!locked) { buffer = ""; failure = ""; busy = false; splashArm = false; splashSkip = false; pam.abort() } }
 
     SystemClock { id: clock; precision: SystemClock.Seconds }
 
@@ -291,10 +302,10 @@ Scope {
                 avatarStars: root.starData
                 profileStars: root.profileStars
                 dots: 34
-                artStrength: 0.9
+                artStrength: 0.62            // quieter than the desktop's: it sits behind the clock and the password
                 artFit: 0.78
                 energy: root.energy
-                opacity: surf.appear
+                opacity: surf.appear * 0.8
             }
             BarStars {
                 anchors.fill: parent
@@ -342,14 +353,31 @@ Scope {
                 y: parent.height * 0.16 - 22 * (1 - surf.appear)
                 opacity: surf.appear
                 spacing: 4
-                Text {
+                Item {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: Qt.formatDateTime(clock.date, "HH:mm")
-                    color: root.pal.text
-                    font.family: root.pal.uiFont
-                    font.pixelSize: 112
-                    font.weight: Font.Light
-                    font.letterSpacing: 2
+                    width: bigTime.implicitWidth
+                    height: bigTime.implicitHeight
+                    Text {
+                        id: bigTime
+                        text: root.clock24 ? Qt.formatDateTime(clock.date, "HH:mm") : Qt.formatDateTime(clock.date, "h:mm AP").replace(/\s*[AP]M$/i, "")
+                        color: root.pal.text
+                        font.family: root.pal.uiFont
+                        font.pixelSize: 112
+                        font.weight: Font.Light
+                        font.letterSpacing: 2
+                    }
+                    Text {
+                        visible: !root.clock24
+                        anchors.left: bigTime.right
+                        anchors.leftMargin: 10
+                        anchors.baseline: bigTime.baseline
+                        text: Qt.formatDateTime(clock.date, "AP")
+                        color: root.pal.muted
+                        font.family: root.pal.uiFont
+                        font.pixelSize: 26
+                        font.weight: Font.Normal
+                        font.letterSpacing: 1
+                    }
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -559,42 +587,47 @@ Scope {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     height: 18
-                    text: root.busy ? "Checking…" : root.failure
-                    color: root.failure !== "" && !root.busy ? root.pal.bad : root.pal.muted
+                    text: root.busy ? "Checking…" : (root.failure !== "" ? root.failure : (root.capsOn ? "Caps Lock is on" : ""))
+                    color: root.failure !== "" && !root.busy ? root.pal.bad : (root.capsOn ? root.pal.warn : root.pal.muted)
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tCap + 1
                 }
             }
 
-            // ---- status row, top right: battery, Wi-Fi, how many notifications (never what they say)
+            // ---- status row, top right: battery and Wi-Fi as small icons (also in the login look, like any login screen), and with the
+            // lock screen widgets on, how many notifications there are (never what they say)
             Row {
-                visible: root.widgets
+                visible: (root.hasBat && root.deskTypes.battery !== true) || (root.ssid !== "" && root.deskTypes.net !== true) || (root.widgets && root.notifCount > 0)
                 anchors.top: parent.top
                 anchors.right: parent.right
                 anchors.topMargin: 28
                 anchors.rightMargin: 32
-                spacing: 20
+                spacing: 22
                 opacity: surf.appear
-                Text {
-                    visible: root.hasBat && root.deskTypes.battery !== true
-                    text: root.batPct + "%" + (root.batCharging ? " · charging" : "")
-                    color: root.batPct <= 15 && !root.batCharging ? root.pal.bad : root.pal.muted
-                    font.family: root.pal.uiFont
-                    font.pixelSize: root.pal.tCap + 2
+                Row {
+                    visible: root.widgets && root.notifCount > 0
+                    spacing: 6
+                    IconGlyph { pal: root.pal; code: 0xF009A; color: root.pal.accent; font.pixelSize: 15; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: root.notifCount; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 2; anchors.verticalCenter: parent.verticalCenter }
                 }
-                Text {
+                Row {
                     visible: root.ssid !== "" && root.deskTypes.net !== true
-                    text: root.ssid
-                    color: root.pal.muted
-                    font.family: root.pal.uiFont
-                    font.pixelSize: root.pal.tCap + 2
+                    spacing: 6
+                    IconGlyph { pal: root.pal; code: 0xF05A9; font.pixelSize: 15; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: root.ssid; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 2; anchors.verticalCenter: parent.verticalCenter }
                 }
-                Text {
-                    visible: root.notifCount > 0
-                    text: root.notifCount + (root.notifCount === 1 ? " notification" : " notifications")
-                    color: root.pal.accent
-                    font.family: root.pal.uiFont
-                    font.pixelSize: root.pal.tCap + 2
+                Row {
+                    visible: root.hasBat && root.deskTypes.battery !== true
+                    spacing: 6
+                    readonly property bool low: root.batPct <= 15 && !root.batCharging
+                    IconGlyph { pal: root.pal;
+                        // battery outline filling in tens (F007A..F0082 = 10..90 %, F0079 = full), a bolt while charging
+                        code: root.batCharging ? 0xF0084 : (root.batPct >= 95 ? 0xF0079 : 0xF007A + Math.max(0, Math.min(8, Math.floor(root.batPct / 10) - 1)))
+                        color: parent.low ? root.pal.bad : root.pal.muted
+                        font.pixelSize: 15
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text { text: root.batPct + "%"; color: parent.low ? root.pal.bad : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 2; anchors.verticalCenter: parent.verticalCenter }
                 }
             }
 
@@ -773,7 +806,7 @@ Scope {
                                     width: pwItems.width; height: 36; radius: 10
                                     color: armed ? Qt.alpha(root.pal.bad, 0.28) : (pwMa.containsMouse ? Qt.alpha(root.pal.accent, 0.2) : "transparent")
                                     Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                                    Glyph { x: 10; anchors.verticalCenter: parent.verticalCenter; code: modelData.g; font.pixelSize: 16; color: armed ? root.pal.bad : root.pal.accent }
+                                    IconGlyph { pal: root.pal; x: 10; anchors.verticalCenter: parent.verticalCenter; code: modelData.g; font.pixelSize: 16; color: armed ? root.pal.bad : root.pal.accent }
                                     Text {
                                         x: 38; anchors.verticalCenter: parent.verticalCenter
                                         text: armed ? "Click again to confirm" : modelData.t
@@ -793,7 +826,7 @@ Scope {
                         border.width: root.pal.bw
                         border.color: root.pal.line
                         Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                        Glyph { anchors.centerIn: parent; code: 0xF0425; font.pixelSize: 18; color: root.pal.text }
+                        IconGlyph { pal: root.pal; anchors.centerIn: parent; code: 0xF0425; font.pixelSize: 18; color: root.pal.text }
                         MouseArea {
                             id: pwBtnMa
                             anchors.fill: parent

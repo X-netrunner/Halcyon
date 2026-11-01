@@ -63,7 +63,7 @@
 #   --whisper[=MODEL]      install speech-to-text for voice notes: whisper.cpp + a model (tiny | base | small; default base). Without this option
 #                          you are ASKED in a terminal; with --yes and nothing saved, no model is downloaded
 #   --no-whisper           skip the speech-to-text model (voice notes are then saved as audio without a transcript)
-#   --vlm[=MODEL]          install the picture-describing vision model for Notes (Ollama; default qwen2.5vl:3b, a download of about 3 GB) and switch
+#   --vlm[=MODEL]          install the picture-describing vision model for Notes (Ollama; default gemma4:e2b-it-qat, about 4.3 GB, the same model as the default AI) and switch
 #                          Settings > Notes > "Describe pictures" on. Without this option you are ASKED in a terminal; with --yes and nothing saved,
 #                          nothing is downloaded
 #   --no-vlm               skip the vision model (the Describe button stays off; you can add it later: ./install.sh --vlm)
@@ -87,7 +87,7 @@
 #   --luna / --no-luna     the extra: LUNA, a local AI assistant in Rust (https://github.com/X-netrunner/LUNA-AI), built from the
 #                          commit pinned below (LUNA_REV) into ~/.local/bin/luna. Asked on the first install and with --choose
 #                          (default no), then remembered. The program is installed and the Ollama models her tiers use are pulled
-#                          (qwen3:8b, phi4-mini, nomic-embed-text, qwen2.5vl:3b and the two abliterated coder/security models, about 26 GB;
+#                          (qwen3.5:9b, qwen3.5:4b, phi4-mini, nomic-embed-text and the two abliterated coder/security models, about 27 GB;
 #                          LUNA_MODELS="a b" picks others, LUNA_MODELS=none skips). Her daemon is never switched on for you.
 #   --luna-voice / --no-luna-voice  with LUNA: also give her a voice (scripts/luna-voice-setup.sh: the Kokoro model, about 330 MB from the
 #                          kokoro-onnx GitHub release, a small Python environment, her [voice] config). Asked after the LUNA question, default no.
@@ -145,7 +145,7 @@ SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default 
 INSTALL_LLM=false; PICK_LLM_MODEL=""; LLM_ASKED=false # local AI performance advisor with Ollama
 INSTALL_WHISPER=false; PICK_WHISPER_MODEL=""; WHISPER_ASKED=false   # speech-to-text for voice notes (whisper.cpp + a ggml model)
 INSTALL_VLM=false; PICK_VLM_MODEL=""; VLM_ASKED=false                # picture descriptions for Notes (a vision model in Ollama)
-VLM_DEFAULT_MODEL="qwen2.5vl:3b"                                       # the model Notes was tested with (scripts/halcyon-notes.py VLM_DEFAULT)
+VLM_DEFAULT_MODEL="gemma4:e2b-it-qat"                                  # scripts/halcyon-notes.py VLM_DEFAULT: the default text model reads pictures too (was qwen2.5vl:3b)
 PICK_RENDERER=""      # auto | opengl | vulkan (see choose_renderer)
 INSTALL_PLYMOUTH=""; PLYMOUTH_ASKED=false      # the boot splash (see choose_plymouth); "" = not decided yet
 INSTALL_LUNA=false; LUNA_ASKED=false           # the LUNA extra (see choose_extras)
@@ -636,6 +636,34 @@ if [[ "$DRY_RUN" != "true" ]]; then
     confirm "Go ahead?" || { echo "Nothing was changed."; exit 0; }
 fi
 
+# ai-antivirus reports every systemd unit a program other than pacman / systemctl writes (rule AV-B-0005), and this installer
+# writes Halcyon's units again each time update.sh runs it. Narrow program exceptions, one per absolute path the installer is
+# run from: the two that get.sh and update.sh use (bash <path>/install.sh) and the checkout this copy runs from right now
+# (ai-antivirus resolves `./install.sh` against the working directory). Everything else stays watched; malware found in a file
+# is still reported. Adding one that is already there changes nothing. docs/antivirus.md explains it and how to remove them.
+av_installer_exceptions() {
+    [[ "$AV_EXCEPTION" == "true" ]] || { log_info "ai-antivirus: no exception for the installer (--no-av-exception)"; return 0; }
+    [[ "$DRY_RUN" == "true" ]] || command -v ai-antivirus >/dev/null 2>&1 || return 0
+    local p self
+    self="$(readlink -f "$SCRIPT_DIR/install.sh" 2>/dev/null)"
+    for p in '~/.config/Halcyon/install.sh' '~/.cache/halcyon-update/install.sh' "$self"; do
+        [[ -n "$p" ]] || continue
+        # the checkout IS one of the two usual places: no third entry
+        [[ "$p" == "$TARGET_HOME/.config/Halcyon/install.sh" || "$p" == "$TARGET_HOME/.cache/halcyon-update/install.sh" ]] && continue
+        # a checkout only inside your home, never in a temporary or world-writable folder (anyone could put a script there)
+        if [[ "$p" == /* ]]; then
+            [[ "$p" == "$TARGET_HOME"/* ]] || continue
+            [[ -n "$(find "$(dirname "$p")" -maxdepth 0 -perm -0002 2>/dev/null)" ]] && continue
+        fi
+        try run_cmd "ai-antivirus: exception for the Halcyon installer ($p)" \
+            as_root ai-antivirus exceptions add program "$p" --name "Halcyon installer"
+    done
+}
+
+# Re-install or update with ai-antivirus already running: add the installer's exceptions FIRST, before any unit is written,
+# so this run is not reported (on a first install the antivirus comes at the end, after the units, and gets them there).
+command -v ai-antivirus >/dev/null 2>&1 && av_installer_exceptions
+
 # ---------------------------------------------------------------------------------------------- step 2
 log_step "Step 2: Package manager"
 
@@ -877,7 +905,9 @@ ensure_aur_helper() {   # called only when an AUR package is really needed; inst
             SUDOERS_TMP=""; warn_later "Could not set up the temporary sudo rule for AUR builds."; return 1
         fi
     fi
-    BUILD_DIR="$(mktemp -d /tmp/yay-build-XXXXXX)"; chown "$TARGET_UID:$TARGET_GID" "$BUILD_DIR"
+    # built in your cache, not /tmp: /tmp is often mounted noexec, and antivirus tools rightly report programs run from it (AV-B-0013)
+    run_as_user mkdir -p "$TARGET_HOME/.cache"
+    BUILD_DIR="$(mktemp -d "$TARGET_HOME/.cache/halcyon-yay-build.XXXXXX")"; chown "$TARGET_UID:$TARGET_GID" "$BUILD_DIR"
     if run_as_user_cmd "Cloning yay-bin" git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$BUILD_DIR/yay-bin" \
        && run_as_user_cmd "Building and installing yay-bin" bash -c "cd '$BUILD_DIR/yay-bin' && makepkg -si --noconfirm"; then
         command -v yay >/dev/null 2>&1 && AUR_HELPER=yay
@@ -1459,8 +1489,8 @@ detect_hardware_tier() {
         tier_reason="Low RAM/CPU detected. qwen2.5:0.5b (~390 MB) provides instant response with virtually zero RAM footprint. (The Notes AI overview is better on qwen2.5:3b-instruct, ~1.9 GB, if you have room.)"
     elif [[ "$vram_mb" -ge 4000 ]] || ([[ "$ram_gb" -ge 16 ]] && [[ "$cpus" -ge 8 ]]); then
         tier_name="Tier 3: High-Performance / Dedicated GPU"
-        rec_model="qwen2.5:3b-instruct"
-        tier_reason="Strong hardware detected (${cpus} threads, ~${ram_gb} GB RAM, ${gpu_desc}). qwen2.5:3b-instruct (~1.9 GB) follows rules and keeps facts straight, which the Notes AI overview needs (it gave the best, most consistent overviews in our tests, 3-6 s a note), and it is let go from memory 10 s after use. For long chats a bigger model is better: advisor model 8b"
+        rec_model="gemma4:e2b-it-qat"
+        tier_reason="Strong hardware detected (${cpus} threads, ~${ram_gb} GB RAM, ${gpu_desc}). gemma4:e2b-it-qat (~4.3 GB, Google 2026) refused every harmful request in Halcyon's eval (docs/ai-models.md), answers Settings questions well and also reads pictures, so Notes needs no second model. It is let go from memory soon after use."
     else
         tier_name="Tier 2: Mid-Range / Standard"
         rec_model="qwen2.5:1.5b"
@@ -1571,7 +1601,8 @@ choose_apps() {
         if confirm "  Install local AI advisor with Ollama?"; then
             INSTALL_LLM=true
             menu_pick PICK_LLM_MODEL "AI Advisor Model" "$h_rec" 0 \
-                "qwen2.5:3b-instruct|Qwen 2.5 3B Instruct|~1.9 GB, best Notes AI overview in our tests, follows rules well (Tier 3 Pick)" \
+                "gemma4:e2b-it-qat|Gemma 4 E2B|~4.3 GB, 2026, safest in our eval, also reads pictures for Notes (Tier 3 Pick)" \
+                "qwen2.5:3b-instruct|Qwen 2.5 3B Instruct|~1.9 GB, older, very consistent Notes overviews, smaller download" \
                 "qwen2.5:1.5b|Qwen 2.5 1.5B|~1.0 GB, ultra-compact, good structured output (Tier 2 Pick)" \
                 "qwen2.5:0.5b|Qwen 2.5 0.5B|~390 MB, absolute minimal memory footprint (Tier 1 Pick)" \
                 "llama3.2:1b|Llama 3.2 1B|~1.3 GB, fast, fine for short answers (the Notes overview may copy text)" \
@@ -2944,7 +2975,23 @@ install_luna_voice() {
 # The list is the stack in luna.toml (main / fast / deep / security / embeddings / vision) plus any model named in an existing
 # ~/.config/luna/luna.toml, so a config you edited is followed. Already-present models are skipped. About 26 GB in total: override
 # with LUNA_MODELS="name name ..." (replaces the list) or LUNA_MODELS=none (skip). Retry later: ./install.sh --luna
-LUNA_MODELS_DEFAULT="qwen3:8b phi4-mini nomic-embed-text qwen2.5vl:3b richardyoung/qwen2.5-coder-14b-instruct-abliterated richardyoung/qwythos-9b-abliterated"
+# Main: qwen3.5:9b (2026, tools + thinking + vision, 256K context; replaces qwen3:8b). Vision: qwen3.5:4b (the same family reads
+# pictures; replaces qwen2.5vl:3b). Fast: phi4-mini stays (no hidden reasoning, so greetings are instant). Embeddings: nomic-embed-text
+# stays on purpose: Luna's embedding cache is keyed by the text only, so another embedding model would mix two vector spaces.
+LUNA_MODELS_DEFAULT="qwen3.5:9b qwen3.5:4b phi4-mini nomic-embed-text richardyoung/qwen2.5-coder-14b-instruct-abliterated richardyoung/qwythos-9b-abliterated"
+# luna.toml roles still on the old shipped defaults move to the newer models once those are downloaded; a model you chose is kept
+upgrade_luna_roles() {
+    local cfg="$TARGET_HOME/.config/luna/luna.toml" have
+    [[ -f "$cfg" && "$DRY_RUN" != "true" ]] || return 0
+    have=" $(run_as_user ollama list 2>/dev/null | awk 'NR>1{print $1}' | sed 's/:latest$//' | tr '\n' ' ') "
+    if [[ "$have" == *" qwen3.5:9b "* ]] && grep -qE '^[[:space:]]*model[[:space:]]*=[[:space:]]*"qwen3:8b"' "$cfg"; then
+        run_as_user sed -i -E 's/^([[:space:]]*model[[:space:]]*=[[:space:]]*)"qwen3:8b"/\1"qwen3.5:9b"/' "$cfg" && log_success "LUNA: main model is now qwen3.5:9b"
+    fi
+    if [[ "$have" == *" qwen3.5:4b "* ]] && grep -qE '^[[:space:]]*model[[:space:]]*=[[:space:]]*"qwen2\.5vl:3b"' "$cfg"; then
+        run_as_user sed -i -E 's/^([[:space:]]*model[[:space:]]*=[[:space:]]*)"qwen2\.5vl:3b"/\1"qwen3.5:4b"/' "$cfg" && log_success "LUNA: vision model is now qwen3.5:4b"
+    fi
+    return 0
+}
 install_luna_models() {
     local cfg="$TARGET_HOME/.config/luna/luna.toml" want="" m have="" pulled=0 failed=0 present
     if [[ "${LUNA_MODELS:-}" == "none" ]]; then log_info "LUNA models: skipped (LUNA_MODELS=none)"; return 0; fi
@@ -2996,6 +3043,7 @@ install_luna_models() {
         fi
     done
     log_info "LUNA models: $pulled pulled, $failed failed, the rest were already installed"
+    upgrade_luna_roles
     return 0
 }
 [[ "$INSTALL_LUNA" == "true" ]] && install_luna
@@ -3141,20 +3189,6 @@ install_antivirus() {
     try run_as_user_cmd "ai-antivirus: desktop notifications" systemctl --user enable --now ai-antivirus-notify.service
     save_stamp "$stamp" "$now"
     log_success "ai-antivirus installed (alert-only): Security center (>security), or ai-antivirus status"
-}
-
-# ai-antivirus reports every systemd unit a program other than pacman / systemctl writes (rule AV-B-0005), and this installer
-# writes Halcyon's units again each time update.sh runs it. Two narrow program exceptions: the two absolute paths the installer
-# is run from (get.sh and update.sh run it as  bash <path>/install.sh). Everything else stays watched; malware found in a file
-# is still reported. docs/antivirus.md explains it and how to remove them (sudo ai-antivirus exceptions remove ...).
-av_installer_exceptions() {
-    [[ "$AV_EXCEPTION" == "true" ]] || { log_info "ai-antivirus: no exception for the installer (--no-av-exception)"; return 0; }
-    [[ "$DRY_RUN" == "true" ]] || command -v ai-antivirus >/dev/null 2>&1 || return 0
-    local p
-    for p in '~/.config/Halcyon/install.sh' '~/.cache/halcyon-update/install.sh'; do
-        try run_cmd "ai-antivirus: exception for the Halcyon installer ($p)" \
-            as_root ai-antivirus exceptions add program "$p" --name "Halcyon installer"
-    done
 }
 
 # the assistants' model (firewall Ask, antivirus Ask): pulled once when Ollama is there; both pick it up by themselves

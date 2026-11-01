@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 
 // The notification list for the bar's drop-down page (shell.qml, Settings > Bar style > Drag the bar down).
-// Same header (count, Do not disturb, Clear) and rows as the notification centre (Notifs.qml), but it lives inside the bar
+// Same header (a Do not disturb / Airplane switch, the title, Clear: NotifHeader.qml) and rows as the notification centre (Notifs.qml), but it lives inside the bar
 // instead of in its own window. The notification centre on the right edge keeps working as before.
 Item {
     id: root
@@ -26,30 +26,15 @@ Item {
         anchors.top: parent.top
         spacing: 12
 
-        RowLayout {
+        NotifHeader {
             Layout.fillWidth: true
-            spacing: 8
-            BoxTitle {
-                pal: root.pal
-                title: "Notifications"
-                sub: root.items.length === 0 ? "You are all caught up"
-                    : root.items.length + (root.items.length === 1 ? " notification" : " notifications") + ((root.notifs && root.notifs.dnd) ? "  ·  muted" : "")
-            }
-            Chip {
-                Layout.preferredHeight: 30
-                pal: root.pal
-                glyph: String.fromCodePoint(0xF009B)
-                label: "DND"
-                on: root.notifs ? root.notifs.dnd : false
-                onClicked: root.notifs.dndRequested(!root.notifs.dnd)
-            }
-            Chip {
-                Layout.preferredHeight: 30
-                visible: root.items.length > 0
-                pal: root.pal
-                label: "Clear"
-                onClicked: root.notifs.clearAll()
-            }
+            pal: root.pal
+            count: root.items.length
+            dnd: root.notifs ? root.notifs.dnd : false
+            quick: (root.notifs && root.notifs.quick === "airplane") ? "airplane" : "dnd"
+            airplane: root.notifs ? root.notifs.airplane : false
+            onQuickClicked: { if (quick === "airplane") root.notifs.airplaneRequested(); else root.notifs.dndRequested(!root.notifs.dnd) }
+            onClearClicked: root.notifs.clearAll()
         }
 
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.pal.lineSoft }

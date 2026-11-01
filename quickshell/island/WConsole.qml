@@ -26,7 +26,11 @@ WBase {
     // changing "Most lines" in the builder takes effect at once instead of at the next run
     property var rawLines: []
     property bool ran: false                      // the command has finished at least once (so an empty answer reads "no output", not "...")
-    readonly property var outLines: rawLines.length > maxLines ? rawLines.slice(rawLines.length - maxLines) : rawLines
+    // set from rawLines / maxLines by hand, not a binding: as a binding it was re-entered while the builder changed both (a loop)
+    property var outLines: []
+    function cutLines() { var r = rawLines, m = maxLines; outLines = r.length > m ? r.slice(r.length - m) : r }
+    onRawLinesChanged: cutLines()
+    onMaxLinesChanged: cutLines()
 
     // PATH gets the rice's own tools (hx, sysmode helpers) like the real console; stderr is shown too. TERM=dumb and COLUMNS keep
     // tools from drawing colours / tables wider than the box. A command that never ends (top, watch, ping ...) is stopped after a
