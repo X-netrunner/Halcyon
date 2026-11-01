@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Open a graphical file browser for an image and print the chosen path (nothing if cancelled).
 #   $1 = folder or file to start from (optional)
+# Native helper first: `hal pick-image` (src/hal). Exit 2 = an older hal that does not know it yet: the bash below still works.
+hal="$(dirname "$(readlink -f "$0")")/../../../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  "$hal" pick-image "$@" && exit 0; rc=$?
+  [ "$rc" -ne 2 ] && exit "$rc"
+fi
 start="${1:-$HOME/Pictures}"
 case "$start" in "~"*) start="$HOME${start#\~}" ;; esac
 [ -e "$start" ] || start="$HOME/Pictures"

@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # bt-set.sh connect|disconnect|scan <mac> [name]
+# Native helper first: `hal bt-set` (src/hal). Exit 2 = an older hal that does not know it yet: the bash below still works.
+hal="$(dirname "$(readlink -f "$0")")/../../../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  "$hal" bt-set "$@" && exit 0; rc=$?
+  [ "$rc" -ne 2 ] && exit "$rc"
+fi
 act=$1; mac=$2; name=${3:-$2}
 # wake net.sh (the bar's Wi-Fi / Bluetooth label) so it shows the result now, not at its next slow tick
 poke_net() { local f="${XDG_RUNTIME_DIR:-/tmp}/halcyon-net.wake"; [ -p "$f" ] && printf '\n' 1<>"$f"; }

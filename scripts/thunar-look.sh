@@ -10,6 +10,12 @@
 # The choice is saved in ~/.local/state/island/file-icons ; Settings > Default apps > File manager icons runs this.
 # Needs xfconf-query (the xfconf package, installed with Thunar). Open Thunar windows follow the side bar / toolbar size
 # at once; the zoom of a window that is already open changes when it is reopened (thunar -q).
+# Native helper first: `hal thunar-look` (src/hal). Exit 2 = an older hal that does not know it yet: the bash below still works.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  "$hal" thunar-look "$@" && exit 0; rc=$?
+  [ "$rc" -ne 2 ] && exit "$rc"
+fi
 state="$HOME/.local/state/island"; f="$state/file-icons"; done_mark="$state/file-icons-applied"; ver=2   # bump when the sizes above change: auto then applies them once more
 cur() { local v; v=$(head -n1 "$f" 2>/dev/null); case "$v" in small|medium|large) echo "$v" ;; *) echo medium ;; esac; }
 case "${1:-status}" in
