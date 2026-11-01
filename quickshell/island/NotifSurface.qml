@@ -16,6 +16,7 @@ Glass {
     property var starData: null
     property bool profileStars: true
     signal dndRequested(bool on)
+    signal airplaneRequested()
     signal clearRequested()
     signal dismissRequested(var n)
 
@@ -76,6 +77,7 @@ Glass {
         starData: surf.starData
         profileStars: surf.profileStars
         onDndRequested: on => surf.dndRequested(on)
+        onAirplaneRequested: surf.airplaneRequested()
         onClearRequested: surf.clearRequested()
         onDismissRequested: n => surf.dismissRequested(n)
     }

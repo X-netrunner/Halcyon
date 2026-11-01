@@ -20,12 +20,15 @@ Item {
     property var starData: null
     property bool profileStars: true
     signal dndRequested(bool on)
+    signal airplaneRequested()
     signal clearRequested()
     signal dismissRequested(var n)
 
     readonly property var cfg: NL.normalize(layout)
     readonly property var history: src ? src.history : []
     readonly property bool dnd: src ? src.dnd : false
+    readonly property string quick: (src && src.quick === "airplane") ? "airplane" : "dnd"      // the header switch (Settings > Panels & notifications)
+    readonly property bool airplane: !!(src && src.airplane)
     // the band only takes room while there is a constellation to draw in it (the mode's art or your profile picture); with
     // nothing to draw it would be an empty gap, so it is left out. The drifting dots are not in the band: they sit behind the
     // whole box (NotifSurface.qml) and take no room.
@@ -94,30 +97,15 @@ Item {
         ColumnLayout {
             width: parent ? parent.width : 0
             spacing: Math.max(6, box.cfg.gap - 2)
-            RowLayout {
+            NotifHeader {
                 Layout.fillWidth: true
-                spacing: 8
-                BoxTitle {
-                    pal: box.pal
-                    title: "Notifications"
-                    sub: box.history.length === 0 ? "You are all caught up"
-                        : box.history.length + (box.history.length === 1 ? " notification" : " notifications") + (box.dnd ? "  ·  muted" : "")
-                }
-                Chip {
-                    Layout.preferredHeight: 30
-                    pal: box.pal
-                    glyph: String.fromCodePoint(0xF009B)
-                    label: "DND"
-                    on: box.dnd
-                    onClicked: box.dndRequested(!box.dnd)
-                }
-                Chip {
-                    Layout.preferredHeight: 30
-                    visible: box.history.length > 0
-                    pal: box.pal
-                    label: "Clear"
-                    onClicked: box.clearRequested()
-                }
+                pal: box.pal
+                count: box.history.length
+                dnd: box.dnd
+                quick: box.quick
+                airplane: box.airplane
+                onQuickClicked: { if (box.quick === "airplane") box.airplaneRequested(); else box.dndRequested(!box.dnd) }
+                onClearClicked: box.clearRequested()
             }
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: box.pal.lineSoft }
         }
@@ -142,59 +130,26 @@ Item {
                 onDismissRequested: n => box.dismissRequested(n)
             }
 
-            // empty: a tree-style node (same look as the SUPER+TAB nodes) with a short branch and a label
+            // empty: one small tile in the accent colour (the same look as a notification's symbol), and two short lines
             Item {
                 visible: box.history.length === 0
                 Layout.fillWidth: true
-                Layout.preferredHeight: 190
+                Layout.preferredHeight: 132
                 Layout.topMargin: 6
 
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    y: 0
-                    width: 2
-                    height: 52
-                    radius: 1
-                    color: Qt.alpha(box.pal.accent, 0.28)
-                    Rectangle {
-                        width: 4; height: 4; radius: 2
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        color: box.pal.accent
-                        SequentialAnimation on y {
-                            running: box.active && box.history.length === 0
-                            loops: Animation.Infinite
-                            NumberAnimation { from: 0; to: 48; duration: 1800; easing.type: Easing.InOutSine }
-                            PauseAnimation { duration: 500 }
-                        }
-                    }
-                }
-                Rectangle {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    y: 52
-                    width: 76; height: 76; radius: 28
-                    color: box.pal.box(Qt.alpha(box.pal.surface, 0.97))
-                    border.width: 1.5
-                    border.color: Qt.alpha(box.dnd ? box.pal.muted : box.pal.accent, 0.7)
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: parent.width + 14; height: width; radius: 34
-                        color: "transparent"
-                        border.width: 1
-                        border.color: Qt.alpha(box.pal.accent, 0.5)
-                        SequentialAnimation on opacity {
-                            running: box.active && box.history.length === 0
-                            loops: Animation.Infinite
-                            NumberAnimation { to: 0.5; duration: 2200; easing.type: Easing.InOutSine }
-                            NumberAnimation { to: 0.08; duration: 2200; easing.type: Easing.InOutSine }
-                        }
-                    }
+                    y: 14
+                    width: 56; height: 56; radius: 18
+                    color: Qt.alpha(box.dnd ? box.pal.muted : box.pal.accent, 0.13)
                     Shape {
                         anchors.centerIn: parent
                         width: 40; height: 40
+                        scale: 0.75
                         preferredRendererType: Shape.CurveRenderer
                         ShapePath {
-                            strokeColor: box.pal.accent
-                            strokeWidth: 2.6
+                            strokeColor: box.dnd ? box.pal.muted : box.pal.accent
+                            strokeWidth: 3
                             fillColor: "transparent"
                             capStyle: ShapePath.RoundCap
                             joinStyle: ShapePath.RoundJoin
@@ -204,7 +159,7 @@ Item {
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    y: 140
+                    y: 84
                     text: box.dnd ? "Do not disturb" : "All caught up"
                     color: box.pal.text
                     font.family: box.pal.uiFont
@@ -213,7 +168,7 @@ Item {
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    y: 163
+                    y: 107
                     text: box.dnd ? "popups are muted, new ones are still kept" : "nothing new"
                     color: box.pal.muted
                     font.family: box.pal.uiFont

@@ -56,6 +56,7 @@ Item {
         property var arrived: root.arrivedMap
         property string avatar: ""
         property bool usePfp: false
+        property string iconMode: "symbol"
         property bool dnd: root.sampleDnd
     }
     Timer { interval: 30000; running: root.open; repeat: true; onTriggered: root.now = Date.now() }

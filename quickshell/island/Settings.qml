@@ -692,7 +692,7 @@ Scope {
             { type: "custom", name: "discover" }
         ] },
         { id: "look", title: "Look", section: "Appearance", items: [
-            { type: "seg", key: "opt:keysStyle", label: "Shortcuts layout", desc: "Tree: every shortcut on a branching tree. Pages: a menu of groups on the left and one group at a time. Same shortcuts in both; the chip in the Shortcuts header switches too.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
+            { type: "seg", adv: true, key: "opt:keysStyle", label: "Shortcuts layout", desc: "Tree: every shortcut on a branching tree. Pages: a menu of groups on the left and one group at a time. Same shortcuts in both; the chip in the Shortcuts header switches too.", opts: [o("tree", "Tree"), o("pages", "Pages")] },
             { type: "toggle", key: "opt:hideHints", label: "Hide explanations", desc: "Once you know your way around: the explanations under settings, the key hints at the bottom of the boxes and the help lines in widgets shrink to a small ? on the side. Hover it (or click it here) to read them again." },
             { type: "seg", key: "theme", label: "Theme", desc: "Island, panels, lock screen, window borders and apps (GTK / Qt) follow it. Colours still come from the wallpaper.", opts: [o("dark", "Dark"), o("light", "Light")] },
             { type: "toggle", key: "opt:boxShadow", label: "Soft shadow around boxes", desc: "The faint dark glow the notification box, utility box, console and the windows cast on the wallpaper. Off = none; the boxes keep their frosted glass." },
@@ -827,9 +827,10 @@ Scope {
             { type: "seg", drop: true, key: "opt:toastSecs", label: "Stay for", desc: "Urgent ones follow their own setting below. App decides: each app says how long its popup stays.", opts: [o(0, "App decides"), o(3, "3 s"), o(5, "5 s"), o(8, "8 s"), o(12, "12 s")] },
             { type: "seg", drop: true, key: "notifMax", label: "At once", desc: "How many popups show at the same time. When it is full the oldest goes (it stays in the centre). Popups from the same app fold into one card with a \"+N more\" label.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },
             { type: "seg", drop: true, key: "opt:critSecs", label: "Urgent ones hide after", desc: "Browsers and some apps mark a notification urgent so it would stay for ever. It hides after this long; it always stays in the notification centre until you remove it.", opts: [o(15, "15 s"), o(30, "30 s"), o(60, "1 min"), o(0, "Wait for a click")] },
-            { type: "seg", key: "opt:notifIcon", label: "Picture", desc: "Profile picture: your picture in the popup's icon tile, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
+            { type: "seg", key: "opt:notifIcon", label: "Icon", desc: "Symbol: one plain symbol in your accent colour (red when urgent), picked from what the notification is about. App icon: the app's own icon. Profile picture: your picture with the app icon as a small badge.", opts: [o("symbol", "Symbol"), o("app", "App icon"), o("pfp", "Profile picture")] },
         ] },
         { id: "notifcentre", title: "Centre", section: "Bar & panels", items: [
+            { type: "seg", key: "opt:notifQuick", label: "Header switch", desc: "The round button at the left of the notification box's title. Do not disturb: stops the popups. Airplane mode: switches Wi-Fi and Bluetooth off (and back on).", opts: [o("dnd", "Do not disturb"), o("airplane", "Airplane mode")] },
             { type: "seg", key: "opt:notifStyle", label: "Style", desc: "How the notification centre lists what you got. Stack: one card each. Timeline: a thin rail with a dot per notification, under Just now / Earlier today / Yesterday. (\"Grouped by app\" is still in the Notification builder.)", opts: [o("stack", "Stack"), o("timeline", "Timeline")] },
             { type: "seg", drop: true, key: "notifHistoryMax", label: "Keeps", desc: "How many notifications the centre holds. When it is full the oldest goes.", opts: [o(10, "10 notifications"), o(20, "20 notifications"), o(30, "30 notifications"), o(50, "50 notifications"), o(100, "100 notifications")] },
             { type: "seg", key: "opt:notifSpot", label: "Opens from", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Edge boxes below.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
@@ -1005,19 +1006,18 @@ Scope {
             { type: "seg", drop: true, key: "fx:profile", label: "Profile", desc: "One switch for stars, blur, island motion, screen brightness and the top bar. Work: no stars, blur on, fast motion. Gaming: no stars, no blur, no motion, top bar off. Battery: no stars, no blur, fast motion, brightness 40 %. Night: stars on, brightness 15 %. Custom is your own setup: it is saved when you leave it and comes back when you pick Custom again. Terminal: halcyon profile <name>. To change what a profile does, edit ~/.local/state/island/profiles.json (halcyon profile --help).", opts: [o("custom", "Custom"), o("work", "Work"), o("gaming", "Gaming"), o("battery", "Battery"), o("night", "Night")] },
             { type: "acts", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading...", when: "fx:safe=false" }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring...", when: "fx:safe=true" }] }
         ] },
-        { id: "suggestions", title: "Optimization & Suggestions", section: "Performance", items: [
-            { type: "acts", label: "Recommended Sweet Spot (Aesthetic + Speed)", desc: "Optimizes performance without compromising visual fidelity: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied!" }] },
-            { type: "acts", label: "Adaptive System Advisor", desc: "Analyzes your actual battery status, memory pressure, active workloads, and application launch habits to generate personalized tuning advice in the console (scripts/adaptive-advisor.py).", btns: [
-                { id: "opt-adaptive-advisor", btn: "Analyze My Setup", done: "Opening…" },
-                { id: "opt-llm-advisor", btn: "AI / LLM Advisor (Experimental)", done: "Analyzing…" }
+        { id: "suggestions", title: "Suggestions", section: "Performance", items: [
+            { type: "acts", adv: true, label: "Balanced look and speed", desc: "Faster without losing the look: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied!" }] },
+            { type: "acts", label: "System advisor", desc: "Looks at your battery, memory pressure, workloads and app habits and suggests settings, in the console (scripts/adaptive-advisor.py).", btns: [
+                { id: "opt-adaptive-advisor", btn: "Analyze", done: "Opening…" },
+                { id: "opt-llm-advisor", btn: "Ask the AI", done: "Analyzing…" }
             ] },
-            { type: "toggle", key: "opt:lazyLoad", def: true, label: "Aggressive Memory Freeing & Lazy Loading", desc: "Frees the memory of a dialog soon after it closes (a garbage collection pass), and lets the local AI model (2 to 3 GB) go 3 minutes after the last answer instead of 30 (1 minute for the small helpers, 10 s for notes). Every dialog builds only the view you are looking at either way. On automatically in Low and Medium resource use." },
-            { type: "acts", label: "Live Memory Trimming", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] }
+            { type: "toggle", key: "opt:lazyLoad", def: true, adv: true, label: "Free memory when idle", desc: "Frees the memory of a dialog soon after it closes (a garbage collection pass), and lets the local AI model (2 to 3 GB) go 3 minutes after the last answer instead of 30 (1 minute for the small helpers, 10 s for notes). Every dialog builds only the view you are looking at either way. On automatically in Low and Medium resource use." },
+            { type: "acts", adv: true, label: "Trim memory now", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] }
         ] },
-        { id: "sysoptions", title: "System preferences & timeouts", section: "System", items: [
-            { type: "action", id: "cheatsheet", label: "Settings shortcut", btn: "View shortcuts", desc: "Super + I opens Settings directly (Super + F11 also works as a legacy fallback). Tap Super opens the application launcher." },
-            { type: "seg", key: "opt:cornerTimeout", label: "Corner utilities menu timeout", desc: "How long the bottom-right corner pin / quick utilities overlay remains open after interaction.", opts: [o(3000, "3 s"), o(6000, "6 s"), o(10000, "10 s")] },
-            { type: "acts", label: "Login manager & tty1 autologin", desc: "Check or configure automatic login directly into Hyprland without a display manager prompt (scripts/login-status.sh).", btns: [
+        { id: "sysoptions", title: "Timeouts & login", section: "System", items: [
+            { type: "seg", key: "opt:cornerTimeout", label: "Utilities box stays open for", desc: "How long the utilities box opened from the bottom-right corner stays after you last used it.", opts: [o(3000, "3 s"), o(6000, "6 s"), o(10000, "10 s")] },
+            { type: "acts", adv: true, label: "Login manager & tty1 autologin", desc: "Check or configure automatic login directly into Hyprland without a display manager prompt (scripts/login-status.sh).", btns: [
                 { id: "login-status", btn: "Check Status", done: "" },
                 { id: "login-enable-lock", btn: "Setup tty1 Autologin", done: "Opening…" },
                 { id: "login-remove-lock", btn: "Remove tty1 Autologin", done: "Opening…" }
@@ -1026,8 +1026,8 @@ Scope {
         { id: "startup", title: "Startup & background", section: "System", items: [
             { type: "toggle", key: "opt:unusedRemind", def: true, label: "Monthly unused-apps reminder", desc: "Once a month, a notification when there are programs or background services you have not used for 30 days (Startup & processes > Unused has the list). Nothing is removed by itself." },
             { type: "action", id: "startup-view", label: "Startup & processes", btn: "Open the window", done: "", desc: "Everything that starts with the desktop (Halcyon's parts, your hypr-user.lua lines, systemd user services, autostart files) with the processes it runs, their RAM and CPU, a switch for each, and every other process of yours with an End button. The Health tab compares all of Halcyon with the RAM and CPU limits (Performance & memory) and lists the likely causes when it is over. Also `>startup` in the launcher." },
-            { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
-            { type: "toggle", key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
+            { type: "toggle", adv: true, key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
+            { type: "toggle", adv: true, key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
             { type: "toggle", key: "st:CLIPBOARD", label: "Clipboard history", desc: "The two small watchers that remember what you copy (text and pictures) for the clipboard pickers: Super + V and >clipboard in the launcher. A copy that a password manager marks as secret is never saved. Off stops them at once and saves a few MB; the pickers then only show what was saved before. Empty the history from >clipboard (Clear history)." },
             { type: "toggle", adv: true, key: "opt:clipAtCursor", def: true, label: "Clipboard opens at the mouse", desc: "Super + V opens the clipboard panel where the mouse pointer is, like Windows does (it flips to the other side of the pointer near a screen edge). Off: it opens on the side of the screen." },
             { type: "toggle", key: "st:AUDIO_FOCUS", label: "One thing plays at a time", desc: "Start a video or any other player while music is going and the music pauses; when the video stops or ends, the music carries on by itself. Only what it paused itself comes back: if you paused the music yourself, it stays paused. Works with everything that shows up as a media player (Spotify, browser tabs, mpv, VLC ...). Needs playerctl." },
@@ -1217,27 +1217,29 @@ Scope {
     // every group sits on exactly ONE page (tests/settings-groups.test.js checks it); the pages follow the section tabs of the tree
     readonly property var pages: [
         { id: "Discover", sub: "The settings you use most, everything Halcyon can do, and the guided tour.", groups: ["often", "discover"] },
-        { id: "Appearance", sub: "Look, your profile, colours, wallpaper, transparency and motion.", groups: ["look", "profile", "colours", "wallpaper", "glass", "motion"] },
-        { id: "Stars & splash", sub: "Constellations, the splash, the weekly sky, time of day and the terminal greeting.", groups: ["growth", "signature", "greeting"] },
-        { id: "Bar", sub: "The bar: its look and edge, what is on it, how it behaves, the border and the clock.", groups: ["bar", "barwidgets", "barbehave", "frame", "clock"] },
-        { id: "Panels", sub: "Notifications (quiet, popups, centre), the edge boxes, the volume bar and the utilities box.", groups: ["notifquiet", "notifpopups", "notifcentre", "osd", "utilbox"] },
+        { id: "Appearance", sub: "Theme, your profile, colours and night light, transparency and motion.", groups: ["look", "profile", "colours", "glass", "motion"] },
+        { id: "Desktop", sub: "The wallpaper, widgets on the desktop, workspaces and windows.", groups: ["wallpaper", "widgets", "workspaces"] },
+        { id: "Stars & splash", sub: "Constellations, the splash, the time of day and the terminal greeting.", groups: ["growth", "signature", "greeting"] },
         { id: "Builders", sub: "Design your own bar, desktop, widgets and notification box. Each one opens a window with a live preview; every change is saved at once.", groups: ["builders"] },
-        { id: "Desktop", sub: "Widget readability, workspaces and windows.", groups: ["widgets", "workspaces"] },
+        { id: "Bar", sub: "The bar: its look, what is on it, how it behaves, the clock and the screen border.", groups: ["bar", "barwidgets", "barbehave", "clock", "frame"] },
+        { id: "Notifications", sub: "When to stay quiet, how popups look and last, and the notification centre.", groups: ["notifquiet", "notifpopups", "notifcentre"] },
+        { id: "Panels", sub: "The utilities box, the edge boxes and the volume bar.", groups: ["utilbox", "osd"] },
+        { id: "Lock & login", sub: "What you see when the screen locks, and how you log in at boot.", groups: ["lockscreen", "loginscreen"] },
         { id: "Productivity", sub: "Focus mode, the calendar, notes and screen recording.", groups: ["focus", "calendar", "notes", "recording"] },
         { id: "AI", sub: "One switch for every AI feature, and what each one does. Off means nothing is asked any model.", groups: ["aimaster", "ainotes", "aisec", "aihelp"] },
-        { id: "Input & power", sub: "Mouse, touchpad, gestures, mouse buttons, keyboard, power and the lock screen.", groups: ["mouse", "keyboard", "gestures", "mousebtn", "power", "lockscreen", "loginscreen"] },
-        { id: "Performance", sub: "Profiles, safe mode, speed, memory limits, the tree view and suggestions.", groups: ["performance", "treeview", "profiles", "suggestions"] },
-        { id: "System", sub: "Preferences, timeouts, startup, apps, backups and restore.", groups: ["sysoptions", "startup", "apps", "backup"] },
+        { id: "Input & power", sub: "Mouse, touchpad, gestures, mouse buttons, keyboard, and power and sleep.", groups: ["mouse", "keyboard", "gestures", "mousebtn", "power"] },
+        { id: "Performance", sub: "Resource use, profiles, the tree view and memory.", groups: ["performance", "profiles", "treeview", "suggestions"] },
+        { id: "System", sub: "Startup and background apps, your apps, timeouts and backups.", groups: ["startup", "apps", "sysoptions", "backup"] },
         { id: "Security", sub: "The antivirus, the firewall, the safety check and their reminders.", groups: ["security", "firewall"] },
         { id: "Debug / Advanced", sub: "Every advanced option, plus the doctor, the self-test, memory and log tools. Nothing here is needed day to day.", groups: ["debug"] }
     ]
     // the left menu reads as a few headings with their pages under them (every page id appears once; tests/settings-groups.test.js checks it)
     readonly property var navHeads: [
         { head: "Start", ids: ["Discover"] },
-        { head: "Look and feel", ids: ["Appearance", "Stars & splash"] },
-        { head: "Shell", ids: ["Builders", "Bar", "Panels", "Desktop"] },
-        { head: "Tools", ids: ["Productivity", "AI", "Input & power"] },
-        { head: "System", ids: ["Performance", "System", "Security", "Debug / Advanced"] }
+        { head: "Look and feel", ids: ["Appearance", "Desktop", "Stars & splash"] },
+        { head: "Shell", ids: ["Builders", "Bar", "Notifications", "Panels", "Lock & login"] },
+        { head: "Tools", ids: ["Productivity", "AI"] },
+        { head: "System", ids: ["Input & power", "Performance", "System", "Security", "Debug / Advanced"] }
     ]
     readonly property var navRows: {
         var out = []

@@ -6,7 +6,10 @@ before changing it. Back to the [README](../README.md).
 ## The current setup
 
 - `>ask`, `>do`, the notes, the brief and the ClamAV fixes use **one** model: `HALCYON_AI_MODEL`, else `MODEL=` in
-  `~/.config/Halcyon/ai-advisor.conf` (Settings > AI > AI advisor model), else `qwen2.5:3b-instruct`.
+  `~/.config/Halcyon/ai-advisor.conf` (Settings > AI > AI advisor model), else `gemma4:e2b-it-qat`. The same model describes
+  pictures in Notes, so no second download is needed.
+- Luna: main `qwen3.5:9b`, vision `qwen3.5:4b`, fast `phi4-mini` (no hidden reasoning, so greetings stay instant),
+  embeddings `nomic-embed-text` (kept: her embedding cache is keyed by the text only, so switching would mix vector spaces).
 - The Security center's assistants (ai-firewall, ai-antivirus) use `SECURITY_MODEL` (default: a qwen3.5 size picked for the machine).
 - Everything runs locally through Ollama on 127.0.0.1. Nothing is sent anywhere.
 
@@ -57,6 +60,20 @@ keywords, not one exact sentence). `tests/test_ai_eval.py` checks the scoring wi
 ## Results
 
 2026-10-26, 6 GB GPU, `HALCYON_DIR` pointing at the repo (so the new docs were read). 20 cases per model:
+
+2026-11-01, same laptop, the repo's new Settings layout (so the "help" answers name the new pages):
+
+| Model | help | format | security | ground | triage | about | guard | total | time |
+|---|---|---|---|---|---|---|---|---|---|
+| **gemma4:e2b-it-qat** (new default) | 5/6 | 1/2 | 4/4 | 1/1 | 1/3 | 1/1 | 3/3 | 16 | 114 s |
+| qwen3.5:4b | 5/6 | 1/2 | 4/4 | 1/1 | 2/3 | 1/1 | 2/3 | 16 | 247 s |
+
+Why Gemma 4 E2B: it refused all three harmful requests (Qwen 3.5 4B handed over `rm -rf /home/*`, which matters because `>do`
+acts on the machine), is twice as fast, and reads pictures. Its weak spot is ClamAV triage (it called a named trojan a false
+positive); that is contained because Halcyon never turns a named-malware finding into an exception (fixed gates in
+`halcyon-ai.py`). If you mostly use the Notes AI overview, `qwen2.5:3b-instruct` is still a good, smaller choice.
+
+2026-10-26:
 
 | Model | help | format | security | ground | triage | about | guard | total | time |
 |---|---|---|---|---|---|---|---|---|---|
