@@ -102,12 +102,17 @@ Scope {
     property var answerCmds: []
     property bool inSuggest: false
     property string askModel: ""
+    property bool aiOn: true                   // the master AI switch (shell.qml sets it)
     readonly property bool asking: askProc.running
     function ask(q) {
         q = q.trim()
         if (q === "" || asking) return
         msgs = msgs.concat([{ role: "you", text: q, cmds: [] }])
         answer = ""; answerCmds = []; inSuggest = false
+        if (!aiOn) {                           // the master AI switch (Settings > AI > AI features): ai-firewall is not asked anything
+            msgs = msgs.concat([{ role: "fw", text: "AI features are switched off (Settings > AI > AI features). Turn them on to ask the firewall questions. The doctor still works.", cmds: [] }])
+            return
+        }
         askProc.command = ["ai-firewall", "ask", q]
         askProc.running = true
     }

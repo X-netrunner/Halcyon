@@ -1176,9 +1176,9 @@ def leaks_command(args, assume_yes=False):
     if ollama_generate(prompt, num_predict=380, temperature=0.2, stream=True, timeout=120) is None and LAST_LLM_ERROR:
         print(LAST_LLM_ERROR + " (the report above stands on its own)")
 
-# Master AI switch (Settings > Performance > AI features): while ~/.local/state/island/ai-off exists no model is asked anything.
+# Master AI switch (Settings > AI > AI features): while ~/.local/state/island/ai-off exists no model is asked anything.
 AI_OFF_FLAG = os.path.join(os.path.expanduser("~"), ".local", "state", "island", "ai-off")
-AI_OFF_MSG = "The AI is switched off. Turn it back on in Settings > Performance > AI features (or: python3 ~/.config/Halcyon/scripts/ai-models.py master on)."
+AI_OFF_MSG = "The AI is switched off. Turn it back on in Settings > AI > AI features (or: python3 ~/.config/Halcyon/scripts/ai-models.py master on)."
 
 def ai_enabled():
     return not os.path.exists(AI_OFF_FLAG)

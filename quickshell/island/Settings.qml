@@ -656,6 +656,7 @@ Scope {
         case "notifBuilder": return cNotifBuilder
         case "barBuilder": return cBarBuilder
         case "aiModel": return cAiModel
+        case "aiCovers": return cAiCovers
         case "voiceKey": return cVoiceKey
         case "discover": return cDiscover
         case "growth": return cGrowth
@@ -876,12 +877,7 @@ Scope {
         ] },
         { id: "notes", title: "Notes", section: "Productivity", items: [
             { type: "custom", name: "voiceKey", label: "Voice note hotkey" },
-            { type: "toggle", adv: true, soft: true, when: "ai:enabled=true", key: "nt:NOTES_SUMMARY", label: "Full summary of long notes", desc: "A note of 150 words or more gets a full summary under it by itself: one sentence with the main point and then every important point as its own line. It has no length limit (a very long note is read in pieces and nothing is cut off), and every line is checked against the note, so a line the note does not support is left out. The short Overview is separate. For any note, press Summarise on its row." },
             { type: "toggle", soft: true, key: "nt:NOTES_OCR", label: "Read the text in pictures", desc: "A picture you paste into a note is read in the background with tesseract (offline, on this computer): the text in it shows under the picture, can be copied, and is found by the search box. It only copies what is there, it cannot invent anything. Needs: sudo pacman -S tesseract tesseract-data-eng" },
-            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_VLM", label: "Describe pictures (vision model)", desc: "Adds a Describe button to picture notes: a local vision model in Ollama writes one or two sentences about the picture. Only when you press it, never by itself; the model is unloaded right after. Small models can be wrong, so a sentence with a number that is not in the picture's own text is dropped. Install it once with: ollama pull qwen2.5vl:3b (another one: notes set NOTES_VLM_MODEL name)." },
-            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_OVERVIEW", label: "AI overview under every note", desc: "In the background your local Ollama model writes a short overview under each note you save, task or not: one sentence for a short note, a short intro and a few bullet points for a longer one (a pasted article, say). The Think button on a note writes it again. Nothing is sent anywhere (the model runs on this PC); if Ollama is not running the note is simply saved. Off by default." },
-            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_AI", label: "Sort new notes into tasks", desc: "Super + N saves a note at once, as always. In the background your local Ollama model then decides whether it is a task: \"call mom at 6\" becomes a task due 18:00, \"idea: dark theme for the lock screen\" stays a plain note. The model's short comment (what it decided and why) shows right under the note in the All notes window, and Think on a note asks it again. Tasks show under Tasks, and a task with a time sends a notification when it is due. Off by default; nothing is sent anywhere (the model runs on this PC) and if Ollama is not running the note is simply saved." },
-            { type: "seg", adv: true, key: "nt:NOTES_AI_MODE", label: "When the model thinks it is a task", desc: "Ask me: the note shows \"Make task / Keep as note\" in the All notes window. Automatically: it just becomes a task (you can turn it back with Note on its row).", opts: [o("ask", "Ask me first"), o("auto", "Do it automatically")], when: "ai:enabled=true&nt:NOTES_AI=true" },
             { type: "seg", drop: true, adv: true, key: "nt:NOTES_NUDGE_HOURS", label: "Later today: nudge every", desc: "Press Remind > Later today on a task (or the AI sees \"later\" in a note) and Halcyon sends a quiet notification every few hours during the rest of that day, until you tick the task off, it has nudged the most times below, or the day ends. Nothing at night (09:00 to 21:00 by default; change it with: notes set NOTES_NUDGE_FROM / NOTES_NUDGE_TO). It never nags: a task that is done or deleted is left alone.", opts: [o("1", "1 h"), o("2", "2 h"), o("3", "3 h"), o("4", "4 h"), o("6", "6 h")] },
             { type: "seg", drop: true, adv: true, key: "nt:NOTES_NUDGE_MAX", label: "Later today: at most", desc: "The most nudges one task gets in a day.", opts: [o("2", "2"), o("3", "3"), o("4", "4"), o("6", "6")] }
         ] },
@@ -891,12 +887,25 @@ Scope {
             { type: "seg", key: "opt:recAudio", label: "Sound source", desc: "Desktop sound is whatever you hear (music, calls, videos). Microphone is the default microphone. Both mixes the two into one track. Needs ffmpeg and PipeWire (or PulseAudio).", opts: [o("system", "Desktop sound"), o("mic", "Microphone"), o("both", "Both")], when: "opt:recKind=audio" },
             { type: "acts", label: "Recordings", desc: "Everything is saved in ~/Videos/Recordings (video as recording_<date>.mp4, sound as audio_<date>.m4a). A different folder: write its path in ~/.local/state/island/rec-dir. A change here applies from the next recording; one that is running is not touched.", btns: [{ id: "rec-toggle", btn: "Start / stop", done: "" }, { id: "rec-last", btn: "Play the latest", done: "" }, { id: "rec-open", btn: "Open the folder", done: "" }] }
         ] },
-        { id: "ai", title: "AI helpers", section: "Productivity", items: [
-            { type: "toggle", key: "ai:enabled", def: true, label: "AI features", desc: "The master switch for everything that asks a local AI model: the notes overview, task sorting and Organise, the `ai` chat, >ask and >do in the launcher, the clipboard and lyrics helpers, the error explainer, the AI / LLM advisor and the model list below. Off: none of it runs and nothing asks Ollama anything; your notes, settings and downloaded models stay as they are. Ollama itself is not stopped (other programs may use it)." },
-            { type: "custom", name: "aiModel", when: "ai:enabled=true", label: "AI advisor model" },
+        { id: "aimaster", title: "Master switch", section: "AI", items: [
+            { type: "toggle", key: "ai:enabled", def: true, label: "AI features", desc: "The master switch for everything that asks an AI model, local or online: the notes overview and task sorting, the `ai` chat and the AI chatbox (every provider, hosted ones too), Luna, the Study Center, >ask and >do in the launcher, the clipboard and lyrics helpers, the error explainer, the advisor, the antivirus alert review, and the Ask boxes of the Security and Firewall centers. Off: none of it runs and nothing is asked anything; your notes, settings and downloaded models stay as they are. The antivirus and the firewall keep protecting. Ollama itself is not stopped (other programs may use it)." },
+            { type: "custom", name: "aiCovers", label: "What the switch covers" },
+            { type: "custom", name: "aiModel", when: "ai:enabled=true", label: "AI advisor model" }
+        ] },
+        { id: "ainotes", title: "Notes & tasks", section: "AI", items: [
+            { type: "toggle", adv: true, soft: true, when: "ai:enabled=true", key: "nt:NOTES_SUMMARY", label: "Full summary of long notes", desc: "A note of 150 words or more gets a full summary under it by itself: one sentence with the main point and then every important point as its own line. It has no length limit (a very long note is read in pieces and nothing is cut off), and every line is checked against the note, so a line the note does not support is left out. The short Overview is separate. For any note, press Summarise on its row." },
+            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_VLM", label: "Describe pictures (vision model)", desc: "Adds a Describe button to picture notes: a local vision model in Ollama writes one or two sentences about the picture. Only when you press it, never by itself; the model is unloaded right after. Small models can be wrong, so a sentence with a number that is not in the picture's own text is dropped. Install it once with: ollama pull qwen2.5vl:3b (another one: notes set NOTES_VLM_MODEL name)." },
+            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_OVERVIEW", label: "AI overview under every note", desc: "In the background your local Ollama model writes a short overview under each note you save, task or not: one sentence for a short note, a short intro and a few bullet points for a longer one (a pasted article, say). The Think button on a note writes it again. Nothing is sent anywhere (the model runs on this PC); if Ollama is not running the note is simply saved. Off by default." },
+            { type: "toggle", soft: true, when: "ai:enabled=true", key: "nt:NOTES_AI", label: "Sort new notes into tasks", desc: "Super + N saves a note at once, as always. In the background your local Ollama model then decides whether it is a task: \"call mom at 6\" becomes a task due 18:00, \"idea: dark theme for the lock screen\" stays a plain note. The model's short comment (what it decided and why) shows right under the note in the All notes window, and Think on a note asks it again. Tasks show under Tasks, and a task with a time sends a notification when it is due. Off by default; nothing is sent anywhere (the model runs on this PC) and if Ollama is not running the note is simply saved." },
+            { type: "seg", adv: true, key: "nt:NOTES_AI_MODE", label: "When the model thinks it is a task", desc: "Ask me: the note shows \"Make task / Keep as note\" in the All notes window. Automatically: it just becomes a task (you can turn it back with Note on its row).", opts: [o("ask", "Ask me first"), o("auto", "Do it automatically")], when: "ai:enabled=true&nt:NOTES_AI=true" }
+        ] },
+        { id: "aisec", title: "Antivirus & firewall", section: "AI", items: [
+            { type: "seg", when: "ai:enabled=true", soft: true, drop: true, key: "avIdle", label: "AI Antivirus comments only when idle for", desc: "The local model that explains antivirus alerts waits until you have not touched the computer for this long, and stops when you come back, so it never heats the machine while you work. The antivirus itself keeps protecting. Needs hypridle.", opts: [o(0, "Always"), o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")] },
+            { type: "action", when: "ai:enabled=true", soft: true, needs: "antivirus", id: root.avAiOn ? "antivirus-ai:off" : "antivirus-ai:on", label: "AI review of antivirus alerts", btn: root.avAiOn ? "Turn off" : "Turn on", done: "Opening…", desc: "Now: " + (root.avAiOn ? "on" : "off") + ". ai-antivirus sends each alert to your local model (loopback only) and keeps its comments, advice only: it never blocks or deletes anything by itself. The model is the one in /etc/ai-antivirus/ai-antivirus.toml ([ai]); if Ollama lacks it you are asked to download it. Opens the console and asks for your admin password.", }
+        ] },
+        { id: "aihelp", title: "Everyday helpers", section: "AI", items: [
             { type: "toggle", key: "opt:aiBriefCard", def: true, label: "Daily brief card", desc: "Once a day, the first time you use the desktop, a notification sums up your tasks (what is overdue and due today), your notes and your Focus streak. The local AI words it; with AI off it is written plainly from the same facts. The same brief is a desktop widget too (Widget builder > Daily brief). Terminal: halcyon ai brief." },
-            { type: "toggle", key: "opt:unusedRemind", def: true, label: "Monthly unused-apps reminder", desc: "Once a month, a notification when there are programs or background services you have not used for 30 days (Startup & processes > Unused has the list). Nothing is removed by itself." },
-            { type: "toggle", key: "opt:aiExplain", def: true, when: "ai:enabled=true", label: "Explain errors", desc: "When a Halcyon service fails, or the island logs a new QML error, the local AI reads the log (and the code at that line) and a notification says what went wrong and the likely fix. Each error is explained once. Nothing leaves this computer. Any time: halcyon ai explain last, and halcyon ai explain show for the full last answer." },
+            { type: "toggle", key: "opt:aiExplain", def: true, soft: true, when: "ai:enabled=true", label: "Explain errors", desc: "When a Halcyon service fails, or the island logs a new QML error, the local AI reads the log (and the code at that line) and a notification says what went wrong and the likely fix. Each error is explained once. Nothing leaves this computer. Any time: halcyon ai explain last, and halcyon ai explain show for the full last answer." }
         ] },
         { id: "mouse", title: "Mouse & touchpad", section: "Input & power", items: [
             { type: "slider", key: "scrollMouse", label: "Mouse wheel scroll speed", desc: "In every app. Higher is faster.", min: 0.25, max: 3, step: 0.05, dec: 2, unit: "×", glyph: 0xF037D },
@@ -927,7 +936,6 @@ Scope {
             { type: "seg", drop: true, key: "powerMgr", label: "Power manager", desc: "Which program controls CPU power. Only one runs at a time; the others are stopped. Halcyon Auto drives power-profiles-daemon by itself.", opts: [o("halcyon", "Halcyon Auto"), o("power-profiles-daemon", "power-profiles-daemon"), o("tlp", "TLP"), o("auto-cpufreq", "auto-cpufreq"), o("tuned", "Tuned")] },
             { type: "seg", drop: true, key: "idleDim", label: "Dim the screen and keyboard light after", opts: [o(0, "Never"), o(1, "1 min"), o(2, "2 min"), o(3, "3 min"), o(5, "5 min"), o(10, "10 min")] },
             { type: "seg", drop: true, key: "idleLock", label: "Lock the screen after", opts: [o(0, "Never"), o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")] },
-            { type: "seg", drop: true, key: "avIdle", label: "AI Antivirus comments only when idle for", desc: "The local model that explains antivirus alerts waits until you have not touched the computer for this long, and stops when you come back, so it never heats the machine while you work. The antivirus itself keeps protecting. Needs hypridle.", opts: [o(0, "Always"), o(2, "2 min"), o(5, "5 min"), o(10, "10 min"), o(15, "15 min"), o(30, "30 min")] },
             { type: "seg", drop: true, key: "idleSleep", label: "Go to sleep after", desc: "Counted from when you last touched the computer. Caffeine stops all three. Needs hypridle.", opts: [o(0, "Never"), o(15, "15 min"), o(30, "30 min"), o(60, "1 h"), o(120, "2 h"), o(240, "4 h")] },
             { type: "tool", adv: true, key: "wifips", label: "Wi-Fi power saving", desc: "On saves battery. Off gives the lowest latency (Gaming mode switches it off by itself)." }
         ] },
@@ -1003,6 +1011,7 @@ Scope {
             ] }
         ] },
         { id: "startup", title: "Startup & background", section: "System", items: [
+            { type: "toggle", key: "opt:unusedRemind", def: true, label: "Monthly unused-apps reminder", desc: "Once a month, a notification when there are programs or background services you have not used for 30 days (Startup & processes > Unused has the list). Nothing is removed by itself." },
             { type: "action", id: "startup-view", label: "Startup & processes", btn: "Open the window", done: "", desc: "Everything that starts with the desktop (Halcyon's parts, your hypr-user.lua lines, systemd user services, autostart files) with the processes it runs, their RAM and CPU, a switch for each, and every other process of yours with an End button. The Health tab compares all of Halcyon with the RAM and CPU limits (Performance & memory) and lists the likely causes when it is over. Also `>startup` in the launcher." },
             { type: "toggle", key: "st:NM_APPLET", label: "Network tray icon (nm-applet)", desc: "Off saves roughly 30-50 MB. The island already lists Wi-Fi networks. Turn it on for VPN and 802.1x (company / school Wi-Fi) password prompts. Starts or stops at once." },
             { type: "toggle", key: "st:BLUEMAN", label: "Bluetooth tray icon (blueman-applet)", desc: "Off saves roughly 30-50 MB. Already paired devices reconnect without it; you only need it to pair a new device from a window. Starts or stops at once." },
@@ -1031,7 +1040,6 @@ Scope {
             { type: "action", id: "security-firewall", needs: "firewall", label: "Firewall", btn: "Open in the Security center", done: "Opening…" },
             { type: "action", id: "security-antivirus", needs: "antivirus", label: "Antivirus", btn: "Open in the Security center", done: "Opening…" },
             { type: "action", id: "security-exceptions", needs: "antivirus", label: "Antivirus exceptions", btn: "Open", done: "Opening…" },
-            { type: "action", needs: "antivirus", id: root.avAiOn ? "antivirus-ai:off" : "antivirus-ai:on", label: "AI review of antivirus alerts", btn: root.avAiOn ? "Turn off" : "Turn on", done: "Opening…", desc: "Now: " + (root.avAiOn ? "on" : "off") + ". ai-antivirus sends each alert to your local model (loopback only) and keeps its comments, advice only: it never blocks or deletes anything by itself. The model is the one in /etc/ai-antivirus/ai-antivirus.toml ([ai]); if Ollama lacks it you are asked to download it. Opens the console and asks for your admin password.", },
             { type: "action", adv: true, id: "safety-check", needs: "safety", label: "Safety check", btn: "Run the safety check", done: "Opening…", desc: "Opens a terminal and, after your admin password, runs the full check: system update, ClamAV malware scan, rkhunter rootkit check, firewall, Lynis audit, AIDE file integrity (monthly) and a backup to your backup disk. It takes a while; the log is saved in /var/log/halcyon/safety_check/." }
         ].concat(root.remindRows("SAFETY", "Remind me to run the safety check", "Same, for the safety check (by hand or automatic, either counts as done).", "safety")).concat([
             { type: "custom", name: "safetyAuto" },
@@ -1186,7 +1194,7 @@ Scope {
     property string query: ""
     property bool scrolling: false          // true while the list is moving: the starfield / pulses pause so scrolling gets the whole frame
     property string section: ""             // "" = every section; else Appearance | Bar & panels | Desktop | Input & power | Performance | System
-    readonly property var sections: ["Discover", "Appearance", "Stars & splash", "Bar & panels", "Desktop", "Productivity", "Input & power", "Performance", "System", "Debug / Advanced"]
+    readonly property var sections: ["Discover", "Appearance", "Stars & splash", "Bar & panels", "Desktop", "Productivity", "AI", "Input & power", "Performance", "System", "Debug / Advanced"]
     property var collapsed: ({ apps: true, growth: true, gestures: true, mousebtn: true, treeview: true })
 
     // ---- two layouts: "tree" (the branching view, the default) and "pages" (a menu on the left, one page at a time).
@@ -1201,7 +1209,8 @@ Scope {
         { id: "Panels", sub: "Notifications, the edge boxes, the volume bar and the utilities box.", groups: ["notifications", "osd", "utilbox"] },
         { id: "Builders", sub: "Design your own bar, desktop, widgets and notification box. Each one opens a window with a live preview; every change is saved at once.", groups: ["builders"] },
         { id: "Desktop", sub: "Widget readability, workspaces and windows.", groups: ["widgets", "workspaces"] },
-        { id: "Productivity", sub: "Focus mode, the calendar, notes, recording and the local AI helpers.", groups: ["focus", "calendar", "notes", "recording", "ai"] },
+        { id: "Productivity", sub: "Focus mode, the calendar, notes and screen recording.", groups: ["focus", "calendar", "notes", "recording"] },
+        { id: "AI", sub: "One switch for every AI feature, and what each one does. Off means nothing is asked any model.", groups: ["aimaster", "ainotes", "aisec", "aihelp"] },
         { id: "Input & power", sub: "Mouse, touchpad, gestures, mouse buttons, keyboard, power and the lock screen.", groups: ["mouse", "keyboard", "gestures", "mousebtn", "power", "lockscreen", "loginscreen"] },
         { id: "Performance", sub: "Profiles, safe mode, speed, memory limits, the tree view and suggestions.", groups: ["performance", "treeview", "profiles", "suggestions"] },
         { id: "System", sub: "Preferences, timeouts, startup, apps, backups and restore.", groups: ["sysoptions", "startup", "apps", "backup"] },
@@ -1213,7 +1222,7 @@ Scope {
         { head: "Start", ids: ["Discover"] },
         { head: "Look and feel", ids: ["Appearance", "Stars & splash"] },
         { head: "Shell", ids: ["Builders", "Bar", "Panels", "Desktop"] },
-        { head: "Tools", ids: ["Productivity", "Input & power"] },
+        { head: "Tools", ids: ["Productivity", "AI", "Input & power"] },
         { head: "System", ids: ["Performance", "System", "Security", "Debug / Advanced"] }
     ]
     readonly property var navRows: {
@@ -1257,6 +1266,7 @@ Scope {
     // array when nothing changed, because a Repeater tears down and rebuilds every delegate whenever its model is replaced
     // bar off: the rows that only mean something with a bar are not hidden but gathered, greyed out, in one "Disabled" box at the bottom of the Bar page
     readonly property var barOnlyGroups: ["barwidgets", "barbehave"]
+    readonly property var keepOffGroups: ["ainotes", "aisec"]      // groups whose rows all grey out with the AI switch: they stay, greyed, instead of vanishing
     readonly property string barOffWhy: "Needs a bar. Pick a bar style (not Off) in Bar > Style to use this."
     readonly property var _fc: ({ sig: "", out: [] })
     readonly property var _cc: ({ sig: "", out: [] })
@@ -1306,8 +1316,8 @@ Scope {
                 if (q === "" && it.adv === true) { advList.push(it); advIdx += i + ","; continue }      // advanced rows live on the Debug / Advanced page (a search still finds them here)
                 items.push(it); idx += i + ","
             }
-            if (items.length > 0 && dis.length > 0) {
-                items.push({ type: "divider", label: "Disabled" })
+            if ((items.length > 0 || keepOffGroups.indexOf(grp.id) >= 0) && dis.length > 0) {
+                if (items.length > 0) items.push({ type: "divider", label: "Disabled" })
                 for (var dd = 0; dd < dis.length; dd++) items.push(dis[dd])
                 idx += "D" + didx
             }
@@ -1425,6 +1435,7 @@ Scope {
     Component { id: cCounterScan; SetCounterScan { root: settingsScope } }
 
     Component { id: cAiModel; SetAiModel { root: settingsScope } }
+    Component { id: cAiCovers; SetAiCovers { root: settingsScope } }
     Component { id: cVoiceKey; SetVoiceKey { root: settingsScope } }
     Component { id: cDiscover; SetDiscover { root: settingsScope } }
 
