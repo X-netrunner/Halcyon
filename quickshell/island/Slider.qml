@@ -62,7 +62,7 @@ Item {
                 height: parent.height
                 radius: height / 2
                 color: root.dimmed ? Qt.alpha(root.pal.muted, 0.7) : root.pal.accent
-                Behavior on width { enabled: !root.dragging; NumberAnimation { duration: root.pal.dFast; easing.type: Easing.OutCubic } }
+                Behavior on width { enabled: !root.dragging; NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
             }
         }
         MouseArea {

@@ -387,20 +387,33 @@ Scope {
     property string lastRawPalette: ""
 
     // ---------- motion ----------
-    // one signature curve: a gentle spring. It slips about 3 % past its target and settles slowly (calm, because the times below are long).
-    // curveSoft:
-    // curveCalm: no overshoot. A box joined to the screen border (frameOn) must not overshoot or it would pull away from the border
-    // for a moment, so the border uses the calm one. Want it bouncier? Raise the second number of curveSoft (1.32 = soft, 1.38 = a little more, 1.6 = playful, about 11 %).
-    readonly property var curveCalm: [0.33, 0.85, 0.4, 1, 1, 1]
-    readonly property var curveSoft: [0.34, 1.32, 0.3, 1, 1, 1]
+    // The motion set is the one the Caelestia shell uses (its "expressive" Material 3 tokens), which is what makes it feel fluid:
+    // movement and size changes use a spring that slips a little past its target and then settles over about half a second, while
+    // fades and colour changes use a spring-less curve and are quicker. Everything in the island reads these, so tune them here.
+    //   curveSoft   spatial spring (move, grow, slide). Overshoots about 8 %. Raise the second number for a bouncier feel (1.21 = Caelestia).
+    //   curveCalm   no overshoot. A box joined to the screen border (frameOn) must not overshoot or it would pull away from the border
+    //               for a moment, so the border uses this one. It is also the curve for every fade and colour change (curveFx).
+    readonly property var curveSoft: [0.38, 1.21, 0.22, 1, 1, 1]
+    readonly property var curveCalm: [0.34, 0.8, 0.34, 1, 1, 1]
     readonly property var curve: frameOn ? curveCalm : curveSoft
+    // For SIZE changes of a box that hangs from the border / bar (it grows away from the edge it is joined to). Overshooting a size
+    // never pulls it away from that edge, so the spring is allowed here even with the border on; only POSITIONS use `curve`.
+    readonly property var curveSize: curveSoft
+    readonly property var curveFx: curveCalm                      // fades, colours, small effects: no overshoot
+    readonly property var curveFxSlow: [0.34, 0.88, 0.34, 1, 1, 1]
+    readonly property var curveEmph: [0.05, 0, 2 / 15, 0.06, 1 / 6, 0.4, 5 / 24, 0.82, 0.25, 1, 1, 1]   // something leaving or arriving with weight
+    readonly property var curveDecel: [0.05, 0.7, 0.1, 1, 1, 1]   // fast start, long soft landing (cards sliding in)
+    readonly property var curveAccel: [0.3, 0, 0.8, 0.15, 1, 1]   // slow start, fast exit (cards sliding out)
     // motion scales every island animation: 1 = normal, 0.5 = fast, 0 = instant (Gaming mode uses 0.25)
     property real motion: 1.0
-    readonly property int dFast: Math.round(200 * motion)
-    readonly property int dMed: Math.round(300 * motion)
-    readonly property int dSlow: Math.round(420 * motion)
+    // squash and stretch on moving panels (Jelly.qml): Settings > Motion > "Jelly motion"; jellyAmt scales how much (1 = normal)
+    property bool jelly: true
+    property real jellyAmt: 1.0
+    readonly property int dFast: Math.round(200 * motion)         // fades, hovers, colours (Caelestia: default effects 200)
+    readonly property int dMed: Math.round(400 * motion)          // small moves and resizes (fast spatial 350)
+    readonly property int dSlow: Math.round(600 * motion)         // boxes opening, cards sliding, lists re-flowing (default spatial 500)
     // boxes folding back in: a touch quicker than they came out, and a gentle ease-in-out (starts soft, settles soft) instead of the sharp ease-out they open with
-    readonly property int dClose: Math.round(320 * motion)
+    readonly property int dClose: Math.round(420 * motion)
     readonly property var curveClose: [0.45, 0, 0.3, 1, 1, 1]
 
     Behavior on bg { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }

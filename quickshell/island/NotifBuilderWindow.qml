@@ -64,7 +64,7 @@ Item {
     opacity: open ? 1 : 0
     visible: opacity > 0.01
     focus: open
-    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     onOpenChanged: { if (open) { t0 = Date.now(); now = t0; removed = ({}); Qt.callLater(function () { root.forceActiveFocus() }) } }
     Component.onCompleted: if (open) Qt.callLater(function () { root.forceActiveFocus() })
     Keys.onPressed: function (e) { if (e.key === Qt.Key_Escape) { root.closed(); e.accepted = true } }
@@ -276,8 +276,8 @@ Item {
                                         : (root.cur.vpos === "middle" ? (scr.height - height) / 2 : (scr.atBot ? scr.height - height - 4 : 4))
                                     color: root.pal.accent
                                     z: 2
-                                    Behavior on x { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.OutCubic } }
-                                    Behavior on y { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.OutCubic } }
+                                    Behavior on x { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                                    Behavior on y { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                                 }
 
                                 Rectangle {
@@ -292,8 +292,8 @@ Item {
                                     color: Qt.alpha(root.pal.accent, 0.35)
                                     border.width: 1
                                     border.color: root.pal.accent
-                                    Behavior on x { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.OutCubic } }
-                                    Behavior on y { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.OutCubic } }
+                                    Behavior on x { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                                    Behavior on y { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                                 }
                             }
                             ColumnLayout {

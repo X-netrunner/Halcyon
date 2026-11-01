@@ -1489,7 +1489,7 @@ Scope {
                                         id: ovIcon
                                         width: 68; height: 68; radius: 24
                                         color: Qt.alpha(root.overallColor, 0.14)
-                                        Behavior on color { ColorAnimation { duration: 400 } }
+                                        Behavior on color { ColorAnimation { duration: 400; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Glyph { anchors.centerIn: parent; code: root.ovCalm ? 0xF0565 : 0xF0026; font.pixelSize: 32; color: root.overallColor }
                                         SequentialAnimation on scale {
                                             running: root.open && root.tab === "overview" && !root.ovCalm && !root.pal.calm
@@ -1590,7 +1590,7 @@ Scope {
                                             radius: root.pal.rLg
                                             color: otMa.containsMouse && modelData.ok ? root.pal.fillHover : root.pal.fill
                                             opacity: modelData.ok ? 1 : 0.45
-                                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                             MouseArea {
                                                 id: otMa
                                                 anchors.fill: parent

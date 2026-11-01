@@ -1303,7 +1303,7 @@ Scope {
                                                 id: flipAnim
                                                 NumberAnimation { target: flip; property: "a"; to: 90; duration: root.pal.dFast; easing.type: Easing.InSine }
                                                 ScriptAction { script: flip.face = root.cardBack }
-                                                NumberAnimation { target: flip; property: "a"; from: -90; to: 0; duration: root.pal.dFast; easing.type: Easing.OutSine }
+                                                NumberAnimation { target: flip; property: "a"; from: -90; to: 0; duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve }
                                             }
                                             property bool face: false
                                             Connections {

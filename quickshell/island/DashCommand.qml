@@ -60,7 +60,7 @@ Item {
         width: root.innerW; height: 44
         radius: root.pal.rMd
         color: barMa.containsMouse ? Qt.alpha(root.pal.text, 0.09) : Qt.alpha(root.pal.text, 0.06)
-        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             id: mag
             x: 16; anchors.verticalCenter: parent.verticalCenter
@@ -151,7 +151,7 @@ Item {
                 height: 34
                 radius: root.pal.rSm
                 color: lma.containsMouse ? Qt.alpha(root.pal.accent, 0.14) : "transparent"
-                Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Text {
                     id: lg
                     x: 10; anchors.verticalCenter: parent.verticalCenter

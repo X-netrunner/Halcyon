@@ -103,7 +103,7 @@ Scope {
                 width: chipRow.implicitWidth + 30
                 readonly property real shown: win.out ? width : win.sliver
                 x: root.right ? win.width - shown : shown - width
-                Behavior on x { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                Behavior on x { NumberAnimation { duration: 220; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 y: win.tabY
                 opacityBody: root.pal.glassSolid
                 opacity: win.out ? 1 : 0.55

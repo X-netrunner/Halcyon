@@ -54,7 +54,7 @@ ShellRoot {
     // settings.json (under "opt" / "hy") and applied below (setOpt / applyHypr)
     property var opt: ({
         launcherStyle: "classic", // classic | spotlight : the look of the app menu (Settings > Keyboard & launcher > Launcher style)
-        launchSpeed: "quick",      // normal | quick | instant : how fast the launcher grows out of the bar (root.launchK)
+        launchSpeed: "normal",     // normal | quick | instant : how fast the launcher grows out of the bar (root.launchK)
         accentMode: "fixed",       // fixed | cycle : the accent is the wallpaper's main colour, or drifts through all of its colours
         cycleSecs: 30,             // seconds from one wallpaper colour to the next
         termMode: "spectrum",      // spectrum | accent : terminal colours from every wallpaper colour, or from the one accent
@@ -123,6 +123,8 @@ ShellRoot {
         lockMode: "lock",          // lock | login : after sleep / when locked: the lock screen (widgets allowed) or the login-screen look (no widgets at all)
         loginMode: "keep",         // keep | greeter | lock : what happens at BOOT (Settings > Power & lock > At boot; "Apply" runs scripts/halcyon-greeter.sh apply in a terminal)
         lockWidgets: false,        // OFF by default: the lock screen is just the clock + password. On = battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
+        jelly: true,               // squash and stretch on panels that move or resize (Jelly.qml); off in Gaming mode
+        jellyAmt: 1,               // 0.3 .. 2: how much they deform
         splashLock: true,          // the splash on the lock screen that is also the login screen (Lock.qml); needs the master `splash` switch
         splashDim: 0.75,           // 0 .. 0.9 : how dark the screen gets while any splash plays (a black veil under the stars; Splash.qml)
         splashStart: true,         // also play the splash once per login session when the lock screen is NOT the login screen (display-manager users); once per session, never on an island restart
@@ -475,7 +477,7 @@ ShellRoot {
     Timer { id: leaveT; interval: 700; onTriggered: root.leavingLauncher = false }
     // normal = the same soft 520 ms as every other page; quick = about half; instant = a short snap. Tap-to-open waits for the key to
     // come UP (a bare Super cannot be told apart from the start of Super+T until then), so the grow animation is the part we can shorten.
-    readonly property real launchK: ({ normal: 1.0, quick: 0.5, instant: 0.2 })[opt.launchSpeed || "quick"] || 0.5
+    readonly property real launchK: ({ normal: 1.0, quick: 0.5, instant: 0.2 })[opt.launchSpeed || "normal"] || 1.0
     readonly property bool launcherMotion: page === "launcher" || leavingLauncher
     function pageMs(base) { return launcherMotion ? Math.max(40, Math.round(base * launchK)) : base }
     Connections { target: notifs; function onUnreadChanged() { if (notifs.unread > 0) root.markSeen() } }
@@ -616,6 +618,8 @@ ShellRoot {
         boxShadow: root.opt.boxShadow !== false
         glassShift: root.glassShift
         motion: root.lean ? 0 : (root.gaming ? 0.25 : root.motion)
+        jelly: root.opt.jelly !== false && !root.gaming
+        jellyAmt: root.opt.jellyAmt !== undefined ? root.opt.jellyAmt : 1
         growth: root.growth
         growthOn: root.growthOn
         // Gaming mode: tree view and constellations drop to the lightest settings whatever Settings > Performance says
@@ -3272,6 +3276,7 @@ ShellRoot {
             radius: island.radius
             spread: 22
             peak: 0.18
+            transform: Scale { origin.x: width / 2; origin.y: 0; xScale: islandJelly.sx; yScale: islandJelly.sy }
             opacity: (win.shown && !root.notchStyle) ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
@@ -3283,6 +3288,7 @@ ShellRoot {
             radius: island.radius
             spread: 22
             peak: 0.18
+            transform: Scale { origin.x: width / 2; origin.y: 60; xScale: islandJelly.sx; yScale: islandJelly.sy }
             opacity: root.hangShape ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
@@ -3294,6 +3300,7 @@ ShellRoot {
             y: root.frameT
             width: island.width + root.notchEar * 2
             height: island.height
+            transform: Scale { origin.x: width / 2; origin.y: 0; xScale: islandJelly.sx; yScale: islandJelly.sy }
             fillCol: root.frameOn ? pal.frameCol : Qt.alpha(pal.bg, Math.min(0.97, pal.glassBarOpen + 0.16))
             opacity: root.hangShape ? 1 : 0
             visible: opacity > 0.01
@@ -3312,6 +3319,9 @@ ShellRoot {
             anchors.topMargin: (root.notchStyle || root.hangPage) ? root.frameT : (win.shown ? root.padSet.top + root.frameT : -(height + 30))
             anchors.horizontalCenter: parent.horizontalCenter
             clip: true
+            // squash and stretch while the island grows into a page, folds back or slides (Jelly.qml); the notch shape and the halos below
+            // follow the same numbers so the whole silhouette moves as one
+            Jelly { id: islandJelly; target: island; pal: pal; originX: 0.5; originY: 0 }
             // notch style: at rest the island is not there (the notch is); the pages drop down from under it
             opacity: (root.notchStyle && root.page === "home") ? 0 : 1
             visible: opacity > 0.01
@@ -3350,10 +3360,13 @@ ShellRoot {
             property real dragY: 0
 
             // one soft curve for everything: fast start, long gentle landing, no overshoot
+            // Growing into a page springs a little past its size and settles (curveSize: allowed with the border too, because a size that
+            // overshoots never pulls the box away from the edge it hangs from). Folding back to the bar uses the calm ease-in-out.
+            readonly property bool folding: root.page === "home"
             Behavior on anchors.topMargin { NumberAnimation { duration: root.pageMs(pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
-            Behavior on width { NumberAnimation { duration: root.pageMs(pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
-            Behavior on height { NumberAnimation { duration: root.pageMs(pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
-            Behavior on radius { NumberAnimation { duration: root.pageMs(pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
+            Behavior on width { NumberAnimation { duration: root.pageMs(island.folding ? pal.dClose : pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: island.folding ? pal.curveClose : pal.curveSize } }
+            Behavior on height { NumberAnimation { duration: root.pageMs(island.folding ? pal.dClose : pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: island.folding ? pal.curveClose : pal.curveSize } }
+            Behavior on radius { NumberAnimation { duration: root.pageMs(pal.dSlow); easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curveCalm } }
 
             // swallow clicks so they don't reach the backdrop
             MouseArea { anchors.fill: parent }
@@ -3429,7 +3442,7 @@ ShellRoot {
                 active: root.page === "home"
                 opacity: (root.page === "home" && !root.notchStyle) ? 1 : 0
                 visible: opacity > 0.01 && win.shown && root.opt.starsBar !== false
-                Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 anchors.fill: parent
                 anchors.leftMargin: root.padSet.h * 0.45
                 anchors.rightMargin: root.padSet.h * 0.45
@@ -3487,7 +3500,7 @@ ShellRoot {
                     onBgClicked: appsWin.pinFor(9000)
                     opacity: root.page === "home" ? 1 : 0
                     visible: opacity > 0.01
-                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     onStatusPopup: (kind, item) => root.homeStatusPopup(kind, item)
                     onStatusClicked: {
                         if (root.dropOn) root.dropShow("util")
@@ -3509,7 +3522,7 @@ ShellRoot {
                     }
                     opacity: root.page === "media" ? 1 : 0
                     visible: opacity > 0.01
-                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
 
                 PerfTab {
@@ -3532,7 +3545,7 @@ ShellRoot {
                     active: root.page === "perf"
                     opacity: root.page === "perf" ? 1 : 0
                     visible: opacity > 0.01
-                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     onToggleWifi: root.toggleWifi()
                     onToggleBt: root.toggleBt()
                     onSetProfile: p => root.setProfile(p)
@@ -3547,7 +3560,7 @@ ShellRoot {
                     active: root.page === "fw"
                     opacity: root.page === "fw" ? 1 : 0
                     visible: opacity > 0.01
-                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
 
                 // ---- the calendar page: the bar clock drops it out of the bar (Settings > Calendar > Clock click)
@@ -3558,7 +3571,7 @@ ShellRoot {
                     notchStyle: root.notchStyle || root.hangPage
                     opacity: root.page === "cal" ? 1 : 0
                     visible: opacity > 0.01
-                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     onOpenFull: { root.page = "home"; calendar.show() }
                 }
 
@@ -3570,7 +3583,7 @@ ShellRoot {
                     anchors.fill: parent
                     opacity: (root.page === "util" || root.page === "notif") ? 1 : 0
                     visible: opacity > 0.01
-                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+                    Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                     // where the pages are: 0 = utilities, 1 = notifications. It keeps its place while the drop-down folds away.
                     property real slideTo: 0
@@ -3767,13 +3780,15 @@ ShellRoot {
                 firewallInstalled: root.fwInstalled
                 antivirusInstalled: root.avInstalled
                 active: root.page === "launcher"
+                speedK: root.launchK
                 opacity: root.page === "launcher" ? 1 : 0
                 visible: opacity > 0.01
-                // instant, fluid fade without lagging pauses
+                // fades in over the first half of the grow (the box is already opening around it), out a little quicker
                 Behavior on opacity {
                     NumberAnimation {
-                        duration: root.page === "launcher" ? root.pageMs(160) : 120
-                        easing.type: Easing.OutCubic
+                        duration: root.page === "launcher" ? root.pageMs(320) : 140
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: pal.curveFx
                     }
                 }
                 onCloseRequested: root.page = "home"
@@ -4139,7 +4154,7 @@ ShellRoot {
             }
             transformOrigin: corner.oSide ? (corner.atR ? Item.Right : Item.Left) : corner.oVert ? (corner.atB ? Item.Bottom : Item.Top)
                            : (corner.atB ? (corner.atR ? Item.BottomRight : Item.BottomLeft) : (corner.atR ? Item.TopRight : Item.TopLeft))
-            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
             onToggleWifi: root.toggleWifi()
@@ -4348,7 +4363,7 @@ ShellRoot {
             }
             transformOrigin: appsWin.oSide ? (appsWin.atR ? Item.Right : Item.Left) : appsWin.oVert ? (appsWin.atB ? Item.Bottom : Item.Top)
                            : (appsWin.atB ? (appsWin.atR ? Item.BottomRight : Item.BottomLeft) : (appsWin.atR ? Item.TopRight : Item.TopLeft))
-            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.InOutSine } }
+            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
         }
     }

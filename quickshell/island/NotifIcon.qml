@@ -9,6 +9,8 @@ import Quickshell
 //       No profile picture found (scripts/avatar.sh)? Then it is the app icon, as below.
 //   app icon:
 //       the app's icon (or the image the app attached: avatar, album art, screenshot), a bell as the last fallback.
+//   tile (the popup cards): the same two pictures in a rounded square instead of a circle, on a faint tile of the tone colour
+//       (red for an urgent notification). The centre's rows keep the round look.
 Item {
     id: root
     property var pal
@@ -17,9 +19,17 @@ Item {
     property color tone: pal.accent
     property string avatar: ""          // path of the profile picture, "" = none (shell.qml: avatarPath)
     property bool usePfp: true
+    property bool tile: false           // rounded square (popup cards) instead of round
+    property bool urgent: false         // tile only: a stronger wash of the tone colour (red for an urgent one)
+    readonly property int tileR: Math.round(size * 0.28)
 
     implicitWidth: size
     implicitHeight: size
+
+    // Halcyon's own senders (the Calendar worker, the rice's scripts, Luna ...) wear the Halcyon sparkle, not an icon-theme picture or an
+    // emoji. Other apps keep their own icon. A sender with an attached image (avatar, album art, screenshot) is never replaced.
+    readonly property var halOwn: ["halcyon", "calendar", "hal", "luna", "notes", "study", "focus", "security"]
+    readonly property bool isHal: !!notif && !hasImage && halOwn.indexOf(String(notif.appName || "").trim().toLowerCase()) >= 0
 
     readonly property bool hasImage: !!notif && notif.image !== ""
     // an icon theme name, a file path, or the image the app attached
@@ -84,7 +94,7 @@ Item {
             layer.enabled: true
             layer.smooth: true
             layer.samples: 8
-            Rectangle { anchors.fill: parent; radius: width / 2; color: "black"; antialiasing: true }
+            Rectangle { anchors.fill: parent; radius: root.tile ? root.tileR : width / 2; color: "black"; antialiasing: true }
         }
         MultiEffect {
             anchors.fill: parent
@@ -98,7 +108,7 @@ Item {
         // a thin ring over the edge keeps the rim clean on any picture
         Rectangle {
             anchors.fill: parent
-            radius: width / 2
+            radius: root.tile ? root.tileR : width / 2
             color: "transparent"
             antialiasing: true
             border.width: 1.5
@@ -114,14 +124,21 @@ Item {
         height: width
         x: root.pfpOn ? root.size - width + 2 : 0
         y: root.pfpOn ? root.size - height + 2 : 0
-        radius: root.pfpOn ? width / 2 : Math.round(root.size * 0.32)
-        color: root.pal.surface
-        border.width: root.pfpOn ? 1.5 : 0
-        border.color: root.pal.line
+        radius: root.pfpOn ? (root.tile ? 6 : width / 2) : (root.tile ? root.tileR : Math.round(root.size * 0.32))
+        color: (root.tile && !root.pfpOn) ? Qt.alpha(root.tone, root.urgent ? 0.26 : 0.12) : root.pal.surface
+        border.width: root.pfpOn ? 1.5 : (root.tile ? 1 : 0)
+        border.color: (root.tile && !root.pfpOn) ? Qt.alpha(root.tone, root.urgent ? 0.75 : 0.35) : root.pal.line
         clip: true
         // with the badge there is nothing to show when the app has no icon at all: no bell on top of your face
-        visible: !root.pfpOn || ico.visible
+        visible: !root.pfpOn || ico.visible || mark.visible
 
+        HalMark {
+            id: mark
+            anchors.centerIn: parent
+            pal: root.pal
+            size: Math.round(appBox.width * 0.56)
+            visible: root.isHal
+        }
         Image {
             id: ico
             anchors.centerIn: parent
@@ -131,11 +148,11 @@ Item {
             fillMode: root.hasImage && !root.pfpOn ? Image.PreserveAspectCrop : Image.PreserveAspectFit
             source: root.src
             asynchronous: true
-            visible: status === Image.Ready
+            visible: !root.isHal && status === Image.Ready
         }
         Text {
             anchors.centerIn: parent
-            visible: !ico.visible && !root.pfpOn
+            visible: !ico.visible && !mark.visible && !root.pfpOn
             text: String.fromCodePoint(0xF009A)
             color: root.tone
             font.family: root.pal.font

@@ -81,7 +81,7 @@ WBase {
                               : (st === "stack" ? root.sz(30)
                               : (st === "labels" ? root.sz(26) : root.sz(32))))
                 width: implicitWidth; height: implicitHeight
-                Behavior on implicitWidth { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                Behavior on implicitWidth { NumberAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                 // the button itself
                 Rectangle {

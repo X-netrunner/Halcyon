@@ -168,7 +168,7 @@ Scope {
                 id: fade
                 anchors.fill: parent
                 opacity: root.open ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: root.pal ? root.pal.dMed : 180; easing.type: Easing.InOutSine } }
+                Behavior on opacity { NumberAnimation { duration: root.pal ? root.pal.dMed : 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 focus: root.open
 
                 Keys.onPressed: e => {

@@ -33,7 +33,7 @@ Item {
              : (hdMa.pressed ? dd.pal.surfaceHi : (hdMa.containsMouse ? Qt.alpha(dd.pal.surfaceHi, 0.9) : (dd.pal.zen ? dd.pal.fill : Qt.alpha(dd.pal.surface, 0.8))))
         border.width: dd.pal.calm ? 0 : 1
         border.color: dd.open ? Qt.alpha(dd.pal.accent, 0.40) : dd.pal.lineSoft
-        Behavior on color { ColorAnimation { duration: dd.pal.dFast } }
+        Behavior on color { ColorAnimation { duration: dd.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
@@ -55,7 +55,7 @@ Item {
             color: dd.open ? dd.pal.accent : dd.pal.muted
             font.family: dd.pal.uiFont
             font.pixelSize: 13
-            Behavior on rotation { NumberAnimation { duration: dd.pal.dFast; easing.type: Easing.InOutSine } }
+            Behavior on rotation { NumberAnimation { duration: dd.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: dd.pal.curve } }
         }
         MouseArea {
             id: hdMa
@@ -77,7 +77,7 @@ Item {
         color: Qt.alpha(dd.pal.bg, 0.55)
         border.width: 1
         border.color: dd.pal.lineSoft
-        Behavior on height { NumberAnimation { duration: dd.pal.dMed; easing.type: Easing.InOutSine } }
+        Behavior on height { NumberAnimation { duration: dd.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: dd.pal.curve } }
 
         Grid {
             x: 6; y: 6
@@ -92,7 +92,7 @@ Item {
                     height: dd.rowH
                     radius: 10
                     color: opt.modelData.on ? Qt.alpha(dd.pal.accent, 0.16) : (optMa.containsMouse ? Qt.alpha(dd.pal.surfaceHi, 0.9) : "transparent")
-                    Behavior on color { ColorAnimation { duration: dd.pal.dFast } }
+                    Behavior on color { ColorAnimation { duration: dd.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                     // single: a round dot; multi: a small tick box
                     Rectangle {

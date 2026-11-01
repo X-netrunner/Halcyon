@@ -155,7 +155,7 @@ Item {
                 cava: root.cava
                 active: root.tabsOn && root.open && root.tab === 0
                 opacity: root.tab === 0 ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 onOpenMusic: t => root.openMusic(t)
             }
             CalTab {
@@ -166,7 +166,7 @@ Item {
                 cal: root.cal
                 active: root.tabsOn && root.open && root.tab === 1
                 opacity: root.tab === 1 ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 onOpenFull: root.openCalendar()
             }
             PerfTab {
@@ -187,7 +187,7 @@ Item {
                 look: root.perfLook
                 active: root.tabsOn && root.open && root.tab === 2
                 opacity: root.tab === 2 ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+                Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 onToggleWifi: root.toggleWifi()
                 onToggleBt: root.toggleBt()
                 onSetProfile: p => root.setProfile(p)
@@ -208,7 +208,7 @@ Item {
         height: 56
         opacity: (root.tabsOn && root.showStats && root.tab === 1) ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+        Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     }
 
     // ---- the other two styles

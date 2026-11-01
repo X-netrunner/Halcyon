@@ -200,6 +200,13 @@ Scope {
             }
             return
         }
+        if (key === "quiet:mode") {                      // Do not disturb: Off / Errors only / On, written to the same two keys as before
+            if (v === "on") { if (!dnd) setting("dnd", true); return }       // the Errors-only flag is left as it was
+            if (dnd) setting("dnd", false)
+            var wantErr = v === "errors"
+            if ((opt && opt.connErrOnly === true) !== wantErr) setting("opt:connErrOnly", wantErr)
+            return
+        }
         if (key === "ai:enabled") {                      // the master AI switch (scripts/ai-models.py master on|off)
             var aiNow = JSON.parse(JSON.stringify(ai))
             aiNow.enabled = (v === true)
@@ -733,6 +740,8 @@ Scope {
         ] },
         { id: "motion", title: "Motion & dimming", section: "Appearance", items: [
             { type: "seg", key: "motion", label: "Island animations", opts: [o(0, "Off"), o(0.5, "Fast"), o(1, "Normal")] },
+            { type: "toggle", key: "opt:jelly", def: true, label: "Jelly motion", desc: "Boxes that open, close or slide stretch a little along the way they travel and pinch the other way, then settle back (the liquid feel of the Caelestia shell). It only works while something moves: a box at rest costs nothing. Off in Gaming mode and with the island animations off." },
+            { type: "slider", adv: true, key: "opt:jellyAmt", def: 1, label: "Jelly amount", desc: "How much boxes deform while they move. 100 % is a subtle wobble; higher is more playful, lower is calmer.", min: 0.3, max: 2, step: 0.1, scale: 100, unit: " %", when: "opt:jelly=true" },
             { type: "toggle", key: "hyprAnim", label: "Window animations" },
             { type: "toggle", adv: true, key: "hy:resizeAnim", label: "Animate window resizing", desc: "Off: a window follows the pointer at once while you drag its edge (lighter with blur on). The Low resource preset turns it off" },
             { type: "toggle", key: "hy:dimInactive", label: "Dim unfocused windows" },
@@ -810,17 +819,20 @@ Scope {
             { type: "seg", adv: true, key: "opt:clockAlign", label: "Centre the", desc: "Colon: the \":\" sits exactly on the screen's centre line (over a centre webcam). Whole text: the time including AM / PM is centred.", opts: [o("colon", "Colon"), o("text", "Whole text")] },
             { type: "seg", drop: true, adv: true, key: "opt:clockNudge", label: "Nudge the clock", desc: "Extra pixels to the right (or left) on top of the above, for a screen or webcam that sits a little off.", opts: [o(-4, "4 left"), o(-2, "2 left"), o(0, "None"), o(2, "2 right"), o(4, "4 right"), o(6, "6 right")] }
         ] },
-        { id: "notifications", title: "Notifications", section: "Bar & panels", items: [
-            { type: "chips", label: "Quiet", desc: "Do not disturb: no popups, everything is still kept in the centre. Errors only: Wi-Fi and Bluetooth only tell you when connecting fails (wrong password, device out of range ...).", opts: [ch("dnd", "Do not disturb"), ch("opt:connErrOnly", "Wi-Fi & Bluetooth: errors only")] },
-            { type: "chips", label: "Wi-Fi details", desc: "While a Wi-Fi network connects, the utilities box lists each step as it happens: finding the network, authenticating, asking the router for an IP address, the gateway and DNS you got, and whether the internet is reachable. A failure says why (wrong password, out of range, no IP).", opts: [ch("opt:wifiVerbose", "Show each connection step")] },
-            { type: "seg", adv: true, key: "opt:notifSpot", label: "Notification trigger spot", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Edge boxes below.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
-            { type: "seg", adv: true, key: "opt:notifStyle", label: "Notification style", desc: "How the notification centre lists what you got. Stack: one card each. Timeline: a thin rail with a dot per notification, under Just now / Earlier today / Yesterday. Grouped by app: one card per app with its notifications inside.", opts: [o("stack", "Stack"), o("timeline", "Timeline"), o("grouped", "Grouped by app")] },
-            { type: "seg", adv: true, key: "opt:notifIcon", label: "Notification picture", desc: "Profile picture: your picture, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
-            { type: "seg", drop: true, adv: true, key: "notifMax", label: "Popups on screen at once", desc: "When it is full the oldest goes.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },
-            { type: "seg", drop: true, adv: true, key: "opt:toastSecs", label: "How long a popup stays", desc: "Urgent ones follow their own setting below.", opts: [o(0, "App decides"), o(3, "3 s"), o(5, "5 s"), o(8, "8 s"), o(12, "12 s")] },
-            { type: "seg", drop: true, adv: true, key: "opt:critSecs", label: "Urgent popups", desc: "Browsers and some apps mark a notification urgent so it would stay for ever. It now hides after this long; it always stays in the notification centre until you remove it.", opts: [o(15, "15 s"), o(30, "30 s"), o(60, "1 min"), o(0, "Wait for a click")] },
+        { id: "notifquiet", title: "Quiet", section: "Bar & panels", items: [
+            { type: "seg", key: "quiet:mode", label: "Do not disturb", desc: "On: no popups, everything is still kept in the centre (SUPER + SHIFT + D flips it). Errors only: Wi-Fi and Bluetooth only tell you when connecting fails (wrong password, device out of range ...). Off: every popup shows.", opts: [o("off", "Off"), o("errors", "Errors only"), o("on", "On")] },
             { type: "toggle", key: "opt:dndFullscreen", label: "Quiet while a window is fullscreen", desc: "Popups stay away while a video, game or presentation is fullscreen; they are still kept in the notification centre. Halcyon's own timers and reminders still show, and so do urgent ones. Do not disturb itself is not touched." },
-            { type: "seg", drop: true, adv: true, key: "notifHistoryMax", label: "Notifications the centre keeps", opts: [o(10, "10"), o(20, "20"), o(30, "30"), o(50, "50"), o(100, "100")] },
+        ] },
+        { id: "notifpopups", title: "Popups", section: "Bar & panels", items: [
+            { type: "seg", drop: true, key: "opt:toastSecs", label: "Stay for", desc: "Urgent ones follow their own setting below. App decides: each app says how long its popup stays.", opts: [o(0, "App decides"), o(3, "3 s"), o(5, "5 s"), o(8, "8 s"), o(12, "12 s")] },
+            { type: "seg", drop: true, key: "notifMax", label: "At once", desc: "How many popups show at the same time. When it is full the oldest goes (it stays in the centre). Popups from the same app fold into one card with a \"+N more\" label.", opts: [o(1, "1"), o(2, "2"), o(3, "3"), o(5, "5"), o(8, "8")] },
+            { type: "seg", drop: true, key: "opt:critSecs", label: "Urgent ones hide after", desc: "Browsers and some apps mark a notification urgent so it would stay for ever. It hides after this long; it always stays in the notification centre until you remove it.", opts: [o(15, "15 s"), o(30, "30 s"), o(60, "1 min"), o(0, "Wait for a click")] },
+            { type: "seg", key: "opt:notifIcon", label: "Picture", desc: "Profile picture: your picture in the popup's icon tile, with the app's icon as a small badge. App icon: only the app's own icon. No profile picture found? The app icon is used.", opts: [o("pfp", "Profile picture"), o("app", "App icon")] },
+        ] },
+        { id: "notifcentre", title: "Centre", section: "Bar & panels", items: [
+            { type: "seg", key: "opt:notifStyle", label: "Style", desc: "How the notification centre lists what you got. Stack: one card each. Timeline: a thin rail with a dot per notification, under Just now / Earlier today / Yesterday. (\"Grouped by app\" is still in the Notification builder.)", opts: [o("stack", "Stack"), o("timeline", "Timeline")] },
+            { type: "seg", drop: true, key: "notifHistoryMax", label: "Keeps", desc: "How many notifications the centre holds. When it is full the oldest goes.", opts: [o(10, "10 notifications"), o(20, "20 notifications"), o(30, "30 notifications"), o(50, "50 notifications"), o(100, "100 notifications")] },
+            { type: "seg", key: "opt:notifSpot", label: "Opens from", desc: "Where you touch (or click) to open the notification centre. Right edge: a strip on the right edge of the screen, upper part. Top-right corner: a small spot in the very corner. The centre itself slides out in the same place either way. Hover or click: see Edge boxes below.", opts: [o("edge", "Right edge"), o("corner", "Top-right corner")] },
         ] },
         { id: "osd", title: "Edge boxes & volume bar", section: "Bar & panels", items: [
             { type: "seg", key: "clickMode", label: "Edge boxes (notifications, console, utilities)", opts: [o(false, "Hover"), o(true, "Click")] },
@@ -829,6 +841,7 @@ Scope {
         ] },
         { id: "utilbox", title: "Utilities box", section: "Bar & panels", items: [
             { type: "seg", key: "opt:utilStyle", label: "Utilities box layout", desc: "Tiles: icon tiles, a connected Wi-Fi shows its signal as five stars, Bluetooth its battery, the hotspot its devices. Split: two tall sliders (volume, brightness) beside round buttons. Classic: the old pills with words. Power modes are icons in the first two; hover one for its name.", opts: [o("tiles", "Tiles"), o("split", "Split"), o("classic", "Classic")] },
+            { type: "chips", label: "Wi-Fi details", desc: "While a Wi-Fi network connects, the utilities box lists each step as it happens: finding the network, authenticating, asking the router for an IP address, the gateway and DNS you got, and whether the internet is reachable. A failure says why (wrong password, out of range, no IP).", opts: [ch("opt:wifiVerbose", "Show each connection step")] },
             { type: "seg", adv: true, key: "opt:utilBtShow", label: "Bluetooth tile shows", desc: "For the connected device: its battery as five stars, or as a percentage.", opts: [o("stars", "Stars"), o("percent", "Percent")], when: "opt:utilStyle=tiles|undefined" },
             { type: "chips", drop: true, label: "Take out of the box", desc: "Switch a thing ON to remove it from the utilities box (bottom-right corner, and the box that drops out of the bar). Switch it OFF to bring it back. Nothing is switched off, only hidden: Wi-Fi, Bluetooth, caffeine, recording and the rest still work from their shortcuts and the Settings. The Settings button and the power button stay, so you can always get back here.", opts: [ch("opt:uHideWifi", "Wi-Fi"), ch("opt:uHideBt", "Bluetooth"), ch("opt:uHideAudio", "Sound output"), ch("opt:uHideHotspot", "Hotspot"), ch("opt:uHideAirplane", "Airplane"), ch("opt:uHideCharge", "Charge limit (laptops)"), ch("opt:uHideMic", "Microphone"), ch("opt:uHideVolume", "Volume slider"), ch("opt:uHideBright", "Brightness slider"), ch("opt:uHideExtraDim", "Extra dim"), ch("opt:uHidePower", "Power mode"), ch("opt:uHideCaffeine", "Caffeine"), ch("opt:uHideRecord", "Record"), ch("opt:uHideFocus", "Focus")] }
         ] },
@@ -1068,6 +1081,7 @@ Scope {
         if (key.indexOf("st:") === 0) return startup ? startup[key.substring(3)] : undefined
         if (key.indexOf("gr:") === 0) return greeting ? greeting[key.substring(3)] : undefined
         if (key === "ai:enabled") return !(ai && ai.enabled === false)
+        if (key === "quiet:mode") return dnd ? "on" : ((opt && opt.connErrOnly === true) ? "errors" : "off")      // one row for the two saved keys dnd and opt:connErrOnly
         if (key.indexOf("nt:") === 0) return notesConf ? notesConf[key.substring(3)] : undefined
         if (key.indexOf("fx:") === 0) return fxConf ? fxConf[key.substring(3)] : undefined
         if (key.indexOf("fc:") === 0) return focusConf ? focusConf[key.substring(3)] : undefined
@@ -1206,7 +1220,7 @@ Scope {
         { id: "Appearance", sub: "Look, your profile, colours, wallpaper, transparency and motion.", groups: ["look", "profile", "colours", "wallpaper", "glass", "motion"] },
         { id: "Stars & splash", sub: "Constellations, the splash, the weekly sky, time of day and the terminal greeting.", groups: ["growth", "signature", "greeting"] },
         { id: "Bar", sub: "The bar: its look and edge, what is on it, how it behaves, the border and the clock.", groups: ["bar", "barwidgets", "barbehave", "frame", "clock"] },
-        { id: "Panels", sub: "Notifications, the edge boxes, the volume bar and the utilities box.", groups: ["notifications", "osd", "utilbox"] },
+        { id: "Panels", sub: "Notifications (quiet, popups, centre), the edge boxes, the volume bar and the utilities box.", groups: ["notifquiet", "notifpopups", "notifcentre", "osd", "utilbox"] },
         { id: "Builders", sub: "Design your own bar, desktop, widgets and notification box. Each one opens a window with a live preview; every change is saved at once.", groups: ["builders"] },
         { id: "Desktop", sub: "Widget readability, workspaces and windows.", groups: ["widgets", "workspaces"] },
         { id: "Productivity", sub: "Focus mode, the calendar, notes and screen recording.", groups: ["focus", "calendar", "notes", "recording"] },
@@ -1468,7 +1482,7 @@ Scope {
             id: fade
             anchors.fill: parent
             opacity: root.open ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+            Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             // the picture picker of Settings > Profile, over everything in this window
             Loader {
                 z: 100
