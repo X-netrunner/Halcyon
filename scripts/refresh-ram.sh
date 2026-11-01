@@ -4,6 +4,12 @@
 # halcyon-ram.service, which install.sh sets up).
 #   refresh-ram.sh          terminal: asks for sudo
 #   refresh-ram.sh --gui    from the island (Settings > Detect RAM details): asks with a password window (polkit)
+# Native helper first: `hal refresh-ram` (src/hal). Exit 2 = an older hal that does not know it yet: the bash below still works.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  "$hal" refresh-ram "$@" && exit 0; rc=$?
+  [ "$rc" -ne 2 ] && exit "$rc"
+fi
 out="$HOME/.cache/island/dmi-memory.txt"
 mkdir -p "$(dirname "$out")"
 msg() { if [ "$1" = --gui ]; then notify-send -a Halcyon "RAM details" "$2" 2>/dev/null; else echo "$2"; fi; }

@@ -96,3 +96,89 @@ pub fn trace(name: &str, text: &str) {
         }
     }
 }
+
+/// Where the bash shims live. The shims export HALCYON_SCRIPTS_DIR (their own folder), so a checkout that is run in place
+/// works too; otherwise the installed rice.
+pub fn scripts_dir() -> PathBuf {
+    match env::var("HALCYON_SCRIPTS_DIR") {
+        Ok(v) if !v.is_empty() => PathBuf::from(v),
+        _ => rice_dir().join("scripts"),
+    }
+}
+
+/// Like `ok`, but gives up after `ms` milliseconds (the child is killed): `timeout 2 cmd` in the shell scripts.
+pub fn ok_timeout(cmd: &str, args: &[&str], ms: u64) -> bool {
+    let mut child = match Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) => {
+                if start.elapsed().as_millis() >= u128::from(ms) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return false;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(_) => return false,
+        }
+    }
+}
+
+/// `notify-send -a APP [-i ICON] SUMMARY BODY`, waited for (the shell scripts call it in the foreground). No-op without notify-send.
+pub fn notify_app(app: &str, summary: &str, body: &str, icon: Option<&str>) {
+    if !command_exists("notify-send") {
+        return;
+    }
+    let mut args = vec!["-a", app];
+    if let Some(ic) = icon {
+        args.push("-i");
+        args.push(ic);
+    }
+    args.push(summary);
+    args.push(body);
+    let _ = Command::new("notify-send")
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// The value of `KEY=value` in a small shell-style config (the last one wins; surrounding quotes are dropped).
+/// This is what `. file` gave the scripts for the plain files Settings writes (autostart.conf, idle.env).
+pub fn conf_value(text: &str, key: &str) -> Option<String> {
+    let prefix = format!("{}=", key);
+    let mut found = None;
+    for line in text.lines() {
+        if let Some(rest) = line.trim().strip_prefix(prefix.as_str()) {
+            found = Some(rest.trim().trim_matches(|c: char| c == '"' || c == '\'').to_string());
+        }
+    }
+    found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::conf_value;
+
+    #[test]
+    fn conf_value_reads_plain_and_quoted() {
+        let t = "NM_APPLET=0\nPOLKIT=gnome\n  GPU = x\nname=\"a b\"\nPOLKIT='kde'\n";
+        assert_eq!(conf_value(t, "NM_APPLET").as_deref(), Some("0"));
+        assert_eq!(conf_value(t, "POLKIT").as_deref(), Some("kde")); // the last one wins
+        assert_eq!(conf_value(t, "name").as_deref(), Some("a b"));
+        assert_eq!(conf_value(t, "MISSING"), None);
+        assert_eq!(conf_value(t, "GPU"), None); // "GPU = x" is not shell syntax either
+    }
+}
