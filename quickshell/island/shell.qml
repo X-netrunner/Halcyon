@@ -96,9 +96,10 @@ ShellRoot {
         toastSecs: 0,              // seconds a notification popup stays (0 = what the app asks for)
         critSecs: 30,              // seconds an urgent popup stays before it hides itself (0 = until clicked); it stays in the centre either way
         notifSpot: "edge",         // edge | corner : where the notification centre is opened from: a strip on the right edge, or the top-right corner
+        notifQuick: "dnd",         // dnd | airplane : what the round switch in the notification header does (Do not disturb, or Airplane mode: Wi-Fi and Bluetooth off)
         notifStyle: "stack",       // stack | timeline | grouped : the look of the notification centre (Settings > Panels & notifications)
         notifLayout: null,         // the notification box builder's layout (NotifLayout.js); null = the default box
-        notifIcon: "pfp",          // pfp | app : the picture of a notification is your profile picture (app icon as a badge), or the app's icon
+        notifIcon: "symbol",       // symbol | app | pfp : a plain symbol in the accent colour (default), the app's own icon, or your profile picture
         connErrOnly: false,        // Wi-Fi / Bluetooth: false = a notification for every connect / disconnect, true = only when connecting fails (scripts/wifi-connect.sh, bt-set.sh read the flag conn-errors-only)
         wifiVerbose: true,         // Wi-Fi: show every connection step (finding the network, authenticating, obtaining the IP ...) under the list in the utilities box
         bgRefresh: "normal",       // normal | relaxed | slow | auto (High / Medium / Low / Adaptive; its own choice, not part of the Resource use presets) : how often the always-on readers (CPU / battery / network state) look again while nothing needs them fresh (see syncRefresh below)
@@ -909,6 +910,7 @@ ShellRoot {
         tint: root.opt.lockTint !== undefined ? root.opt.lockTint : 0.55
         plain: root.opt.lockMode === "login"          // Settings > Power & lock > After sleep: the login-screen look, no widgets of any kind
         widgets: root.opt.lockWidgets === true && root.opt.lockMode !== "login"
+        clock24: root.clock24
         allowSwitch: root.opt.lockSwitch === true && root.opt.lockMode !== "login"
         allowPower: root.opt.lockPower !== false
         splash: root.opt.splash !== false && root.opt.splashLock !== false
@@ -1198,13 +1200,16 @@ ShellRoot {
         toastSecs: root.opt.toastSecs
         critSecs: root.opt.critSecs !== undefined ? root.opt.critSecs : 30
         avatar: root.avatarPath
-        usePfp: root.opt.notifIcon !== "app"
+        usePfp: root.opt.notifIcon === "pfp"
+        iconMode: root.opt.notifIcon === "app" || root.opt.notifIcon === "pfp" ? root.opt.notifIcon : "symbol"
         layout: root.opt.notifLayout
         look: root.opt.notifStyle === "timeline" || root.opt.notifStyle === "grouped" ? root.opt.notifStyle : "stack"
         spot: root.opt.notifSpot === "corner" ? "corner" : "edge"
         cornerId: (root.boxSpots && root.boxSpots.notif) || "tr"
         origin: DS.originOf(root.opt, "notif", (root.boxSpots && root.boxSpots.notif) || "tr")
         dnd: root.dnd
+        quick: root.opt.notifQuick === "airplane" ? "airplane" : "dnd"
+        airplane: root.net.wifi !== "on" && root.net.bt !== "on"
         fsQuiet: root.fsQuiet && root.opt.dndFullscreen !== false
         gameQuiet: root.gameFs
         asleep: root.fsQuiet
@@ -1216,6 +1221,7 @@ ShellRoot {
         starData: root.starData
         profileStars: root.profileStars
         onDndRequested: v => root.setDnd(v)
+        onAirplaneRequested: root.toggleAirplane()
     }
 
     // a command typed into the console for you, not run (Startup & processes > Unused: remove / turn off): press Enter there
@@ -2168,6 +2174,12 @@ ShellRoot {
         net = Object.assign({}, net, { wifi: on ? "off" : "on" })
         netPokeT.restart()
     }
+    // Airplane mode: Wi-Fi and Bluetooth both off, or (when both already are) both back on (the same rule as the utilities box)
+    function toggleAirplane() {
+        var off = net.wifi !== "on" && net.bt !== "on"
+        if (off) { toggleWifi(); toggleBt() }
+        else { if (net.wifi === "on") toggleWifi(); if (net.bt === "on") toggleBt() }
+    }
     function toggleBt() {
         var on = net.bt === "on"
         Quickshell.execDetached(["bluetoothctl", "power", on ? "off" : "on"])
@@ -2928,8 +2940,8 @@ ShellRoot {
                 for (var i = 0; i < cl.length; i++) {
                     var c = cl[i]
                     if (!c.mapped) continue
-                    var w = c.workspace ? c.workspace.id : 0
-                    if (w <= 0) continue
+                    var w = c.workspace ? Number(c.workspace.id) : 0
+                    if (!(w > 0)) continue                  // special (negative) or no id (a window mid-move): not ours to renumber
                     if (!wsMap[w]) wsMap[w] = []
                     wsMap[w].push(c.address)
                 }
@@ -2947,7 +2959,7 @@ ShellRoot {
                     var targetWs = k + 1
                     if (curWs !== targetWs) {
                         changed = true
-                        var addrs = wsMap[curWs]
+                        var addrs = wsMap[curWs] || []
                         for (var j = 0; j < addrs.length; j++) {
                             cmds.push("dispatch hl.dsp.window.move({ workspace = " + targetWs + ", window = \"address:" + addrs[j] + "\" })")
                         }
@@ -3272,27 +3284,30 @@ ShellRoot {
         // soft halo around the island; follows its size while it grows and shrinks.
         // Hollow on purpose: nothing sits under the glass, so the bar stays light.
         HaloShadow {
+            id: haloA
             anchors.fill: island
             radius: island.radius
             spread: 22
             peak: 0.18
-            transform: Scale { origin.x: width / 2; origin.y: 0; xScale: islandJelly.sx; yScale: islandJelly.sy }
+            transform: Scale { origin.x: haloA.width / 2; origin.y: 0; xScale: islandJelly.sx; yScale: islandJelly.sy }
             opacity: (win.shown && !root.notchStyle) ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
 
         // style Notch: the same silhouette as the bar, for the pages. Its halo reaches above the screen edge so only the sides and bottom show.
         HaloShadow {
+            id: haloB
             anchors.fill: island
             anchors.topMargin: -60
             radius: island.radius
             spread: 22
             peak: 0.18
-            transform: Scale { origin.x: width / 2; origin.y: 60; xScale: islandJelly.sx; yScale: islandJelly.sy }
+            transform: Scale { origin.x: haloB.width / 2; origin.y: 60; xScale: islandJelly.sx; yScale: islandJelly.sy }
             opacity: root.hangShape ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
         NotchShape {
+            id: notchShp
             pal: pal
             earR: root.notchEar
             cornR: island.radius
@@ -3300,7 +3315,7 @@ ShellRoot {
             y: root.frameT
             width: island.width + root.notchEar * 2
             height: island.height
-            transform: Scale { origin.x: width / 2; origin.y: 0; xScale: islandJelly.sx; yScale: islandJelly.sy }
+            transform: Scale { origin.x: notchShp.width / 2; origin.y: 0; xScale: islandJelly.sx; yScale: islandJelly.sy }
             fillCol: root.frameOn ? pal.frameCol : Qt.alpha(pal.bg, Math.min(0.97, pal.glassBarOpen + 0.16))
             opacity: root.hangShape ? 1 : 0
             visible: opacity > 0.01

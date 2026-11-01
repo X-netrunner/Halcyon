@@ -31,11 +31,17 @@ WBase {
         briefProc.running = true
     }
     Timer { interval: 600000; repeat: true; running: root.live; triggeredOnStart: true; onTriggered: root.read(false) }
+    // nothing shown yet and the read failed (the model was still loading, Ollama starting at login): try again in 1, 2, 4 minutes
+    property int fails: 0
+    Timer { id: retryT; repeat: false; onTriggered: if (root.live) root.read(false) }
     Process {
         id: briefProc
         stdout: StdioCollector {
             onStreamFinished: {
-                try { var x = JSON.parse(text); if (x && x.ok) root.d = x } catch (e) { /* keep what is shown */ }
+                var good = false
+                try { var x = JSON.parse(text); if (x && x.ok) { root.d = x; good = true } } catch (e) { /* keep what is shown */ }
+                if (good) root.fails = 0
+                else if (!root.d || !root.d.ok) { root.fails++; if (root.fails <= 3) { retryT.interval = 60000 * Math.pow(2, root.fails - 1); retryT.restart() } }
             }
         }
     }

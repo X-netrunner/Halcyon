@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """halcyon-ai.py: the small AI helpers of the desktop, one command each. They all ask the same local Ollama model as `ai` and the
-notes (HALCYON_AI_MODEL, else MODEL= in ai-advisor.conf, else qwen2.5:3b-instruct), and they all stop when the master AI switch is
+notes (HALCYON_AI_MODEL, else MODEL= in ai-advisor.conf, else gemma4:e2b-it-qat), and they all stop when the master AI switch is
 off (Settings > AI > AI features). Nothing leaves this machine (`updates` only downloads the public Arch news feed).
 
   halcyon-ai.py ask <question>                  one short answer (the launcher's  >ask ...). A question about Halcyon itself
@@ -84,7 +84,7 @@ SETTINGS = os.path.join(STATE, "settings.json")
 AI_OFF_FLAG = os.path.join(HOME, ".local", "state", "island", "ai-off")
 ISLAND_LOG = os.path.join(CACHE, "quickshell-island.log")
 ISLAND_DIR = os.path.join(RICE, "quickshell", "island")
-DEFAULT_MODEL = "qwen2.5:3b-instruct"
+DEFAULT_MODEL = "gemma4:e2b-it-qat"     # Gemma 4 E2B (2026): safest in docs/ai-models.md, reads pictures too (was qwen2.5:3b-instruct)
 
 
 class AiOff(Exception):

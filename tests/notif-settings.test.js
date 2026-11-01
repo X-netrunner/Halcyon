@@ -22,9 +22,9 @@ function groupLines(id) {
 const keysOf = lines => lines.map(l => (l.match(/key: "([^"]+)"/) || [])[1])
 const labelOf = l => (l.match(/label: "([^"]+)"/) || [])[1]
 
-ok("three groups, all on the Panels page, in this order", () => {
-  const page = settings.match(/\{ id: "Panels", sub: "[^"]*", groups: \[([^\]]*)\] \}/)[1]
-  assert.deepStrictEqual([...page.matchAll(/"(\w+)"/g)].map(m => m[1]), ["notifquiet", "notifpopups", "notifcentre", "osd", "utilbox"])
+ok("three groups, on their own Notifications page, in this order", () => {
+  const page = settings.match(/\{ id: "Notifications", sub: "[^"]*", groups: \[([^\]]*)\] \}/)[1]
+  assert.deepStrictEqual([...page.matchAll(/"(\w+)"/g)].map(m => m[1]), ["notifquiet", "notifpopups", "notifcentre"])
   assert(!/id: "notifications"/.test(settings), "the old single group is still there")
 })
 ok("Quiet: Do not disturb (Off / Errors only / On) and Quiet while a window is fullscreen", () => {
@@ -35,22 +35,23 @@ ok("Quiet: Do not disturb (Off / Errors only / On) and Quiet while a window is f
 })
 ok("Popups: Stay for, At once, Urgent ones hide after (drop-downs), Picture", () => {
   const l = groupLines("notifpopups")
-  assert.deepStrictEqual(l.map(labelOf), ["Stay for", "At once", "Urgent ones hide after", "Picture"])
+  assert.deepStrictEqual(l.map(labelOf), ["Stay for", "At once", "Urgent ones hide after", "Icon"])
   assert.deepStrictEqual(keysOf(l), ["opt:toastSecs", "notifMax", "opt:critSecs", "opt:notifIcon"])
   assert(l.slice(0, 3).every(x => /\bdrop: true\b/.test(x)))
-  assert(/o\("pfp", "Profile picture"\), o\("app", "App icon"\)/.test(l[3]))
+  assert(/o\("symbol", "Symbol"\), o\("app", "App icon"\), o\("pfp", "Profile picture"\)/.test(l[3]))
 })
-ok("Centre: Style (Stack / Timeline), Keeps (drop-down), Opens from", () => {
+ok("Centre: Header switch (Do not disturb / Airplane mode), Style (Stack / Timeline), Keeps (drop-down), Opens from", () => {
   const l = groupLines("notifcentre")
-  assert.deepStrictEqual(l.map(labelOf), ["Style", "Keeps", "Opens from"])
-  assert.deepStrictEqual(keysOf(l), ["opt:notifStyle", "notifHistoryMax", "opt:notifSpot"])
-  assert(/o\("stack", "Stack"\), o\("timeline", "Timeline"\)\]/.test(l[0]) && !/grouped/.test(l[0].split("desc:")[0]))
-  assert(/\bdrop: true\b/.test(l[1]))
+  assert.deepStrictEqual(l.map(labelOf), ["Header switch", "Style", "Keeps", "Opens from"])
+  assert.deepStrictEqual(keysOf(l), ["opt:notifQuick", "opt:notifStyle", "notifHistoryMax", "opt:notifSpot"])
+  assert(/o\("stack", "Stack"\), o\("timeline", "Timeline"\)\]/.test(l[1]) && !/grouped/.test(l[1].split("desc:")[0]))
+  assert(/o\("dnd", "Do not disturb"\), o\("airplane", "Airplane mode"\)\]/.test(l[0]))
+  assert(/\bdrop: true\b/.test(l[2]))
 })
 ok("every old key and its values are kept (saved configs keep working)", () => {
   const all = [...groupLines("notifquiet"), ...groupLines("notifpopups"), ...groupLines("notifcentre")].join("\n")
   const util = groupLines("utilbox").join("\n")
-  ;["opt:dndFullscreen", "opt:toastSecs", "notifMax", "opt:critSecs", "opt:notifIcon", "opt:notifStyle", "notifHistoryMax", "opt:notifSpot"].forEach(k => assert(all.includes('key: "' + k + '"'), k))
+  ;["opt:dndFullscreen", "opt:toastSecs", "notifMax", "opt:critSecs", "opt:notifIcon", "opt:notifQuick", "opt:notifStyle", "notifHistoryMax", "opt:notifSpot"].forEach(k => assert(all.includes('key: "' + k + '"'), k))
   assert(util.includes('ch("opt:wifiVerbose"'), "wifiVerbose")
   // the same choices as before (values), so a saved value still lights its button
   assert(/o\(0, "App decides"\), o\(3, "3 s"\), o\(5, "5 s"\), o\(8, "8 s"\), o\(12, "12 s"\)/.test(all))
@@ -59,7 +60,7 @@ ok("every old key and its values are kept (saved configs keep working)", () => {
   assert(/o\(10, "[^"]*"\), o\(20, "[^"]*"\), o\(30, "[^"]*"\), o\(50, "[^"]*"\), o\(100, "[^"]*"\)/.test(all))
   assert(/o\("edge", "Right edge"\), o\("corner", "Top-right corner"\)/.test(all))
   // the shell still owns the defaults
-  ;[/toastSecs: 0,/, /critSecs: 30,/, /notifSpot: "edge",/, /notifStyle: "stack",/, /notifIcon: "pfp",/, /connErrOnly: false,/, /wifiVerbose: true,/, /dndFullscreen: true,/].forEach(re => assert(re.test(shell), String(re)))
+  ;[/toastSecs: 0,/, /critSecs: 30,/, /notifSpot: "edge",/, /notifStyle: "stack",/, /notifQuick: "dnd",/, /notifIcon: "symbol",/, /connErrOnly: false,/, /wifiVerbose: true,/, /dndFullscreen: true,/].forEach(re => assert(re.test(shell), String(re)))
 })
 ok("no row of the three groups is hidden under Debug / Advanced", () => {
   ;["notifquiet", "notifpopups", "notifcentre"].forEach(id => groupLines(id).forEach(l => assert(!/\badv: true\b/.test(l), id + ": " + labelOf(l))))
@@ -102,7 +103,7 @@ ok("every property / signal Notifs.qml sets on a card exists on the card", () =>
 ok("popup card: 36 px rounded-square tile, picture choice still passed through", () => {
   assert(/size: 36/.test(card) && /tile: true/.test(card) && /usePfp: card\.usePfp/.test(card) && /avatar: card\.avatar/.test(card))
   assert(/property bool tile: false/.test(icon) && /root\.usePfp/.test(icon))
-  assert(/usePfp: root\.opt\.notifIcon !== "app"/.test(shell))
+  assert(/usePfp: root\.opt\.notifIcon === "pfp"/.test(shell)); assert(/iconMode: root\.opt\.notifIcon/.test(shell))
   // the centre's rows keep the round picture: only the card asks for the tile
   const rows = ["NotifRow.qml", "NotifGroup.qml"].map(f => fs.readFileSync(dir + f, "utf8")).join("\n")
   assert(!/tile: true/.test(rows))

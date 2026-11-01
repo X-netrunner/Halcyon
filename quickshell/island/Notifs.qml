@@ -39,6 +39,8 @@ Scope {
     property int toastSecs: 0               // Settings > Notifications > "How long a popup stays": 0 = what the app asks for (else this many seconds)
     property int critSecs: 30               // Settings > Notifications > "Urgent popups": seconds before an urgent popup hides itself (0 = waits for a click)
     property bool dnd: false
+    property string quick: "dnd"           // dnd | airplane: what the header's switch does (Settings > Panels & notifications > Header switch)
+    property bool airplane: false           // Wi-Fi and Bluetooth are both off (shell.qml)
     property bool fsQuiet: false            // a window is fullscreen (shell.qml): popups stay quiet like Do not disturb, but Halcyon's own and urgent ones show
     property bool gameQuiet: false          // a game is fullscreen (shell.qml): no popup at all, not even Halcyon's own or urgent ones; all still go to the centre
     property bool asleep: false             // a window is fullscreen (shell.qml): the edge strip ignores the pointer, so the centre never slides over it
@@ -46,6 +48,7 @@ Scope {
     readonly property var cfg: NL.normalize(layout)
     property string look: "stack"           // Settings > Panels & notifications > Notification style: stack | timeline | grouped
     property string avatar: ""              // your profile picture (shell.qml avatarPath): the picture of every notification
+    property string iconMode: "symbol"     // symbol | app | pfp (shell.qml, Settings > Notifications > Picture)
     property bool usePfp: true              // Settings > Panels & notifications > Notification picture: profile picture / app icon
     property string spot: "edge"            // Settings > Panels & notifications > Notification trigger spot: edge = strip on the right edge, corner = the top-right corner
     property string cornerId: "tr"
@@ -94,6 +97,7 @@ Scope {
     }
 
     signal dndRequested(bool on)            // shell.qml owns the saved setting
+    signal airplaneRequested()              // shell.qml switches Wi-Fi and Bluetooth
 
     // ---------- list helpers ----------
     function without(list, n) {
@@ -422,6 +426,7 @@ Scope {
                         pal: root.pal
                         avatar: root.avatar
                         usePfp: root.usePfp
+                        iconMode: root.iconMode
                         override: root.toastSecs
                         critSecs: root.critSecs
                         stars: root.stars && root.cfg.toastStars
@@ -485,6 +490,7 @@ Scope {
             MouseArea { z: -1; anchors.fill: parent }      // swallow clicks (under the content, so the buttons keep theirs)
 
             onDndRequested: on => root.dndRequested(on)
+            onAirplaneRequested: root.airplaneRequested()
             onClearRequested: root.clearAll()
             onDismissRequested: n => root.dismiss(n)
         }

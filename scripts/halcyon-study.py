@@ -605,6 +605,8 @@ CATALOGUE = [
     ("qwen3:32b", 9.5, "Excellent, but far too big for most laptops"),
     ("qwen3:30b", 9, "Excellent; needs lots of memory"),
     ("qwen3:14b", 9, "The best answers a laptop can run; slow without a big GPU"),
+    ("qwen3.5:9b", 8.5, "Newest Qwen (2026): careful, cites well, reads pictures; thinks when asked"),
+    ("gemma4:12b", 8.5, "Newest Gemma (2026): very good explanations, reads pictures"),
     ("gemma3:12b", 8.5, "Very good explanations"),
     ("qwen2.5:14b", 8, "Very good, steady"),
     ("phi4:14b", 8, "Strong at reasoning and maths"),
@@ -613,6 +615,9 @@ CATALOGUE = [
     ("deepseek-r1:8b", 7, "Reasons step by step; slow, wordy"),
     ("llama3.1:8b", 6.5, "Good, plain explanations"),
     ("qwen2.5:7b", 6.5, "Good, quick for its size"),
+    ("qwen3.5:4b", 6.5, "Good small 2026 model; reads pictures"),
+    ("gemma4:e4b", 6.5, "Good small 2026 model; reads pictures"),
+    ("gemma4:e2b", 5, "Small and quick (2026)"),
     ("gemma3:4b", 6, "Good small model"),
     ("qwen3:4b", 6.5, "Good small model; always thinks first, so slower than its size"),
     ("phi4-mini", 5, "Small, decent at maths"),
@@ -623,8 +628,8 @@ CATALOGUE = [
     ("qwen3:1.7b", 3, "Tiny"),
 ]
 # worth downloading for studying, best first (shown when they are not installed)
-SUGGEST = ["qwen3:8b", "qwen3:14b", "gemma3:12b", "qwen3:4b"]
-SIZES_GB = {"qwen3:8b": 5.2, "qwen3:14b": 9.3, "gemma3:12b": 8.1, "qwen3:4b": 2.5}
+SUGGEST = ["qwen3.5:9b", "gemma4:12b", "qwen3:8b", "qwen3.5:4b"]
+SIZES_GB = {"qwen3.5:9b": 6.6, "gemma4:12b": 8.0, "qwen3:8b": 5.2, "qwen3.5:4b": 3.3, "qwen3:14b": 9.3, "gemma3:12b": 8.1, "qwen3:4b": 2.5}
 CONF = os.path.join(os.environ.get("HALCYON_STATE") or os.path.join(HOME, ".local", "state", "island"), "study.json")
 
 

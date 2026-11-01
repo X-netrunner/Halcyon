@@ -18,6 +18,7 @@ Item {
     property var pal
     property var notif
     property string avatar: ""   // profile picture shown as the notification picture ("" = none)
+    property string iconMode: "symbol"
     property bool usePfp: true   // Settings > Panels & notifications > Notification picture
     property int override: 0     // seconds from Settings (0 = the app's own timeout, 3..15 s)
     property bool stars: true    // the drifting stars behind the popup (Settings > Constellations)
@@ -50,7 +51,7 @@ Item {
         : Math.max(3000, Math.min(15000, notif && notif.expireTimeout > 0 ? notif.expireTimeout * 1000
                                          : (notif && notif.urgency === NotificationUrgency.Low ? 4000 : 6000)))
     readonly property color tone: critical ? pal.bad : pal.accent
-    readonly property string timeText: arrivedAt > 0 ? Qt.formatTime(new Date(arrivedAt), Locale.ShortFormat) : ""
+    readonly property string timeText: arrivedAt > 0 ? Qt.formatTime(new Date(arrivedAt), Qt.locale().timeFormat(Locale.ShortFormat).replace(/[:.]ss/, "").replace(/\s*t$/, "")) : ""
 
     property real life: 1
     // swipe either way past ~half the card to dismiss it for good
@@ -222,6 +223,7 @@ Item {
                 notif: card.notif
                 avatar: card.avatar
                 usePfp: card.usePfp
+                mode: card.iconMode
                 size: 36
                 tile: true
                 urgent: card.critical
