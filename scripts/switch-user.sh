@@ -7,6 +7,12 @@
 #                                text console (Ctrl+Alt+F2 ... F6) where getty asks for a login
 #
 # Switching users never unlocks THIS session: the lock screen stays up here, and you come back to it with the same password.
+# Native helper first: `hal switch-user` (src/hal). Exit 2 = an older hal that does not know it yet: the bash below still works.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  "$hal" switch-user "$@" && exit 0; rc=$?
+  [ "$rc" -ne 2 ] && exit "$rc"
+fi
 set -u
 
 have() { command -v "$1" >/dev/null 2>&1; }
