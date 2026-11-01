@@ -162,7 +162,7 @@ def luna_state():
     if os.path.lexists(GAMING_FLAG):
         why = "Gaming mode is on: the AI is paused."
     elif os.path.lexists(AI_OFF_FLAG):
-        why = "AI features are switched off (Settings > Performance > AI features)."
+        why = "AI features are switched off (Settings > AI > AI features)."
     return {"installed": b is not None, "blocked": why, "ready": b is not None and not why}
 
 
@@ -207,6 +207,7 @@ def cmd_status():
         "ollamaModels": om or [],
         "ollamaUp": om is not None,
         "luna": luna,
+        "aiOff": os.path.lexists(AI_OFF_FLAG),
         "keySet": {p: bool(keys.get(p)) for p in ORDER if p not in KEYLESS},
         "ready": ready,
         "providers": [{"id": p, "name": PROVIDERS[p]["name"], "kind": PROVIDERS[p]["kind"],
@@ -478,6 +479,9 @@ def cmd_stream():
     prompt = str(req.get("prompt", "")).strip()
     if not prompt:
         out({"type": "error", "error": "Empty prompt."})
+        return 1
+    if os.path.lexists(AI_OFF_FLAG):                                  # the master switch covers every provider, hosted ones included
+        out({"type": "error", "error": "AI features are switched off (Settings > AI > AI features). Turn them on to chat."})
         return 1
     cfg = load_config()
     luna = luna_state()

@@ -31,8 +31,11 @@ Glass {
     property bool flyout: false
     property bool flyLeft: true
     property bool flyBottom: true
-    readonly property bool flyHovered: focusFly.hovered
-    readonly property bool flyShown: flyout && focusOpen && shown("Focus")
+    readonly property bool flyHovered: focusFly.hovered || wifiFly.hovered
+    // the Wi-Fi connection log takes the slot of the Focus card while it is on screen (the box's own list keeps the log when there is no flyout)
+    readonly property bool wifiFlyShown: flyout && active && wifiVerbose && wifiLog.length > 0 && (menu === "wifi" || wifiWorking)
+    readonly property bool focusFlyShown: flyout && focusOpen && shown("Focus") && !wifiFlyShown
+    readonly property bool flyShown: focusFlyShown || wifiFlyShown
     readonly property real flyGap: focusFly.attached ? 0 : 8             // joined to the box: no gap
     readonly property real flyExtra: focusFly.width + 8                  // how much room the card needs beside the box
     property real mic: 0
@@ -343,7 +346,7 @@ Glass {
     FocusFlyout {
         id: focusFly
         pal: root.pal
-        shown: root.flyShown
+        shown: root.focusFlyShown
         toLeft: root.flyLeft
         atBottom: root.flyBottom
         joinV: root.joinV
@@ -360,6 +363,26 @@ Glass {
         onFocusCommand: w => root.focusCommand(w)
         onFocusPick: (m, p) => root.focusPick(m, p)
         onOpenFocusSettings: root.openFocusSettings()
+    }
+
+    // the Wi-Fi connection card: same slot and shape as the Focus card
+    WifiFlyout {
+        id: wifiFly
+        pal: root.pal
+        shown: root.wifiFlyShown
+        toLeft: root.flyLeft
+        atBottom: root.flyBottom
+        joinV: root.joinV
+        anchors.right: root.flyLeft ? parent.left : undefined
+        anchors.left: root.flyLeft ? undefined : parent.right
+        anchors.rightMargin: root.flyGap; anchors.leftMargin: root.flyGap
+        anchors.bottom: root.flyBottom ? parent.bottom : undefined
+        anchors.top: root.flyBottom ? undefined : parent.top
+        anchors.bottomMargin: -wifiFly.pad; anchors.topMargin: -wifiFly.pad
+        log: root.wifiLog
+        logBusy: root.wifiWorking
+        logTitle: root.wifiLogSsid
+        onDismissed: root.wifiLog = []
     }
 
     ColumnLayout {
@@ -695,7 +718,7 @@ Glass {
             onPowerToggled: { root.toggleWifi(); root.later("wifi", 1500) }
             onRescanClicked: { wifiProc.running = true }
             onFooterClicked: Quickshell.execDetached(["nm-connection-editor"])
-            log: root.wifiVerbose ? root.wifiLog : []
+            log: root.wifiVerbose && !root.flyout ? root.wifiLog : []      // with a flyout the log shows in its own card beside the box
             logBusy: root.wifiWorking
             logTitle: root.wifiLogSsid
             onLogDismissed: root.wifiLog = []

@@ -1335,6 +1335,7 @@ ShellRoot {
     FwCenter {
         id: fwCenter
         pal: pal
+        aiOn: !root.aiOff
         consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
         onConsoleRequested: cmd => quickTerm.run(cmd)
     }
@@ -1357,6 +1358,7 @@ ShellRoot {
     SecurityCenter {
         id: securityCenter
         pal: pal
+        aiOn: !root.aiOff
         onConsoleRequested: cmd => { securityCenter.hide(); quickTerm.run(cmd) }
         onTerminalRequested: cmd => { securityCenter.hide(); Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", cmd]) }
     }
@@ -1460,6 +1462,10 @@ ShellRoot {
     }
     // AI review of antivirus alerts (scripts/antivirus-ai.sh): read at start and whenever Settings opens
     property bool avAiOn: false
+    // the master AI switch (Settings > AI > AI features): the flag file is read at start, then follows Settings' own copy
+    property bool aiOff: false
+    Process { running: true; command: ["sh", "-c", "test -e \"$HOME/.local/state/island/ai-off\""]; onExited: code => root.aiOff = code === 0 }
+    Connections { target: settingsWin; function onAiChanged() { root.aiOff = settingsWin.ai.enabled === false } }
     Process {
         id: avAiProc
         command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-ai.sh", "status"]

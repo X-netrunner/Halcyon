@@ -395,10 +395,17 @@ def main():
                 else:
                     os.makedirs(os.path.dirname(AI_OFF_FLAG), exist_ok=True)
                     with open(AI_OFF_FLAG, "w", encoding="utf-8") as f:
-                        f.write("AI features are switched off (Settings > Performance > AI features)\n")
+                        f.write("AI features are switched off (Settings > AI > AI features)\n")
             except OSError as e:
                 print(f"[!] could not change the AI switch: {e}", file=sys.stderr)
                 return 1
+            idle = os.path.join(os.path.dirname(os.path.abspath(__file__)), "av-ai-idle.sh")     # the antivirus analyzer follows the switch
+            if os.path.exists(idle):
+                try:
+                    subprocess.Popen(["bash", idle, "master", "on" if want else "off"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, start_new_session=True)
+                except OSError:
+                    pass
         out({"enabled": ai_enabled()})
     elif c == "status":                                     # cheap: only the download state (the UI polls this once a second)
         out(read_pull() or {})

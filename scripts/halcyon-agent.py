@@ -603,6 +603,8 @@ class Agent:
             if st["decided"] and not st["hold"]:
                 print(piece, end="", flush=True)
 
+        if os.path.lexists(os.path.join(os.path.expanduser("~"), ".local", "state", "island", "ai-off")):
+            raise RuntimeError("AI features are switched off (Settings > AI > AI features).")
         try:
             with urllib.request.urlopen(req, timeout=300) as r:
                 for raw in r:

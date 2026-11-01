@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """halcyon-ai.py: the small AI helpers of the desktop, one command each. They all ask the same local Ollama model as `ai` and the
 notes (HALCYON_AI_MODEL, else MODEL= in ai-advisor.conf, else qwen2.5:3b-instruct), and they all stop when the master AI switch is
-off (Settings > Performance > AI features). Nothing leaves this machine (`updates` only downloads the public Arch news feed).
+off (Settings > AI > AI features). Nothing leaves this machine (`updates` only downloads the public Arch news feed).
 
   halcyon-ai.py ask <question>                  one short answer (the launcher's  >ask ...). A question about Halcyon itself
                                                 ("how do I turn off the constellations") is answered by howto below
@@ -215,7 +215,7 @@ def need_ai():
     if gaming():
         raise AiOff("Gaming mode is on: the AI is paused so the game keeps the GPU memory.")
     if not ai_enabled():
-        raise AiOff("AI features are switched off (Settings > Performance > AI features).")
+        raise AiOff("AI features are switched off (Settings > AI > AI features).")
 
 
 def generate(prompt, system="", fmt=None, num_predict=300, temperature=0.2, timeout=90):
