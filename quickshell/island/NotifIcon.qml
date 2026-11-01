@@ -21,7 +21,59 @@ Item {
     property bool usePfp: true
     property bool tile: false           // rounded square (popup cards) instead of round
     property bool urgent: false         // tile only: a stronger wash of the tone colour (red for an urgent one)
+    // symbol (default): one plain symbol in the tone colour (your accent, red when urgent) on a soft tile of the same colour, picked
+    //   from what the notification is about (a message, a download, the battery ...), so every popup matches the theme.
+    // app: the app's own icon (or the picture it attached). pfp: your profile picture with the app icon as a badge (usePfp).
+    property string mode: "symbol"
+    readonly property bool symbolOn: mode === "symbol" && !usePfp
     readonly property int tileR: Math.round(size * 0.28)
+
+    // ---- symbol mode: Material Design glyphs from the Nerd Font (checked to render in JetBrainsMono Nerd Font)
+    function pickGlyph(n) {
+        if (!n) return 0xF009A
+        var app = String(n.appName || "").toLowerCase() + " " + String(n.desktopEntry || "").toLowerCase() + " " + String(n.appIcon || "").toLowerCase()
+        var txt = (String(n.summary || "") + " " + String(n.body || "")).toLowerCase()
+        function has(s, words) { for (var i = 0; i < words.length; i++) if (s.indexOf(words[i]) >= 0) return true; return false }
+        if (n.urgency === 2 && has(txt, ["battery", "charge"])) return 0xF0083        // battery-alert
+        // Halcyon's own senders
+        if (has(app, ["calendar", "remind"])) return 0xF00ED                         // calendar
+        if (has(app, ["focus"])) return 0xF13AB                                       // timer
+        if (has(app, ["security", "antivirus", "firewall", "clamav"])) return 0xF0498 // shield
+        if (has(app, ["notes"])) return 0xF039E                                       // note
+        if (has(app, ["study"])) return 0xF0474                                       // school
+        var own = has(app, ["luna", "halcyon", "hal"])
+        // what kind of app
+        if (has(app, ["discord", "telegram", "signal", "whatsapp", "slack", "element", "teams", "vesktop", "webcord", "irc", "matrix", "messenger", "zapzap"])) return 0xF0369
+        if (has(app, ["thunderbird", "mail", "geary", "evolution", "betterbird"])) return 0xF01EE
+        if (has(app, ["spotify", "music", "player", "mpv", "vlc", "rhythmbox", "elisa", "amberol", "cmus", "mpd", "lollypop"])) return 0xF075A
+        if (has(app, ["steam", "lutris", "heroic", "game", "bottles", "prism"])) return 0xF0297
+        if (has(app, ["networkmanager", "nm-applet", "network", "wifi", "iwd"])) return 0xF05A9
+        if (has(app, ["blue"])) return 0xF00AF
+        if (has(app, ["grim", "screenshot", "flameshot", "satty", "swappy", "spectacle"])) return 0xF0100
+        if (has(app, ["pacman", "yay", "paru", "update", "package", "discover", "flatpak"])) return 0xF03D7
+        if (has(app, ["foot", "kitty", "alacritty", "wezterm", "ghostty", "konsole", "terminal"])) return 0xF018D
+        if (has(app, ["code", "codium", "zed", "studio", "jetbrains", "idea"])) return 0xF0169
+        if (has(app, ["firefox", "chrom", "brave", "zen", "librewolf", "vivaldi", "browser", "epiphany", "qutebrowser"])) {
+            return has(txt, ["download"]) ? 0xF01DA : 0xF059F
+        }
+        // what it says
+        if (has(txt, ["download"])) return 0xF01DA
+        if (has(txt, ["battery", "charg", "power"])) return 0xF0079
+        if (has(txt, ["screenshot", "screen shot"])) return 0xF0100
+        if (has(txt, ["record"])) return 0xF044A
+        if (has(txt, ["update", "upgrade", "package"])) return 0xF03D7
+        if (has(txt, ["wi-fi", "wifi", "network", "connected", "disconnected"])) return 0xF05A9
+        if (has(txt, ["bluetooth"])) return 0xF00AF
+        if (has(txt, ["volume", "audio", "microphone"])) return 0xF057E
+        if (has(txt, ["copied", "clipboard"])) return 0xF0147
+        if (has(txt, ["backup", "sync"])) return 0xF015F
+        if (has(txt, ["disk", "storage", "space left"])) return 0xF02CA
+        if (has(txt, ["error", "failed", "could not", "warning"])) return 0xF0028
+        if (has(txt, ["done", "finished", "complete", "saved"])) return 0xF05E0
+        if (has(txt, ["message", "mentioned", "replied"])) return 0xF0369
+        return own ? 0xF0AE2 : 0xF009A                                                // Halcyon's sparkle, or a bell
+    }
+    readonly property int glyph: symbolOn ? pickGlyph(notif) : 0
 
     implicitWidth: size
     implicitHeight: size
@@ -70,11 +122,27 @@ Item {
     // the profile picture is shown once it has really loaded; until then (or when it never does) the app icon is
     readonly property bool pfpOn: usePfp && avatar !== "" && pfp.status === Image.Ready
 
+    // ---- symbol mode: a soft tile of the tone colour with the symbol on it (no border: same look as the utilities tiles)
+    Rectangle {
+        anchors.fill: parent
+        visible: root.symbolOn
+        radius: root.tile ? root.tileR : width / 2
+        color: Qt.alpha(root.tone, root.urgent ? 0.22 : 0.14)
+        antialiasing: true
+        Text {
+            anchors.centerIn: parent
+            text: String.fromCodePoint(root.glyph)
+            color: root.tone
+            font.family: root.pal.font
+            font.pixelSize: Math.round(root.size * 0.48)
+        }
+    }
+
     // ---- your profile picture, in a round mask (same technique as the tree's laptop node)
     Item {
         id: pfpBox
         anchors.fill: parent
-        visible: root.pfpOn
+        visible: root.pfpOn && !root.symbolOn
 
         Image {
             id: pfp
@@ -130,7 +198,7 @@ Item {
         border.color: (root.tile && !root.pfpOn) ? Qt.alpha(root.tone, root.urgent ? 0.75 : 0.35) : root.pal.line
         clip: true
         // with the badge there is nothing to show when the app has no icon at all: no bell on top of your face
-        visible: !root.pfpOn || ico.visible || mark.visible
+        visible: !root.symbolOn && (!root.pfpOn || ico.visible || mark.visible)
 
         HalMark {
             id: mark
@@ -146,7 +214,7 @@ Item {
             height: width
             sourceSize: Qt.size(96, 96)
             fillMode: root.hasImage && !root.pfpOn ? Image.PreserveAspectCrop : Image.PreserveAspectFit
-            source: root.src
+            source: root.symbolOn ? "" : root.src
             asynchronous: true
             visible: !root.isHal && status === Image.Ready
         }

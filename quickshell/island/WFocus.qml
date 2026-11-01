@@ -12,7 +12,7 @@ WBase {
     readonly property bool on: fst.on === true
     readonly property bool paused: on && fst.paused === true
     readonly property string phase: on ? (fst.phase || "work") : ""
-    readonly property string left: env ? env.focusText : "00:00"
+    readonly property string timeLeft: env ? env.focusText : "00:00"
     readonly property real frac: (on && fst.total > 0 && env) ? Math.max(0, Math.min(1, 1 - env.focusLeft / fst.total)) : 0
     readonly property string phaseName: !on ? "Ready" : (paused ? "Paused" : (phase === "work" ? "Focus" : (phase === "long" ? "Long break" : "Break")))
     readonly property bool showStreak: opt("streak", true) === true
@@ -125,7 +125,7 @@ WBase {
                 Column {
                     anchors.centerIn: parent
                     spacing: 0
-                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.on ? root.left : root.goal + " min"; font.pixelSize: root.sz(root.on ? 26 : 20); font.weight: Font.DemiBold }
+                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.on ? root.timeLeft : root.goal + " min"; font.pixelSize: root.sz(root.on ? 26 : 20); font.weight: Font.DemiBold }
                     WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.phaseName.toUpperCase(); color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 1.4 }
                 }
             }
@@ -150,7 +150,7 @@ WBase {
                 Column {
                     spacing: 0
                     WLbl { b: root; text: root.phaseName.toUpperCase(); color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold }
-                    WLbl { b: root; text: root.on ? root.left : root.goal + ":00"; font.pixelSize: root.sz(48); font.weight: Font.Light }
+                    WLbl { b: root; text: root.on ? root.timeLeft : root.goal + ":00"; font.pixelSize: root.sz(48); font.weight: Font.Light }
                     Rectangle { width: root.sz(150); height: root.sz(4); radius: 2; color: root.track
                         Rectangle { width: parent.width * root.frac; height: parent.height; radius: 2; color: root.accent } }
                 }
@@ -170,10 +170,14 @@ WBase {
     // ---- compact
     Component {
         id: compactC
+        Item {
+        implicitWidth: cRow.implicitWidth
+        implicitHeight: cRow.implicitHeight
         Row {
+            id: cRow
             spacing: root.sz(10)
             WIco { b: root; text: root.glyph(0xF051B); color: root.on ? root.accent : root.dim; font.pixelSize: root.sz(20); anchors.verticalCenter: parent.verticalCenter }
-            WLbl { b: root; text: root.on ? root.left : "Focus"; font.pixelSize: root.sz(20); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; text: root.on ? root.timeLeft : "Focus"; font.pixelSize: root.sz(20); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
             Rectangle { visible: root.showStreak; width: 1; height: root.sz(20); color: root.track; anchors.verticalCenter: parent.verticalCenter }
             Row {
                 visible: root.showStreak
@@ -182,7 +186,8 @@ WBase {
                 WIco { b: root; text: root.glyph(0xF0238); color: root.flame; font.pixelSize: root.sz(18); anchors.verticalCenter: parent.verticalCenter }
                 WLbl { b: root; text: root.streak; font.pixelSize: root.sz(18); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
             }
-            MouseArea { anchors.fill: parent; enabled: root.showBtn && !root.editing; cursorShape: Qt.PointingHandCursor; onClicked: root.toggle() }
+        }
+        MouseArea { anchors.fill: parent; enabled: root.showBtn && !root.editing; cursorShape: Qt.PointingHandCursor; onClicked: root.toggle() }
         }
     }
     // ---- streak

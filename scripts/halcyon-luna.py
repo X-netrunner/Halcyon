@@ -22,6 +22,15 @@ session so any of them can be opened again and continued where it stopped. Every
   halcyon-luna.py control <info|do|security> <action> [args...]   run a Halcyon control action yourself (the /status family)
   halcyon-luna.py chat <id> -- <text>       one turn: runs `luna --stdio --history <the session's file>`, so Luna sees the whole earlier
                                             conversation, and saves the exchange
+  halcyon-luna.py lessons                   what Luna learned from her mistakes (--json: {"lessons": [...]})
+  halcyon-luna.py forget-lesson <n|all>     drop lesson number n (from `lessons`), or all of them
+  halcyon-luna.py learn                     (internal) reflect on one exchange read from stdin as JSON and keep the lesson, if any
+
+Learning from mistakes: after a turn where a tool failed, or when your next message corrects her ("no, that's wrong", "you
+didn't ...", "try again"), a background job asks her fast model for ONE general rule that would have avoided it. Rules are kept in
+~/.local/share/halcyon/luna/lessons.json and copied into her long-term memory as "Lesson learned: ..." facts, which she recalls
+by meaning on every turn; her constitution (config/luna/constitution.md, set as agent.constitution_path in luna.toml unless you
+use your own) tells her to follow them. Similar lessons are merged, at most 40 are kept, and the AI master switch stops it all.
 
 --json (or --stream) prints one JSON object per line for the island:
   {"type": "activity", "kind": "step"|"tool_start"|"tool_end", "name", "summary", "ok", "secs"}   what Luna is doing right now
@@ -263,6 +272,259 @@ def emit(o, as_json):
         print(json.dumps(o, ensure_ascii=False), flush=True)
 
 
+# ---- learning from mistakes ---------------------------------------------------------------------------------------------------
+LESSONS = os.path.join(os.path.dirname(DATA), "lessons.json")
+LUNA_MEM = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share"), "luna", "permanent_memory.json")
+LUNA_TOML = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "luna", "luna.toml")
+CONSTITUTION = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "luna", "constitution.md")
+LESSON_PREFIX = "Lesson learned: "
+MAX_LESSONS = 40
+OLLAMA = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+if not OLLAMA.startswith("http"):
+    OLLAMA = "http://" + OLLAMA
+
+# Words that mean "that was wrong", at the start of the message or as a phrase anywhere in it. "no thanks" / "no problem" are not
+# corrections, and a long message that only contains "no" somewhere is not one either.
+_CORR_START = re.compile(r"^\s*(no+|nope|nah|wrong|incorrect|not (quite|really|that|this|what)|that'?s (not|wrong|incorrect)|"
+                         r"that is (not|wrong|incorrect)|stop|wait|ugh|why did you|you (didn'?t|did not|forgot|missed|broke|ignored))\b",
+                         re.IGNORECASE)
+_CORR_ANY = re.compile(r"\b(not what i (asked|wanted|meant|said)|that'?s wrong|you got it wrong|(didn'?t|doesn'?t|does not|did not|still (doesn'?t|isn'?t|not)) work|"
+                       r"try again|i (said|asked|told you)|still (wrong|broken)|undo (that|it)|you (forgot|missed|ignored)|wrong (file|one|answer|app|setting|folder|path))\b",
+                       re.IGNORECASE)
+_NOT_CORR = re.compile(r"^\s*no+[\s,.!]*(thanks|thank you|problem|worries|need|rush|hurry)\b", re.IGNORECASE)
+
+
+def looks_like_correction(text):
+    t = (text or "").strip()
+    if not t or _NOT_CORR.search(t):
+        return False
+    return bool(_CORR_START.search(t)) or (len(t) < 400 and bool(_CORR_ANY.search(t)))
+
+
+def _words(t):
+    return {w for w in re.findall(r"[a-z0-9_]{3,}", (t or "").lower())
+            if w not in {"the", "and", "for", "with", "that", "this", "when", "before", "after", "then", "from", "into", "use", "luna"}}
+
+
+def _similar(a, b):
+    wa, wb = _words(a), _words(b)
+    return bool(wa and wb) and len(wa & wb) / len(wa | wb) >= 0.55
+
+
+def load_lessons():
+    d = read(LESSONS, {})
+    items = d.get("lessons") if isinstance(d, dict) else None
+    return [x for x in (items or []) if isinstance(x, dict) and str(x.get("text", "")).strip()]
+
+
+def save_lessons(items):
+    items = sorted(items, key=lambda x: (x.get("hits", 1), x.get("ts", 0)), reverse=True)[:MAX_LESSONS]
+    os.makedirs(os.path.dirname(LESSONS), exist_ok=True)
+    write(LESSONS, {"lessons": items})
+    sync_luna_memory(items)
+    return items
+
+
+def sync_luna_memory(items):
+    """Luna's long-term facts get exactly the current lessons (category "lesson"); her other facts are left as they are."""
+    try:
+        with open(LUNA_MEM) as f:
+            facts = json.load(f)
+        if not isinstance(facts, list):
+            return
+    except FileNotFoundError:
+        facts = []
+    except (OSError, ValueError):
+        return                                      # unreadable: never overwrite what we cannot read
+    keep = [x for x in facts if not (isinstance(x, dict) and x.get("category") == "lesson")]
+    day = time.strftime("%Y-%m-%d")
+    for it in items:
+        keep.append({"content": LESSON_PREFIX + it["text"], "added": it.get("day", day), "category": "lesson"})
+    os.makedirs(os.path.dirname(LUNA_MEM), exist_ok=True)
+    tmp = LUNA_MEM + ".halcyon.tmp"
+    with open(tmp, "w") as f:
+        json.dump(keep, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, LUNA_MEM)
+
+
+def add_lesson(text, kind, tool=""):
+    text = " ".join(str(text).split()).strip().strip('"').strip()
+    if text.lower().startswith(LESSON_PREFIX.lower()):
+        text = text[len(LESSON_PREFIX):].strip()
+    if not (15 <= len(text) <= 240) or re.search(r"(api[_ -]?key|password|token|secret)\s*[:=]", text, re.IGNORECASE):
+        return None
+    # a lesson is advice about HOW to work, never a payload: no links, no commands to run, nothing destructive. The reflected text
+    # includes tool output and web pages Luna read, so a page must not be able to plant a "rule" in her long-term memory.
+    if re.search(r"https?://|www\.|`|\$\(|\|\s*(sh|bash)\b|\b(rm\s+-|sudo\s|curl\s|wget\s|chmod\s|mkfs|dd\s+if=|base64|ignore (all|previous|your) )", text, re.IGNORECASE):
+        return None
+    # and allow-listed: plain words and ordinary punctuation only, at most 30 words, no domain names
+    if not re.fullmatch(r"[A-Za-z0-9 ,.;:'()/%+_-]+", text) or len(text.split()) > 30 \
+            or re.search(r"\b[a-z0-9-]+\.(com|net|org|io|sh|ru|xyz|dev|app|co|me|info)\b", text, re.IGNORECASE):
+        return None
+    items = load_lessons()
+    now = int(time.time())
+    for it in items:
+        if _similar(it["text"], text):
+            it["hits"] = int(it.get("hits", 1)) + 1
+            it["ts"] = now
+            if len(text) < len(it["text"]):         # the shorter wording of the same rule wins
+                it["text"] = text
+            save_lessons(items)
+            return it
+    it = {"text": text, "kind": kind, "tool": tool, "ts": now, "day": time.strftime("%Y-%m-%d"), "hits": 1}
+    items.append(it)
+    save_lessons(items)
+    return it
+
+
+def _toml_value(key):
+    """One `key = "value"` from luna.toml (first match, any section)."""
+    try:
+        with open(LUNA_TOML) as f:
+            for line in f:
+                m = re.match(r'\s*' + re.escape(key) + r'\s*=\s*"([^"]*)"', line)
+                if m:
+                    return m.group(1)
+    except OSError:
+        pass
+    return ""
+
+
+def ensure_constitution():
+    """Point Luna at Halcyon's constitution (deciding, failing well, following her lessons), unless luna.toml names one already."""
+    if not os.path.isfile(CONSTITUTION) or not os.path.isfile(LUNA_TOML):
+        return
+    try:
+        with open(LUNA_TOML) as f:
+            txt = f.read()
+    except OSError:
+        return
+    if re.search(r"(?m)^\s*constitution_path\s*=", txt):
+        return
+    line = 'constitution_path = "%s"   # Halcyon: deciding, failing well, following her lessons (remove to use the shipped one)\n' % CONSTITUTION
+    if re.search(r"(?m)^\[agent\]\s*$", txt):
+        txt = re.sub(r"(?m)^(\[agent\]\s*\n)", lambda m: m.group(1) + line, txt, count=1)
+    else:
+        txt = txt.rstrip("\n") + "\n\n[agent]\n" + line
+    tmp = LUNA_TOML + ".halcyon.tmp"
+    with open(tmp, "w") as f:
+        f.write(txt)
+    os.replace(tmp, LUNA_TOML)
+
+
+REFLECT = ("You review one exchange of Luna, a local desktop assistant on Arch Linux (desktop: Halcyon), to learn from her mistake. "
+           "Write ONE rule for Luna that says what to do INSTEAD next time: name the right tool, app, place or step. "
+           "If a later tool call succeeded, the rule says to use that approach first. If the user corrected her, the rule says what "
+           "the user meant by such a request. General enough for similar requests, concrete, an instruction, at most 25 words. "
+           "Examples: 'For Halcyon settings like the bar, use halcyon_do instead of hyprctl commands.' "
+           "'When the user says notes, open the Halcyon notes window, not a text file.' "
+           "No personal data, secrets, file contents or quotes. Only if the failure was outside Luna's control (no network, the "
+           "user changed their mind) answer NONE. Output exactly one line: LESSON: <rule>   or   NONE")
+
+
+def reflect_model():
+    return os.environ.get("HALCYON_LUNA_REFLECT_MODEL") or _toml_value("model") or _toml_value("fast_model") or "qwen3.5:4b"
+
+
+def ask_reflection(payload, timeout=90):
+    import urllib.request
+    parts = []
+    if payload.get("kind") == "correction":
+        parts.append("Earlier request: " + str(payload.get("prev_user", ""))[:600])
+        parts.append("Luna answered: " + str(payload.get("prev_reply", ""))[:900])
+        if payload.get("prev_tools"):
+            parts.append("Tools Luna used: " + "; ".join(payload["prev_tools"])[:400])
+        parts.append("The user then said (a correction): " + str(payload.get("user", ""))[:600])
+    else:
+        parts.append("Request: " + str(payload.get("user", ""))[:600])
+        parts.append("Tool calls that FAILED: " + "; ".join(payload.get("failures", []))[:600])
+        if payload.get("tools"):
+            parts.append("All tool calls, in order: " + "; ".join(payload["tools"])[:500])
+        parts.append("Luna's final answer: " + str(payload.get("reply", ""))[:900])
+    body = json.dumps({"model": reflect_model(), "stream": False, "think": False, "options": {"temperature": 0.2, "num_predict": 120},
+                       "messages": [{"role": "system", "content": REFLECT}, {"role": "user", "content": "\n".join(parts)}]}).encode()
+    req = urllib.request.Request(OLLAMA.rstrip("/") + "/api/chat", data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        out = json.load(r).get("message", {}).get("content", "")
+    out = re.sub(r"(?s)<think>.*?</think>", "", out).strip()
+    for line in out.splitlines():
+        m = re.match(r"\s*\**LESSON\**\s*:\s*(.+)", line, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def cmd_learn():
+    if ai_blocked():
+        return 3
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+    except ValueError:
+        return 2
+    try:
+        lesson = ask_reflection(payload)
+    except Exception:
+        return 1                                    # Ollama down or slow: nothing learned this time, nothing broken
+    if lesson:
+        add_lesson(lesson, payload.get("kind", "tool"), (payload.get("failed_tools") or [""])[0])
+    return 0
+
+
+def spawn_learning(payload):
+    """Reflect in the background: the window gets its answer now, the lesson lands a few seconds later."""
+    with contextlib.suppress(Exception):
+        p = subprocess.Popen([sys.executable, os.path.abspath(__file__), "learn"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, text=True, start_new_session=True)
+        p.stdin.write(json.dumps(payload))
+        p.stdin.close()
+
+
+def learning_payload(s, text, tools, failed, reply_text):
+    """What to reflect on after this turn, or None. `s` is the session BEFORE Luna's answer to `text` was added."""
+    turns = s.get("turns", [])
+    if looks_like_correction(text):
+        # the turns end with [..., you(prev), luna(prev), you(text)]
+        prev_luna = turns[-2] if len(turns) >= 2 and turns[-2].get("role") == "luna" else None
+        prev_you = turns[-3] if len(turns) >= 3 and turns[-3].get("role") == "you" else None
+        if prev_luna and prev_you:
+            return {"kind": "correction", "user": text, "prev_user": prev_you.get("text", ""), "prev_reply": prev_luna.get("text", ""),
+                    "prev_tools": ["%s(%s)" % (t.get("name", ""), t.get("summary", "")[:80]) for t in prev_luna.get("tools", [])]}
+    if failed and reply_text:
+        return {"kind": "tool", "user": text, "reply": reply_text, "failed_tools": [f["name"] for f in failed],
+                "failures": ["%s(%s)" % (f["name"], f.get("summary", "")[:100]) for f in failed],
+                "tools": ["%s%s" % (t.get("name", ""), "" if t.get("ok", True) else " [failed]") for t in tools]}
+    return None
+
+
+def cmd_lessons(as_json):
+    items = load_lessons()
+    if as_json:
+        print(json.dumps({"lessons": items}, ensure_ascii=False))
+    elif not items:
+        print("Luna has not learned anything from a mistake yet.")
+    else:
+        for i, it in enumerate(items, 1):
+            print("%2d. %s%s" % (i, it["text"], "  (x%d)" % it["hits"] if it.get("hits", 1) > 1 else ""))
+    return 0
+
+
+def cmd_forget_lesson(which):
+    items = load_lessons()
+    if which == "all":
+        items = []
+    else:
+        try:
+            n = int(which)
+        except ValueError:
+            raise Fail("forget-lesson takes a number from `lessons`, or all")
+        if not 1 <= n <= len(items):
+            raise Fail("no lesson %d" % n)
+        items = sorted(items, key=lambda x: (x.get("hits", 1), x.get("ts", 0)), reverse=True)
+        del items[n - 1]
+    save_lessons(items)
+    return 0
+
+
 def cmd_chat(sid, text, as_json):
     p = path(sid)
     s = read(p, None)
@@ -282,6 +544,9 @@ def cmd_chat(sid, text, as_json):
         s["title"] = title_of(text)
     s["updated"] = int(time.time())
     write(p, s)
+    with contextlib.suppress(Exception):
+        ensure_constitution()
+    before = dict(s, turns=list(s["turns"]))
     proc = subprocess.Popen([b, "--stdio", "--history", path(sid, hist=True)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True, bufsize=1, start_new_session=True)
 
@@ -315,6 +580,13 @@ def cmd_chat(sid, text, as_json):
             flush()
             if ev.get("kind") == "tool_start":
                 tools.append({"name": ev.get("name", ""), "summary": ev.get("summary", "")[:200]})
+            elif ev.get("kind") == "tool_end" and ev.get("ok") is False:
+                for t in reversed(tools):               # the last started call of that name is the one that ended
+                    if t["name"] == ev.get("name", "") and "ok" not in t:
+                        t["ok"] = False
+                        break
+                else:
+                    tools.append({"name": ev.get("name", ""), "summary": "", "ok": False})
             emit(ev, as_json)
         elif kind == "reply":
             flush()
@@ -345,6 +617,10 @@ def cmd_chat(sid, text, as_json):
     s["updated"] = int(time.time())
     write(p, s)
     emit({"type": "done"}, as_json)
+    failed = [t for t in tools if t.get("ok") is False]
+    lp = learning_payload(before, text, tools, failed, reply.get("text", "") if reply is not None else "")
+    if lp:
+        spawn_learning(lp)
     return 0 if reply is not None else 1
 
 
@@ -415,6 +691,12 @@ def main(argv):
             ctl = os.path.join(os.path.dirname(os.path.abspath(__file__)), "halcyon-control.py")
             r = subprocess.run([sys.executable, ctl, *rest], capture_output=True, text=True, timeout=300)
             print(json.dumps({"type": "control", "ok": r.returncode == 0, "text": (r.stdout + r.stderr).strip()}))
+        elif cmd == "lessons":
+            return cmd_lessons(as_json)
+        elif cmd == "forget-lesson" and rest:
+            return cmd_forget_lesson(rest[0])
+        elif cmd == "learn":
+            return cmd_learn()
         elif cmd == "chat" and rest:
             sep = rest.index("--") if "--" in rest else len(rest)
             text = " ".join(rest[sep + 1:]) if sep < len(rest) else " ".join(rest[1:])

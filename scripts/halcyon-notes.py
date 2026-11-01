@@ -551,7 +551,7 @@ def ocr_note(arg):
     return True
 
 # ---- a description of a picture from a local vision model (Ollama). Only when you ask: never automatically.
-VLM_DEFAULT = "qwen2.5vl:3b"
+VLM_DEFAULT = "gemma4:e2b-it-qat"      # the default AI model reads pictures too, so no second download (was qwen2.5vl:3b)
 
 def vlm_model():
     return (os.environ.get("HALCYON_VLM_MODEL") or read_conf().get("NOTES_VLM_MODEL", "") or VLM_DEFAULT).strip()
@@ -586,7 +586,7 @@ def run_vlm(path, ocr_text=""):
               "If something is unclear, say it is unclear. Do not guess names, places or numbers. ")
     if ocr_text:
         prompt += "Do not repeat the text in the picture; it was already read as: " + re.sub(r"\s+", " ", ocr_text)[:600]
-    body = json.dumps({"model": model, "prompt": prompt, "images": [b64], "stream": False, "keep_alive": 0,
+    body = json.dumps({"model": model, "prompt": prompt, "images": [b64], "stream": False, "think": False, "keep_alive": 0,
                        "options": {"temperature": 0, "num_predict": 160, "num_ctx": NUM_CTX}}).encode()
     try:
         import urllib.request, urllib.error
@@ -1206,7 +1206,7 @@ NUM_CTX = 8192
 
 CONF_DEFAULTS = {"NOTES_SUMMARY": "0", "NOTES_OCR": "1", "NOTES_VLM": "0", "NOTES_VLM_MODEL": "", "NOTES_AI": "0", "NOTES_OVERVIEW": "0", "NOTES_AI_MODE": "ask", "NOTES_NUDGE_HOURS": "3", "NOTES_NUDGE_MAX": "4",
                  "NOTES_NUDGE_FROM": "9", "NOTES_NUDGE_TO": "21", "NOTES_MODEL": "", "NOTES_STT_MODEL": "", "NOTES_STT_LANG": ""}
-DEFAULT_MODEL = "qwen2.5:3b-instruct"      # what the notes AI was tested and tuned on (fast, keeps facts and tenses straight)
+DEFAULT_MODEL = "gemma4:e2b-it-qat"      # the default AI model (halcyon-ai.py); qwen2.5:3b-instruct is still a good pick for overviews
 CONF_RANGE = {"NOTES_NUDGE_HOURS": (1, 12), "NOTES_NUDGE_MAX": (1, 12), "NOTES_NUDGE_FROM": (0, 23), "NOTES_NUDGE_TO": (1, 24)}
 
 def read_conf():
@@ -1271,7 +1271,7 @@ def ollama_up():
 
 def model_name():
     """The model the notes AI asks: HALCYON_AI_MODEL, else NOTES_MODEL (notes set NOTES_MODEL <name>; empty = not set), else the one
-    `ai` and the advisor use (MODEL= in ai-advisor.conf), else qwen2.5:3b-instruct."""
+    `ai` and the advisor use (MODEL= in ai-advisor.conf), else gemma4:e2b-it-qat."""
     if os.environ.get("HALCYON_AI_MODEL"):
         return os.environ["HALCYON_AI_MODEL"].strip()
     own = read_conf().get("NOTES_MODEL", "").strip()

@@ -195,7 +195,7 @@ Scope {
                 Component.onCompleted: { ready = true; Qt.callLater(() => qp.forceActiveFocus()) }
                 Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true } }
 
-                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
+                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * Math.max(0, Math.min(1, qp.reveal))) }
 
                 Glass {
                     id: panel

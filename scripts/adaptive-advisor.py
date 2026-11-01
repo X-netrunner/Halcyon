@@ -680,7 +680,7 @@ def get_advisor_model():
             return match
     if have:
         return have[0]
-    return "qwen2.5:3b-instruct"
+    return "gemma4:e2b-it-qat"
 
 def recommend_models():
     """Hardware-aware sizing and suggestions for users wanting a bigger local model."""

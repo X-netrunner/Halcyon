@@ -632,7 +632,7 @@ Scope {
                     }
                 }
 
-                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * qp.reveal) }
+                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * Math.max(0, Math.min(1, qp.reveal))) }
 
                 Glass {
                     id: panel
