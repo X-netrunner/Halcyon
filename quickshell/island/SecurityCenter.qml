@@ -799,6 +799,7 @@ Scope {
     }
 
     // ---- ask: one conversation, aimed at either module
+    property bool aiOn: true                  // the master AI switch (shell.qml sets it); off: Ask answers with a note and starts nothing
     property string askTarget: "firewall"     // firewall | antivirus
     property var msgs: []                     // { role: "you" | "ai" | "test", text, reports, actions, live, bad, who }
     property string model: ""
@@ -823,6 +824,11 @@ Scope {
         var r = SecAsk.route(q, target)
         if (!r.send) {                         // not a security question: answered here, neither tool is started
             pushMsg({ role: "ai", text: r.reply, live: false, actions: [], who: target })
+            Qt.callLater(function () { root.focusRequested("ask") })
+            return
+        }
+        if (!aiOn && q.indexOf("/test") !== 0) {      // the master AI switch (Settings > AI > AI features): neither tool is asked anything
+            pushMsg({ role: "ai", text: "AI features are switched off (Settings > AI > AI features). Turn them on to ask questions here. The tests under Overview still work.", bad: true, live: false, actions: [], who: target })
             Qt.callLater(function () { root.focusRequested("ask") })
             return
         }

@@ -6,7 +6,7 @@ before changing it. Back to the [README](../README.md).
 ## The current setup
 
 - `>ask`, `>do`, the notes, the brief and the ClamAV fixes use **one** model: `HALCYON_AI_MODEL`, else `MODEL=` in
-  `~/.config/Halcyon/ai-advisor.conf` (Settings > Performance > AI advisor model), else `qwen2.5:3b-instruct`.
+  `~/.config/Halcyon/ai-advisor.conf` (Settings > AI > AI advisor model), else `qwen2.5:3b-instruct`.
 - The Security center's assistants (ai-firewall, ai-antivirus) use `SECURITY_MODEL` (default: a qwen3.5 size picked for the machine).
 - Everything runs locally through Ollama on 127.0.0.1. Nothing is sent anywhere.
 
@@ -18,7 +18,7 @@ python3 ~/.config/Halcyon/scripts/ai-eval.py --models qwen2.5:3b-instruct,<candi
 python3 ~/.config/Halcyon/scripts/ai-eval.py --list        # the cases
 ```
 
-It needs Ollama running, the AI switched on (Settings > Performance > AI features) and gaming mode off. A run takes a few minutes
+It needs Ollama running, the AI switched on (Settings > AI > AI features) and gaming mode off. A run takes a few minutes
 per model. The table is printed and the full report (every answer) is saved in `~/.local/state/halcyon/ai-eval/`.
 
 ## What it measures
@@ -46,7 +46,7 @@ model that writes `rm -rf ~` without a word is a worse default even if it answer
 security but loses on guard, use it only where it fits: for example as `SECURITY_MODEL` for the Security center's
 assistants, or in the terminal chat (`ai /model <name>`). Keep the default as it is.
 
-To change it: Settings > Performance > AI advisor model, or `MODEL=` in `~/.config/Halcyon/ai-advisor.conf`.
+To change it: Settings > AI > AI advisor model, or `MODEL=` in `~/.config/Halcyon/ai-advisor.conf`.
 
 ## Adding cases
 
