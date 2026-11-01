@@ -3,6 +3,12 @@
 #   focus-log.sh add MINUTES     add minutes to today (the island calls this once a minute while a work phase runs)
 #   focus-log.sh json            print { "2026-10-16": 42, ... } (the last 400 days)
 # Stored in ~/.local/state/island/focus-days.json. Needs python3 (Focus mode needs it too).
+# Native helper first: `hal focus-log` (src/hal). Exit 2 = an older hal that does not know it yet: the bash below still works.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  "$hal" focus-log "$@" && exit 0; rc=$?
+  [ "$rc" -ne 2 ] && exit "$rc"
+fi
 f="${XDG_STATE_HOME:-$HOME/.local/state}/island/focus-days.json"
 mkdir -p "$(dirname "$f")"
 exec python3 - "$f" "$@" <<'PY'

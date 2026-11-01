@@ -8,6 +8,12 @@
 #
 # Not started when Settings > Startup chose "None" for the polkit agent (POLKIT=none): that choice is respected, and the answer
 # is "none" so the Security center can say why no password window can appear.
+# Native helper first: `hal polkit-agent` (src/hal). Exit 2 = an older hal that does not know it yet: the bash below still works.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  "$hal" polkit-agent "$@" && exit 0; rc=$?
+  [ "$rc" -ne 2 ] && exit "$rc"
+fi
 conf="$HOME/.config/Halcyon/autostart.conf"        # the same file scripts/autostart-extras.sh reads (Settings > Startup writes it)
 POLKIT=auto
 [ -f "$conf" ] && . "$conf" 2>/dev/null
