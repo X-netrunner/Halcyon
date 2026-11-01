@@ -103,7 +103,7 @@ Rectangle {
         color: root.pal.bg
         border.width: 1
         border.color: root.pal.line
-        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.InOutSine } }
+        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Column {
             id: tipCol
             anchors.centerIn: parent

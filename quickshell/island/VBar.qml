@@ -25,7 +25,7 @@ Rectangle {
         height: Math.max(parent.width, parent.height * Math.min(1, Math.max(0, root.shown)))
         radius: parent.radius
         color: root.dimmed ? Qt.alpha(root.pal.muted, 0.28) : Qt.alpha(root.pal.accent, 0.34)
-        Behavior on height { enabled: !root.dragging; NumberAnimation { duration: root.pal.dFast; easing.type: Easing.OutCubic } }
+        Behavior on height { enabled: !root.dragging; NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
     }
     Text {
         anchors.horizontalCenter: parent.horizontalCenter

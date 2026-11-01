@@ -67,7 +67,7 @@ WBase {
                         width: Math.max(root.sz(20), root.wide - root.sz(40) - root.sz(56) - root.sz(20)); height: root.sz(7); radius: height / 2; color: root.track
                         anchors.verticalCenter: parent.verticalCenter
                         Rectangle { width: Math.max(parent.height, parent.width * Math.max(0, r.v)); height: parent.height; radius: height / 2; color: root.lit(r)
-                            Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } } }
+                            Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } } }
                     }
                     WLbl { b: root; width: r.v >= 0 ? root.sz(56) : root.wide - root.sz(50); horizontalAlignment: r.v >= 0 ? Text.AlignRight : Text.AlignLeft
                            text: r.t; font.pixelSize: root.sz(13); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }

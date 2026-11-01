@@ -134,7 +134,7 @@ Item {
                 height: parent.height; radius: 4
                 width: parent.width * Math.max(0.01, Math.min(1, mt.value / (mt.limit * 1.5)))
                 color: mt.tone
-                Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Behavior on color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
             Rectangle { x: parent.width / 1.5 - 1; y: -3; width: 2; height: parent.height + 6; radius: 1; color: root.pal.text; opacity: 0.65 }
@@ -358,7 +358,7 @@ Item {
     opacity: open ? 1 : 0
     visible: opacity > 0.01
     focus: open
-    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     onOpenChanged: {
         if (open) { note = ""; Qt.callLater(function () { root.forceActiveFocus() }) }
         else { unused = null; unusedErr = ""; info = empty; hist = []; loaded = false; busyIds = ({}); cpuMemo = ({}); cpuStreak = 0; tipItem = null; query = ""; searchInput.text = "" }       // let go of the numbers: nothing is kept while it is closed
@@ -530,9 +530,9 @@ Item {
                         clip: true
                         Row {
                             anchors.fill: parent
-                            Rectangle { height: parent.height; width: parent.width * memCard.startup / memCard.total; color: root.pal.accent; Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } } }
-                            Rectangle { height: parent.height; width: parent.width * memCard.restSession / memCard.total; color: root.pal.accent2; Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } } }
-                            Rectangle { height: parent.height; width: parent.width * memCard.others / memCard.total; color: Qt.alpha(root.pal.muted, 0.5); Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } } }
+                            Rectangle { height: parent.height; width: parent.width * memCard.startup / memCard.total; color: root.pal.accent; Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } } }
+                            Rectangle { height: parent.height; width: parent.width * memCard.restSession / memCard.total; color: root.pal.accent2; Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } } }
+                            Rectangle { height: parent.height; width: parent.width * memCard.others / memCard.total; color: Qt.alpha(root.pal.muted, 0.5); Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } } }
                         }
                     }
                 }

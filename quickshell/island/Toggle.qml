@@ -56,8 +56,8 @@ Item {
         function flash() { flashAnim.restart() }
         ParallelAnimation {
             id: flashAnim
-            NumberAnimation { target: ring; property: "opacity"; from: 0.95; to: 0; duration: 520; easing.type: Easing.OutCubic }
-            NumberAnimation { target: ring; property: "scale"; from: 1; to: 1.45; duration: 520; easing.type: Easing.OutCubic }
+            NumberAnimation { target: ring; property: "opacity"; from: 0.95; to: 0; duration: 520; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] }
+            NumberAnimation { target: ring; property: "scale"; from: 1; to: 1.45; duration: 520; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve }
         }
     }
     // working on it

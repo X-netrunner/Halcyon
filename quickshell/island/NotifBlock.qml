@@ -13,5 +13,5 @@ Loader {
     opacity: host.shown(bid) ? 1 : 0
     visible: opacity > 0.01
     Behavior on y { enabled: blk.host.ready; NumberAnimation { duration: blk.host.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: blk.host.pal.curve } }
-    Behavior on opacity { NumberAnimation { duration: blk.host.pal.dMed; easing.type: Easing.InOutSine } }
+    Behavior on opacity { NumberAnimation { duration: blk.host.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 }

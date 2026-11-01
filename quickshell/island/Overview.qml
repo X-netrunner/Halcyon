@@ -607,8 +607,8 @@ Item {
     opacity: gestureActive ? Math.max(0.05, Math.min(1.0, gestureProgress)) : (open ? 1 : 0)
     scale: gestureActive ? (0.86 + 0.14 * Math.max(0.0, Math.min(1.15, gestureScale))) : 1.0
     visible: opacity > 0.01
-    Behavior on opacity { enabled: !ov.gestureActive; NumberAnimation { duration: 360; easing.type: Easing.InOutSine } }
-    Behavior on scale { enabled: !ov.gestureActive; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+    Behavior on opacity { enabled: !ov.gestureActive; NumberAnimation { duration: 360; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+    Behavior on scale { enabled: !ov.gestureActive; NumberAnimation { duration: 400; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
 
     Keys.onPressed: e => {
         if (e.key === Qt.Key_Escape && ov.dragState === "drag") { ov.cancelDrag(); e.accepted = true }
@@ -766,7 +766,7 @@ Item {
             // the branch of a held leaf is cut: it retracts to the workspace, and grows back if the leaf returns
             readonly property bool cut: ov.dragIdx >= 0 && ov.dragIdx === modelData.b && (ov.dragState === "drag" || ov.dragState === "dock")
             property real link: cut ? 0 : 1
-            Behavior on link { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
+            Behavior on link { NumberAnimation { duration: 380; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
             readonly property real ex: sx + (ex0 - sx) * link
             readonly property real ey: sy + (ey0 - sy) * link
             readonly property real dx: (ex - sx) * 0.5
@@ -857,7 +857,7 @@ Item {
         readonly property real fy: sy + (ty - sy) * frac
         readonly property real dx: (fx - sx) * 0.5
         property real shown: live ? 1 : 0
-        Behavior on shown { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+        Behavior on shown { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
         opacity: shown
         visible: shown > 0.01
 
@@ -929,7 +929,7 @@ Item {
                 rotation: nd.isRoot ? 0 : (ov.rot[nd.index] || 0)
                 scale: (0.55 + 0.45 * nd.appear) * ((nd.isRoot && ov.held) ? 1.07 : (nd.beingDragged ? 1.06 : (nd.dropHot ? 1.08 : (ma.pressed ? 0.97 : (ma.containsMouse ? 1.05 : 1)))))
                 opacity: nd.beingDragged ? 0.92 : 1
-                Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                 // breathing glow behind the laptop node
                 Rectangle {
@@ -1229,7 +1229,7 @@ Item {
         border.width: 1
         border.color: ov.dropIdx === -2 ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.35)
         Behavior on opacity { NumberAnimation { duration: ov.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-        Behavior on scale { NumberAnimation { duration: ov.pal.dFast; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: ov.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
         Behavior on color { ColorAnimation { duration: ov.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             anchors.centerIn: parent
@@ -1253,7 +1253,7 @@ Item {
         border.color: Qt.alpha(ov.pal.accent, 0.4)
         opacity: ov.toast !== "" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.InOutSine } }
+        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             id: toastTxt
             anchors.centerIn: parent
@@ -1290,7 +1290,7 @@ Item {
         width: 240
         spacing: 1
         opacity: ov.open ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.InOutSine } }
+        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
         readonly property real memFrac: ov.sysRes.total > 0 ? Math.min(1, ov.halRes.mem / ov.sysRes.total) : 0
         readonly property var procs: ov.halRes.top || []
@@ -1396,7 +1396,7 @@ Item {
         opacity: ov.editing ? 1 : 0
         visible: opacity > 0.01
         scale: ov.editing ? 1 : 0.96
-        Behavior on opacity { NumberAnimation { duration: ov.pal.dMed; easing.type: Easing.InOutSine } }
+        Behavior on opacity { NumberAnimation { duration: ov.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Behavior on scale { NumberAnimation { duration: ov.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
 
         MouseArea { anchors.fill: parent }   // don't let clicks fall through to the backdrop

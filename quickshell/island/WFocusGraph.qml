@@ -61,7 +61,7 @@ WBase {
     readonly property int peak: { var p = goal; for (var i = 0; i < last14.length; i++) if (last14[i].m > p) p = last14[i].m; return p }
 
     property real shown: frac
-    Behavior on shown { enabled: root.live; NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
+    Behavior on shown { enabled: root.live; NumberAnimation { duration: 700; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
     readonly property real bw: sz(270)
     implicitWidth: bw

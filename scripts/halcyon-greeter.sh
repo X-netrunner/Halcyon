@@ -7,6 +7,8 @@
 #   halcyon-greeter.sh preview     open the login screen as a window in your running desktop, nothing is logged in (password: preview)
 #   halcyon-greeter.sh apply [greeter|lock]   what happens at boot: this login screen, or auto-login + the lock screen
 #   halcyon-greeter.sh lockmode login|lock    what the lock screen is after sleep: login-screen look (no widgets) or the lock screen with widgets
+#   halcyon-greeter.sh fingerprint on|off|status   let the login screen use the fingerprint reader (fprintd; asks for sudo)
+#   halcyon-greeter.sh keyboard [LAYOUT [VARIANT [OPTIONS]]]   the keyboard the login screen types with (no argument: follow the system's)
 #   halcyon-greeter.sh doctor     fix "[libseat] could not connect to socket /run/seatd.sock" at login (seatd + pam_systemd)
 #   halcyon-greeter.sh status      what is set up
 #   halcyon-greeter.sh remove      put your old login manager / tty1 setup back and delete the greeter
@@ -30,7 +32,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 die() { say "halcyon-greeter: $*" >&2; exit 1; }
 
-OWN="shell.qml users.sh sessions.sh halcyon-session"   # the greeter's own files (halcyon-session is the executable wrapper greetd runs)
+OWN="shell.qml users.sh sessions.sh features.sh halcyon-session"   # the greeter's own files (halcyon-session is the executable wrapper greetd runs)
 ART="Backdrop.qml ModeArt.qml BarStars.qml StarData.js LiveSky.qml"       # the lock screen's own art (constellation, sky): one source of truth, copied from the island
 stage() {           # stage DIR: the greeter's files plus the shared art, as plain copies
   local d="$1" f
@@ -208,6 +210,48 @@ seat_fix() {
   fi
 }
 
+# --- the keyboard of the login screen. cage does NOT read the system keyboard setting: without XKB_DEFAULT_* it types a US layout, so a
+# password with a "z" or a "-" typed on a German or French keyboard would be wrong at the login screen only. Taken from localectl
+# (the X11 keyboard of the machine), or from /etc/greetd/halcyon-keyboard (layout|variant|options, written by `keyboard LAYOUT ...`).
+KBFILE=/etc/greetd/halcyon-keyboard
+kb_env() {          # prints " XKB_DEFAULT_LAYOUT=us,de XKB_DEFAULT_OPTIONS=..." (with a leading space) or nothing
+  local l="" v="" o="" raw
+  if [ -r "$KBFILE" ]; then
+    IFS='|' read -r l v o < "$KBFILE" || true
+  elif have localectl; then
+    raw="$(localectl status 2>/dev/null)"
+    l="$(printf '%s\n' "$raw" | sed -n 's/^ *X11 Layout: *//p' | head -n 1)"
+    v="$(printf '%s\n' "$raw" | sed -n 's/^ *X11 Variant: *//p' | head -n 1)"
+    o="$(printf '%s\n' "$raw" | sed -n 's/^ *X11 Options: *//p' | head -n 1)"
+  fi
+  case "$l" in ""|n/a) return 0 ;; esac
+  case "$v" in n/a) v="" ;; esac
+  case "$o" in n/a) o="" ;; esac
+  l="$(printf '%s' "$l" | tr -cd 'A-Za-z0-9_,-')"; v="$(printf '%s' "$v" | tr -cd 'A-Za-z0-9_,-')"; o="$(printf '%s' "$o" | tr -cd 'A-Za-z0-9_:,-')"
+  [ -n "$l" ] || return 0
+  # several layouts and no key to switch between them: Alt+Shift (the login screen shows which key it is)
+  case "$l" in *,*) case "$o" in *grp:*) ;; *) o="${o:+$o,}grp:alt_shift_toggle" ;; esac ;; esac
+  printf ' XKB_DEFAULT_LAYOUT=%s' "$l"
+  [ -n "$v" ] && printf ' XKB_DEFAULT_VARIANT=%s' "$v"
+  [ -n "$o" ] && printf ' XKB_DEFAULT_OPTIONS=%s' "$o"
+  return 0
+}
+write_conf() {      # /etc/greetd/config.toml: cage + the greeter, with the keyboard
+  local kb; kb="$(kb_env)"
+  as_root tee "$CONF" >/dev/null <<CFG
+$MARK (written by Halcyon's scripts/halcyon-greeter.sh; halcyon-greeter.sh remove puts the old file back)
+[terminal]
+vt = 1
+
+[default_session]
+# cage is a tiny single-window compositor; the greeter is a Quickshell window inside it. Ctrl+Alt+F2 stays a text login.
+# the greeter user often has no home folder: Quickshell's cache / state go to the greeter's own folder instead
+# XKB_DEFAULT_*: the keyboard the password is typed on (halcyon-greeter.sh keyboard changes it)
+command = "env XDG_CACHE_HOME=$VAR/state/cache XDG_STATE_HOME=$VAR/state/qs XDG_DATA_HOME=$VAR/state/data$kb cage -s -d -m last -- quickshell -p $SHARE"
+user = "greeter"
+CFG
+}
+
 user_units() {      # a user service that re-syncs whenever the wallpaper palette changes
   local d="$HOME/.config/systemd/user"; mkdir -p "$d"
   cat > "$d/halcyon-greeter-sync.service" <<UNIT
@@ -269,17 +313,7 @@ case "${1:-}" in
     # greetd's config
     as_root install -d -m 755 /etc/greetd
     if [ -f "$CONF" ] && ! grep -q "$MARK" "$CONF" && [ ! -e "$CONF.halcyon-bak" ]; then as_root cp -a "$CONF" "$CONF.halcyon-bak"; fi
-    as_root tee "$CONF" >/dev/null <<CFG
-$MARK (written by Halcyon's scripts/halcyon-greeter.sh; halcyon-greeter.sh remove puts the old file back)
-[terminal]
-vt = 1
-
-[default_session]
-# cage is a tiny single-window compositor; the greeter is a Quickshell window inside it. Ctrl+Alt+F2 stays a text login.
-# the greeter user often has no home folder: Quickshell's cache / state go to the greeter's own folder instead
-command = "env XDG_CACHE_HOME=$VAR/state/cache XDG_STATE_HOME=$VAR/state/qs XDG_DATA_HOME=$VAR/state/data cage -s -d -m last -- quickshell -p $SHARE"
-user = "greeter"
-CFG
+    write_conf || die "could not write $CONF"
     # greetd replaces the old display manager; the tty1 auto-login of the lock-screen login is not needed any more
     as_root systemctl enable --force greetd.service >/dev/null 2>&1 || die "could not enable greetd.service"
     if [ -f "$GETTY" ]; then as_root rm -f "$GETTY"; as_root rmdir "$(dirname "$GETTY")" 2>/dev/null; as_root systemctl daemon-reload; say "Removed the tty1 auto-login (greetd logs you in now)."; fi
@@ -302,7 +336,11 @@ CFG
     if share_stale; then
       share_refresh || die "the login screen files were not updated."
       say "Login screen files updated in $SHARE (they are used at the next boot or login-screen start)."
-    else say "The installed login screen already matches this folder."; fi ;;
+    else say "The installed login screen already matches this folder."; fi
+    # an older install started cage without the machine's keyboard (it then types a US layout): add it
+    if grep -q "$MARK" "$CONF" 2>/dev/null && ! grep -q 'XKB_DEFAULT_LAYOUT=' "$CONF" && [ -n "$(kb_env)" ]; then
+      write_conf && say "Login screen keyboard added to $CONF ($(kb_env | sed 's/^ *//')): the password is typed on your layout from the next login screen start."
+    fi ;;
   doctor)        # re-check the seat and PAM (the \"[libseat] could not connect to socket /run/seatd.sock\" login failure) and repair them
     [ "$(id -u)" -ne 0 ] || die "run this as your own user (it asks for sudo)."
     seat_fix
@@ -358,6 +396,61 @@ CFG
     say ""
     say "logind session type of your last login: $(loginctl show-session "$XDG_SESSION_ID" -p Type -p Active -p Remote 2>/dev/null | tr '\n' ' ')"
     say "Reboot (or log out and in) once, then try the login screen again." ;;
+  fingerprint)   # fingerprint on|off|status: pam_fprintd first in greetd's PAM stack; the login screen notices it by itself
+    pam=/etc/pam.d/greetd; tag="# halcyon-fingerprint"
+    pline="auth       sufficient   pam_fprintd.so max-tries=2 timeout=10 $tag"
+    case "${2:-status}" in
+      on)
+        [ "$(id -u)" -ne 0 ] || die "run this as your own user (it asks for sudo)."
+        [ -f "$pam" ] || die "$pam does not exist (greetd is not installed: run $0 install first)."
+        if ! have fprintd-enroll; then
+          if have pacman; then say "Installing: fprintd"; as_root pacman -S --needed --noconfirm fprintd || die "pacman could not install fprintd"
+          elif have dnf; then say "Installing: fprintd"; as_root dnf install -y fprintd fprintd-pam || die "dnf could not install fprintd"
+          else die "install fprintd first (then enrol a finger: fprintd-enroll)."; fi
+        fi
+        if grep -q "$tag" "$pam"; then say "Fingerprint login is already on."
+        else
+          [ -e "$pam.halcyon-fp-bak" ] || as_root cp -a "$pam" "$pam.halcyon-fp-bak"
+          tmp="$(mktemp)" || die "no temporary file"
+          awk -v line="$pline" '!d && $1 == "auth" { print line; d = 1 } { print }' "$pam" > "$tmp"
+          grep -q "$tag" "$tmp" || printf '%s\n' "$pline" >> "$tmp"
+          as_root install -m 644 -o root -g root "$tmp" "$pam" || { rm -f "$tmp"; die "could not write $pam"; }
+          rm -f "$tmp"
+          say "Fingerprint login is on: the login screen lets the reader listen, and the password stays the fallback."
+        fi
+        if have fprintd-list && fprintd-list "$(id -un)" 2>/dev/null | grep -qi 'finger'; then say "  a finger is enrolled for $(id -un)."
+        else say "  no finger is enrolled for $(id -un) yet: run  fprintd-enroll  (each user enrols their own)."; fi
+        say "  note: a fingerprint login does not unlock a password keyring (gnome-keyring, kwallet): that asks for the password later."
+        say "  take it off again with:  $0 fingerprint off   (a backup of the PAM file is $pam.halcyon-fp-bak)" ;;
+      off)
+        [ "$(id -u)" -ne 0 ] || die "run this as your own user (it asks for sudo)."
+        if [ -f "$pam" ] && grep -q "$tag" "$pam"; then
+          tmp="$(mktemp)" || die "no temporary file"
+          grep -v "$tag" "$pam" > "$tmp"
+          as_root install -m 644 -o root -g root "$tmp" "$pam" || { rm -f "$tmp"; die "could not write $pam"; }
+          rm -f "$tmp"; say "Fingerprint login is off."
+        else say "Fingerprint login was not on."; fi ;;
+      status)
+        if [ -f "$pam" ] && grep -Eq '^[[:space:]]*auth[[:space:]]+[^#]*pam_fprintd\.so' "$pam"; then say "fingerprint:    on (pam_fprintd is in $pam)"
+        else say "fingerprint:    off"; fi
+        have fprintd-enroll && say "fprintd:        installed" || say "fprintd:        missing" ;;
+      *) die "fingerprint on|off|status" ;;
+    esac ;;
+  keyboard)      # keyboard [LAYOUT [VARIANT [OPTIONS]]]: what the password is typed on at the login screen
+    [ "$(id -u)" -ne 0 ] || die "run this as your own user (it asks for sudo)."
+    grep -q "$MARK" "$CONF" 2>/dev/null || die "the Halcyon login screen is not set up (run: $0 install)."
+    if [ -n "${2:-}" ]; then
+      for a in "${2:-}" "${3:-}" "${4:-}"; do case "$a" in *[!A-Za-z0-9_:,-]*) die "only letters, digits and , - _ : are allowed (example: $0 keyboard us,de \"\" grp:alt_shift_toggle)" ;; esac; done
+      as_root install -d -m 755 /etc/greetd
+      printf '%s|%s|%s\n' "$2" "${3:-}" "${4:-}" | as_root tee "$KBFILE" >/dev/null
+      say "Login screen keyboard: layout $2${3:+, variant $3}${4:+, options $4}"
+    else
+      as_root rm -f "$KBFILE"
+      say "Login screen keyboard: following the system's (localectl)."
+    fi
+    write_conf || die "could not write $CONF"
+    say "  [$(kb_env | sed 's/^ *//')]"
+    say "Takes effect the next time the login screen starts (next boot, or log out)." ;;
   lockmode)      # lockmode login|lock: what the lock screen / wake-from-sleep looks like (Settings > Power & lock). No root needed.
     case "${2:-}" in login|lock) ;; *) die "lockmode login|lock" ;; esac
     python3 - "$2" <<'PY2'
@@ -416,6 +509,8 @@ GETTYEOF
     say "enabled:        $(basename "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)" 2>/dev/null)"
     say "previous DM:    $(cat "$VAR/previous-dm" 2>/dev/null || echo none)"
     say "lockout:        $(grep -qs pam_faillock /etc/pam.d/system-auth /etc/pam.d/system-login /etc/pam.d/greetd 2>/dev/null && echo "pam_faillock active (locks after repeated misses)" || echo "no pam_faillock found (only the greeter's own slow-down applies)")"
+    say "fingerprint:    $(grep -Eqs '^[[:space:]]*auth[[:space:]]+[^#]*pam_fprintd\.so' /etc/pam.d/greetd && echo "on (halcyon-greeter.sh fingerprint off to remove)" || echo "off (halcyon-greeter.sh fingerprint on)")"
+    say "keyboard:       $(sed -n 's/.*XKB_DEFAULT_LAYOUT=\([A-Za-z0-9_,-]*\).*/\1/p' "$CONF" 2>/dev/null | head -n 1 | grep . || echo "not set: cage types a US layout (halcyon-greeter.sh keyboard)")"
     say "theme synced:   $([ -s "$VAR/theme.json" ] && date -r "$VAR/theme.json" '+%F %T' || echo never)" ;;
   remove)
     [ "$(id -u)" -ne 0 ] || die "run this as your own user (it asks for sudo), not as root."
@@ -429,8 +524,8 @@ GETTYEOF
     else say "No earlier login manager: you get a text console. Start Halcyon with start-halcyon, or run ./install.sh --lock-login."; fi
     systemctl --user disable --now halcyon-greeter-sync.path >/dev/null 2>&1
     rm -f "$HOME/.config/systemd/user/halcyon-greeter-sync."{service,path}; systemctl --user daemon-reload 2>/dev/null
-    as_root rm -rf "$SHARE" "$VAR"
+    as_root rm -rf "$SHARE" "$VAR"; as_root rm -f "$KBFILE"
     say "Removed. (greetd and cage packages are left installed.) Takes effect at the next boot." ;;
-  -h|--help|"") sed -n 2,17p "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "unknown command $1 (install | refresh | apply | lockmode | doctor | sync | preview | status | remove)" ;;
+  -h|--help|"") sed -n 2,19p "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command $1 (install | refresh | apply | lockmode | fingerprint | keyboard | doctor | sync | preview | status | remove)" ;;
 esac

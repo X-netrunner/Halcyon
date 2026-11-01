@@ -57,7 +57,7 @@ Scope {
             id: fade
             anchors.fill: parent
             opacity: root.open ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+            Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             focus: root.open
             Keys.onPressed: e => {
                 if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true; return }

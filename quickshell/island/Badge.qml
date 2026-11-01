@@ -21,7 +21,7 @@ Item {
     implicitWidth: dot ? dotSize : Math.max(size, num.implicitWidth + Math.round(size * 0.6))
     width: implicitWidth
     height: implicitHeight
-    Behavior on width { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+    Behavior on width { NumberAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } }
 
     // subtle theme glow
     Rectangle {
@@ -52,7 +52,7 @@ Item {
     onCountChanged: if (count > 0) pop.restart()
     SequentialAnimation {
         id: pop
-        NumberAnimation { target: root; property: "scale"; to: 1.22; duration: 90; easing.type: Easing.OutQuad }
+        NumberAnimation { target: root; property: "scale"; to: 1.22; duration: 90; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] }
         NumberAnimation { target: root; property: "scale"; to: 1.0; duration: 160; easing.type: Easing.OutBack }
     }
 }
