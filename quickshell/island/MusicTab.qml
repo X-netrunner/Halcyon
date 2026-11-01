@@ -116,7 +116,7 @@ Item {
                         height: parent.height
                         radius: 2.5
                         color: root.pal.accent
-                        Behavior on width { NumberAnimation { duration: 480; easing.type: Easing.OutCubic } }
+                        Behavior on width { NumberAnimation { duration: 480; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } }
                     }
                 }
                 MouseArea {

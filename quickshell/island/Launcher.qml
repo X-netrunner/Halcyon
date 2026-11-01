@@ -71,6 +71,19 @@ Item {
     property var cmdResults: []
     property string pendingConfirm: ""
     property bool stagger: false        // staggered entrance only right after opening
+    property real speedK: 1             // shell.qml launchK: 1 = Normal, 0.5 = Quick, 0.2 = Instant (Settings > Launcher speed)
+    // the whole launcher settles in: it grows a little from 94 % while it fades in (the box around it is already springing open), and
+    // folds back a touch quicker. enterP can pass 1 by a hair (the spring), which is the point.
+    property real enterP: active ? 1 : 0
+    Behavior on enterP {
+        NumberAnimation {
+            duration: root.active ? Math.max(60, Math.round(560 * root.speedK)) : 160
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: root.active && root.pal ? root.pal.curveSize : [0.34, 0.8, 0.34, 1, 1, 1]
+        }
+    }
+    transformOrigin: Item.Top
+    scale: (root.pal && root.pal.motion > 0.3) ? 0.94 + 0.06 * enterP : 1
     readonly property real decay: 0.97
 
     // Apps hidden from the normal list and search; they only show up after typing "."
@@ -842,7 +855,7 @@ Item {
                 border.width: 4
                 border.color: root.pal.accent
                 opacity: input.activeFocus && !root.pal.zen ? 0.07 : 0
-                Behavior on opacity { NumberAnimation { duration: 320; easing.type: Easing.InOutSine } }
+                Behavior on opacity { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
 
             Text {
@@ -938,7 +951,7 @@ Item {
                 radius: 12
                 // new: just the word, quietly ("Apps"), as the mode is a fact and not a button
                 color: root.pal.zen ? "transparent" : Qt.alpha(root.pal.accent, 0.14)
-                Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } }
                 Text {
                     id: badgeTxt
                     anchors.centerIn: parent
@@ -1022,23 +1035,31 @@ Item {
                 width: grid.cellWidth
                 height: grid.cellHeight
 
-                // entrance: smooth, unified glide up + fade without jarring stagger
+                // entrance: every app rises and grows into place on a spring, one after the other (left to right, row by row) right after the
+                // launcher opens; later changes (typing, filtering) bring the new results in together, without the wait
                 property real appear: 0
-                opacity: appear
-                transform: Translate { y: (1 - cell.appear) * 8 }
-                Component.onCompleted: enterAnim.start()
-                NumberAnimation {
-                    id: enterAnim
-                    target: cell; property: "appear"; to: 1
-                    duration: 260
-                    easing.type: Easing.OutCubic
+                opacity: Math.min(1, cell.appear * 1.6)
+                transform: [
+                    Translate { y: (1 - cell.appear) * 22 },
+                    Scale { origin.x: cell.width / 2; origin.y: cell.height / 2; xScale: 0.86 + 0.14 * cell.appear; yScale: 0.86 + 0.14 * cell.appear }
+                ]
+                Component.onCompleted: { if (root.pal && root.pal.motion > 0.05) enterSeq.start(); else cell.appear = 1 }
+                SequentialAnimation {
+                    id: enterSeq
+                    PauseAnimation { duration: root.stagger ? Math.round((60 + Math.min(cell.index, 30) * 14) * root.speedK) : 0 }
+                    NumberAnimation {
+                        target: cell; property: "appear"; to: 1
+                        duration: Math.max(80, Math.round(440 * root.speedK))
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: root.pal ? root.pal.curveSize : [0.34, 0.8, 0.34, 1, 1, 1]
+                    }
                 }
 
                 Column {
                     anchors.centerIn: parent
                     spacing: root.pal.zen ? 9 : 7
                     scale: ma.pressed ? 0.94 : 1
-                    Behavior on scale { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+                    Behavior on scale { NumberAnimation { duration: 170; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                     Image {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -1049,7 +1070,7 @@ Item {
                         asynchronous: true
                         smooth: true
                         scale: cell.cur ? 1.08 : (ma.containsMouse ? 1.04 : 1)
-                        Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     Text {
                         width: cell.width - 16
@@ -1094,11 +1115,25 @@ Item {
                 readonly property bool cur: index === grid.currentIndex
                 width: slist.width
                 height: 50
+                property real appear: 0
+                opacity: Math.min(1, srow.appear * 1.6)
+                transform: Translate { y: (1 - srow.appear) * 16 }
+                Component.onCompleted: { if (root.pal && root.pal.motion > 0.05) sEnter.start(); else srow.appear = 1 }
+                SequentialAnimation {
+                    id: sEnter
+                    PauseAnimation { duration: root.stagger ? Math.round((40 + Math.min(srow.index, 12) * 22) * root.speedK) : 0 }
+                    NumberAnimation {
+                        target: srow; property: "appear"; to: 1
+                        duration: Math.max(80, Math.round(380 * root.speedK))
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: root.pal ? root.pal.curveSize : [0.34, 0.8, 0.34, 1, 1, 1]
+                    }
+                }
                 Rectangle {
                     anchors.fill: parent
                     radius: 14
                     color: srow.cur ? Qt.alpha(root.pal.accent, 0.13) : (sma.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
-                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
                 Row {
                     anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
@@ -1189,10 +1224,19 @@ Item {
                 height: 46
 
                 property real appear: 0
-                opacity: appear
-                transform: Translate { x: (1 - crow.appear) * 5 }
-                Component.onCompleted: cEnter.start()
-                NumberAnimation { id: cEnter; target: crow; property: "appear"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+                opacity: Math.min(1, crow.appear * 1.6)
+                transform: Translate { x: (1 - crow.appear) * 22 }
+                Component.onCompleted: { if (root.pal && root.pal.motion > 0.05) cEnter.start(); else crow.appear = 1 }
+                SequentialAnimation {
+                    id: cEnter
+                    PauseAnimation { duration: root.stagger ? Math.round((40 + Math.min(crow.index, 14) * 24) * root.speedK) : 0 }
+                    NumberAnimation {
+                        target: crow; property: "appear"; to: 1
+                        duration: Math.max(80, Math.round(380 * root.speedK))
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: root.pal ? root.pal.curveSize : [0.34, 0.8, 0.34, 1, 1, 1]
+                    }
+                }
 
                 Text {
                     id: cg

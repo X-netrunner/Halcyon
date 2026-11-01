@@ -103,7 +103,7 @@ Item {
             width: lv.width
             height: root.rowH
             opacity: root.cur < 0 ? Math.max(0.08, 0.5 - 0.2 * index) : Math.max(0.1, 1 - 0.42 * d)
-            Behavior on opacity { NumberAnimation { duration: 360; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: 360; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width

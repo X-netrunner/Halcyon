@@ -26,7 +26,7 @@ Item {
     opacity: open ? 1 : 0
     visible: opacity > 0.01
     focus: open
-    Behavior on opacity { NumberAnimation { duration: root.pal ? root.pal.dMed : 300; easing.type: Easing.InOutSine } }
+    Behavior on opacity { NumberAnimation { duration: root.pal ? root.pal.dMed : 300; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
     // "/a b/c#1" -> file:///a%20b/c%231
     function urlOf(path) {

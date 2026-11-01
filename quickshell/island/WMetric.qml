@@ -49,7 +49,7 @@ WBase {
         return level(m.v, m.hi, m.bad)
     }
     property real shownV: m.v
-    Behavior on shownV { NumberAnimation { duration: 600; easing.type: Easing.OutCubic } }
+    Behavior on shownV { NumberAnimation { duration: 600; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
     // history: the last 30 readings (only the types that move)
     property var hist: []

@@ -34,7 +34,7 @@ Rectangle {
             color: root.on ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : root.pal.muted
             font.family: root.pal.font
             font.pixelSize: 21
-            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
         Item {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -82,7 +82,7 @@ Rectangle {
         color: root.pal.bg
         border.width: 1
         border.color: root.pal.lineSoft
-        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.InOutSine } }
+        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             id: tipText
             anchors.centerIn: parent

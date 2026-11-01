@@ -14,7 +14,13 @@ import Quickshell.Services.Greetd
 //   security   it runs as the unprivileged `greeter` user and never reads your home. Users come from `getent`, sessions from the
 //              root-owned /usr/share/wayland-sessions. theme.json (yours) only DECORATES: it cannot name a user, a session or a
 //              command, and pictures load only from the greeter's own data folder.
-//   keys       type the password, Enter logs in, Left / Right (empty box) change user, Tab changes session, Esc clears
+//   keys       type the password, Enter logs in, Left / Right (empty box) change user, Tab / Shift+Tab change session, Esc clears,
+//              Ctrl+Space shows / hides what you typed (it hides again by itself when you press Enter)
+//   fingerprint  only when /etc/pam.d/greetd lists pam_fprintd (halcyon-greeter.sh fingerprint on). The greeter then starts the PAM
+//              check by itself, shows PAM's own messages ("place your finger"), and the password stays the fallback. Enter on an
+//              empty box starts the reader again. PAM decides everything; the greeter never sees a fingerprint.
+//   caps lock  noticed from the letters you type (the greeter cannot read the LED); a warning shows under the box
+//   keyboard   the layouts cage was started with (XKB_DEFAULT_LAYOUT in /etc/greetd/config.toml) are listed bottom left
 //   switch     bottom left: "Switch user" and the session (desktop) chip open a list to pick from, like the lock screen's Switch user
 //   no widgets the Widget builder's widgets exist on the lock screen only
 //   try it     scripts/halcyon-greeter.sh preview   (a window in your desktop, nothing is logged in; the password is "preview")
@@ -88,6 +94,14 @@ FloatingWindow {
     property int sessIdx: 0
     property string lastUser: ""
     property string lastSession: ""
+    property bool fpFeature: false        // /etc/pam.d/greetd has pam_fprintd (read by features.sh, root-owned)
+    property bool scanning: false         // a PAM session is open and the fingerprint reader is listening
+    property bool awaiting: false         // PAM asked a question (the password, or the next question of a chain) and waits for the answer
+    property string layouts: ""           // the keyboard layouts the login screen has, "us,de"
+    property string kbToggle: ""          // the key that switches between them, "Alt+Shift"
+    property bool capsOn: false
+    property bool reveal: false           // show what was typed instead of dots (Ctrl+Space or the "show" button)
+    property string powerAsk: ""          // Restart / Shut down ask once more before they act
 
     function okPath(p) {      // pictures only from the greeter's data folder (or AccountsService's icons), never anywhere else
         if (typeof p !== "string" || p === "" || p.indexOf("..") >= 0) return false
@@ -133,9 +147,10 @@ FloatingWindow {
         try { l = JSON.parse(lastFile.text()) } catch (e2) { l = {} }
         lastUser = typeof l.user === "string" ? l.user : ""; lastSession = typeof l.session === "string" ? l.session : ""
     }
+    function sessMatch(s, key) { return key !== "" && (s.id === key || s.name === key) }   // the state file holds the desktop id; older ones the name
     function pickLast() {
         for (var u = 0; u < users.length; u++) if (users[u].name === lastUser) userIdx = u
-        for (var s = 0; s < sessions.length; s++) if (sessions[s].name === lastSession) sessIdx = s
+        for (var s = 0; s < sessions.length; s++) if (sessMatch(sessions[s], lastSession)) sessIdx = s
     }
     Component.onCompleted: { loadTheme(); appearAnim.start(); input.forceActiveFocus() }
 
@@ -151,7 +166,7 @@ FloatingWindow {
                     if (f[0] && /^[A-Za-z0-9_.-]+$/.test(f[0])) out.push({ name: f[0], full: f[1] || "" })
                 }
                 if (out.length === 0 && win.lastUser !== "") out.push({ name: win.lastUser, full: "" })
-                win.users = out; win.pickLast()
+                win.users = out; win.pickLast(); win.maybeScan()
             }
         }
     }
@@ -170,6 +185,25 @@ FloatingWindow {
                 out.sort(function (a, b) { return (a.name === "Halcyon" ? 0 : 1) - (b.name === "Halcyon" ? 0 : 1) || (a.name < b.name ? -1 : 1) })
                 if (out.length === 0) out.push({ name: "Halcyon", exec: "/usr/local/bin/start-halcyon", desk: "Hyprland", id: "halcyon" })
                 win.sessions = out; win.pickLast()
+            }
+        }
+    }
+
+    Process {
+        id: featP
+        running: true
+        command: ["sh", Quickshell.shellPath("features.sh")]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var L = text.split("\n")
+                for (var i = 0; i < L.length; i++) {
+                    var f = L[i].split("\t")
+                    if (f[0] === "fingerprint" && f[1] === "1") win.fpFeature = true
+                    else if (f[0] === "layouts" && /^[A-Za-z0-9_,-]{1,80}$/.test(f[1] || "")) win.layouts = f[1]
+                    else if (f[0] === "kbtoggle" && /^[A-Za-z0-9_+ ,-]{1,40}$/.test(f[1] || "")) win.kbToggle = f[1]
+                }
+                if (win.preview && Quickshell.env("HALCYON_GREETER_FP") === "1") win.fpFeature = true    // try the fingerprint look in the preview
+                win.maybeScan()
             }
         }
     }
@@ -198,7 +232,7 @@ FloatingWindow {
     NumberAnimation { id: energyDecay; target: win; property: "energy"; to: 0; duration: 1100; easing.type: Easing.OutCubic }
 
     function resetAuth() {          // drop a half-finished PAM conversation: nothing is kept waiting for a password
-        pending = ""; notice = ""; busy = false; buffer = ""
+        pending = ""; notice = ""; busy = false; buffer = ""; scanning = false; awaiting = false
         if (!win.preview && Greetd.state !== GreetdState.Inactive) Greetd.cancelSession()
     }
     // Changing the user or the desktop turns the old one away and the new one in, like a card stepping round in the wallpaper
@@ -216,25 +250,49 @@ FloatingWindow {
         resetAuth(); userIdx = (userIdx + d + users.length) % users.length
         spinUser(d)
         failure = ""; kick(false)
-        for (var s = 0; s < sessions.length; s++) if (sessions[s].name === lastSession && curUser.name === lastUser) sessIdx = s
+        for (var s = 0; s < sessions.length; s++) if (sessMatch(sessions[s], lastSession) && curUser.name === lastUser) sessIdx = s
+        maybeScan()
     }
     function cycleSession(d) { if (sessions.length > 1) { sessIdx = (sessIdx + d + sessions.length) % sessions.length; spinSession(d) } }
+
+    function startScan() {          // open the PAM check and let the fingerprint reader listen; the password stays the fallback
+        if (!fpFeature || busy || leaving || scanning || curUser.name === "") return
+        scanning = true; awaiting = false; pending = ""; notice = ""
+        if (win.preview) { notice = "Touch the fingerprint reader (preview)"; fpDemo.restart(); return }
+        if (Greetd.state !== GreetdState.Inactive) Greetd.cancelSession()
+        Greetd.createSession(curUser.name)
+        idleT.restart()
+    }
+    function maybeScan() {          // on its own at start and whenever the user changes (never in the preview, never during a slow-down)
+        if (win.preview || !fpFeature || scanning || awaiting || busy || leaving || users.length === 0 || Date.now() < waitUntil) return
+        startScan()
+    }
+    Timer { id: fpDemo; interval: 1500; onTriggered: if (win.scanning) { win.scanning = false; win.notice = "Fingerprint accepted (preview)"; win.startLeave() } }
+    function abortLeave() { leaving = false; exitAnim.stop(); exitT = 0 }      // the session did not start: the login screen comes back
 
     function submit() {
         if (busy || leaving) return
         if (Date.now() < waitUntil) { buffer = ""; shakeTick++; return }
         var pw = buffer
-        if (pw === "" && notice === "") return
+        if (pw === "" && !(awaiting && notice !== "")) {
+            // an empty Enter asks for the fingerprint reader (when it is set up); otherwise there is nothing to send
+            if (fpFeature && !scanning && !awaiting) startScan()
+            return
+        }
         if (curUser.name === "") { failure = "No user to log in"; shakeTick++; return }
+        reveal = false
         if (win.preview) {
             buffer = ""
             if (pw === "preview") startLeave(); else wrong("Wrong password (preview: type \"preview\")")
             return
         }
         failure = ""
-        // the next question of a PAM chain (a token, say): the session already exists, only answer it
-        if (Greetd.state === GreetdState.Authenticating && notice !== "") { busy = true; notice = ""; buffer = ""; Greetd.respond(pw); idleT.restart(); return }
+        // an answer to a question PAM waits on (the password, or the next question of a chain such as a token): the session exists already
+        if (awaiting && Greetd.state === GreetdState.Authenticating) { busy = true; awaiting = false; notice = ""; buffer = ""; Greetd.respond(pw); idleT.restart(); return }
+        // typed while the fingerprint reader still listens: keep that PAM session, the password goes in when PAM asks for it
+        if (scanning && Greetd.state === GreetdState.Authenticating) { busy = true; pending = pw; buffer = ""; idleT.restart(); return }
         busy = true
+        scanning = false; awaiting = false
         pending = pw
         buffer = ""                 // the password lives only in `pending` until PAM asks for it
         if (Greetd.state !== GreetdState.Inactive) Greetd.cancelSession()
@@ -242,7 +300,7 @@ FloatingWindow {
         idleT.restart()
     }
     function wrong(msg) {
-        busy = false; pending = ""; fails++
+        busy = false; pending = ""; scanning = false; awaiting = false; fails++
         failure = msg; shakeTick++; kick(true)
         if (fails >= 3) {      // 3 misses -> 2 s, 4 -> 4 s ... capped at 30 s (greetd and pam_faillock apply their own limits as well)
             var secs = Math.min(30, Math.pow(2, fails - 2))
@@ -260,7 +318,7 @@ FloatingWindow {
         }
     }
     // a conversation nobody answers is cancelled after a minute
-    Timer { id: idleT; interval: 60000; onTriggered: if (!win.leaving) { win.resetAuth(); win.failure = "Timed out" } }
+    Timer { id: idleT; interval: 60000; onTriggered: if (!win.leaving) { var quiet = !win.busy; win.resetAuth(); if (!quiet) win.failure = "Timed out" } }   // an idle fingerprint wait / password prompt ends quietly
     NumberAnimation { id: exitAnim; target: win; property: "exitT"; from: 0; to: 1; duration: 450; easing.type: Easing.InOutCubic }
     Timer {
         id: launchT
@@ -275,7 +333,7 @@ FloatingWindow {
             // So only plain words go over: the installed wrapper (root-owned, it logs to ~/.cache/island/greeter-session.log and
             // ends with the exit code), then the session's Exec split at whitespace. Never put a script or `sh -c "..."` in one argument.
             var words = String(win.curSess.exec).trim().split(/\s+/).filter(function (w) { return w !== "" })
-            if (words.length === 0) { win.failure = "This session has no command"; win.leaving = false; win.busy = false; return }
+            if (words.length === 0) { win.failure = "This session has no command"; win.abortLeave(); win.busy = false; return }
             Greetd.launch(["/usr/local/share/halcyon-greeter/halcyon-session"].concat(words), env, true)
         }
     }
@@ -284,8 +342,11 @@ FloatingWindow {
         target: Greetd
         function onAuthMessage(message, error, responseRequired, echoResponse) {
             if (responseRequired) {
-                if (win.pending !== "") { var p = win.pending; win.pending = ""; Greetd.respond(p) }
-                else { win.busy = false; win.notice = message; idleT.restart() }      // another question: shown under the name, the next Enter answers it
+                if (win.pending !== "") { var p = win.pending; win.pending = ""; win.scanning = false; win.awaiting = false; Greetd.respond(p) }
+                else if (win.scanning || /pass(word|phrase)?\s*[:\uFF1A]?\s*$/i.test(message)) {
+                    // the password question (the fingerprint reader gave up, or none is set up): the next Enter answers it
+                    win.scanning = false; win.awaiting = true; win.busy = false; win.notice = ""; idleT.restart()
+                } else { win.busy = false; win.awaiting = true; win.notice = message; idleT.restart() }      // another question: shown under the name, the next Enter answers it
             } else if (error) win.failure = message
             else win.notice = message
         }
@@ -295,13 +356,16 @@ FloatingWindow {
             if (Greetd.state !== GreetdState.Inactive) Greetd.cancelSession()
         }
         function onReadyToLaunch() {
-            idleT.stop()
+            idleT.stop(); win.scanning = false; win.awaiting = false
             // remember the choice (the greeter user owns state/); only names, no secrets
             Quickshell.execDetached(["sh", "-c", "printf '{\"user\":\"%s\",\"session\":\"%s\"}\\n' \"$1\" \"$2\" > \"$3/state/last.json\"",
-                                     "sh", win.curUser.name, win.curSess.name, win.dir])
+                                     "sh", win.curUser.name, (win.curSess.id !== "" ? win.curSess.id : win.curSess.name).replace(/[^A-Za-z0-9 _.@-]/g, ""), win.dir])
             win.startLeave()
         }
-        function onError(error) { idleT.stop(); win.busy = false; win.pending = ""; win.failure = "Login service error" }
+        function onError(error) {
+            idleT.stop(); win.busy = false; win.pending = ""; win.scanning = false; win.awaiting = false; win.failure = "Login service error"
+            if (win.leaving) win.abortLeave()      // greetd refused the launch: do not stay on the blank screen
+        }
     }
 
     SystemClock { id: clock; precision: win.optSeconds ? SystemClock.Seconds : SystemClock.Minutes }
@@ -547,6 +611,20 @@ FloatingWindow {
             }
             Connections { target: win; function onShakeTickChanged() { shake.restart() } }
 
+            // the fingerprint reader is listening: a soft ring breathes round the box
+            Rectangle {
+                anchors.fill: parent; anchors.margins: -6; radius: height / 2
+                color: "transparent"
+                border.width: 1.5; border.color: pal.accent
+                visible: win.scanning && !win.busy && win.failure === ""
+                opacity: 0.2
+                SequentialAnimation on opacity {
+                    loops: Animation.Infinite
+                    running: win.scanning && !win.busy && pal.motion > 0.05
+                    NumberAnimation { to: 0.75; duration: 1000; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0.2; duration: 1000; easing.type: Easing.InOutSine }
+                }
+            }
             // a ring leaves the pill on every key press
             Rectangle {
                 id: ring
@@ -569,8 +647,9 @@ FloatingWindow {
             Row {
                 anchors.centerIn: parent
                 spacing: 9
+                visible: !win.reveal
                 Repeater {
-                    model: Math.min(win.buffer.length, 16)
+                    model: Math.min(win.buffer.length, 14)
                     delegate: Rectangle {
                         required property int index
                         width: 9; height: 9; radius: 4.5
@@ -606,7 +685,13 @@ FloatingWindow {
                 onAccepted: win.submit()
                 Connections { target: win; function onBufferChanged() { if (input.text !== win.buffer) input.text = win.buffer } }
                 Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Escape) { if (win.menu !== "") win.menu = ""; else { win.buffer = ""; win.failure = "" } event.accepted = true }
+                    // Caps Lock: the LED cannot be read here, so it is noticed from the letters: a capital without Shift (or a small letter with it)
+                    if (event.key === Qt.Key_CapsLock) win.capsOn = !win.capsOn
+                    else if (event.text.length === 1 && event.text.toLowerCase() !== event.text.toUpperCase())
+                        win.capsOn = (event.text === event.text.toUpperCase()) !== ((event.modifiers & Qt.ShiftModifier) !== 0)
+                    if (event.key === Qt.Key_Space && (event.modifiers & Qt.ControlModifier)) { win.reveal = !win.reveal; event.accepted = true }
+                    else if (event.key === Qt.Key_Escape) { if (win.menu !== "") win.menu = ""; else if (win.powerAsk !== "") win.powerAsk = ""; else { win.buffer = ""; win.failure = ""; win.reveal = false } event.accepted = true }
+                    else if (event.key === Qt.Key_Backtab) { win.cycleSession(-1); event.accepted = true }
                     else if (event.key === Qt.Key_Tab) { win.cycleSession(1); event.accepted = true }
                     else if (win.buffer.length === 0 && event.key === Qt.Key_Left) { win.cycleUser(-1); event.accepted = true }
                     else if (win.buffer.length === 0 && event.key === Qt.Key_Right) { win.cycleUser(1); event.accepted = true }
@@ -616,8 +701,27 @@ FloatingWindow {
             }
             Text {
                 anchors.centerIn: parent
+                width: parent.width - 110
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideLeft
+                visible: win.reveal && win.buffer.length > 0
+                text: win.buffer
+                color: win.failure !== "" ? pal.bad : pal.text
+                font.family: pal.uiFont
+                font.pixelSize: pal.tTitle
+            }
+            Text {
+                visible: win.buffer.length > 0 && !win.busy
+                anchors.right: parent.right; anchors.rightMargin: 20; anchors.verticalCenter: parent.verticalCenter
+                text: win.reveal ? "hide" : "show"
+                color: eyeMa.containsMouse ? pal.text : pal.muted
+                font.family: pal.uiFont; font.pixelSize: pal.tCap
+                MouseArea { id: eyeMa; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { win.reveal = !win.reveal; input.forceActiveFocus() } }
+            }
+            Text {
+                anchors.centerIn: parent
                 visible: win.buffer === "" && !win.busy
-                text: win.notice !== "" ? "Answer" : "Password"
+                text: win.awaiting && win.notice !== "" ? "Answer" : "Password"
                 color: Qt.alpha(pal.text, 0.35)
                 font.family: pal.uiFont
                 font.pixelSize: pal.tBody + 1
@@ -625,10 +729,15 @@ FloatingWindow {
         }
 
         Text {
+            id: statusLine
+            readonly property int hour: clock.date.getHours()
+            readonly property string greeting: hour < 5 ? "Good night" : (hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening"))
+            readonly property string idleHint: win.scanning ? "Touch the fingerprint reader, or type your password"
+                                             : (win.fpFeature ? "Type your password, or press Enter to use your fingerprint" : greeting)
             anchors.horizontalCenter: parent.horizontalCenter
             height: 18
-            text: win.busy ? "Checking…" : (win.failure !== "" ? win.failure : win.notice)
-            color: win.failure !== "" && !win.busy ? pal.bad : pal.muted
+            text: win.busy ? "Checking…" : (win.failure !== "" ? win.failure : (win.notice !== "" ? win.notice : (win.capsOn ? "Caps Lock is on" : idleHint)))
+            color: win.failure !== "" && !win.busy ? pal.bad : ((win.capsOn && win.notice === "" && !win.busy) ? pal.accent2 : pal.muted)
             font.family: pal.uiFont
             font.pixelSize: pal.tCap + 1
         }
@@ -774,6 +883,11 @@ FloatingWindow {
             Rectangle {
                 id: listBox
                 visible: win.menu !== ""
+                property real pop: 1
+                opacity: pop
+                transform: Translate { y: 10 * (1 - listBox.pop) }
+                NumberAnimation { id: popAnim; target: listBox; property: "pop"; from: 0; to: 1; duration: 190; easing.type: Easing.OutCubic }
+                Connections { target: win; function onMenuChanged() { if (win.menu !== "" && pal.motion > 0.05) popAnim.restart() } }
                 width: 250
                 height: listCol.height + 16
                 radius: 14
@@ -839,9 +953,17 @@ FloatingWindow {
                     onNext: { win.cycleSession(1); input.forceActiveFocus() }
                     onClicked: { win.menu = win.menu === "session" ? "" : "session"; input.forceActiveFocus() }
                 }
+                Text {
+                    visible: win.layouts !== ""
+                    anchors.verticalCenter: parent.verticalCenter
+                    leftPadding: 6
+                    text: "⌨  " + win.layouts.replace(/,/g, " · ") + (win.kbToggle !== "" && win.layouts.indexOf(",") >= 0 ? "   (" + win.kbToggle + " switches)" : "")
+                    color: pal.muted; font.family: pal.uiFont; font.pixelSize: pal.tCap + 1
+                }
             }
         }
     }
+    Timer { id: powerT; interval: 4000; onTriggered: win.powerAsk = "" }      // an unanswered "Click again" is forgotten
     Row {
         visible: win.optPower
         anchors.right: parent.right; anchors.bottom: parent.bottom
@@ -849,18 +971,22 @@ FloatingWindow {
         opacity: win.appear * (1 - win.exitT)
         spacing: 22
         Repeater {
-            model: [{ t: "Sleep", c: ["systemctl", "suspend"] }, { t: "Restart", c: ["systemctl", "reboot"] }, { t: "Shut down", c: ["systemctl", "poweroff"] }]
+            model: [{ t: "Sleep", c: ["systemctl", "suspend"], ask: false }, { t: "Restart", c: ["systemctl", "reboot"], ask: true }, { t: "Shut down", c: ["systemctl", "poweroff"], ask: true }]
             delegate: Text {
                 required property var modelData
-                text: modelData.t
-                color: hov.containsMouse ? pal.text : pal.muted
+                text: win.powerAsk === modelData.t ? modelData.t + "? Click again" : modelData.t
+                color: win.powerAsk === modelData.t ? pal.bad : (hov.containsMouse ? pal.text : pal.muted)
                 font.family: pal.uiFont
                 font.pixelSize: pal.tCap + 2
                 Behavior on color { ColorAnimation { duration: pal.dFast } }
                 MouseArea {
                     id: hov
                     anchors.fill: parent; anchors.margins: -8; hoverEnabled: true
-                    onClicked: { if (win.preview) win.failure = modelData.t + " (not in preview)"; else Quickshell.execDetached(modelData.c) }
+                    onClicked: {
+                        if (modelData.ask && win.powerAsk !== modelData.t) { win.powerAsk = modelData.t; powerT.restart(); return }
+                        win.powerAsk = ""
+                        if (win.preview) win.failure = modelData.t + " (not in preview)"; else Quickshell.execDetached(modelData.c)
+                    }
                 }
             }
         }

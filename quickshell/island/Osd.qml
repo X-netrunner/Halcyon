@@ -101,7 +101,7 @@ Scope {
                     radius: 4
                     width: parent.width * Math.max(0, Math.min(1, root.value / (root.kind === "vol" ? 1.5 : 1)))
                     color: root.muted ? root.pal.muted : (root.over ? root.pal.warn : root.pal.accent)
-                    Behavior on width { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.OutCubic } }
+                    Behavior on width { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                     Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
                 // the 100% mark on the volume bar (it can go to 150%)

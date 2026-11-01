@@ -63,8 +63,27 @@ ListView {
         height: (rowLd.item ? rowLd.item.height : 0) + (lineLd.item ? lineLd.item.height : 0)
               + (groupLd.item ? groupLd.item.height : 0) + (headLd.item ? headLd.item.height : 0)
 
+        // Smooth re-flow WITHOUT ListView's add / displaced transitions. Those leave the rows below stuck at the wrong y (the cards
+        // overlap) whenever a card changes height while its transition is still running, which is exactly what happens when a
+        // notification is updated just after it arrives (e.g. the AI explanation being appended). A Behavior on y always ends at
+        // whatever y the list last assigned, so it can never end up in the wrong place. `live` keeps a new cell from gliding in
+        // from y = 0 on its first placement.
+        property bool live: false
+        Behavior on y {
+            enabled: cell.live && list.pal.motion > 0.05
+            NumberAnimation { duration: list.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: list.pal.curveDecel }
+        }
+
+        // the entrance happens on the content, not on the cell, so the cell's own geometry stays entirely in the list's hands
+        property real enter: list.pal.motion > 0.05 ? 0 : 1
+        Component.onCompleted: { Qt.callLater(function () { cell.live = true }); if (list.pal.motion > 0.05) enterAnim.start() }
+        NumberAnimation { id: enterAnim; target: cell; property: "enter"; to: 1; duration: list.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: list.pal.curveDecel }
+        readonly property real contentX: (1 - enter) * 30
+
         Loader {
             id: rowLd
+            opacity: cell.enter
+            x: cell.contentX
             active: cell.kind === "row"
             width: cell.width
             sourceComponent: Component {
@@ -81,6 +100,8 @@ ListView {
         }
         Loader {
             id: lineLd
+            opacity: cell.enter
+            x: cell.contentX
             active: cell.kind === "line"
             width: cell.width
             sourceComponent: Component {
@@ -95,6 +116,8 @@ ListView {
         }
         Loader {
             id: groupLd
+            opacity: cell.enter
+            x: cell.contentX
             active: cell.kind === "group"
             width: cell.width
             sourceComponent: Component {
@@ -111,6 +134,8 @@ ListView {
         }
         Loader {
             id: headLd
+            opacity: cell.enter
+            x: cell.contentX
             active: cell.kind === "head"
             width: cell.width
             sourceComponent: Component {
@@ -131,12 +156,12 @@ ListView {
         }
     }
 
-    add: Transition {
+    // Only the removal is a ListView transition (the row fades and slides out while the ones below glide up through their Behavior on y).
+    // No `add` / `displaced` here: see the note in the delegate.
+    remove: Transition {
         ParallelAnimation {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: list.pal.dMed }
-            NumberAnimation { property: "x"; from: 30; to: 0; duration: list.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: list.pal.curve }
+            NumberAnimation { property: "opacity"; to: 0; duration: list.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: list.pal.curveFx }
+            NumberAnimation { property: "x"; to: 30; duration: list.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: list.pal.curveAccel }
         }
     }
-    remove: Transition { NumberAnimation { property: "opacity"; to: 0; duration: list.pal.dFast } }
-    displaced: Transition { NumberAnimation { property: "y"; duration: list.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: list.pal.curve } }
 }
