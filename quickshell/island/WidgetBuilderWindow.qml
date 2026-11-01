@@ -156,7 +156,7 @@ Item {
     opacity: open ? 1 : 0
     visible: opacity > 0.01
     focus: open
-    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     onOpenChanged: { if (open) Qt.callLater(function () { root.forceActiveFocus() }); else flushLive() }
     Keys.onPressed: function (e) { if (e.key === Qt.Key_Escape) { if (root.adding) root.adding = false; else root.closed(); e.accepted = true } }
 

@@ -10,7 +10,7 @@ Rectangle {
     signal clicked()
     radius: pal.rSm
     color: on ? Qt.alpha(pal.accent, 0.18) : (ma.containsMouse ? Qt.alpha(pal.text, 0.10) : Qt.alpha(pal.text, 0.06))
-    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     Text {
         anchors.centerIn: parent
         text: root.glyph

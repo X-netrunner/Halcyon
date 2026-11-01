@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.Notifications
 import "NotifLayout.js" as NL
+import "ToastGroups.js" as TG
 import "DeskSpots.js" as DS
 
 // Notification daemon + right-edge hover panel (like the bottom-right utilities box), popups and notification centre.
@@ -19,6 +20,9 @@ import "DeskSpots.js" as DS
 //  transient         kept too: some apps mark everything transient, and "not in the box" was the result.
 //  closed by the app an app may withdraw its own notification (read in the chat, tab focused ...). The popup goes, but the
 //                    centre keeps a copy until YOU remove it (see snapshot() below).
+//  grouping          popups from the same app fold into one card (the newest, "+N more", a folded layer behind it); a click on the
+//                    label opens the group. Only the cards' heights change: every popup is still its own card with its own timer
+//                    (ToastGroups.js decides, NotifCard.qml draws). Urgent popups are never folded.
 //  urgent popups     critical ones used to wait for a click for ever (browsers send "requires interaction" as critical).
 //                    They now hide after critSecs; the notification itself stays in the centre.
 //  do not disturb    no popups (critical ones still show); everything is still stored. DND chip in the panel, or SUPER+SHIFT+D.
@@ -71,6 +75,11 @@ Scope {
     property bool centerOpen: false
     property var history: []                // Notification objects, newest first
     property var toasts: []                 // Notification objects, oldest first
+    property var openGroups: ({})           // { appName: true } for the popup groups the user opened (ToastGroups.js)
+    function isCrit(n) { return n.urgency === NotificationUrgency.Critical }
+    readonly property var toastPlan: TG.plan(toasts, openGroups, isCrit)       // which cards are folded, which carries "+N more"
+    onToastsChanged: { var keep = TG.prune(toasts, openGroups, isCrit); if (keep !== openGroups) openGroups = keep }
+    function toggleGroup(app) { openGroups = TG.toggle(openGroups, app) }
     property var arrived: ({})              // notification id -> arrival time (ms)
     property int unread: 0
     property real now: Date.now()
@@ -400,11 +409,16 @@ Scope {
                     model: ScriptModel { values: root.toasts }
                     delegate: NotifCard {
                         required property var modelData
-                        required property int index
-                        // out of the corner: the card next to the screen corner slides in from / out to that corner's border
-                        cornerJoin: root.pal.cornerOut ? (root.atB ? (index === root.toasts.length - 1 ? "b" : "") : (index === 0 ? "t" : "")) : ""
+                        readonly property var grp: root.toastPlan.byId[modelData.id] || ({ folded: false, more: 0, open: false })
+                        // out of the corner: the card next to the screen corner (the first / last one that is showing, folded ones do not count) slides in from / out to that corner's border
+                        cornerJoin: root.pal.cornerOut ? (root.atB ? (modelData.id === root.toastPlan.last ? "b" : "") : (modelData.id === root.toastPlan.first ? "t" : "")) : ""
                         notif: modelData
-                        stacked: root.toasts.length > 1
+                        arrivedAt: root.arrived[modelData.id] || 0
+                        folded: grp.folded
+                        more: grp.more
+                        groupOpen: grp.open
+                        onGroupToggled: root.toggleGroup(modelData.appName)
+                        stacked: root.toastPlan.shown > 1
                         pal: root.pal
                         avatar: root.avatar
                         usePfp: root.usePfp
@@ -464,7 +478,7 @@ Scope {
             opacity: root.pal.frameOn ? 1 : Math.min(1, root.reveal * 1.6)
             visible: root.pal.frameOn ? (root.oVert ? panel.slideY > 0.002 : (root.pAtR ? x < win.width - 1 : x > -width + 1)) : opacity > 0.01
             Behavior on x { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-            Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+            Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             border.color: root.sysmode === "lockdown" || root.sysmode === "stealth" ? Qt.alpha(root.pal.accent, 0.30) : root.pal.line
 
             HoverHandler { onHoveredChanged: root.panelHover = hovered }

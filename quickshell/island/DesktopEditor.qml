@@ -58,7 +58,7 @@ PanelWindow {
         id: fade
         anchors.fill: parent
         opacity: win.open ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.InOutSine } }
+        Behavior on opacity { NumberAnimation { duration: win.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         focus: win.open
         Keys.onPressed: e => {
             if (e.key === Qt.Key_Escape) { if (win.helpOpen) win.helpOpen = false; else if (win.adding) win.adding = false; else win.done(); e.accepted = true }

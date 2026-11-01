@@ -72,7 +72,7 @@ ColumnLayout {
                                     Layout.fillHeight: true
                                     radius: 10
                                     color: sel ? root.pal.accent : (lenMa.containsMouse ? Qt.alpha(root.pal.text, 0.10) : "transparent")
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     Text {
                                         anchors.centerIn: parent
                                         text: lenTile.modelData + " min"
@@ -133,7 +133,7 @@ ColumnLayout {
                             text: root.focusBlocked > 0 ? "Blocked apps · " + root.focusBlocked + "   ›" : "Choose apps to block   ›"
                             color: blkMa.containsMouse ? root.pal.text : root.pal.muted
                             font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1
-                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         }
                         MouseArea {
                             id: blkMa

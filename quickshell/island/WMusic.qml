@@ -75,7 +75,7 @@ WBase {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width; height: root.sz(4); radius: height / 2; color: root.track
                 Rectangle { width: parent.width * root.frac; height: parent.height; radius: height / 2; color: root.accent
-                    Behavior on width { NumberAnimation { duration: 480; easing.type: Easing.OutCubic } } }
+                    Behavior on width { NumberAnimation { duration: 480; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } } }
             }
             MouseArea {
                 anchors.fill: parent

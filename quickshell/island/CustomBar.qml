@@ -1060,14 +1060,14 @@ PanelWindow {
                     height: width
                     radius: width / 2
                     color: logoMa.containsMouse ? Qt.alpha(win.ac, 0.16) : "transparent"
-                    Behavior on color { ColorAnimation { duration: win.pal.dFast } }
+                    Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text {
                         anchors.centerIn: parent
                         text: String.fromCodePoint(0xF08C7)
                         color: logoMa.containsMouse ? win.ac : (win.rail ? notch.railTint : Qt.alpha(win.pal.text, 0.85))
                         font.family: win.pal.font
                         font.pixelSize: win.rail ? lg + 2 : Math.round(win.icoH * 1.1)
-                        Behavior on color { ColorAnimation { duration: win.pal.dFast } }
+                        Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
                 MouseArea {
@@ -1095,8 +1095,8 @@ PanelWindow {
                     color: pwrMa.containsMouse ? Qt.alpha(pwrBox.errCol, 0.20) : (win.rail ? "transparent" : Qt.alpha(pwrBox.errCol, 0.10))
                     border.width: (!win.rail && pwrMa.containsMouse) ? 1 : 0
                     border.color: Qt.alpha(pwrBox.errCol, 0.45)
-                    Behavior on color { ColorAnimation { duration: win.pal.dFast } }
-                    Behavior on border.color { ColorAnimation { duration: win.pal.dFast } }
+                    Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on border.color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text {
                         anchors.centerIn: parent
                         text: String.fromCodePoint(0xF0425)

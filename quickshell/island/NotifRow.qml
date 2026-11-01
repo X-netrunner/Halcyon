@@ -59,7 +59,7 @@ Item {
         outAnim.to = dir * width * 1.1
         outAnim.start()
     }
-    NumberAnimation { id: outAnim; target: row; property: "swipeX"; duration: 180; easing.type: Easing.OutCubic; onFinished: row.dismissRequested() }
+    NumberAnimation { id: outAnim; target: row; property: "swipeX"; duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1]; onFinished: row.dismissRequested() }
     NumberAnimation { id: backAnim; target: row; property: "swipeX"; to: 0; duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve }
 
     // what shows underneath while you drag: an accent wash + a cross on the side you are pulling towards
