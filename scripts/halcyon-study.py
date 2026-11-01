@@ -80,6 +80,9 @@ class Fail(Exception):
     pass
 
 
+AI_OFF_FLAG = os.path.join(os.path.expanduser("~"), ".local", "state", "island", "ai-off")
+
+
 class AiOff(Exception):
     pass
 
@@ -1408,6 +1411,8 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
     try:
+        if cmd in ("ask", "make", "chat", "grade", "use") and os.path.lexists(AI_OFF_FLAG):     # the master AI switch (Settings > AI > AI features)
+            raise AiOff("AI features are switched off (Settings > AI > AI features).")
         return fn(rest)
     except AiOff as e:
         emit(type="error", error=str(e), off=True)
