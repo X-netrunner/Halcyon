@@ -56,7 +56,7 @@ SYSTEM_PROMPT = ("You are a concise, helpful assistant inside the Halcyon deskto
 # kind: luna | ollama | openai (OpenAI-compatible chat completions) | anthropic (native messages API)
 PROVIDERS = {
     "luna":       {"name": "Luna",       "kind": "luna"},
-    "ollama":     {"name": "Ollama",     "kind": "ollama",    "model": "qwen2.5:3b-instruct"},
+    "ollama":     {"name": "Ollama",     "kind": "ollama",    "model": "gemma4:e2b-it-qat"},
     "openrouter": {"name": "OpenRouter", "kind": "openai",    "model": "openai/gpt-4o-mini",
                    "endpoint": "https://openrouter.ai/api/v1/chat/completions",
                    "presets": ["openai/gpt-4o-mini", "anthropic/claude-haiku-5-5", "deepseek/deepseek-chat", "meta-llama/llama-3.3-70b-instruct:free"]},

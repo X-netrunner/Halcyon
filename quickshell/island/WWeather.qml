@@ -13,18 +13,26 @@ WBase {
 
     property bool again: false          // the place changed while a request was running: ask once more when it ends
     function ask() { if (!proc.running) proc.running = true; else again = true }
-    onPlaceChanged: { cur = null; err = ""; if (live) ask() }       // the old place's weather must not stay on screen
+    onPlaceChanged: { cur = null; err = ""; fails = 0; if (live) ask() }       // the old place's weather must not stay on screen
     Timer { running: root.live; repeat: true; interval: 1800000; triggeredOnStart: true; onTriggered: root.ask() }
+    // A failed request (no network yet at login, after a resume, wttr.in busy) is tried again soon: 30 s, 1, 2, 4 ... up to
+    // 10 minutes, instead of showing "offline" until the next half-hour round. Back on screen with stale data: ask at once.
+    property int fails: 0
+    property double gotAt: 0
+    function failed(why) { err = why; fails++; retryT.interval = Math.min(600000, 30000 * Math.pow(2, Math.min(fails - 1, 5))); retryT.restart() }
+    Timer { id: retryT; repeat: false; onTriggered: if (root.live) root.ask() }
+    onLiveChanged: if (live && !proc.running && (cur === null || Date.now() - gotAt > 1800000)) ask()
     Process {
         id: proc
         command: ["curl", "-fsS", "--max-time", "10", "https://wttr.in/" + encodeURIComponent(root.place) + "?format=j1"]
         stdout: StdioCollector {
             onStreamFinished: {
-                try { root.cur = JSON.parse(text).current_condition[0]; root.err = "" } catch (e) { root.err = "no data" }
+                if (text.trim() === "") return                    // nothing came: onExited reports why
+                try { root.cur = JSON.parse(text).current_condition[0]; root.err = ""; root.fails = 0; root.gotAt = Date.now() } catch (e) { root.failed("no data") }
             }
         }
         onExited: code => {
-            if (code !== 0) root.err = "offline"
+            if (code !== 0) root.failed("offline")
             if (root.again) { root.again = false; root.ask() }
         }
     }

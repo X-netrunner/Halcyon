@@ -10,6 +10,7 @@ import Quickshell.Services.Notifications
 Rectangle {
     id: g
     property var pal
+    property string iconMode: "symbol"
     property string app: ""
     property var items: []                  // Notification objects, newest first
     property var arrivedMap: ({})
@@ -54,6 +55,7 @@ Rectangle {
                 pal: g.pal
                 notif: g.items.length > 0 ? g.items[0] : null
                 usePfp: false
+                mode: g.iconMode
                 size: 30
                 tone: g.tone
             }

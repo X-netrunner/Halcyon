@@ -44,6 +44,8 @@ LIB_URL = "https://ollama.com/library?sort=popular"
 
 # a short list that always works, used when the page can't be read
 BUILTIN = [
+    ("qwen3.5", "Qwen 3.5 (2026): tools, thinking and pictures, 256K context", ["2b", "4b", "9b"], ["tools", "thinking", "vision"], ""),
+    ("gemma4", "Google's Gemma 4 (2026): tools, thinking, pictures and audio", ["e2b", "e4b", "12b"], ["tools", "thinking", "vision"], ""),
     ("llama3.2", "Meta's small, fast all-rounder", ["1b", "3b"], ["tools"], ""),
     ("llama3.1", "Meta's best general model that still runs on a laptop", ["8b"], ["tools"], ""),
     ("qwen3", "Qwen 3: strong reasoning and tool use for its size", ["4b", "8b", "14b"], ["tools", "thinking"], ""),
@@ -120,7 +122,7 @@ def current_model(have):
         for n in names:
             if n.startswith(pref):
                 return n
-    return names[0] if names else "qwen2.5:3b-instruct"
+    return names[0] if names else "gemma4:e2b-it-qat"
 
 
 def hardware():

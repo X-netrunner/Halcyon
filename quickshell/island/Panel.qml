@@ -460,9 +460,9 @@ Glass {
                 Layout.fillWidth: true
                 visible: root.shown("Hotspot")
                 pal: root.pal
-                maxLabel: 62
+                maxLabel: 90
                 glyph: String.fromCodePoint(0xF0003)
-                label: ""
+                label: "Hotspot"
                 tipAlign: "left"
                 tip: root.hotspotOn ? "Hotspot on  ·  click to turn off" : "Hotspot off  ·  click to turn on"
                 on: root.hotspotOn
@@ -472,9 +472,9 @@ Glass {
                 Layout.fillWidth: true
                 visible: root.shown("Airplane")
                 pal: root.pal
-                maxLabel: 62
+                maxLabel: 90
                 glyph: String.fromCodePoint(0xF001D)
-                label: ""
+                label: "Airplane"
                 tip: root.airplaneOn ? "Airplane mode on  ·  click to bring Wi-Fi and Bluetooth back" : "Airplane mode  ·  switches Wi-Fi and Bluetooth off"
                 on: root.airplaneOn
                 onClicked: root.toggleAirplane()
@@ -486,7 +486,7 @@ Glass {
                 maxLabel: 90                     // "Limit 80%" is wider than the 62 px the other tiles use (it was cut to "Limit 80...")
                 padX: 12
                 glyph: String.fromCodePoint(0xF0079)
-                label: ""
+                label: root.chargeLimit > 0 && root.chargeLimit < 100 ? root.chargeLimit + "%" : "Full"
                 tipAlign: "right"
                 tip: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Charge limit " + root.chargeLimit + "%  ·  protects the battery, click for full charge"
                                                                    : "Full charge  ·  click to limit charging and protect the battery"
@@ -794,7 +794,8 @@ Glass {
                 pal: root.pal
                 maxLabel: 230
                 glyph: String.fromCodePoint(0xF0140)
-                label: ""
+                // the input in use, so the pill is never an empty box (the full name is in the hover bubble)
+                label: root.micMuted ? "Muted" : (root.defaultSource && root.defaultSource.desc ? root.defaultSource.desc : "Microphone")
                 tip: (root.defaultSource ? root.defaultSource.desc : "Microphone") + "  ·  click to choose, right-click to mute"
                 on: root.menu === "mic"
                 onClicked: root.toggleMenu("mic")
