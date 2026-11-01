@@ -72,7 +72,7 @@ def ai_blocked():
     if os.path.lexists(GAMING_FLAG):
         return "Gaming mode is on: the AI is paused so the game keeps the GPU memory."
     if os.path.lexists(AI_OFF_FLAG):
-        return "AI features are switched off (Settings > Performance > AI features)."
+        return "AI features are switched off (Settings > AI > AI features)."
     return ""
 
 
