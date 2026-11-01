@@ -41,11 +41,24 @@
 //!   hal timeline ...       <- scripts/timeline.py
 //!   hal system-profile ... <- scripts/halcyon-control.py (deep system audit & knowledge engine)
 //!   hal keep-clear         <- keeps floating windows out of the border and the bar (scripts/keep-clear.sh)
+//!   hal focus-log ...      <- scripts/focus-log.sh          (Focus streak: minutes per day)
+//!   hal lock               <- scripts/lock.sh               (island lock screen, hyprlock as the fallback)
+//!   hal theme [dark|light] <- scripts/theme.sh              (tell GTK / portals which theme the island uses)
+//!   hal emoji              <- scripts/emoji.sh              (emoji picker)
+//!   hal refresh-ram [--gui] <- scripts/refresh-ram.sh       (save dmidecode RAM details for the performance page)
+//!   hal thunar-look ...    <- scripts/thunar-look.sh        (Thunar icon sizes)
+//!   hal polkit-agent [check] <- scripts/polkit-agent.sh     (make sure a polkit password window agent runs)
+//!   hal pick-image [dir]   <- quickshell/island/scripts/pick-image.sh
+//!   hal bt-set ...         <- quickshell/island/scripts/bt-set.sh
+//!   hal printer ...        <- scripts/printer.sh            (printer manager)
+//!   hal idle ...           <- scripts/idle.sh               (hypridle config: dim, lock, sleep)
+//!   hal switch-user ...    <- scripts/switch-user.sh        (lock screen "Switch user")
 //!   hal ping
 
 mod audioset;
 mod avatar;
 mod btbattery;
+mod btset;
 mod buildshader;
 mod cachetrim;
 mod caffeine;
@@ -53,13 +66,16 @@ mod chargelimit;
 mod cheatsheet;
 mod clipstore;
 mod close;
+mod emoji;
 mod extradim;
 mod filemap;
+mod focuslog;
 mod floatingmode;
 mod gestures;
 mod gpumode;
 mod hyprvalues;
 mod idledim;
+mod idle;
 mod identity;
 mod input;
 mod json;
@@ -67,15 +83,23 @@ mod keepclear;
 pub mod light;
 mod loginstatus;
 mod loginwatchdog;
+mod lock;
 mod mem;
 mod nightlight;
 mod notifguard;
 mod numlock;
 mod osdwatch;
 mod powermanagerselect;
+mod pickimage;
+mod polkitagent;
+mod printer;
+mod refreshram;
 mod reload;
 mod screenshotarea;
 mod supertap;
+mod switchuser;
+mod theme;
+mod thunarlook;
 mod systemprofile;
 mod timeline;
 mod togglelivewp;
@@ -130,6 +154,18 @@ fn usage() {
          \x20 system-profile [summary|json|learn|test]\n\
          \x20 system-test\n\
          \x20 filemap [generate|search <query>|locate <cat>|summary]\n\
+         \x20 focus-log add MINUTES | json\n\
+         \x20 lock\n\
+         \x20 theme [dark|light]\n\
+         \x20 emoji\n\
+         \x20 refresh-ram [--gui]\n\
+         \x20 thunar-look [small|medium|large|status|auto]\n\
+         \x20 polkit-agent [check]\n\
+         \x20 pick-image [start]\n\
+         \x20 bt-set connect|disconnect|scan <mac> [name]\n\
+         \x20 printer [args]\n\
+         \x20 idle start | apply LOCK SLEEP [DIM [AV_AI]]\n\
+         \x20 switch-user list | to ID | greeter\n\
          \x20 ping"
     );
 }
@@ -185,6 +221,18 @@ fn main() {
         }
         Some("filemap") | Some("system-filemap") => filemap::run(rest),
         Some("keep-clear") | Some("keepclear") => keepclear::run(),
+        Some("focus-log") | Some("focuslog") => focuslog::run(rest),
+        Some("lock") => lock::run(),
+        Some("theme") => theme::run(rest),
+        Some("emoji") => emoji::run(),
+        Some("refresh-ram") | Some("refreshram") => refreshram::run(rest),
+        Some("thunar-look") | Some("thunarlook") => thunarlook::run(rest),
+        Some("polkit-agent") | Some("polkitagent") => polkitagent::run(rest),
+        Some("pick-image") | Some("pickimage") => pickimage::run(rest),
+        Some("bt-set") | Some("btset") => btset::run(rest),
+        Some("printer") => printer::run(rest),
+        Some("idle") => idle::run(rest),
+        Some("switch-user") | Some("switchuser") => switchuser::run(rest),
         Some("ping") => 0,
         _ => {
             usage();

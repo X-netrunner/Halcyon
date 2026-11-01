@@ -7,6 +7,12 @@
 # session never locks or sleeps.
 #   idle.sh start             write the config from the saved values and (re)start hypridle   (autostart runs this)
 #   idle.sh apply LOCK SLEEP [DIM] [AV_AI]  minutes, 0 = never; restarts hypridle only if something changed
+# Native helper first: `hal idle` (src/hal). Exit 2 = an older hal that does not know it yet: the bash below still works.
+hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
+if [ -x "$hal" ]; then
+  HALCYON_SCRIPTS_DIR="$(dirname "$(readlink -f "$0")")" "$hal" idle "$@" && exit 0; rc=$?
+  [ "$rc" -ne 2 ] && exit "$rc"
+fi
 state="$HOME/.local/state/island"; envf="$state/idle.env"; conf="$state/hypridle.conf"
 mkdir -p "$state"
 IDLE_LOCK=5; IDLE_SLEEP=30; IDLE_DIM=3; AV_AI_IDLE=5

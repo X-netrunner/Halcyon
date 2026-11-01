@@ -50,6 +50,8 @@ Round 4: the Debug page became **Debug / Advanced** and holds every advanced row
 
 Round 5: choice rows with 4+ buttons became drop-downs (36 rows plus the six app pickers); sounds and previews moved to Debug / Advanced. **untested** on screen.
 
+Round 6: one **Builders** page for the Bar / Desktop / Widget / Notification builders; rows they duplicate (bar shape, edge, padding, notification style) moved to Debug / Advanced. **untested** on screen. Open: merging the Desktop and Widget builder windows.
+
 ## Next surfaces (open)
 
 | Surface | Idea | Status |
@@ -65,6 +67,7 @@ Round 5: choice rows with 4+ buttons became drop-downs (36 rows plus the six app
 
 ## Log
 
+- 2026-10-31: Builders page, duplicate rows to Debug / Advanced (round 6). Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Drop-downs for long button rows, app pickers as drop-downs, previews and sounds to Debug / Advanced (round 5). Files: `Settings.qml`, `SetApps.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Debug / Advanced page collects all advanced rows (round 4). Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Settings slimmed: Tree layout and Interface Legacy / Classic removed, Disabled box for bar-only rows, Debug page (round 3). Files: `Settings.qml`, `shell.qml`, `UIUX-REWORK.md`, `changelog.md`.
