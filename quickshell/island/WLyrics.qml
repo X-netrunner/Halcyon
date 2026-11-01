@@ -120,8 +120,8 @@ WBase {
             opacity: root.cur < 0 ? Math.max(0.07, 0.5 - 0.2 * index) : (d > lim ? 0 : Math.max(0.06, 1 - root.fall * d))
             scale: on ? 1 : Math.max(0.82, 1 - 0.045 * d)
             transformOrigin: root.center ? Item.Center : Item.Left
-            Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
-            Behavior on scale { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+            Behavior on scale { NumberAnimation { duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
             // the glow under the lit line, then the line itself (dim), then the lit copy that is swept in for karaoke
             Text {

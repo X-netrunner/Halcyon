@@ -229,8 +229,8 @@ RowLayout {
                     opacity: 0
                     scale: 0.6
                     Component.onCompleted: { opacity = 1; scale = 1 }
-                    Behavior on opacity { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.OutCubic } }
-                    Behavior on scale { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on scale { NumberAnimation { duration: row.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: row.pal.curve } }
 
                     Rectangle {
                         anchors.fill: parent

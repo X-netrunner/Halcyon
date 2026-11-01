@@ -45,8 +45,8 @@ WBase {
                 implicitHeight: root.style === "squares" ? root.sz(22) : (root.style === "outline" ? root.sz(26) : root.style === "lines" ? root.sz(cur ? 28 : 16) : root.style === "capsules" ? root.sz(cur ? 26 : 18) : (root.style === "dots" ? root.sz(10) : root.sz(root.style === "pills" ? 26 : 28)))
                 width: implicitWidth; height: implicitHeight
                 anchors.verticalCenter: parent.verticalCenter
-                Behavior on implicitWidth { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                Behavior on implicitHeight { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                Behavior on implicitWidth { NumberAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on implicitHeight { NumberAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Rectangle {
                     anchors.fill: parent
                     radius: root.style === "squares" ? root.sz(6) : (root.style === "numbers" ? width / 2 : Math.min(width, height) / 2)

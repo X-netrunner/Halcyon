@@ -19,7 +19,7 @@ Item {
         spacing: 1
         opacity: root.current ? 1 : (ma.containsMouse ? 0.8 : 0.5)
         scale: root.current ? 1.06 : 1
-        Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+        Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         Text {
             id: ico

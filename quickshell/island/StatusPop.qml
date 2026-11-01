@@ -177,7 +177,7 @@ Scope {
                     transformOrigin: root.side === "top" ? Item.Top : root.side === "bottom" ? Item.Bottom : root.side === "left" ? Item.Left : Item.Right
                     opacity: root.open ? 1 : 0
                     scale: root.open ? 1 : 0.94
-                    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+                    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                     MouseArea { anchors.fill: parent }          // clicks inside the card do not reach the catcher
 
@@ -282,7 +282,7 @@ Scope {
                                     color: cur ? Qt.alpha(root.pal.accent, 0.18) : (ma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.85) : Qt.alpha(root.pal.surface, 0.6))
                                     border.width: cur ? 1 : 0
                                     border.color: Qt.alpha(root.pal.accent, 0.4)
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     RowLayout {
                                         anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
                                         spacing: 10

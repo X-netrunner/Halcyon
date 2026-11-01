@@ -67,7 +67,7 @@ Scope {
                     transformOrigin: root.side === "top" ? Item.Top : root.side === "bottom" ? Item.Bottom : root.side === "left" ? Item.Left : Item.Right
                     opacity: root.open ? 1 : 0
                     scale: root.open ? 1 : 0.94
-                    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.InOutSine } }
+                    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 }
             }
