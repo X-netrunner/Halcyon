@@ -12,6 +12,7 @@
 #            --safety-check / --no-safety-check  --llm[=MODEL] / --no-llm  --whisper[=MODEL] / --no-whisper  --vlm[=MODEL] / --no-vlm  --plymouth / --no-plymouth  --lock-login / --no-lock-login  --tty-autostart
 #            --browser ID  --files ID[,ID]  --editor ID[,ID]  --music ID[,ID]  --resources low|medium|high|adaptive  --renderer auto|opengl|vulkan
 #            --firewall ai|ufw|none  --antivirus / --no-antivirus
+#   --no-extras   do not update LUNA / ai-antivirus / ai-firewall (by default they follow GitHub main on every run, when you chose them)
 #            --resource-offset N   (a value goes after a space or an =, see ./install.sh --help)
 #   First install on a new machine (nothing to update yet):  curl -fsSLO https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh && bash get.sh
 #
@@ -32,7 +33,7 @@ RICE="${HALCYON_DIR:-$HOME/.config/Halcyon}"
 STATE="$HOME/.local/state/halcyon"
 CACHE="$HOME/.cache/halcyon-update"
 ISLAND_LOG="$HOME/.cache/island/quickshell-island.log"
-CHECK=0; CHANGES=0; FORCE=0; YES=0; ROLLBACK=0; NOTIFY=0; QUIET=0; PASS=()
+CHECK=0; CHANGES=0; FORCE=0; YES=0; ROLLBACK=0; NOTIFY=0; QUIET=0; EXTRAS=1; PASS=()
 NET=20                      # seconds a network step may take before it is given up
 export GIT_TERMINAL_PROMPT=0
 
@@ -119,6 +120,17 @@ run_install() {   # run_install <folder with install.sh>
   bash "$1/install.sh" --yes ${PASS[@]+"${PASS[@]}"} || warn "install.sh reported problems (see above)"
 }
 
+# LUNA, ai-antivirus and ai-firewall follow GitHub main on their own. When Halcyon has a new version, install.sh updates them;
+# when Halcyon is already current this runs instead (only what you chose at install time, only when their source changed).
+update_extras() {
+  [ "$EXTRAS" = 1 ] && [ "$CHECK" = 0 ] || return 0
+  local x="$RICE/scripts/update-extras.sh"
+  [ -f "$x" ] || x="$CACHE/scripts/update-extras.sh"
+  [ -f "$x" ] || return 0
+  say "LUNA, ai-antivirus, ai-firewall"
+  bash "$x" $([ "$FORCE" = 1 ] && echo --force) || warn "an extra could not be updated (see above); the installed version stays"
+}
+
 confirm() {       # confirm "question"  -> 0 = go on
   [ "$YES" = 1 ] && return 0
   [ -t 0 ] || { info "run it from a terminal to confirm, or use --yes"; return 1; }
@@ -135,6 +147,7 @@ main() {
       --force) FORCE=1 ;;
       --rollback) ROLLBACK=1 ;;
       --notify) NOTIFY=1 ;;
+      --no-extras) EXTRAS=0 ;;
       -q|--quiet) QUIET=1 ;;
       -y|--yes) YES=1 ;;
       # install.sh flags (no value)
@@ -203,7 +216,7 @@ update_git() {
 
   if [ "$new" = 0 ]; then
     ok "Already up to date ($(short "$cur"))"
-    [ "$FORCE" = 1 ] && [ "$CHECK" = 0 ] || exit 0
+    if [ "$FORCE" = 1 ] && [ "$CHECK" = 0 ]; then :; else update_extras; exit 0; fi
   else
     say "$new new commit(s) on $BRANCH"
     local n=15; [ "$CHANGES" = 1 ] && n=200
@@ -249,6 +262,7 @@ update_copy() {
   local have; have=$(cat "$STATE/installed-commit" 2>/dev/null || true)
   if [ "$have" = "$REMOTE" ] && [ "$FORCE" = 0 ]; then
     ok "Already up to date ($(short "$REMOTE"))"
+    update_extras
     exit 0
   fi
   if [ -z "$have" ] && [ -d "$RICE" ] && [ "$FORCE" = 0 ]; then
