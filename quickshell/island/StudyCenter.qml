@@ -17,7 +17,9 @@ Scope {
     id: root
     property var pal
     property bool open: false
-    readonly property bool asWindow: open && pal.deskWin        // an ordinary window (Settings > Halcyon windows): Super+Q and opening another centre leave it alone (shell.qml)
+    property bool popped: false             // "Pop out": only this open window is an ordinary window; forgotten once it has closed (Settings > Windows is separate)
+    readonly property bool deskMode: pal.deskWin || popped
+    readonly property bool asWindow: open && deskMode        // an ordinary window (Settings > Halcyon windows or Pop out): Super+Q and opening another centre leave it alone (shell.qml)
     property string tab: "ask"              // ask | summary | quiz | cards
     signal focusRequested(string what)      // the window's own fields take the keyboard (ids inside the LazyLoader are not reachable)
     signal consoleRequested(string cmd)     // a model download runs in the pop-out console (it shows the progress)
@@ -201,7 +203,7 @@ Scope {
     }
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
-    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: { root.linger = false; if (!root.open) root.popped = false } }
 
     function nameOf(id) { for (var i = 0; i < docs.length; i++) if (docs[i].id === id) return docs[i].name; return "" }
     function docOf(id) { for (var i = 0; i < docs.length; i++) if (docs[i].id === id) return docs[i]; return null }
@@ -593,7 +595,7 @@ Scope {
         active: root.open || root.linger
         Host {
             id: win
-            desktop: root.pal.deskWin
+            desktop: root.deskMode
             title: "Study"
             deskWidth: 1160
             deskHeight: 760
@@ -865,6 +867,7 @@ Scope {
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap + 1
                                 }
+                                PopBtn { pal: root.pal; popped: root.popped; onClicked: root.popped = !root.popped }
                                 RoundBtn { pal: root.pal; size: 32; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }
                             }
 

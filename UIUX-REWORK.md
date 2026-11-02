@@ -19,15 +19,15 @@ The row is listed only while a **Rail** bar is on, because that is the only bar 
 |---|---|---|---|
 | Tabs (A) | The present Media / Calendar / Performance tabs, plus a stat strip under the Calendar page (CPU, RAM, GPU, temperature, what is playing). Strip has its own switch, `opt.dashStrip`, default on. | untested | `Dashboard.qml`, `DashStrip.qml`, `DashBtn.qml` |
 | Bento (B) | No tabs. Today's agenda, what is playing with controls, CPU ring and RAM, four quick switches (Wi-Fi, Bluetooth, Do not disturb, Caffeine). | untested | `DashBento.qml`, `DashBtn.qml` |
-| Command (C) | Search bar that opens the launcher, five switches (the four above plus light / dark theme), a "Go to" list (Terminal, Clipboard, Cheat sheet, Security center, Settings), next event and now playing. | untested | `DashCommand.qml`, `DashBtn.qml` |
+| Command (C) | Search bar that opens the launcher, nine switches (the four above, light / dark theme, Airplane, Mute, Gaming, Extra dim), a "Go to" list (Terminal, Clipboard, Cheat sheet, Security center, Settings), next event and now playing. | untested | `DashCommand.qml`, `DashBtn.qml` |
 
 Wiring: `shell.qml` (option defaults, `RailPages` props and handlers), `RailPages.qml` (style, switch state, Left / Right only in Tabs, Enter opens the launcher in Command), `Settings.qml` (two rows).
 
 Known limits (honest list):
-- Command's search bar is a button: it opens the launcher; typing happens there. Up / Down selection in the "Go to" list is not done.
+- Command's search bar is a button: it opens the launcher; typing happens there. Up / Down / Enter in the "Go to" list: written, **untested** on screen.
 - The mock-ups showed the notch bar; in the code this box belongs to the Rail bar. Offering the same three styles on the notch and the island means reworking the pages `shell.qml` draws (open).
 - Bento / Command do not show the Performance page; Performance stays in Tabs.
-- The size of the box jumps (no animation) when the style is switched.
+- The size of the box now glides when the style is switched (**untested** on screen).
 
 ## Surface 2: the launcher (app menu)
 
@@ -67,6 +67,8 @@ Round 6: one **Builders** page for the Bar / Desktop / Widget / Notification bui
 
 ## Log
 
+- 2026-11-02: Command dashboard: Airplane, Mute, Gaming and Extra dim switches added. Files: `DashCommand.qml`, `Dashboard.qml`, `RailPages.qml`, `shell.qml`, `UIUX-REWORK.md`, `changelog.md`.
+- 2026-11-02: Command dashboard keyboard (Up / Down / Enter) and size glide on style switch. Files: `DashCommand.qml`, `Dashboard.qml`, `RailPages.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Builders page, duplicate rows to Debug / Advanced (round 6). Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Drop-downs for long button rows, app pickers as drop-downs, previews and sounds to Debug / Advanced (round 5). Files: `Settings.qml`, `SetApps.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Debug / Advanced page collects all advanced rows (round 4). Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.

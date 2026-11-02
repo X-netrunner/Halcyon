@@ -21,7 +21,9 @@ Scope {
     id: root
     property var pal
     property bool open: false
-    readonly property bool asWindow: open && pal.deskWin        // an ordinary window (Settings > Halcyon windows): Super+Q and opening another centre leave it alone (shell.qml)
+    property bool popped: false             // "Pop out": only this open window is an ordinary window; forgotten once it has closed (Settings > Windows is separate)
+    readonly property bool deskMode: pal.deskWin || popped
+    readonly property bool asWindow: open && deskMode        // an ordinary window (Settings > Halcyon windows or Pop out): Super+Q and opening another centre leave it alone (shell.qml)
     property string tab: "overview"          // overview | firewall | antivirus | exceptions | ask
     signal consoleRequested(string cmd)
     signal terminalRequested(string cmd)     // full-screen programs (the firewall dashboard) need a real terminal window, not the console
@@ -906,6 +908,7 @@ Scope {
     }
     function hide() { if (admJob !== null) admCancel(); open = false }
     function toggle() { if (open) hide(); else show("overview") }
+    function toggleTo(t) { if (open && tab === t) hide(); else show(t) }      // the same page's entry pressed again closes the window
     function setTab(t) {
         tab = t
         refresh()
@@ -921,6 +924,7 @@ Scope {
         onTriggered: {
             root.linger = false
             if (root.open) return
+            root.popped = false
             if (!root.avSnap) { root.avAlerts = []; root.avActions = []; root.avAlertsRaw = ""; root.avActionsRaw = "" }
             root.scanFound = []; root.scanSum = null
             root.clam = null; root.exc = null
@@ -1280,7 +1284,7 @@ Scope {
         active: root.open || root.linger
         Host {
             id: win
-            desktop: root.pal.deskWin
+            desktop: root.deskMode
             title: "Security"
             deskWidth: 1100
             deskHeight: 720
@@ -1357,6 +1361,7 @@ Scope {
                                 NavRow { key: "ask"; label: "Ask"; glyph: 0xF0B79; available: root.hasFw || root.hasAv || !root.detected }
                                 NavRow { key: "clamav"; label: "ClamAV"; glyph: 0xF0668; tone: root.clam !== null ? root.clamColor : "transparent"; available: root.hasClam || !root.detected }
                                 Item { Layout.fillHeight: true }
+                                PopBtn { Layout.leftMargin: 4; pal: root.pal; popped: root.popped; onClicked: root.popped = !root.popped }
                                 Text {
                                     Layout.fillWidth: true
                                     Layout.leftMargin: 8
