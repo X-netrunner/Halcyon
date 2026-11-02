@@ -26,6 +26,7 @@ Scope {
     property string clock: ""
     function show() { pending = ""; clock = Qt.formatDateTime(new Date(), "HH:mm"); open = true }
     function hide() { open = false; pending = "" }
+    function toggle() { if (open) hide(); else show() }
     function pick(id, confirm) {
         if (confirm && pending !== id) { pending = id; confirmT.restart(); return }
         hide()

@@ -23,7 +23,20 @@ hl.animation({ leaf = "fadeDim",          enabled = true, speed = 6,   bezier = 
 -- workspaces: a real horizontal slide, so you can SEE the direction. Going to a higher workspace pushes the
 -- screen left (the new one comes in from the right); going to a lower one pushes it right. Same for the
 -- 3/4-finger swipes. For something softer use  style = "slidefade 30%"  (a shorter slide with a fade).
-hl.animation({ leaf = "workspaces",       enabled = true, speed = 6,   bezier = "glide",  style = "slide" })
+-- In the scrolling (niri) layout the columns that do not fit on the screen sit just beyond its left / right edge, which is exactly where
+-- the neighbouring workspace slides in from, so the last window of the old workspace was seen sliding along into the new one for a moment.
+-- There the workspaces slide up / down instead (nothing waits above or below), and scripts/toggle_layout.sh switches it live.
+local ws_style = "slide"
+do
+    local home = os.getenv("HOME") or ""
+    local f = io.open(home .. "/.config/Halcyon/hyprland/general.lua", "r")
+    if f then
+        local txt = f:read("*a") or ""
+        f:close()
+        if txt:match('layout%s*=%s*"scrolling"') then ws_style = "slidevert" end
+    end
+end
+hl.animation({ leaf = "workspaces",       enabled = true, speed = 6,   bezier = "glide",  style = ws_style })
 hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 7,   bezier = "glide",  style = "slidefadevert 12%" })
 
 hl.animation({ leaf = "layers",           enabled = true, speed = 5,   bezier = "soft",   style = "fade" })

@@ -474,6 +474,7 @@ ShellRoot {
         if (leavingLauncher) leaveT.restart()
     }
     property string lastPage: "home"
+    readonly property bool tourOpenForGrab: !!tour && tour.open
     property bool leavingLauncher: false
     Timer { id: leaveT; interval: 700; onTriggered: root.leavingLauncher = false }
     // normal = the same soft 520 ms as every other page; quick = about half; instant = a short snap. Tap-to-open waits for the key to
@@ -1152,15 +1153,19 @@ ShellRoot {
         btOn: root.net.bt === "on"
         dndOn: root.dnd
         caffeineOn: root.caffeine
+        airplaneOn: root.net.wifi !== "on" && root.net.bt !== "on"
+        muteOn: root.muted
+        gamingOn: root.gaming
+        dimOn: root.opt.extraDim === true
         onOpenLauncher: { railPages.hide(); root.overviewOpen = false; root.page = "launcher" }
         onRunCmd: id => root.runCommand(id)
-        onOpenCalendar: calendar.show()
+        onOpenCalendar: calendar.toggle()
         closeMs: root.opt.pageClose !== undefined ? root.opt.pageClose : 600
         onToggleWifi: root.toggleWifi()
         onToggleBt: root.toggleBt()
         onSetProfile: p => root.setProfile(p)
         onSetAuto: root.setAuto()
-        onOpenMusic: tab => { clipMenu.hide(); shotMenu.hide(); musicMenu.show(tab) }
+        onOpenMusic: tab => { clipMenu.hide(); shotMenu.hide(); musicMenu.toggleTab(tab) }
     }
 
     // ---- wake spots: where each box wakes, anywhere on any edge (Desktop builder). No spot set = the box's own corner.
@@ -2269,25 +2274,25 @@ ShellRoot {
         case "wallpaper": randomWallpaper(); break
         case "wallpaper-back": wallpaperLayer.back(); break
         case "wallpaper-keep": wallpaperLayer.keep(); break
-        case "wallgallery": settingsWin.openGallery(); break
-        case "barbuilder": settingsWin.openBuilder(); break
-        case "notifbuilder": settingsWin.openNotifBuilder(); break
-        case "desktopbuilder": settingsWin.openDesktopBuilder("desktop"); break
-        case "lockdesktopbuilder": settingsWin.openDesktopBuilder("lock"); break
+        case "wallgallery": settingsWin.toggleGallery(); break
+        case "barbuilder": settingsWin.toggleBuilder(); break
+        case "notifbuilder": settingsWin.toggleNotifBuilder(); break
+        case "desktopbuilder": settingsWin.toggleDesktopBuilder("desktop"); break
+        case "lockdesktopbuilder": settingsWin.toggleDesktopBuilder("lock"); break
         case "widgetbuilder": settingsWin.openWidgetBuilder("", "desktop"); break
         case "lockwidgetbuilder": settingsWin.openWidgetBuilder("", "lock"); break
         case "desktopedit": deskEditTarget = "desktop"; deskEditing = !deskEditing; break
         case "lockdesktopedit": deskEditTarget = "lock"; deskEditing = !deskEditing; break
         case "bartoggle": setOpt("barStyle", opt.barStyle === "off" ? "island" : "off"); break
-        case "startupview": settingsWin.openStartup(); break
+        case "startupview": settingsWin.toggleStartup(); break
         case "splash": splashPreview.play(); break
         case "weeklysky": weeklySky.toggle(); break
         case "focusgraph": focusStreak.toggle(); break
         case "tour": tourReplay(); break
         case "calendar": calendarKey(); break
         case "reload": fullReloadProc.running = true; break
-        case "settings": settingsWin.show(); break
-        case "power": powerMenu.show(); break
+        case "settings": settingsWin.toggle(); break
+        case "power": powerMenu.toggle(); break
         case "gaming": setGaming(!gaming); break
         case "caffeine": setCaffeine(!caffeine, 0); break
         case "apps": appsWin.pinFor(9000); break
@@ -2303,12 +2308,12 @@ ShellRoot {
         case "study": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (lunaCenter.open && !lunaCenter.asWindow) lunaCenter.hide(); studyCenter.toggle(); break
         case "luna": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); lunaCenter.toggle(); break
         case "security": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); securityCenter.toggle(); break
-        case "firewall": case "antivirus": case "exceptions": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); securityCenter.show(id); break
+        case "firewall": case "antivirus": case "exceptions": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); securityCenter.toggleTo(id); break
         case "games-add": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.showAdd(); break
         case "games-import": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("library"); gameCenter.act([root.hgl, "import", "steam"], "Steam library read"); break
-        case "games-doctor": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("doctor"); break
-        case "games-stores": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("stores"); break
-        case "games-proton": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.show("runtimes"); break
+        case "games-doctor": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggleTo("doctor"); break
+        case "games-stores": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggleTo("stores"); break
+        case "games-proton": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggleTo("runtimes"); break
         case "games-stop": Quickshell.execDetached([root.hgl, "stop"]); break
         case "cmdlist": cmdTree.toggle(); break
         case "edgemode": toggleEdgeMode(); break
@@ -2332,6 +2337,8 @@ ShellRoot {
         case "queue": clipMenu.hide(); shotMenu.hide(); musicMenu.toggleTab("queue"); break
         case "record": toggleRecording(); break
         case "extradim": toggleExtraDim(); break
+        case "airplane": toggleAirplane(); break
+        case "mute": Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]); muted = !muted; break
         default: session(id)
         }
     }
@@ -2709,7 +2716,7 @@ ShellRoot {
         case "theme": toggleTheme(); break
         case "night": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/toggle_nightlight.sh"]); break
         case "lock": lockScreen.lock(); break
-        case "power": powerMenu.show(); break
+        case "power": powerMenu.toggle(); break
         case "console": quickTerm.toggle(); break
         case "notes": notesMenu.show(); break
         case "mute": Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]); muted = !muted; break
@@ -3013,9 +3020,9 @@ ShellRoot {
         function luna(): void { root.runCommand("luna") }                                                                                  // the Luna window (toggle)
         function study(): void { root.runCommand("study") }                                                                                // the Study Center window (toggle)
         function security(): void { root.runCommand("security") }                                                                          // the Security center window (toggle)
-        function securitypage(page: string): void { securityCenter.show(page) }                                                           // overview | firewall | antivirus | exceptions | ask
+        function securitypage(page: string): void { securityCenter.toggleTo(page) }                                                           // overview | firewall | antivirus | exceptions | ask
         function gamecenter(): void { root.runCommand("gamecenter") }                                                                      // the Game Center window (toggle)
-        function gamecenterpage(page: string): void { gameCenter.show(page) }                                                              // library | stores | runtimes | doctor
+        function gamecenterpage(page: string): void { gameCenter.toggleTo(page) }                                                              // library | stores | runtimes | doctor
         function leanset(on: bool): void { root.setLean(on) }                                                                              // by hand: the lean island alone
         function caffeineset(on: bool): void { if (root.caffeine !== on) root.setCaffeine(on, 0) }
         function command(id: string): void { root.runCommand(id) }   // any launcher command by its id (">" list), e.g. profile-balanced, wifi
@@ -3032,10 +3039,10 @@ ShellRoot {
         function cmdlist(): void { cmdTree.toggle() }                // SUPER+ALT+/ (does nothing without sysmode)
         function edgemode(): void { root.toggleEdgeMode() }
         function settings(): void { settingsWin.toggle() }
-        function barbuilder(): void { settingsWin.openBuilder() }
-        function notifbuilder(): void { settingsWin.openNotifBuilder() }
-        function desktopbuilder(): void { settingsWin.openDesktopBuilder("desktop") }
-        function lockdesktopbuilder(): void { settingsWin.openDesktopBuilder("lock") }
+        function barbuilder(): void { settingsWin.toggleBuilder() }
+        function notifbuilder(): void { settingsWin.toggleNotifBuilder() }
+        function desktopbuilder(): void { settingsWin.toggleDesktopBuilder("desktop") }
+        function lockdesktopbuilder(): void { settingsWin.toggleDesktopBuilder("lock") }
         function widgetbuilder(): void { settingsWin.openWidgetBuilder("", "desktop") }
         function lockwidgetbuilder(): void { settingsWin.openWidgetBuilder("", "lock") }
         function desktopedit(): void { root.deskEditTarget = "desktop"; root.deskEditing = !root.deskEditing }
@@ -3050,17 +3057,17 @@ ShellRoot {
             root.setOpt("perfLook", n)
             return n
         }
-        function gallery(): void { settingsWin.openGallery() }
-        function startup(): void { settingsWin.openStartup() }
+        function gallery(): void { settingsWin.toggleGallery() }
+        function startup(): void { settingsWin.toggleStartup() }
         function splash(): void { splashPreview.play() }
         function weeklysky(): void { weeklySky.toggle() }
         function wifiqr(png: string, ssid: string): void { if (png === "") wifiQr.hide(); else wifiQr.show(png, ssid) }   // halcyon-tools.py wifi-qr ("" closes it)
         function focusgraph(): void { focusStreak.toggle() }
         function tour(): void { root.tourReplay() }
         function calendar(): void { root.runCommand("calendar") }
-        function processes(): void { settingsWin.openStartup() }
-        function wallpaperpicker(): void { settingsWin.openGallery() }
-        function power(): void { powerMenu.show() }
+        function processes(): void { settingsWin.toggleStartup() }
+        function wallpaperpicker(): void { settingsWin.toggleGallery() }
+        function power(): void { powerMenu.toggle() }
         // shut down / restart with the goodbye splash first (the fish poweroff / reboot / shutdown now / systemctl wrappers call this)
         function goodbye(action: string): void { root.goodbye(action === "reboot" ? "reboot" : "shutdown") }
         function gaming(): void { root.setGaming(!root.gaming) }
@@ -3253,6 +3260,14 @@ ShellRoot {
         // while the launcher is open the window catches the pointer only over the launcher / the bar and a click-away area in the middle;
         // the left and right sides stay free, so the edge and corner spots (notifications, quick terminal, utilities, background apps) still work
         readonly property real launcherInset: Math.max(0, Math.min(pal.boxW + 60, (width - launcher.wantedWidth) / 2))
+        // Click anywhere outside (another window, the desktop, below the bar) closes the launcher. The backdrop above only covers the
+        // middle strip (the sides stay free for the edge boxes), so a click on an app or the empty desktop never reached it and the
+        // launcher stayed. The same for the pages that never fold by themselves (Settings > Bar > page close = never) (it does not touch pages that fold by themselves when the pointer leaves).
+        HyprlandFocusGrab {
+            windows: [win]
+            active: !root.tourOpenForGrab && (root.page === "launcher" || (root.page !== "home" && root.page !== "" && root.opt.pageClose === 0))
+            onCleared: if (root.page !== "home") root.page = "home"
+        }
         Region { id: launcherMask; regions: [ Region { item: backdrop }, Region { item: island } ] }
         Region { id: stripMask; item: strip }
         Region { id: normalMask; regions: [ Region { item: strip }, Region { item: island } ] }
@@ -3709,7 +3724,7 @@ ShellRoot {
                                     onToggleBt: root.toggleBt()
                                     onSetProfile: p => root.setProfile(p)
                                     onSetAuto: root.setAuto()
-                                    onOpenSettings: settingsWin.show()
+                                    onOpenSettings: settingsWin.toggle()
                                     onToggleGaming: root.setGaming(!root.gaming)
                                     onToggleCaffeine: root.setCaffeine(!root.caffeine, 0)
                                     onFocusStart: (mins, pomo) => root.focusRun(["start", String(mins), pomo ? "pomo" : "single"])
@@ -3718,7 +3733,7 @@ ShellRoot {
                                     onOpenFocusSettings: settingsWin.show("focus")
                                     onCaffeineHour: root.setCaffeine(true, 60)
                                     onOpenApps: appsWin.pinFor(9000)
-                                    onOpenPower: powerMenu.show()
+                                    onOpenPower: powerMenu.toggle()
                                     onToggleMute: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
                                     onToggleMic: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
                                     onMicMoved: v => { root.pendMic = v; root.mic = v * 100; if (!sliderT.running) sliderT.start() }
@@ -3931,7 +3946,7 @@ ShellRoot {
             onBgPopup: (along, edge) => root.popBg(side, along, edge)
             onNumLockClicked: root.toggleNumLock()
             onLogoClicked: root.toggleLauncher()
-            onPowerClicked: powerMenu.show()
+            onPowerClicked: powerMenu.toggle()
             onStatusPopup: (kind, along, edge) => root.popStatus(kind, side, along, edge)
             onPageDrop: dir => root.drop(dir)
             onPageStep: dir => { if (!rail) root.go(dir) }
@@ -4043,6 +4058,12 @@ ShellRoot {
             else { pinnedOpen = false; cornerLingerT.restart() }
         }
         Timer { id: cornerLingerT; interval: 900; onTriggered: { corner.cornerLinger = false; gc() } }
+        // opened by a click or a keybind: it stays until closed, so a click anywhere outside closes it too (hover-opened it folds by itself)
+        HyprlandFocusGrab {
+            windows: [corner]
+            active: corner.open && (root.utilClick || corner.pinnedOpen) && !panel.wantsKeys
+            onCleared: { closeT.stop(); corner.hovering = false; corner.blockUntil = Date.now() + 600 }
+        }
         // fixed size (see the note above): never resized, so opening / closing never makes the compositor re-send enter / leave
         // (wide enough for the Focus card that opens beside the box; the mask below keeps that room click-through until it is shown)
         implicitWidth: pal.boxW + pal.boxEdge + 30 + panel.flyExtra
@@ -4176,7 +4197,7 @@ ShellRoot {
             onToggleBt: root.toggleBt()
             onSetProfile: p => root.setProfile(p)
             onSetAuto: root.setAuto()
-            onOpenSettings: settingsWin.show()
+            onOpenSettings: settingsWin.toggle()
             onToggleGaming: root.setGaming(!root.gaming)
             onToggleCaffeine: root.setCaffeine(!root.caffeine, 0)
             onFocusStart: (mins, pomo) => root.focusRun(["start", String(mins), pomo ? "pomo" : "single"])
@@ -4185,7 +4206,7 @@ ShellRoot {
             onOpenFocusSettings: settingsWin.show("focus")
             onCaffeineHour: root.setCaffeine(true, 60)
             onOpenApps: appsWin.pinFor(9000)
-            onOpenPower: powerMenu.show()
+            onOpenPower: powerMenu.toggle()
             onToggleMute: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
             onToggleMic: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
             onMicMoved: v => { root.pendMic = v; root.mic = v * 100; if (!sliderT.running) sliderT.start() }
@@ -4251,6 +4272,12 @@ ShellRoot {
             else { pinnedOpen = false; appsLingerT.restart() }
         }
         Timer { id: appsLingerT; interval: 900; onTriggered: { appsWin.appsLinger = false; gc() } }
+        // click-opened / pinned: a click anywhere outside closes it
+        HyprlandFocusGrab {
+            windows: [appsWin]
+            active: appsWin.open && (root.appsClick || appsWin.pinnedOpen)
+            onCleared: { aClose.stop(); appsWin.hovering = false; appsWin.blockUntil = Date.now() + 600 }
+        }
         // fixed size: a resize re-sends enter / leave and made the box open and close by itself; the mask keeps it click-through
         implicitWidth: pal.boxW + pal.boxEdge + 30
         implicitHeight: 700

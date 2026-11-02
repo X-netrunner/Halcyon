@@ -80,7 +80,7 @@ Item {
 
     // Halcyon's own senders (the Calendar worker, the rice's scripts, Luna ...) wear the Halcyon sparkle, not an icon-theme picture or an
     // emoji. Other apps keep their own icon. A sender with an attached image (avatar, album art, screenshot) is never replaced.
-    readonly property var halOwn: ["halcyon", "calendar", "hal", "luna", "notes", "study", "focus", "security"]
+    readonly property var halOwn: ["halcyon", "calendar", "hal", "luna", "notes", "study", "focus", "security", "game center", "gamecenter", "games", "hgl", "reminder", "reminders", "island", "sysmode", "firewall", "antivirus"]
     readonly property bool isHal: !!notif && !hasImage && halOwn.indexOf(String(notif.appName || "").trim().toLowerCase()) >= 0
 
     readonly property bool hasImage: !!notif && notif.image !== ""
@@ -131,10 +131,18 @@ Item {
         antialiasing: true
         Text {
             anchors.centerIn: parent
+            visible: !root.isHal
             text: String.fromCodePoint(root.glyph)
             color: root.tone
             font.family: root.pal.font
             font.pixelSize: Math.round(root.size * 0.48)
+        }
+        // Halcyon's own senders (calendar, Game Center, focus, security ...): the Halcyon mark, not a calendar / timer / shield glyph
+        HalMark {
+            anchors.centerIn: parent
+            visible: root.isHal
+            pal: root.pal
+            size: Math.round(root.size * 0.58)
         }
     }
 

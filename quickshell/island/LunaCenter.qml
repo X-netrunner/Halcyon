@@ -48,14 +48,14 @@ Scope {
         check()
         reload(true)
     }
-    function hide() { open = false; popped = false; confirmDel = ""; renaming = ""; keyOpen = ""; modelMenu = ""; view = "chat" }
+    function hide() { open = false; confirmDel = ""; renaming = ""; keyOpen = ""; modelMenu = ""; view = "chat" }
     function toggle() { if (open) hide(); else show() }
     property bool popped: false             // "Pop out": only this open window is an ordinary window; closing it forgets that (the setting in Settings is separate)
     readonly property bool deskMode: pal.deskWin || popped
     readonly property bool asWindow: open && deskMode       // an ordinary window: Super+Q and opening another centre leave it alone (shell.qml)
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
-    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: { root.linger = false; if (!root.open) root.popped = false } }
     function flash(t) { note = t; noteT.restart() }
     Timer { id: noteT; interval: 5000; onTriggered: root.note = "" }
     function shortName(n) { n = String(n || ""); n = n.replace(/:latest$/, ""); var i = n.lastIndexOf("/"); return i >= 0 ? n.substring(i + 1) : n }
@@ -843,12 +843,7 @@ Scope {
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tCap + 1
                                     }
-                                    LinkBtn {
-                                        visible: root.view !== "settings" && !root.pal.deskWin
-                                        label: root.popped ? "Back to overlay" : "Pop out"
-                                        glyph: String.fromCodePoint(root.popped ? 0xF0141 : 0xF03CC)
-                                        onClicked: root.popped = !root.popped
-                                    }
+                                    PopBtn { visible: root.view !== "settings" && !root.pal.deskWin; pal: root.pal; popped: root.popped; onClicked: root.popped = !root.popped }
                                     LinkBtn {
                                         visible: root.view !== "settings"
                                         label: root.view === "settings" ? "Back to chat" : "Settings"
