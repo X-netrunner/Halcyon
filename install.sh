@@ -85,7 +85,7 @@
 #                          Asked on the first install and with --choose (default ai), then remembered. The source is
 #                          AIFW_REPO / AIFW_REV below, or a local checkout: AIFW_SRC=~/Projects/ai-firewall ./install.sh
 #   --luna / --no-luna     the extra: LUNA, a local AI assistant in Rust (https://github.com/X-netrunner/LUNA-AI), built from the
-#                          commit pinned below (LUNA_REV) into ~/.local/bin/luna. Asked on the first install and with --choose
+#                          newest main (or LUNA_SRC=folder) into ~/.local/bin/luna, and rebuilt on every install / update when main moved. Asked on the first install and with --choose
 #                          (default no), then remembered. The program is installed and the Ollama models her tiers use are pulled
 #                          (qwen3.5:9b, qwen3.5:4b, phi4-mini, nomic-embed-text and the two abliterated coder/security models, about 27 GB;
 #                          LUNA_MODELS="a b" picks others, LUNA_MODELS=none skips). Her daemon is never switched on for you.
@@ -155,9 +155,9 @@ PICK_FIREWALL=""                               # ai | ufw | none (see choose_app
 AIFW_REPO="${AIFW_REPO:-https://github.com/X-netrunner/ai-firewall.git}"
 AIFW_REV="${AIFW_REV:-}"
 AIFW_SRC="${AIFW_SRC:-}"
-# LUNA is built from this exact commit, never from whatever is on main: move the pin when a LUNA version is ready for everyone
-LUNA_REPO="https://github.com/X-netrunner/LUNA-AI.git"
-LUNA_REV="d4abadb0522ac0158cab64b5bbfee5fd46cc6241"       # has --stdio (the >luna window), Auto routing, voice requests
+# LUNA follows the newest commit on main (every install.sh / update.sh run), or a local folder: LUNA_SRC=~/Projects/LUNA-AI
+LUNA_REPO="${LUNA_REPO:-https://github.com/X-netrunner/LUNA-AI.git}"
+LUNA_SRC="${LUNA_SRC:-}"
 # the Security center's two modules (see choose_security): each one on or off on its own
 FIREWALL=ufw; FIREWALL_ASKED=false             # ai | ufw | none
 INSTALL_AV=false; AV_ASKED=false                # the ai-antivirus extra
@@ -165,6 +165,13 @@ AV_EXCEPTION=true                               # ai-antivirus: except this inst
 AIFW_SRC="${AIFW_SRC:-}"; AIFW_REPO="${AIFW_REPO:-}"; AIFW_REV="${AIFW_REV:-}"                  # where ai-firewall is built from
 AV_SRC="${AV_SRC:-${SYNAPSE_SRC:-}}"; AV_REPO="${AV_REPO:-${SYNAPSE_REPO:-}}"; AV_REV="${AV_REV:-${SYNAPSE_REV:-}}" # where ai-antivirus is built from
 [[ -n "$AV_SRC" || -n "$AV_REPO" ]] || AV_REPO="https://github.com/X-netrunner/ai-antivirus"   # nothing given: clone it into ~/.local/src/ai-antivirus
+# A bundle: ai-antivirus/, ai-firewall/ and LUNA-AI/ folders next to Halcyon/ are used instead of GitHub (nothing needs uploading).
+# Anything you set yourself (AV_SRC, AIFW_SRC, LUNA_SRC) wins. A local folder is never combined with a repository to clone.
+BUNDLE_DIR="$(dirname "$RICE_SOURCE")"
+[[ -n "$AV_SRC" || ! -f "$BUNDLE_DIR/ai-antivirus/Cargo.toml" ]] || AV_SRC="$BUNDLE_DIR/ai-antivirus"
+[[ -n "$AIFW_SRC" || ! -f "$BUNDLE_DIR/ai-firewall/Cargo.toml" ]] || AIFW_SRC="$BUNDLE_DIR/ai-firewall"
+[[ -n "$LUNA_SRC" || ! -f "$BUNDLE_DIR/LUNA-AI/Cargo.toml" ]] || LUNA_SRC="$BUNDLE_DIR/LUNA-AI"
+[[ -z "$AV_SRC" ]] || AV_REPO=""; [[ -z "$AIFW_SRC" ]] || AIFW_REPO=""
 SECURITY_MODEL="${SECURITY_MODEL:-}"   # the assistants' local model: empty = the one that fits this laptop (security_model_for_hardware), asked on a first install
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
 PICK_BROWSER=""; PICK_FILES=""; PICK_EDITOR=""; PICK_MUSIC=""; CHOOSE=false; APPLY_PICKS=()      # your app choices (see choose_apps)
@@ -2826,7 +2833,7 @@ aifw_build() {
         if [[ -n "$AIFW_REV" ]]; then
             run_as_user_cmd "ai-firewall: version ${AIFW_REV:0:7}" git -C "$src" -c advice.detachedHead=false checkout --quiet --force "$AIFW_REV" || return 1
         else
-            run_as_user_cmd "ai-firewall: latest version" git -C "$src" pull --quiet --ff-only || return 1
+            run_as_user_cmd "ai-firewall: newest main" git -C "$src" checkout --quiet -f -B main origin/main || return 1
         fi
     fi
     [[ -f "$src/Cargo.toml" ]] || return 1
@@ -2939,27 +2946,36 @@ fi
 # ---- the LUNA extra: the pinned commit, built as you (outside the rice, like the helpers), the program copied to ~/.local/bin.
 # Skipped when that exact version is already installed. The build directory is removed afterwards (it grows to gigabytes).
 install_luna() {
-    local src="$TARGET_HOME/.local/src/LUNA-AI" stamp="$TARGET_HOME/.local/state/island/luna-rev" tgt="$TARGET_HOME/.cache/halcyon-build/luna"
-    if [[ -x "$TARGET_HOME/.local/bin/luna" && "$(cat "$stamp" 2>/dev/null)" == "$LUNA_REV" ]]; then
+    local src="${LUNA_SRC:-$TARGET_HOME/.local/src/LUNA-AI}" stamp="$TARGET_HOME/.local/state/island/luna-rev" tgt="$TARGET_HOME/.cache/halcyon-build/luna" now
+    rust_ok || { warn_later "LUNA was not installed: it needs Rust ($(pkg_hint rust)), then ./install.sh --luna"; return 0; }
+    if [[ -z "$LUNA_SRC" ]]; then
+        command -v git >/dev/null 2>&1 || install_pkgs git
+        if [[ ! -d "$src/.git" ]]; then
+            run_as_user_cmd "LUNA: downloading" git clone --quiet "$LUNA_REPO" "$src" || { warn_later "LUNA: could not clone $LUNA_REPO"; return 0; }
+        fi
+        # a managed clone: it is forced to the newest main (an older pinned checkout, local edits and old build files go)
+        run_as_user_cmd "LUNA: newest main" bash -c 'git -C "$1" fetch --quiet origin main && git -C "$1" checkout --quiet -f -B main FETCH_HEAD && git -C "$1" clean -fdxq' _ "$src" \
+            || { warn_later "LUNA: could not fetch main from $LUNA_REPO"; return 0; }
+    fi
+    [[ -f "$src/Cargo.toml" ]] || { warn_later "LUNA: no Cargo.toml in $src"; return 0; }
+    now=$(run_as_user git -C "$src" rev-parse HEAD 2>/dev/null || true)
+    [[ -n "$now" ]] || now="local-$(find "$src" -path "$src/target" -prune -o -type f -printf '%T@\n' 2>/dev/null | sort -n | tail -1)"
+    if [[ -x "$TARGET_HOME/.local/bin/luna" && "$(cat "$stamp" 2>/dev/null)" == "$now" ]]; then
         log_success "LUNA: this version is already installed (~/.local/bin/luna)"; return 0
     fi
-    rust_ok || { warn_later "LUNA was not installed: it needs Rust ($(pkg_hint rust)), then ./install.sh --luna"; return 0; }
-    command -v git >/dev/null 2>&1 || install_pkgs git
-    if [[ -d "$src/.git" ]]; then
-        run_as_user_cmd "LUNA: fetching" git -C "$src" fetch --quiet origin || { warn_later "LUNA: could not fetch $LUNA_REPO"; return 0; }
-    else
-        run_as_user_cmd "LUNA: downloading" git clone --quiet "$LUNA_REPO" "$src" || { warn_later "LUNA: could not clone $LUNA_REPO"; return 0; }
-    fi
-    run_as_user_cmd "LUNA: version ${LUNA_REV:0:7}" git -C "$src" -c advice.detachedHead=false checkout --quiet --force "$LUNA_REV" \
-        || { warn_later "LUNA: the pinned version ${LUNA_REV:0:7} is not in $LUNA_REPO"; return 0; }
     run_as_user_cmd "LUNA: building (a few minutes)" env CARGO_TARGET_DIR="$tgt" cargo build --release --locked --manifest-path "$src/Cargo.toml" \
         || { warn_later "LUNA did not build (see the log). Try by hand: cd $src && cargo build --release"; return 0; }
     run_as_user_cmd "LUNA: installing ~/.local/bin/luna" install -Dm755 "$tgt/release/luna" "$TARGET_HOME/.local/bin/luna" || { warn_later "LUNA: could not install the program"; return 0; }
     if [[ "$DRY_RUN" != "true" ]]; then
-        run_as_user bash -c 'mkdir -p "$(dirname "$1")" && printf "%s\n" "$2" > "$1"' _ "$stamp" "$LUNA_REV" || true
+        run_as_user bash -c 'mkdir -p "$(dirname "$1")" && printf "%s\n" "$2" > "$1"' _ "$stamp" "$now" || true
         run_as_user rm -rf "$tgt" || true
+        # a running daemon keeps the old binary in memory until it restarts
+        local u
+        for u in luna-daemon luna-wake; do
+            run_as_user systemctl --user is-active --quiet "$u.service" 2>/dev/null && try run_as_user_cmd "LUNA: restarting $u" systemctl --user restart "$u.service"
+        done
     fi
-    log_success "LUNA installed: run 'luna' (its README: $src/README.md; the daemon: $src/deploy/luna-daemon.service, off until you enable it)"
+    log_success "LUNA installed from ${LUNA_SRC:-main}: run 'luna' (its README: $src/README.md; the daemon: $src/deploy/luna-daemon.service, off until you enable it)"
 }
 # her voice: the packages that are heavy to build come from the distro (Arch only; elsewhere the script's venv takes them from PyPI),
 # then scripts/luna-voice-setup.sh downloads the model and sets up the Python environment as you (no sudo inside it: LUNA_VOICE_NO_SUDO)
@@ -3060,7 +3076,8 @@ security_src() {
         # progress goes to stderr: stdout is the folder name the caller captures
         if [[ -d "$dir/.git" ]]; then
             run_as_user_cmd "$name: fetching" git -C "$dir" fetch --quiet origin >&2 || return 1
-            [[ -n "$rev" ]] || run_as_user_cmd "$name: updating" git -C "$dir" merge --quiet --ff-only '@{upstream}' >&2 || return 1
+            # a managed clone follows the newest main, even from an old pinned (detached) checkout
+            [[ -n "$rev" ]] || run_as_user_cmd "$name: newest main" git -C "$dir" checkout --quiet -f -B main origin/main >&2 || return 1
         else
             run_as_user_cmd "$name: downloading" git clone --quiet "$repo" "$dir" >&2 || return 1
         fi
@@ -3173,6 +3190,7 @@ install_antivirus() {
         warn_later "ai-antivirus needs the nightly toolchain for its eBPF sensor: rustup toolchain install nightly --component rust-src"
         return 1
     fi
+    run_as_user bash -c 'find "$1/packaging/arch" -maxdepth 1 -name "*.pkg.tar.*" -delete' _ "$src" || true     # the old packages go before the new build
     run_as_user_cmd "ai-antivirus: building the package (a few minutes)" bash -c 'cd "$1/packaging/arch" && makepkg -f --noconfirm' _ "$src" \
         || { warn_later "ai-antivirus did not build (see the log). By hand: cd $src/packaging/arch && makepkg -f"; return 1; }
     # [0-9]: the package itself, not makepkg's ai-antivirus-debug-* next to it
