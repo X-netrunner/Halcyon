@@ -13,6 +13,9 @@ here = os.path.dirname(os.path.abspath(__file__))
 tmp = tempfile.mkdtemp(prefix="halcyon-luna-learn-")
 os.environ.update({"HOME": tmp, "XDG_DATA_HOME": os.path.join(tmp, "d"), "XDG_CONFIG_HOME": os.path.join(tmp, "c")})
 os.environ.pop("HALCYON_LUNA_REFLECT_MODEL", None)
+# an older Luna (no --lessons): the bridge copies lessons into her memory. A missing file = luna_bin() finds none, so the
+# real `luna` on this machine does not change the result.
+os.environ["HALCYON_LUNA_BIN"] = os.path.join(tmp, "no-luna")
 
 # a fake Ollama: answers /api/chat with whatever ANSWER holds, and keeps the last request
 ANSWER = {"text": "LESSON: Before changing a Halcyon setting, read its current value first."}
@@ -167,5 +170,26 @@ ok("at most 40 lessons; forget one or all", cap_and_forget)
 ok("an unreadable memory file is never overwritten", unreadable_memory_is_left_alone)
 ok("the Halcyon constitution is set once, yours is kept, and it fits Luna's limit", constitution)
 ok("the AI master switch stops learning", ai_off_stops_it)
+
+
+def native_luna_reads_the_file_herself():
+    fake = os.path.join(tmp, "luna-native")
+    with open(fake, "w") as f:
+        f.write("#!/bin/sh\necho '      --lessons'\n")
+    os.chmod(fake, 0o755)
+    os.environ["HALCYON_LUNA_BIN"] = fake
+    try:
+        with open(lb.LUNA_MEM, "w") as f:
+            json.dump([{"content": "User likes tea", "added": "2026-10-01", "category": "preference"},
+                       {"content": lb.LESSON_PREFIX + "old copy", "added": "2026-10-01", "category": "lesson"}], f)
+        lb.add_lesson("When the user says notes, open the Halcyon notes window first.", "correction")
+        mem = json.load(open(lb.LUNA_MEM))
+        assert [m["category"] for m in mem] == ["preference"], mem          # no copies: Luna reads lessons.json herself
+        assert lb.LESSONS.endswith(os.path.join("luna", "lessons.json"))   # the file Luna reads
+    finally:
+        os.environ["HALCYON_LUNA_BIN"] = os.path.join(tmp, "no-luna")
+
+
+ok("a Luna with her own lessons gets no copies in her memory, and shares lessons.json", native_luna_reads_the_file_herself)
 srv.shutdown()
 sys.exit(1 if fails else 0)
