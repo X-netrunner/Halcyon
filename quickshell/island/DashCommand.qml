@@ -1,8 +1,8 @@
 import QtQuick
 
 // Dashboard style "Command" (Settings > Bar > Dashboard style): a search bar on top that opens the launcher (a click, or Enter once the box has the
-// keyboard), five quick switches under it, then a short list of places to go on the left and what is next on the right.
-//   Wi-Fi, Bluetooth, Do not disturb, Caffeine and the light / dark theme work in place (the box stays open); the list closes the box and opens the page.
+// keyboard; Up / Down pick a place in the list and Enter opens it), nine quick switches under it, then a short list of places to go on the left and what is next on the right.
+//   Wi-Fi, Bluetooth, Do not disturb, Caffeine, the light / dark theme, Airplane mode, Mute, Gaming mode and Extra dim work in place (the box stays open); the list closes the box and opens the page.
 Item {
     id: root
     property var pal
@@ -12,6 +12,10 @@ Item {
     property bool btOn: false
     property bool dndOn: false
     property bool caffeineOn: false
+    property bool airplaneOn: false
+    property bool muteOn: false
+    property bool gamingOn: false
+    property bool dimOn: false
     property bool open: false
 
     signal openLauncher()
@@ -27,6 +31,27 @@ Item {
     readonly property int listH: 192
     implicitWidth: innerW + pad * 2
     implicitHeight: pad + 44 + 10 + 42 + 12 + listH + pad
+
+    // keyboard: Up / Down walk the "Go to" list (-1 = nothing picked, Enter then opens the launcher), Enter opens the picked place
+    readonly property var places: [
+        { t: "Terminal", g: 0xF018D, id: "quickterm" },
+        { t: "Clipboard", g: 0xF014C, id: "clipboard" },
+        { t: "Cheat sheet", g: 0xF030C, id: "cheatsheet" },
+        { t: "Security center", g: 0xF099D, id: "security" },
+        { t: "Settings", g: 0xF0493, id: "settings" }
+    ]
+    property int sel: -1
+    onOpenChanged: if (!open) sel = -1
+    function move(d) {
+        var n = places.length
+        sel = sel < 0 ? (d > 0 ? 0 : n - 1) : (sel + d + n) % n
+    }
+    // true when a place was picked and opened; false = nothing picked, the caller opens the launcher
+    function enter() {
+        if (sel < 0 || sel >= places.length) return false
+        launch(places[sel].id)
+        return true
+    }
 
     readonly property bool ok: cal !== null && cal !== undefined
     readonly property bool linked: ok && cal.cfg && cal.cfg.configured === true
@@ -45,7 +70,8 @@ Item {
         return m < 60 ? "In " + m + " min" : "At " + cal.clock(e.start)
     }
     function isOn(id) {
-        return id === "wifi" ? wifiOn : id === "bluetooth" ? btOn : id === "dnd" ? dndOn : id === "caffeine" ? caffeineOn : false
+        return id === "wifi" ? wifiOn : id === "bluetooth" ? btOn : id === "dnd" ? dndOn : id === "caffeine" ? caffeineOn
+             : id === "airplane" ? airplaneOn : id === "mute" ? muteOn : id === "gaming" ? gamingOn : id === "extradim" ? dimOn : false
     }
     function press(id) {
         if (id === "wifi") toggleWifi()
@@ -109,12 +135,14 @@ Item {
         Repeater {
             model: [
                 { g: 0xF05A9, id: "wifi" }, { g: 0xF00AF, id: "bluetooth" }, { g: 0xF009B, id: "dnd" },
-                { g: 0xF0176, id: "caffeine" }, { g: 0xF050E, id: "theme" }
+                { g: 0xF0176, id: "caffeine" }, { g: 0xF050E, id: "theme" },
+                { g: 0xF001D, id: "airplane" }, { g: 0xF0581, id: "mute" },
+                { g: 0xF0297, id: "gaming" }, { g: 0xF058F, id: "extradim" }
             ]
             delegate: DashBtn {
                 required property var modelData
                 pal: root.pal
-                width: (sw.width - 4 * sw.spacing) / 5
+                width: (sw.width - 8 * sw.spacing) / 9
                 height: 42
                 glyph: String.fromCodePoint(modelData.g)
                 on: root.isOn(modelData.id)
@@ -137,27 +165,23 @@ Item {
             font.pixelSize: root.pal.tCap
         }
         Repeater {
-            model: [
-                { t: "Terminal", g: 0xF018D, id: "quickterm" },
-                { t: "Clipboard", g: 0xF014C, id: "clipboard" },
-                { t: "Cheat sheet", g: 0xF030C, id: "cheatsheet" },
-                { t: "Security center", g: 0xF099D, id: "security" },
-                { t: "Settings", g: 0xF0493, id: "settings" }
-            ]
+            model: root.places
             delegate: Rectangle {
                 id: li
                 required property var modelData
+                required property int index
+                readonly property bool lit: lma.containsMouse || root.sel === index
                 width: root.listW
                 height: 34
                 radius: root.pal.rSm
-                color: lma.containsMouse ? Qt.alpha(root.pal.accent, 0.14) : "transparent"
+                color: li.lit ? Qt.alpha(root.pal.accent, 0.14) : "transparent"
                 Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Text {
                     id: lg
                     x: 10; anchors.verticalCenter: parent.verticalCenter
                     width: 22
                     text: String.fromCodePoint(li.modelData.g)
-                    color: lma.containsMouse ? root.pal.accent : root.pal.muted
+                    color: li.lit ? root.pal.accent : root.pal.muted
                     font.family: root.pal.font
                     font.pixelSize: 16
                 }
@@ -174,6 +198,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onEntered: root.sel = li.index
                     onClicked: root.launch(li.modelData.id)
                 }
             }

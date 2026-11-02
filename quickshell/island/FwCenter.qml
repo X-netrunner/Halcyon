@@ -21,7 +21,9 @@ Scope {
     id: root
     property var pal
     property bool open: false
-    readonly property bool asWindow: open && pal.deskWin        // an ordinary window (Settings > Halcyon windows): Super+Q and opening another centre leave it alone (shell.qml)
+    property bool popped: false             // "Pop out": only this open window is an ordinary window; forgotten once it has closed (Settings > Windows is separate)
+    readonly property bool deskMode: pal.deskWin || popped
+    readonly property bool asWindow: open && deskMode        // an ordinary window (Settings > Halcyon windows or Pop out): Super+Q and opening another centre leave it alone (shell.qml)
     property string tab: "overview"            // overview | bans | rules | feeds | history | ask
     signal consoleRequested(string cmd)        // shell.qml runs it in the pop-out console
     property bool consoleOpen: false        // the pop-out console has the keyboard (shell.qml)
@@ -150,7 +152,7 @@ Scope {
     }
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
-    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: { root.linger = false; if (!root.open) root.popped = false } }
 
     function dur(s) {
         if (s <= 0) return "forever"
@@ -173,7 +175,7 @@ Scope {
         active: root.open || root.linger
         Host {
             id: win
-            desktop: root.pal.deskWin
+            desktop: root.deskMode
             title: "Firewall"
             deskWidth: 1100
             deskHeight: 720
@@ -208,7 +210,8 @@ Scope {
                     opacity: win.desktop ? 1 : qp.reveal
                     scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
-                    RoundBtn { z: 5; anchors { top: parent.top; right: parent.right; margins: 24 } pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
+                    PopBtn { z: 5; anchors { verticalCenter: fwClose.verticalCenter; right: fwClose.left; rightMargin: 6 } pal: root.pal; popped: root.popped; onClicked: root.popped = !root.popped }
+                    RoundBtn { id: fwClose; z: 5; anchors { top: parent.top; right: parent.right; margins: 24 } pal: root.pal; glyph: "✕"; size: 32; onClicked: root.hide() }
 
                     RowLayout {
                         anchors.fill: parent
