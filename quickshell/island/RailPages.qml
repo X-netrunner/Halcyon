@@ -41,6 +41,10 @@ Scope {
     property bool btOn: false
     property bool dndOn: false
     property bool caffeineOn: false
+    property bool airplaneOn: false         // more switches of the Command style (shell.qml): airplane mode, sound muted, gaming mode, extra dim
+    property bool muteOn: false
+    property bool gamingOn: false
+    property bool dimOn: false
     readonly property string styleNow: (dashStyle === "bento" || dashStyle === "command") ? dashStyle : "tabs"
     readonly property bool open: which !== ""
     property bool linger: false
@@ -91,7 +95,10 @@ Scope {
             Shortcut { sequence: "Escape"; onActivated: root.hide() }
             Shortcut { sequence: "Left"; enabled: root.open && root.styleNow === "tabs"; onActivated: root.step(-1) }
             Shortcut { sequence: "Right"; enabled: root.open && root.styleNow === "tabs"; onActivated: root.step(1) }
-            Shortcut { sequence: "Return"; enabled: root.open && root.styleNow === "command"; onActivated: root.openLauncher() }
+            Shortcut { sequence: "Up"; enabled: root.open && root.styleNow === "command"; onActivated: dash.cmdMove(-1) }
+            Shortcut { sequence: "Down"; enabled: root.open && root.styleNow === "command"; onActivated: dash.cmdMove(1) }
+            // Enter opens the place picked with Up / Down; with nothing picked it opens the launcher, as before
+            Shortcut { sequence: "Return"; enabled: root.open && root.styleNow === "command"; onActivated: { if (!dash.cmdEnter()) root.openLauncher() } }
 
             Item {
                 id: area
@@ -134,6 +141,9 @@ Scope {
                         joinV: area.joined ? "t" : ""
                         width: dash.implicitWidth
                         height: dash.implicitHeight
+                        // switching the dashboard style (Tabs / Bento / Command) changes the box's size: glide to it instead of jumping
+                        Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                        Behavior on height { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                         // folded: pushed up into the top edge by its own height; the clip hides the part that is above its window.
                         // (x / y are inside the clipper: sideways the flares need `fl` of room, downwards the box slides)
                         readonly property real travel: height + area.gap
@@ -166,6 +176,7 @@ Scope {
                             style: root.styleNow
                             showStats: root.dashStrip
                             wifiOn: root.wifiOn; btOn: root.btOn; dndOn: root.dndOn; caffeineOn: root.caffeineOn
+                            airplaneOn: root.airplaneOn; muteOn: root.muteOn; gamingOn: root.gamingOn; dimOn: root.dimOn
                             onOpenLauncher: root.openLauncher()
                             onRunCmd: id => root.runCmd(id)
                             onLaunch: id => { root.hide(); root.runCmd(id) }
