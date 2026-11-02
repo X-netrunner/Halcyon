@@ -46,6 +46,10 @@ esac
 
 live=ok
 hyprctl eval "hl.config({ general = { layout = \"$NEW\" } })" >/dev/null 2>&1 || live=failed
+# scrolling (niri) layout: the off-screen columns sit where the next workspace slides in from and showed up as a ghost for a moment,
+# so workspaces slide up / down there (hyprland/animations.lua picks the same on a reload)
+if [ "$NEW" = "scrolling" ]; then WS_STYLE=slidevert; else WS_STYLE=slide; fi
+hyprctl eval "hl.animation({ leaf = \"workspaces\", enabled = true, speed = 6, bezier = \"glide\", style = \"$WS_STYLE\" })" >/dev/null 2>&1 || true
 if [ -w "$GENERAL" ]; then
     sed -i --follow-symlinks -E "s/^([[:space:]]*layout[[:space:]]*=[[:space:]]*)\"[a-z]+\"/\1\"$NEW\"/" "$GENERAL"
 fi

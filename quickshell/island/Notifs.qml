@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import Quickshell.Services.Notifications
 import "NotifLayout.js" as NL
 import "ToastGroups.js" as TG
@@ -317,6 +318,13 @@ Scope {
         WlrLayershell.namespace: "island-notifs"
         // with the border around the screen the boxes stay UNDER the border (an overlay window would be drawn over it)
         WlrLayershell.layer: (!root.pal.frameOn && (root.toasts.length > 0 || root.centerOpen)) ? WlrLayer.Overlay : WlrLayer.Top
+
+        // click mode: the centre stays open until closed, so a click anywhere outside it closes it too
+        HyprlandFocusGrab {
+            windows: [win]
+            active: root.centerOpen && root.clickMode
+            onCleared: { closeT.stop(); root.centerOpen = false }
+        }
 
         // only the edge trigger and the cards / centre take clicks; the rest of the strip is click-through
         // one fixed mask (the closed panel sits outside the window): swapping masks on open / close re-sent the pointer

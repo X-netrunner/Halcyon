@@ -37,6 +37,10 @@ Item {
     property bool btOn: false
     property bool dndOn: false
     property bool caffeineOn: false
+    property bool airplaneOn: false
+    property bool muteOn: false
+    property bool gamingOn: false
+    property bool dimOn: false
     readonly property bool tabsOn: style === "tabs"
 
     signal tabPicked(int index)
@@ -234,6 +238,7 @@ Item {
             player: root.player
             cal: root.cal
             wifiOn: root.wifiOn; btOn: root.btOn; dndOn: root.dndOn; caffeineOn: root.caffeineOn
+            airplaneOn: root.airplaneOn; muteOn: root.muteOn; gamingOn: root.gamingOn; dimOn: root.dimOn
             open: root.open
             onOpenLauncher: root.openLauncher()
             onOpenCalendar: root.openCalendar()
@@ -243,6 +248,9 @@ Item {
             onLaunch: id => root.launch(id)
         }
     }
+    // keyboard for the Command style (RailPages.qml: Up / Down / Enter); harmless in the other styles
+    function cmdMove(d) { if (style === "command" && alt.item && alt.item.move) alt.item.move(d) }
+    function cmdEnter() { return style === "command" && alt.item && alt.item.enter ? alt.item.enter() : false }
     Loader {
         id: alt
         anchors.fill: parent

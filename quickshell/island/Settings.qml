@@ -625,7 +625,13 @@ Scope {
     onStartupOpenChanged: { if (startupOpen) { startupUnload.stop(); startupLoaded = true } else startupUnload.restart() }
     function openStartup() { startupOpen = true }
     function hide() { galleryOpen = false; builderOpen = false; nbOpen = false; dbOpen = false; wbOpen = false; startupOpen = false; open = false }
-    function toggle() { open = !open }
+    function toggle() { if (open) hide(); else show() }
+    // the same press opens and closes: used by the launcher commands, shortcuts and bar buttons (the buttons inside Settings keep their open*)
+    function toggleGallery() { galleryOpen = !galleryOpen }
+    function toggleBuilder() { builderOpen = !builderOpen }
+    function toggleNotifBuilder() { nbOpen = !nbOpen }
+    function toggleDesktopBuilder(target) { var t = (target === "lock") ? "lock" : "desktop"; if (dbOpen && dbTarget === t) dbOpen = false; else openDesktopBuilder(t) }
+    function toggleStartup() { startupOpen = !startupOpen }
 
     component SChip: Chip { maxLabel: 1000 }
 

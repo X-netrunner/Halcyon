@@ -25,7 +25,9 @@ Scope {
     property string hgl: ""                 // the hgl binary (shell.qml gives the path)
     property string runningId: ""           // the game that runs now (shell.qml), "" = none
     property bool open: false
-    readonly property bool asWindow: open && pal.deskWin        // an ordinary window (Settings > Halcyon windows): Super+Q and opening another centre leave it alone (shell.qml)
+    property bool popped: false             // "Pop out": only this open window is an ordinary window; forgotten once it has closed (Settings > Windows is separate)
+    readonly property bool deskMode: pal.deskWin || popped
+    readonly property bool asWindow: open && deskMode        // an ordinary window (Settings > Halcyon windows or Pop out): Super+Q and opening another centre leave it alone (shell.qml)
     property string tab: "library"          // library | stores | runtimes | doctor
     signal launchRequested(string id)
     signal stopRequested()
@@ -76,6 +78,7 @@ Scope {
     function hide() { open = false; confirmRemove = false; pickerOpen = false }
     function close() { hide() }
     function toggle() { if (open) hide(); else show("library") }
+    function toggleTo(t) { if (open && tab === t) hide(); else show(t) }      // the same page's entry pressed again closes the window
     function showAdd() { show("library"); browseExe() }
     function setTab(t) {
         tab = t
@@ -86,7 +89,7 @@ Scope {
     }
     property bool linger: false
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
-    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
+    Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: { root.linger = false; if (!root.open) root.popped = false } }
 
     // the game started or ended (shell.qml): read the library again so the badges and play times are right
     onRunningIdChanged: {
@@ -661,7 +664,7 @@ Scope {
         active: root.open || root.linger
         Host {
             id: win
-            desktop: root.pal.deskWin
+            desktop: root.deskMode
             title: "Games"
             deskWidth: 1180
             deskHeight: 740
@@ -795,7 +798,8 @@ Scope {
                                     TabBtn { label: "Doctor"; key: "doctor" }
                                 }
                             }
-                            RoundBtn { anchors { right: parent.right; verticalCenter: parent.verticalCenter } pal: root.pal; size: 34; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }
+                            PopBtn { anchors { right: closeBtn.left; rightMargin: 6; verticalCenter: parent.verticalCenter } pal: root.pal; popped: root.popped; onClicked: root.popped = !root.popped }
+                            RoundBtn { id: closeBtn; anchors { right: parent.right; verticalCenter: parent.verticalCenter } pal: root.pal; size: 34; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }
                         }
 
                         // ================= Library
