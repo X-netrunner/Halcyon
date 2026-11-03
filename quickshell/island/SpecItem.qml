@@ -49,14 +49,14 @@ Item {
         // usage bars side by side (one per disk), sharing the full width
         Row {
             width: body.width
-            spacing: 22
+            spacing: 24
             Repeater {
                 model: root.usage
                 delegate: Column {
                     required property var modelData
                     width: root.usage.length > 1 ? (body.width - 22 * (root.usage.length - 1)) / root.usage.length : body.width
                     topPadding: 4
-                    spacing: 3
+                    spacing: 4
                     Text {
                         width: parent.width
                         text: modelData.label + "  ·  " + modelData.text

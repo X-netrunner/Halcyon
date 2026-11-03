@@ -8,7 +8,7 @@ Rectangle {
     property string label: ""
     property bool on: false
     property bool primary: false       // the window's main action (Done, Save ...): solid accent in the new style, like `on` before
-    property int maxLabel: 120
+    property int maxLabel: 220
     property int padX: 16
     property string tip: ""            // hover text (a calm icon-only chip says what it is here); shows after a short pause under the chip
     property string tipAlign: "center" // center | left | right: which edge of the chip the bubble lines up with (keeps it inside the box)
@@ -18,7 +18,7 @@ Rectangle {
 
     implicitHeight: 36
     implicitWidth: content.implicitWidth + padX * 2
-    radius: height / 2
+    radius: Math.min(height / 2, 10)   // unslop: a control, not a pill
     readonly property bool solid: primary && pal.zen
     color: solid ? (ma.containsMouse ? Qt.lighter(pal.primary, 1.08) : pal.primary)
          : pal.zen ? ((on || primary) ? pal.chosenFill : (ma.containsMouse ? pal.fillHover : pal.fill))

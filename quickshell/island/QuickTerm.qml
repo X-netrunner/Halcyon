@@ -717,7 +717,7 @@ Scope {
                     color: root.pal.accent
                     font.family: root.mono
                     font.pixelSize: 13
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                 }
                 Text {
                     anchors.centerIn: parent
@@ -740,7 +740,7 @@ Scope {
                     readonly property real each: Math.max(28, avail - 24)
                     Row {
                         visible: root.netBt !== ""
-                        spacing: 5
+                        spacing: 4
                         anchors.verticalCenter: parent.verticalCenter
                         Text { text: String.fromCodePoint(0xF00AF); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
                         Text {
@@ -761,7 +761,7 @@ Scope {
                     color: root.modeColor[root.sysmode] || root.pal.muted
                     font.family: root.mono
                     font.pixelSize: 12
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                 }
             }
             Rectangle { id: sep1; anchors { left: parent.left; right: parent.right; top: head.bottom; leftMargin: 20; rightMargin: 20; topMargin: 10 } height: 1; color: root.pal.lineSoft }
@@ -777,7 +777,7 @@ Scope {
                 Column {
                     id: statusCol
                     anchors { left: parent.left; right: parent.right; top: parent.top }
-                    spacing: 3
+                    spacing: 4
                     opacity: body.idle ? 1 : 0
                     visible: opacity > 0.01
                     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
@@ -855,7 +855,7 @@ Scope {
                                 color: root.pal.accent
                                 font.family: root.mono
                                 font.pixelSize: 12
-                                font.weight: Font.DemiBold
+                                font.weight: Font.Medium
                             }
                             Text {
                                 id: hcopy             // copies this command's output (drag over a line to copy part of one)
@@ -943,7 +943,7 @@ Scope {
                                 color: modelData.cur ? root.pal.text : (modelData.dim ? Qt.alpha(root.pal.muted, 0.8) : root.pal.muted)
                                 font.family: root.mono
                                 font.pixelSize: 12
-                                font.weight: modelData.cur ? Font.DemiBold : Font.Normal
+                                font.weight: modelData.cur ? Font.Medium : Font.Normal
                             }
                         }
                     }
@@ -965,7 +965,7 @@ Scope {
                     color: root.askPass ? root.pal.warn : root.pal.accent
                     font.family: root.mono
                     font.pixelSize: 13
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                     style: Text.Outline
                     styleColor: Qt.rgba(0, 0, 0, 0.70)
                 }

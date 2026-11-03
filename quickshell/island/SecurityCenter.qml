@@ -938,7 +938,7 @@ Scope {
         color: root.pal.muted
         font.family: root.pal.uiFont
         font.pixelSize: root.pal.tCap
-        font.weight: Font.DemiBold
+        font.weight: Font.Medium
         font.letterSpacing: root.pal.calm ? 0.2 : 0.9
         font.capitalization: root.pal.calm ? Font.MixedCase : Font.AllUppercase
     }
@@ -965,7 +965,7 @@ Scope {
         signal clicked()
         implicitWidth: bRow.implicitWidth + 26
         implicitHeight: 34
-        radius: height / 2
+        radius: 10
         opacity: disabled ? 0.4 : 1
         color: primary ? (bMa.containsMouse && !disabled ? Qt.lighter(root.pal.accent, 1.08) : root.pal.accent)
                        : (bMa.containsMouse && !disabled ? root.pal.fillHover : root.pal.fill)
@@ -975,7 +975,7 @@ Scope {
         Row {
             id: bRow
             anchors.centerIn: parent
-            spacing: 7
+            spacing: 8
             Glyph { visible: b.glyph !== 0; code: b.glyph; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 15; color: b.primary ? root.pal.bg : root.pal.text }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -983,7 +983,7 @@ Scope {
                 color: b.primary ? root.pal.bg : root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tBody - 1
-                font.weight: b.primary ? Font.DemiBold : Font.Medium
+                font.weight: b.primary ? Font.Medium : Font.Medium
             }
         }
         MouseArea { id: bMa; anchors.fill: parent; hoverEnabled: true; cursorShape: b.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: if (!b.disabled) b.clicked() }
@@ -992,7 +992,7 @@ Scope {
     // the three soft dots while something works
     component Working: Row {
         id: wk
-        spacing: 5
+        spacing: 4
         Repeater {
             model: 3
             delegate: Rectangle {
@@ -1019,10 +1019,10 @@ Scope {
         Rectangle { visible: st.divider; width: 1; anchors { left: parent.left; top: parent.top; bottom: parent.bottom; topMargin: 14; bottomMargin: 14 } color: root.pal.lineSoft }
         Column {
             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 20; rightMargin: 12 }
-            spacing: 3
+            spacing: 4
             Row {
-                spacing: 7
-                Text { id: stV; text: st.value; color: st.tone; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 7; font.weight: Font.DemiBold }
+                spacing: 8
+                Text { id: stV; text: st.value; color: st.tone; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 7; font.weight: Font.Medium }
                 Text { anchors.baseline: stV.baseline; text: st.sub; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
             }
             Label { text: st.label; width: parent.width; elide: Text.ElideRight }
@@ -1057,7 +1057,7 @@ Scope {
                 color: secMa.containsMouse ? root.pal.accent : root.pal.muted
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tCap
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
                 MouseArea { id: secMa; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: sec.acted() }
             }
         }
@@ -1099,7 +1099,7 @@ Scope {
             anchors { right: lrAct2.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
             width: lrChipT.implicitWidth + 16; height: 20; radius: 10
             color: Qt.alpha(lr.chipTone, 0.16)
-            Text { id: lrChipT; anchors.centerIn: parent; text: lr.chip; color: lr.chipTone; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.weight: Font.DemiBold }
+            Text { id: lrChipT; anchors.centerIn: parent; text: lr.chip; color: lr.chipTone; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.weight: Font.Medium }
         }
         RowIcon {
             id: lrAct
@@ -1143,17 +1143,17 @@ Scope {
         Layout.fillWidth: true
         implicitHeight: 44
         radius: root.pal.rMd
-        opacity: available ? 1 : 0.4
+        opacity: available ? 1 : 0.6   // unslop: still readable when the tool is not installed
         color: on ? Qt.alpha(root.pal.accent, 0.14) : (nvMa.containsMouse && available ? root.pal.fill : "transparent")
         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Glyph { id: nvG; x: 14; anchors.verticalCenter: parent.verticalCenter; code: nv.glyph; font.pixelSize: 18; color: nv.on ? root.pal.accent : root.pal.muted }
-        Text { anchors { left: nvG.right; leftMargin: 12; verticalCenter: parent.verticalCenter } text: nv.label; color: nv.on ? root.pal.text : Qt.alpha(root.pal.text, 0.85); font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: nv.on ? Font.DemiBold : Font.Medium }
+        Text { anchors { left: nvG.right; leftMargin: 12; verticalCenter: parent.verticalCenter } text: nv.label; color: nv.on ? root.pal.text : Qt.alpha(root.pal.text, 0.85); font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: nv.on ? Font.Medium : Font.Medium }
         Rectangle {
             visible: nv.badge > 0
             anchors { right: nvDot.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
             width: Math.max(20, nvB.implicitWidth + 12); height: 20; radius: 10
             color: Qt.alpha(root.pal.warn, 0.18)
-            Text { id: nvB; anchors.centerIn: parent; text: nv.badge; color: root.pal.warn; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.DemiBold }
+            Text { id: nvB; anchors.centerIn: parent; text: nv.badge; color: root.pal.warn; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium }
         }
         Dot { id: nvDot; anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter } color: nv.tone; width: 7; height: 7; radius: 4 }
         MouseArea { id: nvMa; anchors.fill: parent; hoverEnabled: true; enabled: nv.available; cursorShape: Qt.PointingHandCursor; onClicked: root.setTab(nv.key) }
@@ -1187,7 +1187,7 @@ Scope {
         Column {
             Layout.fillWidth: true
             spacing: 2
-            Text { text: ph.status; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 5; font.weight: Font.DemiBold }
+            Text { text: ph.status; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 5; font.weight: Font.Medium }
             Small { text: ph.detail; visible: text !== ""; width: parent.width }
         }
         Row { id: phBtns; spacing: 8 }
@@ -1235,7 +1235,7 @@ Scope {
         Layout.preferredHeight: 196
         radius: root.pal.rLg
         color: mcMa.containsMouse && available ? root.pal.fillHover : root.pal.fill
-        opacity: available ? 1 : 0.45
+        opacity: available ? 1 : 0.6
         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         MouseArea { id: mcMa; anchors.fill: parent; hoverEnabled: true; enabled: mc.available; cursorShape: Qt.PointingHandCursor; onClicked: root.setTab(mc.key) }
         ColumnLayout {
@@ -1251,7 +1251,7 @@ Scope {
                 }
                 Column {
                     Layout.fillWidth: true
-                    Text { text: mc.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                    Text { text: mc.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                     Row {
                         spacing: 6
                         Dot { anchors.verticalCenter: parent.verticalCenter; color: mc.tone; width: 6; height: 6; radius: 3 }
@@ -1269,7 +1269,7 @@ Scope {
                         required property var modelData
                         Layout.fillWidth: true
                         spacing: 1
-                        Text { text: modelData[0]; color: modelData[2] || root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.DemiBold }
+                        Text { text: modelData[0]; color: modelData[2] || root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.Medium }
                         Small { text: modelData[1]; font.pixelSize: root.pal.tCap }
                     }
                 }
@@ -1352,7 +1352,7 @@ Scope {
                                     Layout.leftMargin: 8
                                     spacing: 10
                                     Glyph { anchors.verticalCenter: parent.verticalCenter; code: 0xF0565; font.pixelSize: 20; color: root.pal.accent }
-                                    Text { anchors.verticalCenter: parent.verticalCenter; text: "Security"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.DemiBold }
+                                    Text { anchors.verticalCenter: parent.verticalCenter; text: "Security"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
                                 }
                                 NavRow { key: "overview"; label: "Overview"; glyph: 0xF0570; tone: root.overallColor }
                                 NavRow { key: "firewall"; label: "Firewall"; glyph: 0xF1A11; tone: root.fwColor; available: root.hasFw || !root.detected }
@@ -1384,7 +1384,7 @@ Scope {
                                     Row {
                                         id: poRow
                                         anchors.centerIn: parent
-                                        spacing: 7
+                                        spacing: 8
                                         Glyph { anchors.verticalCenter: parent.verticalCenter; code: 0xF033E; font.pixelSize: 14; color: parent.parent.tone }
                                         Text { anchors.verticalCenter: parent.verticalCenter; text: root.cap(root.posture); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.Medium }
                                     }
@@ -1412,7 +1412,7 @@ Scope {
                                 MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
                                 Column {
                                     id: admCol
-                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14; leftMargin: 18; rightMargin: 18 }
+                                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14; leftMargin: 20; rightMargin: 20 }
                                     spacing: 8
                                     Text {
                                         width: parent.width
@@ -1421,7 +1421,7 @@ Scope {
                                         color: root.pal.text
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tBody
-                                        font.weight: Font.DemiBold
+                                        font.weight: Font.Medium
                                     }
                                     Text {
                                         width: parent.width
@@ -1483,13 +1483,13 @@ Scope {
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: 32
-                                spacing: 18
+                                spacing: 20
                                 visible: root.tab === "overview" && (root.hasFw || root.hasAv)
 
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Layout.bottomMargin: 4
-                                    spacing: 18
+                                    spacing: 20
                                     Rectangle {
                                         id: ovIcon
                                         width: 68; height: 68; radius: 24
@@ -1507,7 +1507,7 @@ Scope {
                                     Column {
                                         Layout.fillWidth: true
                                         spacing: 4
-                                        Text { text: root.ovHead; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 10; font.weight: Font.DemiBold }
+                                        Text { text: root.ovHead; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 10; font.weight: Font.Medium }
                                         Text { width: parent.width; elide: Text.ElideRight; text: root.ovSub; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                     }
                                 }
@@ -1633,7 +1633,7 @@ Scope {
                                                     color: root.pal.text
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: root.pal.tBody
-                                                    font.weight: Font.DemiBold
+                                                    font.weight: Font.Medium
                                                 }
                                                 Row {
                                                     spacing: 6
@@ -1671,7 +1671,7 @@ Scope {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: 8
-                                    Btn { visible: root.hasAv || root.hasClam; label: root.scanning ? "Scanning…" : "Scan Downloads"; glyph: 0xF1276; disabled: root.scanning; onClicked: { root.setTab("antivirus"); root.scan("Downloads") } }
+                                    Btn { visible: root.hasAv || root.hasClam; label: root.scanning ? "Scanning…" : "Scan downloads"; glyph: 0xF1276; disabled: root.scanning; onClicked: { root.setTab("antivirus"); root.scan("Downloads") } }
                                     Btn { visible: root.hasFw; label: "Test firewall"; glyph: 0xF0668; onClicked: root.runTest("all") }
                                     Item { Layout.fillWidth: true }
                                 }
@@ -1730,8 +1730,8 @@ Scope {
                                         Layout.leftMargin: 4
                                         spacing: 14
                                         Label { text: "Traffic"; Layout.fillWidth: true }
-                                        Row { spacing: 5; Dot { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; color: root.pal.accent } Small { text: root.fwRate.passed + "/s in" } }
-                                        Row { spacing: 5; Dot { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; color: root.pal.bad } Small { text: root.fwRate.dropped + "/s dropped" } }
+                                        Row { spacing: 4; Dot { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; color: root.pal.accent } Small { text: root.fwRate.passed + "/s in" } }
+                                        Row { spacing: 4; Dot { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; color: root.pal.bad } Small { text: root.fwRate.dropped + "/s dropped" } }
                                     }
                                     Spark { Layout.fillWidth: true; implicitHeight: 46; hist: root.fwHist }
                                 }
@@ -1810,7 +1810,7 @@ Scope {
                                         onClicked: root.consoleRequested("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-ai.sh " + (aiOn ? "off" : "on"))
                                     }
                                     Btn { label: "Scan home"; glyph: 0xF02DC; disabled: root.scanning; onClicked: root.scan(".") }
-                                    Btn { label: "Scan Downloads"; glyph: 0xF1276; primary: true; disabled: root.scanning; onClicked: root.scan("Downloads") }
+                                    Btn { label: "Scan downloads"; glyph: 0xF1276; primary: true; disabled: root.scanning; onClicked: root.scan("Downloads") }
                                 }
 
                                 // ---- locked: say why, and offer the way out that fits. Replaces the dead "Unreadable" lists.
@@ -1855,7 +1855,7 @@ Scope {
                                                     color: root.pal.text
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: root.pal.tBody + 1
-                                                    font.weight: Font.DemiBold
+                                                    font.weight: Font.Medium
                                                 }
                                                 Text {
                                                     Layout.fillWidth: true
@@ -1890,7 +1890,7 @@ Scope {
                                         // the password, asked here (sudo); used once to read the alerts, never stored or shown
                                         RowLayout {
                                             Layout.fillWidth: true
-                                            Layout.leftMargin: 54
+                                            Layout.leftMargin: 56
                                             visible: root.avAskPw && root.avUnlockStep === ""
                                             spacing: 8
                                             Rectangle {
@@ -1926,7 +1926,7 @@ Scope {
                                         }
                                         Flow {
                                             Layout.fillWidth: true
-                                            Layout.leftMargin: 54
+                                            Layout.leftMargin: 56
                                             spacing: 8
                                             Btn {
                                                 visible: false
@@ -1992,7 +1992,7 @@ Scope {
                                             Row {
                                                 id: svcRow
                                                 anchors.centerIn: parent
-                                                spacing: 7
+                                                spacing: 8
                                                 Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: svc.tone }
                                                 Text { anchors.verticalCenter: parent.verticalCenter; text: svc.modelData; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium }
                                             }
@@ -2007,7 +2007,7 @@ Scope {
                                         Row {
                                             id: brRow
                                             anchors.centerIn: parent
-                                            spacing: 7
+                                            spacing: 8
                                             Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: root.pal.warn }
                                             Text { anchors.verticalCenter: parent.verticalCenter; text: "breaker open"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium }
                                         }
@@ -2024,7 +2024,7 @@ Scope {
                                     color: Qt.alpha(tone, 0.07)
                                     Column {
                                         id: scCol
-                                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14; leftMargin: 18 }
+                                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14; leftMargin: 20 }
                                         spacing: 8
                                         RowLayout {
                                             width: parent.width
@@ -2209,7 +2209,7 @@ Scope {
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: 28
-                                spacing: 18
+                                spacing: 20
                                 visible: root.tab === "clamav" && root.hasClam
 
                                 PageHead {
@@ -2221,7 +2221,7 @@ Scope {
                                         : root.clam.headline)
                                     Btn { label: "Test ClamAV"; glyph: 0xF0668; disabled: root.clamBusy; onClicked: root.clamRun("test", "") }
                                     Btn { label: "Exceptions"; glyph: 0xF0780; disabled: root.clamBusy; onClicked: root.clamRun("exceptions", "") }
-                                    Btn { label: "Scan Downloads"; glyph: 0xF1276; primary: true; disabled: root.clamBusy; onClicked: root.clamRun("scan", "Downloads") }
+                                    Btn { label: "Scan downloads"; glyph: 0xF1276; primary: true; disabled: root.clamBusy; onClicked: root.clamRun("scan", "Downloads") }
                                 }
 
                                 Working { visible: root.clamBusy }
@@ -2243,7 +2243,7 @@ Scope {
                                         model: root.clam && root.clam.checks ? root.clam.checks : []
                                         delegate: Row {
                                             required property var modelData
-                                            spacing: 9
+                                            spacing: 8
                                             Dot { anchors.verticalCenter: parent.verticalCenter; width: 7; height: 7; radius: 4; color: modelData.ok ? root.pal.good : root.pal.bad }
                                             Text { text: modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1 }
                                             Small { anchors.verticalCenter: parent.verticalCenter; text: modelData.detail }
@@ -2350,7 +2350,7 @@ Scope {
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: 28
-                                spacing: 18
+                                spacing: 20
                                 visible: root.tab === "exceptions" && root.hasAv
 
                                 PageHead {
@@ -2388,9 +2388,9 @@ Scope {
                                                     Row {
                                                         id: ekIn
                                                         anchors.centerIn: parent
-                                                        spacing: 7
+                                                        spacing: 8
                                                         Glyph { anchors.verticalCenter: parent.verticalCenter; code: ek.modelData.g; font.pixelSize: 14; color: ek.on ? root.pal.accent : root.pal.muted }
-                                                        Text { anchors.verticalCenter: parent.verticalCenter; text: ek.modelData.l; color: ek.on ? root.pal.text : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: ek.on ? Font.DemiBold : Font.Medium }
+                                                        Text { anchors.verticalCenter: parent.verticalCenter; text: ek.modelData.l; color: ek.on ? root.pal.text : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: ek.on ? Font.Medium : Font.Medium }
                                                     }
                                                     MouseArea { id: ekMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.excKind = ek.modelData.k }
                                                 }
@@ -2515,9 +2515,9 @@ Scope {
                                                     Row {
                                                         id: tgIn
                                                         anchors.centerIn: parent
-                                                        spacing: 7
+                                                        spacing: 8
                                                         Glyph { anchors.verticalCenter: parent.verticalCenter; code: tg.modelData.g; font.pixelSize: 14; color: tg.on ? root.pal.accent : root.pal.muted }
-                                                        Text { anchors.verticalCenter: parent.verticalCenter; text: tg.modelData.l; color: tg.on ? root.pal.text : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: tg.on ? Font.DemiBold : Font.Medium }
+                                                        Text { anchors.verticalCenter: parent.verticalCenter; text: tg.modelData.l; color: tg.on ? root.pal.text : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: tg.on ? Font.Medium : Font.Medium }
                                                     }
                                                     MouseArea { id: tgMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.askTarget = tg.modelData.k }
                                                 }
@@ -2619,14 +2619,14 @@ Scope {
                                                         Row {
                                                             spacing: 8
                                                             Glyph { anchors.verticalCenter: parent.verticalCenter; code: rep.modelData.ok ? 0xF05E0 : 0xF0026; color: rep.modelData.ok ? root.pal.good : root.pal.bad }
-                                                            Text { anchors.verticalCenter: parent.verticalCenter; text: rep.modelData.test; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                                                            Text { anchors.verticalCenter: parent.verticalCenter; text: rep.modelData.test; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                                                             Small { anchors.verticalCenter: parent.verticalCenter; text: rep.modelData.summary }
                                                         }
                                                         GridLayout {
                                                             width: parent.width
                                                             columns: 2
                                                             columnSpacing: 16
-                                                            rowSpacing: 3
+                                                            rowSpacing: 4
                                                             Repeater {
                                                                 model: rep.modelData.stats || []
                                                                 delegate: Small {
@@ -2713,7 +2713,7 @@ Scope {
                                     }
                                     Rectangle {
                                         id: send
-                                        anchors { right: parent.right; rightMargin: 7; verticalCenter: parent.verticalCenter }
+                                        anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                                         width: 36; height: 36; radius: 18
                                         readonly property bool ready: askIn.text.trim() !== "" && !root.asking
                                         color: ready ? root.pal.accent : "transparent"

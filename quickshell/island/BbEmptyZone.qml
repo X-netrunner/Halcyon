@@ -8,8 +8,8 @@ Rectangle {
     required property var bb
     property string title: ""
     anchors.fill: parent
-    anchors.topMargin: 3
-    anchors.bottomMargin: 3
+    anchors.topMargin: 4
+    anchors.bottomMargin: 4
     radius: 8
     color: Qt.alpha(bb.pal.accent, 0.05)
     border.width: 1
@@ -19,7 +19,7 @@ Rectangle {
         text: parent.title + " · drop here"
         color: bb.pal.muted
         font.family: bb.pal.uiFont
-        font.pixelSize: 9
+        font.pixelSize: 10
         font.italic: true
     }
 }

@@ -54,7 +54,7 @@ WBase {
         id: cardC
         Column {
             spacing: root.sz(1)
-            WLbl { b: root; text: root.charging ? "CHARGING" : "BATTERY"; color: root.lit; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold }
+            WLbl { b: root; text: root.charging ? "Charging" : "Battery"; color: root.lit; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium }
             Row {
                 spacing: root.sz(8)
                 WLbl { b: root; text: root.headline; font.pixelSize: root.sz(34); font.weight: Font.Light }
@@ -98,7 +98,7 @@ WBase {
                         if (frac > 0) { ctx.strokeStyle = c1; ctx.beginPath(); ctx.arc(r, r, r - lw, -1.5708, -1.5708 + 6.2832 * frac); ctx.stroke() }
                     }
                 }
-                WLbl { b: root; anchors.centerIn: parent; text: root.hasBat ? root.pct + "%" : "AC"; font.pixelSize: root.sz(14); font.weight: Font.DemiBold }
+                WLbl { b: root; anchors.centerIn: parent; text: root.hasBat ? root.pct + "%" : "AC"; font.pixelSize: root.sz(14); font.weight: Font.Medium }
             }
             Column {
                 anchors.verticalCenter: parent.verticalCenter

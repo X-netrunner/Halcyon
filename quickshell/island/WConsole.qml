@@ -120,7 +120,7 @@ WBase {
                 }
             }
             WIco { b: root; visible: root.style !== "window"; text: root.glyph(0xF018D); color: root.lit; font.pixelSize: root.sz(13); anchors.verticalCenter: parent.verticalCenter }
-            WLbl { b: root; text: root.title.toUpperCase(); color: root.txtDim; font.pixelSize: root.sz(10); font.letterSpacing: 2.5; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; text: root.title; color: root.txtDim; font.pixelSize: root.sz(10); font.letterSpacing: 0; anchors.verticalCenter: parent.verticalCenter }
         }
         Rectangle { visible: root.style === "window" || root.style === "glass"; width: parent.width; height: 1; color: Qt.alpha(root.fg, 0.14) }
 

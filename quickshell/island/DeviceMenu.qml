@@ -56,7 +56,7 @@ Rectangle {
             BoxTitle { pal: root.pal; size: root.pal.tBody; title: root.title }
             Row {
                 visible: root.scanning
-                spacing: 5
+                spacing: 4
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: String.fromCodePoint(0xF0450)
@@ -253,7 +253,7 @@ Rectangle {
 
                         Text {
                             visible: row.heading
-                            anchors { left: parent.left; leftMargin: 6; bottom: parent.bottom; bottomMargin: 3 }
+                            anchors { left: parent.left; leftMargin: 6; bottom: parent.bottom; bottomMargin: 4 }
                             text: root.pal.calm ? String(row.modelData.section || "") : String(row.modelData.section || "").toUpperCase()     // ordinary rows have no section
                             color: root.pal.muted
                             font.family: root.pal.uiFont
@@ -293,7 +293,7 @@ Rectangle {
                                         color: root.pal.text
                                         font.family: root.pal.uiFont
                                         font.pixelSize: 12
-                                        font.weight: row.modelData.active ? Font.DemiBold : Font.Normal
+                                        font.weight: row.modelData.active ? Font.Medium : Font.Normal
                                     }
                                     Text {
                                         visible: !!row.modelData.sub

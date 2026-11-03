@@ -65,13 +65,13 @@ Rectangle {
                 color: g.pal.text
                 font.family: g.pal.uiFont
                 font.pixelSize: g.pal.tBody + 1
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
                 elide: Text.ElideRight
             }
             Rectangle {
                 implicitWidth: cnt.implicitWidth + 16; implicitHeight: 20; radius: 10
                 color: Qt.alpha(g.tone, 0.18)
-                Text { id: cnt; anchors.centerIn: parent; text: g.items.length; color: g.tone; font.family: g.pal.uiFont; font.pixelSize: 11; font.weight: Font.Bold }
+                Text { id: cnt; anchors.centerIn: parent; text: g.items.length; color: g.tone; font.family: g.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
             }
             Rectangle {
                 implicitWidth: 20; implicitHeight: 20; radius: 10
@@ -110,7 +110,7 @@ Rectangle {
                 }
                 ColumnLayout {
                     id: itc
-                    anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 4; rightMargin: 4; topMargin: 11 }
+                    anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 4; rightMargin: 4; topMargin: 12 }
                     spacing: 2
                     RowLayout {
                         Layout.fillWidth: true
@@ -121,7 +121,7 @@ Rectangle {
                             color: g.pal.text
                             font.family: g.pal.uiFont
                             font.pixelSize: g.pal.tBody + 1
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                             wrapMode: Text.Wrap
                         }
                         Text {

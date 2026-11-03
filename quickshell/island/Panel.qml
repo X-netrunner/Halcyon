@@ -891,7 +891,7 @@ Glass {
         }
 
         // power mode
-        Text { visible: root.classic && root.shown("Power"); text: root.pal.cap("POWER MODE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.2 : 1.4; Layout.topMargin: 10 }
+        Text { visible: root.classic && root.shown("Power"); text: root.pal.cap("POWER MODE"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: Font.Medium; font.letterSpacing: root.pal.calm ? 0.2 : 1.4; Layout.topMargin: 10 }
         RowLayout {
             HoverRaise {}
             Layout.fillWidth: true

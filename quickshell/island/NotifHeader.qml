@@ -37,7 +37,7 @@ RowLayout {
     BoxTitle {
         pal: hd.pal
         title: "Notifications"
-        sub: hd.count === 0 ? "You are all caught up"
+        sub: hd.count === 0 ? ""          // the empty list already says "All caught up"
             : hd.count + (hd.count === 1 ? " notification" : " notifications") + (hd.dnd ? "  ·  muted" : "") + (hd.plane && hd.airplane ? "  ·  airplane mode" : "")
     }
     Chip {

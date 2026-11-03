@@ -139,7 +139,7 @@ PerfBase {
         opacity: root.seg(0.1, 0.6)
         text: Math.round(root.sCpu * 100) + "%"
         color: root.cpuBusy ? root.pal.bad : root.pal.text
-        font.family: root.pal.uiFont; font.pixelSize: 48; font.weight: Font.Bold
+        font.family: root.pal.uiFont; font.pixelSize: 48; font.weight: Font.DemiBold
     }
     Text {
         visible: root.temp > 0
@@ -148,7 +148,7 @@ PerfBase {
         opacity: root.seg(0.2, 0.7)
         text: Math.round(root.sTemp) + "°"
         color: root.cpuHot ? root.pal.bad : root.pal.muted
-        font.family: root.pal.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 18; font.weight: Font.Medium
     }
 
     // the small rings' values and names
@@ -164,15 +164,15 @@ PerfBase {
                 text: root.ringText[rt.index]
                 fontSizeMode: Text.Fit; minimumPixelSize: 8
                 color: root.ringHot[rt.index] ? root.pal.bad : (rt.index === 1 && !root.gpuOn ? root.pal.muted : root.pal.text)
-                font.family: root.pal.uiFont; font.pixelSize: rt.index === 2 || (rt.index === 1 && root.gpuAsleep) ? 12 : 16; font.weight: Font.DemiBold
+                font.family: root.pal.uiFont; font.pixelSize: rt.index === 2 || (rt.index === 1 && root.gpuAsleep) ? 12 : 16; font.weight: Font.Medium
             }
             Text {
                 x: root.ringX[rt.index] - 40; y: root.ringY[rt.index] + root.ringR + 8; width: 80
                 horizontalAlignment: Text.AlignHCenter
                 text: root.ringName[rt.index]
                 color: root.pal.muted
-                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.2
-                font.capitalization: Font.AllUppercase
+                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0
+                font.capitalization: Font.MixedCase
             }
         }
     }
@@ -187,7 +187,7 @@ PerfBase {
             Row {
                 id: lamp
                 required property int index
-                spacing: 7
+                spacing: 8
                 opacity: root.seg(0.6, 1)
                 Rectangle {
                     width: 9; height: 9; radius: 4.5

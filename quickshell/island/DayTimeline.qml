@@ -78,7 +78,7 @@ Item {
                     font.family: root.pal.uiFont
                     font.pixelSize: 10
                     font.weight: Font.Medium
-                    font.letterSpacing: 0.4
+                    font.letterSpacing: 0
                 }
             }
         }
@@ -99,8 +99,8 @@ Item {
                 text: root.todayText !== "" ? root.todayText : (root.since === 0 ? "Today" : "Today  \u00b7  day " + root.since)
                 color: root.pal.muted
                 font.family: root.pal.uiFont
-                font.pixelSize: 9
-                font.letterSpacing: 0.5
+                font.pixelSize: 10
+                font.letterSpacing: 0
                 y: 0
                 x: Math.max(0, Math.min(track.width - width, track.x0 + track.railW * root.shown - width / 2))
             }

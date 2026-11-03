@@ -28,7 +28,7 @@ ColumnLayout {
             spacing: 10
             Rectangle {
                 Layout.alignment: Qt.AlignTop
-                Layout.topMargin: 5
+                Layout.topMargin: 4
                 width: 8; height: 8; radius: 4
                 color: ac.on ? (ac.pal ? ac.pal.accent : "#88aaff") : (ac.pal ? ac.pal.muted : "#777777")
                 opacity: ac.on ? 1 : 0.5

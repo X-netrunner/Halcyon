@@ -248,7 +248,7 @@ Scope {
         color: root.pal.muted
         font.family: root.pal.uiFont
         font.pixelSize: root.pal.calm ? 11 : 10
-        font.weight: Font.DemiBold
+        font.weight: Font.Medium
         font.letterSpacing: root.pal.calm ? 0.2 : (1.2)
         font.capitalization: root.pal.calm ? Font.MixedCase : Font.AllUppercase
     }
@@ -274,7 +274,7 @@ Scope {
         radius: 13
         color: on ? Qt.alpha(root.pal.accent, 0.18) : (fcMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-        Text { id: fcT; anchors.centerIn: parent; text: fc.label; color: fc.on ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: fc.on ? Font.DemiBold : Font.Normal }
+        Text { id: fcT; anchors.centerIn: parent; text: fc.label; color: fc.on ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: fc.on ? Font.Medium : Font.Normal }
         MouseArea { id: fcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.kindFilter = fc.key }
     }
 
@@ -383,7 +383,7 @@ Scope {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 40
                             visible: !root.aiItem
-                            radius: 20
+                            radius: 12
                             color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.7))
                             border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                             border.color: sin.activeFocus ? root.pal.lineFocus : root.pal.lineSoft

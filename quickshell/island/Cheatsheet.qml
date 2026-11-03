@@ -308,7 +308,7 @@ Scope {
                 // ---------------- header: just the title and the close
                 RowLayout {
                     id: head
-                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 26 }
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 24 }
                     spacing: 14
                     Text { visible: !root.pal.zen; text: String.fromCodePoint(0xF030C); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
                     BoxTitle { pal: root.pal; size: 20; title: "Shortcuts" }
@@ -318,7 +318,7 @@ Scope {
                 // ---------------- the bottom bar: the search and the view switch (the title bar stays clean)
                 RowLayout {
                     id: foot
-                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 26 }
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 24 }
                     spacing: 12
                     Rectangle {
                         Layout.fillWidth: true
@@ -366,7 +366,7 @@ Scope {
                 Flickable {
                     id: menu
                     visible: root.pagesMode
-                    anchors { left: parent.left; top: head.bottom; bottom: foot.top; margins: 26; topMargin: 18; bottomMargin: 16 }
+                    anchors { left: parent.left; top: head.bottom; bottom: foot.top; margins: 24; topMargin: 20; bottomMargin: 16 }
                     width: 210
                     contentWidth: width
                     contentHeight: menuCol.height
@@ -394,7 +394,7 @@ Scope {
                                     text: mi.modelData.title
                                     color: mi.cur ? root.pal.text : root.pal.muted
                                     font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
-                                    font.weight: mi.cur ? Font.DemiBold : Font.Normal
+                                    font.weight: mi.cur ? Font.Medium : Font.Normal
                                 }
                                 Text {
                                     anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter
@@ -416,7 +416,7 @@ Scope {
                 // ---------------- the tree (tree layout) / the list of the page (pages layout)
                 Flickable {
                     id: scroll
-                    anchors { left: root.pagesMode ? menu.right : parent.left; right: parent.right; top: head.bottom; bottom: foot.top; margins: 26; topMargin: 18; bottomMargin: 16; leftMargin: root.pagesMode ? 22 : 26 }
+                    anchors { left: root.pagesMode ? menu.right : parent.left; right: parent.right; top: head.bottom; bottom: foot.top; margins: 24; topMargin: 20; bottomMargin: 16; leftMargin: root.pagesMode ? 22 : 26 }
                     contentWidth: width
                     contentHeight: tree.height + 12
                     clip: true
@@ -426,7 +426,9 @@ Scope {
                         id: tree
                         width: scroll.width
                         readonly property real gap: 28
-                        readonly property real colW: (width - (root.colCount - 1) * gap) / root.colCount
+                        // pages: as many columns as the page really fills (a short page is one full-width column, not half the window and a blank half)
+                        readonly property int nCols: root.pagesMode ? Math.max(1, root.usedCols) : root.colCount
+                        readonly property real colW: (width - (nCols - 1) * gap) / nCols
                         readonly property real barY: 72
                         readonly property real colsY: root.pagesMode ? 0 : 98
                         property real colsH: 0
@@ -444,7 +446,7 @@ Scope {
 
                         // time for the pulses that run down the branches
                         property real tt: 0
-                        NumberAnimation on tt { from: 0; to: 1; duration: 3600; loops: Animation.Infinite; running: root.open && root.pal.motion > 0.3 }
+                        NumberAnimation on tt { from: 0; to: 1; duration: 3600; loops: Animation.Infinite; running: false && root.open }
 
                         // ---- root node
                         Rectangle {
@@ -463,7 +465,7 @@ Scope {
                                 anchors.centerIn: parent
                                 spacing: 10
                                 Text { text: String.fromCodePoint(0xF030C); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 17; anchors.verticalCenter: parent.verticalCenter }
-                                Text { text: "Halcyon"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "Halcyon"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                                 Text { text: Binds.countAll(root.customs, root.hasSysmode) + " things you can do"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; anchors.verticalCenter: parent.verticalCenter }
                             }
                         }
@@ -553,7 +555,7 @@ Scope {
                                                 color: root.pal.accent
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 11
-                                                font.weight: Font.DemiBold
+                                                font.weight: Font.Medium
                                                 font.letterSpacing: root.pal.calm ? 0.2 : (1.4)
                                             }
                                         }
@@ -711,7 +713,7 @@ Scope {
                                                                     visible: leaf.isCustom && root.pickOpen
                                                                     Layout.fillWidth: true
                                                                     pal: root.pal
-                                                                    placeholder: "Search your apps, click one to use it…"
+                                                                    placeholder: "Search apps"
                                                                     onPicked: app => root.useApp(app)
                                                                 }
 
@@ -745,7 +747,7 @@ Scope {
                                                                             color: root.capturing || root.editKey === "" ? root.pal.muted : root.pal.text
                                                                             font.family: root.pal.uiFont
                                                                             font.pixelSize: root.pal.tBody
-                                                                            font.weight: root.editKey !== "" && !root.capturing ? Font.DemiBold : Font.Normal
+                                                                            font.weight: root.editKey !== "" && !root.capturing ? Font.Medium : Font.Normal
                                                                         }
                                                                         MouseArea {
                                                                             anchors.fill: parent
@@ -897,7 +899,7 @@ Scope {
                                                                 visible: root.pickOpen
                                                                 Layout.fillWidth: true
                                                                 pal: root.pal
-                                                                placeholder: "Search your apps, click one to use it…"
+                                                                placeholder: "Search apps"
                                                                 onPicked: app => root.useApp(app)
                                                             }
                                                             Flow {
@@ -926,7 +928,7 @@ Scope {
                                                                         text: root.capturing ? "press a key…" : (root.editKey !== "" ? Binds.parts(root.editKey).join("") : "click, then press a key")
                                                                         color: root.capturing || root.editKey === "" ? root.pal.muted : root.pal.text
                                                                         font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
-                                                                        font.weight: root.editKey !== "" && !root.capturing ? Font.DemiBold : Font.Normal
+                                                                        font.weight: root.editKey !== "" && !root.capturing ? Font.Medium : Font.Normal
                                                                     }
                                                                     MouseArea { anchors.fill: parent; onClicked: { root.capturing = true; root.editError = ""; capBox2.forceActiveFocus() } }
                                                                     Keys.onPressed: e => {

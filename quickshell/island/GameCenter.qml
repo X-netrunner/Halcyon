@@ -597,7 +597,7 @@ Scope {
         signal clicked()
         implicitWidth: pbRow.implicitWidth + 32
         implicitHeight: 38
-        radius: height / 2
+        radius: 10
         opacity: disabled ? 0.45 : 1
         color: danger ? Qt.alpha(root.pal.bad, pbMa.containsMouse ? 0.30 : 0.18)
                       : (pbMa.containsMouse && !disabled ? Qt.lighter(root.pal.accent, 1.08) : root.pal.accent)
@@ -622,7 +622,7 @@ Scope {
                 color: pb.danger ? root.pal.bad : root.pal.bg
                 font.family: root.pal.uiFont
                 font.pixelSize: pb.height >= 44 ? root.pal.tTitle : root.pal.tBody
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
         }
         MouseArea { id: pbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: pb.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: if (!pb.disabled) pb.clicked() }
@@ -635,7 +635,7 @@ Scope {
         readonly property bool on: root.tab === key
         implicitWidth: tbTxt.implicitWidth + 30
         implicitHeight: 32
-        radius: 16
+        radius: 10
         color: on ? root.pal.accent : (tbMa.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent")
         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
@@ -645,7 +645,7 @@ Scope {
             color: tb.on ? root.pal.bg : root.pal.muted
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tBody
-            font.weight: tb.on ? Font.DemiBold : Font.Medium
+            font.weight: tb.on ? Font.Medium : Font.Medium
         }
         MouseArea { id: tbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.setTab(tb.key) }
     }
@@ -654,7 +654,7 @@ Scope {
         color: root.pal.muted
         font.family: root.pal.uiFont
         font.pixelSize: root.pal.tCap
-        font.weight: Font.DemiBold
+        font.weight: Font.Medium
         font.letterSpacing: root.pal.calm ? 0.2 : (0.8)
         font.capitalization: root.pal.calm ? Font.MixedCase : Font.AllUppercase
     }
@@ -717,8 +717,8 @@ Scope {
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 22
-                        spacing: 18
+                        anchors.margins: 24
+                        spacing: 20
 
                         // ---- header: badge + title + state on the left, the tabs in the middle, close on the right
                         // Centred titles: the badge and title in the middle on top, the tabs on a line under them
@@ -761,7 +761,7 @@ Scope {
                                         color: root.pal.text
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tTitle + 3
-                                        font.weight: Font.DemiBold
+                                        font.weight: Font.Medium
                                     }
                                     Text {
                                         width: Math.min(implicitWidth, gcHead.centred ? gcHead.width - 120 : tabs.x - 70)
@@ -771,7 +771,7 @@ Scope {
                                         text: root.note !== "" ? root.note
                                             : (root.busy ? "Working. Big downloads can take a few minutes"
                                             : (root.runningId !== "" ? "A game is running"
-                                            : (root.games.length === 0 ? "Your library is empty" : root.games.length + (root.games.length === 1 ? " game" : " games") + " in your library")))
+                                            : (!root.gamesLoaded ? "" : root.games.length === 0 ? "Your library is empty" : root.games.length + (root.games.length === 1 ? " game" : " games") + " in your library")))
                                         color: root.noteBad ? root.pal.bad : (root.note !== "" ? root.pal.good : root.pal.muted)
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tCap + 1
@@ -784,7 +784,7 @@ Scope {
                                 y: gcHead.centred ? parent.height - height : (parent.height - height) / 2
                                 width: tabRow.implicitWidth + 8
                                 height: 40
-                                radius: 20
+                                radius: 14
                                 color: root.pal.box(Qt.alpha(root.pal.surface, 0.8))
                                 border.width: root.pal.calm ? 0 : 1
                                 border.color: root.pal.lineSoft
@@ -807,7 +807,7 @@ Scope {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             visible: root.tab === "library"
-                            spacing: 18
+                            spacing: 20
 
                             ColumnLayout {
                                 Layout.fillWidth: true
@@ -822,7 +822,7 @@ Scope {
                                     Rectangle {
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 38
-                                        radius: 19
+                                        radius: 12
                                         color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.8))
                                         border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                                         border.color: sin.activeFocus ? Qt.alpha(root.pal.accent, 0.7) : root.pal.lineSoft
@@ -1022,7 +1022,7 @@ Scope {
                                         ClippingRectangle {
                                             id: card
                                             anchors.fill: parent
-                                            anchors.margins: 7
+                                            anchors.margins: 8
                                             radius: root.pal.rLg
                                             color: root.pal.box(Qt.alpha(root.pal.surface, 0.9))
                                             scale: cardMa.pressed ? 0.97 : (cardMa.containsMouse ? 1.02 : 1)
@@ -1034,8 +1034,8 @@ Scope {
                                                 anchors.fill: parent
                                                 visible: !cell.hasArt
                                                 gradient: Gradient {
-                                                    GradientStop { position: 0; color: Qt.alpha(root.pal.accent, 0.22) }
-                                                    GradientStop { position: 1; color: Qt.alpha(root.pal.accent2, 0.06) }
+                                                    GradientStop { position: 0; color: Qt.alpha(root.pal.accent, 0.16) }
+                                                    GradientStop { position: 1; color: Qt.alpha(root.pal.accent, 0.05) }
                                                 }
                                             }
                                             Text {
@@ -1046,7 +1046,7 @@ Scope {
                                                 color: Qt.alpha(root.pal.accent, 0.6)
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 58
-                                                font.weight: Font.DemiBold
+                                                font.weight: Font.Medium
                                             }
                                             Image {
                                                 id: img
@@ -1084,7 +1084,7 @@ Scope {
                                                     color: root.pal.text
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: root.pal.tBody
-                                                    font.weight: Font.DemiBold
+                                                    font.weight: Font.Medium
                                                 }
                                                 Text {
                                                     width: parent.width
@@ -1112,7 +1112,7 @@ Scope {
                                                     color: cell.playing ? root.pal.accent : root.pal.warn
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: 10
-                                                    font.weight: Font.DemiBold
+                                                    font.weight: Font.Medium
                                                 }
                                             }
                                             // hover: a play button in the corner
@@ -1202,7 +1202,7 @@ Scope {
                                             color: root.pal.text
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tTitle + 3
-                                            font.weight: Font.DemiBold
+                                            font.weight: Font.Medium
                                         }
                                         Text {
                                             visible: root.gamesLoaded && root.games.length === 0
@@ -1270,7 +1270,7 @@ Scope {
                                             }
                                         }
                                         Column {
-                                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 18; rightMargin: 18; bottomMargin: 8 }
+                                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 20; rightMargin: 20; bottomMargin: 8 }
                                             spacing: 2
                                             Text {
                                                 width: parent.width
@@ -1279,7 +1279,7 @@ Scope {
                                                 color: root.pal.text
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tDisplay
-                                                font.weight: Font.DemiBold
+                                                font.weight: Font.Medium
                                             }
                                             Text {
                                                 width: parent.width
@@ -1630,7 +1630,7 @@ Scope {
                                                             color: root.pal.accent
                                                             font.family: root.pal.uiFont
                                                             font.pixelSize: root.pal.tCap
-                                                            font.weight: Font.DemiBold
+                                                            font.weight: Font.Medium
                                                         }
                                                     }
                                                 }
@@ -1933,7 +1933,7 @@ Scope {
                                                             font.family: root.pal.font
                                                             font.pixelSize: root.pal.tCap + 1
                                                         }
-                                                        RoundBtn { id: rm; anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: 3 } pal: root.pal; size: 24; glyph: String.fromCodePoint(0xF0156); onClicked: root.setKey("env." + modelData, "") }
+                                                        RoundBtn { id: rm; anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: 4 } pal: root.pal; size: 24; glyph: String.fromCodePoint(0xF0156); onClicked: root.setKey("env." + modelData, "") }
                                                     }
                                                 }
                                                 RowLayout {
@@ -1958,7 +1958,7 @@ Scope {
                                                             font.pixelSize: root.pal.tCap + 1
                                                             Keys.onEscapePressed: sin.forceActiveFocus()
                                                             Keys.onReturnPressed: envVal.forceActiveFocus()
-                                                            Text { anchors.verticalCenter: parent.verticalCenter; visible: envName.text.length === 0; text: "NAME"; color: root.pal.muted; font: envName.font }
+                                                            Text { anchors.verticalCenter: parent.verticalCenter; visible: envName.text.length === 0; text: "Name"; color: root.pal.muted; font: envName.font }
                                                         }
                                                     }
                                                     Rectangle {
@@ -2191,7 +2191,7 @@ Scope {
                                         anchors.fill: parent
                                         anchors.margins: 14
                                         spacing: 10
-                                        Text { text: "Epic Games"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
+                                        Text { text: "Epic Games"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
                                         Text {
                                             Layout.fillWidth: true
                                             wrapMode: Text.Wrap
@@ -2254,7 +2254,7 @@ Scope {
                                         anchors.fill: parent
                                         anchors.margins: 14
                                         spacing: 10
-                                        Text { text: "GOG"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
+                                        Text { text: "GOG"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
                                         Text {
                                             Layout.fillWidth: true
                                             wrapMode: Text.Wrap

@@ -755,7 +755,7 @@ Scope {
             { type: "toggle", adv: true, key: "opt:deskLiveWord", label: "HALCYON under the sparkle", when: "opt:deskLivePick=sky" },
             { type: "custom", name: "wallpaper" },
             { type: "seg", key: "opt:wpSource", label: "Source", desc: "Local: only your folder. Online: a fresh picture from Wallhaven (safe-for-work) in the category below, cached on disk. Mixed: either one. No network = your folder.", opts: [o("local", "Local"), o("online", "Online"), o("mixed", "Mixed")] },
-            { type: "seg", adv: true, drop: true, key: "opt:wpCat", label: "Online category", desc: "What \"Next wallpaper\" and the timer fetch. Anime = characters, Anime art = anime-style scenery. Random picks a category each time. Search… uses your own word (the box below).", opts: [o("nature", "Nature"), o("movies", "Movies"), o("anime", "Anime"), o("anime-art", "Anime art"), o("space", "Space"), o("city", "City"), o("minimal", "Minimal"), o("cars", "Cars"), o("random", "Random"), o("custom", "Search…")], when: "opt:wpSource=online|mixed" },
+            { type: "seg", adv: true, drop: true, key: "opt:wpCat", label: "Online category", desc: "What \"Next wallpaper\" and the timer fetch. Anime = characters, Anime art = anime-style scenery. Random picks a category each time. Search… uses your own word (the box below).", opts: [o("nature", "Nature"), o("movies", "Movies"), o("anime", "Anime"), o("anime-art", "Anime art"), o("space", "Space"), o("city", "City"), o("minimal", "Minimal"), o("cars", "Cars"), o("random", "Random"), o("custom", "Search settings")], when: "opt:wpSource=online|mixed" },
             { type: "seg", adv: true, drop: true, key: "opt:wpEvery", label: "Change it by itself", desc: "A new random wallpaper from the folder; the island's colours follow each one.", opts: [o(0, "Never"), o(5, "5 min"), o(15, "15 min"), o(30, "30 min"), o(60, "1 hour")] },
             { type: "toggle", adv: true, key: "opt:wpBootNew", label: "New wallpaper each boot", desc: "Off: the wallpaper you chose stays after a reboot. On: a random one from the folder at every boot." }
         ] },
@@ -1029,13 +1029,13 @@ Scope {
             { type: "acts", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading...", when: "fx:safe=false" }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring...", when: "fx:safe=true" }] }
         ] },
         { id: "suggestions", title: "Suggestions", section: "Performance", items: [
-            { type: "acts", adv: true, label: "Balanced look and speed", desc: "Faster without losing the look: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied!" }] },
+            { type: "acts", adv: true, label: "Balanced look and speed", desc: "Faster without losing the look: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied" }] },
             { type: "acts", label: "System advisor", desc: "Looks at your battery, memory pressure, workloads and app habits and suggests settings, in the console (scripts/adaptive-advisor.py).", btns: [
                 { id: "opt-adaptive-advisor", btn: "Analyze", done: "Opening…" },
                 { id: "opt-llm-advisor", btn: "Ask the AI", done: "Analyzing…" }
             ] },
             { type: "toggle", key: "opt:lazyLoad", def: true, adv: true, label: "Free memory when idle", desc: "Frees the memory of a dialog soon after it closes (a garbage collection pass), and lets the local AI model (2 to 3 GB) go 3 minutes after the last answer instead of 30 (1 minute for the small helpers, 10 s for notes). Every dialog builds only the view you are looking at either way. On automatically in Low and Medium resource use." },
-            { type: "acts", adv: true, label: "Trim memory now", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed!" }] }
+            { type: "acts", adv: true, label: "Trim memory now", desc: "Triggers immediate garbage collection across Quickshell's JavaScript heap and flushes cached texture buffers back to the OS.", btns: [{ id: "opt-trim-mem", btn: "Trim Memory Now", done: "Trimmed" }] }
         ] },
         { id: "startup", title: "Startup & background", section: "System", items: [
             { type: "toggle", adv: true, key: "opt:unusedRemind", def: true, label: "Monthly unused-apps reminder", desc: "Once a month, a notification when there are programs or background services you have not used for 30 days (Startup & processes > Unused has the list). Nothing is removed by itself." },
@@ -1537,7 +1537,7 @@ Scope {
                             width: parent.width
                             text: "Turn the screen border off too?"
                             color: root.pal.text; wrapMode: Text.WordWrap
-                            font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                            font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium
                         }
                         Text {
                             width: parent.width
@@ -1621,7 +1621,7 @@ Scope {
                         Layout.fillWidth: true
                         Layout.maximumWidth: 380
                         implicitHeight: root.pal.zen ? 38 : 34
-                        radius: height / 2
+                        radius: 10
                         color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
                         border.width: root.pal.zen ? 0 : 1
                         border.color: search.activeFocus ? root.pal.lineFocus : root.pal.line
@@ -1674,7 +1674,7 @@ Scope {
                 Item {
                     id: pagesView
                     visible: root.pagesMode
-                    anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 36; topMargin: 22 }
+                    anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 36; topMargin: 24 }
 
                     // the trunk: one node per page
                     Item {
@@ -1699,16 +1699,16 @@ Scope {
                                     Text {
                                         visible: navItem.isHead
                                         x: 16; anchors { bottom: parent.bottom; bottomMargin: 4 }
-                                        text: navItem.modelData.head.toUpperCase()
+                                        text: navItem.modelData.head
                                         color: navItem.curHead ? Qt.alpha(root.pal.text, 0.8) : Qt.alpha(root.pal.text, 0.4)       // headings stay dim; the one holding the open page is a step brighter
-                                        font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 1.4; font.weight: Font.Medium
+                                        font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 0; font.weight: Font.Medium
                                     }
                                     // calm: a soft pill under the current page instead of the trunk and its dots
                                     // the open page is in the spotlight: a filled pill with an accent edge (calm: the soft pill); hover shows a lighter one
                                     Rectangle {
                                         visible: !navItem.isHead && (root.pal.calm || navItem.cur || navMa.containsMouse)
                                         anchors { fill: parent; topMargin: 2; bottomMargin: 2; rightMargin: 14 }
-                                        radius: height / 2
+                                        radius: 8
                                         border.width: navItem.cur && !root.pal.calm ? 1 : 0; border.color: Qt.alpha(root.pal.accent, 0.25)
                                         color: navItem.cur ? (root.pal.calm ? root.pal.chosenFill : Qt.alpha(root.pal.accent, 0.1)) : (navMa.containsMouse ? root.pal.fill : "transparent")
                                         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
@@ -1770,11 +1770,11 @@ Scope {
                             Text {
                                 text: root.query === "" ? root.page : "Search results"
                                 bottomPadding: root.pal.zen && root.pal.hideHints && root.query === "" ? 22 : 0
-                                color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.DemiBold
+                                color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.Medium
                             }
                             Text {
                                 width: parent.width
-                                topPadding: 6; bottomPadding: 22
+                                topPadding: 6; bottomPadding: 24
                                 visible: !(root.pal.zen && root.pal.hideHints && root.query === "")
                                 text: root.query === "" ? root.pageInfo(root.page).sub + "  Rarely used options are on the Debug / Advanced page." : root.shownCount + " settings match, from every page."
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; wrapMode: Text.WordWrap
@@ -1786,12 +1786,12 @@ Scope {
                                     id: pg
                                     required property var modelData
                                     width: pcol.width
-                                    bottomPadding: 22
+                                    bottomPadding: 24
                                     spacing: 10
                                     Text {
                                         leftPadding: 4
                                         text: (root.pal.calm ? pg.modelData.title : pg.modelData.title.toUpperCase()) + (root.query !== "" ? "   \u00b7   " + root.pageOf(pg.modelData.id) : "")
-                                        color: root.pal.zen ? root.pal.muted : root.pal.calm ? Qt.alpha(root.pal.text, 0.72) : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.zen ? 12 : root.pal.calm ? 13 : 11; font.weight: root.pal.calm ? Font.Medium : Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.2 : (1.6)
+                                        color: root.pal.zen ? root.pal.muted : root.pal.calm ? Qt.alpha(root.pal.text, 0.72) : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.zen ? 12 : root.pal.calm ? 13 : 11; font.weight: root.pal.calm ? Font.Medium : Font.Medium; font.letterSpacing: root.pal.calm ? 0.2 : (1.6)
                                     }
                                     Rectangle {
                                         width: pg.width
@@ -1850,14 +1850,14 @@ Scope {
                                                                     Text {
                                                                         Layout.maximumWidth: Math.max(60, body.width - 120)
                                                                         text: pr.m.type === "divider" ? (root.pal.calm ? (pr.m.label || "") : (pr.m.label || "").toUpperCase()) : (pr.m.label || "")
-                                                                        color: pr.m.type === "divider" ? root.pal.muted : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: pr.m.type === "divider" ? 11 : root.pal.tBody + 1; font.weight: pr.m.type === "divider" ? Font.DemiBold : Font.Medium; font.letterSpacing: root.pal.calm ? 0.2 : (pr.m.type === "divider" ? 1.6 : 0); wrapMode: Text.WordWrap
+                                                                        color: pr.m.type === "divider" ? root.pal.muted : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: pr.m.type === "divider" ? 11 : root.pal.tBody + 1; font.weight: pr.m.type === "divider" ? Font.Medium : Font.Medium; font.letterSpacing: root.pal.calm ? 0.2 : (pr.m.type === "divider" ? 1.6 : 0); wrapMode: Text.WordWrap
                                                                     }
                                                                     Rectangle {
                                                                         visible: pr.longDesc && !root.pal.zen       // the new style: no ? at all (ask > instead)
                                                                         Layout.preferredWidth: 18; Layout.preferredHeight: 18; radius: 9
                                                                         color: pr.descOpen ? Qt.alpha(root.pal.accent, 0.22) : "transparent"
                                                                         border.width: 1; border.color: pr.descOpen ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
-                                                                        Text { anchors.centerIn: parent; text: "?"; color: pr.descOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
+                                                                        Text { anchors.centerIn: parent; text: "?"; color: pr.descOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.Medium }
                                                                         MouseArea { anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onContainsMouseChanged: pr.descPeek = containsMouse; onClicked: pr.descOpen = !pr.descOpen }
                                                                     }
                                                                     Item { Layout.fillWidth: true }
@@ -2073,7 +2073,7 @@ Scope {
                                 anchors.centerIn: parent
                                 spacing: 10
                                 Text { text: String.fromCodePoint(0xF0493); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 17; anchors.verticalCenter: parent.verticalCenter }
-                                Text { text: "Halcyon"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "Halcyon"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                                 Text { text: root.groupsNow.length + " branches  ·  everything applies at once"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; anchors.verticalCenter: parent.verticalCenter }
                             }
                         }
@@ -2159,7 +2159,7 @@ Scope {
                                                 color: root.pal.accent
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 12
-                                                font.weight: Font.DemiBold
+                                                font.weight: Font.Medium
                                                 font.letterSpacing: root.pal.calm ? 0.2 : (1.6)
                                             }
                                             Text {
@@ -2245,7 +2245,7 @@ Scope {
                                                                 opacity: leaf.off ? 0.45 : 1
                                                                 ColumnLayout {
                                                                     Layout.fillWidth: true
-                                                                    spacing: 5
+                                                                    spacing: 4
                                                                     RowLayout {
                                                                         Layout.fillWidth: true
                                                                         spacing: 8
@@ -2256,7 +2256,7 @@ Scope {
                                                                             font.family: root.pal.uiFont
                                                                             font.pixelSize: leaf.m.type === "divider" ? 11 : root.pal.tBody
                                                                             font.letterSpacing: root.pal.calm ? 0.2 : (leaf.m.type === "divider" ? 1.6 : 0)
-                                                                            font.weight: leaf.m.type === "divider" ? Font.DemiBold : Font.Medium
+                                                                            font.weight: leaf.m.type === "divider" ? Font.Medium : Font.Medium
                                                                             wrapMode: Text.WordWrap
                                                                         }
                                                                         Rectangle {
@@ -2266,7 +2266,7 @@ Scope {
                                                                             color: leaf.descOpen ? Qt.alpha(root.pal.accent, 0.22) : (qMa.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.9) : "transparent")
                                                                             border.width: root.pal.zen && !(leaf.descOpen) ? 0 : 1
                                                                             border.color: leaf.descOpen ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
-                                                                            Text { anchors.centerIn: parent; text: "?"; color: leaf.descOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
+                                                                            Text { anchors.centerIn: parent; text: "?"; color: leaf.descOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.Medium }
                                                                             MouseArea { id: qMa; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onContainsMouseChanged: leaf.descPeek = containsMouse; onClicked: leaf.descOpen = !leaf.descOpen }
                                                                         }
                                                                         Item { Layout.fillWidth: true }

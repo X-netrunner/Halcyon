@@ -87,7 +87,7 @@ WBase {
                 Rectangle {
                     visible: cell.st !== "tabs" && cell.st !== "labels" && cell.st !== "glow"
                     anchors.fill: parent
-                    radius: cell.st === "stack" ? root.sz(9) : height / 2
+                    radius: cell.st === "stack" ? root.sz(10) : height / 2
                     color: cell.st === "segmented" ? (cell.cur ? root.accent : "transparent")
                          : (cell.st === "outline" ? (cell.cur ? Qt.alpha(root.accent, 0.18) : "transparent")
                          : (cell.st === "rings" ? (cell.cur ? Qt.alpha(root.accent, 0.16) : "transparent")
@@ -134,7 +134,7 @@ WBase {
                         text: cell.modelData.label
                         color: cell.ink
                         font.pixelSize: root.sz(13)
-                        font.weight: cell.cur ? Font.Bold : Font.Medium
+                        font.weight: cell.cur ? Font.DemiBold : Font.Medium
                     }
                 }
                 // how many windows hide in there
@@ -144,7 +144,7 @@ WBase {
                     y: cell.st === "stack" ? (parent.height - height) / 2 : -height * 0.25
                     width: Math.max(height, bt.implicitWidth + root.sz(8)); height: root.sz(15); radius: height / 2
                     color: cell.cur && cell.filled ? root.fg : root.accent
-                    Text { id: bt; anchors.centerIn: parent; text: cell.n; font.pixelSize: root.sz(10); font.bold: true; color: root.pal ? root.pal.bg : "black" }
+                    Text { id: bt; anchors.centerIn: parent; text: cell.n; font.pixelSize: root.sz(10); font.weight: Font.Medium; color: root.pal ? root.pal.bg : "black" }
                 }
                 MouseArea {
                     anchors.fill: parent

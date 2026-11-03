@@ -17,7 +17,7 @@ Item {
         id: lab
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
-        width: 128
+        width: 156
         text: s.label
         color: s.pal.text
         font.family: s.pal.uiFont

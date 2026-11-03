@@ -164,7 +164,7 @@ Item {
                     color: box.pal.text
                     font.family: box.pal.uiFont
                     font.pixelSize: box.pal.tTitle
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter

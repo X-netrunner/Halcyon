@@ -51,9 +51,9 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 22
-        anchors.leftMargin: 34
-        anchors.rightMargin: 34
+        anchors.margins: 24
+        anchors.leftMargin: 32
+        anchors.rightMargin: 32
         spacing: 12
 
         RowLayout {
@@ -62,7 +62,7 @@ Item {
 
             Ring { pal: root.pal; label: "CPU"; text: root.stats.cpu + "%"; value: root.stats.cpu / 100 }
             Ring { pal: root.pal; label: "RAM"; text: root.stats.memGb + "G"; value: root.stats.mem / 100 }
-            Ring { pal: root.pal; label: "TEMP"; text: root.stats.temp + "°"; value: (root.stats.temp - 30) / 70 }
+            Ring { pal: root.pal; label: "Temp"; text: root.stats.temp + "°"; value: (root.stats.temp - 30) / 70 }
             // dGPU load; "off" while it is asleep (reading it never wakes it, see scripts/gpu.sh)
             Ring {
                 visible: root.gpu.state !== "none"
@@ -75,7 +75,7 @@ Item {
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
-                spacing: 5
+                spacing: 4
                 Text {
                     text: "↓  " + root.rate(root.stats.down)
                     color: root.pal.text
@@ -107,7 +107,7 @@ Item {
                     color: root.pal.good
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tBody
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }
@@ -129,7 +129,7 @@ Item {
         GridLayout {
             Layout.fillWidth: true
             columns: 2
-            columnSpacing: 26
+            columnSpacing: 24
             rowSpacing: 12
             SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF061A); label: "Processor"; value: root.cpuText }
             SpecItem { Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; pal: root.pal; glyph: String.fromCodePoint(0xF08AE); label: "Graphics"; value: root.gpuText }
@@ -140,13 +140,13 @@ Item {
         // disk usage bars: one row along the whole bottom, one bar per disk sharing the width
         Row {
             Layout.fillWidth: true
-            spacing: 26
+            spacing: 24
             Repeater {
                 model: root.diskUsage
                 delegate: Column {
                     required property var modelData
                     width: root.diskUsage.length > 1 ? (parent.width - 26 * (root.diskUsage.length - 1)) / root.diskUsage.length : parent.width
-                    spacing: 3
+                    spacing: 4
                     Text {
                         width: parent.width
                         text: modelData.label + "  ·  " + modelData.text

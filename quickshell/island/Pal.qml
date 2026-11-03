@@ -9,7 +9,7 @@ Scope {
     id: pal
 
     // ---------- interface style (Settings > Look > Interface) ----------
-    // "new" (the default): the quiet redesign. One soft pane, no outlines inside it: groups are a faint fill, buttons are pills,
+    // "new" (the default): the quiet redesign. One soft pane, no outlines inside it: groups are a faint fill, buttons are soft 10px rectangles (unslop),
     // the active choice is an accent wash and the one main action (Done, Play ...) is solid accent. No explanations (> ask).
     // "legacy": the first calm look (flat frosted panes with a hairline on every box, borderless controls).
     // "classic": the original look (sheen and accent outlines on every pane, outlined chips).
@@ -312,8 +312,8 @@ Scope {
     // ---------- edge boxes: the utilities panel (bottom-right) and the notification centre (right edge) share these,
     // so their width, inner padding and distance from the screen edge always match ----------
     readonly property int boxW: 392
-    readonly property int boxPad: 18
-    readonly property int boxEdge: 22
+    readonly property int boxPad: 20
+    readonly property int boxEdge: 24
     readonly property int boxTop: 90         // top of the notification centre AND the console, so they line up
 
     // ---------- type ----------
@@ -393,7 +393,8 @@ Scope {
     //   curveSoft   spatial spring (move, grow, slide). Overshoots about 8 %. Raise the second number for a bouncier feel (1.21 = Caelestia).
     //   curveCalm   no overshoot. A box joined to the screen border (frameOn) must not overshoot or it would pull away from the border
     //               for a moment, so the border uses this one. It is also the curve for every fade and colour change (curveFx).
-    readonly property var curveSoft: [0.38, 1.21, 0.22, 1, 1, 1]
+    // unslop: no overshoot. Boxes glide in and settle; they do not bounce past their spot (was [0.38, 1.21, 0.22, 1]).
+    readonly property var curveSoft: [0.22, 1, 0.36, 1, 1, 1]
     readonly property var curveCalm: [0.34, 0.8, 0.34, 1, 1, 1]
     readonly property var curve: frameOn ? curveCalm : curveSoft
     // For SIZE changes of a box that hangs from the border / bar (it grows away from the edge it is joined to). Overshooting a size

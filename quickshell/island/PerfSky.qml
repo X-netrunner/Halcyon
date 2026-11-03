@@ -436,21 +436,21 @@ Item {
         color: root.pal.muted
         font.family: root.pal.uiFont
         font.pixelSize: root.pal.tCap - 1
-        font.letterSpacing: 1.4
-        font.capitalization: Font.AllUppercase
+        font.letterSpacing: 0
+        font.capitalization: Font.MixedCase
     }
     Row {
         x: 578 - width; y: 212
         opacity: root.seg(0.35, 0.8)
         spacing: 12
         Row {
-            spacing: 5
+            spacing: 4
             Rectangle { width: 6; height: 6; radius: 3; color: root.pal.accent; anchors.verticalCenter: parent.verticalCenter }
             Text { text: "CPU"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1 }
         }
         Row {
             visible: root.hasGpu
-            spacing: 5
+            spacing: 4
             Rectangle { width: 6; height: 6; radius: 3; color: root.pal.accent2; anchors.verticalCenter: parent.verticalCenter }
             Text { text: "GPU"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1 }
         }
@@ -467,7 +467,7 @@ Item {
         color: root.batTint
         font.family: root.pal.uiFont
         font.pixelSize: 20
-        font.weight: Font.DemiBold
+        font.weight: Font.Medium
     }
     Text {
         visible: root.hasBat

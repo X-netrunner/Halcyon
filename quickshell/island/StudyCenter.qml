@@ -473,7 +473,7 @@ Scope {
         color: root.pal.muted
         font.family: root.pal.uiFont
         font.pixelSize: root.pal.tCap
-        font.weight: Font.DemiBold
+        font.weight: Font.Medium
         font.letterSpacing: root.pal.calm ? 0.2 : (0.9)
         font.capitalization: root.pal.calm ? Font.MixedCase : Font.AllUppercase
     }
@@ -486,7 +486,7 @@ Scope {
         signal clicked()
         implicitWidth: pbRow.implicitWidth + 30
         implicitHeight: 36
-        radius: height / 2
+        radius: 10
         opacity: disabled ? 0.45 : 1
         color: pbMa.containsMouse && !disabled ? Qt.lighter(root.pal.accent, 1.08) : root.pal.accent
         scale: pbMa.pressed && !disabled ? 0.97 : 1
@@ -497,7 +497,7 @@ Scope {
             anchors.centerIn: parent
             spacing: 8
             Text { visible: pb.glyph !== ""; anchors.verticalCenter: parent.verticalCenter; text: pb.glyph; color: root.pal.bg; font.family: root.pal.font; font.pixelSize: 15 }
-            Text { anchors.verticalCenter: parent.verticalCenter; text: pb.label; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+            Text { anchors.verticalCenter: parent.verticalCenter; text: pb.label; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
         }
         MouseArea { id: pbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: pb.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: if (!pb.disabled) pb.clicked() }
     }
@@ -509,7 +509,7 @@ Scope {
         signal clicked()
         implicitWidth: lbRow.implicitWidth + 20
         implicitHeight: 30
-        radius: 15
+        radius: 10
         color: lbMa.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent"
         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Row {
@@ -550,7 +550,7 @@ Scope {
         spacing: 10
         Row {
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 5
+            spacing: 4
             Repeater {
                 model: 3
                 delegate: Rectangle {
@@ -637,7 +637,7 @@ Scope {
                         radius: panel.radius
                         bodyOpacity: panel.opacityBody
                         name: "Study"
-                        tabsHint: "Study"
+                        tabsHint: "No files open"
                         busy: root.busy
                         // one tab per chat (one per material, or per set of files added together)
                         tabs: {
@@ -725,7 +725,7 @@ Scope {
                                     anchors { left: parent.left; right: parent.right; top: parent.top; bottom: askBar.top; bottomMargin: 14 }
                                     visible: root.msgs.length > 0
                                     clip: true
-                                    spacing: 18
+                                    spacing: 20
                                     boundsBehavior: Flickable.StopAtBounds
                                     model: root.msgs.length         // a number: an array replaced for every streamed chunk would rebuild every bubble (the flicker)
                                     onCountChanged: Qt.callLater(function () { chat.positionViewAtEnd() })
@@ -838,7 +838,7 @@ Scope {
                                     id: askBar
                                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                                     height: Math.max(50, askIn.contentHeight + 28)
-                                    radius: 25
+                                    radius: 14
                                     color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.75))
                                     border.width: root.pal.zen && !askIn.activeFocus ? 0 : 1
                                     border.color: askIn.activeFocus ? root.pal.lineFocus : root.pal.line
@@ -873,7 +873,7 @@ Scope {
                                     }
                                     RoundBtn {
                                         id: sendBtn
-                                        anchors { right: parent.right; rightMargin: 9; verticalCenter: parent.verticalCenter }
+                                        anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                                         pal: root.pal
                                         size: 34
                                         primary: true
@@ -894,7 +894,7 @@ Scope {
                                     color: root.pal.text
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tTitle
-                                    font.weight: Font.DemiBold
+                                    font.weight: Font.Medium
                                 }
                                 Item { Layout.fillWidth: true }
                                 // pages: "3-9" = only those (handy for a chapter of a long book)
@@ -1024,12 +1024,12 @@ Scope {
                                             Row {
                                                 width: parent.width
                                                 spacing: 12
-                                                Text { text: (qrow.index + 1) + "."; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                                                Text { text: (qrow.index + 1) + "."; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                                                 Text { width: parent.width - 40; wrapMode: Text.Wrap; text: qrow.modelData.q; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; lineHeight: 1.25 }
                                             }
                                             Text {
                                                 width: parent.width
-                                                leftPadding: 26
+                                                leftPadding: 24
                                                 wrapMode: Text.Wrap
                                                 text: qrow.open ? qrow.modelData.a : "Show the answer"
                                                 color: qrow.open ? root.pal.text : root.pal.muted
@@ -1076,7 +1076,7 @@ Scope {
                                                 Text {
                                                     text: !parent.g ? "" : (parent.g.verdict === "right" ? "\u2713  Right" : (parent.g.verdict === "partly" ? "\u2248  Partly" : (parent.g.verdict === "error" ? "" : "\u2715  Not quite")))
                                                     color: !parent.g ? root.pal.muted : (parent.g.verdict === "right" ? root.pal.good : (parent.g.verdict === "partly" ? root.pal.warn : root.pal.bad))
-                                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.DemiBold
+                                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.Medium
                                                 }
                                                 Text {
                                                     width: parent.width - 100
@@ -1230,8 +1230,8 @@ Scope {
                                 spacing: 14
                                 Column {
                                     width: parent.width
-                                    spacing: 3
-                                    Text { text: "Model for studying"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
+                                    spacing: 4
+                                    Text { text: "Model for studying"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
                                     Text {
                                         width: parent.width; wrapMode: Text.Wrap
                                         text: (root.vram > 0 ? root.vram + " GB graphics memory, " : "No graphics memory found, ") + root.ram + " GB RAM. Only the Study Center uses this; the rest of Halcyon keeps its own model."
@@ -1252,7 +1252,7 @@ Scope {
                                         x: 14; y: 12
                                         width: parent.width - 28
                                         spacing: 4
-                                        Text { text: "Auto  \u00b7  smart routing" + (root.choice === "auto" ? "   \u2713" : ""); color: root.choice === "auto" ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                                        Text { text: "Auto  \u00b7  smart routing" + (root.choice === "auto" ? "   \u2713" : ""); color: root.choice === "auto" ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                                         Text {
                                             width: parent.width; wrapMode: Text.Wrap; lineHeight: 1.25
                                             text: root.autoDeep === "" ? "No model to route to yet." : (root.autoFast === root.autoDeep
@@ -1324,7 +1324,7 @@ Scope {
                                                 // quality as five soft dots
                                                 Row {
                                                     anchors.verticalCenter: parent.verticalCenter
-                                                    spacing: 3
+                                                    spacing: 4
                                                     Repeater { model: 5; delegate: Rectangle { required property int index; width: 6; height: 6; radius: 3; color: index < Math.round(mr.modelData.quality / 2) ? root.pal.accent : Qt.alpha(root.pal.text, 0.14) } }
                                                 }
                                                 Text {
@@ -1355,7 +1355,7 @@ Scope {
                                             id: sgCol
                                             x: 14; y: 8
                                             width: parent.width - 120
-                                            spacing: 3
+                                            spacing: 4
                                             Text { text: sg.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                                             Text { width: parent.width; wrapMode: Text.Wrap; text: sg.modelData.size + " GB  \u00b7  " + sg.modelData.speedNote + "\n" + sg.modelData.note; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; lineHeight: 1.25 }
                                         }

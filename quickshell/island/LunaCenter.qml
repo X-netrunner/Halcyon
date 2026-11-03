@@ -427,7 +427,7 @@ Scope {
         signal clicked()
         implicitWidth: lbRow.implicitWidth + 20
         implicitHeight: 30
-        radius: 15
+        radius: 10
         color: lbMa.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent"
         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Row {
@@ -446,7 +446,7 @@ Scope {
         signal clicked()
         implicitWidth: pbRow.implicitWidth + 30
         implicitHeight: 36
-        radius: height / 2
+        radius: 10
         color: pbMa.containsMouse ? Qt.lighter(root.pal.accent, 1.08) : root.pal.accent
         scale: pbMa.pressed ? 0.97 : 1
         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
@@ -456,7 +456,7 @@ Scope {
             anchors.centerIn: parent
             spacing: 8
             Text { visible: pb.glyph !== ""; anchors.verticalCenter: parent.verticalCenter; text: pb.glyph; color: root.pal.bg; font.family: root.pal.font; font.pixelSize: 15 }
-            Text { anchors.verticalCenter: parent.verticalCenter; text: pb.label; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+            Text { anchors.verticalCenter: parent.verticalCenter; text: pb.label; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
         }
         MouseArea { id: pbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pb.clicked() }
     }
@@ -538,14 +538,14 @@ Scope {
         readonly property bool opened: root.modelMenu === key
         spacing: 4
         Rectangle {
-            width: parent.width; height: 42; radius: 21
+            width: parent.width; height: 42; radius: 12
             color: pkMa.containsMouse || pk.opened ? Qt.alpha(root.pal.text, 0.09) : Qt.alpha(root.pal.text, 0.05)
             Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-            Text { anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter } text: pk.title; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+            Text { anchors { left: parent.left; leftMargin: 20; verticalCenter: parent.verticalCenter } text: pk.title; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
             Row {
                 anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                 spacing: 8
-                Text { anchors.verticalCenter: parent.verticalCenter; text: pk.current; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                Text { anchors.verticalCenter: parent.verticalCenter; text: pk.current; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                 Text { anchors.verticalCenter: parent.verticalCenter; text: String.fromCodePoint(pk.opened ? 0xF0143 : 0xF0140); color: root.pal.muted; font.family: root.pal.font; font.pixelSize: 15 }
             }
             MouseArea { id: pkMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.modelMenu = pk.opened ? "" : pk.key }
@@ -569,7 +569,7 @@ Scope {
                     readonly property bool on: modelData.id === pk.chosen
                     width: pkList.width; height: 34; radius: 12
                     color: on ? Qt.alpha(root.pal.accent, 0.18) : (oMa2.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent")
-                    Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: modelData.text; color: on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: on ? Font.DemiBold : Font.Normal }
+                    Text { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } text: modelData.text; color: on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: on ? Font.Medium : Font.Normal }
                     Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter } text: modelData.sub || ""; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                     MouseArea { id: oMa2; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pk.picked(modelData.id) }
                 }
@@ -664,7 +664,7 @@ Scope {
                                         color: root.pal.text
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tTitle + 2
-                                        font.weight: Font.DemiBold
+                                        font.weight: Font.Medium
                                     }
                                 }
                                 PrimaryBtn {
@@ -695,7 +695,7 @@ Scope {
                                         MouseArea { id: rowMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openSession(srow.modelData.id) }
                                         Column {
                                             anchors { left: parent.left; right: acts.left; verticalCenter: parent.verticalCenter; leftMargin: 14; rightMargin: 6 }
-                                            spacing: 3
+                                            spacing: 4
                                             Text {
                                                 visible: !srow.editing
                                                 width: parent.width
@@ -704,7 +704,7 @@ Scope {
                                                 color: root.pal.text
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tBody
-                                                font.weight: srow.active ? Font.DemiBold : Font.Normal
+                                                font.weight: srow.active ? Font.Medium : Font.Normal
                                             }
                                             TextInput {
                                                 id: renIn
@@ -786,7 +786,7 @@ Scope {
                                 anchors.margins: 20
                                 anchors.rightMargin: 21
                                 spacing: 14
-                                Text { text: "Settings"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.DemiBold }
+                                Text { text: "Settings"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
                                 PrimaryBtn { Layout.fillWidth: true; label: "Back to chat"; glyph: String.fromCodePoint(0xF0141); onClicked: root.view = "chat" }
                                 Flickable {
                                     Layout.fillWidth: true
@@ -806,7 +806,7 @@ Scope {
                                                 width: pageCol.width; height: 42; radius: 14
                                                 color: active ? Qt.alpha(root.pal.accent, 0.16) : (pgMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
                                                 Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                                Text { anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter } text: modelData[1]; color: active ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: active ? Font.DemiBold : Font.Normal }
+                                                Text { anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter } text: modelData[1]; color: active ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: active ? Font.Medium : Font.Normal }
                                                 MouseArea { id: pgMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.page = modelData[0]; root.modelMenu = ""; root.keyOpen = "" } }
                                             }
                                         }
@@ -834,7 +834,7 @@ Scope {
                                         color: root.pal.text
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tTitle
-                                        font.weight: Font.DemiBold
+                                        font.weight: Font.Medium
                                     }
                                     Text {
                                         visible: root.note !== ""
@@ -874,7 +874,7 @@ Scope {
                                     Column {
                                         id: setCol
                                         width: Math.min(parent.width, 640)
-                                        spacing: 22
+                                        spacing: 24
 
                                         // ---- models: Auto, or one model for everything
                                         Column {
@@ -957,7 +957,7 @@ Scope {
                                                     x: 18; y: 14
                                                     width: parent.width - 36
                                                     spacing: 4
-                                                    Text { text: !root.voiceKnown ? "Checking her voice" : (root.voiceInfo.ok ? "Luna can speak" : (root.voiceInfo.mode === "off" ? "Her voice is off" : "Luna cannot speak yet")); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                                    Text { text: !root.voiceKnown ? "Checking her voice" : (root.voiceInfo.ok ? "Luna can speak" : (root.voiceInfo.mode === "off" ? "Her voice is off" : "Luna cannot speak yet")); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                                                     Text {
                                                         visible: root.voiceKnown && !root.voiceInfo.ok
                                                         width: parent.width
@@ -997,7 +997,7 @@ Scope {
                                                     x: 18; y: 14
                                                     width: parent.width - 36
                                                     spacing: 4
-                                                    Text { text: root.gate.effective ? "No-refusal mode is on" : "No-refusal mode is off"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                                    Text { text: root.gate.effective ? "No-refusal mode is on" : "No-refusal mode is off"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                                                     Text {
                                                         width: parent.width
                                                         wrapMode: Text.Wrap
@@ -1166,13 +1166,13 @@ Scope {
                                                         Rectangle {
                                                             width: parent.width
                                                             height: 42
-                                                            radius: 21
+                                                            radius: 12
                                                             color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.75))
                                                             border.width: keyIn.activeFocus ? 1 : 0
                                                             border.color: root.pal.lineFocus
                                                             TextInput {
                                                                 id: keyIn
-                                                                anchors { left: parent.left; right: saveBtn.left; verticalCenter: parent.verticalCenter; leftMargin: 18; rightMargin: 10 }
+                                                                anchors { left: parent.left; right: saveBtn.left; verticalCenter: parent.verticalCenter; leftMargin: 20; rightMargin: 10 }
                                                                 echoMode: TextInput.Password
                                                                 color: root.pal.text
                                                                 font.family: root.pal.uiFont
@@ -1211,10 +1211,11 @@ Scope {
                                         spacing: 10
                                         Spark { anchors.horizontalCenter: parent.horizontalCenter; width: 64; height: 64 }
                                         Item { width: 1; height: 6 }
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Ask Luna anything"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.DemiBold }
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Ask Luna about this machine"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
                                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: "She runs on this machine. Chats are saved on the left."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                         Item { width: 1; height: 8 }
                                         Flow {
+                                            visible: root.ok          // no starter questions while Luna cannot answer them
                                             width: parent.width
                                             spacing: 8
                                             layoutDirection: Qt.LeftToRight
@@ -1222,7 +1223,7 @@ Scope {
                                                 model: ["Is my firewall running?", "Is my antivirus scanning?", "Give me an overview of this machine"]
                                                 delegate: Rectangle {
                                                     required property string modelData
-                                                    width: sgT.implicitWidth + 28; height: 34; radius: 17
+                                                    width: sgT.implicitWidth + 28; height: 34; radius: 10
                                                     color: sgMa.containsMouse ? Qt.alpha(root.pal.accent, 0.16) : Qt.alpha(root.pal.text, 0.05)
                                                     Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                                     Text { id: sgT; anchors.centerIn: parent; text: modelData; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
@@ -1237,7 +1238,7 @@ Scope {
                                         anchors { left: parent.left; right: parent.right; top: parent.top; bottom: askBar.top; bottomMargin: 14 }
                                         visible: root.msgCount > 0
                                         clip: true
-                                        spacing: 18
+                                        spacing: 20
                                         boundsBehavior: Flickable.StopAtBounds
                                         model: mm
                                         property bool follow: true      // stays at the end while she writes, unless you scrolled up
@@ -1354,7 +1355,7 @@ Scope {
                                                     Column {
                                                         visible: mrow.showTools
                                                         width: parent.width
-                                                        spacing: 3
+                                                        spacing: 4
                                                         Repeater {
                                                             model: mrow.modelData.tools || []
                                                             delegate: Text {
@@ -1421,7 +1422,7 @@ Scope {
                                         id: askBar
                                         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                                         height: Math.min(160, Math.max(50, askIn.contentHeight + 28))
-                                        radius: 25
+                                        radius: 14
                                         color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.75))
                                         border.width: root.pal.zen && !askIn.activeFocus ? 0 : 1
                                         border.color: askIn.activeFocus ? root.pal.lineFocus : root.pal.line
@@ -1468,7 +1469,7 @@ Scope {
                                         }
                                         RoundBtn {
                                             id: sendBtn
-                                            anchors { right: parent.right; rightMargin: 9; verticalCenter: parent.verticalCenter }
+                                            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                                             pal: root.pal
                                             size: 34
                                             primary: true

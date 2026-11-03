@@ -155,7 +155,7 @@ Item {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 22
+            anchors.margins: 24
             spacing: 16
 
             // ── Top Header: Title, Search bar, View toggle, Close ─────────────────
@@ -187,10 +187,10 @@ Item {
                         spacing: 10
                         x: root.pal && root.pal.centred ? Math.max(0, Math.min(galTitle.width - width, galTitle.parent.width / 2 - galTitle.x - width / 2)) : 0
                         Text {
-                            text: "Wallpaper Gallery"
+                            text: "Wallpapers"
                             font.family: root.pal ? root.pal.uiFont : "Inter"
                             font.pixelSize: 18
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                             color: root.pal ? root.pal.text : "#ffffff"
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -237,7 +237,7 @@ Item {
                             onTextChanged: root.searchQuery = text
 
                             Text {
-                                text: "Search wallpapers…"
+                                text: "Search wallpapers"
                                 visible: parent.text === "" && !parent.activeFocus
                                 color: root.pal ? root.pal.muted : "#666666"
                                 font.family: parent.font.family
@@ -399,8 +399,9 @@ Item {
                         return arr[i] * (1 - t) + arr[i + 1] * t
                     }
 
-                    // ambient glow behind the front card, in that wallpaper's accent
+                    // ambient glow behind the front card, in that wallpaper's accent (the classic looks only: the picture carries the colour)
                     Rectangle {
+                        visible: !(root.pal && root.pal.calm)
                         readonly property int fi: Math.max(0, Math.min(cascade.count - 1, Math.round(cascade.pos)))
                         readonly property var fc: cascade.count > 0 ? root.colorsFor(root.filteredFiles[fi].path) : []
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -528,7 +529,7 @@ Item {
                                         text: "\u2713"
                                         color: root.pal ? root.pal.bg : "#000"
                                         font.pixelSize: 14
-                                        font.weight: Font.Bold
+                                        font.weight: Font.DemiBold
                                     }
                                 }
 
@@ -710,7 +711,7 @@ Item {
                                     text: "✓"
                                     color: root.pal ? root.pal.bg : "#000"
                                     font.pixelSize: 13
-                                    font.weight: Font.Bold
+                                    font.weight: Font.DemiBold
                                 }
                             }
 
@@ -809,7 +810,7 @@ Item {
                                     text: "✓"
                                     color: root.pal ? root.pal.bg : "#000"
                                     font.pixelSize: 11
-                                    font.weight: Font.Bold
+                                    font.weight: Font.DemiBold
                                 }
                             }
 
@@ -858,7 +859,7 @@ Item {
                             anchors.centerIn: parent
                             spacing: 6
                             Text { text: "\uf074"; font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"; font.pixelSize: 11; color: root.pal.accent }
-                            Text { text: "Random Next"; font.family: root.pal.uiFont; font.pixelSize: 11; color: root.pal.text }
+                            Text { text: "Random"; font.family: root.pal.uiFont; font.pixelSize: 11; color: root.pal.text }
                         }
                         MouseArea {
                             id: randMa
@@ -930,7 +931,7 @@ Item {
                             anchors.centerIn: parent
                             spacing: 6
                             Text { text: "\uf067"; font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"; font.pixelSize: 11; color: root.pal.accent }
-                            Text { text: "Add Wallpapers"; font.family: root.pal.uiFont; font.pixelSize: 11; color: root.pal.text }
+                            Text { text: "Add wallpapers"; font.family: root.pal.uiFont; font.pixelSize: 11; color: root.pal.text }
                         }
                         MouseArea {
                             id: addMa
@@ -954,7 +955,7 @@ Item {
                             anchors.centerIn: parent
                             spacing: 6
                             Text { text: "\uf07c"; font.family: root.pal ? root.pal.font : "JetBrainsMono Nerd Font"; font.pixelSize: 11; color: root.pal.accent }
-                            Text { text: "Open Folder"; font.family: root.pal.uiFont; font.pixelSize: 11; color: root.pal.text }
+                            Text { text: "Open folder"; font.family: root.pal.uiFont; font.pixelSize: 11; color: root.pal.text }
                         }
                         MouseArea {
                             id: openMa
