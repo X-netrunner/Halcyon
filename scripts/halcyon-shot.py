@@ -65,7 +65,7 @@ def write_conf(d):
 def notify(body, icon=None):
     if not have("notify-send"):
         return
-    cmd = ["notify-send", "Screenshot", body, "-h", HINT]
+    cmd = ["notify-send", "-a", "Halcyon", "Screenshot", body, "-h", HINT]
     if icon and os.path.exists(icon):
         cmd += ["-i", icon]
     try:

@@ -22,7 +22,7 @@ geom=$(slurp -d 2>/dev/null)
 if [ -n "$geom" ] && grim -g "$geom" "$file"; then
     [ -n "$freeze" ] && kill "$freeze" 2>/dev/null
     wl-copy < "$file"
-    notify-send "Screenshot" "Saved and copied" -i "$file" -h string:x-canonical-private-synchronous:screenshot
+    notify-send -a Halcyon "Screenshot" "Saved and copied" -i "$file" -h string:x-canonical-private-synchronous:screenshot
 else
     [ -n "$freeze" ] && kill "$freeze" 2>/dev/null
 fi
