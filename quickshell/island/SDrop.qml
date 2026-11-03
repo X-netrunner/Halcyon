@@ -28,7 +28,7 @@ Item {
         id: head
         width: parent.width
         height: 36
-        radius: height / 2
+        radius: Math.min(height / 2, 10)   // unslop: a control, not a pill
         color: dd.open ? Qt.alpha(dd.pal.accent, dd.pal.calm ? 0.17 : 0.18)
              : (hdMa.pressed ? dd.pal.surfaceHi : (hdMa.containsMouse ? Qt.alpha(dd.pal.surfaceHi, 0.9) : (dd.pal.zen ? dd.pal.fill : Qt.alpha(dd.pal.surface, 0.8))))
         border.width: dd.pal.calm ? 0 : 1
@@ -110,7 +110,7 @@ Item {
                             text: "\u2713"
                             color: dd.pal.bg
                             font.pixelSize: 11
-                            font.weight: Font.Bold
+                            font.weight: Font.DemiBold
                         }
                         Rectangle {
                             visible: !dd.multi && opt.modelData.on

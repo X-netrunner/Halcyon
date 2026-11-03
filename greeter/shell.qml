@@ -468,7 +468,7 @@ FloatingWindow {
             color: pal.muted
             font.family: pal.uiFont
             font.pixelSize: pal.tTitle + 3
-            font.letterSpacing: 1
+            font.letterSpacing: 0
         }
     }
 
@@ -479,7 +479,7 @@ FloatingWindow {
         readonly property real late: Math.max(0, Math.min(1, (win.appear - 0.3) / 0.7))
         y: parent.height * 0.52 + 22 * (1 - late)
         opacity: late * (1 - win.exitT)
-        spacing: 18
+        spacing: 20
 
         // profile picture in a ring (falls back to an initial); Settings can hide it (the name and password then sit where they were)
         Item {
@@ -555,7 +555,7 @@ FloatingWindow {
                 color: pal.accent
                 font.family: pal.uiFont
                 font.pixelSize: 40
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
         }
 
@@ -576,7 +576,7 @@ FloatingWindow {
                 color: pal.text
                 font.family: pal.uiFont
                 font.pixelSize: pal.tDisplay
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
                 opacity: 1 - 0.85 * win.spin
                 transform: [
                     Rotation { origin.x: width / 2; origin.y: height / 2; axis { x: 0; y: 1; z: 0 } angle: win.spinDir * 80 * win.spin },
@@ -646,7 +646,7 @@ FloatingWindow {
             NumberAnimation on wave { from: 0; to: 6.2832; duration: 900; loops: Animation.Infinite; running: win.busy }
             Row {
                 anchors.centerIn: parent
-                spacing: 9
+                spacing: 8
                 visible: !win.reveal
                 Repeater {
                     model: Math.min(win.buffer.length, 14)
@@ -664,7 +664,7 @@ FloatingWindow {
             TextInput {
                 id: input
                 anchors.fill: parent
-                anchors.leftMargin: 22; anchors.rightMargin: 22
+                anchors.leftMargin: 24; anchors.rightMargin: 24
                 verticalAlignment: TextInput.AlignVCenter
                 horizontalAlignment: TextInput.AlignHCenter
                 echoMode: TextInput.Password
@@ -754,7 +754,7 @@ FloatingWindow {
         color: Qt.alpha(pal.accent, 0.7)
         font.family: pal.uiFont
         font.pixelSize: pal.zen ? 12 : 10
-        font.weight: pal.zen ? Font.Medium : Font.DemiBold
+        font.weight: pal.zen ? Font.Medium : Font.Medium
         font.letterSpacing: pal.zen ? 0.2 : 2
     }
 
@@ -860,11 +860,11 @@ FloatingWindow {
             }
             Item { id: srMask; anchors.fill: srImg; visible: false; layer.enabled: true; Rectangle { anchors.fill: parent; radius: width / 2 } }
             MultiEffect { anchors.fill: srImg; source: srImg; visible: srImg.status === Image.Ready; maskEnabled: true; maskSource: srMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0 }
-            Text { anchors.centerIn: parent; visible: srImg.status !== Image.Ready; text: sr.initial; color: pal.accent; font.family: pal.uiFont; font.pixelSize: pal.tCap + 1; font.weight: Font.DemiBold }
+            Text { anchors.centerIn: parent; visible: srImg.status !== Image.Ready; text: sr.initial; color: pal.accent; font.family: pal.uiFont; font.pixelSize: pal.tCap + 1; font.weight: Font.Medium }
         }
         Column {
             anchors { left: srPic.right; leftMargin: sr.showPic ? 10 : 12; right: srDot.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-            Text { width: parent.width; elide: Text.ElideRight; text: sr.label; color: pal.text; font.family: pal.uiFont; font.pixelSize: pal.tBody; font.weight: sr.current ? Font.DemiBold : Font.Normal }
+            Text { width: parent.width; elide: Text.ElideRight; text: sr.label; color: pal.text; font.family: pal.uiFont; font.pixelSize: pal.tBody; font.weight: sr.current ? Font.Medium : Font.Normal }
             Text { width: parent.width; elide: Text.ElideRight; visible: sr.sub !== ""; text: sr.sub; color: pal.muted; font.family: pal.uiFont; font.pixelSize: pal.tCap }
         }
         Rectangle { id: srDot; anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter } width: 6; height: 6; radius: 3; color: pal.accent; visible: sr.current }
@@ -872,7 +872,7 @@ FloatingWindow {
     }
     Item {
         anchors.left: parent.left; anchors.bottom: parent.bottom
-        anchors.leftMargin: 32; anchors.bottomMargin: 30
+        anchors.leftMargin: 32; anchors.bottomMargin: 32
         width: swCol.width; height: swCol.height
         opacity: win.appear * (1 - win.exitT)
         visible: opacity > 0.01
@@ -967,9 +967,9 @@ FloatingWindow {
     Row {
         visible: win.optPower
         anchors.right: parent.right; anchors.bottom: parent.bottom
-        anchors.rightMargin: 32; anchors.bottomMargin: 26
+        anchors.rightMargin: 32; anchors.bottomMargin: 24
         opacity: win.appear * (1 - win.exitT)
-        spacing: 22
+        spacing: 24
         Repeater {
             model: [{ t: "Sleep", c: ["systemctl", "suspend"], ask: false }, { t: "Restart", c: ["systemctl", "reboot"], ask: true }, { t: "Shut down", c: ["systemctl", "poweroff"], ask: true }]
             delegate: Text {

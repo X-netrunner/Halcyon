@@ -56,7 +56,7 @@ WBase {
         Row {
             id: head
             spacing: root.sz(8)
-            WLbl { b: root; text: Qt.formatDate(root.now, "MMMM"); font.pixelSize: root.sz(16); font.weight: Font.DemiBold }
+            WLbl { b: root; text: Qt.formatDate(root.now, "MMMM"); font.pixelSize: root.sz(16); font.weight: Font.Medium }
             WLbl { b: root; text: Qt.formatDate(root.now, "yyyy"); color: root.dim; font.pixelSize: root.sz(16) }
         }
         Row {
@@ -95,7 +95,7 @@ WBase {
                         text: parent.isWk ? (parent.rowc ? parent.rowc.wk : "") : (parent.c ? parent.c.d : "")
                         color: parent.isWk ? Qt.alpha(root.dim, 0.7) : ((parent.c && parent.c.today) ? (root.pal ? root.pal.bg : "black") : ((parent.c && parent.c.cur) ? root.fg : Qt.alpha(root.dim, 0.5)))
                         font.pixelSize: root.sz(parent.isWk ? 10 : (root.style === "mini" ? 10 : 13))
-                        font.weight: (parent.c && parent.c.today) ? Font.Bold : Font.Normal
+                        font.weight: (parent.c && parent.c.today) ? Font.DemiBold : Font.Normal
                     }
                 }
             }

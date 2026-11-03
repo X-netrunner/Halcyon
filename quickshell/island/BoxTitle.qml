@@ -45,7 +45,7 @@ Item {
             color: t.titleColor
             font.family: t.fontFamily
             font.pixelSize: t.size
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
             horizontalAlignment: t.centred ? Text.AlignHCenter : Text.AlignLeft
             wrapMode: Text.Wrap
         }

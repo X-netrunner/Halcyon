@@ -40,7 +40,7 @@ RowLayout {
                 implicitHeight: 30
                 padX: r.fit ? 6 : r.chipPad
                 width: r.fit ? Math.floor((flow.width - flow.spacing * (r.options.length - 1)) / Math.max(1, r.options.length)) : implicitWidth
-                maxLabel: r.fit ? Math.max(20, width - 12) : 120
+                maxLabel: r.fit ? Math.max(20, width - 12) : 240
                 label: modelData[1]
                 on: r.current === modelData[0]
                 onClicked: r.picked(modelData[0])

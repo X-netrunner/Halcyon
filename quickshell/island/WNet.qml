@@ -74,7 +74,7 @@ WBase {
             Column {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 2
-                WLbl { b: root; text: root.title; font.pixelSize: root.sz(16); font.weight: Font.DemiBold }
+                WLbl { b: root; text: root.title; font.pixelSize: root.sz(16); font.weight: Font.Medium }
                 WLbl { b: root; text: "↓ " + root.rate(root.st.down || 0) + "    ↑ " + root.rate(root.st.up || 0); color: root.dim; font.pixelSize: root.sz(12) }
             }
         }
@@ -85,7 +85,7 @@ WBase {
             spacing: root.sz(2)
             Row { spacing: root.sz(8)
                 WLbl { b: root; text: "↓"; color: root.accent; font.pixelSize: root.sz(20); anchors.verticalCenter: parent.verticalCenter }
-                WLbl { b: root; text: root.rate(root.st.down || 0); font.pixelSize: root.sz(24); font.weight: Font.DemiBold } }
+                WLbl { b: root; text: root.rate(root.st.down || 0); font.pixelSize: root.sz(24); font.weight: Font.Medium } }
             Row { spacing: root.sz(8)
                 WLbl { b: root; text: "↑"; color: root.dim; font.pixelSize: root.sz(20); anchors.verticalCenter: parent.verticalCenter }
                 WLbl { b: root; text: root.rate(root.st.up || 0); color: root.dim; font.pixelSize: root.sz(18) } }
@@ -125,7 +125,7 @@ WBase {
         id: upCard
         Column {
             spacing: 0
-            WLbl { b: root; text: "UPTIME"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold }
+            WLbl { b: root; text: "Uptime"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium }
             WLbl { b: root; text: root.upText; font.pixelSize: root.sz(34); font.weight: Font.Light }
         }
     }
@@ -136,7 +136,7 @@ WBase {
         id: upWordsC
         Column {
             spacing: root.sz(1)
-            WLbl { b: root; text: "up for"; color: root.dim; font.pixelSize: root.sz(12); font.letterSpacing: 1 }
+            WLbl { b: root; text: "up for"; color: root.dim; font.pixelSize: root.sz(12); font.letterSpacing: 0 }
             WLbl { b: root; text: root.upWords; font.pixelSize: root.sz(22); font.weight: Font.Medium }
         }
     }
@@ -151,7 +151,7 @@ WBase {
                     required property var modelData
                     spacing: 0
                     WLbl { b: root; text: root.pad2(parent.modelData[0]); color: root.accent; font.pixelSize: root.sz(34); font.weight: Font.Light; anchors.horizontalCenter: parent.horizontalCenter }
-                    WLbl { b: root; text: parent.modelData[1]; color: root.dim; font.pixelSize: root.sz(9); font.letterSpacing: 2; anchors.horizontalCenter: parent.horizontalCenter }
+                    WLbl { b: root; text: parent.modelData[1]; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0; anchors.horizontalCenter: parent.horizontalCenter }
                 }
             }
         }
@@ -188,12 +188,12 @@ WBase {
                         ctx.beginPath(); ctx.arc(c, c, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.015, frac)); ctx.stroke()
                     }
                 }
-                WLbl { b: root; text: root.upShort; font.pixelSize: root.sz(17); font.weight: Font.DemiBold; anchors.centerIn: parent }
+                WLbl { b: root; text: root.upShort; font.pixelSize: root.sz(17); font.weight: Font.Medium; anchors.centerIn: parent }
             }
             Column {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 0
-                WLbl { b: root; text: "UPTIME"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold }
+                WLbl { b: root; text: "Uptime"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium }
                 WLbl { b: root; text: root.upText; font.pixelSize: root.sz(16); font.weight: Font.Medium }
             }
         }
@@ -206,7 +206,7 @@ WBase {
             spacing: root.sz(6)
             Item {
                 width: parent.width; height: tl.implicitHeight
-                WLbl { b: root; id: tl; text: "UPTIME"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold }
+                WLbl { b: root; id: tl; text: "Uptime"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium }
                 WLbl { b: root; text: root.upText; font.pixelSize: root.sz(15); font.weight: Font.Medium; anchors.right: parent.right }
             }
             Rectangle {
@@ -220,7 +220,7 @@ WBase {
         id: upBoot
         Column {
             spacing: root.sz(1)
-            WLbl { b: root; text: "UP SINCE"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold }
+            WLbl { b: root; text: "Up since"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium }
             WLbl { b: root; text: root.bootText; font.pixelSize: root.sz(18); font.weight: Font.Medium }
             WLbl { b: root; text: root.upText; color: root.dim; font.pixelSize: root.sz(12) }
         }
@@ -230,7 +230,7 @@ WBase {
         id: upDot
         Row {
             spacing: root.sz(8)
-            Rectangle { width: root.sz(9); height: width; radius: width / 2; color: root.accent; anchors.verticalCenter: parent.verticalCenter }
+            Rectangle { width: root.sz(10); height: width; radius: width / 2; color: root.accent; anchors.verticalCenter: parent.verticalCenter }
             WLbl { b: root; text: root.upText; font.pixelSize: root.sz(15); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
         }
     }

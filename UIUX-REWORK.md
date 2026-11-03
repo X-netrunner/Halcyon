@@ -69,6 +69,7 @@ Round 7: Settings slimmed from 16 pages / 177 default rows to 10 pages / 125 row
 
 ## Log
 
+- 2026-11-03: Unslop pass over every surface (type weights, sentence case, no overshoot, 10 px controls, copy, 4 px spacing) plus the Antigravity review fixes (drop-down stays open, Study tab hint, cheat sheet width, calendar header, Version Center buttons). Checked in a sandboxed nested Hyprland with screenshots. Files: see `changelog.md`.
 - 2026-11-03: Settings left menu: dim headings and pages, the open page and its heading a step brighter, a soft accent pill under the open page. Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-11-03: Settings 16 pages to 10, 177 rows to 125 (round 7). Files: `Settings.qml`, `shell.qml`, `tests/notif-settings.test.js`, `tests/test_ai_master.py`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-11-02: Command dashboard: Airplane, Mute, Gaming and Extra dim switches added. Files: `DashCommand.qml`, `Dashboard.qml`, `RailPages.qml`, `shell.qml`, `UIUX-REWORK.md`, `changelog.md`.

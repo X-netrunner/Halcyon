@@ -47,12 +47,12 @@ Item {
         color: root.soft ? root.tint : (root.pal.solid ? root.ink : root.pal.bg)
         font.family: root.pal.uiFont
         font.pixelSize: Math.max(9, Math.round(root.size * 0.56))
-        font.weight: Font.Bold
+        font.weight: Font.DemiBold
     }
     onCountChanged: if (count > 0) pop.restart()
     SequentialAnimation {
         id: pop
         NumberAnimation { target: root; property: "scale"; to: 1.22; duration: 90; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] }
-        NumberAnimation { target: root; property: "scale"; to: 1.0; duration: 160; easing.type: Easing.OutBack }
+        NumberAnimation { target: root; property: "scale"; to: 1.0; duration: 160; easing.type: Easing.OutCubic }
     }
 }

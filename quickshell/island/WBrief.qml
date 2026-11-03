@@ -58,7 +58,7 @@ WBase {
         Row {
             spacing: root.sz(8)
             WIco { b: root; text: root.glyph(0xF0674); color: root.accent; font.pixelSize: root.sz(14); anchors.verticalCenter: parent.verticalCenter }
-            WLbl { b: root; text: root.d.greeting || "Your day"; font.pixelSize: root.sz(13); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; text: root.d.greeting || "Your day"; font.pixelSize: root.sz(13); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
             WLbl { b: root; visible: briefProc.running; text: "…"; color: root.dim; font.pixelSize: root.sz(12); anchors.verticalCenter: parent.verticalCenter }
         }
         WLbl {

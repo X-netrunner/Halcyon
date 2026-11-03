@@ -232,7 +232,7 @@ Scope {
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 22
+                                anchors.margins: 24
                                 anchors.rightMargin: 23
                                 spacing: 6
 
@@ -253,7 +253,7 @@ Scope {
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
                                         spacing: 1
-                                        Text { leftPadding: root.pal.zen ? 16 : 0; text: "Firewall"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
+                                        Text { leftPadding: root.pal.zen ? 16 : 0; text: "Firewall"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
                                         Text {
                                             text: (!root.st ? "not running" : !root.alive ? "not responding" : root.st.mode === "enforce" ? "protecting" : "monitoring only")
                                                 + (root.st ? "  ·  up " + root.dur(root.st.updated_unix - root.st.started_unix) : "")
@@ -293,7 +293,7 @@ Scope {
                                                 color: tabRow.on ? (root.pal.zen ? root.pal.chosenText : root.pal.text) : (root.pal.zen ? Qt.alpha(root.pal.text, 0.78) : root.pal.muted)
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.zen ? root.pal.tBody + 1 : root.pal.tBody
-                                                font.weight: tabRow.on ? (root.pal.zen ? Font.Medium : Font.DemiBold) : Font.Normal
+                                                font.weight: tabRow.on ? (root.pal.zen ? Font.Medium : Font.Medium) : Font.Normal
                                                 anchors.verticalCenter: parent.verticalCenter
                                             }
                                         }
@@ -339,7 +339,7 @@ Scope {
 
                                 Column {
                                     spacing: 2
-                                    Text { text: "Overview"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold }
+                                    Text { text: "Overview"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.Medium }
                                     Text {
                                         visible: root.st !== null
                                         text: root.st ? ((root.st.interface || "no uplink") + "  ·  " + (root.st.xdp_mode || "-") + " XDP  ·  " + (root.st.profile || "default") + " profile"
@@ -390,11 +390,11 @@ Scope {
                                             radius: root.pal.rLg
                                             color: root.pal.calm ? root.pal.box(root.pal.fill) : Qt.alpha(root.pal.surface, 0.8)
                                             Column {
-                                                anchors { left: parent.left; leftMargin: 18; right: parent.right; verticalCenter: parent.verticalCenter }
-                                                spacing: 3
+                                                anchors { left: parent.left; leftMargin: 20; right: parent.right; verticalCenter: parent.verticalCenter }
+                                                spacing: 4
                                                 Row {
                                                     spacing: 8
-                                                    Text { id: tv; text: tile.modelData.v; color: root.pal.zen ? root.pal.text : tile.modelData.c; font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.DemiBold }
+                                                    Text { id: tv; text: tile.modelData.v; color: root.pal.zen ? root.pal.text : tile.modelData.c; font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.Medium }
                                                     Text { anchors.baseline: tv.baseline; text: tile.modelData.sub; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                                 }
                                                 Text { text: tile.modelData.label; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
@@ -477,7 +477,7 @@ Scope {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Layout.rightMargin: 52          // room for the window's ✕ in the corner
-                                    Text { text: "Bans"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                    Text { text: "Bans"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.Medium; Layout.fillWidth: true }
                                     InputPill {
                                         id: banIn
                                         pal: root.pal
@@ -540,7 +540,7 @@ Scope {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Layout.rightMargin: 52          // room for the window's ✕ in the corner
-                                    Text { text: "Rules"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                    Text { text: "Rules"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.Medium; Layout.fillWidth: true }
                                     ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF03EB); label: "Edit config"; onClicked: root.inTerminal("sudoedit /etc/ai-firewall/config.toml") }
                                 }
                                 Text {
@@ -612,7 +612,7 @@ Scope {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Layout.rightMargin: 52          // room for the window's ✕ in the corner
-                                    Text { text: "Feeds"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                    Text { text: "Feeds"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.Medium; Layout.fillWidth: true }
                                     ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0450); label: "Refresh now"; onClicked: root.sudoThen("feeds --refresh") }
                                 }
                                 Text {
@@ -634,12 +634,12 @@ Scope {
                                         radius: root.pal.rMd
                                         color: root.pal.calm ? root.pal.box(root.pal.fill) : Qt.alpha(root.pal.surface, 0.8)
                                         RowLayout {
-                                            anchors { fill: parent; leftMargin: 18; rightMargin: 18 }
+                                            anchors { fill: parent; leftMargin: 20; rightMargin: 20 }
                                             spacing: 14
                                             Column {
                                                 Layout.fillWidth: true
                                                 spacing: 2
-                                                Text { text: feedRow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                                                Text { text: feedRow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                                                 Text {
                                                     text: feedRow.modelData.updated_unix ? "updated " + root.ago(feedRow.modelData.updated_unix) : "not downloaded yet"
                                                     color: feedRow.modelData.error ? root.pal.warn : root.pal.muted
@@ -668,7 +668,7 @@ Scope {
                                 spacing: 14
                                 visible: root.tab === "history"
 
-                                Text { text: "History"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold }
+                                Text { text: "History"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.Medium }
                                 ListView {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
@@ -704,7 +704,7 @@ Scope {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Layout.rightMargin: 52          // room for the window's ✕ in the corner
-                                    Text { text: "Ask & doctor"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                    Text { text: "Ask & doctor"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.Medium; Layout.fillWidth: true }
                                     ActionChip { pal: root.pal; label: doctorProc.running ? "Checking…" : "Check again"; onClicked: if (!doctorProc.running) doctorProc.running = true }
                                     ActionChip { pal: root.pal; label: "Full check (admin)"; onClicked: root.sudoThen("doctor --fix") }
                                 }
@@ -726,7 +726,7 @@ Scope {
                                                 id: fCol
                                                 Layout.fillWidth: true
                                                 spacing: 2
-                                                Text { text: fRow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold; width: parent.width; elide: Text.ElideRight }
+                                                Text { text: fRow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; width: parent.width; elide: Text.ElideRight }
                                                 Text { text: fRow.modelData.detail; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; width: parent.width; wrapMode: Text.WordWrap }
                                             }
                                             ActionChip { visible: !!fRow.modelData.fix; pal: root.pal; label: "Fix"; implicitHeight: 32; onClicked: root.sudoThen("fix " + fRow.modelData.fix) }
@@ -735,7 +735,7 @@ Scope {
                                 }
                                 Text {
                                     visible: root.doctorRan && root.findings.filter(f => f.severity === "warn" || f.severity === "fail").length === 0
-                                    text: "✓  The doctor found nothing wrong" + (root.findings.some(f => f.title === "Partial check") ? " (the admin check also looks at firewall rules and bans)." : ".")
+                                    text: "The doctor found nothing wrong" + (root.findings.some(f => f.title === "Partial check") ? " (the admin check also looks at firewall rules and bans)." : ".")
                                     color: root.pal.good
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody
@@ -762,7 +762,7 @@ Scope {
                                             color: msg.modelData.role === "you" ? root.pal.accent2 : root.pal.accent
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tCap
-                                            font.weight: Font.DemiBold
+                                            font.weight: Font.Medium
                                         }
                                         SelText {
                                             width: parent.width
@@ -849,8 +849,8 @@ Scope {
         color: pal.calm ? pal.fill : Qt.alpha(pal.surface, 0.8)
         Column {
             id: cardCol
-            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 18; rightMargin: 18 }
-            spacing: 3
+            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 20; rightMargin: 20 }
+            spacing: 4
             Text { text: card.title; color: card.pal.muted; font.family: card.pal.uiFont; font.pixelSize: card.pal.tCap }
             Text { width: parent.width; text: card.value; wrapMode: Text.WordWrap; color: card.pal.text; font.family: card.mono ? card.pal.mono : card.pal.uiFont; font.pixelSize: card.pal.tBody }
             Text { visible: card.note !== ""; width: parent.width; text: card.note; wrapMode: Text.WordWrap; color: card.pal.muted; font.family: card.pal.uiFont; font.pixelSize: card.pal.tCap }
@@ -872,7 +872,7 @@ Scope {
         border.color: pal.lineFocus
         TextInput {
             id: field
-            anchors { fill: parent; leftMargin: 18; rightMargin: 18 }
+            anchors { fill: parent; leftMargin: 20; rightMargin: 20 }
             verticalAlignment: TextInput.AlignVCenter
             color: pill.pal.text
             font.family: pill.pal.uiFont

@@ -33,7 +33,7 @@ WBase {
             width: Math.min(tm.width, root.maxW)
             Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: root.sz(30); height: 1; color: Qt.alpha(root.accent, 0.75) }
             WLbl { b: root; width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.words; font.pixelSize: root.sz(20); font.italic: true; font.weight: Font.Light; font.letterSpacing: 0.5; lineHeight: 1.2; wrapMode: Text.WordWrap }
-            WLbl { b: root; visible: root.by !== ""; width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.by.toUpperCase(); color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 3 }
+            WLbl { b: root; visible: root.by !== ""; width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.by; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
             Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: root.sz(30); height: 1; color: Qt.alpha(root.accent, 0.75) }
         }
     }
@@ -43,7 +43,7 @@ WBase {
         Row {
             spacing: root.sz(12)
             Rectangle { width: root.sz(5); height: width; radius: width / 2; color: root.accent; anchors.verticalCenter: parent.verticalCenter }
-            WLbl { b: root; width: Math.min(tm.width, root.maxW); text: root.words.toUpperCase(); color: root.fg; font.pixelSize: root.sz(13); font.letterSpacing: 5; wrapMode: Text.WordWrap; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; width: Math.min(tm.width, root.maxW); text: root.words; color: root.fg; font.pixelSize: root.sz(13); font.letterSpacing: 0; wrapMode: Text.WordWrap; anchors.verticalCenter: parent.verticalCenter }
         }
     }
 
@@ -52,7 +52,7 @@ WBase {
         Column {
             spacing: 0
             WLbl { b: root; text: root.hello + (root.who !== "" ? "," : ""); color: root.dim; font.pixelSize: root.sz(18) }
-            WLbl { b: root; visible: root.who !== ""; text: root.who; font.pixelSize: root.sz(40); font.weight: Font.DemiBold }
+            WLbl { b: root; visible: root.who !== ""; text: root.who; font.pixelSize: root.sz(40); font.weight: Font.Medium }
             WLbl { b: root; visible: root.words !== ""; width: Math.min(tm.width, root.maxW); text: root.words; color: root.accent; font.pixelSize: root.sz(14); wrapMode: Text.WordWrap }
         }
     }

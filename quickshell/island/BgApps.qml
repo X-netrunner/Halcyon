@@ -62,7 +62,7 @@ Glass {
                 leftPadding: root.pal.centred ? 28 : 0          // the badge's width on the other side: the middle of the box
                 text: root.pal.cap("BACKGROUND")
                 color: root.pal.muted
-                font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4
+                font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.Medium; font.letterSpacing: 0
             }
             Badge { pal: root.pal; count: root.count; size: 20; soft: true }
         }
@@ -176,7 +176,7 @@ Glass {
                                         elide: Text.ElideRight
                                         text: root.name(appRow.modelData)
                                         color: root.pal.text
-                                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold
+                                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium
                                     }
                                     Text {
                                         Layout.fillWidth: true
@@ -207,7 +207,7 @@ Glass {
                                     Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                     Row {
                                         anchors.centerIn: parent
-                                        spacing: 3
+                                        spacing: 4
                                         Repeater {
                                             model: 3
                                             Rectangle { width: 3; height: 3; radius: 1.5; color: appRow.showMenu ? root.pal.accent : root.pal.muted }

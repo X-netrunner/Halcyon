@@ -101,7 +101,7 @@ Item {
                 Column {
                     id: logCol
                     width: logFl.width
-                    spacing: 3
+                    spacing: 4
                     Repeater {
                         model: root.log
                         delegate: Row {

@@ -140,7 +140,7 @@ WBase {
                 text: row.modelData === "" ? (row.on ? "\u266A" : "") : row.modelData
                 font.family: root.face
                 font.pixelSize: root.fsz
-                font.weight: row.on ? Font.DemiBold : Font.Normal
+                font.weight: row.on ? Font.Medium : Font.Normal
                 wrapMode: Text.WordWrap
                 horizontalAlignment: root.center ? Text.AlignHCenter : Text.AlignLeft
                 color: row.on ? (root.style === "karaoke" ? root.dim : root.fg) : root.dim

@@ -181,8 +181,8 @@ Item {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 30
-            spacing: 18
+            anchors.margins: 32
+            spacing: 20
 
             // ---- header (WinHeader: the same in every window)
             WinHeader {
@@ -201,7 +201,7 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 22
+                spacing: 24
 
                 // ================================================= left: the list
                 Rectangle {
@@ -250,7 +250,7 @@ Item {
                                             visible: rowD.hdr > 0
                                             height: 18; spacing: 6
                                             Text { text: String.fromCodePoint(0xF0337); color: rowD.grpCol; font.family: root.pal.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
-                                            Text { text: rowD.modelData.label + "  ·  " + rowD.modelData.n + " linked"; color: rowD.grpCol; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 1; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                                            Text { text: rowD.modelData.label + "  ·  " + rowD.modelData.n + " linked"; color: rowD.grpCol; font.family: root.pal.uiFont; font.pixelSize: 10; font.letterSpacing: 0; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                                         }
                                         Rectangle {
                                             visible: rowD.grouped
@@ -284,6 +284,7 @@ Item {
                         // button to ~46 px and its label spilled out. So: Add on its own line, Copy / Remove share the next.
                         ActionChip { Layout.fillWidth: true; pal: root.pal; label: root.adding ? "Back" : "Add a widget"; primary: !root.adding; onClicked: root.adding = !root.adding }
                         RowLayout {
+                            visible: root.cur !== null     // nothing to copy or remove until a widget is picked
                             Layout.fillWidth: true
                             spacing: 8
                             ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Copy"; disabled: root.cur === null; onClicked: root.edit(WD.duplicate(root.layout, root.sel), false) }
@@ -382,7 +383,7 @@ Item {
                                         readonly property bool on: root.pvBack === modelData[0]
                                         width: pbT.implicitWidth + 20; height: 24; radius: 12
                                         color: on ? Qt.alpha(root.pal.accent, 0.22) : (pbMa.containsMouse ? Qt.alpha(root.pal.text, 0.08) : "transparent")
-                                        Text { id: pbT; anchors.centerIn: parent; text: pbB.modelData[1]; color: pbB.on ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: pbB.on ? Font.DemiBold : Font.Normal }
+                                        Text { id: pbT; anchors.centerIn: parent; text: pbB.modelData[1]; color: pbB.on ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: pbB.on ? Font.Medium : Font.Normal }
                                         MouseArea { id: pbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.changed("wbPreviewBack", pbB.modelData[0]) }
                                     }
                                 }
@@ -418,7 +419,7 @@ Item {
                     // the catalog
                     Flickable {
                         visible: root.adding
-                        anchors.fill: parent; anchors.margins: 18; anchors.bottomMargin: 38
+                        anchors.fill: parent; anchors.margins: 20; anchors.bottomMargin: 38
                         contentWidth: width
                         contentHeight: cat.implicitHeight + 8
                         clip: true
@@ -467,7 +468,7 @@ Item {
                                                         readonly property string priv: root.lockT ? WD.lockPrivateOf(modelData.id) : ""
                                                         text: priv !== "" ? "Private: " + priv : modelData.hint
                                                         color: priv !== "" ? root.pal.warn : root.pal.muted
-                                                        font.family: root.pal.uiFont; font.pixelSize: 9; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
+                                                        font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
                                                     }
                                                 }
                                                 MouseArea { id: am; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.addWidget(modelData.id) }
@@ -496,7 +497,7 @@ Item {
                         Column {
                             Layout.fillWidth: true
                             spacing: 1
-                            Text { text: root.cur ? WD.nameOf(root.cur.type) : ""; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
+                            Text { text: root.cur ? WD.nameOf(root.cur.type) : ""; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 16; font.weight: Font.Medium }
                             Text { text: root.cur && root.cur.off === true ? "Switched off: not drawn, nothing runs for it" : (root.lockT ? "Shown on the lock screen" : "Shown on the desktop"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 11 }
                         }
                         Toggle { pal: root.pal; on: root.cur !== null && root.cur.off !== true; onToggled: root.edit(WD.setOff(root.layout, root.sel, root.cur !== null && root.cur.off !== true), false) }

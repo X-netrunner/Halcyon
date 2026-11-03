@@ -349,7 +349,7 @@ Scope {
                             color: root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tTitle
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                         }
 
                         // ---- the lyrics, or what the AI says about them
@@ -427,7 +427,7 @@ Scope {
                                 scale: sung ? 1.06 : 1
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tTitle + 1
-                                font.weight: sung ? Font.DemiBold : Font.Normal
+                                font.weight: sung ? Font.Medium : Font.Normal
                                 lineHeight: 1.1
                                 Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 Behavior on scale { NumberAnimation { duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }

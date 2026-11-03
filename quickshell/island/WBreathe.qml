@@ -92,9 +92,9 @@ WBase {
         visible: root.words
         anchors.horizontalCenter: parent.horizontalCenter
         y: stage.y + stage.height + root.sz(6)
-        text: root.inhaling ? "BREATHE IN" : "BREATHE OUT"
+        text: root.inhaling ? "Breathe in" : "Breathe out"
         color: root.dim
         font.pixelSize: root.sz(10)
-        font.letterSpacing: 3
+        font.letterSpacing: 0
     }
 }

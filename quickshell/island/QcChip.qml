@@ -30,7 +30,7 @@ Rectangle {
             color: ch.current ? ch.pal.chosenText : (ch.dim ? Qt.alpha(ch.pal.muted, 0.85) : ch.pal.text)
             font.family: ch.pal.mono
             font.pixelSize: 11
-            font.weight: ch.current ? Font.DemiBold : Font.Normal
+            font.weight: ch.current ? Font.Medium : Font.Normal
         }
     }
     HoverHandler { id: hov }

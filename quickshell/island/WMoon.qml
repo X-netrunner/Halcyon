@@ -100,7 +100,7 @@ WBase {
                 width: parent.width
                 spacing: root.sz(8)
                 Disc { anchors.horizontalCenter: parent.horizontalCenter; width: root.sz(96); height: width }
-                WLbl { b: root; visible: root.showName; anchors.horizontalCenter: parent.horizontalCenter; text: root.phaseName.toUpperCase(); color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 2.4 }
+                WLbl { b: root; visible: root.showName; anchors.horizontalCenter: parent.horizontalCenter; text: root.phaseName; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                 WLbl { b: root; visible: root.showNext; anchors.horizontalCenter: parent.horizontalCenter; text: Math.round(root.illum * 100) + " %  ·  " + root.fullText; color: root.dim; font.pixelSize: root.sz(11) }
             }
         }

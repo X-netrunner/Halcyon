@@ -71,7 +71,7 @@ PerfBase {
             color: root.tintA
             opacity: root.showA ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 200 } }
-            font.family: root.pal.uiFont; font.pixelSize: 40; font.weight: Font.DemiBold
+            font.family: root.pal.uiFont; font.pixelSize: 40; font.weight: Font.Medium
         }
         Text {
             width: parent.width
@@ -79,7 +79,7 @@ PerfBase {
             color: root.tintB
             opacity: root.showA ? 0 : 1
             Behavior on opacity { NumberAnimation { duration: 200 } }
-            font.family: root.pal.uiFont; font.pixelSize: 40; font.weight: Font.DemiBold
+            font.family: root.pal.uiFont; font.pixelSize: 40; font.weight: Font.Medium
         }
     }
 
@@ -91,7 +91,7 @@ PerfBase {
         y: 30
         text: Math.round(root.temp) + "°"
         color: root.cpuHot ? root.pal.bad : root.pal.accent
-        font.family: root.pal.uiFont; font.pixelSize: 44; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 44; font.weight: Font.Medium
     }
     Rectangle {
         visible: root.hasBat
@@ -105,7 +105,7 @@ PerfBase {
             anchors.centerIn: parent
             text: Math.round(root.sBat) + "%"
             color: root.batTint
-            font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 2; font.weight: Font.DemiBold
+            font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 2; font.weight: Font.Medium
         }
     }
 
@@ -128,8 +128,8 @@ PerfBase {
                 x: 14; y: 14
                 text: tl.ln.name
                 color: root.pal.muted
-                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4
-                font.capitalization: Font.AllUppercase
+                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0
+                font.capitalization: Font.MixedCase
             }
             Text {
                 x: 14; y: tl.li === 4 ? 42 : 34
@@ -138,7 +138,7 @@ PerfBase {
                 color: (tl.li === 2 && !root.gpuOn) ? root.pal.muted : (tl.ln.hot ? root.pal.bad : root.pal.text)
                 font.family: root.pal.uiFont
                 font.pixelSize: tl.li === 4 ? 15 : (tl.li === 2 && !root.gpuOn ? 17 : 22)
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
             Rectangle { x: 14; y: tl.height - 26; width: tl.width - 28; height: 5; radius: 2.5; color: Qt.alpha(root.pal.text, 0.08) }
             Rectangle {

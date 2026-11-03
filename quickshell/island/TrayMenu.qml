@@ -67,7 +67,7 @@ Item {
                             // check / radio state the app reports
                             text: entryCol.modelData.checkState === Qt.Checked ? "●" : ""
                             color: root.pal.accent
-                            font.pixelSize: 9
+                            font.pixelSize: 10
                         }
                         Text {
                             anchors.left: mark.right; anchors.leftMargin: 4
