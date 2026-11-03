@@ -2175,6 +2175,9 @@ def help_index():
     return out
 
 
+_OFF_WORD = re.compile(r"\b(off|disable|stop|remove)\b", re.I)
+
+
 def help_search(q, limit=6):
     """[(score, entry)] best first. Label words count most, then the group, then the description and keywords."""
     qw = set(_words(q))
@@ -2194,6 +2197,8 @@ def help_search(q, limit=6):
             s += 1          # the main switch of a feature beats its details
         if e["kind"] == "command":
             s -= 1          # a Settings row is usually what "turn X off" means
+        if _OFF_WORD.search(ql) and _OFF_WORD.search(e["label"]):
+            s += 2          # "off" is not a search word, but a row called "Boot splash off" answers "turn off the boot splash"
         res.append((round(s, 1), e))
     res.sort(key=lambda x: -x[0])
     return res[:limit]
