@@ -22,9 +22,9 @@ function groupLines(id) {
 const keysOf = lines => lines.map(l => (l.match(/key: "([^"]+)"/) || [])[1])
 const labelOf = l => (l.match(/label: "([^"]+)"/) || [])[1]
 
-ok("three groups, on their own Notifications page, in this order", () => {
-  const page = settings.match(/\{ id: "Notifications", sub: "[^"]*", groups: \[([^\]]*)\] \}/)[1]
-  assert.deepStrictEqual([...page.matchAll(/"(\w+)"/g)].map(m => m[1]), ["notifquiet", "notifpopups", "notifcentre"])
+ok("three notification groups, in this order, on the Notifications & panels page (with the utilities box and edge boxes after them)", () => {
+  const page = settings.match(/\{ id: "Notifications & panels", sub: "[^"]*", groups: \[([^\]]*)\] \}/)[1]
+  assert.deepStrictEqual([...page.matchAll(/"(\w+)"/g)].map(m => m[1]), ["notifquiet", "notifpopups", "notifcentre", "utilbox", "osd"])
   assert(!/id: "notifications"/.test(settings), "the old single group is still there")
 })
 ok("Quiet: Do not disturb (Off / Errors only / On) and Quiet while a window is fullscreen", () => {
@@ -62,8 +62,10 @@ ok("every old key and its values are kept (saved configs keep working)", () => {
   // the shell still owns the defaults
   ;[/toastSecs: 0,/, /critSecs: 30,/, /notifSpot: "edge",/, /notifStyle: "stack",/, /notifQuick: "dnd",/, /notifIcon: "symbol",/, /connErrOnly: false,/, /wifiVerbose: true,/, /dndFullscreen: true,/].forEach(re => assert(re.test(shell), String(re)))
 })
-ok("no row of the three groups is hidden under Debug / Advanced", () => {
-  ;["notifquiet", "notifpopups", "notifcentre"].forEach(id => groupLines(id).forEach(l => assert(!/\badv: true\b/.test(l), id + ": " + labelOf(l))))
+ok("UI/UX round 7: only Do not disturb, Quiet while fullscreen, Stay for and the centre Style stay in the default view; the rest is under Debug / Advanced", () => {
+  const visible = []
+  ;["notifquiet", "notifpopups", "notifcentre"].forEach(id => groupLines(id).forEach(l => { if (!/\badv: true\b/.test(l)) visible.push(labelOf(l)) }))
+  assert.deepStrictEqual(visible, ["Do not disturb", "Quiet while a window is fullscreen", "Stay for", "Style"])
 })
 ok("Wi-Fi details moved to the Utilities box", () => {
   assert.strictEqual(groupLines("utilbox").filter(l => labelOf(l) === "Wi-Fi details").length, 1)
