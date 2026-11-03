@@ -5,6 +5,8 @@ use std::process::Command;
 fn notify_power(summary: &str, body: &str, icon: &str) {
     let _ = Command::new("notify-send")
         .args([
+            "-a",
+            "Halcyon",
             summary,
             body,
             "-i",
