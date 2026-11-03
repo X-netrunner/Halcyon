@@ -5,9 +5,9 @@ import Quickshell.Io
 import Quickshell.Wayland
 
 // Study Center.   >study in the launcher (also `island command study`, the IPC call `study`, `halcyon study`).
-// Chats on the left, one per material: add a PDF, Word, PowerPoint, EPUB, notes, code or a photo of a page and it gets a chat of its own;
+// Chats as browser tabs along the top (Shell B, CenterShell.qml), one per material: add a PDF, Word, PowerPoint, EPUB, notes, code or a photo of a page and it gets a chat of its own;
 // several files added together share ONE chat. Every chat keeps its own files and its own conversation (nothing from another chat leaks in).
-// Four ways to learn from the open chat's files:
+// Four ways to learn from the open chat's files (the options down the left):
 //   Ask       a question in plain words; the answer comes only from the files, with the pages it used (click one to open it there)
 //   Summary   a revision summary            Quiz   exam questions, the answer under each        Cards   flashcards, click to turn
 // Everything goes through scripts/halcyon-study.py (the library in ~/.local/share/halcyon/study, the answers from the local
@@ -521,27 +521,6 @@ Scope {
         }
         MouseArea { id: lbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: lb.clicked() }
     }
-    component TabBtn: Rectangle {
-        id: tb
-        property string label: ""
-        property string key: ""
-        readonly property bool on: root.tab === key
-        implicitWidth: tbTxt.implicitWidth + 30
-        implicitHeight: 32
-        radius: 16
-        color: on ? Qt.alpha(root.pal.accent, 0.18) : (tbMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
-        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-        Text {
-            id: tbTxt
-            anchors.centerIn: parent
-            text: tb.label
-            color: tb.on ? root.pal.accent : root.pal.muted
-            font.family: root.pal.uiFont
-            font.pixelSize: root.pal.tBody
-            font.weight: tb.on ? Font.DemiBold : Font.Medium
-        }
-        MouseArea { id: tbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.setTab(tb.key) }
-    }
     // a source under an answer: "page 14": opens the file there
     component SourceChip: Rectangle {
         id: sc
@@ -616,7 +595,7 @@ Scope {
                 Behavior on reveal { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Component.onCompleted: { ready = true; Qt.callLater(function () { if (root.tab === "ask") askIn.forceActiveFocus(); else qp.forceActiveFocus() }) }
                 Keys.onPressed: e => {
-                    if (e.key === Qt.Key_Escape) { if (root.pickerOpen) root.pickerOpen = false; else if (root.modelsOpen) root.modelsOpen = false; else root.hide(); e.accepted = true }
+                    if (e.key === Qt.Key_Escape) { if (root.pickerOpen) root.pickerOpen = false; else if (shell.closeMenu()) {} else if (root.modelsOpen) root.modelsOpen = false; else root.hide(); e.accepted = true }
                     else if (root.tab === "cards" && root.made.cards && (e.key === Qt.Key_Right || e.key === Qt.Key_Left)) {
                         var nx = root.nextCard(e.key === Qt.Key_Right ? 1 : -1)
                         if (nx >= 0) root.cardIdx = nx
@@ -627,6 +606,7 @@ Scope {
                 }
                 Connections {
                     target: root
+                    function onOpenChanged() { if (!root.open) shell.menuOpen = false }
                     function onFocusRequested(what) {
                         if (what === "ask") askIn.forceActiveFocus()
                         else if (what === "picker") picker.openAt(root.pickDir !== "" ? root.pickDir : Quickshell.env("HOME") + "/Downloads")
@@ -648,228 +628,62 @@ Scope {
                     scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
 
-                    RowLayout {
+                    // Shell B (CenterShell.qml): the chats are the browser tabs, Ask / Summary / Quiz / Flashcards the options on the left,
+                    // the Halcyon button holds the model chip and Pop out. The work below is unchanged.
+                    CenterShell {
+                        id: shell
                         anchors.fill: parent
-                        spacing: 0
-
-                        // ======================== the library
-                        Item {
-                            Layout.preferredWidth: 286
-                            Layout.fillHeight: true
-                            // only the left corners are round: the right edge meets the content. One shape, wider than the item and clipped, so
-                            // the translucent colour is painted once (a second patch over the right edge made a darker band down the middle)
-                            Item {
-                                anchors.fill: parent
-                                anchors.margins: 1
-                                clip: true
-                                Rectangle {
-                                    width: parent.width + root.pal.rXl
-                                    height: parent.height
-                                    radius: root.pal.rXl
-                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.35))
-                                }
+                        pal: root.pal
+                        radius: panel.radius
+                        bodyOpacity: panel.opacityBody
+                        name: "Study"
+                        tabsHint: "Study"
+                        busy: root.busy
+                        // one tab per chat (one per material, or per set of files added together)
+                        tabs: {
+                            var o = []
+                            for (var i = 0; i < root.chats.length; i++) {
+                                var c = root.chats[i]
+                                o.push({ id: c.id, title: c.title, confirm: root.confirmRm === c.id,
+                                         glyph: c.docs.length > 1 ? 0xF0222 : root.glyphOf(c.docs.length > 0 ? c.docs[0].ext : "") })
                             }
-                            Rectangle { anchors { top: parent.top; bottom: parent.bottom; right: parent.right; topMargin: 24; bottomMargin: 24 } width: 1; color: root.pal.lineSoft }
-
-                            ColumnLayout {
-                                anchors.fill: parent
-                                anchors.margins: 22
-                                anchors.rightMargin: 23                // 22 + the 1 px line on the sidebar's edge
-                                spacing: 16
-
-                                Row {
-                                    Layout.fillWidth: true
-                                    Layout.maximumWidth: 242
-                                    spacing: 12
-                                    Rectangle {
-                                        visible: !root.pal.zen          // the new style: no icon tile in the header
-                                        width: 38; height: 38; radius: 12
-                                        color: Qt.alpha(root.pal.accent, 0.14)
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: String.fromCodePoint(0xF0474)
-                                            color: root.pal.accent
-                                            font.family: root.pal.font
-                                            font.pixelSize: 20
-                                            opacity: root.busy ? 0.4 + 0.6 * Math.abs(Math.sin(pulse.tp * Math.PI)) : 1
-                                        }
-                                        Item { id: pulse; property real tp: 0; NumberAnimation on tp { from: 0; to: 1; duration: 1100; loops: Animation.Infinite; running: root.busy && root.open } }
-                                    }
-                                    Column {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 50                      // what is left of the sidebar after the icon: the lines below wrap instead of running off the edge
-                                        spacing: 1
-                                        Text { width: parent.width; elide: Text.ElideRight; horizontalAlignment: root.pal.centred ? Text.AlignHCenter : Text.AlignLeft; text: "Study"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.DemiBold }
-                                        Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; horizontalAlignment: root.pal.centred ? Text.AlignHCenter : Text.AlignLeft; text: "on this computer  ·  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice)); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                                    }
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.topMargin: 6
-                                    Label { text: "Chats"; Layout.fillWidth: true }
-                                }
-
-                                ListView {
-                                    id: docList
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    visible: root.chats.length > 0
-                                    clip: true
-                                    spacing: 4
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    model: root.chats
-                                    delegate: Rectangle {
-                                        id: drow
-                                        required property var modelData
-                                        readonly property bool on: modelData.id === root.chatId
-                                        readonly property bool rm: root.confirmRm === modelData.id
-                                        readonly property bool ren: root.renameId === modelData.id
-                                        readonly property bool several: modelData.docs.length > 1
-                                        readonly property string sub: several ? modelData.docs.length + " files" : (modelData.docs.length === 1 ? root.unitText(modelData.docs[0]) : "")
-                                        width: docList.width
-                                        height: 54
-                                        radius: root.pal.rMd
-                                        color: on ? Qt.alpha(root.pal.accent, 0.13) : (dMa.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
-                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                        onRenChanged: if (ren) { renIn.text = modelData.title; renIn.forceActiveFocus(); renIn.selectAll() }
-                                        MouseArea { id: dMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (!drow.ren) root.openChat(drow.modelData.id) }
-                                        Text {
-                                            id: dg
-                                            x: 12
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: String.fromCodePoint(drow.several ? 0xF0222 : root.glyphOf(drow.modelData.docs.length > 0 ? drow.modelData.docs[0].ext : ""))
-                                            color: drow.on ? root.pal.accent : root.pal.muted
-                                            font.family: root.pal.font
-                                            font.pixelSize: 20
-                                        }
-                                        Column {
-                                            anchors { left: dg.right; leftMargin: 12; right: dAct.visible ? dAct.left : parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
-                                            spacing: 2
-                                            Text { visible: !drow.ren; width: parent.width; elide: Text.ElideRight; text: drow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: drow.on ? Font.DemiBold : Font.Normal }
-                                            TextInput {
-                                                id: renIn
-                                                visible: drow.ren
-                                                width: parent.width
-                                                clip: true
-                                                color: root.pal.text
-                                                selectionColor: Qt.alpha(root.pal.accent, 0.4)
-                                                font.family: root.pal.uiFont
-                                                font.pixelSize: root.pal.tBody
-                                                maximumLength: 80
-                                                onAccepted: root.renameChat(drow.modelData.id, text)
-                                                Keys.onEscapePressed: root.renameId = ""
-                                            }
-                                            Text {
-                                                width: parent.width
-                                                elide: Text.ElideRight
-                                                text: drow.rm ? "Delete this chat and its files?" : (drow.ren ? "Enter saves, Esc cancels" : drow.sub + (drow.modelData.turns > 0 ? "  \u00b7  " + drow.modelData.turns + (drow.modelData.turns === 1 ? " question" : " questions") : ""))
-                                                color: drow.rm ? root.pal.warn : root.pal.muted
-                                                font.family: root.pal.uiFont
-                                                font.pixelSize: root.pal.tCap
-                                            }
-                                        }
-                                        Row {
-                                            id: dAct
-                                            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                                            spacing: 2
-                                            visible: !drow.ren && (dMa.containsMouse || drow.rm || rnA.containsMouse || rmA.containsMouse || rmB.containsMouse)
-                                            Rectangle {
-                                                width: 26; height: 26; radius: 13
-                                                visible: drow.rm
-                                                color: rmB.containsMouse ? Qt.alpha(root.pal.bad, 0.22) : "transparent"
-                                                Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF012C); color: root.pal.bad; font.family: root.pal.font; font.pixelSize: 15 }
-                                                MouseArea { id: rmB; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.removeChat(drow.modelData.id) }
-                                            }
-                                            Rectangle {
-                                                width: 26; height: 26; radius: 13
-                                                visible: !drow.rm
-                                                color: rnA.containsMouse ? Qt.alpha(root.pal.text, 0.08) : "transparent"
-                                                Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF03EB); color: root.pal.muted; font.family: root.pal.font; font.pixelSize: 14 }
-                                                MouseArea { id: rnA; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.renameId = drow.modelData.id }
-                                            }
-                                            Rectangle {
-                                                width: 26; height: 26; radius: 13
-                                                color: rmA.containsMouse ? Qt.alpha(root.pal.text, 0.08) : "transparent"
-                                                Text { anchors.centerIn: parent; text: String.fromCodePoint(drow.rm ? 0xF0156 : 0xF01B4); color: root.pal.muted; font.family: root.pal.font; font.pixelSize: 14 }
-                                                MouseArea { id: rmA; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.confirmRm = drow.rm ? "" : drow.modelData.id }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // no files yet
-                                Item {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    visible: root.chats.length === 0
-                                    Column {
-                                        anchors.centerIn: parent
-                                        width: parent.width - 8
-                                        spacing: 8
-                                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.loaded ? "No chats yet" : ""; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
-                                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "Add lecture slides, a PDF, your notes or a photo of a page and it gets a chat of its own. Files added together share one chat. They stay on this computer."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; lineHeight: 1.25 }
-                                    }
-                                }
-
-                                Working { visible: addProc.running; text: root.makeMsg !== "" ? root.makeMsg : "reading" ; Layout.fillWidth: true }
-
-                                PrimaryBtn {
-                                    Layout.fillWidth: true
-                                    Layout.maximumWidth: 242
-                                    Layout.alignment: Qt.AlignHCenter
-                                    glyph: String.fromCodePoint(0xF0415)
-                                    label: "New chat"
-                                    onClicked: { root.pickerOpen = true; root.focusRequested("picker") }
-                                }
-                            }
+                            return o
                         }
+                        activeTab: root.chatId
+                        renamingId: root.renameId
+                        optionsLabel: "Learn from the files"
+                        options: [
+                            { key: "ask", label: "Ask", glyph: 0xF0B79 },
+                            { key: "summary", label: "Summary", glyph: 0xF0219 },
+                            { key: "quiz", label: "Quiz", glyph: 0xF0625 },
+                            { key: "cards", label: "Cards", glyph: 0xF0638 }
+                        ]
+                        activeOption: root.tab
+                        status: root.confirmRm !== "" ? "Delete this chat and its files?" : (root.note !== "" ? root.note : (root.curChat ? "About " + root.scopeText : ""))
+                        statusTone: root.confirmRm !== "" ? "warn" : (root.note !== "" ? (root.noteBad ? "bad" : "accent") : "muted")
+                        footnote: "On this computer  \u00b7  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice))
+                        hasModel: true
+                        modelLabel: root.choiceLabel
+                        modelsOpen: root.modelsOpen
+                        popped: root.popped
+                        onTabClicked: id => root.openChat(id)
+                        onTabClosed: id => root.confirmRm = (root.confirmRm === id ? "" : id)   // the x asks first; the check then removes the chat and its files
+                        onTabConfirmed: id => root.removeChat(id)
+                        onTabRenameRequested: id => root.renameId = id
+                        onTabRenamed: (id, title) => root.renameChat(id, title)
+                        onRenameCancelled: root.renameId = ""
+                        onAddClicked: { root.pickerOpen = true; root.focusRequested("picker") }
+                        onOptionClicked: key => root.setTab(key)
+                        onModelClicked: { root.modelsOpen = !root.modelsOpen; if (root.modelsOpen) root.loadModels() }
+                        onPopClicked: root.popped = !root.popped
+                        onCloseRequested: root.hide()
 
-                        // ======================== the work area
                         ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            Layout.margins: 24
-                            Layout.leftMargin: 28
+                            anchors { fill: parent; margins: 24; leftMargin: 28 }
                             spacing: 16
 
-                            // tabs, then the close button
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 4
-                                TabBtn { label: "Ask"; key: "ask" }
-                                TabBtn { label: "Summary"; key: "summary" }
-                                TabBtn { label: "Quiz"; key: "quiz" }
-                                TabBtn { label: "Flashcards"; key: "cards" }
-                                Item { Layout.fillWidth: true }
-                                // the model: Auto (smart routing) or the one picked; a click opens the model sheet
-                                Rectangle {
-                                    implicitWidth: mcRow.implicitWidth + 24
-                                    implicitHeight: 30
-                                    radius: 15
-                                    color: root.modelsOpen ? Qt.alpha(root.pal.accent, 0.16) : (mcMa.containsMouse ? root.pal.fillHover : root.pal.fill)
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                    Row {
-                                        id: mcRow
-                                        anchors.centerIn: parent
-                                        spacing: 7
-                                        Text { anchors.verticalCenter: parent.verticalCenter; text: String.fromCodePoint(0xF06A9); color: root.modelsOpen ? root.pal.accent : root.pal.muted; font.family: root.pal.font; font.pixelSize: 14 }
-                                        Text { anchors.verticalCenter: parent.verticalCenter; text: root.choiceLabel; color: root.modelsOpen ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.Medium }
-                                        Text { anchors.verticalCenter: parent.verticalCenter; text: String.fromCodePoint(root.modelsOpen ? 0xF0143 : 0xF0140); color: root.pal.muted; font.family: root.pal.font; font.pixelSize: 13 }
-                                    }
-                                    MouseArea { id: mcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.modelsOpen = !root.modelsOpen; if (root.modelsOpen) root.loadModels() } }
-                                }
-                                Text {
-                                    Layout.maximumWidth: 320
-                                    elide: Text.ElideRight
-                                    text: root.note !== "" ? root.note : (root.curChat ? "About " + root.scopeText : "")
-                                    color: root.note !== "" ? (root.noteBad ? root.pal.bad : root.pal.accent) : root.pal.muted
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tCap + 1
-                                }
-                                PopBtn { pal: root.pal; popped: root.popped; onClicked: root.popped = !root.popped }
-                                RoundBtn { pal: root.pal; size: 32; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }
-                            }
+                            // adding files: reading them can take a moment
+                            Working { visible: addProc.running; text: root.makeMsg !== "" ? root.makeMsg : "reading"; Layout.fillWidth: true }
 
                             // ---------------- Ask
                             Item {
@@ -885,7 +699,7 @@ Scope {
                                     spacing: 14
                                     visible: root.msgs.length === 0
                                     Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.docs.length === 0 ? "Add a file to begin" : "What would you like to understand?"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.Medium }
-                                    Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; lineHeight: 1.3; text: root.docs.length === 0 ? "The answers come only from your own files, with the page each one is on." : "Answers come only from " + root.scopeText + ", with the pages they are on. Each chat keeps its own files and conversation: use New chat for other material."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                    Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; lineHeight: 1.3; text: root.docs.length === 0 ? "Add lecture slides, a PDF, your notes or a photo of a page with + and it gets a chat of its own. Files added together share one chat. They stay on this computer. The answers come only from your own files, with the page each one is on." : "Answers come only from " + root.scopeText + ", with the pages they are on. Each chat keeps its own files and conversation: use + for other material."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                     Flow {
                                         width: parent.width
                                         spacing: 8
@@ -1041,12 +855,12 @@ Scope {
                                             if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && !(e.modifiers & Qt.ShiftModifier)) {
                                                 if (!root.asking && text.trim() !== "") { root.ask(text); text = "" }
                                                 e.accepted = true
-                                            } else if (e.key === Qt.Key_Escape) { if (root.modelsOpen) root.modelsOpen = false; else root.hide(); e.accepted = true }
+                                            } else if (e.key === Qt.Key_Escape) { if (shell.closeMenu()) {} else if (root.modelsOpen) root.modelsOpen = false; else root.hide(); e.accepted = true }
                                         }
                                         Text {
                                             anchors.verticalCenter: parent.verticalCenter
                                             visible: askIn.text.length === 0
-                                            text: root.docs.length === 0 ? "Add a file on the left first" : "Ask about " + root.scopeText + "…"
+                                            text: root.docs.length === 0 ? "Add a file with + first" : "Ask about " + root.scopeText + "…"
                                             color: root.pal.muted
                                             font: askIn.font
                                         }
