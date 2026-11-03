@@ -103,6 +103,10 @@
 #   --no-av-exception      do not add the ai-antivirus exception for this installer. By default, with ai-antivirus installed, the
 #                          installer adds two program exceptions (~/.config/Halcyon/install.sh, ~/.cache/halcyon-update/install.sh)
 #                          so the systemd units it writes on every update are not reported. Why and how to undo: docs/antivirus.md
+#   Pins (the Version Center, >versions, and update.sh --ref / update-extras.sh --ref write them): a line LUNA="<commit>", ANTIVIRUS="<commit>"
+#                          or FIREWALL="<commit>" in ~/.local/state/halcyon/pins.env means that program was installed at an exact older
+#                          version on purpose: this installer leaves it as it is (no rebuild, no move to main). Unpin it in the Version Center,
+#                          or  update-extras.sh --unpin luna|ai-antivirus|ai-firewall,  to follow main again. A pinned HALCYON is only read by update.sh.
 #   SECURITY_MODEL=NAME   the local model the firewall and antivirus assistants use. Default: the best qwen3.5 size for this laptop
 #                          (0.8b / 2b / 4b / 9b by GPU memory or RAM), suggested on a first install with a menu to change it, remembered,
 #                          pulled when Ollama is installed and either module is on; SECURITY_MODEL=none skips the download.
@@ -603,6 +607,9 @@ fi
 
 # your saved answers (see "your choices" below); defined here so the summary shows them instead of the defaults
 CHOICES_FILE="$TARGET_HOME/.local/state/island/install-choices.env"
+PINS_FILE="$TARGET_HOME/.local/state/halcyon/pins.env"
+# pin_of KEY -> the commit LUNA / ANTIVIRUS / FIREWALL is pinned at (empty = follows main); written by the Version Center / update-extras.sh --ref
+pin_of() { [[ -f "$PINS_FILE" ]] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$PINS_FILE" | tail -n1 || true; }
 saved_choice() { [[ -f "$CHOICES_FILE" ]] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$CHOICES_FILE" | tail -n1 || true; }
 # what the summary should say for a yes/no extra: yes | no | ask (the menu below decides)
 planned_choice() {    # $1 = value now, $2 = decided on the command line, $3 = saved key
@@ -2559,6 +2566,7 @@ try run_as_user_cmd "Installing the user services (gestures start with the deskt
         "$TARGET_RICE/systemd/halcyon-remind.service" "$TARGET_RICE/systemd/halcyon-remind.timer" \
         "$TARGET_RICE/systemd/halcyon-notes-due.service" "$TARGET_RICE/systemd/halcyon-notes-due.timer" \
         "$TARGET_RICE/systemd/halcyon-updates.service" "$TARGET_RICE/systemd/halcyon-updates.timer" \
+        "$TARGET_RICE/systemd/halcyon-versions-check.service" "$TARGET_RICE/systemd/halcyon-versions-check.timer" \
         "$TARGET_RICE/systemd/halcyon-explain@.service" "$UNITS/"
 if [[ "$DRY_RUN" != "true" ]] && have_systemd && user_bus_ready; then
     try run_cmd "Reloading the user systemd" user_systemctl daemon-reload
@@ -2946,6 +2954,8 @@ fi
 # ---- the LUNA extra: the pinned commit, built as you (outside the rice, like the helpers), the program copied to ~/.local/bin.
 # Skipped when that exact version is already installed. The build directory is removed afterwards (it grows to gigabytes).
 install_luna() {
+    local pin; pin=$(pin_of LUNA)
+    if [[ -n "$pin" ]]; then log_success "LUNA: pinned at ${pin:0:7}, left as it is (unpin it in the Version Center to follow main)"; return 0; fi
     local src="${LUNA_SRC:-$TARGET_HOME/.local/src/LUNA-AI}" stamp="$TARGET_HOME/.local/state/island/luna-rev" tgt="$TARGET_HOME/.cache/halcyon-build/luna" now
     rust_ok || { warn_later "LUNA was not installed: it needs Rust ($(pkg_hint rust)), then ./install.sh --luna"; return 0; }
     if [[ -z "$LUNA_SRC" ]]; then
@@ -3109,6 +3119,8 @@ remove_ai_firewall() {
 }
 
 install_ai_firewall() {
+    local pin; pin=$(pin_of FIREWALL)
+    if [[ -n "$pin" ]]; then log_success "ai-firewall: pinned at ${pin:0:7}, left as it is (unpin it in the Version Center to follow main)"; return 0; fi
     local src tgt="$TARGET_HOME/.cache/halcyon-build/ai-firewall" keep=""
     if pacman -Q ai-firewall >/dev/null 2>&1; then
         log_success "ai-firewall: installed as a pacman package (/usr/bin/ai-firewall), left as it is"; return 0
@@ -3168,7 +3180,8 @@ remove_antivirus() {
 }
 
 install_antivirus() {
-    local src pkg
+    local src pkg pin; pin=$(pin_of ANTIVIRUS)
+    if [[ -n "$pin" ]] && pacman -Q ai-antivirus >/dev/null 2>&1; then log_success "ai-antivirus: pinned at ${pin:0:7}, left as it is (unpin it in the Version Center to follow main)"; return 0; fi
     if [[ "$PKG_MGR" != "pacman" ]]; then
         warn_later "ai-antivirus is packaged for Arch only (makepkg): skipped on ${DISTRO_NAME}. ClamAV works here: Security center > ClamAV."
         return 1

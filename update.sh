@@ -7,6 +7,12 @@
 #   ~/.config/Halcyon/update.sh --changes    list what changed in the new version, change nothing
 #   ~/.config/Halcyon/update.sh --force      run the setup again even when already up to date
 #   ~/.config/Halcyon/update.sh --rollback   go back to the version you had before the last update (git checkouts)
+#   ~/.config/Halcyon/update.sh --ref <commit|tag>   install exactly that version (git checkout of it, then install.sh --yes with your saved
+#                                                    choices). The old version is kept for an automatic way back if the setup or the island's
+#                                                    health check fails. Halcyon is PINNED to it: plain updates and "Update all" skip a
+#                                                    pinned Halcyon (it is not on a branch, so update.sh could not pull anyway)
+#   ~/.config/Halcyon/update.sh --unpin      remove the pin: back on the main branch and updated to the newest version
+#   (the pin is one line, HALCYON="<commit>", in ~/.local/state/halcyon/pins.env; the Version Center, >versions, uses these options)
 #   options: --yes (no questions)   --notify (desktop notification with the result)   -q (less output)   -h
 #            passed on to install.sh:  --no-packages  --no-drivers  --no-aur  --no-apps  --no-tune  --sysmode / --no-sysmode
 #            --safety-check / --no-safety-check  --llm[=MODEL] / --no-llm  --whisper[=MODEL] / --no-whisper  --vlm[=MODEL] / --no-vlm  --plymouth / --no-plymouth  --lock-login / --no-lock-login  --tty-autostart
@@ -22,7 +28,7 @@
 # gamemode.conf are kept).
 #
 # After the island reloads, its log is read: a QML error in the new version is reported at once, with the way back.
-# Everything this prints is also saved in ~/.local/state/halcyon/update.log.
+# Everything this prints is also saved in ~/.local/state/halcyon/update.log. LUNA / ai-antivirus / ai-firewall pins are respected by install.sh too.
 #
 # The whole script is inside main(): bash reads it completely before running, so the update replacing this very
 # file (git pull does) can not confuse the run that is still going.
@@ -33,7 +39,8 @@ RICE="${HALCYON_DIR:-$HOME/.config/Halcyon}"
 STATE="$HOME/.local/state/halcyon"
 CACHE="$HOME/.cache/halcyon-update"
 ISLAND_LOG="$HOME/.cache/island/quickshell-island.log"
-CHECK=0; CHANGES=0; FORCE=0; YES=0; ROLLBACK=0; NOTIFY=0; QUIET=0; EXTRAS=1; PASS=()
+CHECK=0; CHANGES=0; FORCE=0; YES=0; ROLLBACK=0; NOTIFY=0; QUIET=0; EXTRAS=1; PASS=(); REF=""; UNPIN=0
+PINS="$STATE/pins.env"
 NET=20                      # seconds a network step may take before it is given up
 export GIT_TERMINAL_PROMPT=0
 
@@ -52,6 +59,11 @@ usage() { sed -n '2,/^# If ~\/\.config\/Halcyon is a git checkout/p' "$0" | sed 
 gnet() { timeout "$NET" git "$@"; }
 
 short() { printf '%s' "${1:0:7}"; }
+
+# pins.env: HALCYON="<commit>" (one line per component; update-extras.sh writes the other three)
+pin_get() { [ -f "$PINS" ] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$PINS" | tail -n1 || true; }
+pin_del() { [ -f "$PINS" ] || return 0; local t; t="$(mktemp)"; grep -v "^$1=" "$PINS" > "$t"; cat "$t" > "$PINS"; rm -f "$t"; }
+pin_set() { mkdir -p "$STATE"; pin_del "$1"; printf '%s="%s"\n' "$1" "$2" >> "$PINS"; }
 
 # ---- set up the new files, then make the running desktop notice
 finish() {
@@ -116,8 +128,9 @@ doctor() {
   return 0
 }
 
+INSTALL_BAD=0
 run_install() {   # run_install <folder with install.sh>
-  bash "$1/install.sh" --yes ${PASS[@]+"${PASS[@]}"} || warn "install.sh reported problems (see above)"
+  bash "$1/install.sh" --yes ${PASS[@]+"${PASS[@]}"} || { INSTALL_BAD=1; warn "install.sh reported problems (see above)"; }
 }
 
 # LUNA, ai-antivirus and ai-firewall follow GitHub main on their own. When Halcyon has a new version, install.sh updates them;
@@ -146,6 +159,9 @@ main() {
       --changes) CHANGES=1; CHECK=1 ;;
       --force) FORCE=1 ;;
       --rollback) ROLLBACK=1 ;;
+      --unpin) UNPIN=1 ;;
+      --ref) [ $# -ge 2 ] && [[ "$2" != -* ]] || { echo "--ref needs a commit or a tag (try --help)"; exit 2; }; REF="$2"; shift ;;
+      --ref=*) REF="${1#--ref=}" ;;
       --notify) NOTIFY=1 ;;
       --no-extras) EXTRAS=0 ;;
       -q|--quiet) QUIET=1 ;;
@@ -163,6 +179,8 @@ main() {
     shift
   done
 
+  case "$REF" in ''|*[!A-Za-z0-9._/+-]*) [ -z "$REF" ] || die "that is not a commit or tag name: $REF" ;; esac
+  [ -z "$REF" ] || [ "$UNPIN" = 0 ] || die "--ref and --unpin cannot be used together."
   [ "$(id -u)" -ne 0 ] || die "Run this as your normal user, not root."
   command -v git >/dev/null || die "git is required (sudo pacman -S git / sudo apt install git)."
   command -v timeout >/dev/null || die "timeout (coreutils) is required."
@@ -190,6 +208,19 @@ main() {
   REMOTE=$(printf '%s\n' "$ref" | awk '$1 != "ref:" && $2 == "HEAD" {print $1; exit}')
   [ -n "$BRANCH" ] && [ -n "$REMOTE" ] || die "could not read the latest version from $REPO_URL"
 
+  if [ "$UNPIN" = 1 ]; then pin_del HALCYON; ok "Halcyon is not pinned any more"; fi
+  if [ -n "$REF" ]; then
+    update_ref || { note "Could not install $REF"; exit 1; }
+    printf '%sDone%s in %ss.\n' "$C_B" "$C_0" "$((SECONDS - t0))"
+    return 0
+  fi
+  local pin; pin="$(pin_get HALCYON)"
+  if [ -n "$pin" ]; then
+    ok "Halcyon is pinned at $(short "$pin") (newest on GitHub: $(short "$REMOTE")): it is not updated. Go back to main with  $RICE/update.sh --unpin"
+    update_extras
+    exit 0
+  fi
+
   if [ -d "$RICE/.git" ]; then update_git; else update_copy; fi
 
   echo
@@ -203,7 +234,15 @@ update_git() {
   local cur new
   # a detached HEAD or an unfinished rebase / merge: pulling on top of that makes a mess
   if [ -z "$(git -C "$RICE" symbolic-ref -q HEAD)" ]; then
-    die "$RICE is on a detached HEAD. Check a branch out first:  cd $RICE && git switch $BRANCH"
+    if [ "$UNPIN" = 1 ]; then
+      say "Back on $BRANCH"
+      if git -C "$RICE" show-ref --verify --quiet "refs/heads/$BRANCH"; then git -C "$RICE" switch --quiet "$BRANCH" 2>/dev/null
+      else gnet -C "$RICE" fetch --quiet "$REPO_URL" "$BRANCH" && git -C "$RICE" switch --quiet -c "$BRANCH" FETCH_HEAD 2>/dev/null; fi \
+        || die "could not switch back to $BRANCH (an edit of yours in the way?). Look at it with:  cd $RICE && git status"
+      ok "on $BRANCH"
+    else
+      die "$RICE is on a detached HEAD. Check a branch out first:  cd $RICE && git switch $BRANCH   (or  update.sh --unpin  when it was pinned)"
+    fi
   fi
   local f
   for f in rebase-merge rebase-apply MERGE_HEAD; do
@@ -284,23 +323,102 @@ update_copy() {
   [ -f "$CACHE/install.sh" ] || die "the download has no install.sh"
   ok "downloaded"
 
-  # your own files survive the copy
+  copy_install "$CACHE"
+  doctor
+}
+
+# a plain copy: the files of yours survive, install.sh puts the new copy in place (and backs the old one up), then the island is reloaded and read
+copy_install() {   # copy_install <a checkout with install.sh>   (INSTALL_BAD / HEALTH_BAD say how it went)
   local KEEP=(hypr-user.lua scheme/current.lua gamemode.conf gpu.lua special.conf apps.custom gpu-mode autostart.conf greeting.conf greeting-custom.txt ai-advisor.conf focus.conf focus-apps.conf remind.conf notes.conf backup-exclude.conf birthdays.txt holidays.txt)
   local keep f; keep="$(mktemp -d)"
   for f in "${KEEP[@]}"; do
     [ -f "$RICE/$f" ] && { mkdir -p "$keep/$(dirname "$f")"; cp -a "$RICE/$f" "$keep/$f"; }
   done
-
+  INSTALL_BAD=0; HEALTH_BAD=0
   say "Setting up"
-  run_install "$CACHE"
+  run_install "$1"
   for f in "${KEEP[@]}"; do [ -f "$keep/$f" ] && { mkdir -p "$RICE/$(dirname "$f")"; cp -a "$keep/$f" "$RICE/$f"; }; done
   rm -rf "$keep"
   lint_scripts
-  git -C "$CACHE" rev-parse HEAD > "$STATE/installed-commit"
+  git -C "$1" rev-parse HEAD > "$STATE/installed-commit"
   finish
-  doctor
+  [ "$INSTALL_BAD" = 0 ] && [ "$HEALTH_BAD" = 0 ]
 }
 
+# ============================================================ --ref: one exact version (a commit or a tag), pinned
+# Git checkout: the working tree goes to that commit (detached HEAD; your edits are stashed and put back), install.sh runs, the island's
+# health is read. A plain copy: the version is cloned to ~/.cache/halcyon-update-ref and installed over it (install.sh backs the old copy up).
+# When the setup or the health check fails, the version you had is installed again by the same steps.
+ref_checkout() {   # ref_checkout <sha> [branch]   (git checkout only; the setup is run by the caller)
+  local sha="$1" br="${2:-}" before after stashed=0
+  before=$(git -C "$RICE" rev-parse -q --verify refs/stash 2>/dev/null || true)
+  git -C "$RICE" stash push --quiet --include-untracked -m "halcyon update.sh --ref" >/dev/null 2>&1
+  after=$(git -C "$RICE" rev-parse -q --verify refs/stash 2>/dev/null || true)
+  [ -n "$after" ] && [ "$after" != "$before" ] && stashed=1
+  if [ -n "$br" ]; then git -C "$RICE" switch --quiet "$br"; else git -C "$RICE" -c advice.detachedHead=false checkout --quiet --detach "$sha"; fi || {
+    [ "$stashed" = 1 ] && git -C "$RICE" stash pop --quiet 2>/dev/null; return 1; }
+  [ "$stashed" = 1 ] && { git -C "$RICE" stash pop --quiet 2>/dev/null || warn "your stashed edits did not fit back cleanly: git -C $RICE stash list"; }
+  return 0
+}
+ref_setup_git() {  # ref_setup_git <sha> [branch] -> 0 when the setup and the health check are fine
+  ref_checkout "$1" "${2:-}" || { warn "could not check $(short "$1") out"; return 1; }
+  INSTALL_BAD=0; HEALTH_BAD=0
+  say "Setting up"
+  run_install "$RICE"
+  lint_scripts
+  printf '%s\n' "$1" > "$STATE/installed-commit"
+  finish
+  [ "$INSTALL_BAD" = 0 ] && [ "$HEALTH_BAD" = 0 ]
+}
+update_ref() {
+  local sha cur br pinbefore; pinbefore="$(pin_get HALCYON)"
+  if [ -d "$RICE/.git" ]; then
+    local f
+    for f in rebase-merge rebase-apply MERGE_HEAD; do
+      [ -e "$(git -C "$RICE" rev-parse --git-path "$f")" ] && die "a git $f is unfinished in $RICE. Finish or abort it first:  cd $RICE && git status"
+    done
+    gnet -C "$RICE" fetch --quiet --tags --force "$REPO_URL" "+refs/heads/$BRANCH:refs/halcyon/upstream" || warn "could not fetch: only the history already here is searched"
+    sha=$(git -C "$RICE" rev-parse --verify --quiet "$REF^{commit}") || die "$REF is not a commit or tag of $REPO_URL"
+    cur=$(git -C "$RICE" rev-parse HEAD); br=$(git -C "$RICE" symbolic-ref -q --short HEAD || true)
+    if [ "$cur" = "$sha" ] && [ "$FORCE" = 0 ]; then pin_set HALCYON "$sha"; ok "already at $(short "$sha"): pinned there"; return 0; fi
+    say "Version $(short "$sha")  (now $(short "$cur"))"
+    git -C "$RICE" log --format='   %h  %s' -n 1 "$sha"
+    git -C "$RICE" diff --shortstat "$cur" "$sha" | sed 's/^/   /'
+    git -C "$RICE" merge-base --is-ancestor "$sha" "$cur" 2>/dev/null && warn "this version is OLDER than the one installed: settings written by the newer one may not be understood"
+    confirm "install $(short "$sha") now? (your edits are stashed and put back; a way back is kept)" || { info "nothing changed."; return 0; }
+    printf '%s\n' "$cur" > "$STATE/previous-commit"
+    if ref_setup_git "$sha"; then
+      pin_set HALCYON "$sha"
+      ok "Halcyon is at $(short "$sha") and pinned there"
+      return 0
+    fi
+    warn "that version did not set up cleanly: putting $(short "$cur") back"
+    local back=""; [ -n "$br" ] && [ "$(git -C "$RICE" rev-parse "$br" 2>/dev/null)" = "$cur" ] && back="$br"
+    ref_setup_git "$cur" "$back" && ok "$(short "$cur") is back" || warn "the way back did not set up cleanly either. By hand:  cd $RICE && git switch ${br:-$BRANCH} && ./install.sh --yes"
+    [ -n "$pinbefore" ] && pin_set HALCYON "$pinbefore" || pin_del HALCYON
+    return 1
+  fi
+  # a plain copy
+  local have rc; have=$(cat "$STATE/installed-commit" 2>/dev/null || true)
+  rm -rf "$CACHE-ref"
+  timeout 300 git clone --quiet "$REPO_URL" "$CACHE-ref" || die "git clone failed"
+  sha=$(git -C "$CACHE-ref" rev-parse --verify --quiet "$REF^{commit}") || die "$REF is not a commit or tag of $REPO_URL"
+  if [ "$have" = "$sha" ] && [ "$FORCE" = 0 ]; then pin_set HALCYON "$sha"; ok "already at $(short "$sha"): pinned there"; return 0; fi
+  say "Version $(short "$sha")  (now $([ -n "$have" ] && short "$have" || echo unknown))"
+  git -C "$CACHE-ref" log --format='   %h  %s' -n 1 "$sha"
+  [ -n "$have" ] && git -C "$CACHE-ref" merge-base --is-ancestor "$sha" "$have" 2>/dev/null && warn "this version is OLDER than the one installed"
+  confirm "install $(short "$sha") now? (install.sh saves your copy in ~/.config/Halcyon-backups first)" || { info "nothing changed."; return 0; }
+  [ -n "$have" ] && printf '%s\n' "$have" > "$STATE/previous-commit"
+  git -C "$CACHE-ref" -c advice.detachedHead=false checkout --quiet --detach "$sha"
+  if copy_install "$CACHE-ref"; then pin_set HALCYON "$sha"; ok "Halcyon is at $(short "$sha") and pinned there"; return 0; fi
+  warn "that version did not set up cleanly"
+  if [ -n "$have" ] && git -C "$CACHE-ref" rev-parse --verify --quiet "$have^{commit}" >/dev/null; then
+    warn "putting $(short "$have") back"
+    git -C "$CACHE-ref" -c advice.detachedHead=false checkout --quiet --detach "$have" && copy_install "$CACHE-ref" && ok "$(short "$have") is back" || warn "the way back did not set up cleanly either: the copy in ~/.config/Halcyon-backups is the one you had"
+  else warn "the version you had is not recorded: the copy in ~/.config/Halcyon-backups is the one you had"; fi
+  [ -n "$pinbefore" ] && pin_set HALCYON "$pinbefore" || pin_del HALCYON
+  return 1
+}
 # ============================================================ back to the version before the last update
 rollback() {
   [ -d "$RICE/.git" ] || die "--rollback needs $RICE to be a git checkout. A plain copy keeps its old version in ~/.config/Halcyon-backups (install.sh saved it there)."

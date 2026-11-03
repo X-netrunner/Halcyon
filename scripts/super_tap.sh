@@ -7,6 +7,12 @@ if [ -x "$hal" ]; then
   [ "$rc" -ne 2 ] && exit "$rc"
 fi
 d="${XDG_RUNTIME_DIR:-/tmp}"
+# one key release can fire several Super binds: only the first one goes on (a second toggle would shut the launcher again)
+lock="$d/halcyon-super-lock"
+if ! ( set -C; : > "$lock" ) 2>/dev/null; then
+  [ -n "$(find "$lock" -newermt '0.3 seconds ago' 2>/dev/null)" ] && exit 0
+  rm -f "$lock"; ( set -C; : > "$lock" ) 2>/dev/null || true
+fi
 f="$d/halcyon-super-tap"
 ack="$d/halcyon-super-ack"
 dbg="$HOME/.cache/island/super-debug"

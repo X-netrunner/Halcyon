@@ -141,6 +141,13 @@ Glass {
         if (airplaneOn) { toggleWifi(); toggleBt() }
         else { if (net.wifi === "on") toggleWifi(); if (net.bt === "on") toggleBt() }
     }
+    // the charge-limit icon shows the limit itself: a battery filled to 80 % while limited (the same battery glyphs as the bar), the full
+    // charging battery with its bolt when charging goes up to 100 %
+    readonly property int chargeGlyph: {
+        var l = chargeLimit
+        if (l <= 0 || l >= 100) return 0xF0085
+        return [0xF008E, 0xF007A, 0xF007B, 0xF007C, 0xF007D, 0xF007E, 0xF007F, 0xF0080, 0xF0081, 0xF0082, 0xF0079][Math.max(1, Math.min(9, Math.round(l / 10)))]
+    }
     function toggleChargeLimit() {
         Quickshell.execDetached(["bash", Quickshell.shellPath("scripts/charge-limit.sh"), "toggle"])
         chargeAgain.restart()
@@ -485,7 +492,7 @@ Glass {
                 pal: root.pal
                 maxLabel: 90                     // "Limit 80%" is wider than the 62 px the other tiles use (it was cut to "Limit 80...")
                 padX: 12
-                glyph: String.fromCodePoint(0xF0079)
+                glyph: String.fromCodePoint(root.chargeGlyph)
                 label: root.chargeLimit > 0 && root.chargeLimit < 100 ? root.chargeLimit + "%" : "Full"
                 tipAlign: "right"
                 tip: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Charge limit " + root.chargeLimit + "%  ·  protects the battery, click for full charge"
@@ -572,7 +579,7 @@ Glass {
                 Layout.fillWidth: true; Layout.preferredHeight: 64
                 visible: root.chargeLimit > 0 && root.shown("Charge")
                 pal: root.pal
-                glyph: String.fromCodePoint(0xF0079)
+                glyph: String.fromCodePoint(root.chargeGlyph)
                 caption: root.chargeLimit > 0 && root.chargeLimit < 100 ? root.chargeLimit + "%" : "Full"
                 tipAlign: "right"
                 tip: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Charge limit " + root.chargeLimit + "%  ·  protects the battery, click for full charge"

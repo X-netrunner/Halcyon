@@ -686,6 +686,7 @@ Scope {
         case "liveWalls": return cLiveWalls
         case "focusClock": return cFocusClock
         case "safetyAuto": return cSafetyAuto
+        case "versionsAuto": return cVersionsAuto
         case "counterScan": return cCounterScan
         case "desktopBuilder": return cDesktopBuilder
         case "widgetBuilder": return cWidgetBuilder
@@ -1054,6 +1055,10 @@ Scope {
             { type: "seg", adv: true, key: "st:FILE_ICONS", label: "File manager icons", desc: "How big the icons are in Thunar (side bar, lists, icon view, toolbar). Thunar picks it up at once; windows that are already open may need a reopen.", opts: [o("small", "Small"), o("medium", "Medium"), o("large", "Large")] },
             { type: "acts", adv: true, label: "Rice", desc: "Edit config: opens the config files. Shortcuts: the shortcut tree. Reload: re-reads the config files and puts the island's own values back on top.", btns: [{ id: "config", btn: "Edit config", done: "", close: true }, { id: "cheatsheet", btn: "Shortcuts", done: "", close: true }, { id: "reload", btn: "Reload Hyprland", done: "Reloading…" }] }
         ] },
+        { id: "versions", title: "Version Center", section: "System", items: [
+            { type: "action", id: "versions-open", label: "Version Center", btn: "Open", done: "Opening…", desc: "Update Halcyon, LUNA, ai-antivirus and ai-firewall, or install an older version of any of them by picking a commit. Also  >versions  or  >update  in the launcher." },
+            { type: "custom", name: "versionsAuto" }
+        ] },
         { id: "backup", title: "Backup", section: "System", items: [
             { type: "custom", name: "dayClock" },
             { type: "acts", label: "Backup", desc: "Plug in an external hard disk or SSD, pick it in the terminal that opens, and the files are copied onto it (scripts/backup-device.sh). Whole system: everything (asks for your admin password). Home folder: only your files, no password. Nothing on the disk is erased; every backup goes in its own dated folder. Caches, trash, package downloads and game files are skipped; add your own in ~/.config/Halcyon/backup-exclude.conf.", btns: [{ id: "backup-device", btn: "Whole system", done: "Opening…" }, { id: "backup-home", btn: "Home folder only", done: "Opening…" }] },
@@ -1241,7 +1246,7 @@ Scope {
         { id: "Input", sub: "Mouse, touchpad, gestures, mouse buttons and the keyboard.", groups: ["mouse", "keyboard"] },
         { id: "Lock, login & power", sub: "What you see when the screen locks, how you log in at boot, and power and sleep.", groups: ["lockscreen", "loginscreen", "power"] },
         { id: "Productivity & AI", sub: "Focus mode, the calendar, notes, screen recording, and the one switch for every AI feature.", groups: ["focus", "calendar", "notes", "recording", "aimaster"] },
-        { id: "System", sub: "Startup and background apps, your apps, backups, performance and memory, and security.", groups: ["startup", "apps", "backup", "performance", "profiles", "treeview", "suggestions", "security", "firewall"] },
+        { id: "System", sub: "Startup and background apps, your apps, backups, performance and memory, and security.", groups: ["startup", "apps", "backup", "versions", "performance", "profiles", "treeview", "suggestions", "security", "firewall"] },
         { id: "Debug / Advanced", sub: "Every advanced option, plus the doctor, the self-test, memory and log tools. Nothing here is needed day to day.", groups: ["debug"] }
     ]
     // the left menu reads as a few headings with their pages under them (every page id appears once; tests/settings-groups.test.js checks it)
@@ -1379,7 +1384,7 @@ Scope {
         if (query === "" && collapsed[grp.id]) return w
         for (var i = 0; i < grp.items.length; i++) {
             var t = grp.items[i]
-            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 5 : t.name === "counterScan" ? 6 : t.name === "dayClock" ? 13 : t.name === "wallClock" ? 5 : t.name === "profile" ? 6 : t.name === "liveWalls" ? 7 : t.name === "focusClock" ? 6 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : t.name === "discover" ? 30 : 4)
+            w += t.type === "custom" ? (t.name === "wallpaper" ? 9 : t.name === "apps" ? 8 : t.name === "focusApps" ? 7 : t.name === "aiModel" ? 7 : t.name === "safetyAuto" ? 5 : t.name === "versionsAuto" ? 6 : t.name === "counterScan" ? 6 : t.name === "dayClock" ? 13 : t.name === "wallClock" ? 5 : t.name === "profile" ? 6 : t.name === "liveWalls" ? 7 : t.name === "focusClock" ? 6 : t.name === "specialCmds" ? 9 : t.name === "barBuilder" ? 7 : t.name === "notifBuilder" ? 7 : t.name === "desktopBuilder" ? 7 : t.name === "widgetBuilder" ? 8 : t.name === "gestures" ? 10 : t.name === "mouseButtons" ? 7 : t.name === "discover" ? 30 : 4)
                : (t.type === "seg" || t.type === "slider" || t.type === "chips" || t.type === "acts") ? 2.2 : 1.2
             if (t.desc) w += 0.7
         }
@@ -1460,6 +1465,7 @@ Scope {
     // Safety check, automatic run: root, so every change (on, how often, off) asks for the sudo password. The password goes to
     // `sudo -k -S` once (-k = a password you typed a minute ago in a terminal does not count) and is never stored or logged.
     Component { id: cSafetyAuto; SetSafetyAuto { root: settingsScope } }
+    Component { id: cVersionsAuto; SetVersionsAuto { root: settingsScope } }
     Component { id: cCounterScan; SetCounterScan { root: settingsScope } }
 
     Component { id: cAiModel; SetAiModel { root: settingsScope } }

@@ -1,0 +1,11 @@
+[Unit]
+Description=Halcyon Version Center: look at GitHub for newer versions (only looks, never installs)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.config/Halcyon/scripts/halcyon-versions.py autocheck run
+# Hardening that cannot change what this job does:
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
