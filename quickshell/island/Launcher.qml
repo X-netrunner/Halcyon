@@ -131,7 +131,7 @@ Item {
     // the order of the command list: groups first, then this order inside each group (anything not listed goes last)
     readonly property var catOrder: ["system", "security", "desktop", "tools", "games", "power"]
     readonly property var cmdOrder: [
-        "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "tour",
+        "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "versions", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
         "calendar", "notes", "notesall", "study", "luna", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "security", "firewall", "firewall-dashboard", "exceptions",
@@ -194,6 +194,7 @@ Item {
         { id: "theme", name: "Light / dark theme", desc: "Switch the whole desktop between the dark and the light theme (toggle)", glyph: 0xF0594, kw: "dark light mode appearance colours day night", cat: "desktop" },
         { id: "settings", name: "Settings", desc: "Theme, wallpaper, scrolling, default apps, transparency, motion, gaming", glyph: 0xF0493, kw: "rice options look theme gear config", cat: "system" },
         { id: "extradim", name: "Extra dim display", desc: "Dim screen backlight to minimum (Super + Alt + D)", glyph: 0xF058F, kw: "dim brightness backlight dark night minimum screen", cat: "tools" },
+        { id: "versions", name: "Version Center", desc: "Update Halcyon, LUNA, ai-antivirus and ai-firewall, or install an older version of any of them by picking a commit. Pin, roll back, and see what changed first", glyph: 0xF06B0, kw: "versions version update updates upgrade downgrade rollback roll back pin commit install old halcyon luna ai-antivirus ai-firewall antivirus firewall", cat: "system" },
         { id: "security", name: "Security Center", desc: "", glyph: 0xF0565, kw: "security firewall antivirus ai-antivirus virus malware scan ban bans shield protect", cat: "security" },
         { id: "exceptions", name: "Antivirus exceptions", desc: "", glyph: 0xF0780, kw: "exceptions exclusions exclude allow allowlist whitelist ignore trusted antivirus claude agy", cat: "security" },
         { id: "luna", name: "Luna", desc: "Chat with Luna, the local assistant. Every chat is saved: open an old one and carry on where it stopped", glyph: 0xF0594, kw: "luna assistant chat ai talk conversation sessions history agent", cat: "tools" },
