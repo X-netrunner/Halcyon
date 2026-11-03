@@ -222,7 +222,7 @@ Scope {
                         id: cardCol
                         x: 28; y: 28
                         width: card.width - 56
-                        spacing: 18
+                        spacing: 20
 
                         WinHeader {
                             pal: root.pal

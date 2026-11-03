@@ -14,10 +14,10 @@ WBase {
         switch (kind) {
         case "cpu": v = (s.cpu || 0) / 100; t = Math.round(s.cpu || 0) + "%"; n = "CPU"; ic = 0xF061A; break
         case "ram":
-            v = (s.mem || 0) / 100; n = "MEMORY"; ic = 0xF035B
+            v = (s.mem || 0) / 100; n = "Memory"; ic = 0xF035B
             t = opt("gb", false) === true ? (s.memGb || "0.0") + "G" : Math.round(s.mem || 0) + "%"
             break
-        case "temp": v = Math.min(1, (s.temp || 0) / 100); t = Math.round(s.temp || 0) + "°"; n = "TEMP"; ic = 0xF050F; hi = 0.75; bad = 0.88; break
+        case "temp": v = Math.min(1, (s.temp || 0) / 100); t = Math.round(s.temp || 0) + "°"; n = "Temp"; ic = 0xF050F; hi = 0.75; bad = 0.88; break
         case "gpu": {
             var g = env && env.gpu ? env.gpu : ({})
             v = (g.gpu || 0) / 100; t = (g.state === "none" || g.state === undefined) ? "n/a" : Math.round(g.gpu || 0) + "%"; n = "GPU"; ic = 0xF0379
@@ -27,15 +27,15 @@ WBase {
             var ds = env && env.disks && env.disks.disks ? env.disks.disks : []
             var d0 = ds.length ? ds[0] : null
             v = d0 ? d0.used / Math.max(1, d0.size) : 0
-            t = d0 ? Math.round(v * 100) + "%" : "n/a"; n = d0 ? String(d0.mount).toUpperCase() : "DISK"; ic = 0xF02CA; hi = 0.85; bad = 0.95
+            t = d0 ? Math.round(v * 100) + "%" : "n/a"; n = d0 ? String(d0.mount) : "Disk"; ic = 0xF02CA; hi = 0.85; bad = 0.95
             break
         }
         case "battery":
-            v = (s.bat || 0) / 100; t = (s.hasBat ? Math.round(s.bat || 0) + "%" : "AC"); n = s.charging ? "CHARGING" : "BATTERY"; ic = 0xF0079
+            v = (s.bat || 0) / 100; t = (s.hasBat ? Math.round(s.bat || 0) + "%" : "AC"); n = s.charging ? "Charging" : "Battery"; ic = 0xF0079
             inv = true
             break
-        case "volume": v = env ? Math.max(0, Math.min(1, (env.vol || 0) / 100)) : 0; t = env && env.muted ? "mute" : Math.round(v * 100) + "%"; n = "VOLUME"; ic = (env && env.muted) ? 0xF0581 : 0xF057E; hi = 2; bad = 2; break
-        case "brightness": v = env ? Math.max(0, Math.min(1, (env.bright || 0) / 100)) : 0; t = Math.round(v * 100) + "%"; n = "BRIGHTNESS"; ic = 0xF00DF; hi = 2; bad = 2; break
+        case "volume": v = env ? Math.max(0, Math.min(1, (env.vol || 0) / 100)) : 0; t = env && env.muted ? "mute" : Math.round(v * 100) + "%"; n = "Volume"; ic = (env && env.muted) ? 0xF0581 : 0xF057E; hi = 2; bad = 2; break
+        case "brightness": v = env ? Math.max(0, Math.min(1, (env.bright || 0) / 100)) : 0; t = Math.round(v * 100) + "%"; n = "Brightness"; ic = 0xF00DF; hi = 2; bad = 2; break
         }
         return { v: Math.max(0, Math.min(1, v)), t: t, n: n, ic: ic, hi: hi, bad: bad, inv: inv }
     }
@@ -107,14 +107,13 @@ WBase {
             spacing: root.sz(6)
             Item {
                 width: root.sz(200); height: root.sz(26)
-                WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 3; anchors.left: parent.left; anchors.baseline: val.baseline }
+                WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0; anchors.left: parent.left; anchors.baseline: val.baseline }
                 WLbl { id: val; b: root; text: root.m.t; font.pixelSize: root.sz(24); font.weight: Font.ExtraLight; anchors.right: parent.right; anchors.bottom: parent.bottom }
             }
             Item {
                 width: root.sz(200); height: root.sz(10)
                 Rectangle { y: parent.height / 2; width: parent.width; height: 1; color: root.track }
                 Rectangle { y: parent.height / 2 - 0.25; width: Math.max(1, parent.width * root.shownV); height: 1.5; color: root.lit }
-                WGlow { x: parent.width * root.shownV - width / 2; y: parent.height / 2 - height / 2; width: root.sz(36); height: width; color: root.lit; strength: 0.28 }
                 Rectangle { x: parent.width * root.shownV - width / 2; y: parent.height / 2 - height / 2; width: root.sz(6); height: width; radius: width / 2; color: root.lit }
             }
         }
@@ -132,7 +131,7 @@ WBase {
                 count: 12; open: 1; lit: root.shownV; color: root.lit
                 WLbl { b: root; anchors.centerIn: parent; text: root.m.t; font.pixelSize: root.sz(17); font.weight: Font.Light }
             }
-            WLbl { b: root; visible: root.showName; anchors.horizontalCenter: parent.horizontalCenter; y: pf.height + root.sz(4); text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 2.4 }
+            WLbl { b: root; visible: root.showName; anchors.horizontalCenter: parent.horizontalCenter; y: pf.height + root.sz(4); text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
         }
     }
 
@@ -158,10 +157,10 @@ WBase {
                     anchors.centerIn: parent
                     spacing: 0
                     WIco { b: root; color: root.lit; anchors.horizontalCenter: parent.horizontalCenter; text: root.glyph(root.m.ic); font.pixelSize: root.sz(15) }
-                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.m.t; font.pixelSize: root.sz(20); font.weight: Font.DemiBold }
+                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.m.t; font.pixelSize: root.sz(20); font.weight: Font.Medium }
                 }
             }
-            WLbl { b: root; visible: root.showName; anchors.horizontalCenter: parent.horizontalCenter; y: rg.height + root.sz(4); text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 1.2 }
+            WLbl { b: root; visible: root.showName; anchors.horizontalCenter: parent.horizontalCenter; y: rg.height + root.sz(4); text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
         }
     }
     // ---- arc (a 270 degree gauge)
@@ -177,16 +176,16 @@ WBase {
                     layer.enabled: true
                     layer.samples: 4
                     layer.textureSize: Qt.size(Math.ceil(width * root.rs), Math.ceil(height * root.rs))
-                    ShapePath { strokeColor: root.track; strokeWidth: root.sz(9); fillColor: "transparent"; capStyle: ShapePath.RoundCap
+                    ShapePath { strokeColor: root.track; strokeWidth: root.sz(10); fillColor: "transparent"; capStyle: ShapePath.RoundCap
                         PathAngleArc { centerX: ag.width / 2; centerY: ag.height / 2; radiusX: ag.width / 2 - root.sz(8); radiusY: ag.height / 2 - root.sz(8); startAngle: 135; sweepAngle: 270 } }
-                    ShapePath { strokeColor: root.lit; strokeWidth: root.sz(9); fillColor: "transparent"; capStyle: ShapePath.RoundCap
+                    ShapePath { strokeColor: root.lit; strokeWidth: root.sz(10); fillColor: "transparent"; capStyle: ShapePath.RoundCap
                         PathAngleArc { centerX: ag.width / 2; centerY: ag.height / 2; radiusX: ag.width / 2 - root.sz(8); radiusY: ag.height / 2 - root.sz(8); startAngle: 135; sweepAngle: 270 * Math.max(0.006, root.shownV) } }
                 }
                 Column {
                     anchors.centerIn: parent
                     spacing: 0
-                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.m.t; font.pixelSize: root.sz(24); font.weight: Font.DemiBold }
-                    WLbl { b: root; visible: root.showName; anchors.horizontalCenter: parent.horizontalCenter; text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 1.2 }
+                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.m.t; font.pixelSize: root.sz(24); font.weight: Font.Medium }
+                    WLbl { b: root; visible: root.showName; anchors.horizontalCenter: parent.horizontalCenter; text: root.m.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                 }
             }
         }
@@ -200,9 +199,9 @@ WBase {
                 width: root.sz(200)
                 spacing: root.sz(8)
                 WIco { b: root; color: root.lit; text: root.glyph(root.m.ic); font.pixelSize: root.sz(16); anchors.verticalCenter: parent.verticalCenter }
-                WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 1.2; anchors.verticalCenter: parent.verticalCenter }
+                WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0; anchors.verticalCenter: parent.verticalCenter }
             }
-            WLbl { b: root; text: root.m.t; font.pixelSize: root.sz(30); font.weight: Font.DemiBold }
+            WLbl { b: root; text: root.m.t; font.pixelSize: root.sz(30); font.weight: Font.Medium }
             Rectangle {
                 width: root.sz(200); height: root.sz(8); radius: height / 2; color: root.track
                 Rectangle { width: Math.max(parent.height, parent.width * root.shownV); height: parent.height; radius: height / 2; color: root.lit }
@@ -215,12 +214,12 @@ WBase {
         Row {
             spacing: root.sz(10)
             WIco { b: root; color: root.lit; text: root.glyph(root.m.ic); font.pixelSize: root.sz(18); anchors.verticalCenter: parent.verticalCenter }
-            WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 1.1; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0; anchors.verticalCenter: parent.verticalCenter }
             Rectangle {
                 width: root.sz(70); height: root.sz(5); radius: height / 2; color: root.track; anchors.verticalCenter: parent.verticalCenter
                 Rectangle { width: Math.max(parent.height, parent.width * root.shownV); height: parent.height; radius: height / 2; color: root.lit }
             }
-            WLbl { b: root; text: root.m.t; font.pixelSize: root.sz(15); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; text: root.m.t; font.pixelSize: root.sz(15); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
         }
     }
     // ---- number
@@ -231,7 +230,7 @@ WBase {
             Row {
                 spacing: root.sz(8)
                 WIco { b: root; color: root.lit; text: root.glyph(root.m.ic); font.pixelSize: root.sz(18); anchors.verticalCenter: parent.verticalCenter }
-                WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 1.4; anchors.verticalCenter: parent.verticalCenter }
+                WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0; anchors.verticalCenter: parent.verticalCenter }
             }
             WLbl { b: root; text: root.m.t; font.pixelSize: root.sz(54); font.weight: Font.Light; color: root.lit }
         }
@@ -244,8 +243,8 @@ WBase {
             Row {
                 spacing: root.sz(8)
                 WIco { b: root; color: root.lit; text: root.glyph(root.m.ic); font.pixelSize: root.sz(16); anchors.verticalCenter: parent.verticalCenter }
-                WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 1.2; anchors.verticalCenter: parent.verticalCenter }
-                WLbl { b: root; text: root.m.t; font.pixelSize: root.sz(16); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                WLbl { b: root; visible: root.showName; text: root.m.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0; anchors.verticalCenter: parent.verticalCenter }
+                WLbl { b: root; text: root.m.t; font.pixelSize: root.sz(16); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
             }
             Row {
                 id: hrow

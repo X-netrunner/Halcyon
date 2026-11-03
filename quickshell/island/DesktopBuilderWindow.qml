@@ -299,7 +299,7 @@ Item {
                                                 color: root.pal.text
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: 12
-                                                font.weight: Font.DemiBold
+                                                font.weight: Font.Medium
                                             }
                                             Text {
                                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -358,7 +358,7 @@ Item {
                                             text: DS.names[tag.modelData]
                                             color: root.pal.text
                                             opacity: 0.8
-                                            font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold
+                                            font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.Medium
                                         }
                                     }
                                     width: 52; height: 18; radius: 9
@@ -366,7 +366,7 @@ Item {
                                     border.width: 1; border.color: Qt.alpha(root.pal.bg, 0.6)
                                     x: edge === "left" ? 2 : edge === "right" ? scr.width - width - 2 : Math.round(pos * (scr.width - width))
                                     y: edge === "top" ? 2 : edge === "bottom" ? scr.height - height - 2 : Math.round(pos * (scr.height - height))
-                                    Text { anchors.centerIn: parent; text: DS.shortNames[tag.modelData]; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold }
+                                    Text { anchors.centerIn: parent; text: DS.shortNames[tag.modelData]; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.Medium }
                                     function follow(mx, my) {
                                         var q = tagMa.mapToItem(scr, mx, my)
                                         var d = { left: q.x, right: scr.width - q.x, top: q.y, bottom: scr.height - q.y }
@@ -450,7 +450,7 @@ Item {
                                     Column {
                                         anchors { left: tcG.right; leftMargin: 14; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                                         spacing: 2
-                                        Text { text: tc.modelData.t; color: tc.on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                        Text { text: tc.modelData.t; color: tc.on ? root.pal.accent : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                                         Text { visible: !(root.pal.zen && root.pal.hideHints); width: parent.width; elide: Text.ElideRight; text: tc.modelData.d; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                     }
                                     MouseArea { id: tcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (!tc.on) { root.pick = ""; root.flushLive(); root.targetPicked(tc.modelData.k) } }
@@ -674,7 +674,7 @@ Item {
                                     Layout.fillWidth: true
                                     pal: root.pal
                                     label: DS.names[modelData]
-                                    labelWidth: 104; fit: true
+                                    labelWidth: 128; fit: true
                                     options: DS.corners.map(function (c) { return [c, DS.cornerNames[c]] })
                                     current: root.spots[modelData]
                                     onPicked: id => root.moveBox(boxRow.modelData, id)
@@ -711,7 +711,7 @@ Item {
                                     Layout.fillWidth: true
                                     pal: root.pal
                                     label: DS.names[modelData]
-                                    labelWidth: 104; fit: true
+                                    labelWidth: 128; fit: true
                                     options: [["default", "Like the rest"], ["hover", "Hover"], ["click", "Click"]]
                                     current: own === "hover" || own === "click" ? own : "default"
                                     onPicked: id => root.put("boxTrig", DS.setTrig(root.opt, trigRow.modelData, id))

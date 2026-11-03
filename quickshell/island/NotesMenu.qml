@@ -487,7 +487,7 @@ Scope {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 18
+                    anchors.leftMargin: 20
                     anchors.rightMargin: 12
                     spacing: 12
                     Rectangle {
@@ -513,7 +513,7 @@ Scope {
                             color: root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                         }
                         Text {
                             Layout.fillWidth: true
@@ -743,8 +743,8 @@ Scope {
                             text: root.pal.cap("LATEST")
                             color: Qt.alpha(root.pal.muted, 0.8)
                             font.family: root.pal.uiFont
-                            font.pixelSize: 9
-                            font.letterSpacing: 1.2
+                            font.pixelSize: 10
+                            font.letterSpacing: 0
                         }
                         Repeater {
                             model: root.notes.filter(function (n) { return !n.done }).slice(0, 3)
@@ -1144,8 +1144,8 @@ Scope {
                                             text: root.pal.cap("TRANSCRIPT")
                                             color: Qt.alpha(root.pal.muted, 0.75)
                                             font.family: root.pal.uiFont
-                                            font.pixelSize: 9
-                                            font.letterSpacing: 1.3
+                                            font.pixelSize: 10
+                                            font.letterSpacing: 0
                                             font.weight: Font.Medium
                                         }
                                         Text {
@@ -1255,7 +1255,7 @@ Scope {
                                             anchors.left: parent.left
                                             anchors.right: parent.right
                                             anchors.top: parent.top
-                                            anchors.margins: 11
+                                            anchors.margins: 12
                                             spacing: 12
                                             NoteSection {
                                                 pal: root.pal
@@ -1407,7 +1407,7 @@ Scope {
                                     color: root.pal.text
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tTitle
-                                    font.weight: Font.DemiBold
+                                    font.weight: Font.Medium
                                 }
                                 Text {
                                     anchors.horizontalCenter: parent.horizontalCenter
@@ -1478,7 +1478,7 @@ Scope {
                     border.color: cin.activeFocus ? root.pal.accent : root.pal.lineSoft
                     TextInput {
                         id: cin
-                        anchors { fill: parent; leftMargin: 18; rightMargin: 18 }
+                        anchors { fill: parent; leftMargin: 20; rightMargin: 20 }
                         verticalAlignment: TextInput.AlignVCenter
                         clip: true
                         color: root.pal.text

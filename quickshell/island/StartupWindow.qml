@@ -81,7 +81,7 @@ Item {
     readonly property int ncpu: Math.max(1, info.ncpu || 1)
     readonly property var shownTips: info.suggest || []                 // the search box: filters whichever list is showing
 
-    component Cap: Text { color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: root.pal.calm ? Font.Medium : Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.1 : 1.2 }
+    component Cap: Text { color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: root.pal.calm ? Font.Medium : Font.Medium; font.letterSpacing: root.pal.calm ? 0.1 : 1.2 }
     component Q: HelpTip { id: q; pal: root.pal; onHoveredChanged: root.setTip(q, hovered) }
     // a column title with its "?" ; alignRight = the text sits at the right edge (number columns)
     component Head: Item {
@@ -91,7 +91,7 @@ Item {
         property bool alignRight: true
         implicitHeight: 15
         Row {
-            spacing: 5
+            spacing: 4
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: hd.alignRight ? parent.right : undefined
             anchors.left: hd.alignRight ? undefined : parent.left
@@ -104,7 +104,7 @@ Item {
         id: tt
         property string label: ""
         property string tip: ""
-        spacing: 5
+        spacing: 4
         Cap { anchors.verticalCenter: parent.verticalCenter; text: root.pal.capOf(tt.label) }
         Q { anchors.verticalCenter: parent.verticalCenter; tip: tt.tip }
     }
@@ -127,7 +127,7 @@ Item {
         }
         Rectangle {
             id: track
-            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: 3
+            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: 4
             height: 8; radius: 4
             color: Qt.alpha(root.pal.text, 0.08)
             Rectangle {
@@ -457,7 +457,7 @@ Item {
                             onTextChanged: root.query = text
                             Text {
                                 visible: parent.text === "" && !parent.activeFocus
-                                text: root.tab === "startup" ? "Search startup items…" : "Search processes…"
+                                text: root.tab === "startup" ? "Search startup items" : "Search processes"
                                 color: root.pal.muted
                                 font.family: parent.font.family; font.pixelSize: parent.font.pixelSize
                                 anchors.verticalCenter: parent.verticalCenter
@@ -493,7 +493,7 @@ Item {
                     spacing: 10
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 30
+                        spacing: 32
                         Repeater {
                             model: [
                                 { k: "STARTUP ITEMS", v: memCard.startup, c: root.pal.accent, tip: "Memory used by everything in the Startup list: Halcyon's own parts, your hypr-user.lua lines, services and autostart apps. Measured as PSS (shared pages split fairly), so nothing is counted twice." },
@@ -504,7 +504,7 @@ Item {
                             delegate: Row {
                                 id: stat
                                 required property var modelData
-                                spacing: 9
+                                spacing: 8
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 9; height: 9; radius: 4.5
@@ -515,7 +515,7 @@ Item {
                                 Column {
                                     spacing: 0
                                     Titled { label: stat.modelData.k; tip: stat.modelData.tip }
-                                    Text { text: root.loaded ? root.fmt(stat.modelData.v) : "—"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold }
+                                    Text { text: root.loaded ? root.fmt(stat.modelData.v) : "—"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 17; font.weight: Font.Medium }
                                 }
                             }
                         }
@@ -542,11 +542,11 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
-                Text { visible: root.tab === "health"; text: "Halcyon against its limits"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                Text { visible: root.tab === "health"; text: "Halcyon against its limits"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                 Q { visible: root.tab === "health"; tip: "Halcyon = its own parts together (Hyprland, the island with its helpers, the daemons). The limits are in Settings > Performance & memory. RAM is checked on every reading; CPU is only flagged after two readings in a row over the limit, so one short burst does not raise an alarm. The causes below are likely ones, worked out from your settings and what each part is doing, not certainties." }
-                Text { visible: root.tab === "tips"; text: "Startup items that are not earning their place"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                Text { visible: root.tab === "tips"; text: "Startup items that are not earning their place"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                 Q { visible: root.tab === "tips"; tip: "Safe to turn off: this machine has nothing for it to do. Worth a look: it may be useful to you, only you can tell. Nothing is turned off until you press Turn off. Keep hides a suggestion for good. Startup items change at the next login." }
-                Text { visible: root.tab === "unused"; text: "What you barely use"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                Text { visible: root.tab === "unused"; text: "What you barely use"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                 Q { visible: root.tab === "unused"; tip: "Programs count as used when they were started (their last access time) or their settings / data folders changed; the launcher's start count is shown too. Services: what starts with the system or runs now, with the memory it holds. Halcyon's own parts and the core of the system are never listed. The verdict comes from the local AI (rules when it is off). Remove / Turn off only types the command into the console: press Enter there to run it." }
                 Text { visible: root.tab === "unused"; text: "Not used for"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                 SegSwitch {
@@ -609,9 +609,9 @@ Item {
                          : "Every program of yours, biggest first. The number on the left is its process id (PID). End asks it to quit politely; the desktop itself is protected."
                 }
                 Head { visible: root.tab === "procs"; Layout.preferredWidth: 130; alignRight: false; label: "STARTED BY"; tip: "The startup item this process belongs to. A dash means you started it yourself (not at login)." }
-                Head { Layout.preferredWidth: 84; label: "MEMORY"; tip: "PSS: the memory a program really uses. Pages that several programs share (libraries) are split fairly between them, so adding the numbers up gives the true total." }
+                Head { Layout.preferredWidth: 84; label: "Memory"; tip: "PSS: the memory a program really uses. Pages that several programs share (libraries) are split fairly between them, so adding the numbers up gives the true total." }
                 Head { Layout.preferredWidth: 76; label: "CPU"; tip: "Big number: its share of the whole processor. Small number: the same as a part of ONE core (100% core = one core fully busy). Measured over a short moment and averaged, so a one-off burst fades out." }
-                Head { visible: root.tab === "startup"; Layout.preferredWidth: 62; label: "PROCS"; tip: "How many processes this item runs. One program is often several processes (a browser has one per tab)." }
+                Head { visible: root.tab === "startup"; Layout.preferredWidth: 62; label: "Procs"; tip: "How many processes this item runs. One program is often several processes (a browser has one per tab)." }
                 Item { Layout.preferredWidth: 60; height: 1 }
             }
 
@@ -665,7 +665,7 @@ Item {
                                     elide: Text.ElideRight
                                     text: row.model.name
                                     color: row.running || !row.model.off ? root.pal.text : Qt.alpha(root.pal.text, 0.6)
-                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold
+                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium
                                 }
                                 Text {
                                     width: parent.width
@@ -735,7 +735,7 @@ Item {
                     anchors.fill: parent
                     visible: root.tab === "procs"
                     clip: true
-                    spacing: 5
+                    spacing: 4
                     boundsBehavior: Flickable.StopAtBounds
                     model: procModel
                     delegate: Rectangle {
@@ -760,7 +760,7 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignVCenter
                                 spacing: 0
-                                Text { width: parent.width; elide: Text.ElideRight; text: prow.model.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                                Text { width: parent.width; elide: Text.ElideRight; text: prow.model.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                                 Text { width: parent.width; elide: Text.ElideRight; text: prow.model.cmd; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
                             }
                             Text { Layout.preferredWidth: 130; elide: Text.ElideRight; text: prow.model.owner !== "" ? prow.model.owner : "—"; color: prow.model.owner !== "" ? root.pal.accent : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
@@ -847,10 +847,10 @@ Item {
                                 id: tcol
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignVCenter
-                                spacing: 5
+                                spacing: 4
                                 RowLayout {
                                     spacing: 10
-                                    Text { text: trow.model.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                    Text { text: trow.model.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                                     Rectangle {
                                         implicitWidth: pillText.implicitWidth + 16; implicitHeight: 18; radius: 9
                                         color: Qt.alpha(trow.tone, 0.16)
@@ -859,7 +859,7 @@ Item {
                                             anchors.centerIn: parent
                                             text: root.pal.capOf(trow.safe ? "SAFE TO TURN OFF" : "WORTH A LOOK")
                                             color: trow.tone
-                                            font.family: root.pal.uiFont; font.pixelSize: root.pal.zen ? 11 : 9; font.weight: root.pal.zen ? Font.Medium : Font.DemiBold; font.letterSpacing: root.pal.zen ? 0 : 1
+                                            font.family: root.pal.uiFont; font.pixelSize: root.pal.zen ? 11 : 9; font.weight: root.pal.zen ? Font.Medium : Font.Medium; font.letterSpacing: root.pal.zen ? 0 : 1
                                         }
                                     }
                                 }
@@ -876,7 +876,7 @@ Item {
                                 Layout.preferredWidth: 78
                                 visible: trow.model.mb >= 1
                                 spacing: 0
-                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: "−" + root.fmt(trow.model.mb); color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: "−" + root.fmt(trow.model.mb); color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium }
                                 Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: "memory"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
                             }
                             Chip { Layout.alignment: Qt.AlignVCenter; pal: root.pal; maxLabel: 1000; implicitHeight: 32; label: "Turn off"; on: true; onClicked: root.turnOff(trow.model.id) }
@@ -926,26 +926,26 @@ Item {
                         }
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 28; anchors.rightMargin: 16; anchors.topMargin: 11; anchors.bottomMargin: 11
+                            anchors.leftMargin: 28; anchors.rightMargin: 16; anchors.topMargin: 12; anchors.bottomMargin: 12
                             spacing: 16
                             ColumnLayout {
                                 id: ucol
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignVCenter
-                                spacing: 5
+                                spacing: 4
                                 Flow {
                                     Layout.fillWidth: true
                                     spacing: 8
-                                    Text { text: urow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                    Text { text: urow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                                     Rectangle {
                                         implicitWidth: vTxt.implicitWidth + 16; implicitHeight: 18; radius: 9
                                         color: Qt.alpha(urow.tone, 0.16)
                                         Text {
                                             id: vTxt
                                             anchors.centerIn: parent
-                                            text: urow.modelData.on_demand ? "ON DEMAND" : urow.modelData.verdict === "remove" ? (urow.svc ? "TURN OFF" : "REMOVE") : urow.modelData.verdict === "keep" ? "KEEP" : "YOUR CALL"
+                                            text: urow.modelData.on_demand ? "On demand" : urow.modelData.verdict === "remove" ? (urow.svc ? "Turn off" : "Remove") : urow.modelData.verdict === "keep" ? "Keep" : "Your call"
                                             color: urow.tone
-                                            font.family: root.pal.uiFont; font.pixelSize: 9; font.weight: Font.DemiBold; font.letterSpacing: 1
+                                            font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.Medium; font.letterSpacing: 0
                                         }
                                     }
                                     Text { text: urow.modelData.kind + (urow.modelData.launches ? "  ·  started " + urow.modelData.launches + "× from the launcher" : ""); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; topPadding: 2 }
@@ -971,7 +971,7 @@ Item {
                                 Layout.preferredWidth: 78
                                 readonly property real mb: urow.svc ? (urow.modelData.running ? (urow.modelData.mem_mb || 0) : 0) : (urow.modelData.size_mb || 0)
                                 visible: mb >= 1
-                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: "−" + root.fmt(parent.mb); color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: "−" + root.fmt(parent.mb); color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium }
                                 Text { width: parent.width; horizontalAlignment: Text.AlignRight; text: urow.svc ? "memory" : "disk"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
                             }
                             Chip {
@@ -997,7 +997,7 @@ Item {
                         text: unusedProc.running ? "Looking through your programs and services, then asking the AI…"
                             : root.unusedErr !== "" ? root.unusedErr
                             : root.unused ? root.unused.summary : ""
-                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium
                     }
                     Text {
                         width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
@@ -1041,14 +1041,14 @@ Item {
                                         text: !root.loaded ? "Reading…"
                                               : root.healthState === "over" ? "Halcyon is over its " + (root.overRam && root.overCpu ? "RAM and CPU limits" : root.overRam ? "RAM limit" : "CPU limit")
                                               : root.healthState === "near" ? "Halcyon is close to a limit" : "Halcyon is within its limits"
-                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium
                                     }
                                     Item { Layout.fillWidth: true }
                                     Text { text: root.loaded ? "all Halcyon parts together" : ""; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                 }
                                 Meter {
                                     Layout.fillWidth: true
-                                    label: "MEMORY (PSS)"
+                                    label: "Memory (PSS)"
                                     value: root.halRam; limit: root.effRam
                                     valueText: root.loaded ? root.fmt(root.halRam) : "—"
                                     limitText: root.fmt(root.effRam)
@@ -1168,7 +1168,7 @@ Item {
                                     RowLayout {
                                         width: parent.width
                                         spacing: 10
-                                        Text { Layout.alignment: Qt.AlignVCenter; text: fcard.model.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                        Text { Layout.alignment: Qt.AlignVCenter; text: fcard.model.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                                         Rectangle {
                                             Layout.alignment: Qt.AlignVCenter
                                             implicitWidth: kindText.implicitWidth + 16; implicitHeight: 18; radius: 9
@@ -1176,15 +1176,15 @@ Item {
                                             Text {
                                                 id: kindText
                                                 anchors.centerIn: parent
-                                                text: fcard.model.kind === "ram" ? "RAM" : fcard.model.kind === "cpu" ? "CPU" : "WHOLE MACHINE"
+                                                text: fcard.model.kind === "ram" ? "RAM" : fcard.model.kind === "cpu" ? "CPU" : "Whole machine"
                                                 color: fcard.tone
-                                                font.family: root.pal.uiFont; font.pixelSize: 9; font.weight: Font.DemiBold; font.letterSpacing: 1
+                                                font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.Medium; font.letterSpacing: 0
                                             }
                                         }
                                         Item { Layout.fillWidth: true }
                                         Column {
                                             Layout.alignment: Qt.AlignVCenter
-                                            Text { anchors.right: parent.right; text: fcard.model.value; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                            Text { anchors.right: parent.right; text: fcard.model.value; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium }
                                             Text { anchors.right: parent.right; visible: fcard.model.share > 0; text: fcard.model.share + "% of Halcyon"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10 }
                                         }
                                     }
@@ -1228,7 +1228,7 @@ Item {
                                                 visible: !act.isBtn
                                                 width: parent.width
                                                 spacing: 1
-                                                Text { width: parent.width; text: act.modelData.label; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.DemiBold }
+                                                Text { width: parent.width; text: act.modelData.label; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.Medium }
                                                 Text { width: parent.width; text: act.modelData.text || ""; wrapMode: Text.WordWrap; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                             }
                                         }
@@ -1272,7 +1272,7 @@ Item {
                     anchors.centerIn: parent
                     visible: root.loaded && root.tab === "tips" && root.shownTips.length === 0
                     spacing: 6
-                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Nothing stands out"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
+                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Nothing stands out"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 16; font.weight: Font.Medium }
                     Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Everything that starts with your desktop is doing a job on this machine."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                 }
 

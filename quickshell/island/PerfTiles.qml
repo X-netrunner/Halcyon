@@ -207,13 +207,13 @@ PerfBase {
     }
 
     // ---- CPU
-    Text { x: 30; y: 28; opacity: tCpu.reveal; text: "CPU"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4 }
+    Text { x: 30; y: 28; opacity: tCpu.reveal; text: "CPU"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0 }
     Text {
         x: 14; y: 98; width: 200; opacity: tCpu.reveal
         horizontalAlignment: Text.AlignHCenter
         text: Math.round(root.cpuLoad * 100) + "%"
         color: root.cpuHot ? root.pal.bad : root.pal.text
-        font.family: root.pal.uiFont; font.pixelSize: 26; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 26; font.weight: Font.Medium
     }
     Text {
         x: 16; y: 133; width: 196; opacity: tCpu.reveal
@@ -224,12 +224,12 @@ PerfBase {
     }
 
     // ---- memory
-    Text { x: 236; y: 28; opacity: tMem.reveal; text: "MEMORY"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4 }
+    Text { x: 236; y: 28; opacity: tMem.reveal; text: "Memory"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0 }
     Text {
         x: 236; y: 44; opacity: tMem.reveal
         text: Math.round(root.memLoad * 100) + "%"
         color: root.memHot ? root.pal.bad : root.pal.accent2
-        font.family: root.pal.uiFont; font.pixelSize: 26; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 26; font.weight: Font.Medium
     }
     Text {
         x: 236; y: 128; width: 132; opacity: tMem.reveal; elide: Text.ElideRight
@@ -239,12 +239,12 @@ PerfBase {
     }
 
     // ---- GPU
-    Text { x: 402; y: 28; opacity: tGpu.reveal; text: "GPU"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4 }
+    Text { x: 402; y: 28; opacity: tGpu.reveal; text: "GPU"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0 }
     Text {
         x: 402; y: 44; width: 66; opacity: tGpu.reveal; elide: Text.ElideRight
         text: root.lc ? root.lc[2].value : ""
         color: root.lc ? root.lc[2].tint : root.pal.muted
-        font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.Medium
     }
     Text {
         x: 402; y: 128; width: 132; opacity: tGpu.reveal; elide: Text.ElideRight
@@ -254,13 +254,13 @@ PerfBase {
     }
 
     // ---- storage
-    Text { x: 30; y: 174; opacity: tSto.reveal; text: "STORAGE"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4 }
+    Text { x: 30; y: 174; opacity: tSto.reveal; text: "Storage"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0 }
     Text {
         x: 28; y: 236; width: 60; opacity: tSto.reveal
         horizontalAlignment: Text.AlignHCenter
         text: root.diskRows.length > 0 ? Math.round(root.stoLoad * 100) + "%" : "—"
         color: root.stoHot ? root.pal.bad : root.pal.text
-        font.family: root.pal.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 16; font.weight: Font.Medium
     }
     Text {
         x: 30; y: 284; width: 170; opacity: tSto.reveal; elide: Text.ElideRight
@@ -300,31 +300,31 @@ PerfBase {
     }
 
     // ---- network
-    Text { x: 236; y: 174; opacity: tNet.reveal; text: "NETWORK"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4 }
-    Text { x: 236; y: 198; opacity: tNet.reveal; text: "DOWN"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.2 }
+    Text { x: 236; y: 174; opacity: tNet.reveal; text: "Network"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0 }
+    Text { x: 236; y: 198; opacity: tNet.reveal; text: "Down"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0 }
     Text {
         x: 236; y: 212; width: 124; opacity: tNet.reveal; elide: Text.ElideRight
         text: root.rate(root.stats.down)
         color: root.pal.accent
-        font.family: root.pal.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 18; font.weight: Font.Medium
     }
-    Text { x: 236; y: 246; opacity: tNet.reveal; text: "UP"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.2 }
+    Text { x: 236; y: 246; opacity: tNet.reveal; text: "UP"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0 }
     Text {
         x: 236; y: 260; width: 124; opacity: tNet.reveal; elide: Text.ElideRight
         text: root.rate(root.stats.up)
         color: root.pal.accent2
-        font.family: root.pal.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 18; font.weight: Font.Medium
     }
 
     // ---- battery, power mode, sysmode
-    Text { x: 568; y: 28; opacity: tBat.reveal; text: root.hasBat ? "BATTERY" : "POWER"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4 }
+    Text { x: 568; y: 28; opacity: tBat.reveal; text: root.hasBat ? "Battery" : "Power"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0 }
     Text {
         visible: root.hasBat
         x: 554; y: 148; width: 134; opacity: tBat.reveal
         horizontalAlignment: Text.AlignHCenter
         text: Math.round(root.sBat) + "%"
         color: root.batTint
-        font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.Medium
     }
     Text {
         visible: root.hasBat

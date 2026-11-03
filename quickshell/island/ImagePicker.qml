@@ -105,10 +105,10 @@ Item {
             color: root.pal.text
             font.family: root.pal.uiFont
             font.pixelSize: 17
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
         }
         Rectangle {
-            anchors.right: parent.right; anchors.rightMargin: 18
+            anchors.right: parent.right; anchors.rightMargin: 20
             y: 16; width: 32; height: 32; radius: 16
             color: closeMa.containsMouse ? root.pal.surface : "transparent"
             Text { anchors.centerIn: parent; text: "✕"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 13 }

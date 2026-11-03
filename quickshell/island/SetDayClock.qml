@@ -8,7 +8,7 @@ ColumnLayout {
     property var root                  // the Settings scope (it hands itself in)
     id: dc
     width: parent ? parent.width : 0
-    spacing: 22
+    spacing: 24
     readonly property bool safetyInstalled: root.startup.has && root.startup.has.safety === true
     readonly property int bSince: Number(root.remind.backupSince !== undefined ? root.remind.backupSince : -1)
     readonly property int bNext: Number(root.remind.backupNext !== undefined ? root.remind.backupNext : -1)

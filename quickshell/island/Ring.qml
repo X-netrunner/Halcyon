@@ -47,7 +47,7 @@ Item {
             color: root.pal.text
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tTitle
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -55,7 +55,7 @@ Item {
             color: root.pal.muted
             font.family: root.pal.uiFont
             font.pixelSize: 10
-            font.letterSpacing: 0.8
+            font.letterSpacing: 0
         }
     }
 }

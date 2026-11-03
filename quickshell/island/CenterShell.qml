@@ -115,7 +115,7 @@ Item {
                 color: cs.pal.muted
                 font.family: cs.pal.uiFont
                 font.pixelSize: cs.pal.tCap
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
                 font.letterSpacing: cs.pal.calm ? 0.2 : 0.9
                 font.capitalization: cs.pal.calm ? Font.MixedCase : Font.AllUppercase
             }
@@ -148,7 +148,7 @@ Item {
                             color: orow.on ? cs.pal.text : cs.pal.muted
                             font.family: cs.pal.uiFont
                             font.pixelSize: cs.pal.tBody + 1
-                            font.weight: orow.on ? Font.DemiBold : Font.Medium
+                            font.weight: orow.on ? Font.Medium : Font.Medium
                         }
                     }
                     MouseArea { id: oMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: cs.optionClicked(orow.modelData.key) }
@@ -157,7 +157,7 @@ Item {
         }
         // the status: what the old header said (a note, or what the open item is about), always visible and never elided away
         Column {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 20; rightMargin: 18; bottomMargin: 18 }
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 20; rightMargin: 20; bottomMargin: 20 }
             spacing: 4
             Text {
                 width: parent.width
@@ -198,7 +198,8 @@ Item {
 
         Text {
             visible: cs.tabs.length === 0
-            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+            // after the + button (it sits where the first tab would be), not under it
+            anchors { left: parent.left; leftMargin: (cs.addVisible ? parent.plusW : 0) + 12; verticalCenter: parent.verticalCenter }
             text: cs.tabsHint
             color: cs.pal.muted
             font.family: cs.pal.uiFont
@@ -267,7 +268,7 @@ Item {
                     color: td.ask ? cs.pal.warn : (td.on ? cs.pal.text : cs.pal.muted)
                     font.family: cs.pal.uiFont
                     font.pixelSize: cs.pal.tBody
-                    font.weight: td.on ? Font.DemiBold : Font.Medium
+                    font.weight: td.on ? Font.Medium : Font.Medium
                 }
                 TextInput {
                     id: renIn

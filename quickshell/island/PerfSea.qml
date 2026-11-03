@@ -237,15 +237,15 @@ PerfBase {
                 width: parent.width; horizontalAlignment: Text.AlignHCenter
                 text: lab.ln.name
                 color: root.pal.muted
-                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4
-                font.capitalization: Font.AllUppercase
+                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0
+                font.capitalization: Font.MixedCase
             }
             Text {
                 y: 14
                 width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                 text: lab.ln.value
                 color: lab.ln.hot ? root.pal.bad : root.pal.text
-                font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.DemiBold
+                font.family: root.pal.uiFont; font.pixelSize: 24; font.weight: Font.Medium
             }
         }
     }

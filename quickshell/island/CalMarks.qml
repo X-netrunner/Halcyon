@@ -22,7 +22,7 @@ Row {
         Text {
             anchors.centerIn: parent; text: "✓"; visible: m.done || ca.containsMouse
             color: m.done ? m.pal.bg : Qt.alpha(m.pal.text, 0.6)
-            font.family: m.pal.uiFont; font.pixelSize: 14; font.weight: Font.Bold
+            font.family: m.pal.uiFont; font.pixelSize: 14; font.weight: Font.DemiBold
         }
         MouseArea { id: ca; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: m.cal.setDone(m.ev, !m.done) }
     }

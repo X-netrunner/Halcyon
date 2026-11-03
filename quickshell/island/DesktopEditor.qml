@@ -124,7 +124,7 @@ PanelWindow {
             border.color: Qt.alpha(win.pal.accent, 0.35)
             MouseArea { anchors.fill: parent }
             Flickable {
-                anchors.fill: parent; anchors.margins: 18
+                anchors.fill: parent; anchors.margins: 20
                 contentWidth: width; contentHeight: shelf.implicitHeight
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
@@ -184,7 +184,7 @@ PanelWindow {
                 id: vb
                 anchors.centerIn: parent
                 spacing: 8
-                Text { text: "View"; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 11; font.letterSpacing: 1.5; Layout.rightMargin: 2 }
+                Text { text: "View"; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 11; font.letterSpacing: 0; Layout.rightMargin: 2 }
                 Chip { pal: win.pal; implicitHeight: 30; label: "Grid"; on: win.gridOn; onClicked: win.optToggled("deskGrid", !win.gridOn) }
                 Repeater {
                     model: win.gridOn ? WD.gridSizes : []
@@ -211,7 +211,7 @@ PanelWindow {
             opacity: win.helpOpen ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             anchors.right: parent.right; anchors.rightMargin: 24
-            anchors.bottom: parent.bottom; anchors.bottomMargin: 34
+            anchors.bottom: parent.bottom; anchors.bottomMargin: 32
             width: 300
             height: helpCol.implicitHeight + 28
             radius: win.pal.rLg
@@ -222,10 +222,10 @@ PanelWindow {
                 id: helpCol
                 x: 16; y: 14
                 width: parent.width - 32
-                spacing: 7
+                spacing: 8
                 Item {
                     width: parent.width; height: 20
-                    Text { text: "How to place widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: "How to place widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                     Text {
                         anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                         text: "✕"; color: hx.containsMouse ? win.pal.text : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 13
@@ -257,7 +257,7 @@ PanelWindow {
             id: bar
             pal: win.pal
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom; anchors.bottomMargin: 34
+            anchors.bottom: parent.bottom; anchors.bottomMargin: 32
             width: tb.implicitWidth + 36
             height: 62
             radius: 31
@@ -268,7 +268,7 @@ PanelWindow {
                 id: tb
                 anchors.centerIn: parent
                 spacing: 12
-                Text { Layout.alignment: Qt.AlignVCenter; text: win.lockT ? "Place your lock screen widgets" : "Place your widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
+                Text { Layout.alignment: Qt.AlignVCenter; text: win.lockT ? "Place your lock screen widgets" : "Place your widgets"; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.Medium }
                 SegSwitch {
                     Layout.alignment: Qt.AlignVCenter
                     pal: win.pal
@@ -281,7 +281,7 @@ PanelWindow {
                     Layout.preferredWidth: 26; Layout.preferredHeight: 26; radius: 13
                     color: win.helpOpen ? Qt.alpha(win.pal.accent, 0.22) : (hq.containsMouse ? Qt.alpha(win.pal.surfaceHi, 0.9) : Qt.alpha(win.pal.surface, 0.8))
                     border.width: 1; border.color: win.helpOpen ? win.pal.accent : win.pal.lineSoft
-                    Text { anchors.centerIn: parent; text: "?"; color: win.helpOpen ? win.pal.accent : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.Bold }
+                    Text { anchors.centerIn: parent; text: "?"; color: win.helpOpen ? win.pal.accent : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
                     MouseArea { id: hq; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: win.helpOpen = !win.helpOpen }
                 }
                 ActionChip { pal: win.pal; label: win.adding ? "Close" : "Add a widget"; primary: !win.adding; onClicked: win.adding = !win.adding }

@@ -10,7 +10,7 @@ ColumnLayout {
     width: parent ? parent.width : 0
     spacing: 12
     readonly property bool onlineOnly: root.opt.wpSource === "online"      // Online: the folder tools step out of the way
-    // the search word for Online category "Search…"
+    // the search word for Online category "Search wallpapers"
     RowLayout {
         Layout.fillWidth: true
         visible: root.opt.wpSource !== "local" && root.opt.wpCat === "custom"
@@ -81,7 +81,7 @@ ColumnLayout {
                     border.width: th.now ? 2 : 1
                     border.color: th.now ? root.pal.accent : root.pal.line
                     Image {
-                        anchors.fill: parent; anchors.margins: 3
+                        anchors.fill: parent; anchors.margins: 4
                         source: "file://" + th.modelData.path
                         sourceSize.width: 280; sourceSize.height: 170
                         fillMode: Image.PreserveAspectCrop
@@ -93,7 +93,7 @@ ColumnLayout {
                         visible: th.now
                         anchors { right: parent.right; top: parent.top; margins: 6 }
                         width: 18; height: 18; radius: 9; color: root.pal.accent
-                        Text { anchors.centerIn: parent; text: "✓"; color: root.pal.bg; font.pixelSize: 11; font.weight: Font.Bold }
+                        Text { anchors.centerIn: parent; text: "✓"; color: root.pal.bg; font.pixelSize: 11; font.weight: Font.DemiBold }
                     }
                     MouseArea { id: thMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.pickWallpaper(th.modelData.path) }
                 }

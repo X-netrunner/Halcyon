@@ -61,7 +61,7 @@ WBase {
             spacing: root.sz(6)
             WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.temp; font.pixelSize: root.sz(64); font.weight: Font.ExtraLight }
             Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: root.sz(28); height: 1; color: Qt.alpha(root.accent, 0.75) }
-            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.desc.toLowerCase(); color: root.dim; font.pixelSize: root.sz(12); font.letterSpacing: 3 }
+            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.desc.toLowerCase(); color: root.dim; font.pixelSize: root.sz(12); font.letterSpacing: 0 }
         }
     }
 
@@ -84,7 +84,7 @@ WBase {
         Row {
             spacing: root.sz(8)
             WIco { b: root; text: root.glyph(root.icon); font.pixelSize: root.sz(22); anchors.verticalCenter: parent.verticalCenter }
-            WLbl { b: root; text: root.temp; font.pixelSize: root.sz(20); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; text: root.temp; font.pixelSize: root.sz(20); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
             WLbl { b: root; text: root.desc; color: root.dim; font.pixelSize: root.sz(13); anchors.verticalCenter: parent.verticalCenter }
         }
     }

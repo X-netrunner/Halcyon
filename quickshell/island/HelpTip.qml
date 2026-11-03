@@ -26,8 +26,8 @@ Item {
             text: "?"
             color: h.hovered ? h.pal.accent : h.pal.muted
             font.family: h.pal.uiFont
-            font.pixelSize: 9
-            font.weight: Font.Bold
+            font.pixelSize: 10
+            font.weight: Font.DemiBold
         }
     }
     HoverHandler { id: hh; cursorShape: Qt.WhatsThisCursor }

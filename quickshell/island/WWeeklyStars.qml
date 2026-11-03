@@ -52,7 +52,7 @@ WBase {
             spacing: root.sz(6)
             Row {
                 width: parent.width
-                WLbl { b: root; text: "MY WEEK IN STARS"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold; width: parent.width - rg.implicitWidth }
+                WLbl { b: root; text: "My week in stars"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium; width: parent.width - rg.implicitWidth }
                 WLbl { id: rg; b: root; color: root.dim; font.pixelSize: root.sz(11); text: root.sky ? root.sky.range : "" }
             }
             Canvas {
@@ -116,7 +116,7 @@ WBase {
                     delegate: WLbl {
                         required property string modelData
                         required property int index
-                        b: root; text: modelData; color: root.dim; font.pixelSize: root.sz(9)
+                        b: root; text: modelData; color: root.dim; font.pixelSize: root.sz(10)
                         x: parent.width * (0.07 + 0.86 * (index + 0.5) / 7) - width / 2
                     }
                 }
@@ -134,7 +134,7 @@ WBase {
         id: countC
         Column {
             spacing: root.sz(8)
-            WLbl { b: root; text: "MY WEEK IN STARS"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold }
+            WLbl { b: root; text: "My week in stars"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium }
             Row {
                 spacing: root.sz(10)
                 WIco { b: root; text: root.glyph(0xF04CE); color: root.accent; font.pixelSize: root.sz(34); anchors.verticalCenter: parent.verticalCenter }
@@ -145,15 +145,15 @@ WBase {
                 spacing: root.sz(18)
                 Repeater {
                     model: [
-                        { n: root.fmtMin(root.counts.focusMinutes), l: "FOCUS" },
-                        { n: String(root.counts.tasks), l: "TASKS" },
-                        { n: String(root.counts.events), l: "EVENTS" }
+                        { n: root.fmtMin(root.counts.focusMinutes), l: "Focus" },
+                        { n: String(root.counts.tasks), l: "Tasks" },
+                        { n: String(root.counts.events), l: "Events" }
                     ]
                     delegate: Column {
                         required property var modelData
                         spacing: 0
-                        WLbl { b: root; text: modelData.n; font.pixelSize: root.sz(15); font.weight: Font.DemiBold }
-                        WLbl { b: root; text: modelData.l; color: root.dim; font.pixelSize: root.sz(9); font.letterSpacing: 1.4 }
+                        WLbl { b: root; text: modelData.n; font.pixelSize: root.sz(15); font.weight: Font.Medium }
+                        WLbl { b: root; text: modelData.l; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                     }
                 }
             }

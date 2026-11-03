@@ -238,8 +238,8 @@ Scope {
         command: ["python3", root.script, "add-holidays"]
         stdout: StdioCollector {
             onStreamFinished: {
-                root.setupMsg = "Regional holidays added & synced!"
-                root.holidayModalMsg = "Regional holidays added & synced!"
+                root.setupMsg = "Regional holidays added and synced"
+                root.holidayModalMsg = "Regional holidays added and synced"
                 root.loadConf()
                 root.loadEvents()
             }
@@ -250,7 +250,7 @@ Scope {
         property string countryName: ""
         stdout: StdioCollector {
             onStreamFinished: {
-                root.holidayModalMsg = "Added " + (addCountryProc.countryName || "Country") + " Holidays!"
+                root.holidayModalMsg = "Added " + (addCountryProc.countryName || "Country") + " holidays added"
                 root.loadConf()
                 root.loadEvents()
             }
@@ -289,7 +289,7 @@ Scope {
         root.watching = true
         root.hide()
         Quickshell.execDetached(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "Export Google Contacts (1 click)",
-            "In Google Contacts: click Export (left sidebar) → Export. Halcyon will detect the download in ~/Downloads and import all birthdays automatically!"])
+            "In Google Contacts: click Export (left sidebar) → Export. Halcyon will detect the download in ~/Downloads and import all birthdays by itself"])
     }
     function openGoogleExport() {
         Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "run", "browser", "https://calendar.google.com/calendar/u/0/r/settings/export"])
@@ -297,7 +297,7 @@ Scope {
         root.watching = true
         root.hide()
         Quickshell.execDetached(["notify-send", "-a", "Calendar", "-i", "x-office-calendar", "Export Google Calendar (1 click)",
-            "Click the 'Export' button on the page — Halcyon will detect the downloaded .zip in ~/Downloads and connect your calendars automatically!"])
+            "Click the 'Export' button on the page — Halcyon will detect the downloaded .zip in ~/Downloads and connect your calendars by itself"])
     }
     Process {
         id: listBdayProc
@@ -318,7 +318,7 @@ Scope {
                 try {
                     var r = JSON.parse(text.split("\n").filter(function(l){ return l.trim() !== "" }).pop())
                     if (r.ok) {
-                        root.bdayModalMsg = "✓ Saved birthday for " + (r.name || "contact") + "!"
+                        root.bdayModalMsg = "Saved birthday for " + (r.name || "contact") + "!"
                         root.loadConf(); root.loadEvents(); root.loadBdayList()
                     } else {
                         root.bdayModalMsg = r.error || "Could not save birthday"
@@ -349,7 +349,7 @@ Scope {
                 try {
                     var r = JSON.parse(text.split("\n").filter(function(l){ return l.trim() !== "" }).pop())
                     if (r.ok && (r.addedCalendars > 0 || r.addedBirthdays > 0)) {
-                        var msg = "✓ Auto-imported "
+                        var msg = "Imported "
                         if (r.addedCalendars > 0 && r.addedBirthdays > 0)
                             msg += r.addedCalendars + " calendar(s) & " + r.addedBirthdays + " birthdays from " + r.file
                         else if (r.addedCalendars > 0)
@@ -421,7 +421,7 @@ Scope {
                     ok = r.ok; err = r.error || ""; name = r.name || ""
                 } catch(e) { err = "Failed to parse response" }
                 if (ok) {
-                    root.holidayModalMsg = "Holiday '" + name + "' added!"
+                    root.holidayModalMsg = "Holiday '" + name + "' added"
                     root.loadConf()
                     root.loadEvents()
                 } else {
@@ -559,7 +559,7 @@ Scope {
         property string label: ""
         property bool primary: false
         signal clicked()
-        radius: 17
+        radius: 10
         implicitWidth: Math.max(96, t.implicitWidth + 32)   // implicit, not width: layouts re-measure when the label changes
         implicitHeight: 34
         scale: ma2.pressed ? 0.97 : 1
@@ -567,7 +567,7 @@ Scope {
         border.width: primary ? 0 : 1; border.color: root.pal.line
         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-        Text { id: t; anchors.centerIn: parent; text: pl.label; color: pl.primary ? root.pal.bg : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+        Text { id: t; anchors.centerIn: parent; text: pl.label; color: pl.primary ? root.pal.bg : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
         MouseArea { id: ma2; anchors.fill: parent; hoverEnabled: true; onClicked: pl.clicked() }
     }
 
@@ -636,7 +636,7 @@ Scope {
                         readonly property bool hot: titleMa.containsMouse || root.monthPick
                         Text {
                             text: root.ready ? Qt.formatDate(new Date(root.viewY, root.viewM, 1), "MMMM yyyy") : "Calendar"
-                            color: monthTitle.hot && root.pal.zen ? root.pal.chosenText : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                            color: monthTitle.hot && root.pal.zen ? root.pal.chosenText : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.Medium
                         }
                         Text {
                             visible: root.pal.zen && root.ready
@@ -685,7 +685,7 @@ Scope {
                                 Text {
                                     anchors.centerIn: parent
                                     text: root.pickYear
-                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 2; font.weight: Font.DemiBold
+                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 2; font.weight: Font.Medium
                                 }
                                 IconBtn { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; glyph: "›"; onClicked: root.pickYear++ }
                             }
@@ -708,7 +708,7 @@ Scope {
                                             text: mcell.modelData
                                             color: mcell.shown ? root.pal.chosenText : (mcell.now ? root.pal.accent : root.pal.text)
                                             font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
-                                            font.weight: mcell.shown || mcell.now ? Font.DemiBold : Font.Normal
+                                            font.weight: mcell.shown || mcell.now ? Font.Medium : Font.Normal
                                         }
                                         MouseArea {
                                             id: mcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -722,13 +722,13 @@ Scope {
                     }
                     RowLayout {
                         id: head
-                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 24; topMargin: root.pal.centred ? 60 : 24 }
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 24; topMargin: 24 }   // one header row: the centred month, sync status and buttons share it
                         spacing: 10
                         Text { visible: !root.pal.zen; text: String.fromCodePoint(0xF00ED); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
                         Text {
                             visible: !root.pal.centred
                             text: root.ready ? Qt.formatDate(new Date(root.viewY, root.viewM, 1), "MMMM yyyy") : "Calendar"
-                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.Medium
                             Layout.preferredWidth: 175
                             Layout.minimumWidth: 175
                             Layout.maximumWidth: 175
@@ -784,7 +784,7 @@ Scope {
                     Item {
                         id: body
                         visible: root.ready && !root.holidayModalOpen && !root.bdayModalOpen
-                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
+                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 20 }
 
                         // left: month grid + next up
                         Item {
@@ -864,11 +864,11 @@ Scope {
                                             color: cell.isToday ? root.pal.accent : root.pal.text
                                             opacity: cell.inMonth ? 1 : 0.35
                                             font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
-                                            font.weight: cell.isToday || cell.isSel ? Font.DemiBold : Font.Normal
+                                            font.weight: cell.isToday || cell.isSel ? Font.Medium : Font.Normal
                                         }
                                         Row {
                                             anchors.horizontalCenter: parent.horizontalCenter
-                                            y: 29; spacing: 3
+                                            y: 29; spacing: 4
                                             Repeater {
                                                 model: Math.min(3, cell.evs.length)
                                                 delegate: Rectangle {
@@ -900,11 +900,11 @@ Scope {
                                 Column {
                                     id: nextCol
                                     x: 16; y: 14; width: parent.width - 32; spacing: 4
-                                    Text { text: root.pal.cap("NEXT UP"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: Font.Bold; font.letterSpacing: root.pal.calm ? 0.2 : 1.2 }
+                                    Text { text: root.pal.cap("NEXT UP"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.weight: Font.DemiBold; font.letterSpacing: root.pal.calm ? 0.2 : 1.2 }
                                     Text {
                                         width: parent.width
                                         text: root.nextUp ? root.nextUp.title : "Nothing coming up"
-                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium
                                         wrapMode: Text.Wrap
                                     }
                                     Text {
@@ -927,10 +927,11 @@ Scope {
                                 width: parent.width; spacing: 2
                                 Text {
                                     text: Qt.formatDate(root.sel, "dddd d MMMM")
-                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold
+                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 18; font.weight: Font.Medium
                                 }
                                 Text {
-                                    text: root.selEvents.length === 0 ? "Free day" : root.selEvents.length + (root.selEvents.length === 1 ? " event" : " events")
+                                    visible: root.selEvents.length > 0       // an empty day already says "Nothing planned" below
+                                    text: root.selEvents.length + (root.selEvents.length === 1 ? " event" : " events")
                                     color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
                                 }
                             }
@@ -997,12 +998,12 @@ Scope {
                                                     font.family: root.pal.mono; font.pixelSize: root.pal.tBody
                                                 }
                                                 Column {
-                                                    width: parent.width - 84; spacing: 3
+                                                    width: parent.width - 84; spacing: 4
                                                     Text {
                                                         width: parent.width
                                                         text: modelData.title
                                                         font.strikeout: root.isDone(modelData)
-                                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold
+                                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium
                                                         wrapMode: Text.WordWrap
                                                     }
                                                     Text {
@@ -1038,7 +1039,7 @@ Scope {
                     Item {
                         id: setup
                         visible: !root.ready && !root.holidayModalOpen && !root.bdayModalOpen
-                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
+                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 20 }
                         Flickable {
                             anchors.fill: parent
                             contentWidth: width; contentHeight: sCol.implicitHeight + 8
@@ -1052,7 +1053,7 @@ Scope {
                                 Text {
                                     width: parent.width
                                     text: root.busyOnly ? "Reconnect your calendar" : (root.cfg.configured ? "Your calendar" : "Connect Google Calendar")
-                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.Medium
                                 }
                                 // the new style keeps the header to the months: birthdays and holidays are managed from here
                                 Row {
@@ -1074,7 +1075,7 @@ Scope {
                                 CalStep {
                                     pal: root.pal; live: root.open
                                     width: sCol.width; num: 1; done: root.watching || root.cfg.configured; current: !root.watching && !root.cfg.configured
-                                    title: "Connect Google Calendar in 2 clicks (never make your calendar public!)"
+                                    title: "Connect Google Calendar in 2 clicks (your calendar stays private)"
                                     body: "Click '1-Click Export All Calendars' to open Google's Export page and click Export (Halcyon auto-imports the .zip from ~/Downloads!), OR click 'Live Sync (Secret iCal Link)' → click your calendar → copy 'Secret address in iCal format' (Halcyon auto-detects your clipboard!)."
                                     Pill { primary: true; label: "1-Click Export All Calendars ↗"; onClicked: root.openGoogleExport() }
                                     Pill { label: "Live Sync (Secret iCal Link) ↗"; onClicked: root.openGoogle() }
@@ -1087,7 +1088,7 @@ Scope {
                                     body: "Google Calendar's Birthdays calendar is separate from Google Contacts and has no iCal link. Click '1. Open Google Contacts' → click Export (left menu) → Export (CSV or vCard). Halcyon watches ~/Downloads and imports every birthday (with birth years!) automatically."
                                     Pill { primary: true; label: "1. Open Google Contacts ↗"; onClicked: root.openGoogleContacts() }
                                     Pill { label: "Auto-Import Downloads"; onClicked: root.importBirthdays() }
-                                    Pill { label: "Manage Birthdays"; onClicked: { root.setupOpen = false; root.bdayModalOpen = true; root.loadBdayList() } }
+                                    Pill { label: "Manage birthdays"; onClicked: { root.setupOpen = false; root.bdayModalOpen = true; root.loadBdayList() } }
                                 }
 
                                 Text {
@@ -1133,7 +1134,7 @@ Scope {
                                         }
                                     }
                                     Pill {
-                                        label: "Import Contacts"
+                                        label: "Import contacts"
                                         onClicked: root.importBirthdays()
                                     }
                                     Pill {
@@ -1145,7 +1146,7 @@ Scope {
                                         onClicked: root.gConnect()
                                     }
                                     Pill {
-                                        label: "Edit Birthdays"
+                                        label: "Edit birthdays"
                                         onClicked: {
                                             Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.config/Halcyon/birthdays.txt"])
                                         }
@@ -1163,7 +1164,7 @@ Scope {
                                     width: parent.width; spacing: 10; topPadding: 14
                                     visible: root.cfg.configured
                                     Rectangle { width: parent.width; height: 1; color: root.pal.line }
-                                    Text { text: "Reminders"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                    Text { text: "Reminders"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                                     Text {
                                         width: parent.width; wrapMode: Text.WordWrap
                                         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap
@@ -1202,7 +1203,7 @@ Scope {
                     Item {
                         id: holidayView
                         visible: root.holidayModalOpen
-                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
+                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 20 }
                         Flickable {
                             anchors.fill: parent
                             contentWidth: width; contentHeight: hCol.implicitHeight + 20
@@ -1220,7 +1221,7 @@ Scope {
                                         spacing: 2
                                         Text {
                                             text: "Holidays & Feasts"
-                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.Medium
                                         }
                                         Text {
                                             text: "Holidays, your own dates and birthdays."
@@ -1255,7 +1256,7 @@ Scope {
                                     width: parent.width; spacing: 8
                                     Text {
                                         text: "1-Click Country Feeds"
-                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium
                                     }
                                     Text {
                                         text: "Add a country's public holidays:"
@@ -1322,7 +1323,7 @@ Scope {
                                                 color: root.pal.accent
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tBody
-                                                font.weight: Font.DemiBold
+                                                font.weight: Font.Medium
                                             }
                                             MouseArea {
                                                 id: adMa
@@ -1347,7 +1348,7 @@ Scope {
                                     width: parent.width; spacing: 8
                                     Text {
                                         text: "Add Custom Holiday or Celebration"
-                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium
                                     }
                                     Text {
                                         text: "Quickly record an annual or one-off holiday (e.g. 10-24 or 2026-12-25):"
@@ -1427,8 +1428,8 @@ Scope {
                                     Column {
                                         Layout.fillWidth: true; Layout.minimumWidth: 160; spacing: 2
                                         Text {
-                                            text: "Direct Text File Editing"
-                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 14; font.weight: Font.DemiBold
+                                            text: "Edit the text file"
+                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 14; font.weight: Font.Medium
                                         }
                                         Text {
                                             width: parent.width; wrapMode: Text.WordWrap
@@ -1464,7 +1465,7 @@ Scope {
                     Item {
                         id: bdayView
                         visible: root.bdayModalOpen
-                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 18 }
+                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom; margins: 24; topMargin: 20 }
                         Flickable {
                             anchors.fill: parent
                             contentWidth: width; contentHeight: bCol.implicitHeight + 20
@@ -1482,7 +1483,7 @@ Scope {
                                         spacing: 2
                                         Text {
                                             text: "Google Contacts & Calendar Birthdays"
-                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.Medium
                                         }
                                         Text {
                                             text: "Import from Google Contacts, or add them here."
@@ -1516,7 +1517,7 @@ Scope {
                                     width: parent.width; spacing: 8
                                     Text {
                                         text: "Why Google Calendar & Google Contacts Birthdays Differ — Fixed in 2 Clicks"
-                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium
                                     }
                                     Text {
                                         width: parent.width; wrapMode: Text.WordWrap
@@ -1551,8 +1552,8 @@ Scope {
                                 Column {
                                     width: parent.width; spacing: 8
                                     Text {
-                                        text: "Quick Add Birthday"
-                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                        text: "Add a birthday"
+                                        color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium
                                     }
                                     Text {
                                         text: "Add one (05-12, or 1998-05-12 to show the age):"
@@ -1631,7 +1632,7 @@ Scope {
                                         width: parent.width
                                         Text {
                                             text: "Upcoming Birthdays (" + root.bdayList.length + ")"
-                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                                            color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 15; font.weight: Font.Medium
                                         }
                                         Item { Layout.fillWidth: true }
                                         Pill {
@@ -1651,7 +1652,7 @@ Scope {
                                                 anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 10
                                                 Text {
                                                     text: modelData.name
-                                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold
+                                                    color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium
                                                     Layout.fillWidth: true; elide: Text.ElideRight
                                                 }
                                                 Text {
@@ -1659,9 +1660,9 @@ Scope {
                                                     color: root.pal.muted; font.family: root.pal.mono; font.pixelSize: root.pal.tCap
                                                 }
                                                 Text {
-                                                    text: (modelData.daysUntil === 0 ? "Today!" : ("in " + modelData.daysUntil + "d")) + (modelData.ageNext ? (" · turns " + modelData.ageNext) : "")
+                                                    text: (modelData.daysUntil === 0 ? "Today" : ("in " + modelData.daysUntil + "d")) + (modelData.ageNext ? (" · turns " + modelData.ageNext) : "")
                                                     color: modelData.daysUntil === 0 ? root.pal.accent : root.pal.accent2
-                                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.DemiBold
+                                                    font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium
                                                 }
                                                 Text {
                                                     text: "✕"

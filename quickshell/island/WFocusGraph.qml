@@ -81,7 +81,7 @@ WBase {
             spacing: root.sz(8)
             Row {
                 width: parent.width
-                WLbl { b: root; text: "FOCUS STREAK"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold; width: parent.width - st.implicitWidth }
+                WLbl { b: root; text: "Focus streak"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium; width: parent.width - st.implicitWidth }
                 WLbl { id: st; b: root; color: root.dim; font.pixelSize: root.sz(11)
                     text: !root.tracked ? "" : (root.streak > 0 && root.streak >= root.best ? "Your best" : (root.streak > 0 ? "On a streak" : "No streak")) }
             }
@@ -134,7 +134,7 @@ WBase {
             spacing: root.sz(6)
             Row {
                 width: parent.width
-                WLbl { b: root; text: "FOCUS, 14 DAYS"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold; width: parent.width - sk.implicitWidth }
+                WLbl { b: root; text: "Focus, 14 days"; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium; width: parent.width - sk.implicitWidth }
                 WLbl { id: sk; b: root; color: root.dim; font.pixelSize: root.sz(11); text: root.streak > 0 ? root.plural(root.streak) + " streak" : "" }
             }
             Item {
@@ -162,7 +162,7 @@ WBase {
             Row {
                 Repeater {
                     model: root.last14
-                    delegate: WLbl { required property var modelData; b: root; width: root.bw / 14; horizontalAlignment: Text.AlignHCenter; text: modelData.day; color: modelData.today ? root.fg : root.dim; font.pixelSize: root.sz(9) }
+                    delegate: WLbl { required property var modelData; b: root; width: root.bw / 14; horizontalAlignment: Text.AlignHCenter; text: modelData.day; color: modelData.today ? root.fg : root.dim; font.pixelSize: root.sz(10) }
                 }
             }
             WLbl { visible: root.showDetail; b: root; width: parent.width; color: root.dim; font.pixelSize: root.sz(11); text: "Today: " + root.todayMin + " / " + root.goal + " min" }

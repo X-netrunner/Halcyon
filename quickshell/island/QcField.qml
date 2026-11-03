@@ -16,7 +16,7 @@ Rectangle {
     border.color: ti.activeFocus ? pal.lineFocus : pal.lineSoft
     TextInput {
         id: ti
-        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 9; rightMargin: 9 }
+        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 8; rightMargin: 8 }
         color: "#ffffff"
         selectionColor: Qt.alpha(fd.pal.accent, 0.45)
         font.family: fd.pal.mono
@@ -28,7 +28,7 @@ Rectangle {
         Keys.onEscapePressed: fd.escaped()
     }
     Text {
-        anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 9 }
+        anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 }
         visible: ti.text === ""
         text: fd.placeholder
         color: Qt.alpha(fd.pal.muted, 0.8)

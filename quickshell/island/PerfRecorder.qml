@@ -164,7 +164,7 @@ PerfBase {
             Row {
                 id: lg
                 required property int index
-                spacing: 5
+                spacing: 4
                 Rectangle { width: 14; height: 3; radius: 1.5; anchors.verticalCenter: parent.verticalCenter; color: root.cols[lg.index] }
                 Text { text: root.names[lg.index]; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium }
             }
@@ -245,7 +245,7 @@ PerfBase {
                     Text {
                         text: root.hoverVals[tr.index] < 0 ? "—" : Math.round(root.hoverVals[tr.index] * 100) + "%"
                         color: root.pal.text
-                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.DemiBold
+                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium
                     }
                 }
             }

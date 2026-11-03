@@ -40,10 +40,10 @@ Item {
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 22
-        anchors.leftMargin: 30
-        anchors.rightMargin: 30
-        spacing: 22
+        anchors.margins: 24
+        anchors.leftMargin: 32
+        anchors.rightMargin: 32
+        spacing: 24
         visible: root.has
 
         ClippingRectangle {
@@ -73,7 +73,7 @@ Item {
                     color: root.pal.text
                     font.family: root.pal.uiFont
                     font.pixelSize: 17
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                 }
             }
             // the artist, and two small chips that open the lyrics / queue panel (MusicMenu.qml)

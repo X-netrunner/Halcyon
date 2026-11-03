@@ -229,7 +229,7 @@ Item {
                 color: root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tBody
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
             Text {
                 visible: root.upcoming !== null

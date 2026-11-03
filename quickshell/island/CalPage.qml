@@ -22,11 +22,11 @@ Item {
         Text {
             id: title
             text: pg.months[pg.cal.viewM] + " " + pg.cal.viewY
-            color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody + 3; font.weight: Font.DemiBold
+            color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody + 3; font.weight: Font.Medium
         }
         Row {
             anchors { right: parent.right; verticalCenter: title.verticalCenter }
-            spacing: 5
+            spacing: 4
             Rectangle {
                 width: 26; height: 24; radius: 12
                 color: prevM.containsMouse ? Qt.alpha(pg.pal.surfaceHi, 0.95) : Qt.alpha(pg.pal.surface, 0.8)
@@ -98,7 +98,7 @@ Item {
                         color: cell.isToday ? pg.pal.accent : pg.pal.text
                         opacity: cell.inMonth ? 1 : 0.35
                         font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody - 1
-                        font.weight: cell.isToday || cell.isSel ? Font.DemiBold : Font.Normal
+                        font.weight: cell.isToday || cell.isSel ? Font.Medium : Font.Normal
                     }
                     Row {
                         anchors.horizontalCenter: parent.horizontalCenter; y: 25; spacing: 2
@@ -128,7 +128,7 @@ Item {
         Text {
             id: dayTitle
             text: Qt.formatDate(pg.cal.sel, "dddd d MMMM")
-            color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody + 3; font.weight: Font.DemiBold
+            color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody + 3; font.weight: Font.Medium
         }
         Text {
             id: dayCount
@@ -160,7 +160,7 @@ Item {
                             Text {
                                 width: parent.width; elide: Text.ElideRight
                                 text: modelData.title; font.strikeout: pg.cal.isDone(modelData)
-                                color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody; font.weight: Font.DemiBold
+                                color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody; font.weight: Font.Medium
                             }
                             Text {
                                 width: parent.width; elide: Text.ElideRight
@@ -227,7 +227,7 @@ Item {
         Text {
             width: parent.width; wrapMode: Text.WordWrap
             text: "No calendar connected yet."
-            color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody + 2; font.weight: Font.DemiBold
+            color: pg.pal.text; font.family: pg.pal.uiFont; font.pixelSize: pg.pal.tBody + 2; font.weight: Font.Medium
         }
         Text {
             width: parent.width; wrapMode: Text.WordWrap

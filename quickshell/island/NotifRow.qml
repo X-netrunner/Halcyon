@@ -208,7 +208,7 @@ Item {
                     color: row.pal.text
                     font.family: row.pal.uiFont
                     font.pixelSize: row.pal.tBody + 2
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                     wrapMode: Text.Wrap
                 }
                 Text {
