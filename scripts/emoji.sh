@@ -7,7 +7,7 @@ if [ -x "$hal" ]; then
   [ "$rc" -ne 2 ] && exit "$rc"
 fi
 if ! command -v bemoji >/dev/null; then
-    notify-send "Emoji picker" "bemoji is not installed (AUR: bemoji)" -i dialog-warning
+    notify-send -a Halcyon "Emoji picker" "bemoji is not installed (AUR: bemoji)" -i dialog-warning
     exit 1
 fi
 export BEMOJI_PICKER_CMD="fuzzel --dmenu --prompt=Emoji>\  --width=40 --lines=12"

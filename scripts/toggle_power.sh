@@ -19,8 +19,8 @@ fi
 
 if systemctl --user is-active --quiet "$SERVICE_NAME"; then
     systemctl --user stop "$SERVICE_NAME"
-    notify-send "Power Manager" "Disabled (Manual Mode)" -i battery-caution -h string:x-canonical-private-synchronous:powermanager
+    notify-send -a Halcyon "Power Manager" "Disabled (Manual Mode)" -i battery-caution -h string:x-canonical-private-synchronous:powermanager
 else
     systemctl --user start "$SERVICE_NAME"
-    notify-send "Power Manager" "Enabled (Automatic Mode)" -i battery -h string:x-canonical-private-synchronous:powermanager
+    notify-send -a Halcyon "Power Manager" "Enabled (Automatic Mode)" -i battery -h string:x-canonical-private-synchronous:powermanager
 fi
