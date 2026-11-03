@@ -136,7 +136,7 @@ WBase {
         id: appListC
         Column {
             spacing: root.sz(8)
-            WLbl { b: root; width: root.boxW; horizontalAlignment: Text.AlignHCenter; text: "BACKGROUND APPS"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 2.5 }
+            WLbl { b: root; width: root.boxW; horizontalAlignment: Text.AlignHCenter; text: "Background apps"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
             WLbl { b: root; width: root.boxW; horizontalAlignment: Text.AlignHCenter; visible: root.apps.length === 0; text: "Nothing is running in the background"; color: root.dim; font.pixelSize: root.sz(12) }
             Repeater {
                 model: root.apps

@@ -45,7 +45,7 @@ Item {
             color: hd.pal.text
             font.family: hd.pal.uiFont
             font.pixelSize: hd.size
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
         }
         Text {
             id: subT

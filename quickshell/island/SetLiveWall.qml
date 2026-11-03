@@ -53,7 +53,7 @@ ColumnLayout {
                     // the sky: a tiny still of it (dark stage, accent glow, the sparkle)
                     Rectangle {
                         visible: tile.modelData.path === "sky"
-                        anchors.fill: parent; anchors.margins: 3; radius: 10
+                        anchors.fill: parent; anchors.margins: 4; radius: 10
                         gradient: Gradient {
                             GradientStop { position: 0; color: Qt.tint(lw.root.pal.bg, Qt.alpha(lw.root.pal.accent, 0.18)) }
                             GradientStop { position: 1; color: lw.root.pal.bg }
@@ -62,7 +62,7 @@ ColumnLayout {
                     }
                     Image {
                         visible: tile.modelData.thumb !== ""
-                        anchors.fill: parent; anchors.margins: 3
+                        anchors.fill: parent; anchors.margins: 4
                         source: tile.modelData.thumb !== "" ? "file://" + tile.modelData.thumb : ""
                         sourceSize.width: 280; sourceSize.height: 170
                         fillMode: Image.PreserveAspectCrop
@@ -75,7 +75,7 @@ ColumnLayout {
                         text: String.fromCodePoint(0xF0567); color: lw.root.pal.muted; font.family: lw.root.pal.font; font.pixelSize: 22
                     }
                     Rectangle {
-                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 3 }
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 4 }
                         height: 20; radius: 8
                         color: Qt.alpha("black", 0.45)
                         Text {
@@ -89,7 +89,7 @@ ColumnLayout {
                         visible: tile.now
                         anchors { right: parent.right; top: parent.top; margins: 6 }
                         width: 18; height: 18; radius: 9; color: lw.root.pal.accent
-                        Text { anchors.centerIn: parent; text: "✓"; color: lw.root.pal.bg; font.pixelSize: 11; font.weight: Font.Bold }
+                        Text { anchors.centerIn: parent; text: "✓"; color: lw.root.pal.bg; font.pixelSize: 11; font.weight: Font.DemiBold }
                     }
                     MouseArea { anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: lw.pickIt(tile.modelData.path) }
                 }

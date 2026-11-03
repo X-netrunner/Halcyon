@@ -40,12 +40,12 @@ Item {
     Column {
         id: sc
         anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 72; rightMargin: 8 }
-        spacing: 3
+        spacing: 4
         Text {
             width: parent.width
             text: st.title
             color: st.pal.text
-            font.family: st.pal.uiFont; font.pixelSize: st.pal.tBody + 2; font.weight: Font.DemiBold
+            font.family: st.pal.uiFont; font.pixelSize: st.pal.tBody + 2; font.weight: Font.Medium
             wrapMode: Text.WordWrap
         }
         Text {

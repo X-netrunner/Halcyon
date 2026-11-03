@@ -12,7 +12,7 @@ import Quickshell
 ColumnLayout {
     id: root
     property var pal
-    property string placeholder: "Search your apps…"
+    property string placeholder: "Search apps"
     property var exclude: []           // window classes (lower case) to leave out, e.g. the ones already blocked
     property int rows: 6               // rows visible at once; the list scrolls
     signal picked(var app)

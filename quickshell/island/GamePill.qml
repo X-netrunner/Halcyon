@@ -131,7 +131,7 @@ Scope {
                     anchors.centerIn: parent
                     // keeps clear of the screen edge side, where the rounded end is hidden
                     anchors.horizontalCenterOffset: root.right ? -3 : 3
-                    spacing: 7
+                    spacing: 8
                     opacity: win.out ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Rectangle {
@@ -261,7 +261,7 @@ Scope {
                                 Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 Column {
                                     anchors.centerIn: parent
-                                    spacing: 3
+                                    spacing: 4
                                     Text {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: String.fromCodePoint(btn.modelData.glyph)

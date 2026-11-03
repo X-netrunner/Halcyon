@@ -16,7 +16,7 @@ Rectangle {
     implicitHeight: 30
     width: implicitWidth
     height: implicitHeight
-    radius: height / 2
+    radius: Math.min(height / 2, 10)
     opacity: carried ? 0.28 : 1
     color: hot ? Qt.alpha(bb.pal.surfaceHi, 0.9) : Qt.alpha(bb.pal.surface, 0.8)
     border.width: bb.pal.zen && !(hot) ? 0 : 1

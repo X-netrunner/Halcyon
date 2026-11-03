@@ -137,7 +137,7 @@ WBase {
         Row {
             spacing: root.sz(8)
             Rectangle { width: root.sz(7); height: width; radius: width / 2; color: root.accent; anchors.verticalCenter: parent.verticalCenter }
-            WLbl { b: root; text: root.today; font.pixelSize: root.sz(13); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; text: root.today; font.pixelSize: root.sz(13); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
             WLbl { b: root; text: root.events ? "Calendar & notes" : "Quick notes"; color: root.dim; font.pixelSize: root.sz(10); anchors.verticalCenter: parent.verticalCenter }
         }
         Rectangle { width: parent.width; height: 1; color: root.track }

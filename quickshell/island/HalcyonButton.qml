@@ -61,7 +61,7 @@ Item {
         color: hb.pal.text
         font.family: hb.pal.uiFont
         font.pixelSize: hb.pal.tTitle + 1
-        font.weight: Font.DemiBold
+        font.weight: Font.Medium
         opacity: hb.menuOpen ? 0 : 1
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: hb.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: hb.pal.curveCalm } }

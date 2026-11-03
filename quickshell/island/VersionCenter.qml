@@ -187,6 +187,15 @@ Scope {
         dlg = { kind: "restore", id: id, label: id, plan: { needs_root: true, warnings: ["Puts back the copy of /var/lib/ai-antivirus made before the change. Whatever the antivirus recorded since then is replaced by it."], backups: [], diffstat: "" }, targets: null, err: "" }
         Qt.callLater(function () { root.focusRequested("pw") })
     }
+    // anything Update all would act on: it is the window's main action only then (otherwise a quiet button)
+    readonly property bool anyBehind: {
+        var order = ["halcyon", "luna", "ai-firewall", "ai-antivirus"]
+        for (var i = 0; i < order.length; i++) {
+            var c = byId(order[i])
+            if (c && c.chosen && c.present && !c.pinned && c.state === "behind") return true
+        }
+        return false
+    }
     function askAll() {
         var t = []
         var order = ["halcyon", "luna", "ai-firewall", "ai-antivirus"]
@@ -323,7 +332,7 @@ Scope {
         color: root.pal.muted
         font.family: root.pal.uiFont
         font.pixelSize: root.pal.tCap
-        font.weight: Font.DemiBold
+        font.weight: Font.Medium
     }
     component Small: Text {
         color: root.pal.muted
@@ -344,7 +353,7 @@ Scope {
         signal clicked()
         implicitWidth: bTxt.implicitWidth + 26
         implicitHeight: 32
-        radius: height / 2
+        radius: 10
         opacity: disabled ? 0.4 : 1
         color: primary ? (bMa.containsMouse && !disabled ? Qt.lighter(root.pal.accent, 1.08) : root.pal.accent)
                        : (bMa.containsMouse && !disabled ? root.pal.fillHover : root.pal.fill)
@@ -359,7 +368,7 @@ Scope {
             color: b.primary ? root.pal.bg : root.pal.text
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tBody - 1
-            font.weight: b.primary ? Font.DemiBold : Font.Medium
+            font.weight: b.primary ? Font.Medium : Font.Medium
         }
         MouseArea { id: bMa; anchors.fill: parent; hoverEnabled: true; cursorShape: b.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: if (!b.disabled) b.clicked() }
     }
@@ -388,7 +397,7 @@ Scope {
         color: root.pal.fill
         border.width: 1
         border.color: mine ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
-        opacity: greyed ? 0.62 : 1
+        // unslop: a component that is not installed reads quieter by its name only; its Install button stays fully legible
         Behavior on height { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
         Behavior on border.color { ColorAnimation { duration: root.pal.dMed } }
         clip: true
@@ -401,7 +410,7 @@ Scope {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
-                Text { text: card.comp.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
+                Text { text: card.comp.name; color: card.greyed ? root.pal.muted : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
                 Tag { label: root.stateText(card.comp); tone: root.stateColor(card.comp) }
                 Tag { visible: !!card.comp.pinned; label: "pinned " + (card.comp.pinned ? card.comp.pinned.short : ""); tone: root.pal.warn }
                 Tag { visible: card.comp.dirty; label: "local changes"; tone: root.pal.muted }
@@ -410,7 +419,7 @@ Scope {
                 Btn {
                     visible: card.greyed
                     label: "Install"
-                    primary: true
+                    primary: false     // unslop: one primary action per window (Update all); these are secondary
                     disabled: root.locked
                     onClicked: root.askInstallNew(card.comp.id)
                 }
@@ -421,7 +430,7 @@ Scope {
                 Layout.fillWidth: true
                 columns: 2
                 columnSpacing: 14
-                rowSpacing: 3
+                rowSpacing: 4
                 Label { text: "Installed" }
                 Mono { Layout.fillWidth: true; text: root.verText(card.comp.installed); elide: Text.ElideRight }
                 Label { text: "Latest on main" }
@@ -664,7 +673,7 @@ Scope {
                             Text { text: String.fromCodePoint(0xF06B0); font.family: root.pal.font; font.pixelSize: 20; color: root.pal.accent }
                             ColumnLayout {
                                 spacing: 1
-                                Text { text: "Version Center"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.DemiBold }
+                                Text { text: "Version Center"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
                                 Small {
                                     text: (root.extBusy ? "another operation is running (" + root.extBusy.component + ")  ·  " : "") + (root.offline ? "offline: showing what was saved  ·  " : "") + "last checked " + root.ago(root.checked)
                                 }
@@ -681,8 +690,8 @@ Scope {
                             }
                             Btn { label: root.autoOn ? "Daily check: on" : "Daily check: off"; onClicked: root.setAuto(!root.autoOn); disabled: root.locked }
                             Btn { label: statusProc.running ? "Checking…" : "Check now"; disabled: root.working || root.extBusy !== null; onClicked: root.checkNow() }
-                            Btn { label: "Update all"; primary: true; disabled: root.working || root.extBusy !== null; onClicked: root.askAll() }
-                            Btn { label: "Close"; onClicked: root.hide() }
+                            Btn { label: "Update all"; primary: root.anyBehind; disabled: root.working || root.extBusy !== null; onClicked: root.askAll() }
+                            RoundBtn { pal: root.pal; size: 32; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }   // the same close as the other centres
                         }
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
@@ -782,7 +791,7 @@ Scope {
                                     color: root.pal.text
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tTitle
-                                    font.weight: Font.DemiBold
+                                    font.weight: Font.Medium
                                     text: !dcol.d ? "" : (dcol.d.kind === "updateall" ? "Update everything that is behind?"
                                         : dcol.d.kind === "restore" ? "Put the antivirus database copy back?"
                                         : dcol.d.kind === "install-new" ? "Install " + dcol.d.label + "?"

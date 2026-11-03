@@ -79,13 +79,12 @@ WBase {
         Item {
             implicitWidth: gcol.implicitWidth
             implicitHeight: gcol.implicitHeight
-            WGlow { anchors.centerIn: parent; width: parent.width * 1.5 + root.sz(60); height: parent.height * 1.9 + root.sz(40); color: root.accent; strength: 0.10 }
             Column {
                 id: gcol
                 spacing: root.sz(8)
                 WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.timeText + (root.ap !== "" ? " " + root.ap : ""); font.pixelSize: root.sz(84); font.weight: Font.ExtraLight; font.letterSpacing: root.sz(3) }
                 Rectangle { visible: root.opt("date", true) === true; anchors.horizontalCenter: parent.horizontalCenter; width: root.sz(36); height: 1; color: Qt.alpha(root.accent, 0.7) }
-                WLbl { b: root; visible: root.opt("date", true) === true; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "dddd  ·  d MMMM").toUpperCase(); color: root.dim; font.pixelSize: root.sz(12); font.letterSpacing: 4 }
+                WLbl { b: root; visible: root.opt("date", true) === true; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "dddd  ·  d MMMM"); color: root.dim; font.pixelSize: root.sz(12); font.letterSpacing: 0 }
             }
         }
     }
@@ -97,7 +96,6 @@ WBase {
                 id: ef
                 width: root.sz(150); height: width
                 anchors.horizontalCenter: parent.horizontalCenter
-                WGlow { anchors.centerIn: parent; width: parent.width * 1.7; height: width; color: root.accent; strength: 0.10 }
                 Rectangle { anchors.fill: parent; radius: width / 2; color: "transparent"; border.width: 1; border.color: Qt.alpha(root.fg, 0.35) }
                 Repeater {
                     model: 4
@@ -116,7 +114,7 @@ WBase {
                     Rectangle { x: -0.5; y: -ef.height * 0.43; width: 1; height: ef.height * 0.46; color: root.accent } }
                 Rectangle { anchors.centerIn: parent; width: 9; height: 9; radius: 4.5; color: "transparent"; border.width: 1.5; border.color: root.accent }
             }
-            WLbl { b: root; visible: root.opt("date", true) === true; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "ddd  ·  d MMM").toUpperCase(); color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 3 }
+            WLbl { b: root; visible: root.opt("date", true) === true; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "ddd  ·  d MMM"); color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0 }
         }
     }
     Component {
@@ -130,17 +128,17 @@ WBase {
                 Rectangle { width: 1; height: root.sz(40); color: Qt.alpha(root.accent, 0.7); anchors.verticalCenter: parent.verticalCenter }
                 WLbl { b: root; text: root.roman(parseInt(root.mm, 10)); color: root.accent; font.pixelSize: root.sz(44); font.weight: Font.Light; font.letterSpacing: 2; anchors.verticalCenter: parent.verticalCenter }
             }
-            WLbl { b: root; visible: root.opt("date", true) === true; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "dddd, d MMMM").toLowerCase(); color: root.dim; font.pixelSize: root.sz(13); font.letterSpacing: 2 }
+            WLbl { b: root; visible: root.opt("date", true) === true; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "dddd, d MMMM").toLowerCase(); color: root.dim; font.pixelSize: root.sz(13); font.letterSpacing: 0 }
         }
     }
     Component {
         id: dateHair
         Column {
             spacing: root.sz(4)
-            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "dddd").toUpperCase(); color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 5 }
+            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "dddd"); color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0 }
             Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: root.sz(28); height: 1; color: Qt.alpha(root.accent, 0.75) }
             WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "d"); font.pixelSize: root.sz(64); font.weight: Font.ExtraLight }
-            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: (Qt.formatDate(root.now, "MMMM") + (root.opt("year", false) === true ? Qt.formatDate(root.now, " yyyy") : "")).toUpperCase(); color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 5 }
+            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: (Qt.formatDate(root.now, "MMMM") + (root.opt("year", false) === true ? Qt.formatDate(root.now, " yyyy") : "")); color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0 }
         }
     }
     Component {
@@ -153,7 +151,7 @@ WBase {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: root.sz(2)
                 WLbl { b: root; text: Qt.formatDate(root.now, "M") + " · " + Qt.formatDate(root.now, "d"); font.pixelSize: root.sz(22); font.weight: Font.Light }
-                WLbl { b: root; text: Qt.formatDate(root.now, "dddd").toUpperCase() + (root.opt("year", false) === true ? "  " + Qt.formatDate(root.now, "yyyy") : ""); color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 3 }
+                WLbl { b: root; text: Qt.formatDate(root.now, "dddd") + (root.opt("year", false) === true ? "  " + Qt.formatDate(root.now, "yyyy") : ""); color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
             }
         }
     }
@@ -165,7 +163,7 @@ WBase {
             spacing: 2
             Row {
                 spacing: 6
-                WLbl { b: root; text: root.timeText; font.pixelSize: root.sz(46); font.weight: Font.DemiBold; anchors.baseline: ap1.baseline }
+                WLbl { b: root; text: root.timeText; font.pixelSize: root.sz(46); font.weight: Font.Medium; anchors.baseline: ap1.baseline }
                 WLbl { b: root; id: ap1; visible: root.ap !== ""; text: root.ap; color: root.accent; font.pixelSize: root.sz(16); font.weight: Font.Medium }
             }
             WLbl { b: root; visible: root.opt("date", true) === true; text: Qt.formatDate(root.now, "dddd, MMMM d"); color: root.dim; font.pixelSize: root.sz(14) }
@@ -189,7 +187,7 @@ WBase {
             spacing: root.sz(16)
             Column {
                 spacing: -root.sz(10)
-                WLbl { b: root; text: root.hh; font.pixelSize: root.sz(70); font.weight: Font.DemiBold }
+                WLbl { b: root; text: root.hh; font.pixelSize: root.sz(70); font.weight: Font.Medium }
                 WLbl { b: root; text: root.mm; color: root.accent; font.pixelSize: root.sz(70); font.weight: Font.Light }
             }
             Column {
@@ -250,7 +248,7 @@ WBase {
         id: dateCard
         Row {
             spacing: root.sz(14)
-            WLbl { b: root; text: Qt.formatDate(root.now, "d"); color: root.accent; font.pixelSize: root.sz(60); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; text: Qt.formatDate(root.now, "d"); color: root.accent; font.pixelSize: root.sz(60); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
             Column {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 1
@@ -263,7 +261,7 @@ WBase {
         id: dateStack
         Column {
             spacing: 0
-            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "dddd").toUpperCase(); color: root.accent; font.pixelSize: root.sz(12); font.weight: Font.DemiBold; font.letterSpacing: 2 }
+            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "dddd"); color: root.accent; font.pixelSize: root.sz(12); font.weight: Font.Medium; font.letterSpacing: 0 }
             WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "d"); font.pixelSize: root.sz(54); font.weight: Font.Light }
             WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(root.now, "MMMM") + (root.opt("year", false) === true ? Qt.formatDate(root.now, " yyyy") : ""); color: root.dim; font.pixelSize: root.sz(14) }
         }

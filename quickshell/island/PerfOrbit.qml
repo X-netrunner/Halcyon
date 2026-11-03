@@ -123,13 +123,13 @@ PerfBase {
             width: parent.width; horizontalAlignment: Text.AlignHCenter
             text: "CPU"
             color: root.pal.muted
-            font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4
+            font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0
         }
         Text {
             width: parent.width; horizontalAlignment: Text.AlignHCenter
             text: Math.round(root.cpuLoad * 100) + "%"
             color: root.cpuHot ? root.pal.bad : root.pal.text
-            font.family: root.pal.uiFont; font.pixelSize: 30; font.weight: Font.DemiBold
+            font.family: root.pal.uiFont; font.pixelSize: 30; font.weight: Font.Medium
         }
         Text {
             width: parent.width; horizontalAlignment: Text.AlignHCenter
@@ -158,8 +158,8 @@ PerfBase {
                 x: 18; y: 4
                 text: row.modelData.name
                 color: root.pal.muted
-                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 1.4
-                font.capitalization: Font.AllUppercase
+                font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap - 1; font.letterSpacing: 0
+                font.capitalization: Font.MixedCase
             }
             Text {
                 x: 18; y: 22
@@ -176,7 +176,7 @@ PerfBase {
                 color: row.modelData.tint
                 font.family: root.pal.uiFont
                 font.pixelSize: row.modelData.small ? 15 : 24
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
         }
     }
@@ -190,7 +190,7 @@ PerfBase {
         horizontalAlignment: Text.AlignHCenter
         text: Math.round(root.sBat) + "%"
         color: root.batTint
-        font.family: root.pal.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 17; font.weight: Font.Medium
     }
     Text {
         visible: root.hasBat

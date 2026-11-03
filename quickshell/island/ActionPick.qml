@@ -166,7 +166,7 @@ ColumnLayout {
                         AppPicker {
                             width: parent ? parent.width : 0
                             pal: root.pal
-                            placeholder: "Search your apps, click one…"
+                            placeholder: "Search apps"
                             onPicked: app => root.chosen("app", app.cmd)
                         }
                     }

@@ -24,8 +24,8 @@ Rectangle {
         Column {
             Layout.fillWidth: true
             visible: sec.title !== ""
-            spacing: 3
-            Text { text: sec.title; color: sec.pal.text; font.family: sec.pal.uiFont; font.pixelSize: sec.pal.tBody + 1; font.weight: Font.DemiBold }
+            spacing: 4
+            Text { text: sec.title; color: sec.pal.text; font.family: sec.pal.uiFont; font.pixelSize: sec.pal.tBody + 1; font.weight: Font.Medium }
             Text { visible: sec.sub !== "" && !(sec.pal.zen && sec.pal.hideHints); width: parent.width; text: sec.sub; color: sec.pal.muted; font.family: sec.pal.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap; lineHeight: 1.2 }
         }
         ColumnLayout {

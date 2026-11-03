@@ -104,7 +104,7 @@ Item {
         var o = BL.place(cur, dragId, hoverZone, idx)
         var l = BL.zoneWidth(o, o.left, widthOf, gapL), r = BL.zoneWidth(o, o.right, widthOf, gapR)
         var d = Math.round(Math.abs(l - r))
-        return "Drop here:  " + nameL + " " + px(l) + "  ·  " + nameR + " " + px(r) + "  ·  " + (d <= 6 ? "✓ the sides match" : d + " px apart")
+        return "Drop here:  " + nameL + " " + px(l) + "  ·  " + nameR + " " + px(r) + "  ·  " + (d <= 6 ? "The sides match" : d + " px apart")
     }
 
     // ---------------------------------------------------------------- dragging (pointer driven, so the drop line is ours)
@@ -283,7 +283,7 @@ Item {
             color: root.rail ? root.pal.accent2 : root.pal.text
             font.family: root.pal.uiFont
             font.pixelSize: root.rail ? root.rm.clockPx + 1 : root.textPx
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
         }
     }
     Component { id: mDate
@@ -301,13 +301,13 @@ Item {
             height: root.barH
             spacing: 12
             Repeater {
-                model: [ { k: "CPU", v: "12%" }, { k: "RAM", v: "6.1G" }, { k: "TEMP", v: "54°" } ]
+                model: [ { k: "CPU", v: "12%" }, { k: "RAM", v: "6.1G" }, { k: "Temp", v: "54°" } ]
                 delegate: Row {
                     required property var modelData
                     spacing: 4
                     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                     Text { text: modelData.k; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: modelData.v; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: modelData.v; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                 }
             }
         }
@@ -428,7 +428,7 @@ Item {
                 height: Math.round(root.textPx * 1.35)
                 radius: height / 2
                 color: root.pal.accent
-                Text { id: nlText; anchors.centerIn: parent; text: "123"; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: Math.max(9, root.textPx - 4); font.weight: Font.DemiBold }
+                Text { id: nlText; anchors.centerIn: parent; text: "123"; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: Math.max(9, root.textPx - 4); font.weight: Font.Medium }
             }
         }
     }
@@ -439,7 +439,7 @@ Item {
             Row {
                 id: focusRow
                 anchors.centerIn: parent
-                spacing: 5
+                spacing: 4
                 Text { text: String.fromCodePoint(0xF051B); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: root.icoH; anchors.verticalCenter: parent.verticalCenter }
                 Text { text: "24:10"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: Math.max(10, root.textPx - 2); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
             }
@@ -454,7 +454,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 4
                 Text { text: String.fromCodePoint(0xF003B); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: root.icoH; anchors.verticalCenter: parent.verticalCenter }
-                Text { text: "3"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: Math.max(10, root.textPx - 2); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: "3"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: Math.max(10, root.textPx - 2); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
             }
         }
     }
@@ -905,7 +905,7 @@ Item {
                             color: root.pal.accent
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                         }
                         Row {
                             visible: root.dragId === ""
@@ -923,9 +923,9 @@ Item {
                                     border.color: root.pal.lineSoft
                                     Column {
                                         anchors.centerIn: parent
-                                        spacing: 3
+                                        spacing: 4
                                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.t; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.px(modelData.v); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold }
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.px(modelData.v); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                                     }
                                 }
                             }
@@ -967,7 +967,7 @@ Item {
                             visible: root.sel !== ""
                             width: parent.width
                             spacing: 12
-                            Text { height: 28; verticalAlignment: Text.AlignVCenter; text: root.sel !== "" ? BL.nameOf(root.sel) : ""; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                            Text { height: 28; verticalAlignment: Text.AlignVCenter; text: root.sel !== "" ? BL.nameOf(root.sel) : ""; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                             BbNumBox {
                                 bb: root
                                 label: "Padding"
@@ -1002,7 +1002,7 @@ Item {
                     spacing: 14
                     Row {
                         spacing: 10
-                        Text { text: "Not on the bar"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold }
+                        Text { text: "Not on the bar"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
                         Text { visible: !(root.pal.zen && root.pal.hideHints) || (root.dragId !== "" && root.dragFrom !== "tray"); text: root.dragId !== "" && root.dragFrom !== "tray" ? "drop here to take it off" : "drag one up to the bar"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
                     }
                     Flow {

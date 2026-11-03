@@ -64,7 +64,7 @@ WBase {
                     text: root.style === "roman" ? root.roman(cell.wid) : cell.wid
                     color: root.style === "roman" || root.style === "outline" ? (cell.cur ? root.accent : (cell.used ? root.fg : root.dim)) : (cell.cur ? (root.pal ? root.pal.bg : "black") : (cell.used ? root.fg : root.dim))
                     font.pixelSize: root.sz(13)
-                    font.weight: cell.cur ? Font.Bold : Font.Medium
+                    font.weight: cell.cur ? Font.DemiBold : Font.Medium
                 }
                 Rectangle { visible: root.style === "roman" && cell.cur; anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; width: root.sz(14); height: 1; color: root.accent }
                 MouseArea {

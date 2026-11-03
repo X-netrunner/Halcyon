@@ -30,7 +30,7 @@ Rectangle {
     Text {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
-        anchors.topMargin: 9
+        anchors.topMargin: 8
         text: Math.round(root.shown * 100)
         color: root.pal.muted
         font.family: root.pal.uiFont
@@ -40,7 +40,7 @@ Rectangle {
         id: ico
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 11
+        anchors.bottomMargin: 12
         text: root.glyph
         color: root.dimmed ? root.pal.muted : root.pal.accent
         font.family: root.pal.font

@@ -493,7 +493,7 @@ Item {
         Rectangle {
             height: 26; width: styleT.implicitWidth + 20; radius: 13
             color: Qt.alpha(host.pal.accent, 0.9)
-            Text { id: styleT; anchors.centerIn: parent; text: "Style and look"; color: host.pal.bg; font.family: host.pal.uiFont; font.pixelSize: 12; font.weight: Font.DemiBold }
+            Text { id: styleT; anchors.centerIn: parent; text: "Style and look"; color: host.pal.bg; font.family: host.pal.uiFont; font.pixelSize: 12; font.weight: Font.Medium }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: host.openRequested(host.uid) }
         }
         Rectangle {
@@ -506,7 +506,7 @@ Item {
         Rectangle {
             height: 26; width: 26; radius: 13
             color: Qt.alpha(host.pal.bad, 0.9)
-            Text { anchors.centerIn: parent; text: "✕"; color: host.pal.bg; font.family: host.pal.uiFont; font.pixelSize: 12; font.weight: Font.Bold }
+            Text { anchors.centerIn: parent; text: "✕"; color: host.pal.bg; font.family: host.pal.uiFont; font.pixelSize: 12; font.weight: Font.DemiBold }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: host.removeRequested(host.uid) }
         }
     }

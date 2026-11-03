@@ -65,7 +65,7 @@ Scope {
                         color: root.pal.text
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.tTitle + 3
-                        font.weight: Font.DemiBold
+                        font.weight: Font.Medium
                     }
                     // a white square around the code: phone cameras need the contrast, also in the dark theme
                     Rectangle {

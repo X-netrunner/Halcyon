@@ -93,7 +93,7 @@ Item {
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: 32
-            spacing: 18
+            spacing: 20
 
             // ---- header (WinHeader: the same in every window)
             WinHeader {
@@ -305,7 +305,7 @@ Item {
                                     color: root.pal.text
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody
-                                    font.weight: Font.DemiBold
+                                    font.weight: Font.Medium
                                 }
                                 Text {
                                     text: "The corner is set in the Desktop builder."
@@ -320,7 +320,7 @@ Item {
                                     color: root.pal.text
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody
-                                    font.weight: Font.DemiBold
+                                    font.weight: Font.Medium
                                 }
                                 Row {
                                     spacing: 6

@@ -46,7 +46,7 @@ Item {
 
     RowLayout {
         anchors.fill: parent
-        spacing: 22
+        spacing: 24
 
         MusicCover {
             Layout.preferredWidth: 232
@@ -86,7 +86,7 @@ Item {
                     color: root.pal.text
                     font.family: root.pal.uiFont
                     font.pixelSize: 22
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                 }
             }
             Text {

@@ -477,13 +477,13 @@ Scope {
                                     color: root.ready[dRow.modelData.id] ? root.pal.good : Qt.alpha(root.pal.muted, 0.5)
                                 }
                                 Text {
-                                    anchors { left: dDot.right; leftMargin: 9; right: dNote.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                                    anchors { left: dDot.right; leftMargin: 8; right: dNote.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
                                     text: dRow.modelData.name
                                     elide: Text.ElideRight
                                     color: dRow.cur ? root.pal.chosenText : ((dRow.modelData.id === "luna" && !root.luna.installed) ? Qt.alpha(root.pal.muted, 0.85) : root.pal.text)
                                     font.family: root.mono
                                     font.pixelSize: 11
-                                    font.weight: dRow.cur ? Font.DemiBold : Font.Normal
+                                    font.weight: dRow.cur ? Font.Medium : Font.Normal
                                 }
                                 Text {
                                     id: dNote
@@ -517,7 +517,7 @@ Scope {
                         color: root.pal.accent
                         font.family: root.mono
                         font.pixelSize: 13
-                        font.weight: Font.DemiBold
+                        font.weight: Font.Medium
                     }
                     Text {
                         anchors.centerIn: parent
@@ -553,11 +553,11 @@ Scope {
                             color: root.pal.accent
                             font.family: root.mono
                             font.pixelSize: 11
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                         }
                         Text {
                             id: caret
-                            anchors { right: parent.right; rightMargin: 9; verticalCenter: parent.verticalCenter }
+                            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                             text: root.ddOpen ? "▴" : "▾"
                             color: root.pal.accent
                             font.family: root.mono
@@ -790,7 +790,7 @@ Scope {
                             Column {
                                 id: rc
                                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                spacing: 3
+                                spacing: 4
 
                                 // your question, like a command in the console
                                 Text {
@@ -801,7 +801,7 @@ Scope {
                                     topPadding: 4
                                     text: "❯ " + row.text
                                     color: root.pal.accent
-                                    font.family: root.mono; font.pixelSize: 12; font.weight: Font.DemiBold
+                                    font.family: root.mono; font.pixelSize: 12; font.weight: Font.Medium
                                 }
                                 // what Luna ran
                                 Text {
@@ -862,7 +862,7 @@ Scope {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "❯"
                         color: root.pal.accent
-                        font.family: root.mono; font.pixelSize: 13; font.weight: Font.DemiBold
+                        font.family: root.mono; font.pixelSize: 13; font.weight: Font.Medium
                         style: Text.Outline
                         styleColor: Qt.rgba(0, 0, 0, 0.70)
                     }

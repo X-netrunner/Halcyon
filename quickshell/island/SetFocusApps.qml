@@ -49,7 +49,7 @@ ColumnLayout {
     AppPicker {
         Layout.fillWidth: true
         pal: root.pal
-        placeholder: "Search your apps, click one to block it…"
+        placeholder: "Search apps to block"
         exclude: (root.focusApps.blocked || []).map(function (x) { return String(x).toLowerCase() })
         onPicked: app => {
             var l = [app.cls]

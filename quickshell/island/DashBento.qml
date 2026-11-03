@@ -46,7 +46,7 @@ Item {
             color: root.pal.text
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tTitle
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
         }
         Text {
             anchors { right: parent.right; rightMargin: 16; baseline: agTitle.baseline }
@@ -87,7 +87,7 @@ Item {
                             color: root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody - 1
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                         }
                         Text {
                             width: parent.width
@@ -158,7 +158,7 @@ Item {
                 color: root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tBody
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
             Text {
                 width: parent.width
@@ -215,7 +215,7 @@ Item {
                 color: root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tBody
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
             Text {
                 text: "RAM"

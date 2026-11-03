@@ -40,9 +40,9 @@ WBase {
         WGlow { x: ln.px - width / 2; y: ln.mid - height / 2; width: root.sz(46); height: width; color: root.accent; strength: 0.30 }
         Rectangle { x: ln.px - width / 2; y: ln.mid - height / 2; width: root.sz(7); height: width; radius: width / 2; color: root.accent }
         // the water: the same line and dot, dimmer, with a few ripples
-        Rectangle { visible: ln.mirror; y: ln.mid + root.sz(9); width: ln.width; height: 1; color: Qt.alpha(root.track, 0.5) }
-        Rectangle { visible: ln.mirror; y: ln.mid + root.sz(9); width: Math.max(1, ln.px); height: 1; color: Qt.alpha(root.fg, 0.14) }
-        Rectangle { visible: ln.mirror; x: ln.px - width / 2; y: ln.mid + root.sz(9) - height / 2; width: root.sz(7); height: width * 0.55; radius: height / 2; color: Qt.alpha(root.accent, 0.28) }
+        Rectangle { visible: ln.mirror; y: ln.mid + root.sz(10); width: ln.width; height: 1; color: Qt.alpha(root.track, 0.5) }
+        Rectangle { visible: ln.mirror; y: ln.mid + root.sz(10); width: Math.max(1, ln.px); height: 1; color: Qt.alpha(root.fg, 0.14) }
+        Rectangle { visible: ln.mirror; x: ln.px - width / 2; y: ln.mid + root.sz(10) - height / 2; width: root.sz(7); height: width * 0.55; radius: height / 2; color: Qt.alpha(root.accent, 0.28) }
         Rectangle { visible: ln.mirror; x: ln.px - width / 2; y: ln.mid + root.sz(15); width: root.sz(26); height: 1; color: Qt.alpha(root.fg, 0.10) }
         Rectangle { visible: ln.mirror; x: ln.px - width / 2; y: ln.mid + root.sz(20); width: root.sz(14); height: 1; color: Qt.alpha(root.fg, 0.06) }
     }
@@ -58,7 +58,7 @@ WBase {
             Row {
                 visible: root.pct
                 width: root.wide
-                WLbl { b: root; width: parent.width / 2; text: "TODAY"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 3 }
+                WLbl { b: root; width: parent.width / 2; text: "Today"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                 WLbl { b: root; width: parent.width / 2; horizontalAlignment: Text.AlignRight; text: Math.round(root.dayFrac * 100) + " %"; font.pixelSize: root.sz(14); font.weight: Font.Light }
             }
             HLine { frac: root.shownDay; mirror: root.reflect }
@@ -72,7 +72,7 @@ WBase {
                 spacing: root.sz(4)
                 Row {
                     width: root.wide
-                    WLbl { b: root; width: parent.width / 2; text: "TODAY"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 3 }
+                    WLbl { b: root; width: parent.width / 2; text: "Today"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                     WLbl { b: root; visible: root.pct; width: parent.width / 2; horizontalAlignment: Text.AlignRight; text: Math.round(root.dayFrac * 100) + " %"; font.pixelSize: root.sz(13); font.weight: Font.Light }
                 }
                 HLine { frac: root.shownDay; mirror: false }
@@ -81,7 +81,7 @@ WBase {
                 spacing: root.sz(4)
                 Row {
                     width: root.wide
-                    WLbl { b: root; width: parent.width / 2; text: String(root.now.getFullYear()); color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 3 }
+                    WLbl { b: root; width: parent.width / 2; text: String(root.now.getFullYear()); color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                     WLbl { b: root; visible: root.pct; width: parent.width / 2; horizontalAlignment: Text.AlignRight; text: Math.round(root.yearFrac * 100) + " %"; font.pixelSize: root.sz(13); font.weight: Font.Light }
                 }
                 HLine { frac: root.shownYear; mirror: root.reflect }
@@ -121,7 +121,7 @@ WBase {
             WGlow { x: sun.x + sun.width / 2 - width / 2; y: sun.y + sun.height / 2 - height / 2; width: root.sz(52); height: width; color: root.accent; strength: 0.30 }
             Rectangle {
                 id: sun
-                width: root.sz(9); height: width; radius: width / 2
+                width: root.sz(10); height: width; radius: width / 2
                 x: arc.width / 2 - arc.r * Math.cos(Math.PI * root.shownDay) - width / 2
                 y: arc.cy - arc.r * Math.sin(Math.PI * root.shownDay) - height / 2
                 color: root.accent
@@ -163,7 +163,7 @@ WBase {
             Row {
                 visible: root.pct
                 width: root.wide
-                WLbl { b: root; width: parent.width / 2; text: "TODAY"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 3 }
+                WLbl { b: root; width: parent.width / 2; text: "Today"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                 WLbl { b: root; width: parent.width / 2; horizontalAlignment: Text.AlignRight; text: Math.round(root.dayFrac * 100) + " %"; font.pixelSize: root.sz(13); font.weight: Font.Light }
             }
         }

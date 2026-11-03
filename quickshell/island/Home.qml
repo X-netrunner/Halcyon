@@ -99,7 +99,7 @@ RowLayout {
     readonly property int g: Math.round(barH * (spacious ? 0.6 : 0.32))   // smallest gap between neighbours (14 / 26 at the Normal size)
     readonly property int edgePad: spacious ? 8 : 0       // extra room at both ends of the pill
     readonly property real wsW: wsRow.visible ? wsRow.implicitWidth : 0
-    readonly property real vizW: showViz ? vizItem.implicitWidth : 0
+    readonly property real vizW: showViz && playing ? vizItem.implicitWidth : 0     // no idle dots: the visualizer shows only while something plays
     readonly property real statusW: statusAny ? statusBox.width : 0
     readonly property real dateW: (clockDate && showTime) ? dateText.implicitWidth : 0
     readonly property real statsW: statsItem.implicitWidth
@@ -244,7 +244,7 @@ RowLayout {
                         color: wsItem.cur ? row.pal.bg : row.pal.muted
                         font.family: row.pal.uiFont
                         font.pixelSize: row.pal.tBody
-                        font.weight: wsItem.cur ? Font.DemiBold : Font.Medium
+                        font.weight: wsItem.cur ? Font.Medium : Font.Medium
                         Behavior on color { ColorAnimation { duration: Math.round(row.pal.dMed * 0.8); easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     MouseArea { id: wsMa; anchors.fill: parent; hoverEnabled: true; onClicked: row.workspaceClicked(wsItem.modelData.id) }
@@ -287,7 +287,7 @@ RowLayout {
             anchors.verticalCenter: parent.verticalCenter
             // floats halfway between the workspaces and the time
             x: Math.round(row.wsW + (row.leftSlotW - row.wsW - width) / 2)
-            visible: row.showViz
+            visible: row.showViz && row.playing
             pal: row.pal
             values: row.cava
             active: row.playing
@@ -306,7 +306,7 @@ RowLayout {
             color: row.pal.text
             font.family: row.pal.uiFont
             font.pixelSize: row.pal.tTitle
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
             TapHandler { acceptedButtons: Qt.LeftButton; enabled: row.calClock; onTapped: row.clockClicked() }
             TapHandler { acceptedButtons: Qt.RightButton; onTapped: row.clockToggled("24h") }
             TapHandler { acceptedButtons: Qt.MiddleButton; onTapped: row.clockToggled("seconds") }
@@ -317,7 +317,7 @@ RowLayout {
             color: row.pal.text
             font.family: row.pal.uiFont
             font.pixelSize: row.pal.tTitle
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
         }
     }
 
@@ -357,19 +357,19 @@ RowLayout {
                     id: statsRow
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
-                    anchors.leftMargin: 18
+                    anchors.leftMargin: 20
                     spacing: 14
                     Repeater {
                         model: [
                             { k: "CPU", v: Math.round(row.stats.cpu || 0) + "%", frac: (row.stats.cpu || 0) / 100 },
                             { k: "RAM", v: (row.stats.memGb || "0.0") + "G", frac: (row.stats.mem || 0) / 100 },
-                            { k: "TEMP", v: Math.round(row.stats.temp || 0) + "°", frac: (row.stats.temp || 0) / 100 }
+                            { k: "Temp", v: Math.round(row.stats.temp || 0) + "°", frac: (row.stats.temp || 0) / 100 }
                         ]
                         delegate: Row {
                             required property var modelData
-                            spacing: 5
+                            spacing: 4
                             Text { text: modelData.k; color: row.pal.muted; font.family: row.pal.uiFont; font.pixelSize: row.pal.tCap; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
-                            Text { text: modelData.v; color: modelData.frac > 0.9 ? row.pal.bad : (modelData.frac > 0.75 ? row.pal.warn : row.pal.text); font.family: row.pal.uiFont; font.pixelSize: row.pal.tBody; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: modelData.v; color: modelData.frac > 0.9 ? row.pal.bad : (modelData.frac > 0.75 ? row.pal.warn : row.pal.text); font.family: row.pal.uiFont; font.pixelSize: row.pal.tBody; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                         }
                     }
                 }
@@ -423,7 +423,7 @@ RowLayout {
                 // Focus mode: the time left (the utilities box has the controls)
                 Row {
                     visible: row.focusText !== ""
-                    spacing: 5
+                    spacing: 4
                     anchors.verticalCenter: parent.verticalCenter
                     opacity: row.focusPaused ? 0.55 : 1
                     Text {
@@ -494,7 +494,7 @@ RowLayout {
                 }
                 Row {
                     visible: row.showBat && row.stats.hasBat === true && !row.combo
-                    spacing: 5
+                    spacing: 4
                     anchors.verticalCenter: parent.verticalCenter
 
                     Item {

@@ -76,9 +76,9 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 22
-        anchors.leftMargin: 34
-        anchors.rightMargin: 34
+        anchors.margins: 24
+        anchors.leftMargin: 32
+        anchors.rightMargin: 32
         spacing: 12
 
         // ---- state line
@@ -107,7 +107,7 @@ Item {
                     color: !root.alive ? root.pal.bad : (root.st.mode === "enforce" ? root.pal.good : root.pal.warn)
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tTitle
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                 }
                 Text {
                     Layout.fillWidth: true
@@ -157,7 +157,7 @@ Item {
                         spacing: 1
                         Row {
                             spacing: 6
-                            Text { text: tile.modelData.v; color: tile.modelData.c; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold }
+                            Text { text: tile.modelData.v; color: tile.modelData.c; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
                             Text { anchors.baseline: parent.children[0].baseline; text: tile.modelData.sub; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                         }
                         Text { text: tile.modelData.label; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
@@ -170,7 +170,7 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 26
+            spacing: 24
 
             ColumnLayout {
                 Layout.fillWidth: true

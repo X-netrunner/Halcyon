@@ -138,7 +138,7 @@ PerfBase {
             horizontalAlignment: ca > 0.3 ? Text.AlignLeft : (ca < -0.3 ? Text.AlignRight : Text.AlignHCenter)
             text: root.label(index)
             color: root.hots[index] ? root.pal.bad : (index === 2 && root.hasGpu && !root.gpuOn ? root.pal.muted : root.pal.text)
-            font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.DemiBold
+            font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium
         }
     }
 
@@ -151,7 +151,7 @@ PerfBase {
         Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
         text: Math.round(root.sBat) + "%"
         color: root.batTint
-        font.family: root.pal.uiFont; font.pixelSize: 44; font.weight: Font.Bold
+        font.family: root.pal.uiFont; font.pixelSize: 44; font.weight: Font.DemiBold
     }
     Column {
         x: 480; y: 132
@@ -160,12 +160,12 @@ PerfBase {
         Text {
             text: "↓ " + root.rate(root.stats.down)
             color: root.pal.accent
-            font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+            font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.Medium
         }
         Text {
             text: "↑ " + root.rate(root.stats.up)
             color: root.pal.accent2
-            font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold
+            font.family: root.pal.uiFont; font.pixelSize: 20; font.weight: Font.Medium
         }
     }
     Column {
@@ -175,7 +175,7 @@ PerfBase {
         Text {
             text: root.profileLabel
             color: root.pal.text
-            font.family: root.pal.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold
+            font.family: root.pal.uiFont; font.pixelSize: 22; font.weight: Font.Medium
         }
         Text {
             visible: root.sysmode !== ""

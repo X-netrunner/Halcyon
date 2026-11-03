@@ -56,8 +56,8 @@ PerfBase {
         opacity: root.swap
         text: root.shownQuiet ? "Everything is quiet" : "Busiest right now"
         color: root.pal.muted
-        font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.letterSpacing: 1.4
-        font.capitalization: Font.AllUppercase
+        font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.letterSpacing: 0
+        font.capitalization: Font.MixedCase
     }
     Text {
         id: big
@@ -65,21 +65,21 @@ PerfBase {
         opacity: root.swap * root.seg(0, 0.4)
         text: Math.round(root.loads[root.shown] * 100 * root.countUp)
         color: root.pal.text
-        font.family: root.pal.uiFont; font.pixelSize: 168; font.weight: Font.Bold; font.letterSpacing: -6
+        font.family: root.pal.uiFont; font.pixelSize: 168; font.weight: Font.DemiBold; font.letterSpacing: -6
     }
     Text {
         x: big.x + big.implicitWidth + 2; y: big.y + 52
         opacity: root.swap * root.seg(0, 0.4)
         text: "%"
         color: root.pal.accent
-        font.family: root.pal.uiFont; font.pixelSize: 36; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 36; font.weight: Font.Medium
     }
     Text {
         x: 40; y: 214
         opacity: root.swap * root.seg(0.1, 0.5)
         text: root.names[root.shown]
         color: root.hots[root.shown] ? root.pal.bad : root.cols[root.shown]
-        font.family: root.pal.uiFont; font.pixelSize: 26; font.weight: Font.DemiBold
+        font.family: root.pal.uiFont; font.pixelSize: 26; font.weight: Font.Medium
     }
     Text {
         x: 40; y: 250; width: 330

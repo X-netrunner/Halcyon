@@ -231,7 +231,7 @@ Scope {
                                             Rectangle {              // window: a frame with a title bar
                                                 visible: card.modelData.k === "window"
                                                 anchors.fill: parent
-                                                anchors.margins: 3
+                                                anchors.margins: 4
                                                 radius: 4
                                                 color: Qt.alpha(root.pal.accent, 0.12)
                                                 border.width: 2

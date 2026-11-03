@@ -120,7 +120,7 @@ Item {
 
                 Row {
                     anchors.centerIn: parent
-                    spacing: 7
+                    spacing: 8
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -136,7 +136,7 @@ Item {
                         color: tab.ink
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.tBody
-                        font.weight: tab.act > 0.5 ? Font.DemiBold : Font.Medium
+                        font.weight: tab.act > 0.5 ? Font.Medium : Font.Medium
                     }
                     // unread count
                     Badge {
