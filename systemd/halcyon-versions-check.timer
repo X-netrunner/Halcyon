@@ -1,0 +1,13 @@
+[Unit]
+Description=Halcyon Version Center: look once a day for newer versions (off until you switch it on in the Version Center or Settings)
+
+[Timer]
+# a few minutes after login (the laptop may be off at the usual time), then about once a day; the job itself skips a second look within a day.
+# Persistent catches up a missed one.
+OnStartupSec=15min
+OnCalendar=*-*-* 12:00:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

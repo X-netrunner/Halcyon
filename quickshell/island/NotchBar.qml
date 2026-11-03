@@ -27,6 +27,8 @@ PanelWindow {
     property string focusText: ""        // Focus mode running: the time left ("" = no session)
     property bool focusPaused: false
     property int bgCount: 0
+    property int versionsBehind: 0          // components behind main, from the Version Center's daily check (a dot; click opens it)
+    signal versionsClicked()
     property var opt: ({})
     property string barPadding: "normal"      // low | normal | high (Settings > Bar > Bar size and padding)
     property bool autoHide: false
@@ -587,6 +589,27 @@ PanelWindow {
                     }
                 }
                 MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.bgClicked() }
+            }
+
+            // newer versions of Halcyon or its companions exist (the optional daily check in the Version Center; it never installs anything)
+            Item {
+                visible: win.versionsBehind > 0
+                width: visible ? verIco.implicitWidth : 0
+                height: notch.bh
+                Item {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: verIco.implicitWidth
+                    height: verIco.implicitHeight
+                    Text { id: verIco; text: String.fromCodePoint(0xF06B0); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH }
+                    Rectangle {
+                        readonly property int d: Math.max(6, Math.round(win.icoH * 0.38))
+                        anchors.top: parent.top; anchors.right: parent.right
+                        width: d; height: d; radius: d / 2
+                        color: win.ac
+                        border.width: 1.5; border.color: Qt.alpha(win.pal.bg, 0.9)
+                    }
+                }
+                MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: win.versionsClicked() }
             }
 
             // Focus mode: the time left (the utilities box has the controls)
