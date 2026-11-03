@@ -29,7 +29,7 @@ r = run("python3", os.path.join(S, "halcyon-aichat.py"), "status")
 ok("chatbox status says on when the flag is gone", json.loads(r.stdout).get("aiOff") is False)
 
 src = open(os.path.join(Q, "Settings.qml"), encoding="utf-8").read()
-ok("master switch is on the AI page", re.search(r'\{ id: "AI", sub: "[^"]*", groups: \["aimaster"', src) is not None)
+ok("master switch is on the Productivity & AI page", re.search(r'\{ id: "Productivity & AI", sub: "[^"]*", groups: \[[^\]]*"aimaster"', src) is not None)
 ok("no message still points at Settings > Performance > AI", not any("Performance > AI" in open(os.path.join(dp, f), encoding="utf-8", errors="ignore").read()
    for base in (S, Q) for dp, _, fs in os.walk(base) for f in fs if f.endswith((".py", ".sh", ".qml"))))
 ok("security and firewall Ask boxes check aiOn", all("!aiOn" in open(os.path.join(Q, f), encoding="utf-8").read() for f in ("SecurityCenter.qml", "FwCenter.qml")))
