@@ -631,7 +631,7 @@ PanelWindow {
                     color: win.rail ? notch.railTint : win.pal.text
                     font.family: win.pal.uiFont
                     font.pixelSize: win.rail ? win.rm.clockPx + 1 : win.textPx
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                 }
                 Column {
                     id: clkV
@@ -649,8 +649,8 @@ PanelWindow {
                     }
                     Column {
                         spacing: 0
-                        Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.hourStr; color: win.rail ? notch.railTint : win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.clockPx : win.textPx; font.weight: Font.DemiBold; lineHeight: win.rail ? 0.92 : 1.0; lineHeightMode: Text.ProportionalHeight }
-                        Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.minStr; color: win.rail ? notch.railTint : win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.clockPx : win.textPx; font.weight: Font.DemiBold; lineHeight: win.rail ? 0.92 : 1.0; lineHeightMode: Text.ProportionalHeight }
+                        Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.hourStr; color: win.rail ? notch.railTint : win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.clockPx : win.textPx; font.weight: Font.Medium; lineHeight: win.rail ? 0.92 : 1.0; lineHeightMode: Text.ProportionalHeight }
+                        Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.minStr; color: win.rail ? notch.railTint : win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.clockPx : win.textPx; font.weight: Font.Medium; lineHeight: win.rail ? 0.92 : 1.0; lineHeightMode: Text.ProportionalHeight }
                         Text { visible: win.showSeconds; width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.secStr; color: win.rail ? Qt.alpha(notch.railTint, 0.7) : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.smallPx : Math.max(9, win.textPx - 3); lineHeight: win.rail ? 0.92 : 1.0; lineHeightMode: Text.ProportionalHeight }
                     }
                     Text { visible: !win.clock24; width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: win.rail ? notch.apStr.toLowerCase() : notch.apStr; color: win.rail ? Qt.alpha(notch.railTint, 0.75) : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.smallPx : Math.max(9, win.textPx - 4) }
@@ -681,7 +681,7 @@ PanelWindow {
                     visible: win.vert
                     anchors.centerIn: parent
                     Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.dayStr; color: win.rail ? Qt.alpha(notch.railTint, 0.75) : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.smallPx : Math.max(9, win.textPx - 3) }
-                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.dayNumStr; color: win.rail ? notch.railTint : win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.clockPx : Math.max(10, win.textPx - 1); font.weight: Font.DemiBold }
+                    Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.dayNumStr; color: win.rail ? notch.railTint : win.pal.text; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.clockPx : Math.max(10, win.textPx - 1); font.weight: Font.Medium }
                     Text { width: notch.bh; horizontalAlignment: Text.AlignHCenter; text: notch.monStr; color: win.rail ? Qt.alpha(notch.railTint, 0.75) : win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.rail ? win.rm.smallPx : Math.max(9, win.textPx - 3) }
                 }
             }
@@ -694,7 +694,7 @@ PanelWindow {
                 readonly property var items: [
                     { k: "CPU", v: Math.round(win.stats.cpu || 0) + "%", frac: (win.stats.cpu || 0) / 100 },
                     { k: "RAM", v: (win.stats.memGb || "0.0") + "G", frac: (win.stats.mem || 0) / 100 },
-                    { k: "TEMP", v: Math.round(win.stats.temp || 0) + "°", frac: (win.stats.temp || 0) / 100 }
+                    { k: "Temp", v: Math.round(win.stats.temp || 0) + "°", frac: (win.stats.temp || 0) / 100 }
                 ]
                 implicitWidth: win.vert ? notch.bh : stRow.width
                 implicitHeight: win.vert ? stCol.height : notch.bh
@@ -710,7 +710,7 @@ PanelWindow {
                             spacing: 4
                             anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                             Text { text: modelData.k; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.pal.tCap; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
-                            Text { text: modelData.v; color: modelData.frac > 0.9 ? win.pal.bad : (modelData.frac > 0.75 ? win.pal.warn : win.pal.text); font.family: win.pal.uiFont; font.pixelSize: win.pal.tBody; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: modelData.v; color: modelData.frac > 0.9 ? win.pal.bad : (modelData.frac > 0.75 ? win.pal.warn : win.pal.text); font.family: win.pal.uiFont; font.pixelSize: win.pal.tBody; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                         }
                     }
                 }
@@ -725,7 +725,7 @@ PanelWindow {
                             required property var modelData
                             width: notch.bh
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: modelData.k; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: Math.max(8, win.pal.tCap - 1); font.weight: Font.Medium }
-                            Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: modelData.v; color: modelData.frac > 0.9 ? win.pal.bad : (modelData.frac > 0.75 ? win.pal.warn : win.pal.text); font.family: win.pal.uiFont; font.pixelSize: win.pal.tBody; font.weight: Font.DemiBold }
+                            Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: modelData.v; color: modelData.frac > 0.9 ? win.pal.bad : (modelData.frac > 0.75 ? win.pal.warn : win.pal.text); font.family: win.pal.uiFont; font.pixelSize: win.pal.tBody; font.weight: Font.Medium }
                         }
                     }
                 }
@@ -978,7 +978,7 @@ PanelWindow {
                         color: win.numLock ? win.pal.bg : Qt.alpha(win.pal.text, nlMa.containsMouse ? 0.8 : 0.5)
                         font.family: win.pal.uiFont
                         font.pixelSize: Math.max(9, win.textPx - 4)
-                        font.weight: Font.DemiBold
+                        font.weight: Font.Medium
                         Behavior on color { ColorAnimation { duration: win.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     MouseArea {
@@ -1006,7 +1006,7 @@ PanelWindow {
                     id: focusRow
                     visible: !win.vert
                     anchors.centerIn: parent
-                    spacing: 5
+                    spacing: 4
                     Text { text: String.fromCodePoint(0xF051B); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH; anchors.verticalCenter: parent.verticalCenter }
                     Text { text: win.focusText; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: Math.max(10, win.textPx - 2); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                 }
@@ -1103,7 +1103,7 @@ PanelWindow {
                         color: pwrBox.errCol
                         font.family: win.pal.font
                         font.pixelSize: win.rail ? win.rm.powerPx : Math.round(win.icoH * 1.05)
-                        font.weight: Font.Bold
+                        font.weight: Font.DemiBold
                     }
                 }
                 MouseArea {

@@ -122,7 +122,7 @@ Scope {
                 NumberAnimation on t { id: intro; running: false; from: 0; to: 1; duration: 1400; easing.type: Easing.OutCubic }
                 // the flame flickers while the view is open
                 property real flick: 0
-                NumberAnimation on flick { running: root.open; from: 0; to: 2 * Math.PI; duration: 2600; loops: Animation.Infinite }
+                NumberAnimation on flick { running: false; from: 0; to: 2 * Math.PI; duration: 2600; loops: Animation.Infinite }
 
                 Rectangle { anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.72); opacity: Math.min(1, stage.t * 3) }
                 MouseArea { anchors.fill: parent; onClicked: root.open = false }
@@ -143,7 +143,7 @@ Scope {
                     ColumnLayout {
                         id: col
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 32 }
-                        spacing: 22
+                        spacing: 24
 
                         // ---- the flame, the streak, today's ring
                         RowLayout {
@@ -164,7 +164,7 @@ Scope {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
-                                Text { Layout.alignment: root.pal.centred ? Qt.AlignHCenter : Qt.AlignLeft; text: root.pal.cap("FOCUS STREAK"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: 12; font.letterSpacing: root.pal.calm ? 0.2 : 2.5; font.weight: Font.DemiBold }
+                                Text { Layout.alignment: root.pal.centred ? Qt.AlignHCenter : Qt.AlignLeft; text: root.pal.cap("FOCUS STREAK"); color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: 12; font.letterSpacing: root.pal.calm ? 0.2 : 2.5; font.weight: Font.Medium }
                                 Row {
                                     spacing: 12
                                     Text { id: big; text: Math.round(root.streak * stage.t); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: 72; font.weight: Font.Light }
@@ -237,7 +237,7 @@ Scope {
                                     x: index * plot.slot; width: plot.slot; height: plot.height
                                     Rectangle {
                                         width: Math.max(4, plot.slot - 10); anchors.horizontalCenter: parent.horizontalCenter
-                                        anchors.bottom: parent.bottom; anchors.bottomMargin: 18
+                                        anchors.bottom: parent.bottom; anchors.bottomMargin: 20
                                         height: Math.max(3, (plot.height - 46) * bar.modelData.m / root.peak * bar.grow)
                                         radius: 4
                                         color: bar.modelData.m >= root.goal ? (bm.containsMouse ? Qt.lighter(root.pal.accent, 1.12) : root.pal.accent)

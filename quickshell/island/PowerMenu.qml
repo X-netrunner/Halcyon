@@ -77,7 +77,7 @@ Scope {
 
             Column {
                 anchors.centerIn: parent
-                spacing: 34
+                spacing: 32
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: root.clock
@@ -88,7 +88,7 @@ Scope {
                     opacity: 0.9
                 }
                 Row {
-                    spacing: 22
+                    spacing: 24
                     anchors.horizontalCenter: parent.horizontalCenter
                     Repeater {
                         model: root.items
@@ -126,7 +126,7 @@ Scope {
                                 color: sure ? root.pal.accent : root.pal.muted
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tBody
-                                font.weight: sure ? Font.DemiBold : Font.Normal
+                                font.weight: sure ? Font.Medium : Font.Normal
                             }
                             MouseArea {
                                 id: ma

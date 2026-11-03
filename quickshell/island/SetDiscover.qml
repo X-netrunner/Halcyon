@@ -57,8 +57,8 @@ ColumnLayout {
             color: rowMa.containsMouse || expanded ? Qt.alpha(dv.pal.text, 0.05) : "transparent"
             ColumnLayout {
                 id: rc
-                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 9; leftMargin: 12; rightMargin: 12 }
-                spacing: 3
+                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8; leftMargin: 12; rightMargin: 12 }
+                spacing: 4
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
@@ -90,7 +90,7 @@ ColumnLayout {
                         implicitHeight: 20
                         radius: 10
                         color: Qt.alpha(dv.pal.accent, 0.2)
-                        Text { id: nt; anchors.centerIn: parent; text: "New"; color: dv.pal.accent; font.family: dv.pal.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold }
+                        Text { id: nt; anchors.centerIn: parent; text: "New"; color: dv.pal.accent; font.family: dv.pal.uiFont; font.pixelSize: 10; font.weight: Font.Medium }
                     }
                 }
                 Text {

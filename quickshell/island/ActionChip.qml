@@ -22,7 +22,7 @@ Rectangle {
     implicitHeight: 36
     implicitWidth: glyphW + labelNatural + 32
     clip: true
-    radius: height / 2
+    radius: Math.min(height / 2, 10)   // unslop: a control, not a pill
     readonly property bool solid: primary && pal.zen && !disabled
     color: disabled ? Qt.alpha(pal.surface, 0.35)
          : solid ? (ma.containsMouse || flashing ? Qt.lighter(pal.primary, 1.08) : pal.primary)
@@ -51,7 +51,7 @@ Rectangle {
             color: root.solid ? root.pal.primaryText : root.flashing || root.on || root.primary ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : root.pal.muted
             font.family: root.flashing ? root.pal.uiFont : root.pal.font
             font.pixelSize: root.flashing ? 14 : 15
-            font.weight: Font.Bold
+            font.weight: Font.DemiBold
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {

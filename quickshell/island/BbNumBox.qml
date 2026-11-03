@@ -21,7 +21,7 @@ Row {
 
     Text { anchors.verticalCenter: parent.verticalCenter; width: nb.labelW > 0 ? nb.labelW : implicitWidth; text: nb.label; color: bb.pal.muted; font.family: bb.pal.uiFont; font.pixelSize: bb.pal.tCap }
     Rectangle {
-        width: 26; height: 28; radius: 14
+        width: 26; height: 28; radius: 8
         anchors.verticalCenter: parent.verticalCenter
         color: mma.containsMouse ? Qt.alpha(bb.pal.surfaceHi, 0.9) : Qt.alpha(bb.pal.surface, 0.8)
         border.width: bb.pal.calm ? 0 : 1; border.color: bb.pal.lineSoft
@@ -29,7 +29,7 @@ Row {
         MouseArea { id: mma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: nb.commit(Math.max(0, nb.now() - 1)) }
     }
     Rectangle {
-        width: 76; height: 28; radius: 14
+        width: 76; height: 28; radius: 8
         anchors.verticalCenter: parent.verticalCenter
         color: bb.pal.zen ? bb.pal.field : Qt.alpha(bb.pal.surface, 0.8)
         border.width: bb.pal.zen && !fld.activeFocus ? 0 : 1
@@ -62,7 +62,7 @@ Row {
         }
     }
     Rectangle {
-        width: 26; height: 28; radius: 14
+        width: 26; height: 28; radius: 8
         anchors.verticalCenter: parent.verticalCenter
         color: pma.containsMouse ? Qt.alpha(bb.pal.surfaceHi, 0.9) : Qt.alpha(bb.pal.surface, 0.8)
         border.width: bb.pal.calm ? 0 : 1; border.color: bb.pal.lineSoft

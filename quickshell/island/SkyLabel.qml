@@ -23,8 +23,8 @@ Item {
             color: root.pal.muted
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tCap - 1
-            font.letterSpacing: 1.4
-            font.capitalization: Font.AllUppercase
+            font.letterSpacing: 0
+            font.capitalization: Font.MixedCase
         }
         Text {
             width: parent.width
@@ -34,7 +34,7 @@ Item {
             color: root.tint
             font.family: root.pal.uiFont
             font.pixelSize: root.valueSize
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
         }
         Text {
             width: parent.width

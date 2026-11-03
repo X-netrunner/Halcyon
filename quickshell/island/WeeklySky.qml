@@ -288,7 +288,7 @@ Scope {
                                 model: [{ k: "focus", n: "focus session" }, { k: "task", n: "task done" }, { k: "event", n: "calendar event" }]
                                 delegate: Row {
                                     required property var modelData
-                                    spacing: 7
+                                    spacing: 8
                                     Rectangle {
                                         width: 9; height: 9; radius: 4.5; anchors.verticalCenter: parent.verticalCenter
                                         color: modelData.k === "focus" ? root.pal.accent : (modelData.k === "task" ? root.pal.accent2 : root.pal.text)

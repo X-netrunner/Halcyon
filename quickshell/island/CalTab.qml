@@ -47,7 +47,7 @@ Item {
                 color: root.pal.accent
                 font.family: root.pal.uiFont
                 font.pixelSize: 56
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
             Text {
                 width: parent.width
@@ -68,7 +68,7 @@ Item {
                 color: root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tTitle
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
         }
 
@@ -92,7 +92,7 @@ Item {
                 color: root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tBody - 1
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
             Text {
                 text: root.linked && root.cal.nextTask ? root.cal.clock(root.cal.nextTask.start) : ""
@@ -117,11 +117,11 @@ Item {
             color: root.pal.text
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tBody + 3
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
         }
         Row {
             anchors { right: parent.right; rightMargin: 12; verticalCenter: monthTitle.verticalCenter }
-            spacing: 5
+            spacing: 4
             Rectangle {
                 width: 26; height: 24; radius: 12
                 color: Qt.alpha(root.pal.text, prevMa.containsMouse ? 0.14 : 0.07)
@@ -191,7 +191,7 @@ Item {
                         opacity: cell.inMonth ? 1 : 0.32
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.tBody - 1
-                        font.weight: (cell.isToday || cell.isSel) ? Font.DemiBold : Font.Normal
+                        font.weight: (cell.isToday || cell.isSel) ? Font.Medium : Font.Normal
                     }
                     Row {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -242,7 +242,7 @@ Item {
                 color: root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tBody + 1
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
             Text {
                 id: dayCount
@@ -293,7 +293,7 @@ Item {
                                     color: root.pal.text
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody - 1
-                                    font.weight: Font.DemiBold
+                                    font.weight: Font.Medium
                                 }
                                 Text {
                                     width: parent.width
@@ -350,7 +350,7 @@ Item {
                 color: root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tBody + 1
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
             Text {
                 width: parent.width

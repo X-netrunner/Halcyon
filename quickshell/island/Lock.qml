@@ -385,7 +385,7 @@ Scope {
                     color: root.pal.muted
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tTitle + 3
-                    font.letterSpacing: 1
+                    font.letterSpacing: 0
                 }
             }
 
@@ -396,7 +396,7 @@ Scope {
                 readonly property real late: Math.max(0, Math.min(1, (surf.appear - 0.3) / 0.7))
                 y: parent.height * 0.52 + 22 * (1 - late)
                 opacity: late
-                spacing: 18
+                spacing: 20
 
                 // profile picture in a ring (falls back to an initial)
                 Item {
@@ -471,7 +471,7 @@ Scope {
                         color: root.pal.accent
                         font.family: root.pal.uiFont
                         font.pixelSize: 40
-                        font.weight: Font.DemiBold
+                        font.weight: Font.Medium
                     }
                 }
                 Text {
@@ -480,7 +480,7 @@ Scope {
                     color: root.pal.text
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tDisplay
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                 }
 
                 // password pill (shakes on a wrong password)
@@ -524,14 +524,14 @@ Scope {
                     Row {
                         id: dotRow
                         anchors.centerIn: parent
-                        spacing: 9
+                        spacing: 8
                         Repeater {
                             model: Math.min(root.buffer.length, 16)
                             delegate: Rectangle {
                                 required property int index
                                 width: 9; height: 9; radius: 4.5
                                 color: root.failure !== "" ? root.pal.bad : root.pal.text
-                                NumberAnimation on scale { from: 0.2; to: 1; duration: 240; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
+                                NumberAnimation on scale { from: 0.2; to: 1; duration: 240; easing.type: Easing.OutCubic }
                                 NumberAnimation on opacity { from: 0; to: 1; duration: 150 }
                                 transform: Translate { y: root.busy ? -4 * Math.sin(pill.wave - index * 0.7) : 0 }
                             }
@@ -541,7 +541,7 @@ Scope {
                     TextInput {
                         id: input
                         anchors.fill: parent
-                        anchors.leftMargin: 22; anchors.rightMargin: 22
+                        anchors.leftMargin: 24; anchors.rightMargin: 24
                         verticalAlignment: TextInput.AlignVCenter
                         horizontalAlignment: TextInput.AlignHCenter
                         echoMode: TextInput.Password
@@ -602,7 +602,7 @@ Scope {
                 anchors.right: parent.right
                 anchors.topMargin: 28
                 anchors.rightMargin: 32
-                spacing: 22
+                spacing: 24
                 opacity: surf.appear
                 Row {
                     visible: root.widgets && root.notifCount > 0
@@ -645,7 +645,7 @@ Scope {
                 opacity: surf.appear
                 Column {
                     anchors.left: parent.left
-                    anchors.leftMargin: 18
+                    anchors.leftMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - 160
                     spacing: 2
@@ -656,7 +656,7 @@ Scope {
                         color: root.pal.text
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.tBody
-                        font.weight: Font.DemiBold
+                        font.weight: Font.Medium
                     }
                     Text {
                         width: parent.width
@@ -697,7 +697,7 @@ Scope {
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
                 anchors.leftMargin: 32
-                anchors.bottomMargin: 30
+                anchors.bottomMargin: 32
                 width: swCol.width
                 height: swCol.height
                 opacity: surf.appear
@@ -776,7 +776,7 @@ Scope {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.rightMargin: 32
-                anchors.bottomMargin: 30
+                anchors.bottomMargin: 32
                 width: pwCol.width
                 height: pwCol.height
                 opacity: surf.appear
@@ -848,7 +848,7 @@ Scope {
                 color: Qt.alpha(root.pal.accent, 0.7)
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.zen ? 12 : 10
-                font.weight: root.pal.zen ? Font.Medium : Font.DemiBold
+                font.weight: root.pal.zen ? Font.Medium : Font.Medium
                 font.letterSpacing: root.pal.zen ? 0.2 : 2
             }
 

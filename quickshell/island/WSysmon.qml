@@ -27,7 +27,7 @@ WBase {
         var s = st || ({})
         if (id === "cpu") return { n: "CPU", v: (s.cpu || 0) / 100, t: Math.round(s.cpu || 0) + "%", hi: 0.85 }
         if (id === "ram") return { n: "RAM", v: (s.mem || 0) / 100, t: (s.memGb || "0.0") + "G", hi: 0.9 }
-        if (id === "temp") return { n: "TEMP", v: Math.min(1, (s.temp || 0) / 100), t: Math.round(s.temp || 0) + "°", hi: 0.75 }
+        if (id === "temp") return { n: "Temp", v: Math.min(1, (s.temp || 0) / 100), t: Math.round(s.temp || 0) + "°", hi: 0.75 }
         if (id === "gpu") {
             var g = env && env.gpu ? env.gpu : ({})
             return { n: "GPU", v: (g.gpu || 0) / 100, t: (g.state === "none" || g.state === undefined) ? "n/a" : Math.round(g.gpu || 0) + "%", hi: 0.9 }
@@ -36,9 +36,9 @@ WBase {
             var ds = env && env.disks && env.disks.disks ? env.disks.disks : []
             var d0 = ds.length ? ds[0] : null
             var dv = d0 ? d0.used / Math.max(1, d0.size) : 0
-            return { n: "DISK", v: dv, t: d0 ? Math.round(dv * 100) + "%" : "n/a", hi: 0.9 }
+            return { n: "Disk", v: dv, t: d0 ? Math.round(dv * 100) + "%" : "n/a", hi: 0.9 }
         }
-        return { n: "NET", v: -1, t: "↓ " + rate(s.down || 0) + "   ↑ " + rate(s.up || 0), hi: 2 }
+        return { n: "Net", v: -1, t: "↓ " + rate(s.down || 0) + "   ↑ " + rate(s.up || 0), hi: 2 }
     }
     readonly property real wide: opt("width", 260)
     function lit(r) { return r.v < 0 ? accent : level(r.v, r.hi, r.hi + 0.08) }
@@ -60,7 +60,7 @@ WBase {
                     required property string modelData
                     readonly property var r: root.row(modelData)
                     spacing: root.sz(10)
-                    WLbl { b: root; width: root.sz(40); text: r.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 1; anchors.verticalCenter: parent.verticalCenter }
+                    WLbl { b: root; width: root.sz(40); text: r.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0; anchors.verticalCenter: parent.verticalCenter }
                     Rectangle {
                         visible: r.v >= 0
                         // (a very large text size used to leave this with a negative width)
@@ -100,9 +100,9 @@ WBase {
                                 ShapePath { strokeColor: root.lit(r); strokeWidth: root.sz(5); fillColor: "transparent"; capStyle: ShapePath.RoundCap
                                     PathAngleArc { centerX: rr.width / 2; centerY: rr.height / 2; radiusX: rr.width / 2 - root.sz(4); radiusY: rr.height / 2 - root.sz(4); startAngle: -90; sweepAngle: 359.9 * Math.max(0.01, r.v) } }
                             }
-                            WLbl { b: root; anchors.centerIn: parent; text: r.t; font.pixelSize: root.sz(13); font.weight: Font.DemiBold }
+                            WLbl { b: root; anchors.centerIn: parent; text: r.t; font.pixelSize: root.sz(13); font.weight: Font.Medium }
                         }
-                        WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; y: rr.height + root.sz(3); text: r.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 1 }
+                        WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; y: rr.height + root.sz(3); text: r.n; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                     }
                 }
             }
@@ -122,7 +122,7 @@ WBase {
                     required property string modelData
                     readonly property var r: root.row(modelData)
                     spacing: root.sz(12)
-                    WLbl { b: root; width: root.sz(46); text: r.n; color: root.dim; font.pixelSize: root.sz(12); font.letterSpacing: 1 }
+                    WLbl { b: root; width: root.sz(46); text: r.n; color: root.dim; font.pixelSize: root.sz(12); font.letterSpacing: 0 }
                     WLbl { b: root; text: r.t; color: root.lit(r); font.pixelSize: root.sz(15); font.weight: Font.Medium; font.family: root.pal ? root.pal.mono : "monospace" }
                 }
             }
@@ -138,8 +138,8 @@ WBase {
                     required property string modelData
                     readonly property var r: root.row(modelData)
                     spacing: root.sz(5)
-                    WLbl { b: root; text: r.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 1; anchors.baseline: cv.baseline }
-                    WLbl { id: cv; b: root; text: r.t; color: root.lit(r); font.pixelSize: root.sz(15); font.weight: Font.DemiBold }
+                    WLbl { b: root; text: r.n; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0; anchors.baseline: cv.baseline }
+                    WLbl { id: cv; b: root; text: r.t; color: root.lit(r); font.pixelSize: root.sz(15); font.weight: Font.Medium }
                 }
             }
         }

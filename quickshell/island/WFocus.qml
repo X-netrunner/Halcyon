@@ -90,7 +90,7 @@ WBase {
                 width: sTxt.implicitWidth + root.sz(28); height: root.sz(30); radius: height / 2
                 color: root.on ? Qt.alpha(root.accent, 0.2) : root.accent
                 border.width: root.on ? 1 : 0; border.color: root.accent
-                WLbl { id: sTxt; b: root; anchors.centerIn: parent; text: root.on ? "Stop" : "Start focus"; color: root.on ? root.fg : (root.pal ? root.pal.bg : "black"); font.pixelSize: root.sz(13); font.weight: Font.DemiBold }
+                WLbl { id: sTxt; b: root; anchors.centerIn: parent; text: root.on ? "Stop" : "Start focus"; color: root.on ? root.fg : (root.pal ? root.pal.bg : "black"); font.pixelSize: root.sz(13); font.weight: Font.Medium }
                 MouseArea { anchors.fill: parent; enabled: !root.editing; cursorShape: Qt.PointingHandCursor; onClicked: root.toggle() }
             }
             Rectangle {
@@ -125,8 +125,8 @@ WBase {
                 Column {
                     anchors.centerIn: parent
                     spacing: 0
-                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.on ? root.timeLeft : root.goal + " min"; font.pixelSize: root.sz(root.on ? 26 : 20); font.weight: Font.DemiBold }
-                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.phaseName.toUpperCase(); color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 1.4 }
+                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.on ? root.timeLeft : root.goal + " min"; font.pixelSize: root.sz(root.on ? 26 : 20); font.weight: Font.Medium }
+                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.phaseName; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                 }
             }
             Row {
@@ -149,7 +149,7 @@ WBase {
                 spacing: root.sz(22)
                 Column {
                     spacing: 0
-                    WLbl { b: root; text: root.phaseName.toUpperCase(); color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 2; font.weight: Font.DemiBold }
+                    WLbl { b: root; text: root.phaseName; color: root.accent; font.pixelSize: root.sz(11); font.letterSpacing: 0; font.weight: Font.Medium }
                     WLbl { b: root; text: root.on ? root.timeLeft : root.goal + ":00"; font.pixelSize: root.sz(48); font.weight: Font.Light }
                     Rectangle { width: root.sz(150); height: root.sz(4); radius: 2; color: root.track
                         Rectangle { width: parent.width * root.frac; height: parent.height; radius: 2; color: root.accent } }
@@ -159,8 +159,8 @@ WBase {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 0
                     WIco { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.glyph(0xF0238); color: root.flame; font.pixelSize: root.sz(26) }
-                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.streak; font.pixelSize: root.sz(28); font.weight: Font.DemiBold }
-                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: "DAYS"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 1.4 }
+                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.streak; font.pixelSize: root.sz(28); font.weight: Font.Medium }
+                    WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: "Days"; color: root.dim; font.pixelSize: root.sz(10); font.letterSpacing: 0 }
                 }
             }
             Loader { visible: root.showWeek; sourceComponent: weekC }
@@ -177,14 +177,14 @@ WBase {
             id: cRow
             spacing: root.sz(10)
             WIco { b: root; text: root.glyph(0xF051B); color: root.on ? root.accent : root.dim; font.pixelSize: root.sz(20); anchors.verticalCenter: parent.verticalCenter }
-            WLbl { b: root; text: root.on ? root.timeLeft : "Focus"; font.pixelSize: root.sz(20); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            WLbl { b: root; text: root.on ? root.timeLeft : "Focus"; font.pixelSize: root.sz(20); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
             Rectangle { visible: root.showStreak; width: 1; height: root.sz(20); color: root.track; anchors.verticalCenter: parent.verticalCenter }
             Row {
                 visible: root.showStreak
                 spacing: root.sz(4)
                 anchors.verticalCenter: parent.verticalCenter
                 WIco { b: root; text: root.glyph(0xF0238); color: root.flame; font.pixelSize: root.sz(18); anchors.verticalCenter: parent.verticalCenter }
-                WLbl { b: root; text: root.streak; font.pixelSize: root.sz(18); font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                WLbl { b: root; text: root.streak; font.pixelSize: root.sz(18); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
             }
         }
         MouseArea { anchors.fill: parent; enabled: root.showBtn && !root.editing; cursorShape: Qt.PointingHandCursor; onClicked: root.toggle() }
@@ -201,7 +201,7 @@ WBase {
                 WIco { b: root; text: root.glyph(0xF0238); color: root.flame; font.pixelSize: root.sz(48); anchors.verticalCenter: parent.verticalCenter }
                 WLbl { b: root; text: root.streak; font.pixelSize: root.sz(72); font.weight: Font.Light; anchors.verticalCenter: parent.verticalCenter }
             }
-            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.streak === 1 ? "DAY IN A ROW" : "DAYS IN A ROW"; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 2 }
+            WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.streak === 1 ? "Day in a row" : "Days in a row"; color: root.dim; font.pixelSize: root.sz(11); font.letterSpacing: 0 }
             WLbl { b: root; anchors.horizontalCenter: parent.horizontalCenter; text: root.todayMin + " / " + root.goal + " min today"; color: root.todayMin >= root.goal ? root.accent : root.dim; font.pixelSize: root.sz(12) }
             Loader { visible: root.showWeek; anchors.horizontalCenter: parent.horizontalCenter; sourceComponent: weekC }
             Loader { visible: root.showBtn; anchors.horizontalCenter: parent.horizontalCenter; sourceComponent: btnC }

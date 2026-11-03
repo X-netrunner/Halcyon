@@ -193,7 +193,7 @@ Item {
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 18
+            anchors.margins: 20
             spacing: 16
 
             // ---- places
@@ -210,7 +210,7 @@ Item {
                     color: root.pal.text
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.tTitle + 1
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                 }
                 Repeater {
                     model: root.places.concat(root.drives)

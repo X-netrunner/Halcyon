@@ -113,7 +113,7 @@ Item {
                 color: row.on ? root.pal.accent : root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: row.on ? 16 : 13
-                font.weight: row.on ? Font.DemiBold : Font.Normal
+                font.weight: row.on ? Font.Medium : Font.Normal
                 Behavior on color { ColorAnimation { duration: 280; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
         }

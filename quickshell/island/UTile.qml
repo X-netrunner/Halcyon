@@ -27,7 +27,7 @@ Rectangle {
 
     Column {
         anchors.centerIn: parent
-        spacing: 5
+        spacing: 4
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: root.glyph

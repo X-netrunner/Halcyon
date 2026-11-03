@@ -41,7 +41,7 @@ ColumnLayout {
                         Text {
                             text: "Focus"
                             color: root.pal.text
-                            font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold
+                            font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium
                         }
                         Text {
                             Layout.fillWidth: true
@@ -77,7 +77,7 @@ ColumnLayout {
                                         anchors.centerIn: parent
                                         text: lenTile.modelData + " min"
                                         color: lenTile.sel ? root.pal.bg : root.pal.text
-                                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.DemiBold
+                                        font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium
                                     }
                                     MouseArea {
                                         id: lenMa
@@ -168,7 +168,7 @@ ColumnLayout {
                         Text {
                             text: root.focusText
                             color: root.pal.text
-                            font.family: root.pal.uiFont; font.pixelSize: 30; font.weight: Font.DemiBold
+                            font.family: root.pal.uiFont; font.pixelSize: 30; font.weight: Font.Medium
                             opacity: root.focusInfo.paused ? 0.55 : 1
                         }
                         ColumnLayout {
@@ -179,7 +179,7 @@ ColumnLayout {
                                 elide: Text.ElideRight
                                 text: root.focusInfo.paused ? "Paused" : (root.focusInfo.phase === "work" ? "Focusing" : (root.focusInfo.phase === "long" ? "Long break" : "Break"))
                                 color: root.pal.accent
-                                font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold
+                                font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium
                             }
                             Text {
                                 Layout.fillWidth: true

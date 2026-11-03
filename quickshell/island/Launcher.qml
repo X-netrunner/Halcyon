@@ -259,7 +259,7 @@ Item {
     // the command groups (All / Desktop / System ...): beside "Commands" in the earlier styles, under the list in the new one
     // (nothing button-like sits above the results there)
     component CatTabs: Row {
-        spacing: 5
+        spacing: 4
         Repeater {
             model: [
                 { id: "all", label: "All" },
@@ -289,7 +289,7 @@ Item {
                     text: modelData.label
                     font.family: root.pal.uiFont
                     font.pixelSize: root.pal.zen ? 11 : 10
-                    font.weight: activeCat ? Font.DemiBold : Font.Normal
+                    font.weight: activeCat ? Font.Medium : Font.Normal
                     color: activeCat ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : (catMa.containsMouse ? root.pal.text : root.pal.muted)
                     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
@@ -840,7 +840,7 @@ Item {
             id: bar
             Layout.fillWidth: true
             Layout.preferredHeight: root.pal.zen ? 52 : 46
-            radius: height / 2
+            radius: 12
             // new: a soft pill, no outline and no glow
             color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.surface, 0.85)
             border.width: root.pal.bw
@@ -872,7 +872,7 @@ Item {
                 visible: input.text === ""
                 anchors.left: input.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.pal.zen ? "Search apps, commands, files" : "Search apps…"
+                text: root.pal.zen ? "Search apps, commands, files" : "Search apps"
                 color: root.pal.muted
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.zen ? 16 : 15
@@ -986,7 +986,7 @@ Item {
                 color: root.pal.muted
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.zen ? 12 : 10
-                font.weight: root.pal.zen ? Font.Normal : Font.DemiBold
+                font.weight: root.pal.zen ? Font.Normal : Font.Medium
                 font.letterSpacing: root.pal.zen ? 0 : 1.4
                 Layout.alignment: Qt.AlignVCenter
             }
@@ -1074,14 +1074,14 @@ Item {
                         Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     Text {
-                        width: cell.width - 16
+                        width: cell.width - 8
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight
                         text: cell.modelData.name
                         color: cell.cur ? root.pal.text : Qt.alpha(root.pal.text, root.pal.zen ? 0.8 : 0.78)
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.zen ? 12 : 11
-                        font.weight: cell.cur && !root.pal.zen ? Font.DemiBold : Font.Medium
+                        font.weight: cell.cur && !root.pal.zen ? Font.Medium : Font.Medium
                         Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
@@ -1153,7 +1153,7 @@ Item {
                             color: root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: 14
-                            font.weight: srow.cur ? Font.DemiBold : Font.Medium
+                            font.weight: srow.cur ? Font.Medium : Font.Medium
                         }
                         Text {
                             visible: srow.index === 0 && root.query.trim() !== ""
@@ -1289,7 +1289,7 @@ Item {
                         text: root.pal.calm ? (crow.modelData.cat || "cmd") : (crow.modelData.cat || "cmd").toUpperCase()
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.calm ? 11 : 9
-                        font.weight: root.pal.calm ? Font.Normal : Font.DemiBold
+                        font.weight: root.pal.calm ? Font.Normal : Font.Medium
                         font.letterSpacing: root.pal.calm ? 0 : 0.6
                         color: {
                             var cat = crow.modelData.cat
@@ -1405,7 +1405,7 @@ Item {
                     width: parent.width
                     text: infoBox.cur ? infoBox.cur.name : ""
                     color: root.pal.text
-                    font.family: root.pal.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold
+                    font.family: root.pal.uiFont; font.pixelSize: 13; font.weight: Font.Medium
                     elide: Text.ElideRight
                 }
                 Text {
@@ -1510,7 +1510,7 @@ Item {
             visible: !root.pal.zen && root.mode !== "calc" && !root.aiMode
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredHeight: 16
-            spacing: 18
+            spacing: 20
             Repeater {
                 model: root.mode === "cmd"
                     ? (root.cmdTucked > 0 ? [["↑↓", "move"], ["⏎", "run"], [">.", "all " + (root.cmdTucked + root.cmdResults.length) + " commands"]]
@@ -1518,13 +1518,13 @@ Item {
                     : [["↑↓", "history"], ["←→", "cursor"], ["tab", "move"], ["⏎", "open"], [".", "all apps"], [">", "commands"], ["=", "calc"]]
                 delegate: Row {
                     required property var modelData
-                    spacing: 5
+                    spacing: 4
                     Text {
                         text: modelData[0]
                         color: root.pal.accent
                         font.family: root.pal.uiFont
                         font.pixelSize: 10
-                        font.weight: Font.DemiBold
+                        font.weight: Font.Medium
                     }
                     Text {
                         text: modelData[1]

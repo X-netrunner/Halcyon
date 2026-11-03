@@ -37,7 +37,7 @@ Item {
             color: root.current ? root.pal.accent : root.pal.muted
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tBody - 1
-            font.weight: root.current ? Font.DemiBold : Font.Normal
+            font.weight: root.current ? Font.Medium : Font.Normal
             Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         }
     }

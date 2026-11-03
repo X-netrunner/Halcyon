@@ -260,7 +260,7 @@ Scope {
                                 Text {
                                     text: Math.round(Number(root.stats.bat || 0)) + "%"
                                     color: (root.stats.bat || 0) <= 20 && !root.stats.charging ? root.pal.bad : root.pal.text
-                                    font.family: root.pal.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold
+                                    font.family: root.pal.uiFont; font.pixelSize: 22; font.weight: Font.Medium
                                 }
                                 Text {
                                     Layout.fillWidth: true
@@ -290,7 +290,7 @@ Scope {
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 0
-                                            Text { Layout.fillWidth: true; text: row.modelData.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                            Text { Layout.fillWidth: true; text: row.modelData.label; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; elide: Text.ElideRight }
                                             Text { Layout.fillWidth: true; text: row.modelData.hint; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; elide: Text.ElideRight }
                                         }
                                         Text { visible: row.cur; text: "●"; color: root.pal.accent; font.pixelSize: 11 }

@@ -466,7 +466,7 @@ PanelWindow {
                 color: win.pal.text
                 font.family: win.pal.uiFont
                 font.pixelSize: win.textPx
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
                 TapHandler { acceptedButtons: Qt.LeftButton; onTapped: { if (win.calClock) win.clockClicked(); else if (win.dropOn) win.pageDrop(1); else win.statusClicked() } }
                 TapHandler { acceptedButtons: Qt.RightButton; onTapped: win.clockToggled("24h") }
                 TapHandler { acceptedButtons: Qt.MiddleButton; onTapped: win.clockToggled("seconds") }
@@ -495,7 +495,7 @@ PanelWindow {
                 color: win.showTime ? win.pal.muted : win.pal.text
                 font.family: win.pal.uiFont
                 font.pixelSize: win.showTime ? Math.max(10, win.textPx - 2) : win.textPx
-                font.weight: win.showTime ? Font.Normal : Font.DemiBold
+                font.weight: win.showTime ? Font.Normal : Font.Medium
             }
             // live stats: slide out while the pointer is on the bar (Settings > Bar > When you hover the bar)
             Item {
@@ -516,13 +516,13 @@ PanelWindow {
                         model: [
                             { k: "CPU", v: Math.round(win.stats.cpu || 0) + "%", frac: (win.stats.cpu || 0) / 100 },
                             { k: "RAM", v: (win.stats.memGb || "0.0") + "G", frac: (win.stats.mem || 0) / 100 },
-                            { k: "TEMP", v: Math.round(win.stats.temp || 0) + "°", frac: (win.stats.temp || 0) / 100 }
+                            { k: "Temp", v: Math.round(win.stats.temp || 0) + "°", frac: (win.stats.temp || 0) / 100 }
                         ]
                         delegate: Row {
                             required property var modelData
                             spacing: 4
                             Text { text: modelData.k; color: win.pal.muted; font.family: win.pal.uiFont; font.pixelSize: win.pal.tCap; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
-                            Text { text: modelData.v; color: modelData.frac > 0.9 ? win.pal.bad : (modelData.frac > 0.75 ? win.pal.warn : win.pal.text); font.family: win.pal.uiFont; font.pixelSize: win.pal.tBody; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: modelData.v; color: modelData.frac > 0.9 ? win.pal.bad : (modelData.frac > 0.75 ? win.pal.warn : win.pal.text); font.family: win.pal.uiFont; font.pixelSize: win.pal.tBody; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                         }
                     }
                 }
@@ -621,7 +621,7 @@ PanelWindow {
                 Row {
                     id: focusRow
                     anchors.centerIn: parent
-                    spacing: 5
+                    spacing: 4
                     Text { text: String.fromCodePoint(0xF051B); color: win.ac; font.family: win.pal.font; font.pixelSize: win.icoH; anchors.verticalCenter: parent.verticalCenter }
                     Text { text: win.focusText; color: win.pal.text; font.family: win.pal.uiFont; font.pixelSize: Math.max(10, win.textPx - 2); font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                 }

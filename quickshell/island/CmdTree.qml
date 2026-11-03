@@ -159,7 +159,7 @@ Scope {
                     // ---------------- header: title, search, close
                     RowLayout {
                         id: head
-                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 26 }
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 24 }
                         spacing: 14
                         Text { visible: !root.pal.zen; text: String.fromCodePoint(0xF0489); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 22 }
                         BoxTitle { pal: root.pal; size: 20; title: "Console commands" }
@@ -169,7 +169,7 @@ Scope {
                     // ---------------- the bottom bar: the search (the title bar stays clean)
                     RowLayout {
                         id: foot
-                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 26 }
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 24 }
                         spacing: 12
                         Rectangle {
                             Layout.fillWidth: true
@@ -210,7 +210,7 @@ Scope {
                     // ---------------- the tree
                     Flickable {
                         id: scroll
-                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: foot.top; margins: 26; topMargin: 18; bottomMargin: 16 }
+                        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: foot.top; margins: 24; topMargin: 20; bottomMargin: 16 }
                         contentWidth: width
                         contentHeight: tree.height + 12
                         clip: true
@@ -270,7 +270,7 @@ Scope {
                                     anchors.centerIn: parent
                                     spacing: 10
                                     Text { text: String.fromCodePoint(0xF0489); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 17; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { text: "Console"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                                    Text { text: "Console"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
                                     Text { text: root.totalCount + " commands"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; anchors.verticalCenter: parent.verticalCenter }
                                 }
                             }
@@ -348,7 +348,7 @@ Scope {
                                                     color: root.pal.accent
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: 12
-                                                    font.weight: Font.DemiBold
+                                                    font.weight: Font.Medium
                                                     font.letterSpacing: root.pal.calm ? 0.2 : (1.6)
                                                 }
                                             }
@@ -389,7 +389,7 @@ Scope {
                                                                 anchors.fill: parent
                                                                 anchors.leftMargin: 12
                                                                 anchors.rightMargin: 14
-                                                                spacing: 18
+                                                                spacing: 20
                                                                 // the command, as a mono keycap
                                                                 Rectangle {
                                                                     Layout.preferredWidth: 220

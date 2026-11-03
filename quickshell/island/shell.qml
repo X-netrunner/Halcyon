@@ -124,7 +124,7 @@ ShellRoot {
         lockMode: "lock",          // lock | login : after sleep / when locked: the lock screen (widgets allowed) or the login-screen look (no widgets at all)
         loginMode: "keep",         // keep | greeter | lock : what happens at BOOT (Settings > Power & lock > At boot; "Apply" runs scripts/halcyon-greeter.sh apply in a terminal)
         lockWidgets: false,        // OFF by default: the lock screen is just the clock + password. On = battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
-        jelly: true,               // squash and stretch on panels that move or resize (Jelly.qml); off in Gaming mode
+        jelly: false,              // (unslop: off by default) squash and stretch on panels that move or resize (Jelly.qml); off in Gaming mode
         jellyAmt: 1,               // 0.3 .. 2: how much they deform
         splashLock: true,          // the splash on the lock screen that is also the login screen (Lock.qml); needs the master `splash` switch
         splashDim: 0.75,           // 0 .. 0.9 : how dark the screen gets while any splash plays (a black veil under the stars; Splash.qml)
@@ -3432,11 +3432,14 @@ ShellRoot {
             // swallow clicks so they don't reach the backdrop
             MouseArea { anchors.fill: parent }
 
-            HoverHandler { id: hov; onHoveredChanged: { win.peekHover(hovered); if (hovered && root.page === "cal") island.calArmed = true } }
+            HoverHandler { id: hov; onHoveredChanged: { win.peekHover(hovered); if (hovered && root.page === "cal") island.calArmed = true; if (hovered && (root.page === "util" || root.page === "notif")) island.dropArmed = true } }
             // The calendar page opened by a click on the clock stays until the pointer has been on it and has left again (or the clock is
             // clicked again). Opened from the notch bar, which is another window, the pointer is not on the page yet: it must not fold away.
             property bool calArmed: false
-            Connections { target: root; function onPageChanged() { island.calArmed = (root.page === "cal" && hov.hovered) } }
+            Connections { target: root; function onPageChanged() { island.calArmed = (root.page === "cal" && hov.hovered); island.dropArmed = ((root.page === "util" || root.page === "notif") && hov.hovered) } }
+            // the same for the utilities box and the notification centre: opened by a shortcut or IPC (pointer elsewhere) they stay until
+            // the pointer has been on them and left again, instead of folding away 600 ms after they opened
+            property bool dropArmed: false
 
             // Settings > Bar > "When you hover the bar": perf / media open by themselves after the pointer rests on the bar
             property bool hoverSpent: false
@@ -3453,7 +3456,7 @@ ShellRoot {
                     var l = root.opt.scrollLinger !== undefined ? root.opt.scrollLinger : 3000
                     return root.scrollOpened ? Math.max(c, l) : c
                 }
-                running: (root.opt.pageClose === 0 ? false : ((root.page === "media" || root.page === "perf" || root.page === "fw" || (root.page === "cal" && island.calArmed) || ((root.page === "util" || root.page === "notif") && !barPanel.wantsKeys)) && !hov.hovered && !tour.open))
+                running: (root.opt.pageClose === 0 ? false : ((root.page === "media" || root.page === "perf" || root.page === "fw" || (root.page === "cal" && island.calArmed) || ((root.page === "util" || root.page === "notif") && island.dropArmed && !barPanel.wantsKeys)) && !hov.hovered && !tour.open))
                 onTriggered: { root.page = "home"; root.hoverOpened = false; root.scrollOpened = false }
             }
 
@@ -3507,8 +3510,8 @@ ShellRoot {
                 anchors.fill: parent
                 anchors.leftMargin: root.padSet.h * 0.45
                 anchors.rightMargin: root.padSet.h * 0.45
-                anchors.topMargin: 3
-                anchors.bottomMargin: 3
+                anchors.topMargin: 4
+                anchors.bottomMargin: 4
             }
 
             // pages follow the pointer while dragging
@@ -3831,7 +3834,7 @@ ShellRoot {
                 // fixed at the FINAL size and pinned to the top: the pill grows over it like a curtain. With
                 // anchors.fill the whole grid was re-laid out on every frame of the grow animation (that was the roughness).
                 anchors.top: parent.top
-                anchors.topMargin: 22 + ((root.notchStyle || root.hangPage) ? root.notchPad : 0)
+                anchors.topMargin: 24 + ((root.notchStyle || root.hangPage) ? root.notchPad : 0)
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: launcher.wantedWidth - 44
                 height: launcher.wantedHeight - 44
@@ -4150,7 +4153,7 @@ ShellRoot {
                 anchors.left: corner.atR ? undefined : parent.left
                 anchors.bottom: corner.atB ? parent.bottom : undefined
                 anchors.top: corner.atB ? undefined : parent.top
-                anchors.rightMargin: 3; anchors.leftMargin: 3; anchors.bottomMargin: 3; anchors.topMargin: 3
+                anchors.rightMargin: 4; anchors.leftMargin: 4; anchors.bottomMargin: 4; anchors.topMargin: 4
                 width: 12; height: 12; radius: 6
                 color: Qt.alpha(pal.accent, 0.35)
             }
@@ -4360,7 +4363,7 @@ ShellRoot {
                 anchors.left: appsWin.atR ? undefined : parent.left
                 anchors.bottom: appsWin.atB ? parent.bottom : undefined
                 anchors.top: appsWin.atB ? undefined : parent.top
-                anchors.rightMargin: 3; anchors.leftMargin: 3; anchors.bottomMargin: 3; anchors.topMargin: 3
+                anchors.rightMargin: 4; anchors.leftMargin: 4; anchors.bottomMargin: 4; anchors.topMargin: 4
                 width: 12; height: 12; radius: 6
                 color: Qt.alpha(pal.accent, 0.35)
             }

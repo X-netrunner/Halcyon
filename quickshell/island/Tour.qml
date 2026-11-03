@@ -203,7 +203,7 @@ Scope {
                     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     property real pulse: 1
                     SequentialAnimation on pulse {
-                        running: root.open && win.hasHole && root.pal.motion > 0.3
+                        running: false   // unslop: the light around the hole holds still
                         loops: Animation.Infinite
                         NumberAnimation { to: 0.55; duration: 1300; easing.type: Easing.InOutSine }
                         NumberAnimation { to: 1.0; duration: 1300; easing.type: Easing.InOutSine }
@@ -266,7 +266,7 @@ Scope {
                         id: hopAnim
                         running: false
                         NumberAnimation { to: 1; duration: 90; easing.type: Easing.OutQuad }
-                        NumberAnimation { to: 0; duration: 380; easing.type: Easing.OutBack }
+                        NumberAnimation { to: 0; duration: 380; easing.type: Easing.OutCubic }
                     }
                     transform: Translate { y: -6 * card.hop }
                     property int typed: 0
@@ -291,9 +291,9 @@ Scope {
                         x: -26; y: -30
                         z: 5
                         property real bob: 0
-                        NumberAnimation on bob { running: root.open && root.pal.motion > 0.3; from: 0; to: 2 * Math.PI; duration: 2400; loops: Animation.Infinite }
+                        NumberAnimation on bob { running: false; from: 0; to: 2 * Math.PI; duration: 2400; loops: Animation.Infinite }
                         property real spin: 0
-                        NumberAnimation on spin { id: halSpin; running: false; from: 0; to: 360; duration: 700; easing.type: Easing.OutBack }
+                        NumberAnimation on spin { id: halSpin; running: false; from: 0; to: 360; duration: 700; easing.type: Easing.OutCubic }
                         Connections { target: root; function onBurstChanged() { halSpin.restart(); burstAnim.restart() } }
                         transform: Translate { y: 3 * Math.sin(hal.bob) }
                         Rectangle {
@@ -313,13 +313,13 @@ Scope {
                         // what Hal says: a cheer after a star, a nudge while a challenge waits
                         Rectangle {
                             id: speech
-                            readonly property var cheers: ["Nice!", "You're a natural.", "Ooh, shiny.", "Star get!", "Look at you go.", "Smooth."]
-                            readonly property string say: root.waiting ? "Your turn!" : (root.step && root.step.try && root.isDone(root.step.id) ? cheers[(root.stars + root.index) % cheers.length] : "")
+                            readonly property var cheers: ["That's it", "Right", "Got it", "Star earned", "Exactly", "Done"]
+                            readonly property string say: root.waiting ? "Your turn" : (root.step && root.step.try && root.isDone(root.step.id) ? cheers[(root.stars + root.index) % cheers.length] : "")
                             visible: say !== ""
                             x: hal.width - 4; y: -10
                             width: sayText.implicitWidth + 18; height: 24; radius: 12
                             color: root.pal.accent
-                            Text { id: sayText; anchors.centerIn: parent; text: speech.say; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
+                            Text { id: sayText; anchors.centerIn: parent; text: speech.say; color: root.pal.bg; font.family: root.pal.uiFont; font.pixelSize: 11; font.weight: Font.Medium }
                         }
                     }
 
@@ -368,12 +368,12 @@ Scope {
                                     Text {
                                         id: badgeText
                                         anchors.centerIn: parent
-                                        text: root.mode === "new" ? "WHAT'S NEW" : "TOUR"
+                                        text: root.mode === "new" ? "What's new" : "Tour"
                                         color: root.pal.accent
                                         font.family: root.pal.uiFont
                                         font.pixelSize: 10
-                                        font.weight: Font.Bold
-                                        font.letterSpacing: 1.2
+                                        font.weight: Font.DemiBold
+                                        font.letterSpacing: 0
                                     }
                                 }
                                 Text {
@@ -383,7 +383,7 @@ Scope {
                                     color: root.stars > 0 ? root.pal.accent : root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap
-                                    font.weight: Font.DemiBold
+                                    font.weight: Font.Medium
                                 }
                             }
                             Text {
@@ -402,13 +402,13 @@ Scope {
                             color: root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tDisplay - 2
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                             wrapMode: Text.WordWrap
                         }
                         Text {
                             visible: root.last && root.challenges > 0
                             width: parent.width
-                            text: root.rank + (root.stars < root.challenges ? ". Replay with >tour to catch the rest." : ". Every single one!")
+                            text: root.rank + (root.stars < root.challenges ? ". Replay with >tour to catch the rest." : ". All of them.")
                             color: root.pal.accent
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody + 1
@@ -466,7 +466,7 @@ Scope {
                                     color: root.waiting ? root.pal.text : root.pal.good
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody
-                                    font.weight: Font.DemiBold
+                                    font.weight: Font.Medium
                                     wrapMode: Text.WordWrap
                                 }
                                 // key caps
@@ -579,7 +579,7 @@ Scope {
                                         color: root.pal.bg
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tBody
-                                        font.weight: Font.DemiBold
+                                        font.weight: Font.Medium
                                     }
                                     MouseArea { id: nextMa; anchors.fill: parent; hoverEnabled: true; onClicked: btns.chooser ? root.quickOnly() : root.next() }
                                 }
@@ -610,7 +610,7 @@ Scope {
                             border.color: Qt.alpha(root.pal.text, 0.18)
                             Rectangle {          // the lower edge of the key
                                 anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
-                                anchors.leftMargin: 5; anchors.rightMargin: 5
+                                anchors.leftMargin: 4; anchors.rightMargin: 4
                                 height: 2; radius: 1
                                 color: Qt.alpha(root.pal.text, 0.12)
                             }
@@ -622,7 +622,7 @@ Scope {
                                 color: root.pal.text
                                 font.family: root.pal.mono
                                 font.pixelSize: 11
-                                font.weight: Font.DemiBold
+                                font.weight: Font.Medium
                             }
                         }
                     }

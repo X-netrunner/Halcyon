@@ -50,11 +50,11 @@ Item {
 
                 width: root.size
                 height: root.size
-                scale: !has ? 0.7 : (ma.pressed ? 0.88 : (ma.containsMouse ? 1.28 : 1.0))
+                scale: !has ? 0.7 : (ma.pressed ? 0.88 : (ma.containsMouse ? 1.12 : 1.0))
                 Behavior on scale {
                     SequentialAnimation {
                         PauseAnimation { duration: (dot.has && !ma.containsMouse && !ma.pressed) ? dot.index * 50 : 0 }
-                        NumberAnimation { duration: 340; easing.type: Easing.OutBack; easing.overshoot: 2.2 }
+                        NumberAnimation { duration: 340; easing.type: Easing.OutCubic }
                     }
                 }
 

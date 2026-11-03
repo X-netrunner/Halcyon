@@ -213,7 +213,7 @@ Item {
         RowLayout {
             id: content
             opacity: 1 - 0.8 * card.swipeP
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 18 }
+            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
             spacing: 12
 
             NotifIcon {
@@ -237,7 +237,7 @@ Item {
                 // "App · time" (and "urgent" for a critical one) in small muted text; the room on the right is the X
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.rightMargin: 22
+                    Layout.rightMargin: 24
                     spacing: 0
                     Text {
                         Layout.maximumWidth: 170
@@ -253,7 +253,7 @@ Item {
                         color: card.pal.bad
                         font.family: card.pal.uiFont
                         font.pixelSize: 11
-                        font.weight: Font.DemiBold
+                        font.weight: Font.Medium
                     }
                     Text {
                         visible: card.timeText !== ""
@@ -272,7 +272,7 @@ Item {
                     color: card.pal.text
                     font.family: card.pal.uiFont
                     font.pixelSize: 14
-                    font.weight: Font.DemiBold
+                    font.weight: Font.Medium
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -317,7 +317,7 @@ Item {
                     implicitHeight: 18
                     Row {
                         id: moreRow
-                        spacing: 5
+                        spacing: 4
                         anchors.verticalCenter: parent.verticalCenter
                         Text {
                             text: card.groupOpen ? "Show less" : "+" + card.more + " more"

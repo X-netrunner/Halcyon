@@ -68,7 +68,7 @@ ColumnLayout {
                 color: vk.capturing || vk.isOff ? root.pal.muted : root.pal.text
                 font.family: root.pal.uiFont
                 font.pixelSize: root.pal.tBody
-                font.weight: vk.capturing || vk.isOff ? Font.Normal : Font.DemiBold
+                font.weight: vk.capturing || vk.isOff ? Font.Normal : Font.Medium
             }
             MouseArea {
                 anchors.fill: parent

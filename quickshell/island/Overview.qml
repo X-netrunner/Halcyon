@@ -362,8 +362,7 @@ Item {
         property: "landP"
         from: 0; to: 1
         duration: ov.dragState === "return" ? 560 : 300
-        easing.type: ov.dragState === "return" ? Easing.OutBack : Easing.OutCubic
-        easing.overshoot: 1.2
+        easing.type: ov.dragState === "return" ? Easing.OutCubic : Easing.OutCubic
         onFinished: { if (ov.dragState === "return") ov.dragDone() }
     }
     Timer { id: dockT; interval: 1400; onTriggered: ov.dockTimeout() }
@@ -920,7 +919,7 @@ Item {
             SequentialAnimation on appear {
                 running: true
                 PauseAnimation { duration: nd.d.depth * 110 + nd.d.order * 26 }
-                NumberAnimation { to: 1; duration: 460; easing.type: Easing.OutBack; easing.overshoot: 1.3 }
+                NumberAnimation { to: 1; duration: 460; easing.type: Easing.OutCubic }
             }
 
             Item {
@@ -940,10 +939,10 @@ Item {
                     color: nd.tint
                     opacity: 0.06
                     scale: ov.held ? 1.12 : 1
-                    Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+                    Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                     SequentialAnimation on opacity {
                         loops: Animation.Infinite
-                        running: nd.isRoot && ov.open && ov.quality >= 1
+                        running: false   // unslop: no breathing glow, the root sits still
                         NumberAnimation { to: 0.2; duration: 2200; easing.type: Easing.InOutSine }
                         NumberAnimation { to: 0.05; duration: 2200; easing.type: Easing.InOutSine }
                     }
@@ -985,7 +984,7 @@ Item {
                             color: nd.tint
                             font.family: ov.pal.uiFont
                             font.pixelSize: 26
-                            font.bold: true
+                            font.weight: Font.Medium
                         }
                         Image {
                             id: avatarImg
@@ -1042,7 +1041,7 @@ Item {
                                 color: ov.pal.text
                                 font.family: ov.pal.uiFont
                                 font.pixelSize: 16
-                                font.weight: Font.DemiBold
+                                font.weight: Font.Medium
                             }
                         }
                         Text {
@@ -1085,7 +1084,7 @@ Item {
                             color: nd.d.focused ? ov.pal.bg : ov.pal.text
                             font.family: ov.pal.uiFont
                             font.pixelSize: 13
-                            font.weight: Font.DemiBold
+                            font.weight: Font.Medium
                         }
                         Text {
                             visible: nd.height > 34
@@ -1103,7 +1102,7 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: 10
                     anchors.rightMargin: 12
-                    spacing: 9
+                    spacing: 8
                     Image {
                         anchors.verticalCenter: parent.verticalCenter
                         width: Math.min(24, nd.height - 10); height: width
@@ -1123,7 +1122,7 @@ Item {
                                 color: nd.d.focused ? nd.tint : ov.pal.text
                                 font.family: ov.pal.uiFont
                                 font.pixelSize: 12
-                                font.weight: nd.d.focused ? Font.DemiBold : Font.Normal
+                                font.weight: nd.d.focused ? Font.Medium : Font.Normal
                             }
                         }
                         Text {
@@ -1277,7 +1276,7 @@ Item {
             color: ov.pal.text
             font.family: ov.pal.uiFont
             font.pixelSize: 22
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
         }
     }
 
@@ -1302,7 +1301,7 @@ Item {
             opacity: 0.7
             font.family: ov.pal.uiFont
             font.pixelSize: 11
-            font.letterSpacing: 0.4
+            font.letterSpacing: 0
         }
         HalRow { pal: ov.pal; label: "CPU"; value: ov.halRes.cpu.toFixed(1) + "%" }
         HalRow {
@@ -1339,14 +1338,14 @@ Item {
                 anchors.margins: -5
                 radius: height / 2
                 color: ov.pal.accent
-                opacity: ov.compactSpecial ? 0.16 : 0
+                opacity: ov.compactSpecial && !ov.pal.calm ? 0.16 : 0     // the halo is a classic-look extra; the fill already says it is on
                 Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
             Rectangle {
                 id: tglBtn
                 height: 34
                 width: tglTxt.implicitWidth + 32
-                radius: 17
+                radius: 10
                 color: ov.compactSpecial ? Qt.alpha(ov.pal.accent, tglMa.containsMouse ? 0.30 : 0.22)
                                          : (tglMa.containsMouse ? ov.pal.fillHover : ov.pal.fill)
                 border.width: ov.compactSpecial ? 1 : 0
@@ -1359,7 +1358,7 @@ Item {
                     color: ov.compactSpecial ? ov.pal.chosenText : ov.pal.muted
                     font.family: ov.pal.uiFont
                     font.pixelSize: 12
-                    font.weight: ov.compactSpecial ? Font.DemiBold : Font.Normal
+                    font.weight: ov.compactSpecial ? Font.Medium : Font.Normal
                 }
                 MouseArea {
                     id: tglMa
@@ -1375,7 +1374,7 @@ Item {
     Text {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 26
+        anchors.bottomMargin: 24
         text: ov.plural(ov.wsCount, "workspace") + "  ·  " + ov.plural(ov.winCount, "window") + "  ·  " + ov.hostName
               + (ov.totalRes !== "" ? "  ·  apps use " + ov.totalRes : "")
         color: ov.pal.muted
@@ -1411,7 +1410,7 @@ Item {
                 color: ov.pal.text
                 font.family: ov.pal.uiFont
                 font.pixelSize: 17
-                font.weight: Font.DemiBold
+                font.weight: Font.Medium
             }
             Text {
                 text: "Shown on the laptop node. Leave empty to use your system name."
@@ -1499,7 +1498,7 @@ Item {
                     width: 78; height: 34; radius: 17
                     color: saveMa.containsMouse ? Qt.lighter(ov.pal.accent, 1.1) : ov.pal.accent
                     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                    Text { anchors.centerIn: parent; text: "Save"; color: ov.pal.bg; font.family: ov.pal.uiFont; font.pixelSize: 12; font.weight: Font.DemiBold }
+                    Text { anchors.centerIn: parent; text: "Save"; color: ov.pal.bg; font.family: ov.pal.uiFont; font.pixelSize: 12; font.weight: Font.Medium }
                     MouseArea { id: saveMa; anchors.fill: parent; hoverEnabled: true; onClicked: ov.saveProfile() }
                 }
             }
