@@ -472,7 +472,12 @@ ShellRoot {
         leavingLauncher = (lastPage === "launcher" && page !== "launcher")
         lastPage = page
         if (leavingLauncher) leaveT.restart()
+        if (page === "launcher") grabT.restart(); else launcherGrabReady = false
     }
+    // The click-away focus grab is armed a moment AFTER the launcher opens: while the window is taking the keyboard focus the compositor
+    // can report the grab as cleared at once, which closed the launcher a split second after Super opened it.
+    property bool launcherGrabReady: false
+    Timer { id: grabT; interval: 250; onTriggered: root.launcherGrabReady = (root.page === "launcher") }
     property string lastPage: "home"
     readonly property bool tourOpenForGrab: !!tour && tour.open
     property bool leavingLauncher: false
@@ -739,6 +744,7 @@ ShellRoot {
             else if (id === "restore-device" || id === "restore-home") { var rh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", rh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", rh + "/restore-device.sh", id === "restore-home" ? "--home" : ""]) }
             else if (id === "backup-device" || id === "backup-home") { var bh = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", bh + "/apps.sh", "term-exec", "bash", "-c", "bash \"$1\" $2; echo; read -n1 -r -p 'Press any key to close '", "x", bh + "/backup-device.sh", id === "backup-home" ? "--home" : ""]) }
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
+            else if (id === "versions-open") { settingsWin.hide(); versionCenter.show() }
             else if (id === "security-overview" || id === "security-firewall" || id === "security-antivirus" || id === "security-exceptions") { settingsWin.hide(); securityCenter.show(id.substring(9)) }
             else if (id.indexOf("antivirus-select:") === 0) {          // Settings > Security > Antivirus: ai | clamav | off, with sudo in the console
                 var avm = id.substring(17)
@@ -1378,6 +1384,25 @@ ShellRoot {
         onTerminalRequested: cmd => { securityCenter.hide(); Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", cmd]) }
     }
 
+    // the dot on the bar: the Version Center's optional daily check wrote which components are behind (~/.cache/halcyon-versions/available.json).
+    // Off by default; the file does not exist until the check has run, and it is removed when the check is switched off.
+    property int versionsBehind: 0
+    FileView {
+        id: versionsDot
+        path: Quickshell.env("HOME") + "/.cache/halcyon-versions/available.json"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: { try { var o = JSON.parse(text()); var n = 0; for (var k in o.behind) n++; root.versionsBehind = n } catch (e) { root.versionsBehind = 0 } }
+        onLoadFailed: root.versionsBehind = 0
+    }
+
+    // >versions (also >update), Settings > System > Version Center: update Halcyon, LUNA, ai-antivirus and ai-firewall, or install an older commit of any
+    // of them (VersionCenter.qml, scripts/halcyon-versions.py). Nothing runs while it is closed.
+    VersionCenter {
+        id: versionCenter
+        pal: pal
+    }
+
     // SUPER + CTRL + S, >screenshot: Region / Window / Full screen, then Copy, Save or Both (ShotMenu.qml, scripts/halcyon-shot.py)
     ShotMenu {
         id: shotMenu
@@ -1413,7 +1438,7 @@ ShellRoot {
     // notifs.centerOpen is NOT in this list on purpose: the notification window does not need to raise itself above itself, and the
     // raise() un-maps the window for a moment, which made the box think the pointer had left and close about a second after opening.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
-        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || studyCenter.open || lunaCenter.open || securityCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
+        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || studyCenter.open || lunaCenter.open || securityCenter.open || versionCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
         || settingsWin.galleryOpen || settingsWin.builderOpen
         || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
@@ -1638,6 +1663,9 @@ ShellRoot {
         if (n - lastSuperTap < (viaIpc === true ? 900 : 350)) return
         lastSuperTap = n
         toggleLauncher()
+        // stamp again AFTER the toggle: opening the launcher can block this thread for a while, and the other Super binds' triggers
+        // queued up meanwhile would otherwise look "old enough" and toggle it straight back shut (opens, then folds back in)
+        lastSuperTap = Date.now()
     }
     // fast path: keybinds write this file (a few ms) instead of waiting for a whole `quickshell ipc` process to start
     readonly property string superTapFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/halcyon-super-tap"
@@ -1676,6 +1704,7 @@ ShellRoot {
         if (studyCenter.open && !studyCenter.asWindow) { studyCenter.hide(); return true }
         if (lunaCenter.open && !lunaCenter.asWindow) { lunaCenter.hide(); return true }
         if (securityCenter.open && !securityCenter.asWindow) { securityCenter.hide(); return true }
+        if (versionCenter.open && !versionCenter.asWindow) { versionCenter.hide(); return true }
         if (shotMenu.open) { shotMenu.close(); return true }
         if (musicMenu.open) { musicMenu.close(); return true }
         if (calendar.open) { calendar.hide(); return true }
@@ -2295,7 +2324,7 @@ ShellRoot {
         case "power": powerMenu.toggle(); break
         case "gaming": setGaming(!gaming); break
         case "caffeine": setCaffeine(!caffeine, 0); break
-        case "apps": appsWin.pinFor(9000); break
+        case "apps": appsWin.togglePin(9000); break
         case "routing": routeApps = !routeApps; saveSettings(); break
         case "autohide": setAutoHide(!autoHide); break
         case "barstyle": setOpt("barStyle", notchStyle ? "island" : "notch"); break
@@ -2304,6 +2333,7 @@ ShellRoot {
         case "quickchat": quickChat.toggle(); break
         // game launcher (hgl): `>games` is the quick list in the launcher, the rest opens the Game Center (GameCenter.qml)
         case "games": launcher.openGames(); if (page !== "launcher") { overviewOpen = false; page = "launcher" } break
+        case "versions": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); versionCenter.toggle(); break
         case "gamecenter": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); gameCenter.toggle(); break
         case "study": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (lunaCenter.open && !lunaCenter.asWindow) lunaCenter.hide(); studyCenter.toggle(); break
         case "luna": clipMenu.hide(); shotMenu.hide(); musicMenu.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); lunaCenter.toggle(); break
@@ -2718,7 +2748,7 @@ ShellRoot {
         case "lock": lockScreen.lock(); break
         case "power": powerMenu.toggle(); break
         case "console": quickTerm.toggle(); break
-        case "notes": notesMenu.show(); break
+        case "notes": notesMenu.toggle(); break
         case "mute": Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]); muted = !muted; break
         case "ws-up": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", "wheel-up"]); break
         case "ws-down": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/ws-nav.sh", "wheel-down"]); break
@@ -3021,6 +3051,7 @@ ShellRoot {
         function study(): void { root.runCommand("study") }                                                                                // the Study Center window (toggle)
         function security(): void { root.runCommand("security") }                                                                          // the Security center window (toggle)
         function securitypage(page: string): void { securityCenter.toggleTo(page) }                                                           // overview | firewall | antivirus | exceptions | ask
+        function versions(): void { root.runCommand("versions") }                                                                          // the Version Center window (toggle)
         function gamecenter(): void { root.runCommand("gamecenter") }                                                                      // the Game Center window (toggle)
         function gamecenterpage(page: string): void { gameCenter.toggleTo(page) }                                                              // library | stores | runtimes | doctor
         function leanset(on: bool): void { root.setLean(on) }                                                                              // by hand: the lean island alone
@@ -3074,7 +3105,7 @@ ShellRoot {
         function caffeine(): void { root.setCaffeine(!root.caffeine, 0) }
         function focus(): void { root.focusToggle() }                 // start / stop a Focus session (SUPER+ALT+F)
         function focuspause(): void { root.focusRun([root.focusState.paused ? "resume" : "pause"]) }
-        function apps(): void { appsWin.pinFor(9000) }
+        function apps(): void { appsWin.togglePin(9000) }
         function routing(): void { root.runCommand("routing") }
         function lock(): void { lockScreen.lock() }
         function trim(): void { gc() }
@@ -3265,7 +3296,7 @@ ShellRoot {
         // launcher stayed. The same for the pages that never fold by themselves (Settings > Bar > page close = never) (it does not touch pages that fold by themselves when the pointer leaves).
         HyprlandFocusGrab {
             windows: [win]
-            active: !root.tourOpenForGrab && (root.page === "launcher" || (root.page !== "home" && root.page !== "" && root.opt.pageClose === 0))
+            active: !root.tourOpenForGrab && ((root.page === "launcher" && root.launcherGrabReady) || (root.page !== "launcher" && root.page !== "home" && root.page !== "" && root.opt.pageClose === 0))
             onCleared: if (root.page !== "home") root.page = "home"
         }
         Region { id: launcherMask; regions: [ Region { item: backdrop }, Region { item: island } ] }
@@ -3527,7 +3558,7 @@ ShellRoot {
                     showStats: root.hoverAction === "stats" && hov.hovered
                     bgCount: bgPanel.count
                     showBgCount: root.opt.bgWhere !== "corner"
-                    onBgClicked: appsWin.pinFor(9000)
+                    onBgClicked: appsWin.togglePin(9000)
                     opacity: root.page === "home" ? 1 : 0
                     visible: opacity > 0.01
                     Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
@@ -3732,7 +3763,7 @@ ShellRoot {
                                     onFocusPick: (mins, pomo) => root.focusSet(mins, pomo)
                                     onOpenFocusSettings: settingsWin.show("focus")
                                     onCaffeineHour: root.setCaffeine(true, 60)
-                                    onOpenApps: appsWin.pinFor(9000)
+                                    onOpenApps: appsWin.togglePin(9000)
                                     onOpenPower: powerMenu.toggle()
                                     onToggleMute: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
                                     onToggleMic: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
@@ -3867,6 +3898,8 @@ ShellRoot {
             focusText: root.focusState.on ? root.focusText : ""
             focusPaused: root.focusState.on && root.focusState.paused === true
             bgCount: bgPanel.count
+            versionsBehind: root.versionsBehind
+            onVersionsClicked: versionCenter.show()
             opt: root.opt
             barPadding: root.barPadding
             autoHide: root.autoHide
@@ -3888,7 +3921,7 @@ ShellRoot {
             onStatusPopup: (kind, along, edge) => root.popStatus(kind, "top", along, edge)
             onClockClicked: root.clockClicked()
             onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
-            onBgClicked: appsWin.pinFor(9000)
+            onBgClicked: appsWin.togglePin(9000)
             onPageDrop: dir => root.drop(dir)
             onPageStep: dir => root.go(dir)
             onHoverEdited: on => root.notchHovered = on
@@ -3942,7 +3975,7 @@ ShellRoot {
             }
             onClockClicked: root.clockClicked()
             onClockToggled: what => root.setSetting(what === "seconds" ? "opt:clockSeconds" : "clock24", what === "seconds" ? !root.opt.clockSeconds : !root.clock24)
-            onBgClicked: appsWin.pinFor(9000)
+            onBgClicked: appsWin.togglePin(9000)
             onBgPopup: (along, edge) => root.popBg(side, along, edge)
             onNumLockClicked: root.toggleNumLock()
             onLogoClicked: root.toggleLauncher()
@@ -4205,7 +4238,7 @@ ShellRoot {
             onFocusPick: (mins, pomo) => root.focusSet(mins, pomo)
             onOpenFocusSettings: settingsWin.show("focus")
             onCaffeineHour: root.setCaffeine(true, 60)
-            onOpenApps: appsWin.pinFor(9000)
+            onOpenApps: appsWin.togglePin(9000)
             onOpenPower: powerMenu.toggle()
             onToggleMute: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
             onToggleMic: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
@@ -4302,6 +4335,8 @@ ShellRoot {
             else if (!root.appsClick || root.autoHide) { aClose.interval = 450; aClose.restart() }
         }
         function pinFor(ms) { hovering = true; pinnedOpen = true; aClose.interval = ms; aClose.restart() }
+        // the Apps button again closes it
+        function togglePin(ms) { if (open) { aClose.stop(); hovering = false; blockUntil = Date.now() + 600 } else pinFor(ms) }
         Timer { id: aClose; interval: 450; onTriggered: { appsWin.hovering = false; appsWin.blockUntil = Date.now() + 600 } }
 
         mask: Region { item: aZone }

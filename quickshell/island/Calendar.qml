@@ -48,7 +48,7 @@ Scope {
         loadConf(); loadEvents()
         if (cfg.configured && (Date.now() / 1000 - cfg.synced) > 300) sync()
     }
-    function toggle() { if (open) open = false; else show() }
+    function toggle() { if (open) hide(); else show() }
     onEnabledChanged: if (!enabled) open = false
 
     readonly property string script: Quickshell.shellDir + "/scripts/gcal.py"
