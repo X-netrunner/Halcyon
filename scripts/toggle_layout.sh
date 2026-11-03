@@ -29,7 +29,7 @@ fi
 case "$target" in
     off|floating|float)
         [ -x "$FLOAT_SCRIPT" ] && "$FLOAT_SCRIPT" on
-        notify-send "Hyprland Layout" "Switched to Off (Floating - No tiling)" -i preferences-desktop-theme -h string:x-canonical-private-synchronous:hypr_layout
+        notify-send -a Halcyon "Hyprland Layout" "Switched to Off (Floating - No tiling)" -i preferences-desktop-theme -h string:x-canonical-private-synchronous:hypr_layout
         exit 0
         ;;
     scrolling)
@@ -55,7 +55,7 @@ if [ -w "$GENERAL" ]; then
 fi
 
 if [ "$live" = ok ]; then
-    notify-send "Hyprland Layout" "Switched to $NAME layout" -i preferences-desktop-theme -h string:x-canonical-private-synchronous:hypr_layout
+    notify-send -a Halcyon "Hyprland Layout" "Switched to $NAME layout" -i preferences-desktop-theme -h string:x-canonical-private-synchronous:hypr_layout
 else
-    notify-send "Hyprland Layout" "Could not switch now (hyprctl failed); $NAME is saved for the next start" -i preferences-desktop-theme -h string:x-canonical-private-synchronous:hypr_layout
+    notify-send -a Halcyon "Hyprland Layout" "Could not switch now (hyprctl failed); $NAME is saved for the next start" -i preferences-desktop-theme -h string:x-canonical-private-synchronous:hypr_layout
 fi
