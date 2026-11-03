@@ -42,7 +42,7 @@ Console and background apps: kept as they are (decided; the mock-ups are not bui
 
 ## Surface 3: the Settings window
 
-Pages layout (already the default): left menu regrouped under Start / Look and feel / Shell / Tools / System, 11 pages (AI is in Productivity, Backup in System). **untested** on screen. Open: calmer groups inside the long pages, search-first header.
+Pages layout (already the default): left menu regrouped under Start / Look and feel / Shell / Tools / System, 10 pages (see round 7) (AI is in Productivity, Backup in System). **untested** on screen. Open: calmer groups inside the long pages, search-first header.
 
 Round 3 on Settings: the Tree layout and the Interface Legacy / Classic choices are removed; a greyed Disabled box (bar off) sits at the bottom of the Bar page; a Debug page holds the doctor, self-test, memory, log and safe mode. **untested** on screen.
 
@@ -51,6 +51,8 @@ Round 4: the Debug page became **Debug / Advanced** and holds every advanced row
 Round 5: choice rows with 4+ buttons became drop-downs (36 rows plus the six app pickers); sounds and previews moved to Debug / Advanced. **untested** on screen.
 
 Round 6: one **Builders** page for the Bar / Desktop / Widget / Notification builders; rows they duplicate (bar shape, edge, padding, notification style) moved to Debug / Advanced. **untested** on screen. Open: merging the Desktop and Widget builder windows.
+
+Round 7: Settings slimmed from 16 pages / 177 default rows to 10 pages / 125 rows: duplicates removed, rows moved behind Debug / Advanced, groups merged (Stars, Splash, Clock, AI, gestures, Timeouts), a Timer preset and an audio drop-down. **untested** on screen. Open: one real "Performance mode" control (Profile and Low preset on battery are only hidden), one Stars master switch, shorter descriptions (many are still 4 to 9 lines).
 
 ## Next surfaces (open)
 
@@ -67,6 +69,8 @@ Round 6: one **Builders** page for the Bar / Desktop / Widget / Notification bui
 
 ## Log
 
+- 2026-11-03: Settings left menu: dim headings and pages, the open page and its heading a step brighter, a soft accent pill under the open page. Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
+- 2026-11-03: Settings 16 pages to 10, 177 rows to 125 (round 7). Files: `Settings.qml`, `shell.qml`, `tests/notif-settings.test.js`, `tests/test_ai_master.py`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-11-02: Command dashboard: Airplane, Mute, Gaming and Extra dim switches added. Files: `DashCommand.qml`, `Dashboard.qml`, `RailPages.qml`, `shell.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-11-02: Command dashboard keyboard (Up / Down / Enter) and size glide on style switch. Files: `DashCommand.qml`, `Dashboard.qml`, `RailPages.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-10-31: Builders page, duplicate rows to Debug / Advanced (round 6). Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
