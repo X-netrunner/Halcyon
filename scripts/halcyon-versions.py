@@ -330,6 +330,36 @@ def lock_is_free():
         os.close(fd)
 
 
+def local_edits(sha):
+    """How many files of the Halcyon install differ from the installed commit (0 when it cannot be told). A dev build copied over an install,
+    or edited in place, still carries the old commit id; this is what tells those apart from a clean install of that commit."""
+    if not sha or not os.path.isdir(RICE):
+        return 0
+    if os.path.isdir(os.path.join(RICE, ".git")):
+        rc, o = run(["git", "-C", RICE, "status", "--porcelain", "-uno"], timeout=15)
+        return len([l for l in o.splitlines() if l.strip()]) if rc == 0 else 0
+    if not have_cache("halcyon"):
+        return 0
+    rc, o = git(cache_repo("halcyon"), "ls-tree", "-r", sha, timeout=15)
+    if rc != 0:
+        return 0
+    want = []
+    for line in o.splitlines():
+        meta, _, path = line.partition("\t")
+        parts = meta.split()
+        if len(parts) == 3 and parts[1] == "blob" and parts[0] in ("100644", "100755"):
+            full = os.path.join(RICE, path)
+            if os.path.isfile(full) and not os.path.islink(full):
+                want.append((path, parts[2]))
+    if not want:
+        return 0
+    rc, o = run(["git", "hash-object", "--no-filters", "--stdin-paths"], timeout=30, cwd=RICE, inp="\n".join(p for p, _ in want) + "\n")
+    got = o.split()
+    if rc != 0 or len(got) != len(want):
+        return 0
+    return sum(1 for (_, h), g in zip(want, got) if h != g)
+
+
 def component_status(c, tmap=None):
     d = COMPONENTS[c]
     inst = installed(c)
@@ -352,6 +382,12 @@ def component_status(c, tmap=None):
                     st["behind"] = int(n.strip()) if rc == 0 and n.strip().isdigit() else None
                     rc, n = git(cache_repo(c), "rev-list", "--count", "HEAD..%s" % inst["sha"])
                     st["ahead"] = int(n.strip()) if rc == 0 and n.strip().isdigit() else None
+    if c == "halcyon" and inst["present"] and inst["sha"]:
+        n = local_edits(inst["sha"])
+        if n:
+            inst["dirty"] = True
+            st["dirty"] = True
+            st["edited_files"] = n
     prev = previous_version(c)
     st["previous"] = dict(sha=prev, short=short(prev)) if prev and prev != inst["sha"] else None
     if inst["sha"] and not st["installed"]:
@@ -364,6 +400,8 @@ def component_status(c, tmap=None):
         state = "pacman"
     elif not inst["sha"]:
         state = "local"
+    elif st["installed"] and st["installed"].get("unknown") and have_cache(c) and not st["offline"]:
+        state = "unreg"                 # the installed commit is not in the repo's history (GitHub was reached): not a registered version
     elif st["behind"] is None:
         state = "unknown"
     else:
