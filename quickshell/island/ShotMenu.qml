@@ -9,8 +9,7 @@ import Quickshell.Wayland
 // and what happens to it (Copy, Save, or Both). The panel leaves first so it is not in the picture, then
 // scripts/halcyon-shot.py does the capture. R / W / F pick the target, C / S / B the action, Esc closes.
 //
-// It sits NEXT TO the existing shortcuts: Super + Shift + S (scripts/screenshot-area.sh), Print and Super + Shift + Print are not
-// touched. It starts no process of its own; the script runs once per capture and exits.
+// It sits NEXT TO the quick capture menu (Super + S / Super + Shift + S, CaptureMenu.qml), Print and Super + Shift + Print. It starts no process of its own; the script runs once per capture and exits.
 Scope {
     id: root
     property var pal
@@ -321,7 +320,7 @@ Scope {
 
                         Hint {
                             pal: root.pal
-                            text: "R  W  F  pick   \u00b7   C  S  B  T  copy / save / both / text   \u00b7   Esc closes   \u00b7   Super + Shift + S still drags a region at once"
+                            text: "R  W  F  pick   \u00b7   C  S  B  T  copy / save / both / text   \u00b7   Esc closes   \u00b7   Super + S / Super + Shift + S open the quick menu"
                             Layout.fillWidth: true
                             color: Qt.alpha(root.pal.muted, 0.85)
                             fontFamily: root.pal.uiFont

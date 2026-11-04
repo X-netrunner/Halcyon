@@ -15,7 +15,13 @@ Rectangle {
     width: ListView.view ? ListView.view.width : 600
     height: col.implicitHeight + 32
     radius: vc.pal.rLg
-    color: vc.pal.fill
+    HoverHandler { id: cardHover }
+    // the whole card tips like a card lifted on one side: the side under the pointer comes up, the far side stays low (it does not grow)
+    HoverTilt { id: tilt; pal: vc.pal; lean: 8 }
+    readonly property real lift: tilt.t         // 0 flat .. 1 lifted; the shadow under the card (in VersionCenter) follows it
+    transform: Matrix4x4 { matrix: tilt.matrix }
+    color: Qt.tint(vc.pal.fill, Qt.alpha(vc.pal.text, cardHover.hovered ? 0.03 : 0))
+    Behavior on color { ColorAnimation { duration: vc.pal.dFast } }
     border.width: 1
     border.color: mine ? Qt.alpha(vc.pal.accent, 0.5) : vc.pal.lineSoft
     // a component that is not installed reads quieter by its name only; its Install button stays fully legible
@@ -26,11 +32,11 @@ Rectangle {
     ColumnLayout {
         id: col
         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
-        spacing: 10
+        spacing: 12
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 10
+            spacing: 12
             Rectangle {
                 implicitWidth: 32
                 implicitHeight: 32
@@ -42,7 +48,6 @@ Rectangle {
             VersionBadge { pal: vc.pal; label: vc.stateText(card.comp); tone: vc.stateColor(card.comp); dot: !card.greyed && (card.comp.state === "up-to-date" || card.comp.state === "behind") }
             VersionBadge { pal: vc.pal; visible: !!card.comp.pinned; label: "pinned " + (card.comp.pinned ? card.comp.pinned.short : ""); tone: vc.pal.warn }
             VersionBadge { pal: vc.pal; visible: card.comp.dirty; label: "local changes"; tone: vc.pal.muted }
-            VersionBadge { pal: vc.pal; visible: card.comp.offline && !card.greyed; label: "offline"; tone: vc.pal.muted }
             Item { Layout.fillWidth: true }
             VersionBtn { pal: vc.pal;
                 visible: card.greyed
@@ -68,14 +73,15 @@ Rectangle {
             VersionText { pal: vc.pal; kind: "label"; text: "Installed" }
             VersionText { pal: vc.pal; kind: "mono"; Layout.fillWidth: true; text: vc.verText(card.comp.installed); elide: Text.ElideRight }
             VersionText { pal: vc.pal; kind: "label"; text: "Latest on main" }
-            VersionText { pal: vc.pal; kind: "mono"; Layout.fillWidth: true; text: card.comp.latest ? vc.verText(card.comp.latest) : "not checked yet (Check now)"; elide: Text.ElideRight; color: card.comp.latest ? vc.pal.text : vc.pal.muted }
+            VersionText { pal: vc.pal; kind: "mono"; Layout.fillWidth: true; text: card.comp.latest ? vc.verText(card.comp.latest) : "not checked yet, press Check now"; elide: Text.ElideRight; color: card.comp.latest ? vc.pal.text : vc.pal.muted }
         }
         VersionText { pal: vc.pal; kind: "small";
             visible: card.pacman
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
+            lineHeight: 1.2
             elide: Text.ElideNone
-            text: "This one came from a pacman package, so pacman keeps it up to date. Nothing here changes it."
+            text: "This one came from a pacman package, so pacman looks after it. Nothing here will change it."
         }
 
         VersionActions {

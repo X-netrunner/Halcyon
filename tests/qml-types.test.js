@@ -14,7 +14,7 @@ const EXTERNAL = new Set(`AnimatedImage HyprlandFocusGrab Binding MediaPlayer Vi
   QsMenuOpener QtObject RadialGradient Rectangle Region Repeater RotationAnimator Row RowLayout Scope ScriptAction ScriptModel
   SequentialAnimation ShaderEffect ShaderEffectSource Shape ShapePath ShellRoot Shortcut SplitParser StdioCollector SystemClock TapHandler Text TextEdit
   TextInput TextMetrics Timer Transition Translate WheelHandler WlSessionLock WlSessionLockSurface
-  PropertyAnimation SmoothedAnimation SpringAnimation OpacityAnimator ScaleAnimator XAnimator YAnimator Rotation Scale State
+  PropertyAnimation SmoothedAnimation SpringAnimation OpacityAnimator ScaleAnimator XAnimator YAnimator Rotation Matrix4x4 Scale State
   PropertyChanges AnchorChanges StackView SwipeView Window FloatingWindow PopupWindow Variants TextArea TextField Label Button
   RegularExpressionValidator DoubleValidator ElapsedTimer FontMetrics MultiPointTouchArea PinchHandler PointHandler WheelEvent
   ScrollView ScrollBar Popup Menu MenuItem Instantiator ObjectModel DelegateModel DropArea Drag Keys`.split(/\s+/).filter(Boolean))

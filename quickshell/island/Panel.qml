@@ -63,10 +63,10 @@ Glass {
     readonly property int wifiStars: Math.max(1, Math.min(5, Math.ceil((Number(net.signal) || 0) / 20)))
     readonly property int btStars: btBattery < 0 ? -1 : Math.max(1, Math.min(5, Math.ceil(btBattery / 20)))
     readonly property var powerModes: [
-        { id: "auto", g: 0xF0674, tip: "Auto  ·  the power manager decides (load, battery, heat)" },
-        { id: "power-saver", g: 0xF032A, tip: "Saver  ·  longest battery life" },
-        { id: "balanced", g: 0xF05D1, tip: "Balanced" },
-        { id: "performance", g: 0xF0241, tip: "Performance  ·  fastest, uses more power" }
+        { id: "auto", g: 0xF0674, label: "Auto", tip: "Auto  ·  the power manager decides (load, battery, heat)" },
+        { id: "power-saver", g: 0xF032A, label: "Saver", tip: "Saver  ·  longest battery life" },
+        { id: "balanced", g: 0xF05D1, label: "Balanced", tip: "Balanced" },
+        { id: "performance", g: 0xF0241, label: "Performance", tip: "Performance  ·  fastest, uses more power" }
     ]
     function modeOn(id) { return id === "auto" ? autoPower : profile === id }
     function modeSet(id) { if (id === "auto") setAuto(); else setProfile(id) }
@@ -337,6 +337,8 @@ Glass {
     function toggleExtraDim() { extraDimToggled() }
     property bool isRecording: false
     signal toggleRecord()
+    readonly property bool words: !cfg || cfg.utilWords !== false      // Settings > Utilities box > Words (or the Aa button below)
+    signal wordsToggled()
 
     width: pal.boxW
     height: implicitHeight
@@ -511,7 +513,7 @@ Glass {
             columnSpacing: 8
             rowSpacing: 8
             z: 3
-            UTile {
+            UTile { words: root.words;
                 Layout.fillWidth: true; Layout.preferredHeight: 64
                 visible: root.shown("Wifi")
                 pal: root.pal
@@ -526,13 +528,13 @@ Glass {
                 onClicked: { root.toggleWifi(); if (root.menu === "wifi") root.later("wifi", 1500) }
                 onRightClicked: root.toggleMenu("wifi")
             }
-            UTile {
+            UTile { words: root.words;
                 Layout.fillWidth: true; Layout.preferredHeight: 64
                 visible: root.shown("Bt")
                 pal: root.pal
                 glyph: String.fromCodePoint(0xF00AF)
                 readonly property bool linked: root.net.bt === "on" && !!root.net.btdev
-                stars: linked && !root.btPercent ? root.btStars : -1
+                stars: linked && (!root.btPercent || !root.words) ? root.btStars : -1
                 caption: root.net.bt !== "on" ? "Off" : (!root.net.btdev ? "Bluetooth" : (root.btBattery >= 0 ? root.btBattery + "%" : "Connected"))
                 tip: root.net.bt !== "on" ? "Bluetooth off  ·  click to turn on"
                    : (root.net.btdev ? root.net.btdev + (root.btBattery >= 0 ? "  ·  battery " + root.btBattery + "%" : "") : "Bluetooth on, no device")
@@ -541,7 +543,7 @@ Glass {
                 onClicked: { root.toggleBt(); if (root.menu === "bt") root.later("bt", 1500) }
                 onRightClicked: root.toggleMenu("bt")
             }
-            UTile {
+            UTile { words: root.words;
                 Layout.fillWidth: true; Layout.preferredHeight: 64
                 visible: root.shown("Audio")
                 pal: root.pal
@@ -553,7 +555,7 @@ Glass {
                 onClicked: root.toggleMenu("audio")
                 onRightClicked: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
             }
-            UTile {
+            UTile { words: root.words;
                 Layout.fillWidth: true; Layout.preferredHeight: 64
                 visible: root.shown("Hotspot")
                 pal: root.pal
@@ -565,7 +567,7 @@ Glass {
                 on: root.hotspotOn
                 onClicked: root.toggleHotspot()
             }
-            UTile {
+            UTile { words: root.words;
                 Layout.fillWidth: true; Layout.preferredHeight: 64
                 visible: root.shown("Airplane")
                 pal: root.pal
@@ -575,12 +577,13 @@ Glass {
                 on: root.airplaneOn
                 onClicked: root.toggleAirplane()
             }
-            UTile {
+            UTile { words: root.words;
                 Layout.fillWidth: true; Layout.preferredHeight: 64
                 visible: root.chargeLimit > 0 && root.shown("Charge")
                 pal: root.pal
                 glyph: String.fromCodePoint(root.chargeGlyph)
-                caption: root.chargeLimit > 0 && root.chargeLimit < 100 ? root.chargeLimit + "%" : "Full"
+                // "Limit 80%", not a bare "80%": a battery glyph with a number next to it reads as the charge level, which this is not
+                caption: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Limit " + root.chargeLimit + "%" : "Full"
                 tipAlign: "right"
                 tip: root.chargeLimit > 0 && root.chargeLimit < 100 ? "Charge limit " + root.chargeLimit + "%  ·  protects the battery, click for full charge"
                                                                    : "Full charge  ·  click to limit charging and protect the battery"
@@ -903,7 +906,17 @@ Glass {
             Chip { Layout.fillWidth: true; pal: root.pal; label: "Perf"; on: root.profile === "performance"; onClicked: root.setProfile("performance") }
         }
 
-        // power mode as four icons (Tiles); Split has them inside its block. The words are in the hover bubble.
+        // power mode as four named tiles (Tiles); the words used to be in the hover bubble only, which made the row read as four
+        // unlabelled glyphs. Split keeps its own block, the classic style its four pills above.
+        Text {
+            visible: root.tiles && root.shown("Power")
+            text: root.pal.capOf("Power mode")
+            color: root.pal.muted
+            font.family: root.pal.uiFont
+            font.pixelSize: root.pal.tCap
+            font.weight: Font.Medium
+            Layout.topMargin: 2
+        }
         RowLayout {
             HoverRaise {}
             Layout.fillWidth: true
@@ -911,12 +924,13 @@ Glass {
             spacing: 8
             Repeater {
                 model: root.powerModes
-                delegate: Chip {
+                delegate: UTile { words: root.words;
                     required property var modelData
                     required property int index
-                    Layout.fillWidth: true; Layout.preferredHeight: 38
-                    pal: root.pal; label: ""; padX: 0
+                    Layout.fillWidth: true; Layout.preferredHeight: 58
+                    pal: root.pal
                     glyph: String.fromCodePoint(modelData.g)
+                    caption: modelData.label
                     tip: modelData.tip; tipAlign: index === 0 ? "left" : (index === 3 ? "right" : "center")
                     on: root.modeOn(modelData.id)
                     onClicked: root.modeSet(modelData.id)
@@ -924,25 +938,49 @@ Glass {
             }
         }
 
-        // two rows (Tiles and Split), so nothing is cramped: the switches as icons (caffeine, record, focus, gaming), then the
-        // places you open, with their names (settings, power)
+        // the quick actions: named tiles, not glyphs (caffeine, record, focus, gaming), then the two places you open
+        RowLayout {
+            Layout.fillWidth: true
+            visible: !root.classic
+            Layout.topMargin: 2
+            spacing: 6
+            Text {
+                Layout.fillWidth: true
+                text: root.pal.capOf("Quick actions")
+                color: root.pal.muted
+                font.family: root.pal.uiFont
+                font.pixelSize: root.pal.tCap
+                font.weight: Font.Medium
+            }
+            // the words on / off, quietly at the end of the label line
+            CalmIconBtn {
+                Layout.alignment: Qt.AlignVCenter
+                visible: root.tiles
+                pal: root.pal
+                size: 24
+                glyph: 0xF0B34
+                quiet: true
+                active: !root.words
+                tip: root.words ? "Hide the words in this box" : "Show the words in this box"
+                onClicked: root.wordsToggled()
+            }
+        }
         RowLayout {
             HoverRaise {}
             Layout.fillWidth: true
-            Layout.topMargin: 6
             visible: !root.classic
             spacing: 8
             z: 2
-            Chip { Layout.fillWidth: true; Layout.preferredHeight: 40; visible: root.shown("Caffeine"); pal: root.pal; padX: 0; label: ""; glyph: String.fromCodePoint(0xF0176)
+            UTile { words: root.words; Layout.fillWidth: true; Layout.preferredHeight: 58; visible: root.shown("Caffeine"); pal: root.pal; caption: "Caffeine"; glyph: String.fromCodePoint(0xF0176)
                 tipAlign: "left"; tip: root.caffeine ? "Caffeine on  ·  click to turn off" : "Caffeine  ·  keeps the screen awake  ·  right-click for one hour"
                 on: root.caffeine; onClicked: root.toggleCaffeine(); onRightClicked: root.caffeineHour() }
-            Chip { Layout.fillWidth: true; Layout.preferredHeight: 40; visible: root.shown("Record"); pal: root.pal; padX: 0; label: ""; glyph: String.fromCodePoint(0xF0481)
+            UTile { words: root.words; Layout.fillWidth: true; Layout.preferredHeight: 58; visible: root.shown("Record"); pal: root.pal; caption: root.isRecording ? "Stop" : "Record"; glyph: String.fromCodePoint(0xF0481)
                 tip: root.isRecording ? "Recording  ·  click to stop" : "Record the screen"
                 on: root.isRecording; onClicked: root.toggleRecord() }
-            Chip { Layout.fillWidth: true; Layout.preferredHeight: 40; visible: root.shown("Focus"); pal: root.pal; padX: 0; label: ""; glyph: String.fromCodePoint(0xF051B)
+            UTile { words: root.words; Layout.fillWidth: true; Layout.preferredHeight: 58; visible: root.shown("Focus"); pal: root.pal; caption: root.focusInfo.on ? root.focusText : "Focus"; glyph: String.fromCodePoint(0xF051B)
                 tip: root.focusInfo.on ? "Focus  ·  " + root.focusText : "Focus  ·  a timer with do-not-disturb"
                 on: root.focusInfo.on || root.focusOpen; onClicked: root.focusOpen = !root.focusOpen }
-            Chip { Layout.fillWidth: true; Layout.preferredHeight: 40; pal: root.pal; padX: 0; label: ""; glyph: String.fromCodePoint(0xF0297)
+            UTile { words: root.words; Layout.fillWidth: true; Layout.preferredHeight: 58; pal: root.pal; caption: "Gaming"; glyph: String.fromCodePoint(0xF0297)
                 tipAlign: "right"; tip: root.gaming ? "Gaming mode on  ·  click to turn off" : "Gaming mode"
                 on: root.gaming; onClicked: root.toggleGaming() }
         }
@@ -952,10 +990,12 @@ Glass {
             visible: !root.classic
             spacing: 8
             z: 2
-            Chip { Layout.fillWidth: true; Layout.preferredHeight: 36; pal: root.pal; glyph: String.fromCodePoint(0xF0493); label: "Settings"
+            Chip { Layout.fillWidth: true; Layout.preferredHeight: 36; pal: root.pal; glyph: String.fromCodePoint(0xF0493); label: root.words ? "Settings" : ""
                 tip: "Settings"; onClicked: root.openSettings() }
-            Chip { Layout.fillWidth: true; Layout.preferredHeight: 36; pal: root.pal; primary: true; glyph: String.fromCodePoint(0xF0425); label: "Power"
+            // the one action that can end the session: quiet at rest, red only while the pointer is on it
+            Chip { Layout.fillWidth: true; Layout.preferredHeight: 36; pal: root.pal; danger: true; glyph: String.fromCodePoint(0xF0425); label: root.words ? "Power" : ""
                 tipAlign: "right"; tip: "Lock, log out, restart, shut down"; onClicked: root.openPower() }
+
         }
 
         // caffeine (click = on / off, right-click = on for one hour) and record

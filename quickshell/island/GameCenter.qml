@@ -106,7 +106,7 @@ Scope {
     function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
     function fmtTime(secs) {
         var s = Math.max(0, Math.floor(secs || 0)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
-        if (s === 0) return "Not played yet"
+        if (s === 0) return "Not played"
         if (h > 0) return h + " h " + m + " min"
         return Math.max(1, m) + " min"
     }
@@ -162,6 +162,28 @@ Scope {
         addName = guessName(p)
         Qt.callLater(function () { root.focusRequested("addname") })
     }
+
+    // ---- the head and the nav: one short line, icons only
+    readonly property var navItems: [
+        { key: "library", glyph: 0xF0331, label: "Library" },
+        { key: "stores", glyph: 0xF04DC, label: "Stores" },
+        { key: "runtimes", glyph: 0xF03D3, label: "Proton" },
+        { key: "doctor", glyph: 0xF04D9, label: "Doctor" }
+    ]
+    readonly property string runningName: {
+        for (var i = 0; i < games.length; i++) if (games[i].id === runningId && games[i].name) return games[i].name
+        return ""
+    }
+    // the one line under the title: a fact, never a sentence
+    readonly property string headSub: {
+        if (note !== "") return note
+        if (busy) return "Working"
+        if (runningId !== "") return runningName !== "" ? runningName + " is running" : "A game is running"
+        if (!gamesLoaded) return "Reading library"
+        if (games.length === 0) return "No games yet"
+        return games.length + " in the library"
+    }
+    readonly property string headTone: noteBad ? "bad" : note !== "" ? "good" : runningId !== "" ? "accent" : "muted"
 
     // ---- what is shown
     // the filter chips only offer the stores you have games from
@@ -325,7 +347,7 @@ Scope {
     function loadGogList() { if (gogListProc.running) return; storeErr = ""; storeBusy = true; gogListProc.running = true }
     function gogLogin() {
         var a = gogAddr.trim()
-        if (a === "") { flash("Paste the address you land on after signing in to GOG", true); return }
+        if (a === "") { flash("Paste the GOG address first", true); return }
         act([hgl, "gog", "login", a], "Logged in to GOG")
         gogAddr = ""
         Qt.callLater(function () { root.loadStores() })
@@ -414,11 +436,11 @@ Scope {
 
     // ---- the drawer's toggles
     readonly property var toggleDefs: [
-        { k: "gamemode", t: "Gamemode", d: "Asks the system for its performance mode while the game runs", wrapper: true },
-        { k: "mangohud", t: "MangoHud", d: "FPS and temperature overlay", wrapper: true },
-        { k: "lean", t: "Lean island", d: "Halcyon pauses its feeds, widgets and animations while this game runs", wrapper: false },
-        { k: "fullscreen", t: "Fullscreen", d: "Puts the game's window in fullscreen when it opens", wrapper: false },
-        { k: "wayland", t: "Wayland mode", d: "Off is safer: most games still run best through XWayland", wrapper: false }
+        { k: "gamemode", t: "Gamemode", d: "Asks the system for its performance mode while the game runs", glyph: 0xF04C5, wrapper: true },
+        { k: "mangohud", t: "MangoHud", d: "FPS and temperature overlay", glyph: 0xF0128, wrapper: true },
+        { k: "lean", t: "Lean island", d: "Halcyon pauses its feeds, widgets and animations while this game runs", glyph: 0xF06D3, wrapper: false },
+        { k: "fullscreen", t: "Fullscreen", d: "Puts the game's window in fullscreen when it opens", glyph: 0xF0293, wrapper: false },
+        { k: "wayland", t: "Wayland mode", d: "Off is safer: most games still run best through XWayland", glyph: 0xF0379, wrapper: false }
     ]
     function toggleOn(def) {
         if (!sel) return false
@@ -443,7 +465,7 @@ Scope {
 
     function addGame() {
         var p = expandPath(addPath)
-        if (p === "") { flash("Paste the path of the game's .exe first", true); return }
+        if (p === "") { flash("Pick a path first", true); return }
         var cmd = [hgl, "add", p]
         if (addName.trim() !== "") cmd = cmd.concat(["--name", addName.trim()])
         act(cmd, "Added to the library")
@@ -456,7 +478,7 @@ Scope {
     function wineSettings() {
         if (!isWine(sel)) return
         var rt = runtimeFor(sel.proton)
-        if (!rt) { flash("Install a Proton version first (the Proton tab)", true); return }
+        if (!rt) { flash("Install Proton first", true); return }
         runInConsole("WINEPREFIX=" + q(sel.prefix) + " PROTONPATH=" + q(rt.path) + " GAMEID=umu-0 umu-run winecfg")
     }
     // ---- after Play: the window stays and says what is going on (hgl's own output and the game's log, in words) until the game's
@@ -476,7 +498,7 @@ Scope {
     property real dlAt: 0                   // when dlDone was read (ms)
     function mb(b) { return (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + " MB" }
     readonly property string dlLine: {
-        if (dlDone <= 0) return "Connecting to Valve's servers\u2026"
+        if (dlDone <= 0) return "Connecting to Valve"
         var s = mb(dlDone) + (dlTotal > 0 ? " of " + mb(dlTotal) : " so far")
         if (dlRate > 1024) s += " \u00b7 " + (dlRate / 1048576).toFixed(1) + " MB/s"
         if (dlTotal > dlDone && dlRate > 1024) {
@@ -492,7 +514,7 @@ Scope {
         if (runningId !== "") { flash("Another game is running: stop it first", true); return }
         launchId = sel.id
         phase = "starting"
-        phaseText = "Starting " + sel.name + "\u2026"
+        phaseText = "Starting " + sel.name
         launchLog = ""
         firstStage = -1; rtUrl = ""; dlDone = 0; dlTotal = 0; dlRate = 0; dlAt = 0
         launchRequested(sel.id)
@@ -529,10 +551,10 @@ Scope {
         if (/Upgrading prefix|Creating prefix|wineboot/i.test(log)) st = 2
         if (opening && firstStage >= 0) st = 3
         if (st > firstStage) firstStage = st
-        if (firstStage === 0) phaseText = "Downloading the Steam Runtime. First start only"
-        else if (firstStage === 1) phaseText = "Checking and unpacking the Steam Runtime. First start only"
-        else if (firstStage === 2) phaseText = "Setting up " + name + "'s Windows folder. First start only"
-        else if (opening) phaseText = "Opening " + name + "\u2026"
+        if (firstStage === 0) phaseText = "Downloading Steam Runtime (first start)"
+        else if (firstStage === 1) phaseText = "Unpacking Steam Runtime (first start)"
+        else if (firstStage === 2) phaseText = "Setting up the Windows folder (first start)"
+        else if (opening) phaseText = "Opening " + name
     }
     // the runtime download's progress: the size of umu's .parts file (on /tmp, or under its cache when /tmp is small or it resumes),
     // against the archive's size on Valve's server (asked once)
@@ -627,28 +649,6 @@ Scope {
         }
         MouseArea { id: pbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: pb.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: if (!pb.disabled) pb.clicked() }
     }
-    // a tab of the header's segmented control
-    component TabBtn: Rectangle {
-        id: tb
-        property string label: ""
-        property string key: ""
-        readonly property bool on: root.tab === key
-        implicitWidth: tbTxt.implicitWidth + 30
-        implicitHeight: 32
-        radius: 10
-        color: on ? root.pal.accent : (tbMa.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent")
-        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-        Text {
-            id: tbTxt
-            anchors.centerIn: parent
-            text: tb.label
-            color: tb.on ? root.pal.bg : root.pal.muted
-            font.family: root.pal.uiFont
-            font.pixelSize: root.pal.tBody
-            font.weight: tb.on ? Font.Medium : Font.Medium
-        }
-        MouseArea { id: tbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.setTab(tb.key) }
-    }
     // a heading inside the drawer
     component SectionTitle: Text {
         color: root.pal.muted
@@ -666,8 +666,8 @@ Scope {
             id: win
             desktop: root.deskMode
             title: "Games"
-            deskWidth: 1180
-            deskHeight: 740
+            deskWidth: 1040
+            deskHeight: 720
             namespace: "island-games"
             // while the console is up (a command this window sent) it has the keyboard; this window stays open behind it
             keyboardFocus: (root.open && !root.consoleOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -705,8 +705,8 @@ Scope {
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: win.desktop ? qp.width : Math.min(1180, qp.width - 80)
-                    height: win.desktop ? qp.height : Math.min(740, qp.height - 80)
+                    width: win.desktop ? qp.width : Math.min(1040, qp.width - 80)
+                    height: win.desktop ? qp.height : Math.min(720, qp.height - 80)
                     radius: win.desktop ? 0 : root.pal.rXl
                     opacityBody: 0.97
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
@@ -718,88 +718,165 @@ Scope {
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 24
-                        spacing: 20
+                        spacing: 12
 
-                        // ---- header: badge + title + state on the left, the tabs in the middle, close on the right
-                        // Centred titles: the badge and title in the middle on top, the tabs on a line under them
+                        // ---- the head: one glyph, the name, one short fact, icon actions on the right
                         Item {
-                            id: gcHead
-                            readonly property bool centred: root.pal.centred
                             Layout.fillWidth: true
-                            implicitHeight: centred ? 42 + 50 : 42
-                            Row {
-                                x: gcHead.centred ? (parent.width - width) / 2 : 0
-                                y: gcHead.centred ? 0 : (parent.height - height) / 2
-                                spacing: 12
-                                Rectangle {
-                                    visible: !root.pal.zen          // the new style: no icon tile in the header
-                                    width: 40; height: 40; radius: 13
-                                    color: Qt.alpha(root.noteBad ? root.pal.bad : root.pal.accent, 0.16)
-                                    border.width: root.pal.bw
-                                    border.color: Qt.alpha(root.noteBad ? root.pal.bad : root.pal.accent, 0.35)
-                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: String.fromCodePoint(0xF0297)
-                                        color: root.noteBad ? root.pal.bad : root.pal.accent
-                                        font.family: root.pal.font
-                                        font.pixelSize: 21
-                                        opacity: root.busy ? 0.35 + 0.65 * Math.abs(Math.sin(pulse.tp * Math.PI)) : 1
+                            Layout.preferredHeight: 78
+                            z: 10                       // the store drop-down hangs out of the head, over the pages
+
+                            // the field lives in the head, where the empty band used to be; it is only useful on the library
+                            RowLayout {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.min(368, parent.width * 0.38)
+                                visible: root.tab === "library"
+                                spacing: 8
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        z: 10                       // the store drop-down opens over the covers
+                                        spacing: 8
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 38
+                                            radius: 12
+                                            color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.8))
+                                            border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
+                                            border.color: sin.activeFocus ? Qt.alpha(root.pal.accent, 0.7) : root.pal.lineSoft
+                                            Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                            Text {
+                                                id: sGlyph
+                                                anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                                                text: String.fromCodePoint(0xF0349)
+                                                color: root.pal.muted
+                                                font.family: root.pal.font
+                                                font.pixelSize: 15
+                                            }
+                                            TextInput {
+                                                id: sin
+                                                anchors { left: sGlyph.right; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 10; rightMargin: 14 }
+                                                verticalAlignment: TextInput.AlignVCenter
+                                                clip: true
+                                                color: root.pal.text
+                                                selectionColor: Qt.alpha(root.pal.accent, 0.45)
+                                                selectedTextColor: root.pal.text
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tBody + 1
+                                                onTextChanged: { root.search = text; grid.currentIndex = 0; grid.pick() }
+                                                Keys.onPressed: e => {
+                                                    var n = root.shown.length
+                                                    if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true }
+                                                    else if (e.key === Qt.Key_Right) { if (grid.currentIndex < n - 1) { grid.currentIndex++; grid.pick() } e.accepted = true }
+                                                    else if (e.key === Qt.Key_Left) { if (grid.currentIndex > 0) { grid.currentIndex--; grid.pick() } e.accepted = true }
+                                                    else if (e.key === Qt.Key_Down) { grid.currentIndex = Math.min(n - 1, grid.currentIndex + grid.cols); grid.pick(); e.accepted = true }
+                                                    else if (e.key === Qt.Key_Up) { grid.currentIndex = Math.max(0, grid.currentIndex - grid.cols); grid.pick(); e.accepted = true }
+                                                    else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { grid.pick(); root.playSel(); e.accepted = true }
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    visible: sin.text.length === 0
+                                                    text: "Search games"
+                                                    color: root.pal.muted
+                                                    font: sin.font
+                                                }
+                                            }
+                                        }
+                                        // which store: a quiet icon, the names open under it
+                                        Chip {
+                                            id: srcPick
+                                            visible: root.sources.length > 1
+                                            pal: root.pal
+                                            implicitHeight: 38
+                                            padX: 11
+                                            glyph: String.fromCodePoint(0xF0232)
+                                            on: root.filter !== "all" || srcMenu.visible
+                                            tip: root.filter === "all" ? "All games" : "Showing " + root.srcLabel(root.filter)
+                                            onClicked: srcMenu.visible = !srcMenu.visible
+                                            Rectangle {
+                                                id: srcMenu
+                                                visible: false
+                                                z: 50
+                                                y: parent.height + 6
+                                                anchors.right: parent.right
+                                                width: Math.max(parent.width, 150)
+                                                height: srcCol.implicitHeight + 12
+                                                radius: root.pal.rMd
+                                                color: root.pal.surfaceHi
+                                                border.width: 1; border.color: root.pal.line
+                                                Column {
+                                                    id: srcCol
+                                                    x: 6; y: 6
+                                                    width: parent.width - 12
+                                                    Repeater {
+                                                        model: ["all"].concat(root.sources)
+                                                        delegate: Rectangle {
+                                                            id: srcRow
+                                                            required property var modelData
+                                                            width: srcCol.width; height: 34; radius: height / 2
+                                                            color: root.filter === modelData ? root.pal.chosenFill : (srcMa.containsMouse ? root.pal.fill : "transparent")
+                                                            Text {
+                                                                x: 14; anchors.verticalCenter: parent.verticalCenter
+                                                                text: srcRow.modelData === "all" ? "All games" : root.srcLabel(srcRow.modelData)
+                                                                color: root.filter === srcRow.modelData ? root.pal.chosenText : root.pal.text
+                                                                font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
+                                                            }
+                                                            MouseArea { id: srcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.filter = srcRow.modelData; srcMenu.visible = false } }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                    Item {
-                                        id: pulse
-                                        property real tp: 0
-                                        NumberAnimation on tp { from: 0; to: 1; duration: 900; loops: Animation.Infinite; running: root.busy }
-                                    }
+                            }
+
+                            CalmHeader {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                pal: root.pal
+                                glyph: 0xF0296
+                                title: "Games"
+                                sub: root.headSub
+                                subTone: root.headTone
+
+                                CalmIconBtn {
+                                    pal: root.pal
+                                    glyph: 0xF0415
+                                    primary: true
+                                    tip: "Add game"
+                                    onClicked: root.browseExe()
                                 }
-                                Column {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 1
-                                    Text {
-                                        x: gcHead.centred ? (parent.width - width) / 2 : 0
-                                        text: "Game Center"
-                                        color: root.pal.text
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tTitle + 3
-                                        font.weight: Font.Medium
-                                    }
-                                    Text {
-                                        width: Math.min(implicitWidth, gcHead.centred ? gcHead.width - 120 : tabs.x - 70)
-                                        x: gcHead.centred ? (parent.width - width) / 2 : 0
-                                        horizontalAlignment: gcHead.centred ? Text.AlignHCenter : Text.AlignLeft
-                                        wrapMode: Text.Wrap
-                                        text: root.note !== "" ? root.note
-                                            : (root.busy ? "Working. Big downloads can take a few minutes"
-                                            : (root.runningId !== "" ? "A game is running"
-                                            : (!root.gamesLoaded ? "" : root.games.length === 0 ? "Your library is empty" : root.games.length + (root.games.length === 1 ? " game" : " games") + " in your library")))
-                                        color: root.noteBad ? root.pal.bad : (root.note !== "" ? root.pal.good : root.pal.muted)
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tCap + 1
-                                    }
+                                CalmIconBtn {
+                                    pal: root.pal
+                                    glyph: 0xF0450
+                                    tip: "Refresh library"
+                                    enabledBtn: !root.busy
+                                    onClicked: root.refreshLibrary()
+                                }
+                                CalmIconBtn {
+                                    visible: root.pal ? !root.pal.deskWin : false
+                                    pal: root.pal
+                                    glyph: 0xF03CC
+                                    active: root.popped
+                                    tip: root.popped ? "Back to overlay" : "Pop out"
+                                    onClicked: root.popped = !root.popped
+                                }
+                                CalmIconBtn {
+                                    pal: root.pal
+                                    glyph: 0xF0156
+                                    tip: "Close"
+                                    onClicked: root.hide()
                                 }
                             }
-                            Rectangle {
-                                id: tabs
-                                x: (parent.width - width) / 2
-                                y: gcHead.centred ? parent.height - height : (parent.height - height) / 2
-                                width: tabRow.implicitWidth + 8
-                                height: 40
-                                radius: 14
-                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.8))
-                                border.width: root.pal.calm ? 0 : 1
-                                border.color: root.pal.lineSoft
-                                Row {
-                                    id: tabRow
-                                    anchors.centerIn: parent
-                                    spacing: 2
-                                    TabBtn { label: "Library"; key: "library" }
-                                    TabBtn { label: "Stores"; key: "stores" }
-                                    TabBtn { label: "Proton"; key: "runtimes" }
-                                    TabBtn { label: "Doctor"; key: "doctor" }
-                                }
-                            }
-                            PopBtn { anchors { right: closeBtn.left; rightMargin: 6; verticalCenter: parent.verticalCenter } pal: root.pal; popped: root.popped; onClicked: root.popped = !root.popped }
-                            RoundBtn { id: closeBtn; anchors { right: parent.right; verticalCenter: parent.verticalCenter } pal: root.pal; size: 34; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }
+                        }
+
+                        // ---- the pages: icons in the middle, the open one named under them
+                        CalmNav {
+                            Layout.alignment: Qt.AlignHCenter
+                            pal: root.pal
+                            items: root.navItems
+                            current: root.tab
+                            onPicked: key => root.setTab(key)
                         }
 
                         // ================= Library
@@ -814,111 +891,7 @@ Scope {
                                 Layout.fillHeight: true
                                 spacing: 12
 
-                                // search, store filter, refresh, add
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    z: 10                       // the store drop-down opens over the covers
-                                    spacing: 12
-                                    Rectangle {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 38
-                                        radius: 12
-                                        color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.8))
-                                        border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
-                                        border.color: sin.activeFocus ? Qt.alpha(root.pal.accent, 0.7) : root.pal.lineSoft
-                                        Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                        Text {
-                                            id: sGlyph
-                                            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
-                                            text: String.fromCodePoint(0xF0349)
-                                            color: root.pal.muted
-                                            font.family: root.pal.font
-                                            font.pixelSize: 15
-                                        }
-                                        TextInput {
-                                            id: sin
-                                            anchors { left: sGlyph.right; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 10; rightMargin: 14 }
-                                            verticalAlignment: TextInput.AlignVCenter
-                                            clip: true
-                                            color: root.pal.text
-                                            selectionColor: Qt.alpha(root.pal.accent, 0.45)
-                                            selectedTextColor: root.pal.text
-                                            font.family: root.pal.uiFont
-                                            font.pixelSize: root.pal.tBody + 1
-                                            onTextChanged: { root.search = text; grid.currentIndex = 0; grid.pick() }
-                                            Keys.onPressed: e => {
-                                                var n = root.shown.length
-                                                if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true }
-                                                else if (e.key === Qt.Key_Right) { if (grid.currentIndex < n - 1) { grid.currentIndex++; grid.pick() } e.accepted = true }
-                                                else if (e.key === Qt.Key_Left) { if (grid.currentIndex > 0) { grid.currentIndex--; grid.pick() } e.accepted = true }
-                                                else if (e.key === Qt.Key_Down) { grid.currentIndex = Math.min(n - 1, grid.currentIndex + grid.cols); grid.pick(); e.accepted = true }
-                                                else if (e.key === Qt.Key_Up) { grid.currentIndex = Math.max(0, grid.currentIndex - grid.cols); grid.pick(); e.accepted = true }
-                                                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { grid.pick(); root.playSel(); e.accepted = true }
-                                            }
-                                            Text {
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                visible: sin.text.length === 0
-                                                text: "Search your games"
-                                                color: root.pal.muted
-                                                font: sin.font
-                                            }
-                                        }
-                                    }
-                                    // which store: one quiet drop-down instead of a chip per store (it took the row's room)
-                                    Chip {
-                                        id: srcPick
-                                        visible: root.sources.length > 1
-                                        pal: root.pal
-                                        implicitHeight: 38
-                                        label: (root.filter === "all" ? "All games" : root.srcLabel(root.filter)) + "   ▾"
-                                        on: srcMenu.visible
-                                        onClicked: srcMenu.visible = !srcMenu.visible
-                                        Rectangle {
-                                            id: srcMenu
-                                            visible: false
-                                            z: 50
-                                            y: parent.height + 6
-                                            anchors.right: parent.right
-                                            width: Math.max(parent.width, 150)
-                                            height: srcCol.implicitHeight + 12
-                                            radius: root.pal.rMd
-                                            color: root.pal.surfaceHi
-                                            border.width: 1; border.color: root.pal.line
-                                            Column {
-                                                id: srcCol
-                                                x: 6; y: 6
-                                                width: parent.width - 12
-                                                Repeater {
-                                                    model: ["all"].concat(root.sources)
-                                                    delegate: Rectangle {
-                                                        id: srcRow
-                                                        required property var modelData
-                                                        width: srcCol.width; height: 34; radius: height / 2
-                                                        color: root.filter === modelData ? root.pal.chosenFill : (srcMa.containsMouse ? root.pal.fill : "transparent")
-                                                        Text {
-                                                            x: 14; anchors.verticalCenter: parent.verticalCenter
-                                                            text: srcRow.modelData === "all" ? "All games" : root.srcLabel(srcRow.modelData)
-                                                            color: root.filter === srcRow.modelData ? root.pal.chosenText : root.pal.text
-                                                            font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody
-                                                        }
-                                                        MouseArea { id: srcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.filter = srcRow.modelData; srcMenu.visible = false } }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    // read the stores again / add a game: icons only (the library's state says what is going on)
-                                    Chip {
-                                        pal: root.pal
-                                        implicitHeight: 38
-                                        padX: 12
-                                        glyph: String.fromCodePoint(0xF0450)
-                                        enabled: !root.busy
-                                        opacity: root.busy ? 0.45 : 1
-                                        onClicked: root.refreshLibrary()
-                                    }
-                                    RoundBtn { pal: root.pal; primary: true; size: 38; glyph: String.fromCodePoint(0xF0415); onClicked: root.browseExe() }
-                                }
+
 
                                 // the .exe that was picked (or pasted): name it, add it
                                 Rectangle {
@@ -933,9 +906,9 @@ Scope {
                                         anchors { fill: parent; leftMargin: 14; rightMargin: 12 }
                                         spacing: 10
                                         Rectangle {
-                                            width: 38; height: 38; radius: 12
-                                            color: Qt.alpha(root.pal.accent, 0.16)
-                                            Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF0297); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 19 }
+                                            width: 36; height: 36; radius: 11
+                                            color: Qt.alpha(root.pal.accent, 0.12)
+                                            Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF0296); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 18 }
                                         }
                                         // the path: shown short, editable (paste one here, ~ works)
                                         Rectangle {
@@ -958,12 +931,12 @@ Scope {
                                                 onTextEdited: root.addPath = root.expandPath(text)
                                                 Keys.onEscapePressed: { root.addOpen = false; sin.forceActiveFocus() }
                                                 Keys.onReturnPressed: root.addGame()
-                                                Text { anchors.verticalCenter: parent.verticalCenter; visible: addPathIn.text.length === 0; text: "Path of the game's .exe"; color: root.pal.muted; font: addPathIn.font }
+                                                Text { anchors.verticalCenter: parent.verticalCenter; visible: addPathIn.text.length === 0; text: "Path to the .exe"; color: root.pal.muted; font: addPathIn.font }
                                             }
                                         }
-                                        ActionChip { pal: root.pal; implicitHeight: 38; glyph: String.fromCodePoint(0xF024B); label: "Browse"; onClicked: root.browseExe() }
+                                        CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; glyph: 0xF024B; tip: "Browse"; quiet: true; onClicked: root.browseExe() }
                                         Rectangle {
-                                            Layout.preferredWidth: 220
+                                            Layout.preferredWidth: 200
                                             Layout.preferredHeight: 38
                                             radius: root.pal.rSm
                                             color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
@@ -985,8 +958,16 @@ Scope {
                                                 Text { anchors.verticalCenter: parent.verticalCenter; visible: addNameIn.text.length === 0; text: "Name"; color: root.pal.muted; font: addNameIn.font }
                                             }
                                         }
-                                        PrimaryBtn { label: "Add"; disabled: root.busy || root.addPath === ""; onClicked: root.addGame() }
-                                        RoundBtn { pal: root.pal; size: 30; glyph: String.fromCodePoint(0xF0156); onClicked: { root.addOpen = false; sin.forceActiveFocus() } }
+                                        CalmIconBtn {
+                                            Layout.alignment: Qt.AlignVCenter
+                                            pal: root.pal
+                                            glyph: 0xF012C
+                                            tip: "Add to the library"
+                                            primary: true
+                                            enabledBtn: !root.busy && root.addPath !== ""
+                                            onClicked: root.addGame()
+                                        }
+                                        CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 30; glyph: 0xF0156; tip: "Cancel"; onClicked: { root.addOpen = false; sin.forceActiveFocus() } }
                                     }
                                 }
 
@@ -1022,10 +1003,10 @@ Scope {
                                         ClippingRectangle {
                                             id: card
                                             anchors.fill: parent
-                                            anchors.margins: 8
+                                            anchors.margins: 10
                                             radius: root.pal.rLg
                                             color: root.pal.box(Qt.alpha(root.pal.surface, 0.9))
-                                            scale: cardMa.pressed ? 0.97 : (cardMa.containsMouse ? 1.02 : 1)
+                                            scale: cardMa.pressed ? 0.99 : 1
                                             z: cardMa.containsMouse ? 2 : 0
                                             Behavior on scale { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
 
@@ -1034,18 +1015,18 @@ Scope {
                                                 anchors.fill: parent
                                                 visible: !cell.hasArt
                                                 gradient: Gradient {
-                                                    GradientStop { position: 0; color: Qt.alpha(root.pal.accent, 0.16) }
-                                                    GradientStop { position: 1; color: Qt.alpha(root.pal.accent, 0.05) }
+                                                    GradientStop { position: 0; color: Qt.alpha(root.pal.accent, 0.14) }
+                                                    GradientStop { position: 1; color: Qt.alpha(root.pal.accent, 0.04) }
                                                 }
                                             }
                                             Text {
                                                 anchors.centerIn: parent
-                                                anchors.verticalCenterOffset: -20
+                                                anchors.verticalCenterOffset: -16
                                                 visible: img.status !== Image.Ready
                                                 text: (cell.modelData.name || "?").charAt(0).toUpperCase()
-                                                color: Qt.alpha(root.pal.accent, 0.6)
+                                                color: Qt.alpha(root.pal.accent, 0.45)
                                                 font.family: root.pal.uiFont
-                                                font.pixelSize: 58
+                                                font.pixelSize: 46
                                                 font.weight: Font.Medium
                                             }
                                             Image {
@@ -1053,8 +1034,8 @@ Scope {
                                                 // an icon taken out of an .exe is small and square: show it whole instead of stretching it
                                                 readonly property bool small: implicitWidth < 300 || implicitHeight < 150 || String(source).indexOf("/icons/") >= 0
                                                 anchors.fill: parent
-                                                anchors.margins: small ? 40 : 0
-                                                anchors.bottomMargin: small ? 70 : 0
+                                                anchors.margins: small ? 34 : 0
+                                                anchors.bottomMargin: small ? 64 : 0
                                                 source: cell.modelData.cover && cell.modelData.cover !== "" ? "file://" + cell.modelData.cover : ""
                                                 sourceSize.width: 600
                                                 sourceSize.height: 600
@@ -1064,10 +1045,17 @@ Scope {
                                                 opacity: status === Image.Ready ? 1 : 0
                                                 Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                             }
+                                            // hover: a quiet accent wash over the art, no outline, no jump
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                radius: card.radius
+                                                color: Qt.alpha(root.pal.accent, cardMa.containsMouse ? 0.07 : 0)
+                                                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                            }
                                             // the name, over a shade at the bottom of the art
                                             Rectangle {
                                                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                                height: 84
+                                                height: 76
                                                 gradient: Gradient {
                                                     GradientStop { position: 0; color: Qt.alpha(root.pal.bg, 0) }
                                                     GradientStop { position: 0.55; color: Qt.alpha(root.pal.bg, 0.78) }
@@ -1075,7 +1063,7 @@ Scope {
                                                 }
                                             }
                                             Column {
-                                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 12; rightMargin: 12; bottomMargin: 10 }
+                                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 12; rightMargin: 12; bottomMargin: 11 }
                                                 spacing: 1
                                                 Text {
                                                     width: parent.width
@@ -1083,7 +1071,7 @@ Scope {
                                                     text: cell.modelData.name
                                                     color: root.pal.text
                                                     font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tBody
+                                                    font.pixelSize: root.pal.tBody - 1
                                                     font.weight: Font.Medium
                                                 }
                                                 Text {
@@ -1092,33 +1080,40 @@ Scope {
                                                     text: root.srcLabel(cell.modelData.source) + "  ·  " + root.fmtTime(cell.modelData.playtime)
                                                     color: root.pal.muted
                                                     font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tCap
+                                                    font.pixelSize: root.pal.tCap - 1
                                                 }
                                             }
-                                            // status: playing now / needs attention
+                                            // status: playing now / needs a look
                                             Rectangle {
-                                                anchors { left: parent.left; top: parent.top; margins: 8 }
+                                                anchors { left: parent.left; top: parent.top; margins: 10 }
                                                 visible: cell.playing || cell.modelData.status === "attention"
-                                                height: 22
-                                                width: stTxt.implicitWidth + 18
-                                                radius: 11
-                                                color: Qt.alpha(root.pal.bg, 0.85)
-                                                border.width: 1
-                                                border.color: cell.playing ? Qt.alpha(root.pal.accent, 0.6) : Qt.alpha(root.pal.warn, 0.6)
-                                                Text {
-                                                    id: stTxt
+                                                height: 20
+                                                width: stRow.implicitWidth + 16
+                                                radius: 10
+                                                color: Qt.alpha(root.pal.bg, 0.8)
+                                                Row {
+                                                    id: stRow
                                                     anchors.centerIn: parent
-                                                    text: cell.playing ? "Playing" : "Needs attention"
-                                                    color: cell.playing ? root.pal.accent : root.pal.warn
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: 10
-                                                    font.weight: Font.Medium
+                                                    spacing: 5
+                                                    Rectangle {
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: 5; height: 5; radius: 3
+                                                        color: cell.playing ? root.pal.accent : root.pal.warn
+                                                    }
+                                                    Text {
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        text: cell.playing ? "Playing" : "Needs fix"
+                                                        color: cell.playing ? root.pal.accent : root.pal.warn
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tCap - 1
+                                                        font.weight: Font.Medium
+                                                    }
                                                 }
                                             }
                                             // hover: a play button in the corner
                                             Rectangle {
-                                                anchors { right: parent.right; top: parent.top; margins: 8 }
-                                                width: 34; height: 34; radius: 17
+                                                anchors { right: parent.right; top: parent.top; margins: 10 }
+                                                width: 30; height: 30; radius: 15
                                                 visible: cardMa.containsMouse
                                                 color: root.pal.accent
                                                 Text {
@@ -1127,17 +1122,16 @@ Scope {
                                                     text: String.fromCodePoint(cell.playing ? 0xF04DB : 0xF040A)
                                                     color: root.pal.bg
                                                     font.family: root.pal.font
-                                                    font.pixelSize: 17
+                                                    font.pixelSize: 15
                                                 }
                                             }
-                                            // the ring: accent on the selected game
+                                            // the chosen game: one soft accent hairline, nothing else
                                             Rectangle {
                                                 anchors.fill: parent
                                                 radius: card.radius
                                                 color: "transparent"
-                                                // new: only the chosen game is ringed, softly; the rest have no edge
-                                                border.width: cell.cur ? 2 : root.pal.bw
-                                                border.color: cell.cur ? Qt.alpha(root.pal.accent, root.pal.zen ? 0.75 : 1) : (cardMa.containsMouse ? Qt.alpha(root.pal.accent, 0.4) : root.pal.lineSoft)
+                                                border.width: cell.cur ? 1 : 0
+                                                border.color: Qt.alpha(root.pal.accent, 0.55)
                                                 Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                             }
                                             MouseArea {
@@ -1153,7 +1147,7 @@ Scope {
                                             }
                                             // favourite: always shown when starred, on hover otherwise (favourites come first here and in >game)
                                             Rectangle {
-                                                anchors { right: parent.right; top: parent.top; margins: 8; rightMargin: cardMa.containsMouse || favMa.containsMouse ? 48 : 8 }
+                                                anchors { right: parent.right; top: parent.top; margins: 10; rightMargin: cardMa.containsMouse || favMa.containsMouse ? 44 : 10 }
                                                 width: 30; height: 30; radius: 15
                                                 visible: cell.modelData.fav || cardMa.containsMouse || favMa.containsMouse
                                                 color: Qt.alpha(root.pal.bg, favMa.containsMouse ? 0.92 : 0.72)
@@ -1183,25 +1177,23 @@ Scope {
                                     visible: root.shown.length === 0
                                     Column {
                                         anchors.centerIn: parent
-                                        spacing: 14
-                                        width: Math.min(440, parent.width - 40)
+                                        spacing: 12
+                                        width: Math.min(400, parent.width - 40)
                                         Rectangle {
                                             visible: root.gamesLoaded && root.games.length === 0
                                             anchors.horizontalCenter: parent.horizontalCenter
-                                            width: 76; height: 76; radius: 24
-                                            color: Qt.alpha(root.pal.accent, 0.12)
-                                            border.width: root.pal.bw
-                                            border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.3)
-                                            Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF0297); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 38 }
+                                            width: 64; height: 64; radius: 20
+                                            color: Qt.alpha(root.pal.accent, 0.10)
+                                            Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF0296); color: root.pal.accent; font.family: root.pal.font; font.pixelSize: 30 }
                                         }
                                         Text {
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             wrapMode: Text.Wrap
-                                            text: !root.gamesLoaded ? "Reading your library" : (root.games.length === 0 ? "No games yet" : "No game matches that")
+                                            text: !root.gamesLoaded ? "Reading library" : (root.games.length === 0 ? "No games yet" : "No match")
                                             color: root.pal.text
                                             font.family: root.pal.uiFont
-                                            font.pixelSize: root.pal.tTitle + 3
+                                            font.pixelSize: root.pal.tTitle
                                             font.weight: Font.Medium
                                         }
                                         Text {
@@ -1209,7 +1201,7 @@ Scope {
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
                                             wrapMode: Text.Wrap
-                                            text: "Add a Windows game, or find your Steam and Flatpak games."
+                                            text: "Add a game, or import Steam and Flatpak."
                                             color: root.pal.muted
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tBody
@@ -1218,9 +1210,9 @@ Scope {
                                         Row {
                                             visible: root.gamesLoaded && root.games.length === 0
                                             anchors.horizontalCenter: parent.horizontalCenter
-                                            spacing: 10
-                                            PrimaryBtn { glyph: String.fromCodePoint(0xF0415); label: "Add a Windows game"; onClicked: root.browseExe() }
-                                            ActionChip { pal: root.pal; implicitHeight: 38; glyph: String.fromCodePoint(0xF0450); label: "Find my games"; onClicked: root.refreshLibrary() }
+                                            spacing: 8
+                                            PrimaryBtn { glyph: String.fromCodePoint(0xF0415); label: "Add game"; onClicked: root.browseExe() }
+                                            CalmIconBtn { pal: root.pal; glyph: 0xF0450; tip: "Find my games"; enabledBtn: !root.busy; onClicked: root.refreshLibrary() }
                                         }
                                     }
                                 }
@@ -1229,7 +1221,7 @@ Scope {
                             // ---- the drawer: the selected game
                             ClippingRectangle {
                                 id: drawer
-                                Layout.preferredWidth: 360
+                                Layout.preferredWidth: 328
                                 Layout.fillHeight: true
                                 visible: root.sel !== null
                                 radius: root.pal.rLg
@@ -1249,8 +1241,8 @@ Scope {
                                         id: hero
                                         x: 0; y: 0
                                         width: dflick.width
-                                        height: heroImg.visible ? 150 : 96         // no cover: just room for the name
-                                        color: Qt.alpha(root.pal.accent, 0.10)
+                                        height: heroImg.visible ? 140 : 88         // no cover: just room for the name
+                                        color: Qt.alpha(root.pal.accent, 0.08)
                                         Image {
                                             id: heroImg
                                             anchors.fill: parent
@@ -1283,11 +1275,11 @@ Scope {
                                             }
                                             Text {
                                                 width: parent.width
-                                                wrapMode: Text.Wrap
-                                                text: root.sel ? root.srcLabel(root.sel.source) + "  ·  " + root.fmtTime(root.sel.playtime) + "  ·  played " + root.fmtAgo(root.sel.lastPlayed) : ""
+                                                elide: Text.ElideRight
+                                                text: root.sel ? root.srcLabel(root.sel.source) + "  ·  " + root.fmtTime(root.sel.playtime) + (root.sel.lastPlayed ? "  ·  played " + root.fmtAgo(root.sel.lastPlayed) : "") : ""
                                                 color: root.pal.muted
                                                 font.family: root.pal.uiFont
-                                                font.pixelSize: root.pal.tCap + 1
+                                                font.pixelSize: root.pal.tCap
                                             }
                                         }
                                     }
@@ -1295,9 +1287,9 @@ Scope {
                                     Column {
                                         id: dcol
                                         x: 18
-                                        y: hero.height + 6
+                                        y: hero.height + 10
                                         width: dflick.width - 36
-                                        spacing: 16
+                                        spacing: 14
 
                                         // what is happening with this game right now (after Play)
                                         Rectangle {
@@ -1443,32 +1435,6 @@ Scope {
                                                         }
                                                     }
                                                 }
-                                                Text {
-                                                    width: parent.width
-                                                    visible: root.phase === "starting" && root.firstStage >= 0
-                                                    wrapMode: Text.Wrap
-                                                    text: "Once per PC (the runtime) or per game (its Windows folder). Later starts skip all of this."
-                                                    color: root.pal.muted
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tCap
-                                                }
-                                                Text {
-                                                    width: parent.width
-                                                    visible: root.phase === "starting"
-                                                    wrapMode: Text.Wrap
-                                                    text: "This window steps aside when the game opens."
-                                                    color: root.pal.muted
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tCap
-                                                }
-                                                Text {
-                                                    width: parent.width
-                                                    visible: launchCard.bad && root.launchLog !== ""
-                                                    text: "What the log says last:"
-                                                    color: root.pal.muted
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tCap
-                                                }
                                                 Rectangle {
                                                     width: parent.width
                                                     visible: launchCard.bad && root.launchLog !== ""
@@ -1485,21 +1451,21 @@ Scope {
                                                         font.pixelSize: 10
                                                     }
                                                 }
-                                                Flow {
+                                                Row {
                                                     width: parent.width
-                                                    spacing: 6
+                                                    spacing: 2
                                                     visible: launchCard.bad
-                                                    ActionChip { pal: root.pal; implicitHeight: 30; label: "Full log"; onClicked: { root.advOpen = true; root.logOpen = true; root.loadLog() } }
-                                                    ActionChip { pal: root.pal; implicitHeight: 30; label: "Dismiss"; onClicked: root.phase = "" }
+                                                    CalmIconBtn { pal: root.pal; size: 30; glyph: 0xF0219; tip: "Full log"; onClicked: { root.advOpen = true; root.logOpen = true; root.loadLog() } }
+                                                    CalmIconBtn { pal: root.pal; size: 30; glyph: 0xF0156; tip: "Dismiss"; onClicked: root.phase = "" }
                                                 }
                                             }
                                         }
                                         PrimaryBtn {
                                             width: parent.width
-                                            implicitHeight: 46
+                                            implicitHeight: 44
                                             readonly property bool starting: root.phase === "starting" && root.sel !== null && root.launchId === root.sel.id
                                             glyph: String.fromCodePoint(starting ? 0xF040A : (root.selRunning ? 0xF04DB : 0xF040A))
-                                            label: starting ? "Starting\u2026" : (root.selRunning ? "Stop" : ((root.phase === "ended" || root.phase === "failed") && root.sel && root.launchId === root.sel.id ? "Try again" : "Play"))
+                                            label: starting ? "Starting" : (root.selRunning ? "Stop" : ((root.phase === "ended" || root.phase === "failed") && root.sel && root.launchId === root.sel.id ? "Try again" : "Play"))
                                             danger: !starting && root.selRunning
                                             disabled: starting
                                             onClicked: root.playSel()
@@ -1556,7 +1522,7 @@ Scope {
                                             width: parent.width
                                             wrapMode: Text.Wrap
                                             visible: root.triaged && root.findings.length === 0
-                                            text: "No known problem in the newest log."
+                                            text: "No known problem"
                                             color: root.pal.good
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tCap + 1
@@ -1581,8 +1547,8 @@ Scope {
                                                         visible: modelData.fix !== "hint"
                                                         pal: root.pal
                                                         implicitHeight: 30
-                                                        label: modelData.fixLabel !== "" ? "Fix it: " + modelData.fixLabel : "Fix it"
-                                                        maxLabel: 280
+                                                        label: modelData.fixLabel !== "" ? "Fix: " + modelData.fixLabel : "Fix"
+                                                        maxLabel: 260
                                                         disabled: root.busy
                                                         onClicked: root.fixFinding(modelData)
                                                     }
@@ -1592,12 +1558,12 @@ Scope {
                                         // the last session, when it was this game
                                         Text {
                                             width: parent.width
-                                            wrapMode: Text.Wrap
                                             visible: root.sel !== null && root.lastSession !== null && root.lastSession.id === root.sel.id
-                                            text: root.lastSession ? "Last session " + root.fmtTime(root.lastSession.playedSecs) + ". Halcyon used " + Number(root.lastSession.haCpuAvg).toFixed(1) + "% of one core and " + Math.round(root.lastSession.haRamAvgMB) + " MB of memory meanwhile." : ""
+                                            elide: Text.ElideRight
+                                            text: root.lastSession ? "Last session " + root.fmtTime(root.lastSession.playedSecs) : ""
                                             color: root.pal.muted
                                             font.family: root.pal.uiFont
-                                            font.pixelSize: root.pal.tCap + 1
+                                            font.pixelSize: root.pal.tCap
                                         }
 
                                         // ---- suggested for this PC: its class (hgl class), what hgl would change, what to set in the game
@@ -1613,77 +1579,89 @@ Scope {
                                                 id: sugCol
                                                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
                                                 spacing: 10
+                                                // one line: the machine class, and what hgl would change under it
                                                 Item {
                                                     width: parent.width
-                                                    height: 26
-                                                    SectionTitle { anchors.verticalCenter: parent.verticalCenter; text: "For your PC" }
-                                                    Rectangle {
-                                                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                                                        height: 24
-                                                        width: clsTxt.implicitWidth + 18
-                                                        radius: 12
-                                                        color: Qt.alpha(root.pal.accent, 0.18)
-                                                        Text {
-                                                            id: clsTxt
-                                                            anchors.centerIn: parent
-                                                            text: root.suggestion ? "Class " + root.suggestion.machine["class"] + "  ·  " + root.suggestion.machine.label : ""
+                                                    height: 20
+                                                    Row {
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        spacing: 8
+                                                        Rectangle {
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            width: 6; height: 6; radius: 3
                                                             color: root.pal.accent
-                                                            font.family: root.pal.uiFont
-                                                            font.pixelSize: root.pal.tCap
-                                                            font.weight: Font.Medium
                                                         }
+                                                        SectionTitle { anchors.verticalCenter: parent.verticalCenter; text: "For your PC" }
                                                     }
-                                                }
-                                                Text {
-                                                    width: parent.width
-                                                    wrapMode: Text.Wrap
-                                                    text: root.suggestion ? (root.suggestion.machine.why || []).join(" · ") : ""
-                                                    color: root.pal.muted
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tCap
+                                                    Text {
+                                                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                                        text: root.suggestion ? (root.suggestion.machine.label || "") : ""
+                                                        color: root.pal.accent
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tCap
+                                                        font.weight: Font.Medium
+                                                    }
                                                 }
                                                 Repeater {
                                                     model: root.sugRows
-                                                    delegate: Column {
+                                                    delegate: Row {
                                                         required property var modelData
                                                         width: parent.width
-                                                        spacing: 1
-                                                        Text { width: parent.width; wrapMode: Text.Wrap; text: modelData.t; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
-                                                        Text { width: parent.width; wrapMode: Text.Wrap; text: modelData.d; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                                        spacing: 7
+                                                        Text {
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            text: String.fromCodePoint(0xF012C)
+                                                            color: root.pal.good
+                                                            font.family: root.pal.font
+                                                            font.pixelSize: 12
+                                                        }
+                                                        Text {
+                                                            width: parent.width - 20
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            elide: Text.ElideRight
+                                                            text: modelData.t
+                                                            color: root.pal.text
+                                                            font.family: root.pal.uiFont
+                                                            font.pixelSize: root.pal.tBody - 1
+                                                        }
                                                     }
                                                 }
                                                 // which Proton (hgl suggest: GE-Proton by default; installing is a download, so it is its own button)
-                                                Column {
+                                                Row {
                                                     width: parent.width
-                                                    spacing: 6
+                                                    spacing: 4
                                                     visible: root.suggestion !== null && root.suggestion.proton !== null && root.suggestion.proton !== undefined
                                                     readonly property var tip: visible ? root.suggestion.proton : ({})
-                                                    Text { width: parent.width; wrapMode: Text.Wrap; text: parent.tip.action === "install" ? "Proton" : "Proton \u2713"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
-                                                    Text { width: parent.width; wrapMode: Text.Wrap; text: parent.tip.why || ""; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                                                    ActionChip {
+                                                    Text {
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        text: parent.tip.action === "install" ? "Proton" : "Proton \u2713"
+                                                        color: root.pal.text
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tBody - 1
+                                                    }
+                                                    CalmIconBtn {
                                                         visible: parent.tip.action === "install"
                                                         pal: root.pal
-                                                        implicitHeight: 30
-                                                        glyph: String.fromCodePoint(0xF01DA)
-                                                        label: parent.tip.family === "cachyos" ? "Install Proton-CachyOS" : "Install GE-Proton"
-                                                        disabled: root.busy
+                                                        size: 28
+                                                        glyph: 0xF01DA
+                                                        tip: parent.tip.family === "cachyos" ? "Install Proton-CachyOS" : "Install GE-Proton"
+                                                        enabledBtn: !root.busy
                                                         onClicked: root.act([root.hgl, "proton", "install", "latest", "--family", parent.tip.family], "Proton installed")
                                                     }
-                                                    Text { width: parent.width; wrapMode: Text.Wrap; visible: (parent.tip.alt || "") !== ""; text: parent.tip.alt || ""; color: Qt.alpha(root.pal.muted, 0.8); font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
                                                 }
                                                 PrimaryBtn {
                                                     visible: root.sugRows.length > 0
-                                                    implicitHeight: 34
+                                                    implicitHeight: 32
                                                     glyph: String.fromCodePoint(0xF012C)
-                                                    label: root.sugRows.length === 1 ? "Apply it" : "Apply these " + root.sugRows.length
+                                                    label: root.sugRows.length === 1 ? "Apply" : "Apply " + root.sugRows.length
                                                     disabled: root.busy || root.selRunning
                                                     onClicked: root.applySuggest()
                                                 }
                                                 Text {
                                                     visible: root.sugRows.length === 0
                                                     width: parent.width
-                                                    wrapMode: Text.Wrap
-                                                    text: "\u2713  Halcyon's side is already set up for this PC."
+                                                    elide: Text.ElideRight
+                                                    text: "Already set up"
                                                     color: root.pal.good
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: root.pal.tCap + 1
@@ -1691,12 +1669,12 @@ Scope {
                                                 // in-game settings: hgl cannot reach the game's own menu, so they are listed to set once
                                                 Rectangle {
                                                     width: parent.width
-                                                    height: 30
+                                                    height: 28
                                                     radius: root.pal.rSm
                                                     color: tipsMa.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent"
                                                     Text {
                                                         anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-                                                        text: "In the game's settings"
+                                                        text: "In-game settings"
                                                         color: root.pal.text
                                                         font.family: root.pal.uiFont
                                                         font.pixelSize: root.pal.tCap + 1
@@ -1720,7 +1698,7 @@ Scope {
                                                         text: "\u2022  " + modelData
                                                         color: root.pal.muted
                                                         font.family: root.pal.uiFont
-                                                        font.pixelSize: root.pal.tCap + 1
+                                                        font.pixelSize: root.pal.tCap
                                                         lineHeight: 1.1
                                                     }
                                                 }
@@ -1735,7 +1713,7 @@ Scope {
                                             SectionTitle { text: "Runs with" }
                                             Rectangle {
                                                 width: parent.width
-                                                height: 38
+                                                height: 36
                                                 radius: root.pal.rSm
                                                 color: protonMa.containsMouse ? Qt.alpha(root.pal.bg, 0.7) : Qt.alpha(root.pal.bg, 0.5)
                                                 border.width: root.pal.zen && !(root.protonOpen) ? 0 : 1
@@ -1755,7 +1733,7 @@ Scope {
                                                     text: !root.sel ? "" : (root.sel.proton !== "" ? root.sel.proton : "Default" + (root.defaultRuntime ? " (" + root.defaultRuntime.name + ")" : " (none installed)"))
                                                     color: root.pal.text
                                                     font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tBody
+                                                    font.pixelSize: root.pal.tBody - 1
                                                 }
                                                 Text {
                                                     id: chev
@@ -1799,8 +1777,8 @@ Scope {
                                                 Text {
                                                     visible: root.runtimes.length === 0
                                                     width: parent.width
-                                                    wrapMode: Text.Wrap
-                                                    text: "No Proton installed yet. Open the Proton tab and install one."
+                                                    elide: Text.ElideRight
+                                                    text: "No Proton installed."
                                                     color: root.pal.muted
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: root.pal.tCap + 1
@@ -1834,10 +1812,10 @@ Scope {
                                             }
                                         }
 
-                                        // ---- while playing: wrappers and modes
+                                        // ---- while playing: wrappers and modes, a glyph and a name each
                                         Column {
                                             width: parent.width
-                                            spacing: 12
+                                            spacing: 10
                                             SectionTitle { text: "While playing" }
                                             Repeater {
                                                 model: root.toggleDefs
@@ -1847,12 +1825,21 @@ Scope {
                                                     visible: root.isWine(root.sel) || modelData.k === "lean" || modelData.k === "fullscreen"
                                                     width: parent.width
                                                     height: visible ? implicitHeight : 0
-                                                    spacing: 10
-                                                    Column {
+                                                    spacing: 8
+                                                    Text {
+                                                        text: String.fromCodePoint(modelData.glyph || 0)
+                                                        color: root.pal.muted
+                                                        font.family: root.pal.font
+                                                        font.pixelSize: 15
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                    }
+                                                    Text {
                                                         Layout.fillWidth: true
-                                                        spacing: 1
-                                                        Text { text: modelData.t; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
-                                                        Hint { pal: root.pal; width: parent.width; text: modelData.d }
+                                                        text: modelData.t
+                                                        color: root.pal.text
+                                                        font.family: root.pal.uiFont
+                                                        font.pixelSize: root.pal.tBody - 1
+                                                        elide: Text.ElideRight
                                                     }
                                                     Toggle { pal: root.pal; on: root.toggleOn(modelData); busy: root.busy; onToggled: root.flip(modelData) }
                                                 }
@@ -1862,10 +1849,21 @@ Scope {
                                         // ---- advanced: folded away, it is rarely needed
                                         Rectangle {
                                             width: parent.width
-                                            height: 36
+                                            height: 34
                                             radius: root.pal.rSm
                                             color: advMa.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent"
-                                            SectionTitle { anchors { left: parent.left; verticalCenter: parent.verticalCenter } text: "Advanced" }
+                                            Row {
+                                                anchors { left: parent.left; leftMargin: 2; verticalCenter: parent.verticalCenter }
+                                                spacing: 8
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: String.fromCodePoint(0xF062E)
+                                                    color: root.pal.muted
+                                                    font.family: root.pal.font
+                                                    font.pixelSize: 14
+                                                }
+                                                SectionTitle { anchors.verticalCenter: parent.verticalCenter; text: "Advanced" }
+                                            }
                                             Text {
                                                 anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                                                 text: String.fromCodePoint(root.advOpen ? 0xF0143 : 0xF0140)
@@ -1877,7 +1875,7 @@ Scope {
                                         }
                                         Column {
                                             width: parent.width
-                                            spacing: 16
+                                            spacing: 14
                                             visible: root.advOpen
 
                                             // launch options
@@ -1887,7 +1885,7 @@ Scope {
                                                 Text { text: "Launch options"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
                                                 Rectangle {
                                                     width: parent.width
-                                                    height: 36
+                                                    height: 34
                                                     radius: root.pal.rSm
                                                     color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
                                                     border.width: root.pal.zen && !argsIn.activeFocus ? 0 : 1
@@ -1916,7 +1914,7 @@ Scope {
                                                 width: parent.width
                                                 spacing: 6
                                                 visible: root.sel !== null && root.sel.source !== "steam"
-                                                Text { text: "Environment variables"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                                Text { text: "Environment"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
                                                 Repeater {
                                                     model: root.sel ? Object.keys(root.sel.env || {}) : []
                                                     delegate: Rectangle {
@@ -1983,11 +1981,13 @@ Scope {
                                                             Text { anchors.verticalCenter: parent.verticalCenter; visible: envVal.text.length === 0; text: "value"; color: root.pal.muted; font: envVal.font }
                                                         }
                                                     }
-                                                    ActionChip {
+                                                    CalmIconBtn {
+                                                        Layout.alignment: Qt.AlignVCenter
                                                         pal: root.pal
-                                                        implicitHeight: 32
-                                                        label: "Add"
-                                                        disabled: envName.text.trim() === ""
+                                                        size: 32
+                                                        glyph: 0xF0415
+                                                        tip: "Add variable"
+                                                        enabledBtn: envName.text.trim() !== ""
                                                         onClicked: { root.setKey("env." + envName.text.trim(), envVal.text); envName.text = ""; envVal.text = "" }
                                                     }
                                                 }
@@ -1998,13 +1998,13 @@ Scope {
                                                 width: parent.width
                                                 spacing: 8
                                                 Text { text: "Tools"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
-                                                Flow {
+                                                Row {
                                                     width: parent.width
-                                                    spacing: 6
-                                                    ActionChip { pal: root.pal; implicitHeight: 32; visible: root.isWine(root.sel); label: "Prefix folder"; onClicked: root.prefixFolder() }
-                                                    ActionChip { pal: root.pal; implicitHeight: 32; visible: root.isWine(root.sel); label: "Wine settings"; onClicked: root.wineSettings() }
-                                                    ActionChip { pal: root.pal; implicitHeight: 32; label: root.logOpen ? "Hide log" : "Show log"; onClicked: { root.logOpen = !root.logOpen; if (root.logOpen) root.loadLog() } }
-                                                    ActionChip { pal: root.pal; implicitHeight: 32; label: "Check last run"; onClicked: root.loadTriage() }
+                                                    spacing: 2
+                                                    CalmIconBtn { pal: root.pal; size: 32; visible: root.isWine(root.sel); glyph: 0xF024B; tip: "Prefix folder"; onClicked: root.prefixFolder() }
+                                                    CalmIconBtn { pal: root.pal; size: 32; visible: root.isWine(root.sel); glyph: 0xF0876; tip: "Wine settings"; onClicked: root.wineSettings() }
+                                                    CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF018D; active: root.logOpen; tip: root.logOpen ? "Hide log" : "Show log"; onClicked: { root.logOpen = !root.logOpen; if (root.logOpen) root.loadLog() } }
+                                                    CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF04D9; tip: "Check last run"; onClicked: root.loadTriage() }
                                                 }
                                                 Rectangle {
                                                     width: parent.width
@@ -2027,7 +2027,7 @@ Scope {
                                                             id: logTxt
                                                             width: logFlick.width
                                                             wrapMode: Text.WrapAnywhere
-                                                            text: root.logText !== "" ? root.logText : "No log yet. The newest one shows here after the game has run."
+                                                            text: root.logText !== "" ? root.logText : "No log yet."
                                                             color: root.pal.muted
                                                             font.family: root.pal.font
                                                             font.pixelSize: 10
@@ -2038,16 +2038,30 @@ Scope {
                                         }
 
                                         // remove: always at the bottom of the drawer, not folded into Advanced (two clicks; the game's files stay)
-                                        ActionChip {
-                                            pal: root.pal
-                                            implicitHeight: 32
-                                            label: root.confirmRemove ? "Click again to remove" : "Remove from library"
-                                            on: root.confirmRemove
-                                            disabled: root.selRunning
-                                            onClicked: {
-                                                if (!root.confirmRemove) { root.confirmRemove = true; removeT.restart(); return }
-                                                root.confirmRemove = false
-                                                if (root.sel) root.act([root.hgl, "remove", root.sel.id], "Removed from the library")
+                                        Item {
+                                            width: parent.width
+                                            height: 32
+                                            Text {
+                                                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                                                visible: root.confirmRemove
+                                                text: "Again to remove"
+                                                color: root.pal.warn
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap + 1
+                                            }
+                                            CalmIconBtn {
+                                                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                                pal: root.pal
+                                                size: 32
+                                                glyph: 0xF01B4
+                                                active: root.confirmRemove
+                                                tip: root.confirmRemove ? "Click again to remove" : "Remove from library"
+                                                enabledBtn: !root.selRunning
+                                                onClicked: {
+                                                    if (!root.confirmRemove) { root.confirmRemove = true; removeT.restart(); return }
+                                                    root.confirmRemove = false
+                                                    if (root.sel) root.act([root.hgl, "remove", root.sel.id], "Removed from the library")
+                                                }
                                             }
                                         }
                                         Timer { id: removeT; interval: 4000; onTriggered: root.confirmRemove = false }
@@ -2077,8 +2091,8 @@ Scope {
 
                             Text {
                                 Layout.fillWidth: true
-                                wrapMode: Text.Wrap
-                                text: "Proton runs Windows games. The newest three of each kind are kept."
+                                elide: Text.ElideRight
+                                text: "Proton runs Windows games."
                                 color: root.pal.muted
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tBody
@@ -2109,35 +2123,35 @@ Scope {
                                     id: rrow
                                     required property var modelData
                                     width: ListView.view.width
-                                    height: 54
+                                    height: 50
                                     radius: root.pal.rMd
                                     color: root.pal.box(Qt.alpha(root.pal.surface, 0.7))
                                     border.width: root.pal.zen && !(modelData["default"]) ? 0 : 1
                                     border.color: modelData["default"] ? Qt.alpha(root.pal.accent, 0.45) : root.pal.lineSoft
                                     RowLayout {
-                                        anchors { fill: parent; leftMargin: 16; rightMargin: 12 }
-                                        spacing: 10
+                                        anchors { fill: parent; leftMargin: 16; rightMargin: 8 }
+                                        spacing: 4
                                         Column {
                                             Layout.fillWidth: true
                                             spacing: 1
-                                            Text { width: parent.width; elide: Text.ElideRight; text: rrow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
+                                            Text { width: parent.width; elide: Text.ElideRight; text: rrow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: Font.Medium }
                                             Text {
                                                 width: parent.width
                                                 elide: Text.ElideRight
-                                                text: rrow.modelData.family + (rrow.modelData["default"] ? "  ·  default for new games" : "") + (rrow.modelData.pinned ? "  ·  a game is pinned to it" : "")
+                                                text: rrow.modelData.family + (rrow.modelData["default"] ? "  ·  default" : "") + (rrow.modelData.pinned ? "  ·  pinned" : "")
                                                 color: root.pal.muted
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tCap
                                             }
                                         }
-                                        ActionChip { pal: root.pal; implicitHeight: 30; label: "Make default"; visible: !rrow.modelData["default"]; disabled: root.busy; onClicked: root.act([root.hgl, "proton", "default", rrow.modelData.name], "Default: " + rrow.modelData.name) }
-                                        ActionChip { pal: root.pal; implicitHeight: 30; label: "Remove"; visible: !rrow.modelData["default"] && !rrow.modelData.pinned; disabled: root.busy; onClicked: root.act([root.hgl, "proton", "remove", rrow.modelData.name], "Removed " + rrow.modelData.name) }
+                                        CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 30; glyph: 0xF012C; tip: "Make default"; visible: !rrow.modelData["default"]; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "proton", "default", rrow.modelData.name], "Default: " + rrow.modelData.name) }
+                                        CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 30; glyph: 0xF01B4; tip: "Remove"; visible: !rrow.modelData["default"] && !rrow.modelData.pinned; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "proton", "remove", rrow.modelData.name], "Removed " + rrow.modelData.name) }
                                     }
                                 }
                                 Text {
                                     anchors.centerIn: parent
                                     visible: root.runtimes.length === 0
-                                    text: "No Proton installed yet. Install GE-Proton above."
+                                    text: "No Proton installed."
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody
@@ -2154,8 +2168,8 @@ Scope {
 
                             Text {
                                 Layout.fillWidth: true
-                                wrapMode: Text.Wrap
-                                text: "Epic needs legendary, GOG needs gogdl (see Doctor). Installs run in the console."
+                                elide: Text.ElideRight
+                                text: "Epic and GOG. Installs open in the console."
                                 color: root.pal.muted
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tBody
@@ -2167,7 +2181,7 @@ Scope {
                                 Text {
                                     height: 36
                                     verticalAlignment: Text.AlignVCenter
-                                    text: "Art for .exe games needs a SteamGridDB key: hgl config steamgriddb_key <key>"
+                                    text: "Cover art for .exe: hgl config steamgriddb_key <key>"
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap
@@ -2194,19 +2208,19 @@ Scope {
                                         Text { text: "Epic Games"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
                                         Text {
                                             Layout.fillWidth: true
-                                            wrapMode: Text.Wrap
+                                            elide: Text.ElideRight
                                             text: !root.epicSt.installed ? "legendary is not installed" : (root.epicSt.loggedIn ? "Logged in as " + root.epicSt.account : "Not logged in")
                                             color: root.epicSt.loggedIn ? root.pal.good : root.pal.muted
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tBody
                                         }
-                                        Flow {
+                                        Row {
                                             Layout.fillWidth: true
-                                            spacing: 8
-                                            ActionChip { pal: root.pal; implicitHeight: 32; label: "Log in"; visible: root.epicSt.installed && !root.epicSt.loggedIn; onClicked: root.runInConsole(root.hgl + " epic login") }
-                                            ActionChip { pal: root.pal; implicitHeight: 32; label: "Log out"; visible: root.epicSt.loggedIn; disabled: root.busy; onClicked: root.act([root.hgl, "epic", "logout"], "Logged out of Epic", false) }
-                                            ActionChip { pal: root.pal; implicitHeight: 32; label: "My library"; visible: root.epicSt.loggedIn; disabled: root.storeBusy; onClicked: root.loadEpicList() }
-                                            ActionChip { pal: root.pal; implicitHeight: 32; label: "Read installed"; visible: root.epicSt.installed; disabled: root.busy; onClicked: root.act([root.hgl, "import", "epic"], "Epic games read") }
+                                            spacing: 2
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0342; tip: "Log in to Epic"; visible: root.epicSt.installed && !root.epicSt.loggedIn; onClicked: root.runInConsole(root.hgl + " epic login") }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0343; tip: "Log out"; visible: root.epicSt.loggedIn; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "epic", "logout"], "Logged out of Epic", false) }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0331; tip: "My library"; visible: root.epicSt.loggedIn; enabledBtn: !root.storeBusy; onClicked: root.loadEpicList() }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF01DA; tip: "Read installed"; visible: root.epicSt.installed; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "import", "epic"], "Epic games read") }
                                         }
                                         ListView {
                                             Layout.fillWidth: true
@@ -2225,15 +2239,15 @@ Scope {
                                                 RowLayout {
                                                     anchors { fill: parent; leftMargin: 12; rightMargin: 10 }
                                                     spacing: 8
-                                                    Text { Layout.fillWidth: true; elide: Text.ElideRight; text: erow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                                    Text { Layout.fillWidth: true; elide: Text.ElideRight; text: erow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1 }
                                                     Text { visible: erow.modelData.installed; text: "installed"; color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                                                    ActionChip { pal: root.pal; implicitHeight: 28; label: "Install"; visible: !erow.modelData.installed; onClicked: root.runInConsole(root.hgl + " epic install " + root.q(erow.modelData.app)) }
+                                                    CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 28; glyph: 0xF01DA; tip: "Install"; visible: !erow.modelData.installed; onClicked: root.runInConsole(root.hgl + " epic install " + root.q(erow.modelData.app)) }
                                                 }
                                             }
                                             Text {
                                                 anchors.centerIn: parent
                                                 visible: root.epicList.length === 0
-                                                text: root.epicListed ? "Nothing in your Epic library" : (root.epicSt.loggedIn ? "Press My library to read what you own" : "")
+                                                text: root.epicListed ? "Your Epic library is empty" : (root.epicSt.loggedIn ? "Read your library" : "")
                                                 color: root.pal.muted
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tBody
@@ -2257,18 +2271,18 @@ Scope {
                                         Text { text: "GOG"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
                                         Text {
                                             Layout.fillWidth: true
-                                            wrapMode: Text.Wrap
-                                            text: !root.gogSt.installed ? "gogdl is not installed (games you installed some other way can still be read)" : (root.gogSt.loggedIn ? "Logged in" : "Not logged in: open the sign-in page, then paste the address you land on")
+                                            elide: Text.ElideRight
+                                            text: !root.gogSt.installed ? "gogdl is not installed" : (root.gogSt.loggedIn ? "Logged in" : "Not logged in")
                                             color: root.gogSt.loggedIn ? root.pal.good : root.pal.muted
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tBody
                                         }
-                                        Flow {
+                                        Row {
                                             Layout.fillWidth: true
-                                            spacing: 8
-                                            ActionChip { pal: root.pal; implicitHeight: 32; label: "Open sign-in page"; visible: root.gogSt.installed && !root.gogSt.loggedIn; onClicked: Quickshell.execDetached(["xdg-open", root.gogSt.url]) }
-                                            ActionChip { pal: root.pal; implicitHeight: 32; label: "My library"; visible: root.gogSt.loggedIn; disabled: root.storeBusy; onClicked: root.loadGogList() }
-                                            ActionChip { pal: root.pal; implicitHeight: 32; label: "Read installed"; disabled: root.busy; onClicked: root.act([root.hgl, "import", "gog"], "GOG games read") }
+                                            spacing: 2
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF03CC; tip: "Open sign-in page"; visible: root.gogSt.installed && !root.gogSt.loggedIn; onClicked: Quickshell.execDetached(["xdg-open", root.gogSt.url]) }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0331; tip: "My library"; visible: root.gogSt.loggedIn; enabledBtn: !root.storeBusy; onClicked: root.loadGogList() }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF01DA; tip: "Read installed"; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "import", "gog"], "GOG games read") }
                                         }
                                         RowLayout {
                                             Layout.fillWidth: true
@@ -2296,10 +2310,10 @@ Scope {
                                                     onTextChanged: root.gogAddr = text
                                                     Keys.onReturnPressed: root.gogLogin()
                                                     Keys.onEscapePressed: root.hide()
-                                                    Text { anchors.verticalCenter: parent.verticalCenter; visible: gogIn.text.length === 0; text: "Paste the address (it contains code=)"; color: root.pal.muted; font: gogIn.font }
+                                                    Text { anchors.verticalCenter: parent.verticalCenter; visible: gogIn.text.length === 0; text: "Paste the address"; color: root.pal.muted; font: gogIn.font }
                                                 }
                                             }
-                                            ActionChip { pal: root.pal; implicitHeight: 34; label: "Log in"; disabled: root.busy; onClicked: root.gogLogin() }
+                                            CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 32; glyph: 0xF0342; tip: "Log in to GOG"; enabledBtn: !root.busy; onClicked: root.gogLogin() }
                                         }
                                         ListView {
                                             Layout.fillWidth: true
@@ -2318,15 +2332,15 @@ Scope {
                                                 RowLayout {
                                                     anchors { fill: parent; leftMargin: 12; rightMargin: 10 }
                                                     spacing: 8
-                                                    Text { Layout.fillWidth: true; elide: Text.ElideRight; text: grow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                                    Text { Layout.fillWidth: true; elide: Text.ElideRight; text: grow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1 }
                                                     Text { visible: grow.modelData.installed; text: "installed"; color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                                                    ActionChip { pal: root.pal; implicitHeight: 28; label: "Install"; visible: !grow.modelData.installed && root.gogSt.installed; onClicked: root.runInConsole(root.hgl + " gog install " + root.q(grow.modelData.id) + " --title " + root.q(grow.modelData.title)) }
+                                                    CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 28; glyph: 0xF01DA; tip: "Install"; visible: !grow.modelData.installed && root.gogSt.installed; onClicked: root.runInConsole(root.hgl + " gog install " + root.q(grow.modelData.id) + " --title " + root.q(grow.modelData.title)) }
                                                 }
                                             }
                                             Text {
                                                 anchors.centerIn: parent
                                                 visible: root.gogList.length === 0
-                                                text: root.gogListed ? "Nothing in your GOG library" : (root.gogSt.loggedIn ? "Press My library to read what you own" : "")
+                                                text: root.gogListed ? "Your GOG library is empty" : (root.gogSt.loggedIn ? "Read your library" : "")
                                                 color: root.pal.muted
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tBody
@@ -2346,17 +2360,17 @@ Scope {
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 8
+                                spacing: 4
                                 Text {
                                     Layout.fillWidth: true
-                                    wrapMode: Text.Wrap
-                                    text: "What games need. Fixing opens the console (it asks for your password)."
+                                    elide: Text.ElideRight
+                                    text: "What games need"
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody
                                 }
-                                ActionChip { pal: root.pal; label: "Check again"; onClicked: root.loadChecks() }
-                                ActionChip { pal: root.pal; label: "Fix what is missing"; onClicked: root.runInConsole(root.hgl + " doctor --fix") }
+                                CalmIconBtn { pal: root.pal; glyph: 0xF0450; tip: "Check again"; onClicked: root.loadChecks() }
+                                CalmIconBtn { pal: root.pal; glyph: 0xF1064; tip: "Fix what is missing (asks for a password)"; onClicked: root.runInConsole(root.hgl + " doctor --fix") }
                             }
                             ListView {
                                 Layout.fillWidth: true
@@ -2408,7 +2422,7 @@ Scope {
                                 Text {
                                     anchors.centerIn: parent
                                     visible: root.checks.length === 0
-                                    text: root.checksLoaded ? "Nothing to report." : "Checking your system"
+                                    text: root.checksLoaded ? "Nothing to report" : "Checking the system"
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody

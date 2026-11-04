@@ -150,7 +150,7 @@ Item {
         HoverHandler { id: hov }
 
         // stretches a little while the card slides in or out and while its height grows (Jelly.qml)
-        Jelly { target: bubble; pal: card.pal; originX: 0.5; originY: 0.5 }
+        Jelly { target: bubble; pal: card.pal; originX: 0.5; originY: 0.5; followTranslate: false }
 
         DragHandler {
             target: null

@@ -98,6 +98,7 @@ Scope {
                 id: chip
                 visible: !root.expanded
                 pal: root.pal
+                jellyOn: false          // its width follows the ticking timer: it would twitch every second
                 height: 38
                 radius: 12
                 width: chipRow.implicitWidth + 30

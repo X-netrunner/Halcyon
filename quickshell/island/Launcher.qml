@@ -133,7 +133,7 @@ Item {
     readonly property var cmdOrder: [
         "settings", "display", "printer", "wifi", "bluetooth", "startupview", "quickterm", "cheatsheet", "reload", "versions", "tour",
         "desktopbuilder", "lockdesktopbuilder", "widgetbuilder", "desktopedit", "bartoggle", "barbuilder", "notifbuilder", "wallgallery", "weeklysky", "focusgraph", "wallpaper", "theme", "barstyle", "edgemode", "routing",
-        "calendar", "notes", "notesall", "study", "luna", "clipboard", "screenshot", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
+        "calendar", "notes", "notesall", "study", "luna", "clipboard", "screenshot", "capture", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "security", "firewall", "firewall-dashboard", "exceptions",
         "gamecenter", "games", "games-stop",
         "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
@@ -143,7 +143,7 @@ Item {
     readonly property bool cmdAll: mode === "cmd" && q0.substring(1).trim() === "."
     readonly property bool cmdGrouped: mode === "cmd" && cmdAll && cmdCategory === "all"
     readonly property int cmdShort: 10
-    readonly property var cmdCore: ["settings", "security", "wallgallery", "desktopbuilder", "barbuilder", "calendar", "notes", "clipboard", "screenshot", "record",
+    readonly property var cmdCore: ["settings", "security", "wallgallery", "desktopbuilder", "barbuilder", "calendar", "notes", "clipboard", "screenshot", "capture", "record",
         "tool-colorpick", "ask", "calc", "quickterm", "cheatsheet", "startupview", "reload", "gamecenter", "games-stop", "power", "gaming"]
     property int cmdTucked: 0
     function cmdRank(c) {
@@ -162,7 +162,8 @@ Item {
         { id: "notes", name: "New note", desc: "A small panel on the side of the screen: type a note and press Enter to save it (Super + N)", glyph: 0xF03EB, kw: "notes note new write memo text scratchpad todo tasks quick add", cat: "tools" },
         { id: "notesall", name: "All notes", desc: "Every note in one window: search, filter, pin, tick off, copy and delete", glyph: 0xF03EB, kw: "notes all view list browse read search saved memo scratchpad todo tasks pinned", cat: "tools" },
         { id: "clipboard", name: "Clipboard history", desc: "What you copied lately: search, click or Enter to copy it back, delete one or clear all. Copies from password managers are not kept", glyph: 0xF014C, kw: "clipboard history copy paste copied clip cliphist recent wl-copy", cat: "tools" },
-        { id: "screenshot", name: "Screenshot", desc: "A small panel: Region, Window or Full screen, then Copy, Save or Both (Super + Ctrl + S). Super + Shift + S still drags a region at once", glyph: 0xF0100, kw: "screenshot screen capture grim slurp region window full print snip snap", cat: "tools" },
+        { id: "screenshot", name: "Screenshot", desc: "A small panel: Region, Window or Full screen, then Copy, Save or Both (Super + Ctrl + S). Super + S and Super + Shift + S open the four-icon capture menu", glyph: 0xF0100, kw: "screenshot screen capture grim slurp region window full print snip snap", cat: "tools" },
+        { id: "capture", name: "Capture", desc: "Four icons: screenshot a region, a window or the whole screen, or record a region (Super + S, and Super + Shift + S)", glyph: 0xF0EC2, kw: "capture screenshot record region video rec snip quick menu", cat: "tools" },
         { id: "lyrics", name: "Lyrics", desc: "The lyrics of the song that plays, in a panel on the side. Works with any player that shows up in the bar (Spotify app, browser, mpv ...): from a .lrc file next to the song, lrclib.net or lyrics.ovh, and spotify_player if you have it. Also the Lyrics chip on the music page", glyph: 0xF0387, kw: "lyrics song words music spotify sing text genius spotify_player", cat: "tools" },
         { id: "queue", name: "Music queue", desc: "What plays next on your Spotify account (needs spotify_player). Read-only: it shows the queue, it does not change it. Also the Queue chip on the music page", glyph: 0xF0CB9, kw: "queue next up music spotify playlist upcoming songs spotify_player", cat: "tools" },
         { id: "record", name: "Screen recorder", desc: "On-demand screen or audio recording, with desktop sound and / or microphone, to ~/Videos/Recordings (Super + Alt + R)", glyph: 0xF012F, kw: "record screen capture video stream cast obs", cat: "tools" },
@@ -1114,6 +1115,19 @@ Item {
                 required property var modelData
                 required property int index
                 readonly property bool cur: index === grid.currentIndex
+                readonly property bool querying: root.mode === "apps" && root.query.trim() !== ""
+                readonly property bool searching: querying || root.mode === "all"
+                // one line of context while you search: the app's own generic name, else its comment. The best match says so
+                // in front of it, so the first row reads as a sentence instead of a bare label ("." lists A-Z: no best match there).
+                readonly property string sub: {
+                    var g = String(srow.modelData.genericName || "").trim()
+                    if (g !== "") return g
+                    var c = String(srow.modelData.comment || "").trim()
+                    return c
+                }
+                readonly property string subLine: !searching ? ""
+                    : querying && index === 0 ? (sub !== "" ? "Best match  ·  " + sub : "Best match")
+                    : sub
                 width: slist.width
                 height: 50
                 property real appear: 0
@@ -1133,11 +1147,19 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     radius: 14
-                    color: srow.cur ? Qt.alpha(root.pal.accent, 0.13) : (sma.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
+                    color: srow.cur ? Qt.alpha(root.pal.accent, 0.14) : (sma.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
                     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
+                // the keyboard selection gets a second cue beside the tint, so it is findable while scanning the list
+                Rectangle {
+                    visible: srow.cur
+                    anchors { left: parent.left; leftMargin: 2; top: parent.top; bottom: parent.bottom; topMargin: 11; bottomMargin: 11 }
+                    width: 3
+                    radius: 1.5
+                    color: root.pal.accent
+                }
                 Row {
-                    anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
+                    anchors { left: parent.left; leftMargin: 14; right: parent.right; rightMargin: 54; verticalCenter: parent.verticalCenter }
                     spacing: 12
                     Image {
                         width: 30; height: 30
@@ -1148,16 +1170,22 @@ Item {
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - 42
+                        spacing: 1
                         Text {
+                            width: parent.width
+                            elide: Text.ElideRight
                             text: srow.modelData.name
                             color: root.pal.text
                             font.family: root.pal.uiFont
                             font.pixelSize: 14
-                            font.weight: srow.cur ? Font.Medium : Font.Medium
+                            font.weight: Font.Medium
                         }
                         Text {
-                            visible: srow.index === 0 && root.query.trim() !== ""
-                            text: "Best match"
+                            visible: srow.subLine !== ""
+                            width: parent.width
+                            elide: Text.ElideRight
+                            text: srow.subLine
                             color: root.pal.muted
                             font.family: root.pal.uiFont
                             font.pixelSize: 11

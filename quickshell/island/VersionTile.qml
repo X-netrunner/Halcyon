@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-// One fact on the Halcyon card in the Version Center: a small label, the value, and a line under it.
+// One fact on the Halcyon card in the Version Center: a small label, the value, and a line under it. It is flat; the whole card around it does the tilting.
 Rectangle {
     id: tl
     property var pal
@@ -22,15 +22,13 @@ Rectangle {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: 12
-        spacing: 2
+        spacing: 4
         Text {
             text: tl.label
             color: tl.pal.muted
             font.family: tl.pal.uiFont
             font.pixelSize: tl.pal.tCap
             font.weight: Font.Medium
-            font.capitalization: Font.AllUppercase
-            font.letterSpacing: 0.5
         }
         Text {
             Layout.fillWidth: true

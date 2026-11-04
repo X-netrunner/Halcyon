@@ -91,8 +91,9 @@ var groups = [
         { id: "clipboard", label: "Clipboard history", keys: "SUPER + V" },
         { id: "emoji", label: "Emoji picker", keys: "SUPER + period" },
         { id: "shot", label: "Screenshot (full)", keys: "Print" },
-        { id: "shotarea", label: "Screenshot area (freeze, save + copy)", keys: "SUPER + SHIFT + S" },
+        { id: "shotarea", label: "Capture menu (screenshot or record a region)", keys: "SUPER + SHIFT + S" },
         { id: "shotpanel", label: "Screenshot panel (region, window, full screen)", keys: "SUPER + CTRL + S" },
+        { id: "capture", label: "Capture menu (screenshot or record a region)", keys: "SUPER + S" },
         { id: "shotplain", label: "Screenshot area (save only)", keys: "SUPER + SHIFT + Print" },
         { id: "lock", label: "Lock screen", keys: "SUPER + L" },
         { id: "session", label: "Session menu", keys: "CTRL + ALT + Delete" }

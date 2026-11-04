@@ -20,12 +20,16 @@ Item {
     visible: implicitHeight > 0.5
     clip: true
     opacity: shown ? 1 : 0
+    // the pill grows out of the card: height and a small pop of its own, not just a line appearing
+    scale: shown ? 1 : 0.94
+    transformOrigin: Item.Center
     Behavior on implicitHeight { NumberAnimation { duration: ac.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: ac.pal.curveSoft } }
     Behavior on opacity { NumberAnimation { duration: ac.pal.dFast } }
+    Behavior on scale { NumberAnimation { duration: ac.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: ac.pal.curveSoft } }
     Rectangle {
         width: acRow.implicitWidth + 10
         height: 36
-        radius: 18
+        radius: 12
         color: "transparent"
         border.width: 1
         border.color: ac.pal.line

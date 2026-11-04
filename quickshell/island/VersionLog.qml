@@ -11,19 +11,19 @@ Rectangle {
     property bool mine: false
     visible: card.mine || card.res !== null
     Layout.fillWidth: true
-    implicitHeight: logCol.implicitHeight + 20
+    implicitHeight: logCol.implicitHeight + 24
     radius: vc.pal.rSm
     color: Qt.alpha(vc.pal.bg, 0.45)
     border.width: 1
     border.color: vc.pal.lineSoft
     ColumnLayout {
         id: logCol
-        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
-        spacing: 6
+        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+        spacing: 8
         RowLayout {
             visible: card.mine
             Layout.fillWidth: true
-            Text { text: vc.opStep !== "" ? vc.opStep : "Working…"; color: vc.pal.text; font.family: vc.pal.uiFont; font.pixelSize: vc.pal.tBody - 1; font.weight: Font.Medium; Layout.fillWidth: true; elide: Text.ElideRight }
+            Text { text: vc.opStep !== "" ? vc.opStep : "Taking care of it…"; color: vc.pal.text; font.family: vc.pal.uiFont; font.pixelSize: vc.pal.tBody - 1; font.weight: Font.Normal; Layout.fillWidth: true; elide: Text.ElideRight }
             VersionBtn { pal: vc.pal; label: "Cancel"; onClicked: vc.cancelOp() }
         }
         Text {
@@ -41,8 +41,9 @@ Rectangle {
             visible: !card.mine && card.res !== null
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: card.res ? (card.res.skipped ? (vc.cap(card.res.skipped) + ": skipped") : (card.res.ok ? (card.res.changed ? "Done: now at " + String(card.res.to || "").substring(0, 7) + (card.res.older ? " (an older version)" : "") : "Nothing to change.") : (card.res.error || "It did not work."))) : ""
-            color: card.res && card.res.ok ? vc.pal.good : vc.pal.bad
+            lineHeight: 1.2
+            text: card.res ? (card.res.skipped ? (vc.cap(card.res.skipped) + ": skipped") : (card.res.ok ? (card.res.changed ? "All done. Now at " + String(card.res.to || "").substring(0, 7) + (card.res.older ? " (an older version)" : "") : "Everything was already in place.") : (card.res.error || "That did not quite finish."))) : ""
+            color: card.res && card.res.ok ? vc.pal.good : vc.pal.warn
             font.family: vc.pal.uiFont
             font.pixelSize: vc.pal.tBody - 1
         }
@@ -50,7 +51,8 @@ Rectangle {
             visible: !card.mine && card.res !== null && !!card.res.restored
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "The version you had before is back."
+            lineHeight: 1.2
+            text: "Your previous version is safely back, just as it was."
             color: vc.pal.warn
             font.family: vc.pal.uiFont
             font.pixelSize: vc.pal.tBody - 1
@@ -58,13 +60,13 @@ Rectangle {
         Flow {
             visible: !card.mine && card.res !== null && !!card.res.health
             Layout.fillWidth: true
-            spacing: 6
+            spacing: 8
             Repeater {
                 model: card.res && card.res.health ? card.res.health.checks : []
                 delegate: VersionBadge { pal: vc.pal;
                     required property var modelData
-                    label: (modelData.ok ? "ok  " : "failed  ") + modelData.name + ": " + modelData.detail
-                    tone: modelData.ok ? vc.pal.good : vc.pal.bad
+                    label: (modelData.ok ? "ok  " : "worth a look  ") + modelData.name + ": " + modelData.detail
+                    tone: modelData.ok ? vc.pal.good : vc.pal.warn
                 }
             }
         }

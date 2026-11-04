@@ -1,1 +1,0 @@
-{"nodes": [{"id": "pkg_hgl", "label": "hgl", "file_type": "code", "type": "package", "ecosystem": "cargo", "source_file": "src/hgl/Cargo.toml", "source_location": "L1", "version": "0.1.0"}], "edges": []}

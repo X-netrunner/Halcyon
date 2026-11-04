@@ -180,6 +180,8 @@ Scope {
                     Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                     MouseArea { anchors.fill: parent }          // clicks inside the card do not reach the catcher
+                    // squash and stretch while it grows out of the bar (Jelly.qml), pinned to the side it opens from
+                    Jelly { target: card; pal: root.pal; originX: root.side === "left" ? 0 : root.side === "right" ? 1 : 0.5; originY: root.side === "top" ? 0 : root.side === "bottom" ? 1 : 0.5 }
 
                     ColumnLayout {
                         id: body

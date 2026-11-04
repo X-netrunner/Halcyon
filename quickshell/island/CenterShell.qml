@@ -53,9 +53,9 @@ Item {
     property alias menuOpen: hal.menuOpen
     property real radius: 0                                  // the panel's own corner radius: the dark top bar and left column follow it
     property real bodyOpacity: 0.97                          // the panel's glass body, so the front tab is exactly the content's colour
-    readonly property real cornerW: 228
+    readonly property real cornerW: 208
     readonly property real topH: 64
-    readonly property real tabH: 52
+    readonly property real tabH: 46
     readonly property color chrome: Qt.alpha(Qt.darker(pal.bg, pal.light ? 1.06 : 1.32), Math.min(1, bodyOpacity + 0.02))
     readonly property color contentColor: Qt.alpha(pal.bg, bodyOpacity)
     readonly property bool pillNeeded: hasModel || (popItem && !pal.deskWin)
@@ -107,9 +107,10 @@ Item {
             id: optCol
             x: 14; y: 16
             width: parent.width - 28
-            spacing: 6
+            spacing: 4
             Text {
-                bottomPadding: 6
+                visible: cs.optionsLabel !== ""
+                bottomPadding: 4
                 leftPadding: 6
                 text: cs.optionsLabel
                 color: cs.pal.muted
@@ -126,10 +127,10 @@ Item {
                     required property var modelData
                     readonly property bool on: modelData.key === cs.activeOption
                     width: optCol.width
-                    height: 52
+                    height: 46
                     radius: cs.pal.rMd
-                    color: on ? Qt.alpha(cs.pal.accent, 0.13) : (oMa.containsMouse ? cs.pal.fill : "transparent")
-                    border.width: on ? 1 : 0
+                    color: on ? Qt.alpha(cs.pal.accent, 0.12) : (oMa.containsMouse ? cs.pal.fill : "transparent")
+                    border.width: on && !cs.pal.calm ? 1 : 0
                     border.color: Qt.alpha(cs.pal.accent, 0.7)
                     Behavior on color { ColorAnimation { duration: cs.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: cs.pal.curveCalm } }
                     Row {
@@ -140,7 +141,7 @@ Item {
                             text: String.fromCodePoint(orow.modelData.glyph)
                             color: orow.on ? cs.pal.accent : cs.pal.muted
                             font.family: cs.pal.font
-                            font.pixelSize: 20
+                            font.pixelSize: 18
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
@@ -163,7 +164,7 @@ Item {
                 width: parent.width
                 visible: cs.status !== ""
                 wrapMode: Text.Wrap
-                maximumLineCount: 4
+                maximumLineCount: 2
                 elide: Text.ElideRight
                 text: cs.status
                 color: cs.statusTone === "bad" ? cs.pal.bad : (cs.statusTone === "warn" ? cs.pal.warn : (cs.statusTone === "accent" ? cs.pal.accent : cs.pal.muted))
@@ -175,7 +176,7 @@ Item {
                 width: parent.width
                 visible: cs.footnote !== ""
                 wrapMode: Text.Wrap
-                maximumLineCount: 3
+                maximumLineCount: 2
                 elide: Text.ElideRight
                 text: cs.footnote
                 color: Qt.alpha(cs.pal.muted, 0.8)

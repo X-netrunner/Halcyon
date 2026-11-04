@@ -96,6 +96,7 @@ Item {
         Behavior on scale { NumberAnimation { duration: root.pal ? root.pal.dSlow : 520; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal ? root.pal.curve : [0.22, 1, 0.36, 1, 1, 1] } }
 
         MouseArea { anchors.fill: parent }       // clicks on the card itself do not cancel
+        Jelly { target: card; pal: root.pal; originY: 0.5 }       // squash and stretch while it pops open (Jelly.qml)
 
         // ---- header: title, close
         Text {

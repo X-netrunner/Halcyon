@@ -516,8 +516,17 @@ Item {
             // ---- header (WinHeader: the same in every window)
             WinHeader {
                 pal: root.pal
+                glyph: 0xF1513
                 title: "Bar builder"
-                leading: [ ActionChip { pal: root.pal; label: "Reset layout"; doneLabel: "Reset"; onClicked: root.edited(BL.defaults()) } ]
+                sub: root.pal.cap(root.cur.shape) + "  ·  " + root.cur.side + " edge  ·  " + (root.cur.left.length + root.cur.center.length + root.cur.right.length) + " widgets"
+                leading: [
+                    CalmIconBtn {
+                        pal: root.pal
+                        glyph: 0xF0450
+                        tip: "Reset the layout"
+                        onClicked: root.edited(BL.defaults())
+                    }
+                ]
                 onClosed: root.closed()
             }
 

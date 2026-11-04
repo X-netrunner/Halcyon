@@ -651,7 +651,7 @@ Scope {
                         }
                         activeTab: root.chatId
                         renamingId: root.renameId
-                        optionsLabel: "Learn from the files"
+                        optionsLabel: ""
                         options: [
                             { key: "ask", label: "Ask", glyph: 0xF0B79 },
                             { key: "summary", label: "Summary", glyph: 0xF0219 },
@@ -659,9 +659,9 @@ Scope {
                             { key: "cards", label: "Cards", glyph: 0xF0638 }
                         ]
                         activeOption: root.tab
-                        status: root.confirmRm !== "" ? "Delete this chat and its files?" : (root.note !== "" ? root.note : (root.curChat ? "About " + root.scopeText : ""))
+                        status: root.confirmRm !== "" ? "Delete this chat and its files?" : (root.note !== "" ? root.note : (root.curChat ? root.scopeText : ""))
                         statusTone: root.confirmRm !== "" ? "warn" : (root.note !== "" ? (root.noteBad ? "bad" : "accent") : "muted")
-                        footnote: "On this computer  \u00b7  " + (root.choice === "auto" ? (root.autoDeep !== "" ? "Auto, up to " + root.shortName(root.autoDeep) : "Auto") : root.shortName(root.choice))
+                        footnote: ""
                         hasModel: true
                         modelLabel: root.choiceLabel
                         modelsOpen: root.modelsOpen
@@ -694,18 +694,50 @@ Scope {
                                 // before the first question: a calm greeting and a few ways to start
                                 Column {
                                     anchors.centerIn: parent
-                                    anchors.verticalCenterOffset: -40
-                                    width: Math.min(520, parent.width - 40)
-                                    spacing: 14
+                                    anchors.verticalCenterOffset: -30
+                                    width: Math.min(500, parent.width - 40)
+                                    spacing: 16
                                     visible: root.msgs.length === 0
-                                    Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.docs.length === 0 ? "Add a file to begin" : "What would you like to understand?"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tDisplay; font.weight: Font.Medium }
-                                    Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; lineHeight: 1.3; text: root.docs.length === 0 ? "Add lecture slides, a PDF, your notes or a photo of a page with + and it gets a chat of its own. Files added together share one chat. They stay on this computer. The answers come only from your own files, with the page each one is on." : "Answers come only from " + root.scopeText + ", with the pages they are on. Each chat keeps its own files and conversation: use + for other material."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+
+                                    // the title screen: one glyph, one line, one quiet promise
+                                    Rectangle {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: 44; height: 44; radius: 15
+                                        color: Qt.alpha(root.pal.accent, 0.11)
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: String.fromCodePoint(0xF00BA)
+                                            color: root.pal.accent
+                                            font.family: root.pal.font
+                                            font.pixelSize: 22
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: root.docs.length === 0 ? "Add your first file" : "Ask your files"
+                                        color: root.pal.text
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tDisplay - 2
+                                        font.weight: Font.Medium
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        horizontalAlignment: Text.AlignHCenter
+                                        wrapMode: Text.WordWrap
+                                        lineHeight: 1.3
+                                        text: root.docs.length === 0 ? "A PDF, slides, notes or a photo of a page. It stays on this computer."
+                                                                      : "Answers come only from " + root.scopeText + ", with the page."
+                                        color: root.pal.muted
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                    }
                                     Flow {
                                         width: parent.width
                                         spacing: 8
                                         visible: root.docs.length > 0
                                         Repeater {
-                                            model: ["What is this about?", "Explain the main ideas simply", "What are the key definitions?", "What is most likely to come up in an exam?"]
+                                            model: ["Explain the main ideas", "Key definitions", "Exam questions"]
                                             delegate: Rectangle {
                                                 id: sug
                                                 required property string modelData
@@ -860,7 +892,7 @@ Scope {
                                         Text {
                                             anchors.verticalCenter: parent.verticalCenter
                                             visible: askIn.text.length === 0
-                                            text: root.docs.length === 0 ? "Add a file with + first" : "Ask about " + root.scopeText + "…"
+                                            text: root.docs.length === 0 ? "Add a file first" : "Ask about this file…"
                                             color: root.pal.muted
                                             font: askIn.font
                                         }

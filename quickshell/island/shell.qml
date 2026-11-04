@@ -121,6 +121,7 @@ ShellRoot {
         greeterWifi: false,        // Wi-Fi name (system data only)
         utilStyle: "tiles",        // tiles | split | classic : the utilities box (bottom-right corner): icon tiles with stars, two tall sliders + round buttons, or the old text pills (Panel.qml)
         utilBtShow: "stars",       // stars | percent : what the Bluetooth tile shows for the connected device
+        utilWords: true,           // OFF: the utilities box keeps only the glyphs (the names live in the hover bubbles; Wi-Fi / BT keep their stars)
         lockMode: "lock",          // lock | login : after sleep / when locked: the lock screen (widgets allowed) or the login-screen look (no widgets at all)
         loginMode: "keep",         // keep | greeter | lock : what happens at BOOT (Settings > Power & lock > At boot; "Apply" runs scripts/halcyon-greeter.sh apply in a terminal)
         lockWidgets: false,        // OFF by default: the lock screen is just the clock + password. On = battery, Wi-Fi, a notification COUNT and a media card with play / skip buttons
@@ -1415,6 +1416,20 @@ ShellRoot {
         profileStars: root.profileStars
     }
 
+    // SUPER + S, >capture: four icons (region / window / screen / record a region), the quick door next to the panel above (CaptureMenu.qml)
+    CaptureMenu {
+        id: captureMenu
+        pal: pal
+    }
+
+    // the red line and the REC pill while a recording runs (RecIndicator.qml)
+    RecIndicator {
+        pal: pal
+        recording: root.isRecording
+        startedAt: root.recSince
+        onStopRequested: root.toggleRecording()
+    }
+
     // the Lyrics / Queue chips on the media page, >lyrics, >queue: the lyrics of what plays and what plays next (MusicMenu.qml, scripts/halcyon-music.py)
     MusicMenu {
         id: musicMenu
@@ -1438,7 +1453,7 @@ ShellRoot {
     // notifs.centerOpen is NOT in this list on purpose: the notification window does not need to raise itself above itself, and the
     // raise() un-maps the window for a moment, which made the box think the pointer had left and close about a second after opening.
     readonly property bool anyOverlay: cheat.open || cmdTree.open || overviewOpen || settingsWin.open
-        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || studyCenter.open || lunaCenter.open || securityCenter.open || versionCenter.open || shotMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
+        || calendar.open || notesMenu.open || clipMenu.open || gameCenter.open || studyCenter.open || lunaCenter.open || securityCenter.open || versionCenter.open || shotMenu.open || captureMenu.open || musicMenu.open || powerMenu.open || tour.open || corner.open || appsWin.open
         || settingsWin.galleryOpen || settingsWin.builderOpen
         || settingsWin.nbOpen || settingsWin.dbOpen || settingsWin.startupOpen
     property int notifSeen: 0
@@ -1706,6 +1721,7 @@ ShellRoot {
         if (securityCenter.open && !securityCenter.asWindow) { securityCenter.hide(); return true }
         if (versionCenter.open && !versionCenter.asWindow) { versionCenter.hide(); return true }
         if (shotMenu.open) { shotMenu.close(); return true }
+        if (captureMenu.open) { captureMenu.hide(); return true }
         if (musicMenu.open) { musicMenu.close(); return true }
         if (calendar.open) { calendar.hide(); return true }
         if (settingsWin.startupOpen) { settingsWin.startupOpen = false; return true }
@@ -2362,7 +2378,8 @@ ShellRoot {
         case "notes": notesMenu.toggle(); break
         case "notesall": notesMenu.toggleAll(); break
         case "clipboard": shotMenu.hide(); musicMenu.hide(); clipMenu.toggle(); break
-        case "screenshot": clipMenu.hide(); musicMenu.hide(); shotMenu.toggle(); break
+        case "screenshot": clipMenu.hide(); musicMenu.hide(); captureMenu.hide(); shotMenu.toggle(); break
+        case "capture": clipMenu.hide(); musicMenu.hide(); shotMenu.hide(); captureMenu.toggle(); break
         case "lyrics": clipMenu.hide(); shotMenu.hide(); musicMenu.toggleTab("lyrics"); break
         case "queue": clipMenu.hide(); shotMenu.hide(); musicMenu.toggleTab("queue"); break
         case "record": toggleRecording(); break
@@ -3125,6 +3142,7 @@ ShellRoot {
         function notesAll(): void { notesMenu.toggleAll() }
         function clipboard(): void { root.runCommand("clipboard") }
         function screenshot(): void { root.runCommand("screenshot") }
+        function capture(): void { root.runCommand("capture") }
         function lyrics(): void { root.runCommand("lyrics") }
         function queue(): void { root.runCommand("queue") }
         function music(): void { root.runCommand("lyrics") }
@@ -3371,6 +3389,7 @@ ShellRoot {
         Glass {
             id: island
             pal: pal
+            jellyOn: false          // it has its own Jelly below, and the halos and the notch shape follow that one
             shadow: false           // drawn by the HaloShadow above (this item clips its content)
             flat: root.notchStyle || root.hangPage   // style Notch: the NotchShape behind it is the surface
             // light glass as the bar, a bit more solid once it grows into a page / the launcher
@@ -3754,6 +3773,7 @@ ShellRoot {
                                     bright: root.bright
                                     cfg: root.opt
 
+                                    onWordsToggled: root.setOpt("utilWords", !root.opt.utilWords)
                                     onToggleWifi: root.toggleWifi()
                                     onToggleBt: root.toggleBt()
                                     onSetProfile: p => root.setProfile(p)
@@ -4229,6 +4249,7 @@ ShellRoot {
             Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
+            onWordsToggled: root.setOpt("utilWords", !root.opt.utilWords)
             onToggleWifi: root.toggleWifi()
             onToggleBt: root.toggleBt()
             onSetProfile: p => root.setProfile(p)
@@ -4256,10 +4277,18 @@ ShellRoot {
     }
 
     property bool isRecording: false
+    property double recSince: 0               // when this shell first saw the recording: the pill counts from here
     Process {
         id: recStatusProc
         command: ["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/screen-record.sh", "status"]
-        stdout: StdioCollector { onStreamFinished: root.isRecording = (text.trim() === "recording") }
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var on = text.trim() === "recording"
+                if (on && !root.isRecording) root.recSince = Date.now()
+                if (!on) root.recSince = 0
+                root.isRecording = on
+            }
+        }
     }
     Timer {
         id: recPollTimer
@@ -4267,6 +4296,30 @@ ShellRoot {
         repeat: true
         running: root.isRecording
         onTriggered: recStatusProc.running = true
+    }
+    // a slow look while nothing records, so a start from a terminal or a script still shows the line (the pid watches above are instant)
+    Timer {
+        interval: 8000
+        repeat: true
+        running: !root.isRecording
+        onTriggered: if (!recStatusProc.running) recStatusProc.running = true
+    }
+    // A recording can start or stop anywhere: Super + Alt + R, the panel, Super + S, `halcyon record`. Watching the two pid files
+    // means the red line appears at once instead of on the next tick, and goes away when the recorder is gone.
+    Timer { id: recFileT; interval: 150; onTriggered: if (!recStatusProc.running) recStatusProc.running = true }
+    FileView {
+        path: Quickshell.env("HOME") + "/.local/state/island/record.pid"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: recFileT.restart()
+        onLoadFailed: recFileT.restart()
+    }
+    FileView {
+        path: Quickshell.env("HOME") + "/.local/state/island/record.apid"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: recFileT.restart()
+        onLoadFailed: recFileT.restart()
     }
 
     function toggleRecording() {

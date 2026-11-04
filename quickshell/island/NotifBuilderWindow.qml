@@ -98,10 +98,12 @@ Item {
             // ---- header (WinHeader: the same in every window)
             WinHeader {
                 pal: root.pal
-                title: "Notification box builder"
+                glyph: 0xF009A
+                title: "Notification box"
+                sub: root.pal.cap(root.look) + "  ·  " + root.cur.width + " px"
                 leading: [
-                    ActionChip { pal: root.pal; label: "Restore sample"; doneLabel: "Restored"; onClicked: { root.removed = ({}); root.sampleDnd = false } },
-                    ActionChip { pal: root.pal; label: "Reset the box"; doneLabel: "Reset"; onClicked: root.edited(NL.defaults()) }
+                    CalmIconBtn { pal: root.pal; glyph: 0xF099B; tip: "Restore the sample notifications"; onClicked: { root.removed = ({}); root.sampleDnd = false } },
+                    CalmIconBtn { pal: root.pal; glyph: 0xF01FE; tip: "Reset the box"; onClicked: root.edited(NL.defaults()) }
                 ]
                 onClosed: root.closed()
             }
@@ -165,9 +167,9 @@ Item {
                         NbCap { pal: root.pal; text: root.pal.cap("LOOK OF THE LIST") }
                         Row {
                             spacing: 8
-                            Chip { pal: root.pal; implicitHeight: 30; label: "Stack"; on: root.look === "stack"; onClicked: root.lookChosen("stack") }
-                            Chip { pal: root.pal; implicitHeight: 30; label: "Timeline"; on: root.look === "timeline"; onClicked: root.lookChosen("timeline") }
-                            Chip { pal: root.pal; implicitHeight: 30; label: "Grouped by app"; on: root.look === "grouped"; onClicked: root.lookChosen("grouped") }
+                            Chip { pal: root.pal; implicitHeight: 30; glyph: String.fromCodePoint(0xF0570); label: "Stack"; on: root.look === "stack"; onClicked: root.lookChosen("stack") }
+                            Chip { pal: root.pal; implicitHeight: 30; glyph: String.fromCodePoint(0xF0BD1); label: "Timeline"; on: root.look === "timeline"; onClicked: root.lookChosen("timeline") }
+                            Chip { pal: root.pal; implicitHeight: 30; glyph: String.fromCodePoint(0xF0331); label: "Grouped"; on: root.look === "grouped"; onClicked: root.lookChosen("grouped") }
                         }
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }

@@ -11,13 +11,13 @@ Rectangle {
     property int hgt: 22
     implicitWidth: tagRow.implicitWidth + 16 + (hgt > 22 ? 8 : 0)
     implicitHeight: hgt
-    radius: hgt / 2
+    radius: Math.min(hgt / 2, 8)
     color: Qt.alpha(tone, 0.16)
     Row {
         id: tagRow
         anchors.centerIn: parent
         spacing: 6
         Rectangle { visible: tg.dot; width: 6; height: 6; radius: 3; color: tg.tone; anchors.verticalCenter: parent.verticalCenter }
-        Text { text: tg.label; color: tg.tone; font.family: tg.pal.uiFont; font.pixelSize: tg.fs; font.weight: Font.Medium }
+        Text { text: tg.label; color: tg.tone; font.family: tg.pal.uiFont; font.pixelSize: tg.fs; font.weight: Font.Normal }
     }
 }

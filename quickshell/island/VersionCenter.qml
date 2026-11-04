@@ -72,13 +72,13 @@ Scope {
     }
     function stateText(c) {
         if (c.state === "not-chosen") return "not installed"
-        if (c.state === "missing") return "not found on this machine"
+        if (c.state === "missing") return "not found here"
         if (c.state === "pacman") return "managed by pacman"
         if (c.state === "local") return "built from a local folder"
-        if (c.state === "behind") return c.behind + (c.behind === 1 ? " commit behind" : " commits behind")
+        if (c.state === "behind") return c.behind + (c.behind === 1 ? " commit to catch up" : " commits to catch up")
         if (c.state === "ahead") return "ahead of main"
-        if (c.state === "up-to-date") return "on the latest"
-        if (c.state === "unreg") return "unreg"
+        if (c.state === "up-to-date") return "up to date"
+        if (c.state === "unreg") return "not registered yet"
         return "not checked yet"
     }
     function stateColor(c) {
@@ -113,7 +113,7 @@ Scope {
     }
     function behindSub(c) {
         if (c.state === "behind") return ageText(c)
-        if (c.state === "up-to-date") return "nothing to update"
+        if (c.state === "up-to-date") return "all caught up"
         return stateText(c)
     }
     // where the knob sits on the bar: at the end when nothing is behind, and a little further back for every commit (a feel for the
@@ -140,7 +140,7 @@ Scope {
     }
     function gotStatus(text) {
         var o = parse(text)
-        if (!o || !o.components) { flash("The version helper did not answer. Is " + helper + " there?", true); return }
+        if (!o || !o.components) { flash("The version helper did not answer.", true); return }
         comps = o.components
         checked = o.checked || 0
         offline = !!o.offline
@@ -200,13 +200,13 @@ Scope {
     }
     function gotPlan(text) {
         var p = parse(text), r = dlgReq
-        if (!p || p.ok === false || !r) { flash(p && p.error ? p.error : "Could not prepare that.", true); return }
+        if (!p || p.ok === false || !r) { flash(p && p.error ? p.error : "That could not be prepared right now. Nothing was changed.", true); return }
         dlg = { kind: r.kind, id: r.id, ref: r.ref, label: r.label, plan: p, targets: null, err: "" }
         Qt.callLater(function () { root.focusRequested("pw") })
     }
     function askUpdate(id) {
         var c = byId(id)
-        if (!c || !c.latest) { flash("Press Check now first, so it is known what is newest.", true); return }
+        if (!c || !c.latest) { flash("Press Check now first, so we know what the newest version is.", true); return }
         ask("update", id, c.latest.sha, c.latest.short)
     }
     function askInstallNew(id) {
@@ -221,11 +221,11 @@ Scope {
     }
     function askUnpin(id) {
         var c = byId(id)
-        if (!c || !c.latest) { flash("Press Check now first.", true); return }
+        if (!c || !c.latest) { flash("Press Check now first, whenever you are ready.", true); return }
         ask("unpin", id, c.latest.sha, c.latest.short)
     }
     function askRestore(id) {
-        dlg = { kind: "restore", id: id, label: id, plan: { needs_root: true, warnings: ["Puts back the copy of /var/lib/ai-antivirus made before the change. Whatever the antivirus recorded since then is replaced by it."], backups: [], diffstat: "" }, targets: null, err: "" }
+        dlg = { kind: "restore", id: id, label: id, plan: { needs_root: true, warnings: ["Brings back the copy of /var/lib/ai-antivirus made before the change. Whatever the antivirus recorded since then is replaced by it."], backups: [], diffstat: "" }, targets: null, err: "" }
         Qt.callLater(function () { root.focusRequested("pw") })
     }
     // anything Update all would act on: it is the window's main action only then (otherwise a quiet button)
@@ -264,7 +264,7 @@ Scope {
         else if (d.kind === "restore") args = ["restore-backup", d.id]
         var needsRoot = !!(d.plan && d.plan.needs_root)
         if (needsRoot) {
-            if (dlgPw === "") { dlg = Object.assign({}, d, { err: "Type your admin password first." }); return }
+            if (dlgPw === "") { dlg = Object.assign({}, d, { err: "Please enter your admin password to go on." }); return }
             args.push("--password-stdin")
         }
         var pw = needsRoot ? dlgPw : ""
@@ -289,7 +289,7 @@ Scope {
         opLines = l
     }
     function opDone(code) {
-        if (!opResult) opResult = { ok: false, error: code === 143 ? "Cancelled." : "The helper stopped with exit code " + code + ". The full log is in ~/.local/state/halcyon/versions.log." }
+        if (!opResult) opResult = { ok: false, error: code === 143 ? "Stopped. You can try again whenever you like." : "It paused early (exit code " + code + "). The full log is in ~/.local/state/halcyon/versions.log." }
         var ids = []
         // the commit lists show the new installed / newer / older marks
         for (var k in lists) if (lists[k].open) ids.push(k)
@@ -342,7 +342,7 @@ Scope {
     Process {
         id: statusProc
         stdout: StdioCollector { onStreamFinished: root.gotStatus(text) }
-        onExited: { if (root.note === "Looking at GitHub…") root.flash(root.offline ? "GitHub could not be reached: showing what was saved." : "Checked.", root.offline) }
+        onExited: { if (root.note === "Looking at GitHub…") root.flash(root.offline ? "GitHub cannot be reached right now, so this is the view saved last time." : "All checked.", root.offline) }
     }
     Process {
         id: logProc
@@ -358,7 +358,7 @@ Scope {
     }
     Process {
         id: autoProc
-        stdout: StdioCollector { onStreamFinished: { var o = root.parse(text); if (o && o.ok) root.autoOn = !!o.enabled; else root.flash((o && o.error) || "The timer could not be changed.", true) } }
+        stdout: StdioCollector { onStreamFinished: { var o = root.parse(text); if (o && o.ok) root.autoOn = !!o.enabled; else root.flash((o && o.error) || "The daily check could not be changed just now.", true) } }
     }
     Process {
         id: opProc
@@ -409,7 +409,7 @@ Scope {
             color: b.primary ? root.pal.bg : root.pal.text
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tBody - 1
-            font.weight: b.primary ? Font.Medium : Font.Medium
+            font.weight: Font.Normal
         }
         MouseArea { id: bMa; anchors.fill: parent; hoverEnabled: true; cursorShape: b.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: if (!b.disabled) b.clicked() }
     }
@@ -420,7 +420,7 @@ Scope {
         implicitHeight: 20
         radius: 10
         color: Qt.alpha(tone, 0.16)
-        Text { id: tagTxt; anchors.centerIn: parent; text: parent.label; color: parent.tone; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium }
+        Text { id: tagTxt; anchors.centerIn: parent; text: parent.label; color: parent.tone; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Normal }
     }
 
     // ---------------------------------------------------------------- the window
@@ -456,15 +456,15 @@ Scope {
                     function onFocusRequested(what) { if (what === "pw" && root.dlg !== null && root.dlg.plan && root.dlg.plan.needs_root) pwIn.forceActiveFocus(); else qp.forceActiveFocus() }
                 }
 
-                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.5 * Math.max(0, Math.min(1, qp.reveal))) }
+                Rectangle { visible: !win.desktop; anchors.fill: parent; color: Qt.alpha(root.pal.bg, 0.58 * Math.max(0, Math.min(1, qp.reveal))) }
 
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: win.desktop ? qp.width : Math.min(980, qp.width - 80)
-                    height: win.desktop ? qp.height : Math.min(720, qp.height - 80)
+                    width: win.desktop ? qp.width : Math.min(1000, qp.width - 80)
+                    height: win.desktop ? qp.height : Math.min(740, qp.height - 80)
                     radius: win.desktop ? 0 : root.pal.rXl
-                    opacityBody: 0.97
+                    opacityBody: 1
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                     anchors.centerIn: parent
                     opacity: win.desktop ? 1 : qp.reveal
@@ -473,45 +473,63 @@ Scope {
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 20
-                        spacing: 14
+                        anchors.margins: 28
+                        spacing: 18
 
-                        // the top bar
-                        RowLayout {
+                        // the head: one glyph, the name, one line, all centred; the actions are icon-only
+                        CalmHeader {
                             Layout.fillWidth: true
-                            spacing: 10
-                            Text { text: String.fromCodePoint(0xF06B0); font.family: root.pal.font; font.pixelSize: 20; color: root.pal.accent }
-                            ColumnLayout {
-                                spacing: 1
-                                Text { text: "Version Center"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
-                                Small {
-                                    text: (root.extBusy ? "another operation is running (" + root.extBusy.component + ")  ·  " : "") + (root.offline ? "offline: showing what was saved  ·  " : "") + "last checked " + root.ago(root.checked)
-                                }
+                            Layout.preferredHeight: 72
+                            pal: root.pal
+                            glyph: 0xF06B0
+                            title: "Version Center"
+                            sub: root.note !== "" ? root.note
+                                 : root.extBusy ? root.extBusy.component + " is busy elsewhere"
+                                 : root.offline ? "offline · showing the saved view"
+                                 : root.checked > 0 ? "last checked " + root.ago(root.checked)
+                                 : "not checked yet"
+                            subTone: root.note !== "" ? (root.noteBad ? "warn" : "good") : "muted"
+
+                            CalmIconBtn {
+                                pal: root.pal
+                                glyph: 0xF0954
+                                active: root.autoOn
+                                enabledBtn: !root.locked
+                                tip: root.autoOn ? "Daily check is on" : "Daily check is off"
+                                onClicked: root.setAuto(!root.autoOn)
                             }
-                            Item { Layout.fillWidth: true }
-                            Text {
-                                visible: root.note !== ""
-                                text: root.note
-                                color: root.noteBad ? root.pal.bad : root.pal.good
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tCap + 1
-                                elide: Text.ElideRight
-                                Layout.maximumWidth: 280
+                            CalmIconBtn {
+                                pal: root.pal
+                                glyph: 0xF0450
+                                active: statusProc.running
+                                enabledBtn: !root.working && root.extBusy === null
+                                tip: statusProc.running ? "Checking…" : "Check now"
+                                onClicked: root.checkNow()
                             }
-                            Btn { label: root.autoOn ? "Daily check: on" : "Daily check: off"; onClicked: root.setAuto(!root.autoOn); disabled: root.locked }
-                            Btn { label: statusProc.running ? "Checking…" : "Check now"; disabled: root.working || root.extBusy !== null; onClicked: root.checkNow() }
-                            Btn { label: "Update all"; primary: root.anyBehind; disabled: root.working || root.extBusy !== null; onClicked: root.askAll() }
-                            RoundBtn { pal: root.pal; size: 32; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }   // the same close as the other centres
+                            CalmIconBtn {
+                                pal: root.pal
+                                glyph: 0xF01DA
+                                primary: root.anyBehind
+                                enabledBtn: !root.working && root.extBusy === null
+                                tip: "Update all"
+                                onClicked: root.askAll()
+                            }
+                            CalmIconBtn {
+                                pal: root.pal
+                                glyph: 0xF0156
+                                tip: "Close"
+                                onClicked: root.hide()
+                            }
                         }
-                        Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                         // an "Update all" run is summed up here
                         Text {
                             visible: !root.busy && root.opResult !== null && !!root.opResult.results
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
-                            text: root.opResult && root.opResult.results ? (root.opResult.ok ? "Update all: finished." : "Update all: something did not work, see the cards below.") : ""
-                            color: root.opResult && root.opResult.ok ? root.pal.good : root.pal.bad
+                            lineHeight: 1.2
+                            text: root.opResult && root.opResult.results ? (root.opResult.ok ? "All done. Everything is in place." : "A few things did not update. The cards below tell you more.") : ""
+                            color: root.opResult && root.opResult.ok ? root.pal.good : root.pal.warn
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody - 1
                         }
@@ -519,26 +537,27 @@ Scope {
                             visible: !root.busy && root.opResult !== null && root.opFor === "all" && !root.opResult.results && !!root.opResult.error
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
+                            lineHeight: 1.2
                             text: root.opResult && root.opResult.error ? root.opResult.error : ""
-                            color: root.pal.bad
+                            color: root.pal.warn
                             font.family: root.pal.uiFont
                             font.pixelSize: root.pal.tBody - 1
                         }
                         Rectangle {
                             visible: root.busy && root.opFor === "all"
                             Layout.fillWidth: true
-                            implicitHeight: allCol.implicitHeight + 20
+                            implicitHeight: allCol.implicitHeight + 24
                             radius: root.pal.rSm
                             color: Qt.alpha(root.pal.bg, 0.45)
                             border.width: 1
                             border.color: root.pal.lineSoft
                             ColumnLayout {
                                 id: allCol
-                                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
-                                spacing: 6
+                                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                                spacing: 8
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Text { text: root.opStep !== "" ? root.opStep : "Working…"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: Font.Medium; Layout.fillWidth: true; elide: Text.ElideRight }
+                                    Text { text: root.opStep !== "" ? root.opStep : "Taking care of it…"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: Font.Normal; Layout.fillWidth: true; elide: Text.ElideRight }
                                     Btn { label: "Cancel"; onClicked: opProc.running = false }
                                 }
                                 Text { Layout.fillWidth: true; text: root.lastLines(7); color: root.pal.muted; font.family: root.pal.mono; font.pixelSize: root.pal.tCap; elide: Text.ElideRight; maximumLineCount: 7 }
@@ -576,28 +595,50 @@ Scope {
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tCap
                                         font.weight: Font.Medium
-                                        font.capitalization: Font.AllUppercase
-                                        font.letterSpacing: 0.5
                                     }
                                     Item { Layout.fillWidth: true }
                                     Small { visible: root.loaded; text: root.upToDateText }
                                 }
-                                ListView {
-                                    id: cardList
+                                // the list reaches 18 px past the column on the sides and the bottom (12 px on top), so the soft shadow
+                                // under each card and its tilt are never cut off; the cards themselves keep the full width of the column
+                                Item {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    clip: true
-                                    spacing: 12
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    model: root.loaded ? ["luna", "ai-antivirus", "ai-firewall"] : []
-                                    delegate: VersionCard { required property var modelData; vc: root; comp: root.byId(modelData) }
+                                    ListView {
+                                        id: cardList
+                                        anchors { fill: parent; leftMargin: -18; rightMargin: -18; bottomMargin: -18; topMargin: -12 }
+                                        clip: true
+                                        spacing: 16
+                                        topMargin: 12
+                                        bottomMargin: 18
+                                        boundsBehavior: Flickable.StopAtBounds
+                                        model: root.loaded ? ["luna", "ai-antivirus", "ai-firewall"] : []
+                                        delegate: Item {
+                                            id: slot
+                                            required property var modelData
+                                            width: ListView.view ? ListView.view.width : 600
+                                            height: vcard.height
+                                            Shadow {
+                                                visible: root.pal.boxShadow
+                                                x: vcard.x
+                                                y: 0
+                                                width: vcard.width
+                                                height: vcard.height
+                                                radius: vcard.radius
+                                                spread: 14
+                                                drop: 5 + 5 * vcard.lift
+                                                strength: 0.016 + 0.014 * vcard.lift
+                                            }
+                                            VersionCard { id: vcard; x: 18; width: slot.width - 36; vc: root; comp: root.byId(slot.modelData) }
+                                        }
                                     Text {
                                         visible: !root.loaded
                                         anchors.centerIn: parent
-                                        text: "Reading what is installed…"
+                                        text: "Checking versions…"
                                         color: root.pal.muted
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tBody
+                                    }
                                     }
                                 }
                             }
@@ -629,22 +670,23 @@ Scope {
                             ColumnLayout {
                                 id: dcol
                                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
-                                spacing: 10
+                                spacing: 12
                                 readonly property var d: root.dlg
                                 readonly property var p: d ? d.plan : null
 
                                 Text {
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
+                                    lineHeight: 1.2
                                     color: root.pal.text
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tTitle
-                                    font.weight: Font.Medium
-                                    text: !dcol.d ? "" : (dcol.d.kind === "updateall" ? "Update everything that is behind?"
-                                        : dcol.d.kind === "restore" ? "Put the antivirus database copy back?"
+                                    font.weight: Font.Normal
+                                    text: !dcol.d ? "" : (dcol.d.kind === "updateall" ? "Bring everything up to date?"
+                                        : dcol.d.kind === "restore" ? "Bring the antivirus database copy back?"
                                         : dcol.d.kind === "install-new" ? "Install " + dcol.d.label + "?"
                                         : dcol.d.kind === "rollback" ? "Roll back " + (root.byId(dcol.d.id) ? root.byId(dcol.d.id).name : "") + " to " + dcol.d.label + "?"
-                                        : dcol.d.kind === "unpin" ? "Unpin " + (root.byId(dcol.d.id) ? root.byId(dcol.d.id).name : "") + " and go back to main?"
+                                        : dcol.d.kind === "unpin" ? "Unpin " + (root.byId(dcol.d.id) ? root.byId(dcol.d.id).name : "") + " and follow main again?"
                                         : dcol.d.kind === "update" ? "Update " + (root.byId(dcol.d.id) ? root.byId(dcol.d.id).name : "") + " to " + dcol.d.label + "?"
                                         : "Install " + dcol.d.label + " of " + (root.byId(dcol.d.id) ? root.byId(dcol.d.id).name : "") + "?")
                                 }
@@ -653,6 +695,7 @@ Scope {
                                     visible: !!(dcol.p && dcol.p.to)
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
+                                    lineHeight: 1.2
                                     color: root.pal.muted
                                     font.family: root.pal.mono
                                     font.pixelSize: root.pal.tCap + 1
@@ -662,6 +705,7 @@ Scope {
                                     visible: !!(dcol.p && dcol.p.diffstat)
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
+                                    lineHeight: 1.2
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap + 1
@@ -682,7 +726,7 @@ Scope {
                                 Text {
                                     visible: !!(dcol.d && dcol.d.kind === "updateall" && dcol.d.targets.length === 0)
                                     Layout.fillWidth: true
-                                    text: "Everything that is not pinned is up to date."
+                                    text: "Everything that is not pinned is already up to date. Nothing to do."
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tBody - 1
@@ -691,7 +735,8 @@ Scope {
                                     visible: !!(dcol.d && dcol.d.kind === "updateall")
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
-                                    text: "Halcyon goes first, then LUNA, ai-firewall and ai-antivirus (the order install.sh uses). Pinned components are skipped."
+                                    lineHeight: 1.2
+                                    text: "Halcyon goes first, then LUNA, ai-firewall and ai-antivirus (the order install.sh uses). Pinned ones are left just as they are."
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap + 1
@@ -700,7 +745,8 @@ Scope {
                                     visible: !!(dcol.d && dcol.d.kind === "install-new")
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
-                                    text: "This runs install.sh for that one component, the same as typing it in a terminal. It was not chosen at install, so nothing touches it until you do this."
+                                    lineHeight: 1.2
+                                    text: "This runs install.sh for that one component, just as it would in a terminal. You did not choose it at install, so it stays untouched until you decide."
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap + 1
@@ -709,7 +755,8 @@ Scope {
                                     visible: !!(dcol.d && dcol.d.kind === "unpin")
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
-                                    text: "It follows the newest main again and is updated to it now."
+                                    lineHeight: 1.2
+                                    text: "It will follow the newest main again, and is brought up to date now."
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap + 1
@@ -721,7 +768,8 @@ Scope {
                                         required property var modelData
                                         Layout.fillWidth: true
                                         wrapMode: Text.WordWrap
-                                        text: "!  " + modelData
+                                        lineHeight: 1.2
+                                        text: "A gentle note:  " + modelData
                                         color: modelData.indexOf("OLDER") >= 0 || modelData.indexOf("schema") >= 0 ? root.pal.warn : root.pal.muted
                                         font.family: root.pal.uiFont
                                         font.pixelSize: root.pal.tCap + 1
@@ -731,7 +779,8 @@ Scope {
                                     visible: !!(dcol.p && dcol.p.backups && dcol.p.backups.length > 0 && dcol.d.kind !== "unpin")
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
-                                    text: dcol.p && dcol.p.backups ? "Saved first:  " + dcol.p.backups.join("   ·   ") : ""
+                                    lineHeight: 1.2
+                                    text: dcol.p && dcol.p.backups ? "Kept safe first:  " + dcol.p.backups.join("   ·   ") : ""
                                     color: root.pal.text
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap + 1
@@ -740,7 +789,8 @@ Scope {
                                     visible: !!(dcol.d && dcol.d.kind !== "updateall" && dcol.d.kind !== "install-new" && dcol.d.kind !== "unpin" && dcol.d.kind !== "restore")
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
-                                    text: "If the new version fails its health check, the version you have now is put back automatically. Installing a version pins it: updates leave it alone until you unpin."
+                                    lineHeight: 1.2
+                                    text: "If the new version does not pass its health check, the version you have now is gently put back for you. Installing a specific version pins it, so updates leave it alone until you unpin."
                                     color: root.pal.muted
                                     font.family: root.pal.uiFont
                                     font.pixelSize: root.pal.tCap + 1
