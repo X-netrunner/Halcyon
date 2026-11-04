@@ -25,7 +25,7 @@ Rectangle {
         color: b.primary ? b.pal.bg : b.pal.text
         font.family: b.pal.uiFont
         font.pixelSize: b.pal.tBody - 1
-        font.weight: Font.Medium
+        font.weight: Font.Normal
     }
     MouseArea { id: bMa; anchors.fill: parent; hoverEnabled: true; cursorShape: b.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: if (!b.disabled) b.clicked() }
 }

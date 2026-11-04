@@ -8,6 +8,7 @@ Rectangle {
     property string label: ""
     property bool on: false
     property bool primary: false       // the window's main action (Done, Save ...): solid accent in the new style, like `on` before
+    property bool danger: false        // the action can end the session (Power): quiet at rest, red only while hovered
     property int maxLabel: 220
     property int padX: 16
     property string tip: ""            // hover text (a calm icon-only chip says what it is here); shows after a short pause under the chip
@@ -19,14 +20,15 @@ Rectangle {
     implicitHeight: 36
     implicitWidth: content.implicitWidth + padX * 2
     radius: Math.min(height / 2, 10)   // unslop: a control, not a pill
-    readonly property bool solid: primary && pal.zen
-    color: solid ? (ma.containsMouse ? Qt.lighter(pal.primary, 1.08) : pal.primary)
+    readonly property bool solid: primary && pal.zen && !danger
+    color: danger ? (ma.containsMouse ? Qt.alpha(pal.bad, 0.13) : (ma.pressed ? Qt.alpha(pal.bad, 0.18) : pal.fill))
+         : solid ? (ma.containsMouse ? Qt.lighter(pal.primary, 1.08) : pal.primary)
          : pal.zen ? ((on || primary) ? pal.chosenFill : (ma.containsMouse ? pal.fillHover : pal.fill))
          : pal.calm ? ((on || primary) ? Qt.alpha(pal.accent, 0.17) : (ma.pressed ? pal.fillHover : (ma.containsMouse ? pal.fillHover : pal.fill)))
          : (on || primary) ? Qt.alpha(pal.accent, 0.18)
                : (ma.pressed ? pal.surfaceHi : (ma.containsMouse ? Qt.alpha(pal.surfaceHi, 0.9) : Qt.alpha(pal.surface, 0.8)))
-    border.width: pal.calm ? 0 : 1          // calm: a soft fill is enough
-    border.color: (on || primary) ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft
+    border.width: pal.calm && !danger ? 0 : 1          // calm: a soft fill is enough
+    border.color: danger ? (ma.containsMouse ? Qt.alpha(pal.bad, 0.45) : pal.lineSoft) : (on || primary) ? Qt.alpha(pal.accent, 0.40) : pal.lineSoft
     scale: ma.pressed ? 0.97 : 1
     Behavior on color { ColorAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
     Behavior on border.color { ColorAnimation { duration: pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
@@ -39,7 +41,9 @@ Rectangle {
         Text {
             visible: root.glyph !== ""
             text: root.glyph
-            color: root.solid ? root.pal.primaryText : (root.on || root.primary) ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : root.pal.muted
+            color: root.solid ? root.pal.primaryText
+                 : root.danger ? (ma.containsMouse ? root.pal.bad : root.pal.muted)
+                 : (root.on || root.primary) ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : root.pal.muted
             font.family: root.pal.font
             font.pixelSize: 15
             anchors.verticalCenter: parent.verticalCenter
@@ -50,7 +54,9 @@ Rectangle {
             text: root.label
             width: Math.min(implicitWidth, root.maxLabel)
             elide: Text.ElideRight
-            color: root.solid ? root.pal.primaryText : (root.on || root.primary) ? (root.pal.zen ? root.pal.chosenText : root.pal.calm ? root.pal.accent : root.pal.text) : Qt.alpha(root.pal.text, root.pal.zen ? 0.86 : 0.78)
+            color: root.solid ? root.pal.primaryText
+                 : root.danger && ma.containsMouse ? root.pal.bad
+                 : (root.on || root.primary) ? (root.pal.zen ? root.pal.chosenText : root.pal.calm ? root.pal.accent : root.pal.text) : Qt.alpha(root.pal.text, root.pal.zen ? 0.86 : 0.78)
             font.family: root.pal.uiFont
             font.pixelSize: root.pal.tBody
             font.weight: Font.Medium

@@ -33,7 +33,7 @@ ok('one operation at a time: buttons are disabled while one runs', (vc.match(/(r
 ok('the password goes to stdin once, then is cleared', /write\(root\.opPw \+ "\\n"\); root\.opPw = ""/.test(vc) && /--password-stdin/.test(vc))
 ok('the password is never put on a command line or in a file', !/command:[^\n]*dlgPw/.test(vc) && !/dlgPw[^\n]*(execDetached|writeFile)/.test(vc))
 ok('a confirm dialog comes before anything runs (plan first)', /"plan", id, ref/.test(vc) && /function confirmDialog/.test(vc))
-ok('the dialog warns about an older version and backups', /OLDER/.test(vc) && /Saved first/.test(vc))
+ok('the dialog warns about an older version and backups', /OLDER/.test(vc) && /Kept safe first/.test(vc))
 ok('Update all is Halcyon first, same order as install.sh', /\["halcyon", "luna", "ai-firewall", "ai-antivirus"\]/.test(vc))
 ok('components not chosen are greyed with an Install button', /greyed/.test(vc) && /askInstallNew/.test(vc))
 ok('no emoji in the window or its Settings leaf', !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(vc + auto))
@@ -45,7 +45,8 @@ ok('the actions sit behind a corner button that is the Halcyon star (HalMark), o
 ok('the actions pill holds Update, Roll back, Pin, Commits and takes no room while closed', (() => { const a = rd('quickshell/island/VersionActions.qml'); return /implicitHeight: shown \? 36 : 0/.test(a) && /label: "Roll back"/.test(a) && /label: "Pin"|"Unpin" : "Pin"/.test(a) })())
 ok('the Halcyon card shows installed, latest, behind by, pin and the distance bar', ['"Installed"', '"Latest on main"', '"Behind by"', '"Pin"', 'lagPos'].every(x => vc.includes(x)))
 
-ok('the light in the Halcyon card follows the pointer inside the card and is clamped to it', (() => { const h = rd('quickshell/island/VersionHero.qml'); return /HoverHandler/.test(h) && /Math\.min\(hero\.width/.test(h) && /Behavior on gx/.test(h) })())
+ok('the Halcyon card has no pointer-following light: the whole panels (Halcyon card and the companion cards) tip under the pointer with HoverTilt, the tiles inside stay flat', (() => { const h = rd('quickshell/island/VersionHero.qml'), t = rd('quickshell/island/VersionTile.qml'), c = rd('quickshell/island/VersionCard.qml'), l = rd('quickshell/island/HoverTilt.qml'); return !/WGlow|Behavior on gx|HoverLift/.test(h + t) && /HoverTilt/.test(h) && /HoverTilt/.test(c) && /Matrix4x4 \{ matrix: tilt\.matrix \}/.test(h) && /Matrix4x4 \{ matrix: tilt\.matrix \}/.test(c) && !/HoverTilt|Matrix4x4/.test(t) && /HoverHandler/.test(l) && /Qt\.matrix4x4/.test(l) })())
+ok('Version Center is unslopped: no gradient, no tracked capitals, tags are rounded rectangles not pills, one accent', (() => { const all = ['Center', 'Card', 'Hero', 'Log', 'Commits', 'Actions', 'Corner', 'Pill', 'Tile', 'Badge', 'Btn', 'Text'].map(n => rd('quickshell/island/Version' + n + '.qml')).join('\n'); return !/Gradient|AllUppercase|letterSpacing|accent2/.test(all) && /Math\.min\(hgt \/ 2, 8\)/.test(rd('quickshell/island/VersionBadge.qml')) && /radius: 8/.test(rd('quickshell/island/VersionPill.qml')) })())
 // ---- braces balance in the new QML (a cheap compile guard where Quickshell is not installed)
 function balanced(src) {
   let d = 0, inStr = null, esc = false, line = false, block = false

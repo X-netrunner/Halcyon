@@ -54,21 +54,67 @@ Round 6: one **Builders** page for the Bar / Desktop / Widget / Notification bui
 
 Round 7: Settings slimmed from 16 pages / 177 default rows to 10 pages / 125 rows: duplicates removed, rows moved behind Debug / Advanced, groups merged (Stars, Splash, Clock, AI, gestures, Timeouts), a Timer preset and an audio drop-down. **untested** on screen. Open: one real "Performance mode" control (Profile and Low preset on battery are only hidden), one Stars master switch, shorter descriptions (many are still 4 to 9 lines).
 
+Round 8 (readability, not a new style): the Tiles utilities box names every control. The four power modes and the four quick actions (caffeine, record, focus, gaming) are icon-over-label tiles with a "Power mode" / "Quick actions" caption instead of eight unexplained glyphs; the charge tile says "Limit 80%" so it cannot be read as the charge level; Power is a quiet chip that turns red only under the pointer. Spotlight launcher: a 3 px selection rail and one line of context under each search result (its generic name, else its comment; the first row says "Best match"). Settings: the two bare "Style" rows are "Bar style" and "Notification style", so "Often used" (where explanations are folded behind the `?`) no longer shows an unexplained "Style: Off". **done**, screenshotted in the live session through a second, throw-away island instance. Split keeps its own block and the classic style is unchanged.
+
+## Round 9: one calm face for the centres, a capture menu, and a recording line (2026-11-04)
+
+The centres were three different shapes (a browser shell, a left menu, a plain column) with text buttons in every corner. This round gives them one quiet grammar and moves the explaining out of the way.
+
+Shared pieces (new): `CalmHeader.qml` (one glyph, the name and one short line, all centred; its right side takes icon buttons and never moves the middle), `CalmNav.qml` (a floating pill of icon-only pages with a small caption for the open one and an optional dot), `CalmIconBtn.qml` (38 px icon button, name in a tooltip, `active` / `primary` / `danger` states). Every centre now uses these; nothing opens a text-only row of buttons.
+
+| Surface | What changed | Status |
+|---|---|---|
+| Security | Centred shield header with the live posture under it; the six pages are icons in the middle (caption + alert dots); overview is "what needs you" rows (the whole row is the action, a chevron instead of a button) and two module tiles; the lock banner is one sentence with Unlock, Repair, and icon-only Console / Retry / Diagnose, the raw path and os error folded behind Details; page actions (Log, AI review, scans, firewall test / doctor / dashboard, ClamAV, defaults) are icon buttons with tooltips; Alerts / Held back are soft tabs | done, on screen |
+| Version | Centred "Version Center" header with one status line; Daily check, Check now, Update all and Close are icon buttons; the window is a little wider and fully opaque; the Halcyon name is 22-28 px instead of a poster, and the loading line is one short line | done, on screen (header / empty state) |
+| Study | The left column lost its "Learn from the files" label, rows are 46 px and have no accent outline in the calm style; the title screen is one glyph badge, "Ask your files", one line and three short starters; the status is one line; the composer says "Ask about this file…" | done, on screen |
+| Game | Centred gamepad header with refresh / pop out / close icons; Library / Stores / Proton / Doctor are icons in the middle; the add and filter controls are icons; the drawer lost its paragraphs and the spec block is one short line; Advanced stays a disclosure | done, on screen |
+| Luna | Centred robot header ("local · N chats · model"); Pop out / Settings / Close are icons; New chat is a round +; session rows are one title line + one quiet age line; the answer actions (tools, reasoning, read aloud, copy, save note) are icon buttons; the composer is softer | done, on screen |
+
+### Super + S: one small capture menu
+
+`CaptureMenu.qml` (mounted in `shell.qml`, bound in `hyprland/keybinds.lua`, listed in `Binds.js` and the launcher as `>capture`): four tiles, Region / Window / Screen / Record. `S` / `W` / `F` / `R` and Escape work; the menu leaves before the capture starts, so it is never in the picture. Region recording is new in `scripts/screen-record.sh`: `region` freezes the screen, takes a slurp rectangle and passes it to wf-recorder (`-g`), wl-screenrec (`--geometry`) or gpu-screen-recorder (`-region`), saves `region_<date>.mp4`, and the same command stops it. The full panel (Super + Ctrl + S) is untouched.
+
+### The recording line
+
+`RecIndicator.qml`: while a recording runs, a 2 px red line breathes around every screen and one pill (red dot, REC, time, stop glyph) sits top-left. The pill is the only part that takes a click (stop); the line lets everything through. The shell now watches `record.pid` / `record.apid` (and looks every 8 s while idle) so a recording started from a terminal, the panel or Super + S shows the line at once.
+
+### Security center: the schema-4 lock
+
+The screenshot's "database schema version 4 is newer than the supported version 3" happens when a newer ai-antivirus upgraded the database and an older engine was installed afterwards: no password can read it. `scripts/antivirus-db-repair.sh` (run from the new **Repair history** button, password asked once in the window) stops the three services, copies the database to `backups/ai-antivirus.db.unreadable-<date>`, moves it aside, lets `ai-antivirus db-init` create a database the installed engine understands, restores ownership to the service user, starts the services again and says where the old history is. If anything fails it puts the old database back. The bare os error is no longer the banner: Details holds it.
+
+## Round 10: the head of the Game Center, the Halcyon card's star, a second capture key, icon-only utilities and the builders (2026-11-04)
+
+| Ask | What changed | Status |
+|---|---|---|
+| Game Center: the empty band above the search | The search field (and the store filter) moved up into the head, on the left of the centred "Games"; the separate search row is gone. Add + refresh joined the head's icon actions, so the grid starts ~50 px higher. | done, on screen |
+| Version Center: the Halcyon star stops the card's animation / the card has no opening animation | The star now sits **above** the card's Flickable (it used to be inside the scrolling content, so a press could start a flick and drop the tilt); the actions pill moved up under the badges, where it is visible, and it now grows with a small scale pop as well as the height / opacity animation the companion cards already had. The star still turns. | done, on screen (shot with the menu held open) |
+| Super + Shift + S should open the capture menu | `shotarea` (Super + Shift + S) now calls the same `capture` IPC as Super + S. The cheatsheet (`Binds.js`) and the launcher copy say so; the old instant region drag is still `halcyon screenshot-area` from the command line. | done, config (Hyprland reload needed) |
+| Utilities box without the words | New `opt.utilWords` (Settings > Utilities box > Words in the utilities box), plus a small **Aa** button on the "Quick actions" line of the box. Off: every tile keeps only its glyph; Wi-Fi shows its signal stars, Bluetooth its battery stars, the hotspot its devices; the volume / charge figures and the tile names stay in the hover bubbles. Settings and Power also become icons. | done, on screen both states |
+| Builders | `WinHeader` gained a small glyph mark and a one-line status; Bar builder (dock icon + "Rail · top edge · 9 widgets", icon reset), Desktop / Lock screen builder (monitor or lock glyph, widget count, icon Widget builder / Place / Reset), Widget builder (widget glyph, count, icon Place, **Content / Place / Look / Styles as icon pages**, Add / Copy / Remove as icons) and Notification box builder (bell glyph, "Grouped · 392 px", icon restore / reset, look chips with icons). | done, on screen |
+
 ## Next surfaces (open)
 
 | Surface | Idea | Status |
 |---|---|---|
-| Security center / Game center | Tidier navigation, less text | open |
 | Lock screen and notifications | Match the chosen dashboard style | open |
+| Builders | The four windows now share the head and icon actions; the long right-hand panels can still be grouped further | open |
+| Luna / Game / Study | A second look on a real monitor with real data (the layout was checked in previews) | open |
 
 ## Checks run
 
-- `node tests/qml-types.test.js`, `settings-groups.test.js`, `settings-drop.test.js`: pass.
+- `node tests/qml-types.test.js`, `settings-groups.test.js`, `settings-drop.test.js`, `notif-settings.test.js`: pass (the notification test was updated for the renamed row).
+- `tests/versions.test.js` fails one check ("with nothing chosen the extras are not-chosen") in a clean worktree of HEAD too; it is not from this round.
+- `scripts/halcyon-selftest.sh --quick .`: 5 / 5.
 - `qmllint` on every touched file: no syntax errors (only "unqualified access" notes, the same pattern the existing tabs use).
-- On screen: **not done** (no Quickshell here). Check each style, the Settings switch, the quick switches, and the stat strip opening and closing with the tab.
+- On screen: **done** in the live session through a second, throw-away island instance on a private runtime dir (the installed config was not touched): the utilities box empty and open, the Spotlight launcher with no query and with `ste` typed, and Settings > Discover.
+- Round 9 on screen (same throw-away instance): Security overview, Antivirus (locked banner) and Firewall, Study, Version Center (header / empty state), the Super + S menu, and the recording line forced on. Game and Luna passed `qmllint` and were checked in previews after the last edit.
+- The earlier rounds' styles (Bento / Command / Spotlight, the builders) still need a look on a real monitor with real windows.
 
 ## Log
 
+- 2026-11-04: Round 10: Game Center search in the head; Halcyon card star above the Flickable and a pop for its actions; Super + Shift + S opens the capture menu; utilities words switch (Settings + Aa); builders' headers and icon actions. Files: `GameCenter.qml`, `VersionHero.qml`, `VersionActions.qml`, `hyprland/keybinds.lua`, `Binds.js`, `Launcher.qml`, `shell.qml`, `Panel.qml`, `UTile.qml`, `Settings.qml`, `WinHeader.qml`, `BarBuilderWindow.qml`, `DesktopBuilderWindow.qml`, `WidgetBuilderWindow.qml`, `NotifBuilderWindow.qml`, `UIUX-REWORK.md`, `changelog.md`.
+- 2026-11-04: Round 9: CalmHeader / CalmNav / CalmIconBtn and the five centres rebuilt on them; Super + S capture menu with region recording; RecIndicator (red line + REC pill); antivirus schema-4 repair. Files: `CalmHeader.qml`, `CalmNav.qml`, `CalmIconBtn.qml`, `CaptureMenu.qml`, `RecIndicator.qml`, `SecurityCenter.qml`, `VersionCenter.qml`, `VersionHero.qml`, `StudyCenter.qml`, `CenterShell.qml`, `GameCenter.qml`, `LunaCenter.qml`, `shell.qml`, `Launcher.qml`, `Binds.js`, `hyprland/keybinds.lua`, `scripts/screen-record.sh`, `scripts/antivirus-db-repair.sh`, `UIUX-REWORK.md`, `changelog.md`.
+- 2026-11-04: Round 8 readability pass: named power-mode / quick-action tiles and their captions in the utilities box, "Limit 80%" on the charge tile, a quiet Power chip with a red hover; Spotlight launcher selection rail and result context lines; "Bar style" / "Notification style" labels. Checked on screen through a second throw-away island instance. Files: `Panel.qml`, `Chip.qml`, `Launcher.qml`, `Settings.qml`, `tests/notif-settings.test.js`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-11-03: Unslop pass over every surface (type weights, sentence case, no overshoot, 10 px controls, copy, 4 px spacing) plus the Antigravity review fixes (drop-down stays open, Study tab hint, cheat sheet width, calendar header, Version Center buttons). Checked in a sandboxed nested Hyprland with screenshots. Files: see `changelog.md`.
 - 2026-11-03: Settings left menu: dim headings and pages, the open page and its heading a step brighter, a soft accent pill under the open page. Files: `Settings.qml`, `UIUX-REWORK.md`, `changelog.md`.
 - 2026-11-03: Settings 16 pages to 10, 177 rows to 125 (round 7). Files: `Settings.qml`, `shell.qml`, `tests/notif-settings.test.js`, `tests/test_ai_master.py`, `UIUX-REWORK.md`, `changelog.md`.

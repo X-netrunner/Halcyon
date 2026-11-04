@@ -131,7 +131,9 @@ Item {
             // ---- header (WinHeader: the same in every window)
             WinHeader {
                 pal: root.pal
+                glyph: root.lockT ? 0xF033E : 0xF0379
                 title: root.lockT ? "Lock screen builder" : "Desktop builder"
+                sub: (root.lockT ? "lock screen" : "desktop") + "  ·  " + root.wlayout.items.length + " widgets"
                 onClosed: root.closed()
             }
 
@@ -485,9 +487,9 @@ Item {
                         Flow {
                             width: parent.width
                             spacing: 8
-                            ActionChip { pal: root.pal; implicitHeight: 32; label: "Open the widget builder"; on: true; onClicked: root.openWidgets(root.lockT ? "lock" : "desktop") }
-                            ActionChip { pal: root.pal; implicitHeight: 32; label: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"; onClicked: root.editDesktop(root.lockT ? "lock" : "desktop") }
-                            ActionChip { pal: root.pal; implicitHeight: 32; label: root.lockT ? "Reset the lock screen" : "Reset the desktop"; doneLabel: "Reset"; onClicked: root.lockT ? root.resetLock() : root.resetAll() }
+                            CalmIconBtn { pal: root.pal; glyph: 0xF072C; label: "Widget builder"; tip: "Open the widget builder"; onClicked: root.openWidgets(root.lockT ? "lock" : "desktop") }
+                            CalmIconBtn { pal: root.pal; glyph: 0xF03CC; label: "Place"; tip: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"; onClicked: root.editDesktop(root.lockT ? "lock" : "desktop") }
+                            CalmIconBtn { pal: root.pal; glyph: 0xF0450; tip: root.lockT ? "Reset the lock screen" : "Reset the desktop"; onClicked: root.lockT ? root.resetLock() : root.resetAll() }
                         }
                     }
                 }
@@ -652,8 +654,8 @@ Item {
                             Flow {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                ActionChip { pal: root.pal; label: "Open the widget builder"; on: true; onClicked: root.openWidgets("desktop") }
-                                ActionChip { pal: root.pal; label: "Place them on the desktop"; onClicked: root.editDesktop("desktop") }
+                                CalmIconBtn { pal: root.pal; glyph: 0xF072C; label: "Widget builder"; tip: "Open the widget builder"; onClicked: root.openWidgets("desktop") }
+                                CalmIconBtn { pal: root.pal; glyph: 0xF03CC; label: "Place"; tip: "Place them on the desktop"; onClicked: root.editDesktop("desktop") }
                             }
 
                             Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
@@ -827,8 +829,8 @@ Item {
                             Flow {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                ActionChip { pal: root.pal; label: "Open the widget builder"; on: true; onClicked: root.openWidgets("lock") }
-                                ActionChip { pal: root.pal; label: "Place them on the lock screen"; onClicked: root.editDesktop("lock") }
+                                CalmIconBtn { pal: root.pal; glyph: 0xF072C; label: "Widget builder"; tip: "Open the widget builder"; onClicked: root.openWidgets("lock") }
+                                CalmIconBtn { pal: root.pal; glyph: 0xF03CC; label: "Place"; tip: "Place them on the lock screen"; onClicked: root.editDesktop("lock") }
                             }
                             RowLayout {
                                 Layout.fillWidth: true

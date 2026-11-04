@@ -329,6 +329,28 @@ Scope {
         if (avPkHidden) show("antivirus")                   // only the pkexec route hides this window, and never bring it over the console
         avPkHidden = false
         var code = avRootCode, errLine = avRootErrT.trim().replace(/^error: /i, "").split("\n")[0]
+        if (avRepairing) {
+            avRepairing = false
+            avPwAction = "unlock"
+            if (code !== 0 && /incorrect password|try again|no password/i.test(avRootErrT)) {
+                avUnlockErr = "That password did not work. Try again."
+                avPwAction = "repair"
+                avAskPw = true
+                pwFocusRequested()
+                return
+            }
+            if (code === 0) {
+                avUnlockErr = ""
+                avActErr = ""; avErr = ""
+                avSnap = false; avSnapStatus = null
+                flash("History repaired. Unlock again to read the new alerts.", false)
+                avTick()
+            } else {
+                avUnlockErr = "The repair did not finish" + (errLine !== "" ? ": " + errLine : " (exit " + code + ")")
+                flash(avUnlockErr, true)
+            }
+            return
+        }
         var snap = null
         if (code === 0) snap = parseSnap(avRootOutT)
         if (snap && snap.status) {
@@ -404,6 +426,19 @@ Scope {
     // dead ("Waiting for the password...") with no way out. Now: the field is here, sudo is what the console already uses, a wrong
     // password says so and asks again, nothing waits longer than the watchdog, and Cancel always works.
     property bool avAskPw: false              // the password field is showing
+    property string avPwAction: "unlock"      // unlock | repair: what the password will be used for
+    property bool avRepairing: false          // a repair is running (the password was accepted)
+    property bool avDetails: false            // the raw error (a path, an os error) is only shown when asked for
+    // the history was written by a newer engine: no password can read it, the database has to be rebuilt (a copy is kept)
+    readonly property bool avSchemaStuck: /schema version \d+ is newer than the supported version/.test(avUnlockErr + " " + avErr + " " + avActErr)
+    readonly property string repairScript: Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-db-repair.sh"
+    function avRepair() {
+        if (!hasAv || avRootProc.running || agentProc.running) return
+        avUnlockErr = ""
+        avPwAction = "repair"
+        avAskPw = true
+        pwFocusRequested()
+    }
     property string avUnlockVia: ""           // sudo | pkexec: how the last unlock ran
     property bool avPkHidden: false           // the pkexec route hid this window: bring it back when that ends (never over the console)
     property bool avCancelled: false          // a run was stopped on purpose: its exit is not an error
@@ -416,6 +451,7 @@ Scope {
     function avUnlock() {
         if (!hasAv || avRootProc.running || agentProc.running) return
         avUnlockErr = ""
+        avPwAction = "unlock"
         avAskPw = true
         pwFocusRequested()
     }
@@ -423,12 +459,19 @@ Scope {
         if (pw === "" || avRootProc.running || agentProc.running || !hasAv) return
         avUnlockErr = ""
         avUnlockVia = "sudo"; avUnlockStep = "password"
+        avRepairing = avPwAction === "repair"
         avRootOutT = ""; avRootErrT = ""; avRootCode = -1
         avRootExited = false; avRootOutDone = false; avRootErrDone = false
         // sh reads ONE line (the password) and gives sudo exactly that line: a wrong password fails once instead of retrying three times
         // (three wrong tries would lock the account for a few minutes), and timeout ends it if it ever hangs
-        avRootProc.command = ["timeout", "-k", "3", "40", "sh", "-c",
-            "IFS= read -r pw; printf '%s\\n' \"$pw\" | sudo -S -p '' -- /bin/sh -c \"$1\" sh \"$2\"", "sh", snapScript, avBin]
+        if (avRepairing) {
+            // the repair stops and starts services, so it gets a longer leash than the quick snapshot read
+            avRootProc.command = ["timeout", "-k", "3", "90", "sh", "-c",
+                "IFS= read -r pw; printf '%s\\n' \"$pw\" | sudo -S -p '' -- /bin/bash \"$1\"", "sh", repairScript]
+        } else {
+            avRootProc.command = ["timeout", "-k", "3", "40", "sh", "-c",
+                "IFS= read -r pw; printf '%s\\n' \"$pw\" | sudo -S -p '' -- /bin/sh -c \"$1\" sh \"$2\"", "sh", snapScript, avBin]
+        }
         avRootProc.running = true
         avRootProc.write(pw + "\n")
         avAskPw = false
@@ -758,14 +801,25 @@ Scope {
     readonly property int down: (hasFw && !fwAlive ? 1 : 0) + (hasAv && av !== null && !avRunning ? 1 : 0)
     readonly property string overall: !detected ? "" : (!hasFw && !hasAv ? "Not installed" : (down > 0 ? "Needs attention" : (avLocked ? "Alerts are locked" : (avPending > 0 ? "Waiting for your OK" : (avUnacked > 0 ? "Review alerts" : "Protected")))))
     readonly property color overallColor: !hasFw && !hasAv ? pal.muted : (down > 0 ? pal.bad : (avUnacked > 0 || avPending > 0 || avLocked ? pal.warn : pal.good))
+    readonly property string overallTone: !hasFw && !hasAv ? "muted" : (down > 0 ? "bad" : (avUnacked > 0 || avPending > 0 || avLocked ? "warn" : "good"))
+    // the pages as icons in the middle of the head: only what is installed (a module you don't have is not a page)
+    readonly property var navItems: {
+        var a = [{ key: "overview", glyph: 0xF0570, label: "Overview", dot: avUnacked + avPending > 0, tone: overallColor }]
+        if (hasFw || !detected) a.push({ key: "firewall", glyph: 0xF1A11, label: "Firewall", dot: hasFw && !fwAlive, tone: pal.bad })
+        if (hasAv || !detected) a.push({ key: "antivirus", glyph: 0xF13B6, label: "Antivirus", dot: avUnacked > 0 || avPending > 0, tone: pal.warn })
+        if (hasAv || !detected) a.push({ key: "exceptions", glyph: 0xF0780, label: "Exceptions" })
+        if (hasFw || hasAv || !detected) a.push({ key: "ask", glyph: 0xF0B79, label: "Ask" })
+        if (hasClam || !detected) a.push({ key: "clamav", glyph: 0xF0668, label: "ClamAV", dot: clam !== null && !clam.good, tone: pal.bad })
+        return a
+    }
     // ---- the smart overview: one sentence about how things are, and at most three things that need you (each with ONE button)
     readonly property var ovTodo: {
         var t = []
-        if (hasFw && !fwAlive) t.push({ key: "fw", tone: "bad", glyph: 0xF1A11, title: "Firewall is not responding", sub: "Open it to see why.", btn: "Open" })
-        if (hasAv && av !== null && !avRunning) t.push({ key: "avdown", tone: "bad", glyph: 0xF13B6, title: "Antivirus is not running", sub: "Nothing is being watched right now.", btn: "Open" })
-        if (avLocked) t.push({ key: "unlock", tone: "warn", glyph: 0xF033E, title: "Alerts are locked", sub: "Unlock once with your password to read them.", btn: "Unlock" })
-        if (avPending > 0) t.push({ key: "held", tone: "warn", glyph: 0xF0026, title: avPending + (avPending === 1 ? " action waits" : " actions wait") + " for your OK", sub: "Approve it, or reject it to leave things as they are.", btn: "Review" })
-        if (!avLocked && avUnacked > 0) t.push({ key: "alerts", tone: avAlerts.some(function (a) { return a.severity === "critical" || a.severity === "high" }) ? "bad" : "warn", glyph: 0xF0026, title: avUnacked + (avUnacked === 1 ? " alert" : " alerts") + " to review", sub: "Allow what you trust, acknowledge the rest.", btn: "Review" })
+        if (hasFw && !fwAlive) t.push({ key: "fw", tone: "bad", glyph: 0xF1A11, title: "Firewall is not responding", sub: "It is not running.", btn: "Open" })
+        if (hasAv && av !== null && !avRunning) t.push({ key: "avdown", tone: "bad", glyph: 0xF13B6, title: "Antivirus is not running", sub: "Nothing is being watched.", btn: "Open" })
+        if (avLocked) t.push({ key: "unlock", tone: "warn", glyph: 0xF033E, title: "Alerts are locked", sub: "Unlock to read them.", btn: "Unlock" })
+        if (avPending > 0) t.push({ key: "held", tone: "warn", glyph: 0xF0026, title: avPending + (avPending === 1 ? " action waits" : " actions wait") + " for your OK", sub: "Approve or reject.", btn: "Review" })
+        if (!avLocked && avUnacked > 0) t.push({ key: "alerts", tone: avAlerts.some(function (a) { return a.severity === "critical" || a.severity === "high" }) ? "bad" : "warn", glyph: 0xF0026, title: avUnacked + (avUnacked === 1 ? " alert" : " alerts") + " to review", sub: "Allow what you trust.", btn: "Review" })
         return t.slice(0, 3)
     }
     readonly property var ovTiles: [
@@ -780,9 +834,8 @@ Scope {
     readonly property string ovHead: !detected ? "" : (ovTodo.length === 0 ? "You're protected" : (ovTodo.length === 1 ? "One thing needs you" : ovTodo.length + " things need you"))
     readonly property string ovSub: {
         if (!detected) return ""
-        if (ovTodo.length > 0) return "Here is what to do next."
-        var a = [hasFw ? (fwState === "Protecting" ? "Firewall is protecting" : "Firewall is " + fwState.toLowerCase()) : "", hasAv ? "antivirus is " + avState.toLowerCase() : ""].filter(function (x) { return x !== "" })
-        return a.length > 0 ? cap(a.join(", ")) + ". Nothing needs you." : "Nothing needs you."
+        if (ovTodo.length > 0) return ""
+        return hasFw && hasAv ? "Firewall and antivirus are both running." : (hasAv ? "Antivirus is running." : "Firewall is running.")
     }
     function ovGo(key) {
         if (key === "fw") setTab("firewall")
@@ -1286,8 +1339,8 @@ Scope {
             id: win
             desktop: root.deskMode
             title: "Security"
-            deskWidth: 1100
-            deskHeight: 720
+            deskWidth: 1140
+            deskHeight: 780
             namespace: "island-security"
             keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             onCloseRequested: root.hide()
@@ -1320,8 +1373,8 @@ Scope {
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: win.desktop ? qp.width : Math.min(1100, qp.width - 80)
-                    height: win.desktop ? qp.height : Math.min(720, qp.height - 80)
+                    width: win.desktop ? qp.width : Math.min(1140, qp.width - 80)
+                    height: win.desktop ? qp.height : Math.min(780, qp.height - 80)
                     radius: win.desktop ? 0 : root.pal.rXl
                     opacityBody: 0.97
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
@@ -1330,66 +1383,69 @@ Scope {
                     scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
 
-                    RowLayout {
+                    ColumnLayout {
                         anchors.fill: parent
                         spacing: 0
 
-                        // ======================== the pages
+                        // ======================== the head, in the middle
                         Item {
-                            Layout.preferredWidth: 224
-                            Layout.fillHeight: true
-                            Rectangle { anchors { top: parent.top; bottom: parent.bottom; right: parent.right; topMargin: 24; bottomMargin: 24 } width: 1; color: root.pal.lineSoft }
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 96
 
-                            ColumnLayout {
+                            CalmHeader {
                                 anchors.fill: parent
-                                anchors.margins: 16
-                                anchors.rightMargin: 17
-                                spacing: 4
+                                anchors.leftMargin: 28
+                                anchors.rightMargin: 16
+                                pal: root.pal
+                                glyph: 0xF0565
+                                title: "Security"
+                                sub: !root.detected ? "checking…"
+                                     : root.overall + (root.posture !== "" ? "  ·  " + root.cap(root.posture) : "")
+                                subTone: root.overallTone
 
-                                Row {
-                                    Layout.topMargin: 6
-                                    Layout.bottomMargin: 20
-                                    Layout.leftMargin: 8
-                                    spacing: 10
-                                    Glyph { anchors.verticalCenter: parent.verticalCenter; code: 0xF0565; font.pixelSize: 20; color: root.pal.accent }
-                                    Text { anchors.verticalCenter: parent.verticalCenter; text: "Security"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
+                                CalmIconBtn {
+                                    pal: root.pal
+                                    glyph: 0xF04D9
+                                    tip: "Diagnose"
+                                    onClicked: root.consoleRequested(root.avDiagCmd)
                                 }
-                                NavRow { key: "overview"; label: "Overview"; glyph: 0xF0570; tone: root.overallColor }
-                                NavRow { key: "firewall"; label: "Firewall"; glyph: 0xF1A11; tone: root.fwColor; available: root.hasFw || !root.detected }
-                                NavRow { key: "antivirus"; label: "Antivirus"; glyph: 0xF13B6; tone: root.avColor; badge: root.avUnacked + root.avPending; available: root.hasAv || !root.detected }
-                                NavRow { key: "exceptions"; label: "Exceptions"; glyph: 0xF0780; available: root.hasAv || !root.detected }
-                                NavRow { key: "ask"; label: "Ask"; glyph: 0xF0B79; available: root.hasFw || root.hasAv || !root.detected }
-                                NavRow { key: "clamav"; label: "ClamAV"; glyph: 0xF0668; tone: root.clam !== null ? root.clamColor : "transparent"; available: root.hasClam || !root.detected }
-                                Item { Layout.fillHeight: true }
-                                PopBtn { Layout.leftMargin: 4; pal: root.pal; popped: root.popped; onClicked: root.popped = !root.popped }
-                                Text {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 8
-                                    visible: root.note !== ""
-                                    text: root.note
-                                    wrapMode: Text.Wrap
-                                    color: root.noteBad ? root.pal.bad : root.pal.good
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tCap + 1
+                                CalmIconBtn {
+                                    pal: root.pal
+                                    glyph: root.popped ? 0xF0141 : 0xF03CC
+                                    active: root.popped
+                                    tip: root.popped ? "Popped out" : "Pop out"
+                                    onClicked: root.popped = !root.popped
                                 }
-                                // the system posture sysmode set (ai-firewall posture)
-                                Rectangle {
-                                    visible: root.posture !== ""
-                                    Layout.leftMargin: 4
-                                    implicitWidth: poRow.implicitWidth + 24
-                                    implicitHeight: 30
-                                    radius: 15
-                                    color: root.pal.fill
-                                    readonly property color tone: root.posture === "lockdown" ? root.pal.bad : (root.posture === "stealth" ? root.pal.accent2 : (root.posture === "relaxed" ? root.pal.warn : root.pal.good))
-                                    Row {
-                                        id: poRow
-                                        anchors.centerIn: parent
-                                        spacing: 8
-                                        Glyph { anchors.verticalCenter: parent.verticalCenter; code: 0xF033E; font.pixelSize: 14; color: parent.parent.tone }
-                                        Text { anchors.verticalCenter: parent.verticalCenter; text: root.cap(root.posture); color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.Medium }
-                                    }
+                                CalmIconBtn {
+                                    pal: root.pal
+                                    glyph: 0xF0156
+                                    tip: "Close"
+                                    onClicked: root.hide()
                                 }
                             }
+                        }
+
+                        // ======================== the pages, as icons in the middle
+                        CalmNav {
+                            Layout.alignment: Qt.AlignHCenter
+                            pal: root.pal
+                            items: root.navItems
+                            current: root.tab
+                            onPicked: key => root.setTab(key)
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 28
+                            Layout.rightMargin: 28
+                            Layout.topMargin: 6
+                            visible: root.note !== ""
+                            horizontalAlignment: Text.AlignHCenter
+                            text: root.note
+                            color: root.noteBad ? root.pal.bad : root.pal.good
+                            font.family: root.pal.uiFont
+                            font.pixelSize: root.pal.tCap
+                            elide: Text.ElideRight
                         }
 
                         // ======================== the page
@@ -1479,36 +1535,30 @@ Scope {
                                 text: "Not installed"
                             }
 
-                            // ---- overview: how things are in one sentence, what needs you, and little else
+                            // ---- overview: what needs you, then the two modules at a glance
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: 32
-                                spacing: 20
+                                spacing: 14
                                 visible: root.tab === "overview" && (root.hasFw || root.hasAv)
 
+                                // all clear: one quiet line; when something needs you, the rows below are the whole story
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Layout.bottomMargin: 4
-                                    spacing: 20
+                                    visible: root.ovTodo.length === 0
+                                    spacing: 12
                                     Rectangle {
-                                        id: ovIcon
-                                        width: 68; height: 68; radius: 24
-                                        color: Qt.alpha(root.overallColor, 0.14)
-                                        Behavior on color { ColorAnimation { duration: 400; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                        Glyph { anchors.centerIn: parent; code: root.ovCalm ? 0xF0565 : 0xF0026; font.pixelSize: 32; color: root.overallColor }
-                                        SequentialAnimation on scale {
-                                            running: root.open && root.tab === "overview" && !root.ovCalm && !root.pal.calm
-                                            loops: Animation.Infinite
-                                            NumberAnimation { to: 1.06; duration: 1100; easing.type: Easing.InOutSine }
-                                            NumberAnimation { to: 1.0; duration: 1100; easing.type: Easing.InOutSine }
-                                            onRunningChanged: if (!running) ovIcon.scale = 1
-                                        }
+                                        width: 40; height: 40; radius: 14
+                                        color: Qt.alpha(root.overallColor, 0.12)
+                                        Glyph { anchors.centerIn: parent; code: 0xF0565; font.pixelSize: 21; color: root.overallColor }
                                     }
-                                    Column {
+                                    Text {
                                         Layout.fillWidth: true
-                                        spacing: 4
-                                        Text { text: root.ovHead; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 10; font.weight: Font.Medium }
-                                        Text { width: parent.width; elide: Text.ElideRight; text: root.ovSub; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                        text: root.ovSub
+                                        color: root.pal.muted
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                        elide: Text.ElideRight
                                     }
                                 }
 
@@ -1523,9 +1573,9 @@ Scope {
                                             required property var modelData
                                             readonly property color accentCol: modelData.tone === "bad" ? root.pal.bad : root.pal.warn
                                             Layout.fillWidth: true
-                                            Layout.preferredHeight: 68
+                                            Layout.preferredHeight: 64
                                             radius: root.pal.rLg
-                                            color: Qt.alpha(accentCol, tdMa.containsMouse ? 0.14 : 0.09)
+                                            color: Qt.alpha(accentCol, tdMa.containsMouse ? 0.13 : 0.085)
                                             MouseArea {
                                                 id: tdMa
                                                 anchors.fill: parent
@@ -1537,21 +1587,21 @@ Scope {
                                                 id: tdIc
                                                 x: 14
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                width: 40
-                                                height: 40
-                                                radius: 14
-                                                color: Qt.alpha(td.accentCol, 0.18)
+                                                width: 38
+                                                height: 38
+                                                radius: 13
+                                                color: Qt.alpha(td.accentCol, 0.16)
                                                 Glyph {
                                                     anchors.centerIn: parent
                                                     code: td.modelData.glyph
-                                                    font.pixelSize: 20
+                                                    font.pixelSize: 19
                                                     color: td.accentCol
                                                 }
                                             }
                                             Column {
                                                 anchors.left: tdIc.right
                                                 anchors.leftMargin: 14
-                                                anchors.right: tdBtn.left
+                                                anchors.right: tdGo.left
                                                 anchors.rightMargin: 12
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 spacing: 2
@@ -1569,14 +1619,15 @@ Scope {
                                                     text: td.modelData.sub
                                                 }
                                             }
-                                            Btn {
-                                                id: tdBtn
+                                            // the whole row is the action; this is the quiet affordance, not a second button
+                                            Glyph {
+                                                id: tdGo
                                                 anchors.right: parent.right
-                                                anchors.rightMargin: 14
+                                                anchors.rightMargin: 16
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                label: td.modelData.btn
-                                                primary: true
-                                                onClicked: root.ovGo(td.modelData.key)
+                                                code: 0xF0142
+                                                font.pixelSize: 15
+                                                color: Qt.alpha(root.pal.text, tdMa.containsMouse ? 0.8 : 0.45)
                                             }
                                         }
                                     }
@@ -1668,14 +1719,6 @@ Scope {
                                     }
                                 }
 
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 8
-                                    Btn { visible: root.hasAv || root.hasClam; label: root.scanning ? "Scanning…" : "Scan downloads"; glyph: 0xF1276; disabled: root.scanning; onClicked: { root.setTab("antivirus"); root.scan("Downloads") } }
-                                    Btn { visible: root.hasFw; label: "Test firewall"; glyph: 0xF0668; onClicked: root.runTest("all") }
-                                    Item { Layout.fillWidth: true }
-                                }
-
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: 2
@@ -1710,9 +1753,9 @@ Scope {
                                     detail: root.fw === null ? "" : [root.fw.interface || "no uplink", (root.fw.xdp_mode || "-") + " XDP",
                                         "up " + root.dur(Math.max(1, (root.fw.updated_unix || 0) - (root.fw.started_unix || 0))),
                                         "open tcp " + ((root.fw.allow_tcp || []).join(" ") || "none")].join("  ·  ")
-                                    Btn { label: "Test"; glyph: 0xF0668; onClicked: root.runTest("all") }
-                                    Btn { label: "Doctor"; glyph: 0xF04D9; onClicked: root.consoleRequested("sudo " + root.fwBin + " doctor --fix") }
-                                    Btn { label: "Dashboard"; glyph: 0xF0A07; primary: true; onClicked: root.terminalRequested("sudo " + root.shq(root.fwBin) + " top") }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF0668; tip: "Test the firewall"; onClicked: root.runTest("all") }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF04D9; tip: "Doctor (check and fix)"; onClicked: root.consoleRequested("sudo " + root.fwBin + " doctor --fix") }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF0A07; primary: true; tip: "Open the live dashboard"; onClicked: root.terminalRequested("sudo " + root.shq(root.fwBin) + " top") }
                                 }
 
                                 Strip {
@@ -1802,15 +1845,17 @@ Scope {
                                     tone: root.avColor
                                     detail: root.av === null ? "" : [root.av.mode || "-", "v" + root.av.version,
                                         root.av.last_event_unix ? "last event " + root.ago(root.av.last_event_unix) + " ago" : ""].filter(function (x) { return x !== "" }).join("  ·  ")
-                                    Btn { label: "Log"; glyph: 0xF018D; onClicked: root.consoleRequested("ai-antivirus tail -f") }
-                                    Btn {
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF018D; tip: "Open the log"; onClicked: root.consoleRequested("ai-antivirus tail -f") }
+                                    CalmIconBtn {
+                                        pal: root.pal
                                         readonly property bool aiOn: !!(root.av && root.av.services && root.av.services.analyzer === "active")
-                                        label: aiOn ? "AI review: on" : "Turn on AI review"
                                         glyph: 0xF0B79
+                                        active: aiOn
+                                        tip: aiOn ? "AI review is on" : "Turn on AI review"
                                         onClicked: root.consoleRequested("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-ai.sh " + (aiOn ? "off" : "on"))
                                     }
-                                    Btn { label: "Scan home"; glyph: 0xF02DC; disabled: root.scanning; onClicked: root.scan(".") }
-                                    Btn { label: "Scan downloads"; glyph: 0xF1276; primary: true; disabled: root.scanning; onClicked: root.scan("Downloads") }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF02DC; tip: "Scan home"; enabledBtn: !root.scanning; onClicked: root.scan(".") }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF1276; primary: true; tip: "Scan downloads"; enabledBtn: !root.scanning; onClicked: root.scan("Downloads") }
                                 }
 
                                 // ---- locked: say why, and offer the way out that fits. Replaces the dead "Unreadable" lists.
@@ -1823,13 +1868,10 @@ Scope {
                                     radius: root.pal.rLg
                                     readonly property color tone: root.avSnap ? root.pal.accent : root.pal.warn
                                     readonly property string why: root.avSnap
-                                        ? "Read once with your password, so it does not update by itself. This build keeps its database readable by its own user only (0600) on purpose, so Reload when you want fresh alerts."
-                                        : root.avPerm === "" ? "Checking what is blocking it…"
-                                        : root.avPerm === "nogroup" ? "This install has no ai-antivirus group, so only root can read the alerts. Unlock once with your password, or run Diagnose to see who owns the files."
-                                        : root.avPerm === "notmember" ? "This build keeps its alert database readable only by its own user (0600), on purpose, so being in the ai-antivirus group gives no access. Unlock once with your password to see a snapshot."
-                                        : root.avPerm === "stale" ? (root.hasSg ? "This build keeps its alert database readable only by its own user (0600), so the group gives no access. Unlock once with your password to see a snapshot."
-                                                                              : "This build keeps its alert database readable only by its own user (0600), so the group gives no access. Unlock once with your password to see a snapshot.")
-                                        : "The alert database is readable only by its own user (0600) by design. Unlock once with your password to see a snapshot, or run Diagnose to see the file permissions."
+                                        ? "Read once with your password · Reload for fresh alerts"
+                                        : root.avPerm === "" ? "Checking permissions…"
+                                        : root.avPerm === "nogroup" ? "Only root can read it on this install."
+                                        : "The database is readable by its own user only."
                                     color: Qt.alpha(tone, 0.09)
                                     border.width: 1
                                     border.color: Qt.alpha(tone, 0.25)
@@ -1851,7 +1893,7 @@ Scope {
                                                 spacing: 4
                                                 Text {
                                                     Layout.fillWidth: true
-                                                    text: root.avSnap ? "Showing a one-time snapshot" + (root.avSnapAt > 0 && root.nowTick >= 0 ? "  ·  read " + root.ago(root.avSnapAt / 1000) + " ago" : "") : "Alerts and history are locked for your user"
+                                                    text: root.avSnap ? "Snapshot" + (root.avSnapAt > 0 && root.nowTick >= 0 ? "  ·  read " + root.ago(root.avSnapAt / 1000) + " ago" : "") : "Alerts are locked"
                                                     color: root.pal.text
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: root.pal.tBody + 1
@@ -1876,13 +1918,39 @@ Scope {
                                                     font.family: root.pal.uiFont
                                                     font.pixelSize: root.pal.tBody - 1
                                                 }
+                                                // the technical line (a path, an os error) stays folded away: the one sentence above is the reason
                                                 Text {
                                                     Layout.fillWidth: true
-                                                    visible: !root.avSnap && (root.avActErr !== "" || root.avErr !== "")
+                                                    visible: root.avDetails && !root.avSnap && (root.avActErr !== "" || root.avErr !== "")
                                                     text: root.avActErr !== "" ? root.avActErr : root.avErr
                                                     wrapMode: Text.Wrap
-                                                    color: Qt.alpha(root.pal.text, 0.7)
+                                                    maximumLineCount: 3
+                                                    elide: Text.ElideRight
+                                                    color: Qt.alpha(root.pal.text, 0.6)
                                                     font.family: root.pal.mono
+                                                    font.pixelSize: root.pal.tCap
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    visible: !root.avDetails && !root.avSnap && (root.avActErr !== "" || root.avErr !== "")
+                                                    horizontalAlignment: Text.AlignLeft
+                                                    text: "Details"
+                                                    color: Qt.alpha(root.pal.muted, 0.9)
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tCap
+                                                    font.underline: detMa.containsMouse
+                                                    MouseArea { id: detMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.avDetails = true }
+                                                }
+                                                // the one case a password can not solve: the history was written by a newer engine
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    visible: root.avSchemaStuck
+                                                    text: "The history was written by a newer ai-antivirus, so no password can read it. Repair keeps a copy and starts a fresh history."
+                                                    wrapMode: Text.Wrap
+                                                    maximumLineCount: 2
+                                                    elide: Text.ElideRight
+                                                    color: root.pal.muted
+                                                    font.family: root.pal.uiFont
                                                     font.pixelSize: root.pal.tCap
                                                 }
                                             }
@@ -1924,23 +1992,24 @@ Scope {
                                             Btn { label: "Unlock"; glyph: 0xF0306; primary: true; onClicked: pwIn.go() }
                                             Btn { label: "Cancel"; onClicked: { pwIn.text = ""; root.avAskPw = false } }
                                         }
-                                        Flow {
+                                        RowLayout {
                                             Layout.fillWidth: true
-                                            Layout.leftMargin: 56
-                                            spacing: 8
+                                            Layout.leftMargin: 50
+                                            Layout.rightMargin: 4
+                                            spacing: 6
+
                                             Btn {
-                                                visible: false
+                                                visible: !root.avAskPw && root.avUnlockStep === ""
                                                 primary: true
-                                                label: root.avSnap ? "Fix for good" : "Add me to the group"
-                                                glyph: 0xF0004
-                                                onClicked: root.consoleRequested(root.avJoinCmd)
+                                                label: root.avSnap ? "Reload" : "Unlock"
+                                                glyph: 0xF0306
+                                                onClicked: root.avUnlock()
                                             }
                                             Btn {
-                                                primary: true
-                                                label: root.avUnlockStep === "agent" ? "Starting the password window…" : (root.avUnlockStep === "password" ? "Checking…" : (root.avSnap ? "Reload (password)" : "Unlock once with password"))
-                                                glyph: 0xF0306
-                                                disabled: root.avUnlockStep !== ""
-                                                onClicked: root.avUnlock()
+                                                visible: !root.avAskPw && root.avUnlockStep === "" && root.avSchemaStuck
+                                                label: "Repair history"
+                                                glyph: 0xF04D9
+                                                onClicked: root.avRepair()
                                             }
                                             Btn {
                                                 visible: root.avUnlockStep !== ""
@@ -1948,20 +2017,11 @@ Scope {
                                                 glyph: 0xF0156
                                                 onClicked: root.avCancelUnlock("Cancelled.")
                                             }
-                                            Btn {
-                                                visible: root.avUnlockStep === "" && !root.avAskPw
-                                                label: "System password window"
-                                                glyph: 0xF0306
-                                                onClicked: root.avUnlockPk()
-                                            }
-                                            Btn {
-                                                visible: root.avUnlockErr !== ""
-                                                label: "Do it in the console (sudo)"
-                                                glyph: 0xF018D
-                                                onClicked: root.consoleRequested(root.avSudoCmd)
-                                            }
-                                            Btn { label: "Retry"; glyph: 0xF0450; onClicked: root.avTick() }
-                                            Btn { label: "Diagnose"; glyph: 0xF018D; onClicked: root.consoleRequested(root.avDiagCmd) }
+                                            Item { Layout.fillWidth: true }
+                                            CalmIconBtn { pal: root.pal; glyph: 0xF018D; tip: "Do it in the console (sudo)"; onClicked: root.consoleRequested(root.avSudoCmd) }
+                                            CalmIconBtn { pal: root.pal; glyph: 0xF0306; tip: "System password window"; visible: !root.avSnap; onClicked: root.avUnlockPk() }
+                                            CalmIconBtn { pal: root.pal; glyph: 0xF0450; tip: "Retry"; onClicked: root.avTick() }
+                                            CalmIconBtn { pal: root.pal; glyph: 0xF04D9; tip: "Diagnose"; onClicked: root.consoleRequested(root.avDiagCmd) }
                                         }
                                     }
                                 }
@@ -2061,8 +2121,37 @@ Scope {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: 8
-                                    Btn { label: "Alerts" + (root.avAlerts.length > 0 ? "  " + root.avAlerts.length : ""); glyph: 0xF0026; primary: root.avView === "alerts"; onClicked: root.avView = "alerts" }
-                                    Btn { label: "Held back" + (root.avPending > 0 ? "  " + root.avPending + " need OK" : (root.avHeld.length > 0 ? "  " + root.avHeld.length : "")); glyph: 0xF0780; primary: root.avView === "held"; onClicked: root.avView = "held" }
+                                    // two soft tabs, not two solid buttons: the list below is the thing to look at
+                                    Rectangle {
+                                        implicitWidth: alRow.implicitWidth + 26
+                                        implicitHeight: 32
+                                        radius: 16
+                                        color: root.avView === "alerts" ? Qt.alpha(root.pal.accent, 0.16) : (alMa.containsMouse ? root.pal.fillHover : root.pal.fill)
+                                        Row {
+                                            id: alRow
+                                            anchors.centerIn: parent
+                                            spacing: 7
+                                            Glyph { anchors.verticalCenter: parent.verticalCenter; code: 0xF0026; font.pixelSize: 14; color: root.avView === "alerts" ? root.pal.accent : root.pal.muted }
+                                            Text { anchors.verticalCenter: parent.verticalCenter; text: "Alerts"; color: root.avView === "alerts" ? root.pal.text : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.Medium }
+                                            Text { visible: root.avAlerts.length > 0; anchors.verticalCenter: parent.verticalCenter; text: root.avAlerts.length; color: Qt.alpha(root.pal.text, 0.55); font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        }
+                                        MouseArea { id: alMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.avView = "alerts" }
+                                    }
+                                    Rectangle {
+                                        implicitWidth: hbRow.implicitWidth + 26
+                                        implicitHeight: 32
+                                        radius: 16
+                                        color: root.avView === "held" ? Qt.alpha(root.pal.accent, 0.16) : (hbMa.containsMouse ? root.pal.fillHover : root.pal.fill)
+                                        Row {
+                                            id: hbRow
+                                            anchors.centerIn: parent
+                                            spacing: 7
+                                            Glyph { anchors.verticalCenter: parent.verticalCenter; code: 0xF0780; font.pixelSize: 14; color: root.avView === "held" ? root.pal.accent : root.pal.muted }
+                                            Text { anchors.verticalCenter: parent.verticalCenter; text: "Held back"; color: root.avView === "held" ? root.pal.text : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.Medium }
+                                            Text { visible: root.avPending + root.avHeld.length > 0; anchors.verticalCenter: parent.verticalCenter; text: root.avPending > 0 ? root.avPending + " need OK" : root.avHeld.length; color: Qt.alpha(root.pal.text, 0.55); font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                        }
+                                        MouseArea { id: hbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.avView = "held" }
+                                    }
                                     Item { Layout.fillWidth: true }
                                     Repeater {
                                         model: root.avView === "alerts" ? ["all", "critical", "high", "medium"] : []
@@ -2219,9 +2308,9 @@ Scope {
                                     detail: root.clamErr !== "" ? root.clamErr
                                         : (root.clam === null ? "Checks the signatures, the updater and that ClamAV detects a harmless test file"
                                         : root.clam.headline)
-                                    Btn { label: "Test ClamAV"; glyph: 0xF0668; disabled: root.clamBusy; onClicked: root.clamRun("test", "") }
-                                    Btn { label: "Exceptions"; glyph: 0xF0780; disabled: root.clamBusy; onClicked: root.clamRun("exceptions", "") }
-                                    Btn { label: "Scan downloads"; glyph: 0xF1276; primary: true; disabled: root.clamBusy; onClicked: root.clamRun("scan", "Downloads") }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF0668; tip: "Test ClamAV"; enabledBtn: !root.clamBusy; onClicked: root.clamRun("test", "") }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF0780; tip: "Exceptions"; enabledBtn: !root.clamBusy; onClicked: root.clamRun("exceptions", "") }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF1276; primary: true; tip: "Scan downloads"; enabledBtn: !root.clamBusy; onClicked: root.clamRun("scan", "Downloads") }
                                 }
 
                                 Working { visible: root.clamBusy }
@@ -2358,7 +2447,7 @@ Scope {
                                     status: root.exc === null ? "Exceptions" : root.excList.length + (root.excList.length === 1 ? " exception" : " exceptions")
                                     tone: root.pal.accent
                                     detail: root.exc === null ? "" : (root.exc.from_file ? root.exc.file : "Defaults")
-                                    Btn { label: "Defaults"; glyph: 0xF0450; disabled: root.exc === null || !root.exc.from_file; onClicked: root.excChange(["reset"]) }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF0450; tip: "Restore the defaults"; enabledBtn: root.exc !== null && root.exc.from_file; onClicked: root.excChange(["reset"]) }
                                 }
 
                                 // add: kind, match, label

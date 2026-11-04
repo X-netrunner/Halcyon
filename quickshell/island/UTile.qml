@@ -7,6 +7,7 @@ Rectangle {
     property var pal
     property string glyph: ""
     property string caption: ""
+    property bool words: true            // false: the glyph alone (Settings > Utilities box > Words); stars still show
     property int stars: -1               // -1: show the caption; 0..5: that many lit stars instead
     property bool on: false
     property string tip: ""
@@ -38,12 +39,13 @@ Rectangle {
         }
         Item {
             anchors.horizontalCenter: parent.horizontalCenter
+            visible: root.stars >= 0 || root.words
             width: Math.max(starRow.width, cap.width)
-            height: 14
+            height: visible ? 14 : 0
             UStars { id: starRow; visible: root.stars >= 0; pal: root.pal; lit: Math.max(0, root.stars); anchors.centerIn: parent }
             Text {
                 id: cap
-                visible: root.stars < 0
+                visible: root.stars < 0 && root.words
                 anchors.centerIn: parent
                 width: Math.min(implicitWidth, root.width - 10)
                 horizontalAlignment: Text.AlignHCenter
@@ -62,7 +64,19 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: m => m.button === Qt.RightButton ? root.rightClicked() : root.clicked()
     }
-    Timer { id: tipT; interval: 380; onTriggered: root.tipReady = root.tip !== "" }
+    property bool tipAbove: false          // the box is near the bottom of the screen: the bubble flips up instead of being cut off
+    Timer {
+        id: tipT; interval: 380
+        onTriggered: {
+            root.tipAbove = false
+            var win = root.Window.window
+            if (win) {
+                var p = root.mapToItem(null, 0, root.height)
+                root.tipAbove = p.y + bubble.height + 10 > win.height
+            }
+            root.tipReady = root.tip !== ""
+        }
+    }
     Connections {
         target: ma
         function onContainsMouseChanged() {
@@ -71,10 +85,11 @@ Rectangle {
         }
     }
     Rectangle {
+        id: bubble
         z: 100
         visible: opacity > 0.01
         opacity: root.tipReady && ma.containsMouse ? 1 : 0
-        y: root.height + 6
+        y: root.tipAbove ? -height - 6 : root.height + 6
         x: root.tipAlign === "left" ? 0 : root.tipAlign === "right" ? root.width - width : (root.width - width) / 2
         width: tipText.width + 20
         height: tipText.implicitHeight + 12
