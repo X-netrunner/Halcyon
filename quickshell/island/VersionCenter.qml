@@ -5,8 +5,10 @@ import Quickshell.Io
 import Quickshell.Wayland
 
 // Version Center.   >versions in the launcher (also >update, the IPC call `versions`, Settings > System > Version Center).
-// One card per component: Halcyon, LUNA, ai-antivirus, ai-firewall. Each shows what is installed and what is newest on GitHub, a commit
-// list loaded on demand (30 at a time), and Update / Install this version / Roll back / Pin. A component you did not choose at install is
+// Halcyon has the big card on the left (what is installed, what is newest on GitHub, how far behind, the pin, and a bar showing the distance);
+// LUNA, ai-antivirus and ai-firewall are the smaller cards on the right. Every card has a commit list loaded on demand (30 at a time),
+// and Update / Install this version / Roll back / Pin. Those actions sit behind the Halcyon star in the card's top right corner (the same
+// star button the other centres have): it turns, and a pill with the actions slides open under it. A component you did not choose at install is
 // greyed with an Install button and is never updated behind your back.
 // Everything goes through scripts/halcyon-versions.py (JSON on stdout), which runs update.sh / scripts/update-extras.sh / install.sh, so this
 // window and the command line do the same thing. Admin passwords go to the helper on stdin once and are never stored. One operation at a
@@ -75,12 +77,14 @@ Scope {
         if (c.state === "local") return "built from a local folder"
         if (c.state === "behind") return c.behind + (c.behind === 1 ? " commit behind" : " commits behind")
         if (c.state === "ahead") return "ahead of main"
-        if (c.state === "up-to-date") return "up to date"
+        if (c.state === "up-to-date") return "on the latest"
+        if (c.state === "unreg") return "unreg"
         return "not checked yet"
     }
     function stateColor(c) {
         if (c.state === "up-to-date") return pal.good
         if (c.state === "behind") return pal.accent
+        if (c.state === "unreg") return pal.warn
         return pal.muted
     }
     function isBusyFor(id) { return busy && (opFor === id || opFor === "all") }
@@ -89,7 +93,44 @@ Scope {
         if (opResult.results) { for (var i = 0; i < opResult.results.length; i++) if (opResult.results[i].component === id) return opResult.results[i]; return null }
         return (opResult.component === id || (!opResult.component && opFor === id)) ? opResult : null
     }
+    readonly property bool planBusy: planProc.running
+    function cancelOp() { opProc.running = false }
     function lastLines(n) { return opLines.slice(Math.max(0, opLines.length - n)).join("\n") }
+    function iconFor(id) { return id === "luna" ? 0xF0594 : id === "ai-antivirus" ? 0xF0565 : id === "ai-firewall" ? 0xF0238 : 0xF06B0 }
+    function tagOf(c) { return c && c.installed && c.installed.tags && c.installed.tags.length > 0 ? c.installed.tags[0] : "" }
+    // how old the installed commit is next to the newest one ("5 days old"); empty when either date is not known
+    function ageText(c) {
+        if (!c || !c.installed || !c.latest || !c.installed.unix || !c.latest.unix) return ""
+        var d = Math.round((c.latest.unix - c.installed.unix) / 86400)
+        if (d < 1) return "less than a day old"
+        return d + (d === 1 ? " day old" : " days old")
+    }
+    function behindValue(c) {
+        if (c.state === "behind") return c.behind + (c.behind === 1 ? " commit" : " commits")
+        if (c.state === "up-to-date") return "0 commits"
+        if (c.state === "ahead") return "ahead of main"
+        return "unknown"
+    }
+    function behindSub(c) {
+        if (c.state === "behind") return ageText(c)
+        if (c.state === "up-to-date") return "nothing to update"
+        return stateText(c)
+    }
+    // where the knob sits on the bar: at the end when nothing is behind, and a little further back for every commit (a feel for the
+    // distance, not a measure: 20 or more commits behind is as far back as it goes)
+    function lagPos(c) {
+        if (!c || c.state !== "behind" || !c.behind) return 1
+        return 1 - Math.min(c.behind, 20) / 20 * 0.9
+    }
+    // "1 of 3 up to date" for the companions that are installed
+    readonly property string upToDateText: {
+        var ids = ["luna", "ai-antivirus", "ai-firewall"], n = 0, ok = 0
+        for (var i = 0; i < ids.length; i++) {
+            var c = byId(ids[i])
+            if (c && c.chosen && c.present) { n++; if (c.state === "up-to-date") ok++ }
+        }
+        return n === 0 ? "none installed" : ok + " of " + n + " up to date"
+    }
 
     // ---------------------------------------------------------------- status
     function refresh(net) {
@@ -106,9 +147,9 @@ Scope {
         autoOn = !!o.autocheck
         extBusy = (o.busy && !opProc.running) ? o.busy : null
         loaded = true
-        if (open && checked === 0 && !firstCheck) { firstCheck = true; firstT.restart() }      // the very first time: look at GitHub once
+        if (open && !firstCheck && (checked === 0 || Date.now() / 1000 - checked > 3600)) { firstCheck = true; firstT.restart() }      // first time, or the last look is over an hour old: one quiet look at GitHub per opening (no timer, no polling)
     }
-    Timer { id: firstT; interval: 400; onTriggered: { root.flash("Looking at GitHub…", false); root.refresh(true) } }
+    Timer { id: firstT; interval: 400; onTriggered: { if (root.checked === 0) root.flash("Looking at GitHub…", false); root.refresh(true) } }
     function checkNow() { if (!working) { flash("Looking at GitHub…", false); refresh(true) } }
 
     // ---------------------------------------------------------------- the commit list of one card (read only when it is opened)
@@ -277,7 +318,7 @@ Scope {
     }
 
     function show() { open = true; refresh(false); Qt.callLater(function () { root.focusRequested("panel") }) }
-    function hide() { open = false; dlg = null; dlgPw = "" }
+    function hide() { open = false; dlg = null; dlgPw = ""; firstCheck = false }
     function toggle() { if (open) hide(); else show() }
     property bool linger: false
     onOpenChanged: {
@@ -380,237 +421,6 @@ Scope {
         radius: 10
         color: Qt.alpha(tone, 0.16)
         Text { id: tagTxt; anchors.centerIn: parent; text: parent.label; color: parent.tone; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; font.weight: Font.Medium }
-    }
-
-    // one card
-    component Card: Rectangle {
-        id: card
-        required property var comp
-        readonly property bool greyed: comp.state === "not-chosen" || comp.state === "missing"
-        readonly property bool pacman: comp.state === "pacman"
-        readonly property var lst: root.lists[comp.id] || null
-        readonly property var res: root.resFor(comp.id)
-        readonly property bool mine: root.isBusyFor(comp.id)
-        width: ListView.view ? ListView.view.width : 600
-        height: col.implicitHeight + 28
-        radius: root.pal.rLg
-        color: root.pal.fill
-        border.width: 1
-        border.color: mine ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
-        // unslop: a component that is not installed reads quieter by its name only; its Install button stays fully legible
-        Behavior on height { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-        Behavior on border.color { ColorAnimation { duration: root.pal.dMed } }
-        clip: true
-
-        ColumnLayout {
-            id: col
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
-            spacing: 10
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-                Text { text: card.comp.name; color: card.greyed ? root.pal.muted : root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
-                Tag { label: root.stateText(card.comp); tone: root.stateColor(card.comp) }
-                Tag { visible: !!card.comp.pinned; label: "pinned " + (card.comp.pinned ? card.comp.pinned.short : ""); tone: root.pal.warn }
-                Tag { visible: card.comp.dirty; label: "local changes"; tone: root.pal.muted }
-                Tag { visible: card.comp.offline && !card.greyed; label: "offline"; tone: root.pal.muted }
-                Item { Layout.fillWidth: true }
-                Btn {
-                    visible: card.greyed
-                    label: "Install"
-                    primary: false     // unslop: one primary action per window (Update all); these are secondary
-                    disabled: root.locked
-                    onClicked: root.askInstallNew(card.comp.id)
-                }
-            }
-
-            GridLayout {
-                visible: !card.greyed
-                Layout.fillWidth: true
-                columns: 2
-                columnSpacing: 14
-                rowSpacing: 4
-                Label { text: "Installed" }
-                Mono { Layout.fillWidth: true; text: root.verText(card.comp.installed); elide: Text.ElideRight }
-                Label { text: "Latest on main" }
-                Mono { Layout.fillWidth: true; text: card.comp.latest ? root.verText(card.comp.latest) : "not checked yet (Check now)"; elide: Text.ElideRight; color: card.comp.latest ? root.pal.text : root.pal.muted }
-                Label { visible: card.comp.installed && card.comp.installed.subject !== "" }
-                Small { visible: card.comp.installed && card.comp.installed.subject !== ""; Layout.fillWidth: true; text: card.comp.installed ? card.comp.installed.subject : "" }
-            }
-            Small {
-                visible: card.pacman
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                elide: Text.ElideNone
-                text: "This one came from a pacman package, so pacman keeps it up to date. Nothing here changes it."
-            }
-
-            Flow {
-                visible: !card.greyed && !card.pacman
-                Layout.fillWidth: true
-                spacing: 8
-                Btn {
-                    label: card.comp.pinned && card.comp.state === "behind" ? "Update to main" : "Update"
-                    primary: card.comp.state === "behind"
-                    disabled: root.locked || planProc.running || !(card.comp.state === "behind")
-                    onClicked: root.askUpdate(card.comp.id)
-                }
-                Btn {
-                    label: "Roll back"
-                    disabled: root.locked || planProc.running || !card.comp.previous
-                    onClicked: root.askRollback(card.comp.id)
-                }
-                Btn {
-                    label: card.comp.pinned ? "Unpin" : "Pin"
-                    disabled: root.locked || planProc.running || (!card.comp.pinned && !(card.comp.installed && card.comp.installed.sha))
-                    onClicked: root.pinToggle(card.comp.id)
-                }
-                Btn {
-                    label: (card.lst && card.lst.open) ? "Hide commits" : "Commits"
-                    onClicked: root.toggleList(card.comp.id)
-                }
-            }
-
-            // the log pane: the last lines of what is running, then the result and the health check
-            Rectangle {
-                visible: card.mine || card.res !== null
-                Layout.fillWidth: true
-                implicitHeight: logCol.implicitHeight + 20
-                radius: root.pal.rSm
-                color: Qt.alpha(root.pal.bg, 0.45)
-                border.width: 1
-                border.color: root.pal.lineSoft
-                ColumnLayout {
-                    id: logCol
-                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
-                    spacing: 6
-                    RowLayout {
-                        visible: card.mine
-                        Layout.fillWidth: true
-                        Text { text: root.opStep !== "" ? root.opStep : "Working…"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: Font.Medium; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Btn { label: "Cancel"; onClicked: opProc.running = false }
-                    }
-                    Text {
-                        visible: card.mine && root.opLines.length > 0
-                        Layout.fillWidth: true
-                        text: root.lastLines(7)
-                        color: root.pal.muted
-                        font.family: root.pal.mono
-                        font.pixelSize: root.pal.tCap
-                        elide: Text.ElideRight
-                        maximumLineCount: 7
-                        wrapMode: Text.NoWrap
-                    }
-                    Text {
-                        visible: !card.mine && card.res !== null
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        text: card.res ? (card.res.skipped ? (root.cap(card.res.skipped) + ": skipped") : (card.res.ok ? (card.res.changed ? "Done: now at " + String(card.res.to || "").substring(0, 7) + (card.res.older ? " (an older version)" : "") : "Nothing to change.") : (card.res.error || "It did not work."))) : ""
-                        color: card.res && card.res.ok ? root.pal.good : root.pal.bad
-                        font.family: root.pal.uiFont
-                        font.pixelSize: root.pal.tBody - 1
-                    }
-                    Text {
-                        visible: !card.mine && card.res !== null && !!card.res.restored
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        text: "The version you had before is back."
-                        color: root.pal.warn
-                        font.family: root.pal.uiFont
-                        font.pixelSize: root.pal.tBody - 1
-                    }
-                    Flow {
-                        visible: !card.mine && card.res !== null && !!card.res.health
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Repeater {
-                            model: card.res && card.res.health ? card.res.health.checks : []
-                            delegate: Tag {
-                                required property var modelData
-                                label: (modelData.ok ? "ok  " : "failed  ") + modelData.name + ": " + modelData.detail
-                                tone: modelData.ok ? root.pal.good : root.pal.bad
-                            }
-                        }
-                    }
-                    Btn {
-                        visible: !card.mine && card.res !== null && !!card.res.backup && card.comp.id === "ai-antivirus"
-                        label: "Restore the database copy"
-                        disabled: root.locked
-                        onClicked: root.askRestore("ai-antivirus")
-                    }
-                }
-            }
-
-            // the commit list
-            ColumnLayout {
-                visible: !!(card.lst && card.lst.open)
-                Layout.fillWidth: true
-                spacing: 4
-                Flow {
-                    visible: !!(card.lst && card.lst.tags.length > 0)
-                    Layout.fillWidth: true
-                    spacing: 6
-                    Label { text: "Tags"; height: 24; verticalAlignment: Text.AlignVCenter }
-                    Repeater {
-                        model: card.lst ? card.lst.tags : []
-                        delegate: Rectangle {
-                            required property var modelData
-                            implicitWidth: tgTxt.implicitWidth + 18
-                            implicitHeight: 24
-                            radius: 12
-                            color: tgMa.containsMouse ? root.pal.fillHover : root.pal.fill
-                            Text { id: tgTxt; anchors.centerIn: parent; text: modelData.tag; color: root.pal.text; font.family: root.pal.mono; font.pixelSize: root.pal.tCap }
-                            MouseArea { id: tgMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; enabled: !root.locked; onClicked: root.ask("install", card.comp.id, modelData.tag, modelData.tag) }
-                        }
-                    }
-                }
-                Small { visible: !!(card.lst && card.lst.offline); text: "offline: this is the list that was saved" }
-                Repeater {
-                    model: card.lst ? card.lst.commits : []
-                    delegate: Rectangle {
-                        id: cr
-                        required property var modelData
-                        Layout.fillWidth: true
-                        implicitHeight: 34
-                        radius: root.pal.rSm
-                        color: crMa.containsMouse ? root.pal.fillHover : (modelData.rel === "installed" ? Qt.alpha(root.pal.accent, 0.12) : "transparent")
-                        Behavior on color { ColorAnimation { duration: root.pal.dFast } }
-                        MouseArea { id: crMa; anchors.fill: parent; hoverEnabled: true }
-                        RowLayout {
-                            anchors { fill: parent; leftMargin: 10; rightMargin: 8 }
-                            spacing: 10
-                            Mono { text: cr.modelData.short; color: root.pal.accent; Layout.preferredWidth: 64 }
-                            Text {
-                                Layout.fillWidth: true
-                                text: cr.modelData.subject
-                                color: root.pal.text
-                                elide: Text.ElideRight
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tBody - 1
-                            }
-                            Tag { visible: cr.modelData.tags.length > 0; label: cr.modelData.tags.length > 0 ? cr.modelData.tags[0] : ""; tone: root.pal.accent2 }
-                            Tag { visible: cr.modelData.rel === "installed"; label: "installed"; tone: root.pal.good }
-                            Small { text: root.fmtDate(cr.modelData.date); Layout.preferredWidth: 84; horizontalAlignment: Text.AlignRight }
-                            Small { text: cr.modelData.author; Layout.preferredWidth: 90 }
-                            Btn {
-                                visible: cr.modelData.rel !== "installed"
-                                label: "Install"
-                                implicitHeight: 26
-                                disabled: root.locked || planProc.running
-                                onClicked: root.ask("install", card.comp.id, cr.modelData.sha, cr.modelData.short)
-                            }
-                        }
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    visible: !!(card.lst && (card.lst.more || card.lst.loading))
-                    Btn { label: card.lst && card.lst.loading ? "Loading…" : "Load 30 more"; disabled: !!(card.lst && card.lst.loading); onClicked: root.loadLog(card.comp.id, card.lst.commits.length) }
-                }
-                Small { visible: !!(card.lst && !card.lst.loading && card.lst.commits.length === 0); text: "No history here yet. Press Check now." }
-            }
-        }
     }
 
     // ---------------------------------------------------------------- the window
@@ -735,23 +545,61 @@ Scope {
                             }
                         }
 
-                        // the cards, one column
-                        ListView {
-                            id: cardList
+                        // Halcyon on the left, the companions on the right
+                        RowLayout {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            clip: true
-                            spacing: 12
-                            boundsBehavior: Flickable.StopAtBounds
-                            model: root.loaded ? ["halcyon", "luna", "ai-antivirus", "ai-firewall"] : []
-                            delegate: Card { required property var modelData; comp: root.byId(modelData) }
-                            Text {
-                                visible: !root.loaded
-                                anchors.centerIn: parent
-                                text: "Reading what is installed…"
-                                color: root.pal.muted
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tBody
+                            spacing: 16
+
+                            Repeater {
+                                model: root.loaded && root.byId("halcyon") !== null ? ["halcyon"] : []
+                                delegate: VersionHero {
+                                    required property var modelData
+                                    vc: root
+                                    comp: root.byId(modelData)
+                                    Layout.preferredWidth: Math.max(340, Math.round((parent ? parent.width : 900) * 0.44))
+                                    Layout.fillHeight: true
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                spacing: 10
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: 4
+                                    Layout.rightMargin: 4
+                                    Text {
+                                        text: "Companions"
+                                        color: root.pal.muted
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tCap
+                                        font.weight: Font.Medium
+                                        font.capitalization: Font.AllUppercase
+                                        font.letterSpacing: 0.5
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Small { visible: root.loaded; text: root.upToDateText }
+                                }
+                                ListView {
+                                    id: cardList
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    spacing: 12
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    model: root.loaded ? ["luna", "ai-antivirus", "ai-firewall"] : []
+                                    delegate: VersionCard { required property var modelData; vc: root; comp: root.byId(modelData) }
+                                    Text {
+                                        visible: !root.loaded
+                                        anchors.centerIn: parent
+                                        text: "Reading what is installed…"
+                                        color: root.pal.muted
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                    }
+                                }
                             }
                         }
                     }
