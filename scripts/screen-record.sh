@@ -2,6 +2,7 @@
 # screen-record.sh: inbuilt on-demand recorder for Halcyon. Runs ONLY when you start it; completely idle otherwise.
 #
 #   screen-record.sh toggle | start | stop | status
+#   screen-record.sh region    drag a rectangle, record only that part (the same command again stops it)
 #   screen-record.sh open      open the recordings folder
 #   screen-record.sh last      play the newest recording
 #   screen-record.sh list      print the recordings (newest first)
@@ -19,6 +20,7 @@ PID_FILE="$STATE_DIR/record.pid"          # the video recorder
 APID_FILE="$STATE_DIR/record.apid"        # the ffmpeg sound recorder
 OUT_FILE_INFO="$STATE_DIR/record.file"    # the file you will get
 VTMP_INFO="$STATE_DIR/record.vtmp"        # video-only file while sound is recorded separately
+REGION_INFO="$STATE_DIR/record.region"    # the rectangle a region recording runs in ('x,y WxH'), empty = the whole screen
 ATMP_INFO="$STATE_DIR/record.atmp"        # sound-only file
 ASTART_INFO="$STATE_DIR/record.astart"    # when the sound recorder was launched (seconds, e.g. 1760680000.123)
 VSTART_INFO="$STATE_DIR/record.vstart"    # when the video recorder was launched: the gap is cut off the sound when they are joined
@@ -93,7 +95,7 @@ stop_recording() {
             out="${out%.mp4}.m4a"; mv -f "$atmp" "$out"; rm -f "$vtmp"
         fi
     fi
-    rm -f "$OUT_FILE_INFO" "$VTMP_INFO" "$ATMP_INFO" "$ASTART_INFO" "$VSTART_INFO"
+    rm -f "$OUT_FILE_INFO" "$VTMP_INFO" "$ATMP_INFO" "$ASTART_INFO" "$VSTART_INFO" "$REGION_INFO"
     if [ -n "$out" ] && [ -s "$out" ]; then
         note -i video-x-generic -t 4000 "Recording saved" "$(basename "$out")"
     else
@@ -102,6 +104,7 @@ stop_recording() {
     echo stopped; exit 0
 }
 
+REC_GEOM=""
 # ---- sound sources (PipeWire / PulseAudio names)
 sys_source() { local s; s=$(pactl get-default-sink 2>/dev/null); [ -n "$s" ] && echo "$s.monitor"; }
 mic_source() { pactl get-default-source 2>/dev/null; }
@@ -132,9 +135,22 @@ sound_problem() {
     esac
 }
 
+# a frozen screen (wayfreeze) and slurp: pick the rectangle a region recording will use. Empty = cancelled.
+select_region() {
+    local freeze="" geom=""
+    if command -v wayfreeze >/dev/null 2>&1; then
+        wayfreeze >/dev/null 2>&1 & freeze=$!
+        sleep 0.18
+    fi
+    geom=$(slurp -d 2>/dev/null)
+    [ -n "$freeze" ] && kill "$freeze" 2>/dev/null
+    printf '%s' "$geom"
+}
+
 start_recording() {
     mkdir -p "$REC_DIR"
-    local ts out base=""
+    local ts out base="" tag="recording"
+    if [ -n "$REC_GEOM" ]; then tag="region"; else rm -f "$REGION_INFO"; fi
     ts=$(date +%Y-%m-%d_%H-%M-%S)
 
     # ---------------- sound only
@@ -150,8 +166,8 @@ start_recording() {
         fi
     fi
 
-    # ---------------- screen (+ sound)
-    out="$REC_DIR/recording_${ts}.mp4"
+    # ---------------- screen (+ sound), or one rectangle of it
+    out="$REC_DIR/${tag}_${ts}.mp4"
     local vout=$out withsound=0 problem=""
     if [ "$AUDIO" != none ]; then
         base="$STATE_DIR/record-${ts}"
@@ -163,12 +179,18 @@ start_recording() {
         fi
     fi
 
+    local -a gargs=()
+    [ -n "$REC_GEOM" ] && gargs=(-g "$REC_GEOM")
     if command -v wf-recorder >/dev/null 2>&1; then
-        wf-recorder -f "$vout" --pixel-format yuv420p >/dev/null 2>&1 &
+        wf-recorder "${gargs[@]}" -f "$vout" --pixel-format yuv420p >/dev/null 2>&1 &
     elif command -v wl-screenrec >/dev/null 2>&1; then
-        wl-screenrec -f "$vout" >/dev/null 2>&1 &
+        gargs=()
+        [ -n "$REC_GEOM" ] && gargs=(--geometry "$REC_GEOM")
+        wl-screenrec "${gargs[@]}" -f "$vout" >/dev/null 2>&1 &
     elif command -v gpu-screen-recorder >/dev/null 2>&1; then
-        gpu-screen-recorder -w screen -f 60 -o "$vout" >/dev/null 2>&1 &
+        gargs=()
+        [ -n "$REC_GEOM" ] && gargs=(-region "$REC_GEOM")
+        gpu-screen-recorder -w screen -f 60 "${gargs[@]}" -o "$vout" >/dev/null 2>&1 &
     else
         stop_pid "$APID_FILE"; rm -f "$ATMP_INFO" "$ASTART_INFO" "$VSTART_INFO" "$VTMP_INFO"; [ -n "$base" ] && rm -f "$base.m4a"
         note -u critical "Screen recorder" "Please install wf-recorder: sudo pacman -S wf-recorder"
@@ -180,7 +202,9 @@ start_recording() {
     sleep 0.3
     if alive "$PID_FILE"; then
         local what="Screen is recording"
-        [ "$withsound" = 1 ] && what="Screen and sound ($AUDIO) are recording"
+        [ -n "$REC_GEOM" ] && what="Region is recording"
+        [ "$withsound" = 1 ] && [ -n "$REC_GEOM" ] && what="Region and sound ($AUDIO) are recording"
+        [ "$withsound" = 1 ] && [ -z "$REC_GEOM" ] && what="Screen and sound ($AUDIO) are recording"
         note -i media-record -t 3500 "Recording started" "$what. Click Record again or press Super+Alt+R to finish."
         [ -n "$problem" ] && note -u normal "Recording without sound" "$problem"
         echo recording
@@ -192,7 +216,7 @@ start_recording() {
     fi
 }
 
-newest() { ls -1t "$REC_DIR"/recording_* "$REC_DIR"/audio_* 2>/dev/null | head -n1; }
+newest() { ls -1t "$REC_DIR"/recording_* "$REC_DIR"/region_* "$REC_DIR"/audio_* 2>/dev/null | head -n1; }
 
 cmd="${1:-toggle}"
 case "$cmd" in
@@ -201,7 +225,15 @@ case "$cmd" in
     start)  is_recording && echo already_recording || start_recording ;;
     toggle) is_recording && stop_recording || start_recording ;;
     open)   mkdir -p "$REC_DIR"; xdg-open "$REC_DIR" >/dev/null 2>&1 & ;;
+    region) if is_recording; then stop_recording; exit 0; fi
+            command -v slurp >/dev/null 2>&1 || { note -u critical "Region recording" "slurp is not installed: sudo pacman -S slurp"; echo missing_tool; exit 1; }
+            command -v wf-recorder >/dev/null 2>&1 || command -v wl-screenrec >/dev/null 2>&1 || command -v gpu-screen-recorder >/dev/null 2>&1 || { note -u critical "Region recording" "Please install wf-recorder: sudo pacman -S wf-recorder"; echo missing_tool; exit 1; }
+            REC_GEOM=$(select_region)
+            if [ -z "$REC_GEOM" ]; then echo cancelled; exit 0; fi
+            KIND=screen
+            echo "$REC_GEOM" > "$REGION_INFO"
+            start_recording ;;
     last)   f=$(newest); if [ -n "$f" ]; then xdg-open "$f" >/dev/null 2>&1 & else note -t 3000 "Recordings" "No recordings yet in $REC_DIR"; fi ;;
-    list)   ls -1t "$REC_DIR"/recording_* "$REC_DIR"/audio_* 2>/dev/null ;;
-    *)      echo "usage: screen-record.sh toggle | start | stop | status | open | last | list" >&2; exit 1 ;;
+    list)   ls -1t "$REC_DIR"/recording_* "$REC_DIR"/region_* "$REC_DIR"/audio_* 2>/dev/null ;;
+    *)      echo "usage: screen-record.sh toggle | start | stop | status | region | open | last | list" >&2; exit 1 ;;
 esac

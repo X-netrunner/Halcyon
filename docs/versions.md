@@ -29,7 +29,7 @@ Nothing runs until you accept a dialog that shows: the installed and the chosen 
 
 | Component | Saved first | After | If it fails |
 |---|---|---|---|
-| ai-antivirus | `/var/lib/ai-antivirus` (its database is upgraded on the first start of a newer engine, schema 4; an older engine may not read it). The services stop for a moment and start again | health check | the previous package is installed again (`pacman -U` of the kept file, or a rebuild) and the database copy is put back. **Restore the database copy** is offered on the card |
+| ai-antivirus | `/var/lib/ai-antivirus` (its database is upgraded on the first start of a newer engine, schema 4; an older engine may not read it). The services stop for a moment and start again | health check | the previous package is installed again (`pacman -U` of the kept file, or a rebuild) and the database copy is put back. **Restore the database copy** is offered on the card. If an older engine is left running against the schema-4 database, the Security center says so and offers **Repair history**: `scripts/antivirus-db-repair.sh` keeps a copy in `/var/lib/ai-antivirus/backups` and lets the installed engine create a fresh database (the old alerts stay in the copy) |
 | ai-firewall | `/etc/ai-firewall` | `ai-firewall check` | the previous binary and unit are put back |
 | LUNA | `~/.config/luna/luna.toml`, her memory file (`history.json`) and conversations | binary runs, daemon active again | the previous binary is put back |
 | Halcyon | install.sh's own copy in `~/.config/Halcyon-backups`; your own files (`hypr-user.lua`, `scheme/current.lua` ...) stay | no QML errors in the island log | the version you had is installed again by the same steps |

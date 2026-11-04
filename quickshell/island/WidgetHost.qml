@@ -278,6 +278,7 @@ Item {
         visible: host.look.surface === "glass" || host.look.surface === "pill"
         anchors.fill: parent
         pal: host.pal
+        jellyOn: false          // a desktop widget is sized and moved in the builder, it is not a box that opens
         radius: host.corner
         tint: host.boxTint
         opacityBody: host.look.op

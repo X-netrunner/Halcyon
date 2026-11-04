@@ -187,14 +187,24 @@ Item {
             // ---- header (WinHeader: the same in every window)
             WinHeader {
                 pal: root.pal
+                glyph: 0xF072C
                 title: "Widget builder"
+                sub: root.layout.items.length + (root.layout.items.length === 1 ? " widget" : " widgets") + "  ·  " + (root.lockT ? "lock screen" : "desktop")
                 leading: [ SegSwitch {
                     pal: root.pal
                     options: [{ k: "desktop", t: "Desktop" }, { k: "lock", t: "Lock screen" }]
                     current: root.target
                     onPicked: k => root.targetPicked(k)
                 } ]
-                trailing: [ ActionChip { pal: root.pal; label: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"; onClicked: root.editOnDesktop(root.target) } ]
+                trailing: [
+                    CalmIconBtn {
+                        pal: root.pal
+                        glyph: 0xF03CC
+                        label: "Place"
+                        tip: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"
+                        onClicked: root.editOnDesktop(root.target)
+                    }
+                ]
                 onClosed: root.closed()
             }
 
@@ -282,13 +292,21 @@ Item {
                         }
                         // The column is only ~222 px wide: "Add a widget" + Copy + Remove on one line squeezed the first
                         // button to ~46 px and its label spilled out. So: Add on its own line, Copy / Remove share the next.
-                        ActionChip { Layout.fillWidth: true; pal: root.pal; label: root.adding ? "Back" : "Add a widget"; primary: !root.adding; onClicked: root.adding = !root.adding }
+                        CalmIconBtn {
+                            Layout.fillWidth: true
+                            pal: root.pal
+                            glyph: root.adding ? 0xF0141 : 0xF0415
+                            label: root.adding ? "Back" : "Add widget"
+                            primary: !root.adding
+                            tip: root.adding ? "Back to your widgets" : "Add a widget"
+                            onClicked: root.adding = !root.adding
+                        }
                         RowLayout {
                             visible: root.cur !== null     // nothing to copy or remove until a widget is picked
                             Layout.fillWidth: true
                             spacing: 8
-                            ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Copy"; disabled: root.cur === null; onClicked: root.edit(WD.duplicate(root.layout, root.sel), false) }
-                            ActionChip { Layout.fillWidth: true; Layout.preferredWidth: 1; pal: root.pal; label: "Remove"; disabled: root.cur === null; onClicked: root.edit(WD.remove(root.layout, root.sel), false) }
+                            CalmIconBtn { Layout.fillWidth: true; pal: root.pal; glyph: 0xF018F; tip: "Copy this widget"; enabledBtn: root.cur !== null; onClicked: root.edit(WD.duplicate(root.layout, root.sel), false) }
+                            CalmIconBtn { Layout.fillWidth: true; pal: root.pal; glyph: 0xF01B4; tip: "Remove this widget"; danger: true; enabledBtn: root.cur !== null; onClicked: root.edit(WD.remove(root.layout, root.sel), false) }
                         }
                         // the master switch: every desktop widget off / on at once (they stay in your layout)
                         RowLayout {
@@ -502,10 +520,15 @@ Item {
                         }
                         Toggle { pal: root.pal; on: root.cur !== null && root.cur.off !== true; onToggled: root.edit(WD.setOff(root.layout, root.sel, root.cur !== null && root.cur.off !== true), false) }
                     }
-                    SegSwitch {
-                        Layout.fillWidth: true
+                    CalmNav {
+                        Layout.alignment: Qt.AlignHCenter
                         pal: root.pal
-                        options: [{ k: "content", t: "Content" }, { k: "place", t: "Place" }, { k: "look", t: "Look" }, { k: "styles", t: "Styles" }]
+                        items: [
+                            { key: "content", glyph: 0xF0219, label: "Content" },
+                            { key: "place", glyph: 0xF0379, label: "Place" },
+                            { key: "look", glyph: 0xF03D8, label: "Look" },
+                            { key: "styles", glyph: 0xF04CE, label: "Styles" }
+                        ]
                         current: root.tab
                         onPicked: k => { root.tab = k; ctl.contentY = 0 }
                     }

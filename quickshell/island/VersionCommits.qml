@@ -13,7 +13,7 @@ ColumnLayout {
     Flow {
         visible: !!(card.lst && card.lst.tags.length > 0)
         Layout.fillWidth: true
-        spacing: 6
+        spacing: 8
         VersionText { pal: vc.pal; kind: "label"; text: "Tags"; height: 24; verticalAlignment: Text.AlignVCenter }
         Repeater {
             model: card.lst ? card.lst.tags : []
@@ -21,14 +21,14 @@ ColumnLayout {
                 required property var modelData
                 implicitWidth: tgTxt.implicitWidth + 18
                 implicitHeight: 24
-                radius: 12
+                radius: 8
                 color: tgMa.containsMouse ? vc.pal.fillHover : vc.pal.fill
                 Text { id: tgTxt; anchors.centerIn: parent; text: modelData.tag; color: vc.pal.text; font.family: vc.pal.mono; font.pixelSize: vc.pal.tCap }
                 MouseArea { id: tgMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; enabled: !vc.locked; onClicked: vc.ask("install", card.comp.id, modelData.tag, modelData.tag) }
             }
         }
     }
-    VersionText { pal: vc.pal; kind: "small"; visible: !!(card.lst && card.lst.offline); text: "offline: this is the list that was saved" }
+    VersionText { pal: vc.pal; kind: "small"; visible: !!(card.lst && card.lst.offline); text: "You are offline, so this is the list saved last time." }
     Repeater {
         model: card.lst ? card.lst.commits : []
         delegate: Rectangle {
@@ -42,7 +42,7 @@ ColumnLayout {
             MouseArea { id: crMa; anchors.fill: parent; hoverEnabled: true }
             RowLayout {
                 anchors { fill: parent; leftMargin: 10; rightMargin: 8 }
-                spacing: 10
+                spacing: 12
                 VersionText { pal: vc.pal; kind: "mono"; text: cr.modelData.short; color: vc.pal.accent; Layout.preferredWidth: 64 }
                 Text {
                     Layout.fillWidth: true
@@ -52,7 +52,7 @@ ColumnLayout {
                     font.family: vc.pal.uiFont
                     font.pixelSize: vc.pal.tBody - 1
                 }
-                VersionBadge { pal: vc.pal; visible: cr.modelData.tags.length > 0; label: cr.modelData.tags.length > 0 ? cr.modelData.tags[0] : ""; tone: vc.pal.accent2 }
+                VersionBadge { pal: vc.pal; visible: cr.modelData.tags.length > 0; label: cr.modelData.tags.length > 0 ? cr.modelData.tags[0] : ""; tone: vc.pal.muted }
                 VersionBadge { pal: vc.pal; visible: cr.modelData.rel === "installed"; label: "installed"; tone: vc.pal.good }
                 VersionText { pal: vc.pal; kind: "small"; text: vc.fmtDate(cr.modelData.date); Layout.preferredWidth: 84; horizontalAlignment: Text.AlignRight }
                 VersionText { pal: vc.pal; kind: "small"; text: cr.modelData.author; Layout.preferredWidth: 90 }
@@ -71,5 +71,5 @@ ColumnLayout {
         visible: !!(card.lst && (card.lst.more || card.lst.loading))
         VersionBtn { pal: vc.pal; label: card.lst && card.lst.loading ? "Loading…" : "Load 30 more"; disabled: !!(card.lst && card.lst.loading); onClicked: vc.loadLog(card.comp.id, card.lst.commits.length) }
     }
-    VersionText { pal: vc.pal; kind: "small"; visible: !!(card.lst && !card.lst.loading && card.lst.commits.length === 0); text: "No history here yet. Press Check now." }
+    VersionText { pal: vc.pal; kind: "small"; visible: !!(card.lst && !card.lst.loading && card.lst.commits.length === 0); text: "No history yet. Check now will bring it in." }
 }

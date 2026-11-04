@@ -655,23 +655,25 @@ Scope {
                                 anchors.rightMargin: 21
                                 spacing: 14
 
-                                Row {
-                                    spacing: 10
-                                    Spark { anchors.verticalCenter: parent.verticalCenter; width: 26; height: 26; spin: root.busy }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "Luna"
-                                        color: root.pal.text
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tTitle + 2
-                                        font.weight: Font.Medium
-                                    }
-                                }
-                                PrimaryBtn {
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    label: "New chat"
-                                    glyph: String.fromCodePoint(0xF0415)
-                                    onClicked: root.newChat()
+                                    spacing: 10
+                                    // the mark alone: the name is in the centred head, no need to say it twice
+                                    Spark {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        Layout.preferredWidth: 24
+                                        Layout.preferredHeight: 24
+                                        spin: root.busy
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    CalmIconBtn {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        pal: root.pal
+                                        glyph: 0xF0415
+                                        primary: true
+                                        tip: "New chat"
+                                        onClicked: root.newChat()
+                                    }
                                 }
 
                                 ListView {
@@ -688,8 +690,8 @@ Scope {
                                         readonly property bool active: modelData.id === root.cur
                                         readonly property bool editing: root.renaming === modelData.id
                                         width: slist.width
-                                        height: 52
-                                        radius: 14
+                                        height: 44
+                                        radius: 12
                                         color: active ? Qt.alpha(root.pal.accent, 0.16) : (rowMa.containsMouse ? Qt.alpha(root.pal.text, 0.06) : "transparent")
                                         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         MouseArea { id: rowMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openSession(srow.modelData.id) }
@@ -720,9 +722,9 @@ Scope {
                                             }
                                             Text {
                                                 width: parent.width
-                                                text: root.ago(srow.modelData.updated) + (srow.modelData.preview ? "  ·  " + srow.modelData.preview : "")
+                                                text: root.ago(srow.modelData.updated)
                                                 elide: Text.ElideRight
-                                                color: root.pal.muted
+                                                color: Qt.alpha(root.pal.muted, 0.9)
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tCap
                                             }
@@ -786,8 +788,11 @@ Scope {
                                 anchors.margins: 20
                                 anchors.rightMargin: 21
                                 spacing: 14
-                                Text { text: "Settings"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
-                                PrimaryBtn { Layout.fillWidth: true; label: "Back to chat"; glyph: String.fromCodePoint(0xF0141); onClicked: root.view = "chat" }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { Layout.fillWidth: true; Layout.alignment: Qt.AlignVCenter; elide: Text.ElideRight; text: "Settings"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
+                                    CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; glyph: 0xF0141; tip: "Back to chat"; onClicked: root.view = "chat" }
+                                }
                                 Flickable {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
@@ -825,32 +830,43 @@ Scope {
                                 anchors.margins: 28
                                 spacing: 14
 
-                                RowLayout {
+                                // the head: one glyph, the name, one short line, all centred; the actions are icon-only
+                                CalmHeader {
                                     Layout.fillWidth: true
-                                    Text {
-                                        Layout.fillWidth: true
-                                        elide: Text.ElideRight
-                                        text: root.view === "settings" ? root.pageTitle() : root.cur === "" ? "New chat" : (function () { for (var i = 0; i < root.sessions.length; i++) if (root.sessions[i].id === root.cur) return root.sessions[i].title; return "Chat" })()
-                                        color: root.pal.text
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tTitle
-                                        font.weight: Font.Medium
+                                    Layout.preferredHeight: 72
+                                    pal: root.pal
+                                    glyph: 0xF06A9
+                                    title: "Luna"
+                                    // one real fact, never a paragraph: what she is doing, or how many chats there are
+                                    sub: root.note !== "" ? root.note
+                                         : root.view === "settings" ? root.pageTitle()
+                                         : root.busy ? "working · " + root.secs + " s"
+                                         : "local · " + (root.sessions.length === 0 ? "no chats yet"
+                                                        : root.sessions.length === 1 ? "1 chat"
+                                                        : root.sessions.length + " chats")
+                                           + (root.roles.model ? " · " + root.shortName(root.roles.model) : "")
+
+                                    CalmIconBtn {
+                                        visible: root.view !== "settings" && !root.pal.deskWin
+                                        pal: root.pal
+                                        glyph: 0xF03CC
+                                        active: root.deskMode
+                                        tip: root.popped ? "Back to overlay" : "Pop out"
+                                        onClicked: root.popped = !root.popped
                                     }
-                                    Text {
-                                        visible: root.note !== ""
-                                        text: root.note
-                                        color: root.pal.muted
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tCap + 1
-                                    }
-                                    PopBtn { visible: root.view !== "settings" && !root.pal.deskWin; pal: root.pal; popped: root.popped; onClicked: root.popped = !root.popped }
-                                    LinkBtn {
-                                        visible: root.view !== "settings"
-                                        label: root.view === "settings" ? "Back to chat" : "Settings"
-                                        glyph: String.fromCodePoint(root.view === "settings" ? 0xF0141 : 0xF0493)
+                                    CalmIconBtn {
+                                        pal: root.pal
+                                        glyph: 0xF0493
+                                        active: root.view === "settings"
+                                        tip: root.view === "settings" ? "Back to chat" : "Settings"
                                         onClicked: { if (root.view === "settings") root.view = "chat"; else root.openSettings() }
                                     }
-                                    LinkBtn { label: "Close"; glyph: String.fromCodePoint(0xF0156); onClicked: root.hide() }
+                                    CalmIconBtn {
+                                        pal: root.pal
+                                        glyph: 0xF0156
+                                        tip: "Close"
+                                        onClicked: root.hide()
+                                    }
                                 }
 
                                 Rectangle {
@@ -1211,8 +1227,8 @@ Scope {
                                         spacing: 10
                                         Spark { anchors.horizontalCenter: parent.horizontalCenter; width: 64; height: 64 }
                                         Item { width: 1; height: 6 }
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Ask Luna about this machine"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "She runs on this machine. Chats are saved on the left."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Ask Luna"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 2; font.weight: Font.Medium }
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Nothing leaves this machine."; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                         Item { width: 1; height: 8 }
                                         Flow {
                                             visible: root.ok          // no starter questions while Luna cannot answer them
@@ -1342,14 +1358,30 @@ Scope {
                                                         }
                                                         // the actions come in on hover (and stay while a panel is open) so a long chat stays quiet
                                                         Row {
-                                                            spacing: 4
+                                                            spacing: 2
                                                             opacity: (mHover.hovered || mrow.showTools || mrow.showThink || mrow.index === root.msgCount - 1) ? 1 : 0
                                                             Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                                            LinkBtn { visible: (mrow.modelData.tools || []).length > 0; label: (mrow.showTools ? "Hide " : "") + (mrow.modelData.tools || []).length + (((mrow.modelData.tools || []).length === 1) ? " tool used" : " tools used"); onClicked: mrow.showTools = !mrow.showTools }
-                                                            LinkBtn { visible: (mrow.modelData.think || "") !== ""; label: mrow.showThink ? "Hide the reasoning" : "Show the reasoning"; onClicked: mrow.showThink = !mrow.showThink }
-                                                            LinkBtn { label: "Read aloud"; glyph: String.fromCodePoint(0xF057E); onClicked: root.speak(mrow.modelData.text) }
-                                                            LinkBtn { label: "Copy"; glyph: String.fromCodePoint(0xF018F); onClicked: root.copy(mrow.modelData.text) }
-                                                            LinkBtn { label: "Save as note"; glyph: String.fromCodePoint(0xF0F8C); onClicked: root.saveNote(mrow.modelData.text) }
+                                                            CalmIconBtn {
+                                                                visible: (mrow.modelData.tools || []).length > 0
+                                                                pal: root.pal
+                                                                glyph: 0xF0489
+                                                                size: 28
+                                                                active: mrow.showTools
+                                                                tip: (mrow.modelData.tools || []).length + (((mrow.modelData.tools || []).length === 1) ? " tool used" : " tools used")
+                                                                onClicked: mrow.showTools = !mrow.showTools
+                                                            }
+                                                            CalmIconBtn {
+                                                                visible: (mrow.modelData.think || "") !== ""
+                                                                pal: root.pal
+                                                                glyph: 0xF0335
+                                                                size: 28
+                                                                active: mrow.showThink
+                                                                tip: mrow.showThink ? "Hide the reasoning" : "Show the reasoning"
+                                                                onClicked: mrow.showThink = !mrow.showThink
+                                                            }
+                                                            CalmIconBtn { pal: root.pal; glyph: 0xF057E; size: 28; tip: "Read aloud"; onClicked: root.speak(mrow.modelData.text) }
+                                                            CalmIconBtn { pal: root.pal; glyph: 0xF018F; size: 28; tip: "Copy"; onClicked: root.copy(mrow.modelData.text) }
+                                                            CalmIconBtn { pal: root.pal; glyph: 0xF03EB; size: 28; tip: "Save as note"; onClicked: root.saveNote(mrow.modelData.text) }
                                                         }
                                                     }
                                                     Column {
@@ -1421,11 +1453,11 @@ Scope {
                                     Rectangle {
                                         id: askBar
                                         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                        height: Math.min(160, Math.max(50, askIn.contentHeight + 28))
-                                        radius: 14
-                                        color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.75))
+                                        height: Math.min(160, Math.max(52, askIn.contentHeight + 30))
+                                        radius: 16
+                                        color: root.pal.zen ? root.pal.field : root.pal.box(Qt.alpha(root.pal.surface, 0.55))
                                         border.width: root.pal.zen && !askIn.activeFocus ? 0 : 1
-                                        border.color: askIn.activeFocus ? root.pal.lineFocus : root.pal.line
+                                        border.color: askIn.activeFocus ? root.pal.lineFocus : root.pal.lineSoft
                                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Flickable {
                                             id: askFl
@@ -1461,7 +1493,7 @@ Scope {
                                             Text {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 visible: askIn.text.length === 0
-                                                text: "Message Luna, or type / for commands"
+                                                text: "Ask Luna, or / for commands"
                                                 color: root.pal.muted
                                                 font: askIn.font
                                             }
@@ -1469,10 +1501,10 @@ Scope {
                                         }
                                         RoundBtn {
                                             id: sendBtn
-                                            anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                                            anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
                                             pal: root.pal
                                             size: 34
-                                            primary: true
+                                            primary: root.busy || askIn.text.trim() !== ""
                                             glyph: String.fromCodePoint(root.busy ? 0xF04DB : 0xF005D)
                                             enabledBtn: root.busy || askIn.text.trim() !== ""
                                             onClicked: { if (root.busy) root.stop(); else if (askIn.text.trim() !== "") { root.send(askIn.text); askIn.text = "" } }

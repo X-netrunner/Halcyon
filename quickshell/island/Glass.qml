@@ -3,6 +3,7 @@ import QtQuick.Shapes
 
 // The shared surface: translucent body (the compositor blurs behind it), a neutral hairline,
 // and a faint top sheen so it reads as a slightly curved pane of frosted glass rather than a flat fill.
+// It also carries the jelly motion (Jelly.qml): every box made of Glass stretches a little while it slides, grows or pops open.
 Rectangle {
     id: root
     property var pal
@@ -10,6 +11,11 @@ Rectangle {
     property bool shadow: true
     property color tint: "transparent"   // a colour laid over the body (a widget uses the wallpaper accent here); transparent = none
     property bool flat: false       // no body, no hairline, no sheen: something else draws the surface (the notch shape)
+    // Squash and stretch while this pane slides, grows, shrinks or pops open (Jelly.qml), so the notification box, the utilities box, the
+    // menus, the flyouts and the centres all move the same way. Settings > Motion > "Jelly motion" turns it off everywhere. A pane that
+    // only holds content for another surface (flat), one that something else deforms (the island: its halos follow its own Jelly) and one
+    // whose size ticks with live text (a timer chip) set jellyOn: false.
+    property bool jellyOn: !flat
 
     // Border around the screen (ScreenFrame.qml): a box that opens from a screen edge is flush with the border, drawn in the
     // border's colour, and its corners where it meets the border flare out (concave) so box and border are one piece.
@@ -116,6 +122,15 @@ Rectangle {
             GradientStop { position: 0.5; color: Qt.alpha(root.sheenCol, root.edgeA) }
             GradientStop { position: 1.0; color: Qt.alpha(root.sheenCol, 0.0) }
         }
+    }
+
+    // a pane joined to a screen border stays pinned to it (its flush side must not move), a floating one deforms around its middle
+    Jelly {
+        target: root
+        pal: root.pal
+        on: root.jellyOn
+        originX: root.joinH === "l" ? 0 : root.joinH === "r" ? 1 : 0.5
+        originY: root.joinV === "t" ? 0 : root.joinV === "b" ? 1 : 0.5
     }
 
     Shadow {

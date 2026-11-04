@@ -40,9 +40,9 @@ ok("Popups: Stay for, At once, Urgent ones hide after (drop-downs), Picture", ()
   assert(l.slice(0, 3).every(x => /\bdrop: true\b/.test(x)))
   assert(/o\("symbol", "Symbol"\), o\("app", "App icon"\), o\("pfp", "Profile picture"\)/.test(l[3]))
 })
-ok("Centre: Header switch (Do not disturb / Airplane mode), Style (Stack / Timeline), Keeps (drop-down), Opens from", () => {
+ok("Centre: Header switch (Do not disturb / Airplane mode), Notification style (Stack / Timeline), Keeps (drop-down), Opens from", () => {
   const l = groupLines("notifcentre")
-  assert.deepStrictEqual(l.map(labelOf), ["Header switch", "Style", "Keeps", "Opens from"])
+  assert.deepStrictEqual(l.map(labelOf), ["Header switch", "Notification style", "Keeps", "Opens from"])
   assert.deepStrictEqual(keysOf(l), ["opt:notifQuick", "opt:notifStyle", "notifHistoryMax", "opt:notifSpot"])
   assert(/o\("stack", "Stack"\), o\("timeline", "Timeline"\)\]/.test(l[1]) && !/grouped/.test(l[1].split("desc:")[0]))
   assert(/o\("dnd", "Do not disturb"\), o\("airplane", "Airplane mode"\)\]/.test(l[0]))
@@ -62,10 +62,10 @@ ok("every old key and its values are kept (saved configs keep working)", () => {
   // the shell still owns the defaults
   ;[/toastSecs: 0,/, /critSecs: 30,/, /notifSpot: "edge",/, /notifStyle: "stack",/, /notifQuick: "dnd",/, /notifIcon: "symbol",/, /connErrOnly: false,/, /wifiVerbose: true,/, /dndFullscreen: true,/].forEach(re => assert(re.test(shell), String(re)))
 })
-ok("UI/UX round 7: only Do not disturb, Quiet while fullscreen, Stay for and the centre Style stay in the default view; the rest is under Debug / Advanced", () => {
+ok("UI/UX round 7: only Do not disturb, Quiet while fullscreen, Stay for and the centre Notification style stay in the default view; the rest is under Debug / Advanced", () => {
   const visible = []
   ;["notifquiet", "notifpopups", "notifcentre"].forEach(id => groupLines(id).forEach(l => { if (!/\badv: true\b/.test(l)) visible.push(labelOf(l)) }))
-  assert.deepStrictEqual(visible, ["Do not disturb", "Quiet while a window is fullscreen", "Stay for", "Style"])
+  assert.deepStrictEqual(visible, ["Do not disturb", "Quiet while a window is fullscreen", "Stay for", "Notification style"])
 })
 ok("Wi-Fi details moved to the Utilities box", () => {
   assert.strictEqual(groupLines("utilbox").filter(l => labelOf(l) === "Wi-Fi details").length, 1)

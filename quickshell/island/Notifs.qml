@@ -405,6 +405,7 @@ Scope {
                 anchors.fill: parent
                 visible: col.height > 1
                 pal: root.pal
+                jellyOn: false          // the cards on it deform themselves (NotifCard.qml); the plate behind them must stay as wide as they are
                 joinH: root.pal.frameOn ? (root.atR ? "r" : "l") : ""
                 joinV: root.pal.cornerOut ? (root.atB ? "b" : "t") : ""
                 earR: 10
