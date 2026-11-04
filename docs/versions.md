@@ -7,7 +7,9 @@ Open it with `>versions` (also `>update`) in the launcher, **Settings > System >
 ## What it shows
 One card per component, in one column: **Halcyon, LUNA, ai-antivirus, ai-firewall**.
 
-- The installed version (short commit, date, tag if any) and the newest on GitHub `main`, with *N commits behind* or *up to date*.
+- The installed version (short commit, date, tag if any) and the newest on GitHub `main`, with *N commits behind* or *on the latest*.
+- **unreg**: the installed commit is not in the repository's history on GitHub (a build from a commit that was never pushed, or one that was rewritten away). It is never counted as an update; **Update to main** and **Roll back** still work on it.
+- When the window opens and the last look at GitHub is over an hour old, it checks once, quietly, so these labels are current without pressing *Check now*. No timer, no polling; offline it keeps the cache.
 - A commit list (hash, subject, date, author), newest first, loaded **only when you open it**, 30 at a time. The newest tags are chips above it; click one to install it. Every row has *Install* (not the installed one).
 - **Update**, **Roll back** (to the version before the last change), **Pin / Unpin**.
 - A component you did not choose at install is greyed with *Install*. It is never updated behind your back. A pacman package of ai-firewall is shown as "managed by pacman" and left to pacman.

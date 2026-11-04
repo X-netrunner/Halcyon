@@ -6,7 +6,7 @@ const rd = p => fs.readFileSync(path.join(root, p), 'utf8')
 let n = 0, bad = 0
 function ok(label, cond) { n++; if (!cond) { bad++; console.log('FAIL ' + label) } else console.log('ok   ' + label) }
 
-const vc = rd('quickshell/island/VersionCenter.qml'), auto = rd('quickshell/island/SetVersionsAuto.qml')
+const vcMain = rd('quickshell/island/VersionCenter.qml'), vc = vcMain + ['Card', 'Hero', 'Log', 'Commits', 'Actions', 'Corner', 'Pill', 'Tile', 'Badge', 'Btn', 'Text'].map(n => rd('quickshell/island/Version' + n + '.qml')).join('\n'), auto = rd('quickshell/island/SetVersionsAuto.qml')
 const shell = rd('quickshell/island/shell.qml'), launcher = rd('quickshell/island/Launcher.qml'), settings = rd('quickshell/island/Settings.qml')
 const notch = rd('quickshell/island/NotchBar.qml')
 
@@ -29,7 +29,7 @@ ok('the dot reads the daily check\'s file only', /halcyon-versions\/available\.j
 // ---- the rules from the brief
 ok('no background polling: no repeating or auto-running Timer', !/repeat:\s*true/.test(vc + auto) && !/running:\s*true/.test(vc + auto))
 ok('the commit list is read only when a card is opened (loadLog from toggleList, 30 per page)', /function toggleList[\s\S]{0,300}loadLog\(id, 0\)/.test(vc) && /Load 30 more/.test(vc))
-ok('one operation at a time: buttons are disabled while one runs', (vc.match(/root\.locked/g) || []).length >= 8)
+ok('one operation at a time: buttons are disabled while one runs', (vc.match(/(root|vc)\.locked/g) || []).length >= 6 && /disabled: ac\.blocked/.test(rd('quickshell/island/VersionActions.qml')))
 ok('the password goes to stdin once, then is cleared', /write\(root\.opPw \+ "\\n"\); root\.opPw = ""/.test(vc) && /--password-stdin/.test(vc))
 ok('the password is never put on a command line or in a file', !/command:[^\n]*dlgPw/.test(vc) && !/dlgPw[^\n]*(execDetached|writeFile)/.test(vc))
 ok('a confirm dialog comes before anything runs (plan first)', /"plan", id, ref/.test(vc) && /function confirmDialog/.test(vc))
@@ -39,6 +39,13 @@ ok('components not chosen are greyed with an Install button', /greyed/.test(vc) 
 ok('no emoji in the window or its Settings leaf', !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(vc + auto))
 ok('slow, calm animations come from the palette (dMed / dSlow), no fixed fast ones', /pal\.dSlow/.test(vc) && !/duration: [0-9]{1,2}\b/.test(vc))
 
+// ---- the two-column layout with the star corner menu
+ok('Halcyon has its own big card (Hero) and the companions are LUNA, ai-antivirus, ai-firewall in that order', /delegate: VersionHero/.test(vc) && /model: root\.loaded \? \["luna", "ai-antivirus", "ai-firewall"\]/.test(vc))
+ok('the actions sit behind a corner button that is the Halcyon star (HalMark), on both card kinds', /HalMark \{[^}]*rotation: cb\.open \? 90/.test(rd('quickshell/island/VersionCorner.qml')) && (vc.match(/VersionCorner \{/g) || []).length >= 2)
+ok('the actions pill holds Update, Roll back, Pin, Commits and takes no room while closed', (() => { const a = rd('quickshell/island/VersionActions.qml'); return /implicitHeight: shown \? 36 : 0/.test(a) && /label: "Roll back"/.test(a) && /label: "Pin"|"Unpin" : "Pin"/.test(a) })())
+ok('the Halcyon card shows installed, latest, behind by, pin and the distance bar', ['"Installed"', '"Latest on main"', '"Behind by"', '"Pin"', 'lagPos'].every(x => vc.includes(x)))
+
+ok('the light in the Halcyon card follows the pointer inside the card and is clamped to it', (() => { const h = rd('quickshell/island/VersionHero.qml'); return /HoverHandler/.test(h) && /Math\.min\(hero\.width/.test(h) && /Behavior on gx/.test(h) })())
 // ---- braces balance in the new QML (a cheap compile guard where Quickshell is not installed)
 function balanced(src) {
   let d = 0, inStr = null, esc = false, line = false, block = false
@@ -56,7 +63,7 @@ function balanced(src) {
   }
   return d === 0 && !inStr
 }
-ok('VersionCenter.qml: brackets balance', balanced(vc))
+ok('VersionCenter.qml and the Version*.qml pieces: brackets balance', ['Center', 'Card', 'Hero', 'Log', 'Commits', 'Actions', 'Corner', 'Pill', 'Tile', 'Badge', 'Btn', 'Text'].every(n => balanced(rd('quickshell/island/Version' + n + '.qml'))))
 ok('SetVersionsAuto.qml: brackets balance', balanced(auto))
 ok('every id used by the QML processes is declared once', ['statusProc', 'logProc', 'tagsProc', 'planProc', 'autoProc', 'opProc'].every(id => (vc.match(new RegExp('id: ' + id + '\\b', 'g')) || []).length === 1))
 
