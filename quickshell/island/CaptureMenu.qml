@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 
-// Super + S: one small menu with four icons. Screenshot a region / a window / the whole screen, or record a region.
+// Super + Shift + S: one small menu with four icons. Screenshot a region / a window / the whole screen, or record a region.
 // It is the quick door; the full panel (Super + Ctrl + S) still exists for Copy / Save / Both / text and for the window picker.
 //
 // The menu leaves first, then the capture starts (the menu must not be in the picture). R records a draggable region through

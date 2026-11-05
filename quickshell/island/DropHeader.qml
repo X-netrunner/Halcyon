@@ -122,13 +122,30 @@ Item {
                     anchors.centerIn: parent
                     spacing: 8
 
-                    Text {
+                    // the icon; on the Notifications tab the unread count sits on the bell's corner like a phone's app badge (not as
+                    // a loose number beside the label)
+                    Item {
                         anchors.verticalCenter: parent.verticalCenter
-                        // the bell shows "off" while Do not disturb is on
-                        text: (tab.index === 1 && root.dnd) ? String.fromCodePoint(0xF009B) : tab.modelData.glyph
-                        color: tab.ink
-                        font.family: root.pal.font
-                        font.pixelSize: 15
+                        width: 20
+                        height: 20
+                        Text {
+                            anchors.centerIn: parent
+                            // the bell shows "off" while Do not disturb is on
+                            text: (tab.index === 1 && root.dnd) ? String.fromCodePoint(0xF009B) : tab.modelData.glyph
+                            color: tab.ink
+                            font.family: root.pal.font
+                            font.pixelSize: 17
+                        }
+                        Badge {
+                            visible: tab.index === 1 && root.unread > 0 && !root.dnd
+                            x: parent.width - width * 0.62
+                            y: -height * 0.38
+                            pal: root.pal
+                            count: root.unread
+                            dot: false
+                            size: 15
+                            cap: 9
+                        }
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -137,14 +154,6 @@ Item {
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.tBody
                         font.weight: tab.act > 0.5 ? Font.Medium : Font.Medium
-                    }
-                    // unread count
-                    Badge {
-                        visible: tab.index === 1 && root.unread > 0
-                        anchors.verticalCenter: parent.verticalCenter
-                        pal: root.pal
-                        count: root.unread
-                        size: 18
                     }
                 }
                 TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.pick(tab.index) }

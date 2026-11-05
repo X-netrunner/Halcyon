@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Services.Notifications
+import "NotifOpen.js" as NO
 
 // One app's notifications in the "Grouped by app" look (Settings > Panels & notifications > Notification style):
 // a card with the app's icon, its name and a count, and its notifications listed inside.
@@ -104,8 +105,10 @@ Rectangle {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        var a = it.n && it.n.actions ? it.n.actions : []
-                        for (var i = 0; i < a.length; i++) if (a[i].identifier === "default") { a[i].invoke(); break }
+                        if (!it.n) return
+                        var p = NO.plan(it.n, Quickshell.env("HOME"))
+                        if (p.def) p.def.invoke()
+                        Quickshell.execDetached(p.cmd)
                     }
                 }
                 ColumnLayout {

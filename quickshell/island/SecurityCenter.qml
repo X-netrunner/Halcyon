@@ -1285,7 +1285,8 @@ Scope {
         property var figures: []            // [[value, label, color], ...]
         default property alias actions: mcAct.data
         Layout.fillWidth: true
-        Layout.preferredHeight: 196
+        Layout.preferredWidth: 1
+        Layout.preferredHeight: 156
         radius: root.pal.rLg
         color: mcMa.containsMouse && available ? root.pal.fillHover : root.pal.fill
         opacity: available ? 1 : 0.6
@@ -1328,7 +1329,7 @@ Scope {
                 }
             }
             Item { Layout.fillHeight: true }
-            Row { id: mcAct; spacing: 8; visible: mc.available }
+            Row { id: mcAct; spacing: 8; visible: mc.available && children.length > 0 }
         }
     }
 
@@ -1535,30 +1536,50 @@ Scope {
                                 text: "Not installed"
                             }
 
-                            // ---- overview: what needs you, then the two modules at a glance
+                            // ---- overview: how it is (one calm hero), what needs you, the two modules, the latest events
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 32
-                                spacing: 14
+                                anchors.leftMargin: 32
+                                anchors.rightMargin: 32
+                                anchors.topMargin: 12
+                                anchors.bottomMargin: 24
+                                spacing: 16
                                 visible: root.tab === "overview" && (root.hasFw || root.hasAv)
 
-                                // all clear: one quiet line; when something needs you, the rows below are the whole story
-                                RowLayout {
+                                // the hero: a shield in two soft rings, the verdict in a few words under it. The colour is the whole message
+                                // (green: protected, amber: something waits for you, red: a module is down). Nothing here animates at rest.
+                                Item {
                                     Layout.fillWidth: true
-                                    visible: root.ovTodo.length === 0
-                                    spacing: 12
-                                    Rectangle {
-                                        width: 40; height: 40; radius: 14
-                                        color: Qt.alpha(root.overallColor, 0.12)
-                                        Glyph { anchors.centerIn: parent; code: 0xF0565; font.pixelSize: 21; color: root.overallColor }
+                                    Layout.preferredHeight: 148
+                                    Item {
+                                        id: hero
+                                        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top }
+                                        width: 88; height: 88
+                                        Rectangle { anchors.centerIn: parent; width: 88; height: 88; radius: 44; color: Qt.alpha(root.overallColor, 0.07); border.width: 1; border.color: Qt.alpha(root.overallColor, 0.18) }
+                                        Rectangle { anchors.centerIn: parent; width: 64; height: 64; radius: 32; color: Qt.alpha(root.overallColor, 0.14) }
+                                        Glyph { anchors.centerIn: parent; code: root.ovTodo.length === 0 ? 0xF0565 : 0xF0026; font.pixelSize: 32; color: root.overallColor }
                                     }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.ovSub
-                                        color: root.pal.muted
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tBody
-                                        elide: Text.ElideRight
+                                    Column {
+                                        anchors { horizontalCenter: parent.horizontalCenter; top: hero.bottom; topMargin: 12 }
+                                        width: parent.width
+                                        spacing: 4
+                                        Text {
+                                            width: parent.width
+                                            horizontalAlignment: Text.AlignHCenter
+                                            text: root.ovHead
+                                            color: root.pal.text
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tTitle + 4
+                                            font.weight: Font.Medium
+                                            font.letterSpacing: -0.2
+                                            elide: Text.ElideRight
+                                        }
+                                        Small {
+                                            width: parent.width
+                                            horizontalAlignment: Text.AlignHCenter
+                                            text: root.ovTodo.length === 0 ? root.ovSub : "Pick one below, it takes you straight to it."
+                                            elide: Text.ElideRight
+                                        }
                                     }
                                 }
 
@@ -1633,106 +1654,56 @@ Scope {
                                     }
                                 }
 
+                                // the two modules: a name, how it is doing, three figures. The whole card opens its page.
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 12
-                                    Repeater {
-                                        model: root.ovTiles
-                                        delegate: Rectangle {
-                                            id: ot
-                                            required property var modelData
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: 74
-                                            radius: root.pal.rLg
-                                            color: otMa.containsMouse && modelData.ok ? root.pal.fillHover : root.pal.fill
-                                            opacity: modelData.ok ? 1 : 0.45
-                                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                            MouseArea {
-                                                id: otMa
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                enabled: ot.modelData.ok
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: root.setTab(ot.modelData.key)
-                                            }
-                                            Rectangle {
-                                                id: otIc
-                                                x: 14
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                width: 38
-                                                height: 38
-                                                radius: 13
-                                                color: Qt.alpha(ot.modelData.tone, 0.15)
-                                                Glyph {
-                                                    anchors.centerIn: parent
-                                                    code: ot.modelData.glyph
-                                                    font.pixelSize: 19
-                                                    color: ot.modelData.tone
-                                                }
-                                            }
-                                            Column {
-                                                anchors.left: otIc.right
-                                                anchors.leftMargin: 12
-                                                anchors.right: otFig.left
-                                                anchors.rightMargin: 8
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                spacing: 2
-                                                Text {
-                                                    width: parent.width
-                                                    elide: Text.ElideRight
-                                                    text: ot.modelData.name
-                                                    color: root.pal.text
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tBody
-                                                    font.weight: Font.Medium
-                                                }
-                                                Row {
-                                                    spacing: 6
-                                                    Dot {
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        color: ot.modelData.tone
-                                                        width: 6
-                                                        height: 6
-                                                        radius: 3
-                                                    }
-                                                    Small { text: ot.modelData.line }
-                                                }
-                                            }
-                                            Small {
-                                                id: otFig
-                                                anchors.right: otArrow.left
-                                                anchors.rightMargin: 8
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                text: ot.modelData.figure
-                                                color: root.pal.text
-                                            }
-                                            Glyph {
-                                                id: otArrow
-                                                anchors.right: parent.right
-                                                anchors.rightMargin: 14
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                code: 0xF0142
-                                                font.pixelSize: 18
-                                                opacity: otMa.containsMouse ? 1 : 0.5
-                                            }
-                                        }
+                                    spacing: 14
+                                    ModuleCard {
+                                        key: "firewall"; name: "Firewall"; glyph: 0xF1A11
+                                        available: root.hasFw
+                                        tone: root.fwColor
+                                        status: root.hasFw ? root.fwState + (root.posture !== "" && root.posture !== "secure" ? "  ·  " + root.posture : "") : "Not installed"
+                                        figures: root.fw ? [
+                                            [root.count((root.fw.dropped_policy || 0) + (root.fw.dropped_blocklist || 0) + (root.fw.dropped_feed || 0)), "blocked", root.pal.warn],
+                                            [String(root.bansCount), "banned", root.bansCount > 0 ? root.pal.bad : root.pal.text],
+                                            [root.count(root.fw.passed || 0), "let through", root.pal.good]
+                                        ] : []
+                                    }
+                                    ModuleCard {
+                                        key: "antivirus"; name: "Antivirus"; glyph: 0xF13B6
+                                        available: root.hasAv
+                                        tone: root.avColor
+                                        status: root.hasAv ? root.avState + (root.av && root.av.mode ? "  ·  " + root.av.mode : "") : "Not installed"
+                                        figures: root.hasAv ? [
+                                            [root.avKnown ? String(root.avUnacked) : "–", "to review", root.avUnacked > 0 ? root.pal.warn : root.pal.text],
+                                            [root.avKnown ? String(root.avPending) : "–", "waiting for OK", root.avPending > 0 ? root.pal.warn : root.pal.text],
+                                            [root.avKnown ? String(root.avHeld.length) : "–", "held back", root.pal.text]
+                                        ] : []
                                     }
                                 }
 
-                                ColumnLayout {
+                                // the latest events of both, on one soft surface
+                                Rectangle {
                                     Layout.fillWidth: true
-                                    spacing: 2
                                     visible: root.feed.length > 0
-                                    Label { Layout.leftMargin: 4; Layout.bottomMargin: 4; text: "Latest" }
-                                    Repeater {
-                                        model: root.feed.slice(0, 3)
-                                        delegate: ListRow {
-                                            required property var modelData
-                                            Layout.fillWidth: true
-                                            lead: root.ago(modelData.at)
-                                            title: modelData.title
-                                            sub: (modelData.who === "firewall" ? "Firewall" : "Antivirus") + "  ·  " + modelData.sub
-                                            mark: root.sevColor(modelData.tone)
+                                    implicitHeight: latCol.implicitHeight + 24
+                                    radius: root.pal.rLg
+                                    color: root.pal.fill
+                                    ColumnLayout {
+                                        id: latCol
+                                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+                                        spacing: 2
+                                        Label { Layout.leftMargin: 8; Layout.bottomMargin: 2; text: "Latest" }
+                                        Repeater {
+                                            model: root.feed.slice(0, 3)
+                                            delegate: ListRow {
+                                                required property var modelData
+                                                Layout.fillWidth: true
+                                                lead: root.ago(modelData.at)
+                                                title: modelData.title
+                                                sub: (modelData.who === "firewall" ? "Firewall" : "Antivirus") + "  ·  " + modelData.sub
+                                                mark: root.sevColor(modelData.tone)
+                                            }
                                         }
                                     }
                                 }

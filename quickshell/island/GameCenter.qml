@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
@@ -8,8 +9,9 @@ import Quickshell.Hyprland
 
 // Game Center.   >gamecenter in the launcher (also `island command gamecenter`, and the IPC calls `gamecenter` / `gamecenterpage`).
 // One window for the game launcher (scripts: none, everything goes through the `hgl` binary, see docs/games.md):
-//   Library   a grid of cover art, last played first. Type to search, arrows move, Enter plays. The drawer on the right is the
-//             game's profile: Proton version, gamescope preset, wrappers, Halcyon's lean mode, Wayland, and under "Advanced" the
+//   Library   one endless row of cover art (it loops), last played first, over a blurred backdrop of the chosen game that fills the
+//             whole window. Type to search, arrows / wheel / drag move, Enter plays. Under the name: Play, and Options, which slides the
+//             game's profile in over the shelf (it is no longer a side panel): Proton version, gamescope preset, wrappers, Halcyon's lean mode, Wayland, and under "Advanced" the
 //             launch options, environment variables, prefix tools, the newest log and the crash check.
 //             Add game opens a .exe browser inside the window (ExePicker.qml); the path can also be pasted.
 //   Stores    Epic (legendary) and GOG (gogdl): log in, see what you own, install, read what is installed, fetch cover art.
@@ -51,6 +53,7 @@ Scope {
     property bool pickerOpen: false
     property string exeDir: ""              // the folder the .exe browser opens in (the last one you picked from)
     property bool advOpen: false            // the drawer's "Advanced" section
+    property bool optsOpen: false           // the options sheet (the chosen game's settings) is out over the shelf
     property bool protonOpen: false
     property bool logOpen: false
     property string logText: ""
@@ -75,7 +78,7 @@ Scope {
         if (tab === "stores") loadStores()
         Qt.callLater(function () { root.focusRequested(root.tab === "library" ? "search" : "panel") })
     }
-    function hide() { open = false; confirmRemove = false; pickerOpen = false }
+    function hide() { open = false; confirmRemove = false; pickerOpen = false; optsOpen = false }
     function close() { hide() }
     function toggle() { if (open) hide(); else show("library") }
     function toggleTo(t) { if (open && tab === t) hide(); else show(t) }      // the same page's entry pressed again closes the window
@@ -687,7 +690,7 @@ Scope {
                     ready = true; argsIn.text = root.argsSeed
                     Qt.callLater(function () { if (root.pickerOpen) root.focusRequested("picker"); else if (root.tab === "library") sin.forceActiveFocus(); else qp.forceActiveFocus() })
                 }
-                Keys.onEscapePressed: root.hide()
+                Keys.onEscapePressed: { if (root.optsOpen) root.optsOpen = false; else root.hide() }
                 Connections {
                     target: root
                     function onFocusRequested(what) {
@@ -711,9 +714,53 @@ Scope {
                     opacityBody: 0.97
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                     anchors.centerIn: parent
+                    anchors.horizontalCenterOffset: -optSide.shiftBy * optSide.prog        // the window and its options card sit centred together
                     opacity: win.desktop ? 1 : qp.reveal
                     scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
+
+                    // ---- the backdrop: the chosen game's cover, blurred, over the WHOLE window (behind the top bar as well), melting into the
+                    // panel colour at the sides and the bottom so it never reads as a box
+                    ClippingRectangle {
+                        anchors.fill: parent
+                        radius: panel.radius
+                        color: "transparent"
+                        visible: root.tab === "library" && root.sel !== null && bdImg.status === Image.Ready
+                        Image {
+                            id: bdImg
+                            anchors.fill: parent
+                            source: root.sel && root.sel.cover && root.sel.cover !== "" && String(root.sel.cover).indexOf("/icons/") < 0 ? "file://" + root.sel.cover : ""
+                            fillMode: Image.PreserveAspectCrop
+                            sourceSize.width: 360
+                            sourceSize.height: 360
+                            asynchronous: true
+                            cache: false
+                            opacity: status === Image.Ready ? 0.42 : 0
+                            Behavior on opacity { NumberAnimation { duration: root.pal.dSlow } }
+                            layer.enabled: true
+                            layer.effect: MultiEffect { blurEnabled: true; blurMax: 64; blur: 1.0; autoPaddingEnabled: false }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            gradient: Gradient {
+                                orientation: Gradient.Vertical
+                                GradientStop { position: 0.0; color: Qt.alpha(root.pal.bg, 0.42) }
+                                GradientStop { position: 0.22; color: Qt.alpha(root.pal.bg, 0.12) }
+                                GradientStop { position: 0.58; color: Qt.alpha(root.pal.bg, 0.55) }
+                                GradientStop { position: 1.0; color: Qt.alpha(root.pal.bg, 0.97) }
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: Qt.alpha(root.pal.bg, 0.7) }
+                                GradientStop { position: 0.28; color: "transparent" }
+                                GradientStop { position: 0.72; color: "transparent" }
+                                GradientStop { position: 1.0; color: Qt.alpha(root.pal.bg, 0.7) }
+                            }
+                        }
+                    }
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -763,14 +810,12 @@ Scope {
                                                 selectedTextColor: root.pal.text
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tBody + 1
-                                                onTextChanged: { root.search = text; grid.currentIndex = 0; grid.pick() }
+                                                onTextChanged: { root.search = text; Qt.callLater(function () { grid.currentIndex = 0; grid.pick() }) }
                                                 Keys.onPressed: e => {
                                                     var n = root.shown.length
-                                                    if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true }
-                                                    else if (e.key === Qt.Key_Right) { if (grid.currentIndex < n - 1) { grid.currentIndex++; grid.pick() } e.accepted = true }
-                                                    else if (e.key === Qt.Key_Left) { if (grid.currentIndex > 0) { grid.currentIndex--; grid.pick() } e.accepted = true }
-                                                    else if (e.key === Qt.Key_Down) { grid.currentIndex = Math.min(n - 1, grid.currentIndex + grid.cols); grid.pick(); e.accepted = true }
-                                                    else if (e.key === Qt.Key_Up) { grid.currentIndex = Math.max(0, grid.currentIndex - grid.cols); grid.pick(); e.accepted = true }
+                                                    if (e.key === Qt.Key_Escape) { if (root.optsOpen) root.optsOpen = false; else root.hide(); e.accepted = true }
+                                                    else if (e.key === Qt.Key_Right || e.key === Qt.Key_Down) { grid.step(1); e.accepted = true }
+                                                    else if (e.key === Qt.Key_Left || e.key === Qt.Key_Up) { grid.step(-1); e.accepted = true }
                                                     else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { grid.pick(); root.playSel(); e.accepted = true }
                                                 }
                                                 Text {
@@ -971,24 +1016,76 @@ Scope {
                                     }
                                 }
 
-                                // the grid: covers, the name over the bottom of the art
-                                GridView {
-                                    id: grid
+                                // the shelf: ONE endless row of covers (a PathView: it wraps, so after the last game comes the first again).
+                                // The chosen game is in the middle, full size; the others get smaller, dimmer and fade out towards both ends.
+                                // Left / Right, the wheel (one cover per notch), a drag or a click move along it; Enter or a double click plays.
+                                FadeEdges {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     visible: root.shown.length > 0
+                                    horizontal: true
+                                    fadeTop: 90
+                                    fadeBottom: 90
+                                PathView {
+                                    id: grid
+                                    anchors.fill: parent
                                     clip: true
-                                    boundsBehavior: Flickable.StopAtBounds
                                     model: root.shown
-                                    readonly property int cols: Math.max(1, Math.floor(width / 172))
-                                    cellWidth: Math.floor(width / cols)
-                                    cellHeight: Math.round(cellWidth * 1.42)
-                                    currentIndex: 0
-                                    onCurrentIndexChanged: positionViewAtIndex(currentIndex, GridView.Contain)
+                                    readonly property real cellHeight: height
+                                    readonly property real cellWidth: Math.round(Math.max(150, Math.min(height * 0.74, width * 0.28)))
+                                    readonly property real gap: cellWidth * 1.04
+                                    // an odd number of covers on the path, enough to run past both edges; fewer games than that: all of them
+                                    pathItemCount: Math.max(1, Math.min(count, Math.max(5, 2 * Math.ceil(width / gap / 2) + 1)))
+                                    preferredHighlightBegin: 0.5
+                                    preferredHighlightEnd: 0.5
+                                    highlightRangeMode: PathView.StrictlyEnforceRange
+                                    snapMode: PathView.SnapOneItem
+                                    highlightMoveDuration: root.pal.dMed
+                                    // "sc" (size) and "op" (opacity) are read by each cover as PathView.sc / PathView.op: 1 in the middle, falling off to both ends
+                                    path: Path {
+                                        startX: grid.width / 2 - grid.gap * grid.pathItemCount / 2
+                                        startY: grid.height / 2
+                                        PathAttribute { name: "sc"; value: 0.5 }
+                                        PathAttribute { name: "op"; value: 0.0 }
+                                        PathLine { x: grid.width / 2; y: grid.height / 2 }
+                                        PathAttribute { name: "sc"; value: 1.0 }
+                                        PathAttribute { name: "op"; value: 1.0 }
+                                        PathLine { x: grid.width / 2 + grid.gap * grid.pathItemCount / 2; y: grid.height / 2 }
+                                        PathAttribute { name: "sc"; value: 0.5 }
+                                        PathAttribute { name: "op"; value: 0.0 }
+                                    }
+                                    // the chosen game follows what you do (keys, wheel, a settled drag, a click), never a reset of the list
                                     function pick() {
                                         var g = root.shown[currentIndex]
                                         if (g) root.selId = g.id
                                     }
+                                    function step(dir) {
+                                        if (count < 2) return
+                                        if (dir > 0) incrementCurrentIndex(); else decrementCurrentIndex()
+                                        pick()
+                                    }
+                                    // the other way round: put the shelf on the chosen game (the list reloaded, a search changed it, the window opened)
+                                    function syncSel() {
+                                        for (var i = 0; i < root.shown.length; i++)
+                                            if (root.shown[i].id === root.selId) { if (currentIndex !== i) currentIndex = i; return }
+                                        if (root.shown.length > 0) { currentIndex = 0; pick() }
+                                    }
+                                    Component.onCompleted: syncSel()
+                                    onCountChanged: syncSel()
+                                    onModelChanged: syncSel()
+                                    onMovementEnded: pick()
+                                    Connections { target: root; function onSelIdChanged() { grid.syncSel() } }
+                                    WheelHandler {
+                                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                        onWheel: event => {
+                                            if (wheelLock.running) return
+                                            var d = Math.abs(event.angleDelta.y) >= Math.abs(event.angleDelta.x) ? event.angleDelta.y : event.angleDelta.x
+                                            if (d === 0) return
+                                            grid.step(d < 0 ? 1 : -1)
+                                            wheelLock.restart()
+                                        }
+                                    }
+                                    Timer { id: wheelLock; interval: 130 }
 
                                     delegate: Item {
                                         id: cell
@@ -997,9 +1094,31 @@ Scope {
                                         width: grid.cellWidth
                                         height: grid.cellHeight
                                         readonly property bool cur: root.selId === modelData.id
+                                        // size and brightness come from the path: full in the middle, smaller and dimmer towards the ends
+                                        scale: PathView.sc
+                                        opacity: PathView.op
+                                        z: PathView.isCurrentItem ? 2 : 0
                                         readonly property bool playing: root.runningId === modelData.id
                                         readonly property bool hasArt: img.status === Image.Ready && !img.small
 
+                                        // a soft glow of the accent colour under the chosen cover (only that one is drawn)
+                                        Item {
+                                            id: glowSrc
+                                            anchors.fill: parent
+                                            visible: false
+                                            layer.enabled: cell.cur
+                                            Rectangle { anchors.fill: parent; anchors.margins: 30; radius: root.pal.rLg; color: root.pal.accent }
+                                        }
+                                        MultiEffect {
+                                            anchors.fill: parent
+                                            visible: cell.cur
+                                            source: glowSrc
+                                            opacity: 0.42
+                                            blurEnabled: true
+                                            blurMax: 40
+                                            blur: 1.0
+                                            autoPaddingEnabled: false
+                                        }
                                         ClippingRectangle {
                                             id: card
                                             anchors.fill: parent
@@ -1052,37 +1171,6 @@ Scope {
                                                 color: Qt.alpha(root.pal.accent, cardMa.containsMouse ? 0.07 : 0)
                                                 Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                             }
-                                            // the name, over a shade at the bottom of the art
-                                            Rectangle {
-                                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                                                height: 76
-                                                gradient: Gradient {
-                                                    GradientStop { position: 0; color: Qt.alpha(root.pal.bg, 0) }
-                                                    GradientStop { position: 0.55; color: Qt.alpha(root.pal.bg, 0.78) }
-                                                    GradientStop { position: 1; color: Qt.alpha(root.pal.bg, 0.94) }
-                                                }
-                                            }
-                                            Column {
-                                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 12; rightMargin: 12; bottomMargin: 11 }
-                                                spacing: 1
-                                                Text {
-                                                    width: parent.width
-                                                    elide: Text.ElideRight
-                                                    text: cell.modelData.name
-                                                    color: root.pal.text
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tBody - 1
-                                                    font.weight: Font.Medium
-                                                }
-                                                Text {
-                                                    width: parent.width
-                                                    elide: Text.ElideRight
-                                                    text: root.srcLabel(cell.modelData.source) + "  ·  " + root.fmtTime(cell.modelData.playtime)
-                                                    color: root.pal.muted
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tCap - 1
-                                                }
-                                            }
                                             // status: playing now / needs a look
                                             Rectangle {
                                                 anchors { left: parent.left; top: parent.top; margins: 10 }
@@ -1114,7 +1202,7 @@ Scope {
                                             Rectangle {
                                                 anchors { right: parent.right; top: parent.top; margins: 10 }
                                                 width: 30; height: 30; radius: 15
-                                                visible: cardMa.containsMouse
+                                                visible: cell.cur && cardMa.containsMouse
                                                 color: root.pal.accent
                                                 Text {
                                                     anchors.centerIn: parent
@@ -1140,16 +1228,16 @@ Scope {
                                                 hoverEnabled: true
                                                 cursorShape: Qt.PointingHandCursor
                                                 onClicked: m => {
-                                                    grid.currentIndex = cell.index; root.selId = cell.modelData.id; sin.forceActiveFocus()
+                                                    grid.currentIndex = cell.index; grid.pick(); sin.forceActiveFocus()
                                                     if (m.x > width - 46 && m.y < 46) root.playSel()        // the corner play button
                                                 }
-                                                onDoubleClicked: { grid.currentIndex = cell.index; root.selId = cell.modelData.id; root.playSel() }
+                                                onDoubleClicked: { grid.currentIndex = cell.index; grid.pick(); root.playSel() }
                                             }
                                             // favourite: always shown when starred, on hover otherwise (favourites come first here and in >game)
                                             Rectangle {
                                                 anchors { right: parent.right; top: parent.top; margins: 10; rightMargin: cardMa.containsMouse || favMa.containsMouse ? 44 : 10 }
                                                 width: 30; height: 30; radius: 15
-                                                visible: cell.modelData.fav || cardMa.containsMouse || favMa.containsMouse
+                                                visible: cell.modelData.fav || (cell.cur && (cardMa.containsMouse || favMa.containsMouse))
                                                 color: Qt.alpha(root.pal.bg, favMa.containsMouse ? 0.92 : 0.72)
                                                 Text {
                                                     anchors.centerIn: parent
@@ -1167,6 +1255,54 @@ Scope {
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                                }
+
+                                // under the shelf: the chosen game's name large, one quiet line about it, then Play and Options
+                                Item {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 134
+                                    visible: root.shown.length > 0 && root.sel !== null
+                                    Column {
+                                        anchors { top: parent.top; horizontalCenter: parent.horizontalCenter }
+                                        width: parent.width - 40
+                                        spacing: 3
+                                        Text {
+                                            width: parent.width
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                            text: root.sel ? root.sel.name : ""
+                                            color: root.pal.text
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tTitle + 6
+                                            font.weight: Font.Medium
+                                            font.letterSpacing: -0.2
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                            text: root.sel ? root.srcLabel(root.sel.source) + "  ·  " + root.fmtTime(root.sel.playtime) + (root.sel.lastPlayed ? "  ·  played " + root.fmtAgo(root.sel.lastPlayed) : "") : ""
+                                            color: root.pal.muted
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tCap + 1
+                                        }
+                                    }
+                                    Row {
+                                        anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter; bottomMargin: 6 }
+                                        spacing: 12
+                                        PrimaryBtn {
+                                            readonly property bool starting: root.phase === "starting" && root.sel !== null && root.launchId === root.sel.id
+                                            implicitHeight: 46
+                                            implicitWidth: 168
+                                            glyph: String.fromCodePoint(starting ? 0xF040A : (root.selRunning ? 0xF04DB : 0xF040A))
+                                            label: starting ? "Starting" : (root.selRunning ? "Stop" : ((root.phase === "ended" || root.phase === "failed") && root.sel && root.launchId === root.sel.id ? "Try again" : "Play"))
+                                            danger: !starting && root.selRunning
+                                            disabled: starting
+                                            onClicked: root.playSel()
+                                        }
+                                        CalmIconBtn { pal: root.pal; size: 46; quiet: false; glyph: 0xF0493; tip: "Options for this game"; active: root.optsOpen; onClicked: root.optsOpen = !root.optsOpen }
                                     }
                                 }
 
@@ -1218,14 +1354,409 @@ Scope {
                                 }
                             }
 
-                            // ---- the drawer: the selected game
-                            ClippingRectangle {
-                                id: drawer
-                                Layout.preferredWidth: 328
+                        }
+
+                        // ================= Runtimes
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: root.tab === "runtimes"
+                            spacing: 12
+
+                            Text {
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                text: "Proton runs Windows games."
+                                color: root.pal.muted
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                ActionChip { pal: root.pal; label: "Install GE-Proton"; disabled: root.busy; onClicked: root.act([root.hgl, "proton", "install", "latest"], "GE-Proton installed") }
+                                ActionChip { pal: root.pal; label: "Install Proton-CachyOS"; disabled: root.busy; onClicked: root.act([root.hgl, "proton", "install", "latest", "--family", "cachyos"], "Proton-CachyOS installed") }
+                                ActionChip { pal: root.pal; label: "Roll back the default"; disabled: root.busy || root.runtimes.length < 2; onClicked: root.act([root.hgl, "proton", "rollback"], "Default rolled back") }
+                                ActionChip { pal: root.pal; label: "Remove old versions"; disabled: root.busy; onClicked: root.act([root.hgl, "proton", "prune"], "Old versions removed") }
+                                Chip {
+                                    pal: root.pal
+                                    implicitHeight: 36
+                                    label: "Show in Steam"
+                                    on: root.steamLink
+                                    onClicked: root.act(root.steamLink ? [root.hgl, "proton", "link-steam", "--off"] : [root.hgl, "proton", "link-steam"], root.steamLink ? "Removed from Steam" : "Linked. Restart Steam to see them")
+                                }
+                            }
+                            ListView {
+                                Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.sel !== null
-                                radius: root.pal.rLg
-                                color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
+                                clip: true
+                                spacing: 6
+                                boundsBehavior: Flickable.StopAtBounds
+                                model: root.runtimes
+                                delegate: Rectangle {
+                                    id: rrow
+                                    required property var modelData
+                                    width: ListView.view.width
+                                    height: 50
+                                    radius: root.pal.rMd
+                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.7))
+                                    border.width: root.pal.zen && !(modelData["default"]) ? 0 : 1
+                                    border.color: modelData["default"] ? Qt.alpha(root.pal.accent, 0.45) : root.pal.lineSoft
+                                    RowLayout {
+                                        anchors { fill: parent; leftMargin: 16; rightMargin: 8 }
+                                        spacing: 4
+                                        Column {
+                                            Layout.fillWidth: true
+                                            spacing: 1
+                                            Text { width: parent.width; elide: Text.ElideRight; text: rrow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: Font.Medium }
+                                            Text {
+                                                width: parent.width
+                                                elide: Text.ElideRight
+                                                text: rrow.modelData.family + (rrow.modelData["default"] ? "  ·  default" : "") + (rrow.modelData.pinned ? "  ·  pinned" : "")
+                                                color: root.pal.muted
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tCap
+                                            }
+                                        }
+                                        CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 30; glyph: 0xF012C; tip: "Make default"; visible: !rrow.modelData["default"]; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "proton", "default", rrow.modelData.name], "Default: " + rrow.modelData.name) }
+                                        CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 30; glyph: 0xF01B4; tip: "Remove"; visible: !rrow.modelData["default"] && !rrow.modelData.pinned; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "proton", "remove", rrow.modelData.name], "Removed " + rrow.modelData.name) }
+                                    }
+                                }
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: root.runtimes.length === 0
+                                    text: "No Proton installed."
+                                    color: root.pal.muted
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tBody
+                                }
+                            }
+                        }
+
+                        // ================= Stores
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: root.tab === "stores"
+                            spacing: 12
+
+                            Text {
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                text: "Epic and GOG. Installs open in the console."
+                                color: root.pal.muted
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                ActionChip { pal: root.pal; label: "Get cover art"; disabled: root.busy; onClicked: root.act([root.hgl, "art"], "Cover art updated") }
+                                Text {
+                                    height: 36
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: "Cover art for .exe: hgl config steamgriddb_key <key>"
+                                    color: root.pal.muted
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tCap
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                spacing: 14
+
+                                // ---- Epic
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: root.pal.rLg
+                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
+                                    border.width: root.pal.calm ? 0 : 1
+                                    border.color: root.pal.lineSoft
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 10
+                                        Text { text: "Epic Games"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideRight
+                                            text: !root.epicSt.installed ? "legendary is not installed" : (root.epicSt.loggedIn ? "Logged in as " + root.epicSt.account : "Not logged in")
+                                            color: root.epicSt.loggedIn ? root.pal.good : root.pal.muted
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tBody
+                                        }
+                                        Row {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0342; tip: "Log in to Epic"; visible: root.epicSt.installed && !root.epicSt.loggedIn; onClicked: root.runInConsole(root.hgl + " epic login") }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0343; tip: "Log out"; visible: root.epicSt.loggedIn; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "epic", "logout"], "Logged out of Epic", false) }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0331; tip: "My library"; visible: root.epicSt.loggedIn; enabledBtn: !root.storeBusy; onClicked: root.loadEpicList() }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF01DA; tip: "Read installed"; visible: root.epicSt.installed; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "import", "epic"], "Epic games read") }
+                                        }
+                                        ListView {
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            clip: true
+                                            spacing: 6
+                                            boundsBehavior: Flickable.StopAtBounds
+                                            model: root.epicList
+                                            delegate: Rectangle {
+                                                id: erow
+                                                required property var modelData
+                                                width: ListView.view.width
+                                                height: 44
+                                                radius: root.pal.rMd
+                                                color: Qt.alpha(root.pal.bg, 0.45)
+                                                RowLayout {
+                                                    anchors { fill: parent; leftMargin: 12; rightMargin: 10 }
+                                                    spacing: 8
+                                                    Text { Layout.fillWidth: true; elide: Text.ElideRight; text: erow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1 }
+                                                    Text { visible: erow.modelData.installed; text: "installed"; color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                                    CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 28; glyph: 0xF01DA; tip: "Install"; visible: !erow.modelData.installed; onClicked: root.runInConsole(root.hgl + " epic install " + root.q(erow.modelData.app)) }
+                                                }
+                                            }
+                                            Text {
+                                                anchors.centerIn: parent
+                                                visible: root.epicList.length === 0
+                                                text: root.epicListed ? "Your Epic library is empty" : (root.epicSt.loggedIn ? "Read your library" : "")
+                                                color: root.pal.muted
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tBody
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ---- GOG
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: root.pal.rLg
+                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
+                                    border.width: root.pal.calm ? 0 : 1
+                                    border.color: root.pal.lineSoft
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 10
+                                        Text { text: "GOG"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideRight
+                                            text: !root.gogSt.installed ? "gogdl is not installed" : (root.gogSt.loggedIn ? "Logged in" : "Not logged in")
+                                            color: root.gogSt.loggedIn ? root.pal.good : root.pal.muted
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tBody
+                                        }
+                                        Row {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF03CC; tip: "Open sign-in page"; visible: root.gogSt.installed && !root.gogSt.loggedIn; onClicked: Quickshell.execDetached(["xdg-open", root.gogSt.url]) }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0331; tip: "My library"; visible: root.gogSt.loggedIn; enabledBtn: !root.storeBusy; onClicked: root.loadGogList() }
+                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF01DA; tip: "Read installed"; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "import", "gog"], "GOG games read") }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            visible: root.gogSt.installed && !root.gogSt.loggedIn
+                                            spacing: 8
+                                            Rectangle {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: 34
+                                                radius: root.pal.rSm
+                                                color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
+                                                border.width: root.pal.zen && !gogIn.activeFocus ? 0 : 1
+                                                border.color: gogIn.activeFocus ? root.pal.accent : root.pal.lineSoft
+                                                TextInput {
+                                                    id: gogIn
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 12
+                                                    anchors.rightMargin: 12
+                                                    verticalAlignment: TextInput.AlignVCenter
+                                                    clip: true
+                                                    text: root.gogAddr
+                                                    color: root.pal.text
+                                                    selectionColor: Qt.alpha(root.pal.accent, 0.45)
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tBody
+                                                    onTextChanged: root.gogAddr = text
+                                                    Keys.onReturnPressed: root.gogLogin()
+                                                    Keys.onEscapePressed: root.hide()
+                                                    Text { anchors.verticalCenter: parent.verticalCenter; visible: gogIn.text.length === 0; text: "Paste the address"; color: root.pal.muted; font: gogIn.font }
+                                                }
+                                            }
+                                            CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 32; glyph: 0xF0342; tip: "Log in to GOG"; enabledBtn: !root.busy; onClicked: root.gogLogin() }
+                                        }
+                                        ListView {
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            clip: true
+                                            spacing: 6
+                                            boundsBehavior: Flickable.StopAtBounds
+                                            model: root.gogList
+                                            delegate: Rectangle {
+                                                id: grow
+                                                required property var modelData
+                                                width: ListView.view.width
+                                                height: 44
+                                                radius: root.pal.rMd
+                                                color: Qt.alpha(root.pal.bg, 0.45)
+                                                RowLayout {
+                                                    anchors { fill: parent; leftMargin: 12; rightMargin: 10 }
+                                                    spacing: 8
+                                                    Text { Layout.fillWidth: true; elide: Text.ElideRight; text: grow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1 }
+                                                    Text { visible: grow.modelData.installed; text: "installed"; color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
+                                                    CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 28; glyph: 0xF01DA; tip: "Install"; visible: !grow.modelData.installed && root.gogSt.installed; onClicked: root.runInConsole(root.hgl + " gog install " + root.q(grow.modelData.id) + " --title " + root.q(grow.modelData.title)) }
+                                                }
+                                            }
+                                            Text {
+                                                anchors.centerIn: parent
+                                                visible: root.gogList.length === 0
+                                                text: root.gogListed ? "Your GOG library is empty" : (root.gogSt.loggedIn ? "Read your library" : "")
+                                                color: root.pal.muted
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tBody
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ================= Doctor
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: root.tab === "doctor"
+                            spacing: 12
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                Text {
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                    text: "What games need"
+                                    color: root.pal.muted
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tBody
+                                }
+                                CalmIconBtn { pal: root.pal; glyph: 0xF0450; tip: "Check again"; onClicked: root.loadChecks() }
+                                CalmIconBtn { pal: root.pal; glyph: 0xF1064; tip: "Fix what is missing (asks for a password)"; onClicked: root.runInConsole(root.hgl + " doctor --fix") }
+                            }
+                            ListView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                spacing: 6
+                                boundsBehavior: Flickable.StopAtBounds
+                                model: root.checks
+                                delegate: Rectangle {
+                                    id: crow
+                                    required property var modelData
+                                    width: ListView.view.width
+                                    implicitHeight: ccol.implicitHeight + 20
+                                    height: implicitHeight
+                                    radius: root.pal.rMd
+                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.7))
+                                    border.width: root.pal.calm ? 0 : 1
+                                    border.color: root.pal.lineSoft
+                                    Rectangle {
+                                        id: cdot
+                                        anchors { left: parent.left; top: parent.top; leftMargin: 16; topMargin: 17 }
+                                        width: 9; height: 9; radius: 5
+                                        color: crow.modelData.level === "ok" ? root.pal.good : (crow.modelData.level === "warn" ? root.pal.warn : root.pal.bad)
+                                    }
+                                    Column {
+                                        id: ccol
+                                        anchors { left: cdot.right; right: parent.right; top: parent.top; leftMargin: 12; rightMargin: 16; topMargin: 10 }
+                                        spacing: 2
+                                        Text {
+                                            width: parent.width
+                                            text: crow.modelData.label + (crow.modelData.optional && !/optional/i.test(crow.modelData.label) ? "  (optional)" : "")
+                                            color: root.pal.text
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tBody
+                                            font.weight: Font.Medium
+                                        }
+                                        Text { width: parent.width; wrapMode: Text.Wrap; text: crow.modelData.detail; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
+                                        Text {
+                                            width: parent.width
+                                            wrapMode: Text.Wrap
+                                            visible: crow.modelData.manual !== null && crow.modelData.manual !== undefined && crow.modelData.level !== "ok"
+                                            text: crow.modelData.manual ? "By hand: " + crow.modelData.manual : ""
+                                            color: root.pal.warn
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tCap + 1
+                                        }
+                                    }
+                                }
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: root.checks.length === 0
+                                    text: root.checksLoaded ? "Nothing to report" : "Checking the system"
+                                    color: root.pal.muted
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tBody
+                                }
+                            }
+                        }
+                    }
+
+                    // ---- the chosen game's options: not a side panel any more but a sheet that slides in over the shelf when asked for
+                    // (the Options button under the name). A click anywhere else, or Esc, puts it away. With room beside the window the
+                    // sheet is a card of its own next to it instead (optSide below), and shelf clicks do not close it.
+                    MouseArea { z: 40; anchors.fill: parent; visible: root.optsOpen && root.tab === "library" && !optSide.beside; onClicked: root.optsOpen = false }
+                    // where the sheet sits when there is no room beside the window (full-screen, a narrow screen): over the right side
+                    Item {
+                        id: insideHost
+                        z: 41
+                        width: 344
+                        anchors { top: parent.top; bottom: parent.bottom; right: parent.right; topMargin: 92; bottomMargin: 18; rightMargin: 18 }
+                    }
+                }
+
+                // ---- the options card: pops out beside the window, like the utilities box's side card, and the pair stays centred.
+                // Only in window mode with room for it (full-screen or a narrow screen: the sheet slides in over the window instead).
+                Item {
+                    id: optSide
+                    visible: false
+                    width: 0; height: 0
+                    readonly property real cardW: 352
+                    readonly property real gap: 8
+                    readonly property real room: Math.max(0, (qp.width - panel.width) / 2)          // free space on each side of the window
+                    readonly property bool beside: !win.desktop && qp.width - panel.width >= cardW + 32
+                    // how far the window slides left: half the card, but never so far that it leaves the screen or the card does
+                    readonly property real shiftBy: beside ? Math.max(Math.max(0, cardW + 20 - room), Math.min((cardW + gap) / 2, room - 12)) : 0
+                    property real prog: (root.optsOpen && beside && root.tab === "library") ? 1 : 0
+                    Behavior on prog { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                }
+                Item {
+                    id: sideHost
+                    x: panel.x + panel.width + optSide.gap
+                    y: panel.y
+                    width: optSide.cardW
+                    height: panel.height
+                    visible: optSide.beside
+                    opacity: qp.reveal
+                    // the options sheet (drawer, below) lives here when there is room, in insideHost (in the window) when not
+                    ClippingRectangle {
+                        id: drawer
+                        parent: optSide.beside ? sideHost : insideHost
+                        anchors.fill: parent
+                        visible: opacity > 0.01 && root.sel !== null && root.tab === "library"
+                        opacity: root.optsOpen ? 1 : 0
+                        // beside the window it slides out from under it, to the right; over the window it slides in from the right
+                        transform: Translate { x: (optSide.beside ? -1 : 1) * (1 - drawer.opacity) * 36 }
+                        Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                        radius: root.pal.rLg
+                        // solid, not glass: the card has to stay readable over the dimmed desktop (pal.box() is see-through in the zen look)
+                        color: Qt.alpha(root.pal.surface, 1)
+                        border.width: root.pal.bw
+                        border.color: root.pal.line
+                        MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }       // a click on the sheet is not a click outside the window
 
                                 Flickable {
                                     id: dflick
@@ -2079,358 +2610,10 @@ Scope {
                                     Behavior on color { ColorAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 }
                                 Rectangle { anchors.fill: parent; radius: drawer.radius; color: "transparent"; border.width: root.pal.bw; border.color: root.pal.lineSoft }
-                            }
-                        }
-
-                        // ================= Runtimes
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            visible: root.tab === "runtimes"
-                            spacing: 12
-
-                            Text {
-                                Layout.fillWidth: true
-                                elide: Text.ElideRight
-                                text: "Proton runs Windows games."
-                                color: root.pal.muted
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tBody
-                            }
-                            Flow {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                ActionChip { pal: root.pal; label: "Install GE-Proton"; disabled: root.busy; onClicked: root.act([root.hgl, "proton", "install", "latest"], "GE-Proton installed") }
-                                ActionChip { pal: root.pal; label: "Install Proton-CachyOS"; disabled: root.busy; onClicked: root.act([root.hgl, "proton", "install", "latest", "--family", "cachyos"], "Proton-CachyOS installed") }
-                                ActionChip { pal: root.pal; label: "Roll back the default"; disabled: root.busy || root.runtimes.length < 2; onClicked: root.act([root.hgl, "proton", "rollback"], "Default rolled back") }
-                                ActionChip { pal: root.pal; label: "Remove old versions"; disabled: root.busy; onClicked: root.act([root.hgl, "proton", "prune"], "Old versions removed") }
-                                Chip {
-                                    pal: root.pal
-                                    implicitHeight: 36
-                                    label: "Show in Steam"
-                                    on: root.steamLink
-                                    onClicked: root.act(root.steamLink ? [root.hgl, "proton", "link-steam", "--off"] : [root.hgl, "proton", "link-steam"], root.steamLink ? "Removed from Steam" : "Linked. Restart Steam to see them")
-                                }
-                            }
-                            ListView {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                clip: true
-                                spacing: 6
-                                boundsBehavior: Flickable.StopAtBounds
-                                model: root.runtimes
-                                delegate: Rectangle {
-                                    id: rrow
-                                    required property var modelData
-                                    width: ListView.view.width
-                                    height: 50
-                                    radius: root.pal.rMd
-                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.7))
-                                    border.width: root.pal.zen && !(modelData["default"]) ? 0 : 1
-                                    border.color: modelData["default"] ? Qt.alpha(root.pal.accent, 0.45) : root.pal.lineSoft
-                                    RowLayout {
-                                        anchors { fill: parent; leftMargin: 16; rightMargin: 8 }
-                                        spacing: 4
-                                        Column {
-                                            Layout.fillWidth: true
-                                            spacing: 1
-                                            Text { width: parent.width; elide: Text.ElideRight; text: rrow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1; font.weight: Font.Medium }
-                                            Text {
-                                                width: parent.width
-                                                elide: Text.ElideRight
-                                                text: rrow.modelData.family + (rrow.modelData["default"] ? "  ·  default" : "") + (rrow.modelData.pinned ? "  ·  pinned" : "")
-                                                color: root.pal.muted
-                                                font.family: root.pal.uiFont
-                                                font.pixelSize: root.pal.tCap
-                                            }
-                                        }
-                                        CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 30; glyph: 0xF012C; tip: "Make default"; visible: !rrow.modelData["default"]; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "proton", "default", rrow.modelData.name], "Default: " + rrow.modelData.name) }
-                                        CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 30; glyph: 0xF01B4; tip: "Remove"; visible: !rrow.modelData["default"] && !rrow.modelData.pinned; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "proton", "remove", rrow.modelData.name], "Removed " + rrow.modelData.name) }
-                                    }
-                                }
-                                Text {
-                                    anchors.centerIn: parent
-                                    visible: root.runtimes.length === 0
-                                    text: "No Proton installed."
-                                    color: root.pal.muted
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tBody
-                                }
-                            }
-                        }
-
-                        // ================= Stores
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            visible: root.tab === "stores"
-                            spacing: 12
-
-                            Text {
-                                Layout.fillWidth: true
-                                elide: Text.ElideRight
-                                text: "Epic and GOG. Installs open in the console."
-                                color: root.pal.muted
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tBody
-                            }
-                            Flow {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                ActionChip { pal: root.pal; label: "Get cover art"; disabled: root.busy; onClicked: root.act([root.hgl, "art"], "Cover art updated") }
-                                Text {
-                                    height: 36
-                                    verticalAlignment: Text.AlignVCenter
-                                    text: "Cover art for .exe: hgl config steamgriddb_key <key>"
-                                    color: root.pal.muted
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tCap
-                                }
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                spacing: 14
-
-                                // ---- Epic
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    radius: root.pal.rLg
-                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
-                                    border.width: root.pal.calm ? 0 : 1
-                                    border.color: root.pal.lineSoft
-                                    ColumnLayout {
-                                        anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 10
-                                        Text { text: "Epic Games"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            elide: Text.ElideRight
-                                            text: !root.epicSt.installed ? "legendary is not installed" : (root.epicSt.loggedIn ? "Logged in as " + root.epicSt.account : "Not logged in")
-                                            color: root.epicSt.loggedIn ? root.pal.good : root.pal.muted
-                                            font.family: root.pal.uiFont
-                                            font.pixelSize: root.pal.tBody
-                                        }
-                                        Row {
-                                            Layout.fillWidth: true
-                                            spacing: 2
-                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0342; tip: "Log in to Epic"; visible: root.epicSt.installed && !root.epicSt.loggedIn; onClicked: root.runInConsole(root.hgl + " epic login") }
-                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0343; tip: "Log out"; visible: root.epicSt.loggedIn; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "epic", "logout"], "Logged out of Epic", false) }
-                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0331; tip: "My library"; visible: root.epicSt.loggedIn; enabledBtn: !root.storeBusy; onClicked: root.loadEpicList() }
-                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF01DA; tip: "Read installed"; visible: root.epicSt.installed; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "import", "epic"], "Epic games read") }
-                                        }
-                                        ListView {
-                                            Layout.fillWidth: true
-                                            Layout.fillHeight: true
-                                            clip: true
-                                            spacing: 6
-                                            boundsBehavior: Flickable.StopAtBounds
-                                            model: root.epicList
-                                            delegate: Rectangle {
-                                                id: erow
-                                                required property var modelData
-                                                width: ListView.view.width
-                                                height: 44
-                                                radius: root.pal.rMd
-                                                color: Qt.alpha(root.pal.bg, 0.45)
-                                                RowLayout {
-                                                    anchors { fill: parent; leftMargin: 12; rightMargin: 10 }
-                                                    spacing: 8
-                                                    Text { Layout.fillWidth: true; elide: Text.ElideRight; text: erow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1 }
-                                                    Text { visible: erow.modelData.installed; text: "installed"; color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                                                    CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 28; glyph: 0xF01DA; tip: "Install"; visible: !erow.modelData.installed; onClicked: root.runInConsole(root.hgl + " epic install " + root.q(erow.modelData.app)) }
-                                                }
-                                            }
-                                            Text {
-                                                anchors.centerIn: parent
-                                                visible: root.epicList.length === 0
-                                                text: root.epicListed ? "Your Epic library is empty" : (root.epicSt.loggedIn ? "Read your library" : "")
-                                                color: root.pal.muted
-                                                font.family: root.pal.uiFont
-                                                font.pixelSize: root.pal.tBody
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // ---- GOG
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    radius: root.pal.rLg
-                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.55))
-                                    border.width: root.pal.calm ? 0 : 1
-                                    border.color: root.pal.lineSoft
-                                    ColumnLayout {
-                                        anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 10
-                                        Text { text: "GOG"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle; font.weight: Font.Medium }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            elide: Text.ElideRight
-                                            text: !root.gogSt.installed ? "gogdl is not installed" : (root.gogSt.loggedIn ? "Logged in" : "Not logged in")
-                                            color: root.gogSt.loggedIn ? root.pal.good : root.pal.muted
-                                            font.family: root.pal.uiFont
-                                            font.pixelSize: root.pal.tBody
-                                        }
-                                        Row {
-                                            Layout.fillWidth: true
-                                            spacing: 2
-                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF03CC; tip: "Open sign-in page"; visible: root.gogSt.installed && !root.gogSt.loggedIn; onClicked: Quickshell.execDetached(["xdg-open", root.gogSt.url]) }
-                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF0331; tip: "My library"; visible: root.gogSt.loggedIn; enabledBtn: !root.storeBusy; onClicked: root.loadGogList() }
-                                            CalmIconBtn { pal: root.pal; size: 32; glyph: 0xF01DA; tip: "Read installed"; enabledBtn: !root.busy; onClicked: root.act([root.hgl, "import", "gog"], "GOG games read") }
-                                        }
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            visible: root.gogSt.installed && !root.gogSt.loggedIn
-                                            spacing: 8
-                                            Rectangle {
-                                                Layout.fillWidth: true
-                                                Layout.preferredHeight: 34
-                                                radius: root.pal.rSm
-                                                color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
-                                                border.width: root.pal.zen && !gogIn.activeFocus ? 0 : 1
-                                                border.color: gogIn.activeFocus ? root.pal.accent : root.pal.lineSoft
-                                                TextInput {
-                                                    id: gogIn
-                                                    anchors.fill: parent
-                                                    anchors.leftMargin: 12
-                                                    anchors.rightMargin: 12
-                                                    verticalAlignment: TextInput.AlignVCenter
-                                                    clip: true
-                                                    text: root.gogAddr
-                                                    color: root.pal.text
-                                                    selectionColor: Qt.alpha(root.pal.accent, 0.45)
-                                                    font.family: root.pal.uiFont
-                                                    font.pixelSize: root.pal.tBody
-                                                    onTextChanged: root.gogAddr = text
-                                                    Keys.onReturnPressed: root.gogLogin()
-                                                    Keys.onEscapePressed: root.hide()
-                                                    Text { anchors.verticalCenter: parent.verticalCenter; visible: gogIn.text.length === 0; text: "Paste the address"; color: root.pal.muted; font: gogIn.font }
-                                                }
-                                            }
-                                            CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 32; glyph: 0xF0342; tip: "Log in to GOG"; enabledBtn: !root.busy; onClicked: root.gogLogin() }
-                                        }
-                                        ListView {
-                                            Layout.fillWidth: true
-                                            Layout.fillHeight: true
-                                            clip: true
-                                            spacing: 6
-                                            boundsBehavior: Flickable.StopAtBounds
-                                            model: root.gogList
-                                            delegate: Rectangle {
-                                                id: grow
-                                                required property var modelData
-                                                width: ListView.view.width
-                                                height: 44
-                                                radius: root.pal.rMd
-                                                color: Qt.alpha(root.pal.bg, 0.45)
-                                                RowLayout {
-                                                    anchors { fill: parent; leftMargin: 12; rightMargin: 10 }
-                                                    spacing: 8
-                                                    Text { Layout.fillWidth: true; elide: Text.ElideRight; text: grow.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody - 1 }
-                                                    Text { visible: grow.modelData.installed; text: "installed"; color: root.pal.good; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
-                                                    CalmIconBtn { Layout.alignment: Qt.AlignVCenter; pal: root.pal; size: 28; glyph: 0xF01DA; tip: "Install"; visible: !grow.modelData.installed && root.gogSt.installed; onClicked: root.runInConsole(root.hgl + " gog install " + root.q(grow.modelData.id) + " --title " + root.q(grow.modelData.title)) }
-                                                }
-                                            }
-                                            Text {
-                                                anchors.centerIn: parent
-                                                visible: root.gogList.length === 0
-                                                text: root.gogListed ? "Your GOG library is empty" : (root.gogSt.loggedIn ? "Read your library" : "")
-                                                color: root.pal.muted
-                                                font.family: root.pal.uiFont
-                                                font.pixelSize: root.pal.tBody
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // ================= Doctor
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            visible: root.tab === "doctor"
-                            spacing: 12
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 4
-                                Text {
-                                    Layout.fillWidth: true
-                                    elide: Text.ElideRight
-                                    text: "What games need"
-                                    color: root.pal.muted
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tBody
-                                }
-                                CalmIconBtn { pal: root.pal; glyph: 0xF0450; tip: "Check again"; onClicked: root.loadChecks() }
-                                CalmIconBtn { pal: root.pal; glyph: 0xF1064; tip: "Fix what is missing (asks for a password)"; onClicked: root.runInConsole(root.hgl + " doctor --fix") }
-                            }
-                            ListView {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                clip: true
-                                spacing: 6
-                                boundsBehavior: Flickable.StopAtBounds
-                                model: root.checks
-                                delegate: Rectangle {
-                                    id: crow
-                                    required property var modelData
-                                    width: ListView.view.width
-                                    implicitHeight: ccol.implicitHeight + 20
-                                    height: implicitHeight
-                                    radius: root.pal.rMd
-                                    color: root.pal.box(Qt.alpha(root.pal.surface, 0.7))
-                                    border.width: root.pal.calm ? 0 : 1
-                                    border.color: root.pal.lineSoft
-                                    Rectangle {
-                                        id: cdot
-                                        anchors { left: parent.left; top: parent.top; leftMargin: 16; topMargin: 17 }
-                                        width: 9; height: 9; radius: 5
-                                        color: crow.modelData.level === "ok" ? root.pal.good : (crow.modelData.level === "warn" ? root.pal.warn : root.pal.bad)
-                                    }
-                                    Column {
-                                        id: ccol
-                                        anchors { left: cdot.right; right: parent.right; top: parent.top; leftMargin: 12; rightMargin: 16; topMargin: 10 }
-                                        spacing: 2
-                                        Text {
-                                            width: parent.width
-                                            text: crow.modelData.label + (crow.modelData.optional && !/optional/i.test(crow.modelData.label) ? "  (optional)" : "")
-                                            color: root.pal.text
-                                            font.family: root.pal.uiFont
-                                            font.pixelSize: root.pal.tBody
-                                            font.weight: Font.Medium
-                                        }
-                                        Text { width: parent.width; wrapMode: Text.Wrap; text: crow.modelData.detail; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
-                                        Text {
-                                            width: parent.width
-                                            wrapMode: Text.Wrap
-                                            visible: crow.modelData.manual !== null && crow.modelData.manual !== undefined && crow.modelData.level !== "ok"
-                                            text: crow.modelData.manual ? "By hand: " + crow.modelData.manual : ""
-                                            color: root.pal.warn
-                                            font.family: root.pal.uiFont
-                                            font.pixelSize: root.pal.tCap + 1
-                                        }
-                                    }
-                                }
-                                Text {
-                                    anchors.centerIn: parent
-                                    visible: root.checks.length === 0
-                                    text: root.checksLoaded ? "Nothing to report" : "Checking the system"
-                                    color: root.pal.muted
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tBody
-                                }
-                            }
-                        }
+                        CalmIconBtn { z: 6; anchors.top: parent.top; anchors.right: parent.right; anchors.topMargin: 8; anchors.rightMargin: 8; pal: root.pal; size: 30; glyph: 0xF0156; tip: "Close"; onClicked: root.optsOpen = false }
                     }
                 }
+
 
                 // Add game: the .exe browser, over the window (ExePicker.qml)
                 ExePicker {
