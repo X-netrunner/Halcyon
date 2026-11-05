@@ -97,7 +97,9 @@ stop_recording() {
     fi
     rm -f "$OUT_FILE_INFO" "$VTMP_INFO" "$ATMP_INFO" "$ASTART_INFO" "$VSTART_INFO" "$REGION_INFO"
     if [ -n "$out" ] && [ -s "$out" ]; then
-        note -i video-x-generic -t 4000 "Recording saved" "$(basename "$out")"
+        # the full path in the text: clicking the notification opens the file manager on the file (quickshell/island/NotifOpen.js)
+        shown="$out"; case "$shown" in "$HOME"/*) shown="~${shown#"$HOME"}" ;; esac
+        note -i video-x-generic -t 4000 "Recording saved" "$shown"
     else
         note -t 3000 "Recording stopped" "Nothing was saved."
     fi

@@ -1416,7 +1416,7 @@ ShellRoot {
         profileStars: root.profileStars
     }
 
-    // SUPER + S, >capture: four icons (region / window / screen / record a region), the quick door next to the panel above (CaptureMenu.qml)
+    // SUPER + SHIFT + S, >capture: four icons (region / window / screen / record a region), the quick door next to the panel above (CaptureMenu.qml)
     CaptureMenu {
         id: captureMenu
         pal: pal
@@ -4304,7 +4304,7 @@ ShellRoot {
         running: !root.isRecording
         onTriggered: if (!recStatusProc.running) recStatusProc.running = true
     }
-    // A recording can start or stop anywhere: Super + Alt + R, the panel, Super + S, `halcyon record`. Watching the two pid files
+    // A recording can start or stop anywhere: Super + Alt + R, the panel, Super + Shift + S, `halcyon record`. Watching the two pid files
     // means the red line appears at once instead of on the next tick, and goes away when the recorder is gone.
     Timer { id: recFileT; interval: 150; onTriggered: if (!recStatusProc.running) recStatusProc.running = true }
     FileView {
