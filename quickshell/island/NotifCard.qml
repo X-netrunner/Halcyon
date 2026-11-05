@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Services.Notifications
+import "NotifOpen.js" as NO
 
 // One popup (toast) card. It only controls how long the TOAST is on screen: when it times out the
 // notification is NOT deleted, it stays in the notification centre (Notifs.qml owns the history).
@@ -92,10 +93,12 @@ Item {
         if (expired) card.timedOut()
         else card.dismissed()
     }
+    // click: the app's own default action, then (NotifOpen.js) its window or the file the notification is about
     function runDefault() {
-        var a = (notif && notif.actions) ? notif.actions : []
-        for (var i = 0; i < a.length; i++)
-            if (a[i].identifier === "default") { a[i].invoke(); return }
+        if (!notif) return
+        var p = NO.plan(notif, Quickshell.env("HOME"))
+        if (p.def) p.def.invoke()
+        Quickshell.execDetached(p.cmd)
     }
 
     Component.onCompleted: enter.start()

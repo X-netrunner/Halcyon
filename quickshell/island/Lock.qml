@@ -604,11 +604,23 @@ Scope {
                 anchors.rightMargin: 32
                 spacing: 24
                 opacity: surf.appear
-                Row {
+                // a soft pill: the bell and the count together, one shape (the count alone beside a bare bell looked loose)
+                Rectangle {
                     visible: root.widgets && root.notifCount > 0
-                    spacing: 6
-                    IconGlyph { pal: root.pal; code: 0xF009A; color: root.pal.accent; font.pixelSize: 15; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: root.notifCount; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 2; anchors.verticalCenter: parent.verticalCenter }
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitHeight: 26
+                    implicitWidth: nrow.implicitWidth + 18
+                    width: implicitWidth
+                    height: implicitHeight
+                    radius: height / 2
+                    color: Qt.alpha(root.pal.accent, 0.14)
+                    Row {
+                        id: nrow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        IconGlyph { pal: root.pal; code: 0xF009A; color: root.pal.accent; font.pixelSize: 14; anchors.verticalCenter: parent.verticalCenter }
+                        Text { text: root.notifCount > 99 ? "99+" : root.notifCount; color: root.pal.accent; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
+                    }
                 }
                 Row {
                     visible: root.ssid !== "" && root.deskTypes.net !== true

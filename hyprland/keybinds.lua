@@ -136,9 +136,8 @@ hl.bind("XF86AudioStop", hl.dsp.exec_cmd("playerctl stop"))
 bind("shot", "Print", hl.dsp.exec_cmd("mkdir -p ~/Pictures/Screenshots && grim ~/Pictures/Screenshots/$(date +%s).png"))
 bind("shotplain", "SUPER + SHIFT + Print", hl.dsp.exec_cmd("mkdir -p ~/Pictures/Screenshots && g=$(slurp) && [ -n \"$g\" ] && grim -g \"$g\" ~/Pictures/Screenshots/$(date +%s).png"))
 
-bind("shotarea", "SUPER + SHIFT + S", hl.dsp.exec_cmd(ipc .. "capture"))     -- the same four-icon capture menu as Super + S (screenshot or region recording); the old instant region drag is `halcyon screenshot-area`
+bind("shotarea", "SUPER + SHIFT + S", hl.dsp.exec_cmd(ipc .. "capture"))     -- the four-icon capture menu (screenshot a region / window / screen, or record a region); the old instant region drag is `halcyon screenshot-area`. Super + S alone is the scratch workspace and nothing else
 bind("shotpanel", "SUPER + CTRL + S", hl.dsp.exec_cmd(ipc .. "screenshot"))   -- the screenshot panel: Region / Window / Full screen, then Copy / Save / Both
-bind("capture", "SUPER + S", hl.dsp.exec_cmd(ipc .. "capture"))               -- the quick capture menu: region / window / screen / record a region
 
 -- Clipboard
 -- the island's clipboard panel (search, pins, pictures, AI); if the island is not running, the plain fuzzel list as before

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Services.Notifications
+import "NotifOpen.js" as NO
 
 // One row in the notification centre (compact version of the popup card).
 //   click   run the default action (if any) and remove it
@@ -42,11 +43,12 @@ Item {
         if (s < 86400) return Math.round(s / 3600) + "h"
         return Qt.formatDateTime(new Date(arrived), "d MMM")
     }
+    // click: the app's own default action, then (NotifOpen.js) its window or the file the notification is about
     function runDefault() {
-        if (!notif || !notif.actions) return
-        var a = notif.actions
-        for (var i = 0; i < a.length; i++)
-            if (a[i].identifier === "default") { a[i].invoke(); return }
+        if (!notif) return
+        var p = NO.plan(notif, Quickshell.env("HOME"))
+        if (p.def) p.def.invoke()
+        Quickshell.execDetached(p.cmd)
     }
 
     height: bg.height
