@@ -80,3 +80,15 @@ encrypted or broken archive) that the model calls a false positive becomes an ex
 a package owns it. The exception pins the file's SHA-256, so a changed file is reported again. A named malware signature and the
 EICAR test file are never excepted. Review or remove exceptions with the Exceptions button, or `halcyon-ai.py clamav exceptions`
 and `halcyon-ai.py clamav forget N`.
+
+## Let AI decide (Security center > Overview)
+
+The button asks the local model to read every unacknowledged alert and, in a card beside the window, shows what it does as it does it: one row per group of alerts, with Safe / Not sure / Might be dangerous and the reason. It then says what to deal with first on this computer.
+
+The model's word is not enough to clear anything. A group is acknowledged (the same as pressing Acknowledge, no password) only when the model calls it safe with high confidence **and** these fixed rules agree:
+
+- only behaviour-rule alerts (`AV-B-...`); a hash or YARA match is known malware and always waits for you
+- never high or critical severity
+- a medium alert only when it comes from Halcyon's own files; low alerts need only the model's high-confidence "safe"
+
+The alert text (file names, command lines) is written by whatever caused the alert, so it is handed to the model as untrusted data. It never approves a held action (that needs sudo), never adds an exception, and with the AI off nothing is cleared. What it cleared is logged in `~/.local/state/island/av-ai-review.jsonl`. The limits are constants at the top of the review section in `scripts/halcyon-ai.py` (`REVIEW_MAX`, `REVIEW_NEVER`, `REVIEW_BEHAVIOUR`).

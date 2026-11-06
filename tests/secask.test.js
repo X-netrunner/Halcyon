@@ -4,7 +4,7 @@ const fs = require("fs"), path = require("path"), vm = require("vm"), assert = r
 const src = fs.readFileSync(path.join(__dirname, "..", "quickshell", "island", "SecAsk.js"), "utf8").replace(/^\.pragma library.*$/m, "")
 const ctx = {}
 vm.createContext(ctx)
-vm.runInContext(src + "\nthis.S = { route };", ctx)
+vm.runInContext(src + "\nthis.S = { route, scanRequest };", ctx)
 const S = ctx.S
 let n = 0
 const ok = (name, fn) => { fn(); n++; console.log("ok  ", name) }
@@ -39,4 +39,21 @@ ok("a question for the other module still counts as security", () => {
 })
 ok("empty input does nothing", () => { const r = S.route("   ", "firewall"); assert(r.send === false && r.reply === "") })
 
+
+ok("a request to scan something is recognised with its place", () => {
+    const sr = q => S.scanRequest(q)
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(sr("scan my Downloads"))), { path: "~/Downloads", whole: false })
+    assert.strictEqual(sr("can you run a scan on ~/projects/app please").path, "~/projects/app")
+    assert.strictEqual(sr("run a scan on /var/tmp/x").path, "/var/tmp/x")
+    assert.strictEqual(sr("could you scan the games folder").path, "~/games")
+    assert.strictEqual(sr("scan the home folder").path, "~")
+    assert.strictEqual(sr("check my documents for viruses").path, "~/Documents")
+    assert.strictEqual(sr("scan $HOME/code").path, "~/code")
+    assert.strictEqual(sr("scan everything").whole, true)
+    assert.strictEqual(sr("can you run a scan on something").path, "")
+})
+ok("questions about scans are not requests", () => {
+    ;["what is a scan", "how long did the last scan take", "show the scan results", "how do I scan a folder", "did the scan find anything",
+      "which ports are open", "hello", "my ssh and/or dns is down", "/test ports"].forEach(q => assert.strictEqual(S.scanRequest(q), null, q))
+})
 console.log(n + " passed")

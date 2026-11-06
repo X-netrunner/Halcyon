@@ -778,7 +778,7 @@ Item {
                 root.aiOk = d.ok === true
                 root.aiText = d.ok ? d.text : d.error
                 root.aiConfirm = d.ok === true && d.confirm === true && d.done !== true
-                root.aiOpen = d.ok === true && d.kind === "howto" && d.open ? d.open : null
+                root.aiOpen = d.ok === true && (d.kind === "howto" || d.kind === "explain") && d.open ? d.open : null
                 if (d.ok && d.done === true) aiCloseT.restart()
             }
         }

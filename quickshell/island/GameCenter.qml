@@ -473,6 +473,7 @@ Scope {
         if (addName.trim() !== "") cmd = cmd.concat(["--name", addName.trim()])
         act(cmd, "Added to the library")
         addOpen = false; addPath = ""; addName = ""
+        Qt.callLater(function () { root.focusRequested("search") })     // the add fields had the keyboard: give it back to the shelf
     }
     function prefixFolder() {
         if (!isWine(sel)) return
@@ -814,8 +815,8 @@ Scope {
                                                 Keys.onPressed: e => {
                                                     var n = root.shown.length
                                                     if (e.key === Qt.Key_Escape) { if (root.optsOpen) root.optsOpen = false; else root.hide(); e.accepted = true }
-                                                    else if (e.key === Qt.Key_Right || e.key === Qt.Key_Down) { grid.step(1); e.accepted = true }
-                                                    else if (e.key === Qt.Key_Left || e.key === Qt.Key_Up) { grid.step(-1); e.accepted = true }
+                                                    else if (e.key === Qt.Key_Right || e.key === Qt.Key_Down) { grid.step(1, e.isAutoRepeat); e.accepted = true }
+                                                    else if (e.key === Qt.Key_Left || e.key === Qt.Key_Up) { grid.step(-1, e.isAutoRepeat); e.accepted = true }
                                                     else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { grid.pick(); root.playSel(); e.accepted = true }
                                                 }
                                                 Text {
@@ -1040,7 +1041,11 @@ Scope {
                                     preferredHighlightEnd: 0.5
                                     highlightRangeMode: PathView.StrictlyEnforceRange
                                     snapMode: PathView.SnapOneItem
-                                    highlightMoveDuration: root.pal.dMed
+                                    // a held key repeats faster than a cover can glide, so the name ran ahead of the picture: while the key repeats,
+                                    // the glide is short and the repeats are paced to it (see step)
+                                    property bool fast: false
+                                    property double lastStep: 0
+                                    highlightMoveDuration: fast ? Math.min(120, root.pal.dMed) : root.pal.dMed
                                     // "sc" (size) and "op" (opacity) are read by each cover as PathView.sc / PathView.op: 1 in the middle, falling off to both ends
                                     path: Path {
                                         startX: grid.width / 2 - grid.gap * grid.pathItemCount / 2
@@ -1059,8 +1064,14 @@ Scope {
                                         var g = root.shown[currentIndex]
                                         if (g) root.selId = g.id
                                     }
-                                    function step(dir) {
+                                    function step(dir, repeat) {
                                         if (count < 2) return
+                                        var now = Date.now()
+                                        if (repeat) {
+                                            if (now - lastStep < highlightMoveDuration + 10) return       // the cover is still on its way: wait for it
+                                            fast = true
+                                        } else fast = false
+                                        lastStep = now
                                         if (dir > 0) incrementCurrentIndex(); else decrementCurrentIndex()
                                         pick()
                                     }
@@ -2626,6 +2637,7 @@ Scope {
                 Connections {
                     target: root
                     function onPickerOpenChanged() { if (!root.pickerOpen) picker.open = false }
+                    function onAddOpenChanged() { if (!root.addOpen && root.tab === "library") Qt.callLater(function () { sin.forceActiveFocus() }) }
                 }
             }
         }

@@ -53,18 +53,27 @@ Glass {
         spacing: 12
 
         // ---- header: the title and how many apps are alive
-        RowLayout {
+        // The title is centred on the BOX (not on what is left beside the badge): the badge is pinned to the right edge, over
+        // the title's row, and takes no room from it. (A padding that guessed the badge's width was wrong whenever the badge
+        // was a small dot or hidden, so the word sat off the middle.)
+        Item {
             Layout.fillWidth: true
-            spacing: 8
+            implicitHeight: Math.max(bgTitle.implicitHeight, bgBadge.implicitHeight)
             Text {
-                Layout.fillWidth: true
-                horizontalAlignment: root.pal.centred ? Text.AlignHCenter : Text.AlignLeft    // Centred titles
-                leftPadding: root.pal.centred ? 28 : 0          // the badge's width on the other side: the middle of the box
+                id: bgTitle
+                anchors.verticalCenter: parent.verticalCenter
+                x: root.pal.centred ? Math.round((parent.width - implicitWidth) / 2) : 0
+                width: Math.min(implicitWidth, parent.width)
                 text: root.pal.cap("BACKGROUND")
                 color: root.pal.muted
                 font.family: root.pal.uiFont; font.pixelSize: 10; font.weight: Font.Medium; font.letterSpacing: 0
             }
-            Badge { pal: root.pal; count: root.count; size: 20; soft: true }
+            Badge {
+                id: bgBadge
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                pal: root.pal; count: root.count; size: 20; soft: true
+            }
         }
 
         // ---- nothing running
