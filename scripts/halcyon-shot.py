@@ -1,24 +1,33 @@
 #!/usr/bin/env python3
-"""halcyon-shot.py: the screenshot panel's engine (Super + Ctrl + S, >screenshot in the launcher, `halcyon screenshot`).
+"""halcyon-shot.py: the screenshot panel's engine (Super + Shift + S, >screenshot in the launcher, `halcyon screenshot`).
 
+  halcyon-shot.py panel               what Super + Shift + S runs: freeze the screen (wayfreeze), then open the panel
+  halcyon-shot.py window-geom         click a window, print its rectangle (for scripts/screen-record.sh window)
+  halcyon-shot.py freeze | unfreeze   freeze the screen / let it go (the panel lets it go when it closes without a capture)
   halcyon-shot.py region [ACTION]     drag a rectangle (the screen freezes first when wayfreeze is installed)
   halcyon-shot.py window [ACTION]     click a window (any you can see now, on every screen)
   halcyon-shot.py full   [ACTION]     the whole screen the pointer / focus is on
   halcyon-shot.py conf                one line of JSON for the panel: {"action", "dir", "has": {...}}
   halcyon-shot.py set action ACTION   remember the choice the panel opens with
 
-ACTION is  copy  (clipboard only, no file)  |  save  (file only)  |  both  (file and clipboard, what Super + Shift + S does)
+ACTION is  copy  (clipboard only, no file)  |  save  (file only)  |  both  (file and clipboard, the panel's first choice)
         |  text  (read the words in the picture with tesseract, offline, and put the TEXT on the clipboard; no picture is kept).
 Without one, the remembered choice is used (state/shot.json, "both" at first).
 
 Files go to ~/Pictures/Screenshots/<seconds>.png, the same place and name as the existing shortcuts. This is a one-shot command:
 it starts nothing that stays, and cancelling the selection (Esc) leaves no file, no clipboard change and no notification.
-The existing Super + Shift + S (scripts/screenshot-area.sh), Print and Super + Shift + Print are not touched.
+Print and Super + Shift + Print are not touched.
+
+The freeze: wayfreeze shows a still picture of every screen, so a menu, a tooltip or a hover that disappears the moment the pointer
+moves (or the panel takes the focus) is still there to capture. `panel` starts it BEFORE the panel opens, and it stays until the capture
+is taken or cancelled. Its pid is in state/shot-freeze.pid, and it ends by itself after FREEZE_MAX seconds, so a screen can never stay
+frozen. Without wayfreeze nothing freezes and everything else works as before.
 Exit status: 0 done or cancelled, 1 a tool is missing or the capture failed, 2 usage.
 """
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -62,10 +71,10 @@ def write_conf(d):
         return False
 
 
-def notify(body, icon=None):
+def notify(body, icon=None, title="Screenshot"):
     if not have("notify-send"):
         return
-    cmd = ["notify-send", "-a", "Halcyon", "Screenshot", body, "-h", HINT]
+    cmd = ["notify-send", "-a", "Halcyon", title, body, "-h", HINT]
     if icon and os.path.exists(icon):
         cmd += ["-i", icon]
     try:
@@ -139,28 +148,81 @@ def pick(cmd, stdin_text=None):
     return r.stdout.decode("utf-8", "replace").strip() if r.returncode == 0 else ""
 
 
-def start_freeze():
-    if not have("wayfreeze"):
-        return None
+FREEZE_PID = os.path.join(STATE, "shot-freeze.pid")
+FREEZE_MAX = 120          # seconds: wayfreeze is stopped by `timeout` after this, whatever else goes wrong
+
+
+def _alive(pid):
+    """pid is a running wayfreeze (or the `timeout` that wraps it), not a zombie and not a reused number."""
     try:
-        p = subprocess.Popen(["wayfreeze"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
-        time.sleep(0.2)
-        return p
-    except OSError:
+        with open("/proc/%d/stat" % pid, "rb") as f:
+            state = f.read().rsplit(b")", 1)[1].split()[0]
+        with open("/proc/%d/cmdline" % pid, "rb") as f:
+            cmd = f.read()
+    except (OSError, IndexError):
+        return False
+    return state != b"Z" and b"wayfreeze" in cmd
+
+
+def frozen_pid():
+    try:
+        with open(FREEZE_PID, encoding="utf-8") as f:
+            pid = int(f.read().strip())
+    except (OSError, ValueError):
         return None
+    return pid if _alive(pid) else None
 
 
-def stop_freeze(p):
-    if p is None:
+def start_freeze():
+    """Freeze the screen (once: an already frozen screen stays as it is). True when it is frozen afterwards."""
+    if frozen_pid() is not None:
+        return True
+    if not have("wayfreeze"):
+        return False
+    cmd = ["wayfreeze"]
+    if have("timeout"):
+        cmd = ["timeout", str(FREEZE_MAX)] + cmd
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                             start_new_session=True)     # its own session: it outlives this command, the panel / capture ends it
+        os.makedirs(STATE, exist_ok=True)
+        with open(FREEZE_PID, "w", encoding="utf-8") as f:
+            f.write(str(p.pid))
+        time.sleep(0.2)                                  # let it take its picture before anything is drawn
+        return True
+    except OSError:
+        return False
+
+
+def stop_freeze():
+    pid = frozen_pid()
+    try:
+        os.remove(FREEZE_PID)
+    except OSError:
+        pass
+    if pid is None:
         return
     try:
-        p.terminate()
-        p.wait(timeout=2)
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        pass
+
+
+def open_panel():
+    """Super + Shift + S: freeze first, then the panel (a second press closes it, and the panel lets the freeze go)."""
+    was = frozen_pid() is not None
+    if not was:
+        start_freeze()
+    ipc = ["quickshell", "ipc", "-p", os.path.join(HOME, ".config", "Halcyon", "quickshell", "island"), "call", "island", "screenshot"]
+    try:
+        ok = subprocess.run(ipc, timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
     except (OSError, subprocess.SubprocessError):
-        try:
-            p.kill()
-        except OSError:
-            pass
+        ok = False
+    if not ok:
+        stop_freeze()                                    # no panel to let it go: never leave the screen frozen
+        notify("The screenshot panel is not running")
+        return 1
+    return 0
 
 
 def new_path():
@@ -206,6 +268,14 @@ def ocr_to_clipboard(png):
 
 
 def shoot(mode, action):
+    """One capture. However it ends (done, cancelled, a tool missing), a freeze the panel started is let go."""
+    try:
+        return _shoot(mode, action)
+    finally:
+        stop_freeze()
+
+
+def _shoot(mode, action):
     if action not in ACTIONS:
         print("halcyon-shot: action must be copy, save, both or text", file=sys.stderr)
         return 2
@@ -222,7 +292,10 @@ def shoot(mode, action):
         if not boxes:
             notify("No window to pick here")
             return 0
-    freeze = start_freeze() if mode in ("region", "window") else None
+    # the screen may already be frozen (Super + Shift + S does that before the panel opens, so the picture is of the moment you
+    # pressed the keys); Full screen then captures that frozen picture too. Region / Window freeze it here if it is not yet.
+    if mode in ("region", "window"):
+        start_freeze()
     try:
         grim = ["grim"]
         if mode == "region":
@@ -257,8 +330,7 @@ def shoot(mode, action):
                 os.remove(path)                            # no empty file left behind
             notify("The capture failed")
             return 1
-        stop_freeze(freeze)
-        freeze = None
+        stop_freeze()
 
         if action == "text":
             return ocr_to_clipboard(r.stdout)
@@ -286,7 +358,28 @@ def shoot(mode, action):
             notify("Saved and copied" if copied else "Saved (could not copy)", path)
         return 0
     finally:
-        stop_freeze(freeze)
+        stop_freeze()
+
+
+def window_geom():
+    """Click a window (any you can see now, on every screen) and print its rectangle, 'x,y WxH', the form wf-recorder and slurp use.
+    Prints nothing when the pick was cancelled. Used by screen-record.sh window; no picture is taken here."""
+    if not have("slurp"):
+        print("halcyon-shot: needs slurp", file=sys.stderr)
+        notify("Cannot pick a window: slurp is not installed", title="Window recording")
+        return 1
+    boxes = window_boxes()
+    if not boxes:
+        notify("No window to pick here", title="Window recording")
+        return 0
+    start_freeze()                                       # the picture stands still while you choose (when wayfreeze is installed)
+    try:
+        geom = pick(["slurp", "-r"], "\n".join(boxes) + "\n")
+    finally:
+        stop_freeze()                                    # gone before the recording starts, so it is not in the video
+    if geom:
+        print(geom)
+    return 0
 
 
 def main(argv):
@@ -308,9 +401,18 @@ def main(argv):
             return 0 if write_conf(d) else 1
         print("usage: halcyon-shot.py set action copy|save|both|text", file=sys.stderr)
         return 2
+    if c == "window-geom":
+        return window_geom()
+    if c == "panel":
+        return open_panel()
+    if c == "freeze":
+        return 0 if start_freeze() else 1
+    if c == "unfreeze":
+        stop_freeze()
+        return 0
     if c in MODES:
         return shoot(c, a[1] if len(a) > 1 else saved_action())
-    print("usage: halcyon-shot.py region|window|full [copy|save|both|text] | conf | set action copy|save|both|text", file=sys.stderr)
+    print("usage: halcyon-shot.py panel | window-geom | freeze | unfreeze | region|window|full [copy|save|both|text] | conf | set action copy|save|both|text", file=sys.stderr)
     return 2
 
 

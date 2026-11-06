@@ -5,9 +5,12 @@
 
 auto (default)
   1. the notification names a file or folder (a screenshot's picture, a recording's path in the text, "Saved to ~/...")
-     -> the file manager opens with that file selected (or the folder, if it is a folder)
-  2. otherwise the app's window comes to the front (Hyprland: the newest window whose class matches the app)
-file   only step 1.        focus   only step 2 (used after an app's own "default" action, as a safety net).
+     -> a video or sound (a saved recording) PLAYS in your default player; anything else opens the file manager with that file
+        selected (or the folder, if it is a folder)
+  2. a notice from Halcyon itself (power, wallpaper, lock screen, focus, notes, recording ...) -> the place it is about: the matching
+     Settings page, or the window that handles it (ROUTES below, through the island's `command` call). Notices with nothing to go to do nothing.
+  3. otherwise the app's window comes to the front (Hyprland: the newest window whose class matches the app: a browser, a chat ...)
+file   only step 1.        focus   only steps 2 and 3 (used after an app's own "default" action, as a safety net).
 Exit code 0 when something was opened / focused, 1 when there was nothing to do. Never prints.
 """
 import json
@@ -62,6 +65,28 @@ def find_file(icon, summary, body):
             if p:
                 return p
     return None
+
+
+# sound and video: clicking "Recording saved" plays it instead of opening a folder
+MEDIA_EXT = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".flac", ".aac"}
+
+
+def play(path):
+    """open it in the default player (xdg-open); False when there is no way to"""
+    if not have("xdg-open"):
+        return False
+    try:
+        subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                         start_new_session=True)
+        return True
+    except OSError:
+        return False
+
+
+def open_file(path):
+    if os.path.isfile(path) and os.path.splitext(path)[1].lower() in MEDIA_EXT and play(path):
+        return True
+    return show_in_file_manager(path)
 
 
 def show_in_file_manager(path):
@@ -122,17 +147,58 @@ def focus_app(app, entry):
     return run(["hyprctl", "dispatch", "focuswindow", "address:" + best["address"]])
 
 
+# Halcyon's own notices -> where a click goes: (what the title looks like, a launcher command id as the island's `command` call knows it).
+# "settings:<page>" opens Settings on that page. Matched on the lower-cased title, first hit wins. Anything not listed does nothing.
+IPC_DIR = os.path.join(HOME, ".config", "Halcyon", "quickshell", "island")
+ROUTES = [
+    (r"^((audio|screen|region|window) )?recording (started|stopped)|^recording without sound|^(screen|audio) recorder|^(region|window) recording", "capture"),
+    (r"^(power manager|halcyon auto power|charge limit)", "settings:power"),
+    (r"^hyprland layout", "settings:workspaces"),
+    (r"wallpaper", "settings:wallpaper"),
+    (r"^lock screen", "settings:lockscreen"),
+    (r"^terminal greeting", "settings:greeting"),
+    (r"^(gaming mode|setting up the game)|is already running$", "gamecenter"),
+    (r"^honeypot", "security"),
+    (r"^calendar is switched off", "settings:calendar"),
+    (r"^(no (browser|terminal|.+ app) found|discord)$", "settings:apps"),
+    (r"^halcyon: .* shell$", "settings:debug"),
+    (r"^(focus|break time|back to focus|last round done)", "settings:focus"),
+    (r"^(voice note|image (added to )?note|picture description|reminder|still on your list)", "notes"),
+    (r"^weekly sky", "weeklysky"),
+    (r"^before you update", "versions"),
+]
+
+
+def is_halcyon(app, summary):
+    return (app or "").strip().lower() == "halcyon" or (summary or "").strip().lower().startswith("halcyon")
+
+
+def halcyon_target(summary):
+    t = (summary or "").strip().lower()
+    for pat, cid in ROUTES:
+        if re.search(pat, t):
+            return cid
+    return None
+
+
+def run_ipc(cid):
+    return run(["quickshell", "ipc", "-p", IPC_DIR, "call", "island", "command", cid], timeout=4)
+
+
 def main():
     a = sys.argv[1:] + [""] * 6
     app, entry, icon, summary, body = a[0], a[1], a[2], a[3], a[4]
     mode = a[5] or "auto"
     if mode in ("auto", "file"):
         p = find_file(icon, summary, body)
-        if p and show_in_file_manager(p):
+        if p and open_file(p):
             return 0
         if mode == "file":
             return 1
-    if mode in ("auto", "focus") and app != "Halcyon":
+    if mode in ("auto", "focus"):
+        if is_halcyon(app, summary):
+            cid = halcyon_target(summary)
+            return 0 if cid and run_ipc(cid) else 1
         return 0 if focus_app(app, entry) else 1
     return 1
 

@@ -2251,7 +2251,7 @@ fi
 
 try run_as_user_cmd "Making the scripts executable" bash -c '
     cd "$1" || exit 0
-    for f in install.sh update.sh scripts/*.sh scripts/*.py scripts/halcyon-tune bin/* launch/*.sh quickshell/island/scripts/*.sh plymouth/*.py \
+    for f in install.sh update.sh scripts/*.sh scripts/*.py scripts/halcyon-tune scripts/console-bin/* bin/* launch/*.sh quickshell/island/scripts/*.sh plymouth/*.py \
              sysmode/sysmode sysmode/*.py sysmode/*.py.bak; do
         [ -f "$f" ] && chmod +x "$f"
     done

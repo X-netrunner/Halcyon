@@ -844,6 +844,63 @@ Scope {
         else if (key === "held") { avView = "held"; setTab("antivirus") }
         else if (key === "alerts") { avView = "alerts"; setTab("antivirus") }
     }
+    // ---- Let AI decide: the local model reads the things that need you next to the facts of this PC (memory, cores, graphics, laptop or
+    // not) and says which one to deal with first and why (`halcyon-ai.py decide`). The answer shows in a card beside the window. Nothing
+    // is done until you approve; approving only takes you to that page (or starts the unlock), the same as pressing its row.
+    property bool decideOpen: false
+    property var decideRes: null
+    property string decideErr: ""
+    property var decideSteps: []
+    property int decideGen: 0                 // an answer that arrives after the card was closed or restarted is dropped
+    readonly property bool decideBusy: decideProc.running
+    readonly property var decidePickItem: {
+        if (!decideRes) return null
+        for (var i = 0; i < ovTodo.length; i++) if (ovTodo[i].key === decideRes.pick) return ovTodo[i]
+        return null
+    }
+    function decideStart() {
+        if (decideProc.running || ovTodo.length === 0) return
+        var items = ovTodo.map(function (t) { return { key: t.key, tone: t.tone, title: t.title, sub: t.sub } })
+        decideGen++
+        decideRes = null; decideErr = ""; decideSteps = []; decideOpen = true
+        decideProc.command = ["python3", aiScript, "decide", "--json", "--items", JSON.stringify(items)]
+        decideProc.running = true
+    }
+    function decideClose() {
+        decideGen++
+        decideOpen = false
+        if (decideProc.running) decideProc.running = false
+    }
+    function decideApprove() {
+        var k = decideRes ? decideRes.pick : ""
+        decideClose()
+        if (k !== "") ovGo(k)
+    }
+    function decideTitle(k) {
+        for (var i = 0; i < ovTodo.length; i++) if (ovTodo[i].key === k) return ovTodo[i].title
+        return k
+    }
+    Process {
+        id: decideProc
+        property int gen: 0
+        onRunningChanged: if (running) gen = root.decideGen
+        stderr: SplitParser {
+            onRead: d => {
+                var m = String(d).match(/^STEP (.+)$/)
+                if (m && decideProc.gen === root.decideGen) root.decideSteps = root.decideSteps.concat([m[1]])
+            }
+        }
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (decideProc.gen !== root.decideGen || !root.decideOpen) return
+                var d = null
+                try { d = JSON.parse(text) } catch (e) { d = null }
+                if (!d) { root.decideErr = "No answer from halcyon-ai.py (is python3 there?)"; return }
+                if (!d.ok) { root.decideErr = d.error || "It did not work."; return }
+                root.decideRes = d
+            }
+        }
+    }
     readonly property var feed: {
         var out = []
         if (fw) (fw.recent || []).forEach(function (d) { out.push({ at: d.at_unix, who: "firewall", title: d.reason + "  " + d.ip, sub: d.ports, tone: d.enforced ? "bad" : "warn" }) })
@@ -962,13 +1019,23 @@ Scope {
     function hide() { if (admJob !== null) admCancel(); open = false }
     function toggle() { if (open) hide(); else show("overview") }
     function toggleTo(t) { if (open && tab === t) hide(); else show(t) }      // the same page's entry pressed again closes the window
+    // ---- life: one slow clock (`beat`, 0..1 every 4.2 s) drives the shield's ripples and the status dots, and `pageIn` (0..1) fades a
+    // page in when you open the window or switch pages. Both only run while the window is open, on the page that uses them, and
+    // stand still when motion is off (Settings > Motion), so nothing here costs anything at rest.
+    readonly property bool live: open && pal && pal.motion > 0.05
+    property real beat: 0
+    property real pageIn: 1
+    function stag(i) { return Math.max(0, Math.min(1, pageIn * 1.7 - i * 0.22)) }      // 0..1 for the i-th block of a page (0 first)
+    NumberAnimation { target: root; property: "beat"; from: 0; to: 1; duration: root.ovTodo.length === 0 ? 4200 : 2800; loops: Animation.Infinite; running: root.live && root.tab === "overview" }
+    NumberAnimation { id: pageAnim; target: root; property: "pageIn"; from: 0; to: 1; duration: root.pal ? root.pal.dSlow : 600; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal ? root.pal.curveDecel : [0.05, 0.7, 0.1, 1, 1, 1] }
     function setTab(t) {
+        if (t !== tab) pageAnim.restart()
         tab = t
         refresh()
         Qt.callLater(function () { root.focusRequested(t === "ask" ? "ask" : "panel") })
     }
     property bool linger: false
-    onOpenChanged: if (!open) { linger = true; lingerT.restart() } else refresh()
+    onOpenChanged: if (!open) { decideClose(); linger = true; lingerT.restart() } else { refresh(); pageAnim.restart() }
     // closed for good: let go of what the pages held (alert lists, scan results, the ClamAV report, which rows were open) and free the JS heap.
     // A one-time password snapshot is kept: dropping it would ask for the password again.
     Timer {
@@ -981,6 +1048,7 @@ Scope {
             if (!root.avSnap) { root.avAlerts = []; root.avActions = []; root.avAlertsRaw = ""; root.avActionsRaw = "" }
             root.scanFound = []; root.scanSum = null
             root.clam = null; root.exc = null
+            root.decideRes = null; root.decideErr = ""; root.decideSteps = []
             root.avOpenKeys = ({})
             gc()
         }
@@ -1075,7 +1143,21 @@ Scope {
             spacing: 4
             Row {
                 spacing: 8
-                Text { id: stV; text: st.value; color: st.tone; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 7; font.weight: Font.Medium }
+                Text {
+                    id: stV
+                    text: st.value
+                    color: st.tone
+                    font.family: root.pal.uiFont
+                    font.pixelSize: root.pal.tTitle + 7
+                    font.weight: Font.Medium
+                    transformOrigin: Item.Left
+                    onTextChanged: if (root.live) stPop.restart()          // a changed figure gives a small pop
+                    SequentialAnimation {
+                        id: stPop
+                        NumberAnimation { target: stV; property: "scale"; to: 1.14; duration: 110; easing.type: Easing.OutQuad }
+                        NumberAnimation { target: stV; property: "scale"; to: 1; duration: 320; easing.type: Easing.OutBack }
+                    }
+                }
                 Text { anchors.baseline: stV.baseline; text: st.sub; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
             }
             Label { text: st.label; width: parent.width; elide: Text.ElideRight }
@@ -1138,7 +1220,17 @@ Scope {
         radius: root.pal.rSm
         color: lrMa.containsMouse ? root.pal.fill : "transparent"
         MouseArea { id: lrMa; anchors.fill: parent; hoverEnabled: true; onClicked: lr.clicked() }
-        Rectangle { id: lrMark; x: 8; width: 3; height: 26; radius: 2; anchors.verticalCenter: parent.verticalCenter; color: lr.mark }
+        Rectangle {
+            id: lrMark
+            x: 8
+            width: lrMa.containsMouse ? 4 : 3
+            height: lrMa.containsMouse ? 30 : 26
+            radius: 2
+            anchors.verticalCenter: parent.verticalCenter
+            color: lr.mark
+            Behavior on height { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+            Behavior on width { NumberAnimation { duration: root.pal.dFast } }
+        }
         Text { id: lrLead; visible: lr.lead !== ""; anchors { left: lrMark.right; leftMargin: 10; verticalCenter: parent.verticalCenter } width: 40; text: lr.lead; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
         Column {
             anchors { left: lr.lead !== "" ? lrLead.right : lrMark.right; leftMargin: lr.lead !== "" ? 4 : 12; right: lr.chip !== "" ? lrChip.left : lrAct2.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
@@ -1272,8 +1364,7 @@ Scope {
             line("dropped", root.pal.bad, false)
         }
     }
-    // a module on the overview: its state, three figures and its main action; the card opens its page
-    // a module on the overview (no longer used by the overview; kept for reference)
+    // a module on the overview: its state, three figures and a live line or graph at the bottom; the card opens its page
     component ModuleCard: Rectangle {
         id: mc
         property string key: ""
@@ -1283,14 +1374,21 @@ Scope {
         property color tone: root.pal.muted
         property bool available: true
         property var figures: []            // [[value, label, color], ...]
+        property var hist: []               // a live graph along the bottom (the firewall's traffic); empty = a quiet "watching" line instead
+        property bool watching: false       // the "watching" line is shown (the module is running)
         default property alias actions: mcAct.data
         Layout.fillWidth: true
         Layout.preferredWidth: 1
-        Layout.preferredHeight: 156
+        Layout.preferredHeight: 196
         radius: root.pal.rLg
         color: mcMa.containsMouse && available ? root.pal.fillHover : root.pal.fill
+        border.width: 1
+        border.color: Qt.alpha(mc.tone, mcMa.containsMouse && available ? 0.5 : 0)
         opacity: available ? 1 : 0.6
+        scale: mcMa.containsMouse && available ? 1.012 : 1
         Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+        Behavior on border.color { ColorAnimation { duration: root.pal.dFast } }
+        Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         MouseArea { id: mcMa; anchors.fill: parent; hoverEnabled: true; enabled: mc.available; cursorShape: Qt.PointingHandCursor; onClicked: root.setTab(mc.key) }
         ColumnLayout {
             anchors.fill: parent
@@ -1302,13 +1400,24 @@ Scope {
                     width: 38; height: 38; radius: 12
                     color: Qt.alpha(mc.tone, 0.15)
                     Glyph { anchors.centerIn: parent; code: mc.glyph; font.pixelSize: 19; color: mc.tone }
+                    // a soft halo that breathes with the clock
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: parent.width; height: parent.height; radius: parent.radius
+                        color: "transparent"
+                        border.width: 1
+                        border.color: mc.tone
+                        visible: mc.available && root.live
+                        scale: 1 + 0.22 * ((root.beat * 2) % 1)
+                        opacity: 0.4 * (1 - ((root.beat * 2) % 1))
+                    }
                 }
                 Column {
                     Layout.fillWidth: true
                     Text { text: mc.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody + 1; font.weight: Font.Medium }
                     Row {
                         spacing: 6
-                        Dot { anchors.verticalCenter: parent.verticalCenter; color: mc.tone; width: 6; height: 6; radius: 3 }
+                        Dot { anchors.verticalCenter: parent.verticalCenter; color: mc.tone; width: 6; height: 6; radius: 3; opacity: mc.available && root.live ? 0.65 + 0.35 * Math.sin(root.beat * Math.PI * 2) : 1 }
                         Small { text: mc.status }
                     }
                 }
@@ -1323,12 +1432,45 @@ Scope {
                         required property var modelData
                         Layout.fillWidth: true
                         spacing: 1
-                        Text { text: modelData[0]; color: modelData[2] || root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tTitle + 3; font.weight: Font.Medium }
+                        Text {
+                            id: fv
+                            text: modelData[0]
+                            color: modelData[2] || root.pal.text
+                            font.family: root.pal.uiFont
+                            font.pixelSize: root.pal.tTitle + 3
+                            font.weight: Font.Medium
+                            transformOrigin: Item.Left
+                            onTextChanged: if (root.live) fvPop.restart()
+                            SequentialAnimation {
+                                id: fvPop
+                                NumberAnimation { target: fv; property: "scale"; to: 1.16; duration: 110; easing.type: Easing.OutQuad }
+                                NumberAnimation { target: fv; property: "scale"; to: 1; duration: 320; easing.type: Easing.OutBack }
+                            }
+                        }
                         Small { text: modelData[1]; font.pixelSize: root.pal.tCap }
                     }
                 }
             }
-            Item { Layout.fillHeight: true }
+            // the bottom of the card: the live graph, or (no graph) a quiet line with a glint that drifts along it while the module runs
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: mc.available
+                Spark { anchors.fill: parent; anchors.topMargin: 2; hist: mc.hist; visible: mc.hist.length > 1 }
+                Item {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 6 }
+                    height: 3
+                    visible: mc.hist.length <= 1 && mc.watching
+                    clip: true
+                    Rectangle { anchors.fill: parent; radius: 2; color: Qt.alpha(mc.tone, 0.16) }
+                    Rectangle {
+                        width: parent.width * 0.22; height: parent.height; radius: 2
+                        color: mc.tone
+                        opacity: 0.85
+                        x: (parent.width - width) * (0.5 - 0.5 * Math.cos(root.beat * Math.PI * 2))
+                    }
+                }
+            }
             Row { id: mcAct; spacing: 8; visible: mc.available && children.length > 0 }
         }
     }
@@ -1359,7 +1501,7 @@ Scope {
                 Behavior on reveal { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Component.onCompleted: { ready = true; Qt.callLater(function () { if (root.tab === "ask") askIn.forceActiveFocus(); else qp.forceActiveFocus() }) }
                 Keys.onPressed: e => {
-                    if (e.key === Qt.Key_Escape) { root.hide(); e.accepted = true; return }
+                    if (e.key === Qt.Key_Escape) { if (root.decideOpen) root.decideClose(); else root.hide(); e.accepted = true; return }
                     // 1-5 switch pages
                     var pages = ["overview", "firewall", "antivirus", "exceptions", "ask", "clamav"], i = e.key - Qt.Key_1
                     if (i >= 0 && i < pages.length) { root.setTab(pages[i]); e.accepted = true }
@@ -1380,6 +1522,7 @@ Scope {
                     opacityBody: 0.97
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                     anchors.centerIn: parent
+                    anchors.horizontalCenterOffset: -decSide.shiftBy * decSide.prog        // the window and the AI's card sit centred together
                     opacity: win.desktop ? 1 : qp.reveal
                     scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
@@ -1551,13 +1694,50 @@ Scope {
                                 Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 148
+                                    opacity: root.stag(0)
+                                    transform: Translate { y: (1 - root.stag(0)) * 14 }
                                     Item {
                                         id: hero
                                         anchors { horizontalCenter: parent.horizontalCenter; top: parent.top }
                                         width: 88; height: 88
+                                        // two ripples leave the shield in turn (calm when all is well, quicker when something waits)
+                                        Repeater {
+                                            model: root.live ? 2 : 0
+                                            delegate: Rectangle {
+                                                id: rp
+                                                required property int index
+                                                readonly property real t: (root.beat + index * 0.5) % 1
+                                                anchors.centerIn: parent
+                                                width: 88; height: 88; radius: 44
+                                                color: "transparent"
+                                                border.width: 1.5
+                                                border.color: root.overallColor
+                                                scale: 1 + 0.8 * t
+                                                opacity: 0.34 * (1 - t) * (1 - t)
+                                            }
+                                        }
                                         Rectangle { anchors.centerIn: parent; width: 88; height: 88; radius: 44; color: Qt.alpha(root.overallColor, 0.07); border.width: 1; border.color: Qt.alpha(root.overallColor, 0.18) }
-                                        Rectangle { anchors.centerIn: parent; width: 64; height: 64; radius: 32; color: Qt.alpha(root.overallColor, 0.14) }
-                                        Glyph { anchors.centerIn: parent; code: root.ovTodo.length === 0 ? 0xF0565 : 0xF0026; font.pixelSize: 32; color: root.overallColor }
+                                        // a small light that circles the outer ring
+                                        Item {
+                                            anchors.fill: parent
+                                            visible: root.live
+                                            NumberAnimation on rotation { from: 0; to: 360; duration: root.ovTodo.length === 0 ? 16000 : 7000; loops: Animation.Infinite; running: root.live && root.tab === "overview" }
+                                            Rectangle { x: 41; y: -3; width: 6; height: 6; radius: 3; color: root.overallColor; opacity: 0.9 }
+                                            Rectangle { x: 41; y: 85; width: 4; height: 4; radius: 2; color: root.overallColor; opacity: 0.35 }
+                                        }
+                                        Rectangle {
+                                            anchors.centerIn: parent
+                                            width: 64; height: 64; radius: 32
+                                            color: Qt.alpha(root.overallColor, 0.14)
+                                            scale: root.live ? 1 + 0.045 * Math.sin(root.beat * Math.PI * 2) : 1
+                                        }
+                                        Glyph {
+                                            anchors.centerIn: parent
+                                            code: root.ovTodo.length === 0 ? 0xF0565 : 0xF0026
+                                            font.pixelSize: 32
+                                            color: root.overallColor
+                                            scale: root.live ? 1 + 0.03 * Math.sin(root.beat * Math.PI * 2) : 1
+                                        }
                                     }
                                     Column {
                                         anchors { horizontalCenter: parent.horizontalCenter; top: hero.bottom; topMargin: 12 }
@@ -1577,7 +1757,8 @@ Scope {
                                         Small {
                                             width: parent.width
                                             horizontalAlignment: Text.AlignHCenter
-                                            text: root.ovTodo.length === 0 ? root.ovSub : "Pick one below, it takes you straight to it."
+                                            visible: root.ovTodo.length === 0
+                                            text: root.ovSub
                                             elide: Text.ElideRight
                                         }
                                     }
@@ -1587,6 +1768,8 @@ Scope {
                                     Layout.fillWidth: true
                                     spacing: 8
                                     visible: root.ovTodo.length > 0
+                                    opacity: root.stag(1)
+                                    transform: Translate { y: (1 - root.stag(1)) * 14 }
                                     Repeater {
                                         model: root.ovTodo
                                         delegate: Rectangle {
@@ -1652,15 +1835,27 @@ Scope {
                                             }
                                         }
                                     }
+                                    Btn {
+                                        Layout.alignment: Qt.AlignHCenter
+                                        visible: root.aiOn
+                                        glyph: 0xF0B79
+                                        label: root.decideBusy ? "Thinking…" : "Let AI decide for this PC"
+                                        disabled: root.decideBusy
+                                        onClicked: root.decideStart()
+                                    }
                                 }
 
                                 // the two modules: a name, how it is doing, three figures. The whole card opens its page.
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: 14
+                                    opacity: root.stag(2)
+                                    transform: Translate { y: (1 - root.stag(2)) * 14 }
                                     ModuleCard {
                                         key: "firewall"; name: "Firewall"; glyph: 0xF1A11
                                         available: root.hasFw
+                                        watching: root.hasFw && root.fwAlive
+                                        hist: root.fwHist
                                         tone: root.fwColor
                                         status: root.hasFw ? root.fwState + (root.posture !== "" && root.posture !== "secure" ? "  ·  " + root.posture : "") : "Not installed"
                                         figures: root.fw ? [
@@ -1672,6 +1867,7 @@ Scope {
                                     ModuleCard {
                                         key: "antivirus"; name: "Antivirus"; glyph: 0xF13B6
                                         available: root.hasAv
+                                        watching: root.avRunning
                                         tone: root.avColor
                                         status: root.hasAv ? root.avState + (root.av && root.av.mode ? "  ·  " + root.av.mode : "") : "Not installed"
                                         figures: root.hasAv ? [
@@ -1686,6 +1882,8 @@ Scope {
                                 Rectangle {
                                     Layout.fillWidth: true
                                     visible: root.feed.length > 0
+                                    opacity: root.stag(3)
+                                    transform: Translate { y: (1 - root.stag(3)) * 14 }
                                     implicitHeight: latCol.implicitHeight + 24
                                     radius: root.pal.rLg
                                     color: root.pal.fill
@@ -1716,6 +1914,8 @@ Scope {
                                 anchors.margins: 28
                                 spacing: 20
                                 visible: root.tab === "firewall" && root.hasFw
+                                opacity: root.pageIn
+                                transform: Translate { y: (1 - root.pageIn) * 10 }
 
                                 PageHead {
                                     glyph: 0xF1A11
@@ -1809,6 +2009,8 @@ Scope {
                                 anchors.margins: 28
                                 spacing: 16
                                 visible: root.tab === "antivirus" && root.hasAv
+                                opacity: root.pageIn
+                                transform: Translate { y: (1 - root.pageIn) * 10 }
 
                                 PageHead {
                                     glyph: 0xF13B6
@@ -2271,6 +2473,8 @@ Scope {
                                 anchors.margins: 28
                                 spacing: 20
                                 visible: root.tab === "clamav" && root.hasClam
+                                opacity: root.pageIn
+                                transform: Translate { y: (1 - root.pageIn) * 10 }
 
                                 PageHead {
                                     glyph: 0xF0668
@@ -2412,6 +2616,8 @@ Scope {
                                 anchors.margins: 28
                                 spacing: 20
                                 visible: root.tab === "exceptions" && root.hasAv
+                                opacity: root.pageIn
+                                transform: Translate { y: (1 - root.pageIn) * 10 }
 
                                 PageHead {
                                     glyph: 0xF0780
@@ -2546,6 +2752,8 @@ Scope {
                                 anchors.margins: 28
                                 spacing: 14
                                 visible: root.tab === "ask" && (root.hasFw || root.hasAv)
+                                opacity: root.pageIn
+                                transform: Translate { y: (1 - root.pageIn) * 10 }
 
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -2785,6 +2993,222 @@ Scope {
                             }
                         }
                     }
+
+                // ---- the AI's card (Let AI decide): pops out beside the window like the utilities box's side card and the pair stays
+                // centred. With no room beside it (a pop-out window, a narrow screen) it lies over the window's right side instead.
+                Item {
+                    id: decSide
+                    visible: false
+                    width: 0; height: 0
+                    readonly property real cardW: 360
+                    readonly property real gap: 8
+                    readonly property real room: Math.max(0, (qp.width - panel.width) / 2)
+                    readonly property bool beside: !win.desktop && qp.width - panel.width >= cardW + 32
+                    readonly property real shiftBy: beside ? Math.max(Math.max(0, cardW + 20 - room), Math.min((cardW + gap) / 2, room - 12)) : 0
+                    property real prog: (root.decideOpen && beside) ? 1 : 0
+                    Behavior on prog { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                }
+                ClippingRectangle {
+                    id: decCard
+                    z: 5
+                    readonly property real shown: root.decideOpen ? 1 : 0
+                    Behavior on shown { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                    visible: shown > 0.01
+                    opacity: shown * qp.reveal
+                    x: decSide.beside ? panel.x + panel.width + decSide.gap : panel.x + panel.width - width - 18
+                    y: decSide.beside ? panel.y : panel.y + 96
+                    width: decSide.cardW
+                    height: decSide.beside ? panel.height : Math.max(240, panel.height - 96 - 18)
+                    radius: root.pal.rLg
+                    // solid, not glass: it has to stay readable over the dimmed desktop
+                    color: Qt.alpha(root.pal.surface, 1)
+                    border.width: root.pal.bw
+                    border.color: root.pal.line
+                    transform: Translate { x: (decSide.beside ? -1 : 1) * (1 - decCard.shown) * 36 }
+                    MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
+
+                    Item {
+                        id: dHead
+                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                        height: 64
+                        Rectangle {
+                            id: dIc
+                            x: 20
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 34; height: 34; radius: 12
+                            color: Qt.alpha(root.pal.accent, 0.16)
+                            Glyph { anchors.centerIn: parent; code: 0xF0B79; font.pixelSize: 17; color: root.pal.accent }
+                        }
+                        Column {
+                            anchors { left: dIc.right; leftMargin: 12; right: dClose.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                            spacing: 1
+                            Text {
+                                width: parent.width
+                                text: "AI's pick for this PC"
+                                color: root.pal.text
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody + 1
+                                font.weight: Font.Medium
+                                elide: Text.ElideRight
+                            }
+                            Small {
+                                width: parent.width
+                                text: root.decideRes ? (root.decideRes.by === "ai" ? "Your local model" : "Plain order, no model") : (root.decideErr !== "" ? "No answer" : "Working it out")
+                            }
+                        }
+                        Rectangle {
+                            id: dClose
+                            anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                            width: 30; height: 30; radius: 15
+                            color: dcMa.containsMouse ? root.pal.fillHover : "transparent"
+                            Glyph { anchors.centerIn: parent; code: 0xF0156; font.pixelSize: 15; color: dcMa.containsMouse ? root.pal.text : root.pal.muted }
+                            MouseArea { id: dcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.decideClose() }
+                        }
+                    }
+                    Rectangle { anchors { left: parent.left; right: parent.right; top: dHead.bottom; leftMargin: 20; rightMargin: 20 } height: 1; color: root.pal.line; opacity: 0.6 }
+
+                    // while it works: what it is doing, step by step
+                    Column {
+                        visible: root.decideRes === null && root.decideErr === ""
+                        anchors { left: parent.left; right: parent.right; top: dHead.bottom; margins: 22; topMargin: 26 }
+                        spacing: 12
+                        Working {}
+                        Repeater {
+                            model: root.decideSteps
+                            delegate: Small {
+                                required property string modelData
+                                required property int index
+                                width: parent.width
+                                text: modelData + (index === root.decideSteps.length - 1 ? "…" : "")
+                                color: index === root.decideSteps.length - 1 ? root.pal.text : root.pal.muted
+                            }
+                        }
+                    }
+
+                    // it did not work
+                    Column {
+                        visible: root.decideErr !== ""
+                        anchors { left: parent.left; right: parent.right; top: dHead.bottom; margins: 22; topMargin: 26 }
+                        spacing: 14
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: root.decideErr
+                            color: root.pal.bad
+                            font.family: root.pal.uiFont
+                            font.pixelSize: root.pal.tBody - 1
+                        }
+                        Btn { label: "Try again"; onClicked: root.decideStart() }
+                    }
+
+                    // the answer: what it looked at, what it thought, the order, and your OK at the end
+                    Flickable {
+                        id: dFlick
+                        visible: root.decideRes !== null
+                        anchors { left: parent.left; right: parent.right; top: dHead.bottom; bottom: dFoot.top; topMargin: 8 }
+                        clip: true
+                        contentWidth: width
+                        contentHeight: dCol.implicitHeight + 24
+                        boundsBehavior: Flickable.StopAtBounds
+                        Column {
+                            id: dCol
+                            x: 22; y: 14
+                            width: dFlick.width - 44
+                            spacing: 8
+                            Label { text: "What it looked at" }
+                            Text {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: root.decideRes && root.decideRes.facts_line !== "" ? root.decideRes.facts_line : "This computer"
+                                color: root.pal.text
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody - 1
+                            }
+                            Item { width: 1; height: 6 }
+                            Label { text: "What it thought" }
+                            Text {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: root.decideRes ? root.decideRes.why : ""
+                                color: root.pal.text
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody - 1
+                                lineHeight: 1.15
+                            }
+                            Small {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                elide: Text.ElideNone
+                                visible: root.decideRes !== null && root.decideRes.ai_note !== ""
+                                text: root.decideRes ? root.decideRes.ai_note : ""
+                            }
+                            Item { width: 1; height: 6 }
+                            Label { text: "Order" }
+                            Repeater {
+                                model: root.decideRes ? root.decideRes.order : []
+                                delegate: Rectangle {
+                                    id: dr
+                                    required property string modelData
+                                    required property int index
+                                    width: dCol.width
+                                    height: drCol.implicitHeight + 18
+                                    radius: 12
+                                    color: Qt.alpha(index === 0 ? root.pal.accent : root.pal.text, index === 0 ? 0.12 : 0.05)
+                                    Text {
+                                        id: drN
+                                        x: 12
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: String(dr.index + 1)
+                                        color: dr.index === 0 ? root.pal.accent : root.pal.muted
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tBody
+                                        font.weight: Font.Medium
+                                    }
+                                    Column {
+                                        id: drCol
+                                        anchors { left: drN.right; leftMargin: 12; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                        spacing: 1
+                                        Text {
+                                            width: parent.width
+                                            elide: Text.ElideRight
+                                            text: root.decideTitle(dr.modelData)
+                                            color: root.pal.text
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tBody - 1
+                                            font.weight: Font.Medium
+                                        }
+                                        Small {
+                                            width: parent.width
+                                            visible: text !== ""
+                                            text: root.decideRes && root.decideRes.notes && root.decideRes.notes[dr.modelData] ? root.decideRes.notes[dr.modelData] : ""
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // your OK: nothing happens before it
+                    Item {
+                        id: dFoot
+                        visible: root.decideRes !== null
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                        height: 76
+                        Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 20; rightMargin: 20 } height: 1; color: root.pal.line; opacity: 0.6 }
+                        Row {
+                            anchors { left: parent.left; leftMargin: 20; verticalCenter: parent.verticalCenter; verticalCenterOffset: 3 }
+                            spacing: 10
+                            Btn {
+                                primary: true
+                                glyph: 0xF012C
+                                label: root.decidePickItem ? "Approve and " + root.decidePickItem.btn.toLowerCase() : "Approve"
+                                disabled: root.decidePickItem === null
+                                onClicked: root.decideApprove()
+                            }
+                            Btn { label: "Not now"; onClicked: root.decideClose() }
+                        }
+                    }
+                }
                 }
             }
         }
