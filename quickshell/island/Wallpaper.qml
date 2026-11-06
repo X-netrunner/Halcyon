@@ -217,7 +217,8 @@ PanelWindow {
     DeskWidgets {
         anchors.fill: parent
         visible: !wallpaper.widgetsHidden && wallpaper.opt.deskWidgetsOn !== false && !(wallpaper.env && wallpaper.env.lean === true)     // lean (a game runs): hidden, so every widget timer stops
-                 && !(wallpaper.env && (wallpaper.env.deskCovered === true || wallpaper.env.fsQuiet === true))   // under windows: not drawn (no repaint, no re-blur above)
+                 && !(wallpaper.env && wallpaper.env.fsQuiet === true)                                          // a fullscreen window: nobody can see them
+                 && !(wallpaper.opt.deskCoverPause === true && wallpaper.env && wallpaper.env.deskCovered === true)   // under windows: only when "Pause widgets under windows" is on (a transparent window shows the desktop through it, so they used to flash and vanish)
         pal: wallpaper.pal
         env: wallpaper.env
         opt: wallpaper.opt

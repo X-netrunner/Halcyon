@@ -342,6 +342,7 @@ Scope {
             avRepairing = false
             avPwAction = "unlock"
             if (code !== 0 && /incorrect password|try again|no password/i.test(avRootErrT)) {
+                pwRefused()
                 avUnlockErr = "That password did not work. Try again."
                 avPwAction = "repair"
                 avAskPw = true
@@ -349,6 +350,7 @@ Scope {
                 return
             }
             if (code === 0) {
+                pwAccepted()
                 avUnlockErr = ""
                 avActErr = ""; avErr = ""
                 avSnap = false; avSnapStatus = null
@@ -363,6 +365,7 @@ Scope {
         var snap = null
         if (code === 0) snap = parseSnap(avRootOutT)
         if (snap && snap.status) {
+            pwAccepted()
             avUnlockErr = ""
             avAskPw = false
             avSnapAt = Date.now()
@@ -445,6 +448,7 @@ Scope {
         if (!hasAv || avRootProc.running || agentProc.running) return
         avUnlockErr = ""
         avPwAction = "repair"
+        if (pwKnown) { avSubmitPw(pwCache); return }
         avAskPw = true
         pwFocusRequested()
     }
@@ -461,12 +465,14 @@ Scope {
         if (!hasAv || avRootProc.running || agentProc.running) return
         avUnlockErr = ""
         avPwAction = "unlock"
+        if (pwKnown) { avSubmitPw(pwCache); return }
         avAskPw = true
         pwFocusRequested()
     }
     function avSubmitPw(pw) {
         if (pw === "" || avRootProc.running || agentProc.running || !hasAv) return
         avUnlockErr = ""
+        pwTrying = pw
         avUnlockVia = "sudo"; avUnlockStep = "password"
         avRepairing = avPwAction === "repair"
         avRootOutT = ""; avRootErrT = ""; avRootCode = -1
@@ -488,7 +494,7 @@ Scope {
     function avSudoFail(code, err) {
         var lines = String(err).split("\n").map(function (l) { return l.trim() }).filter(function (l) { return l !== "" })
         var all = lines.join(" ")
-        if (/incorrect password|try again|no password was provided|authentication failure/i.test(all)) { avUnlockErr = "That password did not work. Try again."; avAskPw = true; pwFocusRequested() }
+        if (/incorrect password|try again|no password was provided|authentication failure/i.test(all)) { pwRefused(); avUnlockErr = "That password did not work. Try again."; avAskPw = true; pwFocusRequested() }
         else if (/not in the sudoers|not allowed to run sudo|may not run sudo|not allowed to execute/i.test(all))
             avUnlockErr = "This user is not allowed to use sudo, so a password cannot unlock it. As an administrator, add this user to the wheel group (usermod -aG wheel NAME) and log in again."
         else if (/sudo: (command )?not found|sudo: not installed/i.test(all)) avUnlockErr = "sudo is not installed. Try \"System password window\"."
@@ -549,6 +555,17 @@ Scope {
     }
     // ---- changes that need root (approve, reject, undo, allow): done HERE. A bar asks for the password, sudo runs `ai-antivirus ...`
     // and the answer shows in this window. The console is no longer opened. The password goes in on stdin, never on a command line.
+    // The password is typed ONCE per login and kept in memory only (never written to disk, never on a command line): every later root
+    // action here (approve, reject, undo, allow, unlock, repair) reuses it. It is dropped when it is refused (wrong or changed), with
+    // "Forget password", or when the shell restarts (log out / reboot). sudo itself cannot remember it for us: these commands run
+    // without a terminal, and sudo's own ticket is tied to a terminal, so each one used to start from zero.
+    property bool pwRemember: true            // "Remember until I log out" (the switch next to the password field)
+    property string pwCache: ""
+    property string pwTrying: ""              // the password of the run in flight: it is only kept once sudo accepted it
+    readonly property bool pwKnown: pwCache !== ""
+    function pwForget() { pwCache = ""; pwTrying = "" }
+    function pwAccepted() { if (pwRemember && pwTrying !== "") pwCache = pwTrying; pwTrying = "" }
+    function pwRefused() { pwCache = ""; pwTrying = "" }
     property var admJob: null                 // { steps: [[args...], ...], title, detail, button, ackIds }
     property string admErr: ""
     property bool admCancelled: false
@@ -563,6 +580,7 @@ Scope {
     function admAsk(job) {
         if (admBusy || !hasAv) return
         admErr = ""; admJob = job
+        if (pwKnown) { admSubmit(pwCache); return }          // no password bar: the remembered one is used
         Qt.callLater(function () { root.admFocusRequested() })
     }
     // full access in one password: put this user into group ai-antivirus (alerts, acknowledging, the action log, the AI's clearing)
@@ -579,6 +597,7 @@ Scope {
     function admSubmit(pw) {
         if (pw === "" || admBusy || admJob === null) return
         admErr = ""
+        pwTrying = pw
         admOutT = ""; admErrT = ""; admCode = -1
         admExited = false; admOutDone = false; admErrDone = false
         // one sudo for every step of the job (one password); a wrong password fails once instead of retrying three times
@@ -596,6 +615,7 @@ Scope {
         if (admCancelled) { admCancelled = false; return }
         var code = admCode, lines = admErrT.split("\n").map(function (l) { return l.trim() }).filter(function (l) { return l !== "" }), all = lines.join(" ")
         if (code === 0) {
+            pwAccepted()
             var job = admJob
             admJob = null; admErr = ""
             var first = admOutT.trim().split("\n")[0]
@@ -609,7 +629,7 @@ Scope {
             refresh()
             return
         }
-        if (/incorrect password|try again|no password was provided|authentication failure/i.test(all)) admErr = "That password did not work. Try again."
+        if (/incorrect password|try again|no password was provided|authentication failure/i.test(all)) { pwRefused(); admErr = "That password did not work. Try again." }
         else if (/not in the sudoers|not allowed to run sudo|may not run sudo/i.test(all)) admErr = "This user is not allowed to use sudo."
         else if (/sudo: (command )?not found/i.test(all)) admErr = "sudo is not installed."
         else if (/faillock|temporarily locked|account is locked/i.test(all)) admErr = "The account is locked for a few minutes after wrong passwords. Wait, then try again."
@@ -653,15 +673,30 @@ Scope {
     property var scanFound: []
     property var scanSum: null
     property string scanWhat: ""
-    readonly property bool scanning: scanProc.running
+    property bool scanStarting: false         // set the moment a scan is asked for: Process.running can lag a tick behind `running = true`
+    readonly property bool scanning: scanProc.running || scanStarting
     function scan(dir) {
-        if (scanning || !hasAv) return
+        if (scanning || !hasAv) return false
         scanFound = []; scanSum = null; scanWhat = dir
         scanProc.command = ["sh", "-c", "cd \"$HOME\" && exec ai-antivirus scan --json \"$1\"", "scan", dir]
+        scanStarting = true
+        scanStartT.restart()
         scanProc.running = true
+        return true
+    }
+    // safety net: if the process never shows up as running (it could not be launched), end the scan as failed instead of hanging
+    Timer {
+        id: scanStartT
+        interval: 4000
+        onTriggered: {
+            if (!root.scanStarting) return
+            root.scanStarting = false
+            if (!scanProc.running) { root.scanSum = { files: 0, found: 0, seconds: 0, failed: true }; root.askScanDone() }
+        }
     }
     Process {
         id: scanProc
+        onRunningChanged: if (running) { root.scanStarting = false; scanStartT.stop() }
         stdout: SplitParser {
             onRead: line => {
                 var o = null
@@ -670,7 +705,7 @@ Scope {
                 else { var c = root.scanFound.slice(); c.push(o); root.scanFound = c }
             }
         }
-        onExited: { if (root.scanSum === null) root.scanSum = { files: 0, found: root.scanFound.length, seconds: 0, failed: true }; root.askScanDone() }
+        onExited: { root.scanStarting = false; scanStartT.stop(); if (root.scanSum === null) root.scanSum = { files: 0, found: root.scanFound.length, seconds: 0, failed: true }; root.askScanDone() }
     }
 
     // ---- ClamAV: `halcyon-ai.py clamav test|scan`. The fixes are commands from a fixed list (the local model, when it is on, only
@@ -1084,6 +1119,11 @@ Scope {
         // "scan my Downloads", "can you run a scan on ~/projects": it is DONE here, with the antivirus's own scanner (no model needed),
         // and the result is told in the chat. A question about scans still goes to the assistant.
         var sr = hasAv ? SecAsk.scanRequest(q) : null
+        if (!sr && hasAv && askWantsFolder) {          // the answer to "Which folder should I scan?": "~/games", "my Downloads" ...
+            var fr = SecAsk.scanRequest("scan " + q)
+            if (fr && fr.path !== "") sr = fr
+            else askWantsFolder = false
+        }
         if (sr) {
             pushMsg({ role: "you", text: q, who: target })
             askScan(sr, target)
@@ -1109,11 +1149,13 @@ Scope {
         askProc.running = true
         Qt.callLater(function () { root.focusRequested("ask") })
     }
+    property bool askWantsFolder: false       // "Which folder should I scan?" was just asked: the next message may be only the folder
     property bool askScanPending: false       // a scan the Ask tab started: its result is told in the chat when it ends
     property string askScanLabel: ""
     function askScan(sr, target) {
         function say(text, bad) { root.pushMsg({ role: "ai", text: text, bad: bad === true, live: false, actions: [], who: target }) }
-        if (sr.path === "") { say("Which folder should I scan? Say it with its name, for example \"scan my Downloads\" or \"scan ~/projects\"."); return }
+        if (sr.path === "") { askWantsFolder = true; say("Which folder should I scan? Say it with its name, for example \"scan my Downloads\" or \"scan ~/projects\"."); return }
+        askWantsFolder = false
         if (scanning) { say("A scan of " + (scanWhat.charAt(0) === "/" ? scanWhat : "~/" + (scanWhat === "." ? "" : scanWhat)) + " is still running. Ask again when it is done.", true); return }
         var home = Quickshell.env("HOME")
         var p = sr.path
@@ -1122,8 +1164,7 @@ Scope {
         askScanLabel = p
         askScanPending = true
         say("Scanning " + p + (sr.whole ? " (your home folder: system files are watched all the time by the sensor)" : "") + "…")
-        scan(rel)
-        if (!scanning) { askScanPending = false; say("The scan did not start.", true) }
+        if (!scan(rel)) { askScanPending = false; say("The scan did not start.", true) }
     }
     function askScanDone() {
         if (!askScanPending) return
@@ -1863,6 +1904,10 @@ Scope {
                                         Btn { label: root.admBusy ? "Working…" : (root.admJob ? root.admJob.button : ""); glyph: 0xF012C; primary: true; disabled: root.admBusy; onClicked: admPw.go() }
                                         Btn { label: "Cancel"; glyph: 0xF0156; onClicked: { admPw.text = ""; root.admCancel() } }
                                     }
+                                    Row {
+                                        spacing: 8
+                                        Chip { pal: root.pal; implicitHeight: 30; label: "Remember until I log out"; glyph: String.fromCodePoint(root.pwRemember ? 0xF012C : 0xF0156); on: root.pwRemember; onClicked: root.pwRemember = !root.pwRemember }
+                                    }
                                 }
                             }
 
@@ -2231,6 +2276,7 @@ Scope {
                                     }
                                     CalmIconBtn { pal: root.pal; glyph: 0xF02DC; tip: "Scan home"; enabledBtn: !root.scanning; onClicked: root.scan(".") }
                                     CalmIconBtn { pal: root.pal; glyph: 0xF1276; primary: true; tip: "Scan downloads"; enabledBtn: !root.scanning; onClicked: root.scan("Downloads") }
+                                    CalmIconBtn { visible: root.pwKnown; pal: root.pal; glyph: 0xF033E; tip: "Forget the remembered password"; onClicked: { root.pwForget(); root.flash("Password forgotten. It is asked again next time.", false) } }
                                 }
 
                                 // ---- locked: say why, and offer the way out that fits. Replaces the dead "Unreadable" lists.
