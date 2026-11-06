@@ -3222,6 +3222,28 @@ install_antivirus() {
     log_success "ai-antivirus installed (alert-only): Security center (>security), or ai-antivirus status"
 }
 
+# Full access for the Security center and its AI: the database and the event log belong to group ai-antivirus, and reading
+# alerts, acknowledging them (also the ones the AI clears) and the action log all need it. Done on EVERY run when the package is
+# there, not only on the run that installed it: an install from before this, a pinned version or an "already installed" early
+# exit would otherwise leave the user outside the group (the Security center then falls back to a one-time root snapshot).
+# The shell reads through `sg ai-antivirus` until the next login, so no logout is needed for it to work.
+av_grant_access() {
+    command -v ai-antivirus >/dev/null 2>&1 || [[ "$DRY_RUN" == "true" ]] || return 0
+    local g need=()
+    for g in ai-antivirus ai-antivirus-notify; do
+        getent group "$g" >/dev/null 2>&1 || continue
+        id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" || need+=("$g")
+    done
+    if [[ ${#need[@]} -gt 0 ]]; then
+        try run_cmd "ai-antivirus: giving $TARGET_USER full access to the Security center (groups: ${need[*]})" \
+            as_root usermod -aG "$(IFS=,; echo "${need[*]}")" "$TARGET_USER"
+    elif getent group ai-antivirus >/dev/null 2>&1; then
+        log_success "ai-antivirus: $TARGET_USER already has full access to the Security center"
+    else
+        warn_later "ai-antivirus has no group 'ai-antivirus' on this system: the Security center reads it with \"Unlock with password\" instead."
+    fi
+}
+
 # the assistants' model (firewall Ask, antivirus Ask): pulled once when Ollama is there; both pick it up by themselves
 pull_security_model() {
     [[ -n "$SECURITY_MODEL" && "$SECURITY_MODEL" != none ]] || return 0
@@ -3254,7 +3276,7 @@ if [[ "$PACKAGES" == "true" ]]; then
               fi ;;
         none) [[ "$FIREWALL_ASKED" == "true" ]] && remove_ai_firewall ;;
     esac
-    if [[ "$INSTALL_AV" == "true" ]]; then install_antivirus || true; av_installer_exceptions
+    if [[ "$INSTALL_AV" == "true" ]]; then install_antivirus || true; av_installer_exceptions; av_grant_access
     elif [[ "$AV_ASKED" == "true" ]]; then remove_antivirus; fi
     [[ "$FIREWALL" == ai || "$INSTALL_AV" == "true" ]] && pull_security_model
     [[ "$INSTALL_AV" == "true" ]] && set_antivirus_model

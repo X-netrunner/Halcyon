@@ -36,7 +36,7 @@ Scope {
     function show() { mode = "quick"; flash = false; open = true; loadNotes() }
     function showAll() { mode = "all"; search = ""; filter = "all"; orgOpen = false; composing = false; open = true; loadNotes() }
     function openAll() { mode = "all"; search = ""; filter = "all"; loadNotes() }      // from the panel: stays open, becomes the list
-    function hide() { dropStaged(); open = false; flash = false; composing = false }
+    function hide() { dropStaged(); open = false; flash = false; composing = false; editId = "" }
     property bool composing: false          // the full list's + : a writing box under the list (the list stays open)
     function close() { hide() }
     function toggle() { if (open) hide(); else show() }
@@ -131,6 +131,19 @@ Scope {
     }
     Process { id: actProc; onExited: root.nextAct() }
 
+    // Edit: the writing box under the list opens with the note's words in it; Enter saves them over the old ones
+    property string editId: ""              // the note being changed (\"\": the box adds a new one)
+    property string editText: ""
+    property int editSeedN: 0
+    function startEdit(n) { editId = n.id; editText = n.text || ""; composing = true; editSeedN++ }
+    function toggleCompose() { editId = ""; editText = ""; composing = !composing; editSeedN++ }
+    // Enter in the writing box: a change to the note being edited, or a new note
+    function submitCompose(t) {
+        var str = (t || "").trim()
+        if (!str) return false
+        if (editId !== "") { act(["edit", editId, str]); editId = ""; return true }
+        return addNote(str)
+    }
     function addNote(t) {
         var str = (t || "").trim()
         if (!str) return false
@@ -1322,6 +1335,7 @@ Scope {
                                         Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Repeater {
                                             model: [
+                                                { k: "edit", t: "Edit" },
                                                 { k: "pin", t: noteRow.modelData.pinned ? "Unpin" : "Pin" },
                                                 { k: "task", t: noteRow.modelData.task ? "Note" : "Task" },
                                                 { k: "remind", t: noteRow.picking ? "Close" : "Remind", hide: !noteRow.modelData.task },
@@ -1368,7 +1382,8 @@ Scope {
                                                         cursorShape: Qt.PointingHandCursor
                                                         onClicked: {
                                                             var n = noteRow.modelData
-                                                            if (modelData.k === "pin") root.pinNote(n.id)
+                                                            if (modelData.k === "edit") root.startEdit(n)
+                                                            else if (modelData.k === "pin") root.pinNote(n.id)
                                                             else if (modelData.k === "del") root.delNote(n.id)
                                                             else if (modelData.k === "task") root.toggleTask(n.id)
                                                             else if (modelData.k === "stt") { if (!root.sttBusy(n)) root.transcribeNote(n.id) }
@@ -1449,7 +1464,7 @@ Scope {
                             pixelSize: 10
                         }
                         // a new note: the writing box opens right under this window, the list stays
-                        RoundBtn { pal: root.pal; primary: true; size: 32; glyph: root.composing ? "✕" : "+"; onClicked: root.composing = !root.composing }
+                        RoundBtn { pal: root.pal; primary: true; size: 32; glyph: root.composing ? "✕" : "+"; onClicked: root.toggleCompose() }
                     }
                 }
             }
@@ -1486,13 +1501,18 @@ Scope {
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.tBody + 1
                         // saved: the box goes back in and the list has the keyboard again
-                        Keys.onReturnPressed: { if (root.addNote(text)) { text = ""; root.composing = false; sin.forceActiveFocus() } }
-                        Keys.onEnterPressed: { if (root.addNote(text)) { text = ""; root.composing = false; sin.forceActiveFocus() } }
-                        Keys.onEscapePressed: { text = ""; root.composing = false; sin.forceActiveFocus() }
+                        Keys.onReturnPressed: { if (root.submitCompose(text)) { text = ""; root.composing = false; sin.forceActiveFocus() } }
+                        Keys.onEnterPressed: { if (root.submitCompose(text)) { text = ""; root.composing = false; sin.forceActiveFocus() } }
+                        Keys.onEscapePressed: { text = ""; root.editId = ""; root.composing = false; sin.forceActiveFocus() }
+                        // Edit (or the + button) puts the note's words in the box
+                        Connections {
+                            target: root
+                            function onEditSeedNChanged() { cin.text = root.editText; cin.forceActiveFocus(); cin.cursorPosition = cin.text.length }
+                        }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: cin.text === ""
-                            text: "A new note, then Enter"
+                            text: root.editId !== "" ? "Change the note, then Enter" : "A new note, then Enter"
                             color: root.pal.muted
                             font: cin.font
                         }

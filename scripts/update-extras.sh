@@ -191,7 +191,21 @@ do_luna() {
 }
 
 # ---------------------------------------------------------------- ai-antivirus (pacman package)
+# The Security center (and its AI: reading, acknowledging, the action log) needs group ai-antivirus. Checked on every update, also
+# when nothing is rebuilt, so an install from before that rule gets full access without anyone typing usermod. No logout needed:
+# the shell reads through `sg ai-antivirus` until the next login.
+av_grant() {
+  local u g need=""; u="$(id -un)"
+  [ "$(id -u)" -ne 0 ] || return 0
+  pacman -Q ai-antivirus >/dev/null 2>&1 || return 0
+  for g in ai-antivirus ai-antivirus-notify; do
+    getent group "$g" >/dev/null 2>&1 || continue
+    id -nG "$u" | tr ' ' '\n' | grep -qx "$g" || need="${need:+$need,}$g"
+  done
+  [ -z "$need" ] || { run sudo usermod -aG "$need" "$u" && ok "ai-antivirus: $u was added to $need (full access to the Security center)"; }
+}
 do_av() {
+  av_grant
   [ "$(choice ANTIVIRUS)" = yes ] || { [ -z "$(choice ANTIVIRUS)" ] && [ "$(choice SYNAPSE)" = yes ]; } || return 0
   say "ai-antivirus"
   skip_pinned ANTIVIRUS ai-antivirus && return 0
