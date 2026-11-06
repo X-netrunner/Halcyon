@@ -1,0 +1,26 @@
+# systemd user service for the Halcyon Music daemon.
+# Install: ~/.config/systemd/user/halcyon-musicd.service
+#   systemctl --user enable --now halcyon-musicd
+[Unit]
+Description=Halcyon Music daemon (playback, session, cache)
+# The daemon also works when started by the GUI; this unit keeps it alive.
+After=graphical-session.target pipewire.service
+Wants=graphical-session.target
+
+[Service]
+Type=notify
+# Adjust the path if installed elsewhere (install.sh does).
+ExecStart=%h/.local/bin/halcyon-musicd
+Restart=always
+RestartSec=1
+# The daemon sends WATCHDOG=1 every 10 s; keep this above 2x that.
+WatchdogSec=30
+# Hardening-ish defaults for user daemon.
+NoNewPrivileges=true
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+# XDG_RUNTIME_DIR is set by the user manager; socket lives there.
+
+[Install]
+WantedBy=default.target

@@ -10,6 +10,8 @@
 //   cmd      shell command that starts it (or raises it if it is already running in the background)
 // To add an app: copy a line, change the five fields. Turn the automatic moving off with `>app routing` in the launcher.
 var apps = [
+    { id: "halcyon-music", name: "Halcyon Music", ws: "music", glyph: 0xF075A, classes: ["halcyon-music"],
+      match: "(^|/)halcyon-music( |$)", cmd: "bash \"$HOME/.config/Halcyon/scripts/apps.sh\" run music" },
     { id: "spotify",  name: "Spotify",  ws: "music",         glyph: 0xF04C7, classes: ["spotify", "com.spotify.client"],
       match: "(^|/)spotify( |$)", cmd: "sh -c 'command -v spotify >/dev/null && exec spotify; exec spotify-launcher'" },
     // a music player that runs inside a terminal (spotify_player, ncmpcpp, cmus ...): scripts/apps.sh starts it with the window

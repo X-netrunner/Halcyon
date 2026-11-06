@@ -176,6 +176,17 @@ Scope {
     // so a crashed helper can never leave "thinking ..." on a note for ever
     function aiThinking(n) { return !!n.think && n.think.state === "thinking" && (Date.now() / 1000 - (n.think.at || 0)) < 120 }
     // the title of a note in the list is ALWAYS what you wrote (or said). The AI overview is shown under it and never replaces it.
+    // the small header above a note in the full list: Pinned, Today, Yesterday, This week, Earlier ("" = no headers: while searching, or
+    // on the Pinned filter where they would all say the same)
+    function sectionOf(n) {
+        if (!n || search.trim() !== "" || filter === "pinned") return ""
+        if (n.pinned) return "Pinned"
+        if (!n.created) return ""
+        var t0 = new Date(); t0.setHours(0, 0, 0, 0)
+        var d = new Date(n.created * 1000)
+        var day = Math.floor((t0.getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 86400000)
+        return day <= 0 ? "Today" : day === 1 ? "Yesterday" : day < 7 ? "This week" : "Earlier"
+    }
     function titleOf(n) {
         var t = n.text || ""
         return t !== "" ? t : (n.image ? "Image note" : (n.audio ? "Voice note" : ""))
@@ -851,8 +862,8 @@ Scope {
                 anchors.centerIn: parent
                 anchors.verticalCenterOffset: root.composing ? -(composer.height + 12) / 2 : 0
                 Behavior on anchors.verticalCenterOffset { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
-                width: Math.min(parent.width - 80, 700)
-                height: Math.min(parent.height - 80 - (root.composing ? composer.height + 12 : 0), 700)
+                width: Math.min(parent.width - 80, 760)
+                height: Math.min(parent.height - 80 - (root.composing ? composer.height + 12 : 0), 760)
                 radius: root.pal.rXl
                 opacityBody: root.pal.solid ? 1 : 0.90
                 border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.35)
@@ -903,11 +914,27 @@ Scope {
                         border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                         border.color: sin.activeFocus ? root.pal.accent : root.pal.lineSoft
                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        Text {
+                            id: sGlyph
+                            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                            text: String.fromCodePoint(0xF0349)
+                            color: sin.activeFocus ? root.pal.accent : root.pal.muted
+                            font.family: root.pal.font; font.pixelSize: 15
+                        }
+                        MouseArea {
+                            visible: sin.text !== ""
+                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                            width: 34; height: parent.height
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { sin.text = ""; sin.forceActiveFocus() }
+                            Text { anchors.centerIn: parent; text: "\u2715"; color: parent.containsMouse ? root.pal.text : root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 12 }
+                            hoverEnabled: true
+                        }
                         TextInput {
                             id: sin
                             anchors.fill: parent
-                            anchors.leftMargin: 14
-                            anchors.rightMargin: 14
+                            anchors.leftMargin: 40
+                            anchors.rightMargin: 36
                             verticalAlignment: TextInput.AlignVCenter
                             color: root.pal.text
                             selectionColor: Qt.alpha(root.pal.accent, 0.45)
@@ -1018,9 +1045,32 @@ Scope {
                         model: root.filteredNotes
                         boundsBehavior: Flickable.StopAtBounds
 
-                        delegate: Rectangle {
-                            id: noteRow
+                        delegate: Item {
+                            id: wrap
                             required property var modelData
+                            required property int index
+                            readonly property string sec: root.sectionOf(modelData)
+                            readonly property bool firstOfSec: sec !== "" && (index === 0 || root.sectionOf(root.filteredNotes[index - 1]) !== sec)
+                            width: listView.width
+                            height: (firstOfSec ? secHead.height + 8 : 0) + noteRow.height
+                            Text {
+                                id: secHead
+                                visible: wrap.firstOfSec
+                                height: visible ? 18 : 0
+                                x: 4
+                                text: wrap.sec
+                                color: wrap.sec === "Pinned" ? root.pal.accent : Qt.alpha(root.pal.muted, 0.9)
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.calm ? 11 : 10
+                                font.weight: Font.Medium
+                                font.letterSpacing: root.pal.calm ? 0.2 : 1.0
+                            }
+                        Rectangle {
+                            id: noteRow
+                            y: wrap.firstOfSec ? secHead.height + 8 : 0
+                            readonly property var modelData: wrap.modelData
+                            property bool expanded: false              // a long note shows its first lines until "Show more"
+                            property bool aiOpen: false                // the AI / picture actions (Overview, Summarise, Describe ...) are shown
                             property bool copied: false
                             property bool picking: false               // the Remind choices are open
                             property bool copiedOcr: false
@@ -1162,6 +1212,7 @@ Scope {
                                             font.weight: Font.Medium
                                         }
                                         Text {
+                                            id: noteTitle
                                             Layout.fillWidth: true
                                             text: root.titleOf(noteRow.modelData)
                                             color: noteRow.modelData.done ? root.pal.muted : root.pal.text
@@ -1170,6 +1221,24 @@ Scope {
                                             font.strikeout: !!noteRow.modelData.done
                                             lineHeight: 1.1
                                             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                            maximumLineCount: noteRow.expanded ? 100000 : 5
+                                            elide: noteRow.expanded ? Text.ElideNone : Text.ElideRight
+                                        }
+                                        Text {
+                                            visible: noteTitle.truncated || noteRow.expanded
+                                            text: noteRow.expanded ? "Show less" : "Show more"
+                                            color: moreMa2.containsMouse ? root.pal.accent : root.pal.muted
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 10
+                                            font.weight: Font.Medium
+                                            MouseArea {
+                                                id: moreMa2
+                                                anchors.fill: parent
+                                                anchors.margins: -4
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: noteRow.expanded = !noteRow.expanded
+                                            }
                                         }
                                         // when it was saved, and the task tags
                                         Flow {
@@ -1331,7 +1400,7 @@ Scope {
                                         Layout.fillWidth: true
                                         Layout.preferredWidth: 0
                                         spacing: 2
-                                        opacity: rowHover.hovered ? 1 : 0.4
+                                        opacity: (rowHover.hovered || noteRow.aiOpen || noteRow.picking) ? 1 : 0.4
                                         Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Repeater {
                                             model: [
@@ -1341,13 +1410,13 @@ Scope {
                                                 { k: "remind", t: noteRow.picking ? "Close" : "Remind", hide: !noteRow.modelData.task },
                                                 { k: "copy", t: noteRow.copied ? "Copied" : "Copy" },
                                                 { k: "del", t: "Delete" },
-                                                { k: "sep" },
-                                                { k: "stt", t: root.sttBusy(noteRow.modelData) ? "Writing" : "To text", hide: !noteRow.modelData.audio },
-                                                { k: "think", t: root.aiThinking(noteRow.modelData) ? "Thinking" : "Overview" },
-                                                { k: "summary", t: root.summaryBusy(noteRow.modelData) ? "Writing" : (noteRow.modelData.summary && noteRow.modelData.summary.state === "done" ? "Summarise again" : "Summarise") },
-                                                { k: "describe", t: root.descBusy(noteRow.modelData) ? "Looking" : (noteRow.modelData.describe && noteRow.modelData.describe.state === "done" ? "Describe again" : "Describe"), hide: !noteRow.modelData.image || !root.vlmOn },
-                                                { k: "ocr", t: root.ocrBusy(noteRow.modelData) ? "Reading" : "Read text", hide: !noteRow.modelData.image || root.ocrText(noteRow.modelData) !== "" },
-                                                { k: "copyocr", t: noteRow.copiedOcr ? "Copied" : "Copy text", hide: root.ocrText(noteRow.modelData) === "" }
+                                                { k: "ai", t: noteRow.aiOpen ? "AI  \u25B4" : "AI  \u25BE" },
+                                                { k: "stt", t: root.sttBusy(noteRow.modelData) ? "Writing" : "To text", hide: !noteRow.aiOpen || !noteRow.modelData.audio },
+                                                { k: "think", t: root.aiThinking(noteRow.modelData) ? "Thinking" : "Overview", hide: !noteRow.aiOpen },
+                                                { k: "summary", t: root.summaryBusy(noteRow.modelData) ? "Writing" : (noteRow.modelData.summary && noteRow.modelData.summary.state === "done" ? "Summarise again" : "Summarise"), hide: !noteRow.aiOpen },
+                                                { k: "describe", t: root.descBusy(noteRow.modelData) ? "Looking" : (noteRow.modelData.describe && noteRow.modelData.describe.state === "done" ? "Describe again" : "Describe"), hide: !noteRow.aiOpen || !noteRow.modelData.image || !root.vlmOn },
+                                                { k: "ocr", t: root.ocrBusy(noteRow.modelData) ? "Reading" : "Read text", hide: !noteRow.aiOpen || !noteRow.modelData.image || root.ocrText(noteRow.modelData) !== "" },
+                                                { k: "copyocr", t: noteRow.copiedOcr ? "Copied" : "Copy text", hide: !noteRow.aiOpen || root.ocrText(noteRow.modelData) === "" }
                                             ]
                                             delegate: Item {
                                                 required property var modelData
@@ -1370,7 +1439,7 @@ Scope {
                                                         id: at
                                                         anchors.centerIn: parent
                                                         text: modelData.t || ""
-                                                        color: ama.containsMouse ? (modelData.k === "del" ? root.pal.bad : root.pal.accent) : root.pal.muted
+                                                        color: ama.containsMouse || (modelData.k === "ai" && noteRow.aiOpen) ? (modelData.k === "del" ? root.pal.bad : root.pal.accent) : root.pal.muted
                                                         font.family: root.pal.uiFont
                                                         font.pixelSize: 10
                                                         font.weight: Font.Medium
@@ -1393,6 +1462,7 @@ Scope {
                                                             else if (modelData.k === "ocr") { if (!root.ocrBusy(n)) root.ocrNote(n.id) }
                                                             else if (modelData.k === "copyocr") { Quickshell.execDetached(["wl-copy", root.ocrText(n)]); noteRow.copiedOcr = true; ocrCopyT.restart() }
                                                             else if (modelData.k === "remind") noteRow.picking = !noteRow.picking
+                                                            else if (modelData.k === "ai") noteRow.aiOpen = !noteRow.aiOpen
                                                             else {
                                                                 Quickshell.execDetached(["wl-copy", n.text || ""])
                                                                 noteRow.markCopied()
@@ -1406,6 +1476,7 @@ Scope {
                                 }
 
                             }
+                        }
                         }
 
                         // empty state

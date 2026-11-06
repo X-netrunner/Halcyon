@@ -54,7 +54,7 @@
 #   --browser ID           firefox | zen | librewolf | floorp | chromium | brave | vivaldi | chrome | qutebrowser | keep
 #   --files ID[,ID]        thunar | yazi | dolphin | nautilus | nemo | pcmanfm | none   (the first one opens folders: SUPER+E)
 #   --editor ID[,ID]       codium | zeditor | neovim | none                              (the first one is SUPER+C)
-#   --music ID[,ID]        spotify | spotify-player | ncspot | none                              (the first one is SUPER+M; several are fine)
+#   --music ID[,ID]        halcyon-music | spotify | spotify-player | ncspot | none              (the first one is SUPER+M; several are fine)
 #   --sysmode              install sysmode without asking (--no-sysmode: skip it)
 #   --safety-check         install the safety check (system update, malware / rootkit scan, firewall, audit, backup) without asking
 #                          (--no-safety-check: skip it; its entry in Settings > Security is then greyed out and disabled)
@@ -1455,14 +1455,15 @@ editor_pkgs()  { case "$1" in codium) echo vscodium-bin ;; zeditor) echo zed ;; 
 # spotify-player / ncspot: Spotify in the terminal (both need Premium), themed by scripts/app-themes.sh. ncspot's queue shows in the
 # island's Queue tab (scripts/halcyon-music.py reads what ncspot shares).
 music_pkgs()   { case "$1" in
+                  halcyon-music) echo ;;
                   spotify) if ! pkg_missing spotify || ! pkg_missing spotify-launcher; then echo spicetify-cli
                            elif [[ "$PKG_MGR" == "pacman" ]] && pacman -Si spotify-launcher >/dev/null 2>&1; then echo spotify-launcher spicetify-cli; else echo spotify spicetify-cli; fi ;;
                   spotify-player) echo spotify-player ;; ncspot) echo ncspot ;; esac; }
 choice_bin()   { case "$1:$2" in
                   browser:zen) echo zen-browser ;; browser:chrome) echo google-chrome-stable ;; browser:vivaldi) echo vivaldi-stable ;;
-                  files:pcmanfm) echo pcmanfm ;; editor:neovim) echo nvim ;; music:spotify-player) echo spotify_player ;; music:spotify) echo spotify-launcher ;; *) echo "$2" ;; esac; }
+                  files:pcmanfm) echo pcmanfm ;; editor:neovim) echo nvim ;; music:halcyon-music) echo halcyon-music ;; music:spotify-player) echo spotify_player ;; music:spotify) echo spotify-launcher ;; *) echo "$2" ;; esac; }
 choice_valid() { local kind=$1 id=$2 fn; case "$kind" in browser) fn=browser_pkgs ;; files) fn=files_pkgs ;; editor) fn=editor_pkgs ;; music) fn=music_pkgs ;; esac
-                 [[ "$id" == keep || "$id" == none || -n "$($fn "$id")" ]]; }
+                 [[ "$id" == keep || "$id" == none || "$id" == halcyon-music || -n "$($fn "$id")" ]]; }
 apps_id()      { [[ "$1:$2" == editor:neovim ]] && echo nvim || echo "$2"; }      # the id Settings > Default apps (apps.sh) uses
 
 detect_hardware_tier() {
@@ -1574,10 +1575,12 @@ choose_apps() {
     elif [[ -z "$PICK_EDITOR" ]]; then PICK_EDITOR="${s_e:-none}"; fi
     # ---- music player(s): several are fine (the first one is what SUPER+M opens)
     if [[ "$ask_m" == "true" ]]; then
-        menu_pick PICK_MUSIC "Music player" "spotify" 1 "spotify|Spotify|the official client (spotify-launcher), themed with spicetify" \
+        menu_pick PICK_MUSIC "Music player" "halcyon-music" 1 \
+            "halcyon-music|Halcyon Music|native fast client with daemon, local cache, offline mode, and rich Spotify integration (Rust)" \
+            "spotify|Spotify|the official client (spotify-launcher), themed with spicetify" \
             "spotify-player|spotify-player|Spotify in the terminal, themed by Halcyon (needs Premium)" \
             "ncspot|ncspot|light and fast Spotify in the terminal, themed by Halcyon, its queue in the island (needs Premium)" "none|None|I have one / skip"
-    elif [[ -z "$PICK_MUSIC" ]]; then PICK_MUSIC="${s_m:-$([[ "$INSTALL_APPS" == true ]] && echo spotify || echo none)}"; fi
+    elif [[ -z "$PICK_MUSIC" ]]; then PICK_MUSIC="${s_m:-$([[ "$INSTALL_APPS" == true ]] && echo halcyon-music || echo none)}"; fi
     # ---- sysmode
     if [[ "$ask_s" == "true" ]]; then
         echo -e "\n  ${CYAN}${BOLD}sysmode${RESET}  ${DIM}hardening profiles + a honeypot / IDS lab: secure | relaxed | stealth | lockdown${RESET}"
@@ -1686,7 +1689,7 @@ choose_apps() {
     [[ ( -n "$flag_b" || "$ask_b" == true ) && "$PICK_BROWSER" != keep ]] && APPLY_PICKS+=("browser=$PICK_BROWSER")
     id="${PICK_FILES%% *}";  [[ ( -n "$flag_f" || "$ask_f" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("files=$id")
     # SUPER+M opens the first music player you picked; spotify itself is left to the automatic choice (spotify or spotify-launcher, whichever got installed)
-    [[ ( -n "$flag_m" || "$ask_m" == true ) && ( "${PICK_MUSIC%% *}" == spotify-player || "${PICK_MUSIC%% *}" == ncspot ) ]] && APPLY_PICKS+=("music=${PICK_MUSIC%% *}")
+    [[ ( -n "$flag_m" || "$ask_m" == true ) && ( "${PICK_MUSIC%% *}" == halcyon-music || "${PICK_MUSIC%% *}" == spotify-player || "${PICK_MUSIC%% *}" == ncspot ) ]] && APPLY_PICKS+=("music=${PICK_MUSIC%% *}")
     id="${PICK_EDITOR%% *}"; [[ ( -n "$flag_e" || "$ask_e" == true ) && -n "$id" && "$id" != none ]] && APPLY_PICKS+=("editor=$(apps_id editor "$id")")
     log_info "Your choices: browser=${PICK_BROWSER:-keep}  files=${PICK_FILES:-none}  editor=${PICK_EDITOR:-none}  music=${PICK_MUSIC:-none}  sysmode=$([[ "$SYSMODE" == true ]] && echo yes || echo no)  safety-check=$([[ "$SAFETY" == true ]] && echo yes || echo no)  firewall=${PICK_FIREWALL:-ai}  ai-advisor=$([[ "$INSTALL_LLM" == true ]] && echo "$PICK_LLM_MODEL" || echo no)  whisper=$([[ "$INSTALL_WHISPER" == true ]] && echo "$PICK_WHISPER_MODEL" || echo no)  vision-model=$([[ "$INSTALL_VLM" == true ]] && echo "$PICK_VLM_MODEL" || echo no)"
 }
@@ -2360,6 +2363,73 @@ else
         fi
     done
 fi
+
+# Halcyon Music: native Rust client & daemon
+setup_halcyon_music() {
+    local src="$TARGET_RICE/src/halcyon-music"
+    [[ -f "$src/Cargo.toml" ]] || src="$RICE_SOURCE/src/halcyon-music"
+    [[ -f "$src/Cargo.toml" ]] || return 0
+
+    log_info "Building ${BOLD}halcyon-music${RESET} (native client & daemon)..."
+    local build_ok=false
+    if [[ "$DRY_RUN" == "true" ]]; then
+        build_ok=true
+    else
+        if rust_ok; then
+            if run_as_user_cmd "cargo build --release: halcyon-music" env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" cargo build --release --manifest-path "$src/Cargo.toml"; then
+                build_ok=true
+            fi
+        else
+            warn_later "No Rust toolchain: skipped building halcyon-music. Install Rust, then cargo build --release --manifest-path $src/Cargo.toml"
+            return 1
+        fi
+    fi
+
+    if [[ "$build_ok" == "true" ]]; then
+        if [[ "$DRY_RUN" != "true" ]]; then
+            local d_bin="$BUILD_ROOT/shared/release/halcyon-musicd"
+            local g_bin="$BUILD_ROOT/shared/release/halcyon-music"
+            if [[ -f "$d_bin" && -f "$g_bin" ]]; then
+                run_as_user bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$d_bin" "$BIN_DIR/halcyon-musicd"
+                run_as_user bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$g_bin" "$BIN_DIR/halcyon-music"
+                if [[ "$BIN_DIR" != "$TARGET_HOME/.local/bin" ]]; then
+                    run_as_user mkdir -p "$TARGET_HOME/.local/bin"
+                    run_as_user ln -sf "$BIN_DIR/halcyon-musicd" "$TARGET_HOME/.local/bin/halcyon-musicd"
+                    run_as_user ln -sf "$BIN_DIR/halcyon-music" "$TARGET_HOME/.local/bin/halcyon-music"
+                fi
+                log_success "Installed halcyon-music and halcyon-musicd"
+            fi
+
+            # Systemd user unit
+            if [[ -f "$src/packaging/halcyon-musicd.service" ]]; then
+                local svc_dir="$TARGET_HOME/.config/systemd/user"
+                run_as_user mkdir -p "$svc_dir"
+                run_as_user install -m644 "$src/packaging/halcyon-musicd.service" "$svc_dir/halcyon-musicd.service"
+                if user_bus_ready; then
+                    run_as_user systemctl --user daemon-reload >/dev/null 2>&1 || true
+                    run_as_user systemctl --user enable halcyon-musicd.service >/dev/null 2>&1 || true
+                fi
+                log_success "Installed halcyon-musicd.service user unit"
+            fi
+
+            # Desktop entry
+            local app_dir="$TARGET_HOME/.local/share/applications"
+            run_as_user mkdir -p "$app_dir"
+            if [[ -f "$src/packaging/halcyon-music.desktop" ]]; then
+                run_as_user install -m644 "$src/packaging/halcyon-music.desktop" "$app_dir/halcyon-music.desktop"
+            fi
+            [[ -x /usr/bin/update-desktop-database ]] && update-desktop-database "$app_dir" >/dev/null 2>&1 || true
+
+            # Post-install --doctor run
+            log_info "Running halcyon-musicd --doctor check..."
+            run_as_user "$BIN_DIR/halcyon-musicd" --doctor || true
+        fi
+    else
+        BUILD_FAILED+=("halcyon-music")
+        warn_later "halcyon-music did not build. Retry: cargo build --release --manifest-path $src/Cargo.toml"
+    fi
+}
+setup_halcyon_music
 
 # ---------------------------------------------------------------------------------------------- step 9
 log_step "Step 9: Hyprland entry and login"
@@ -3339,6 +3409,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     for id in $PICK_MUSIC; do
         case "$id" in
             none) ;;
+            halcyon-music) check_cmd halcyon-music "$BIN_DIR/halcyon-music" ;;
             spotify) command -v spotify >/dev/null 2>&1 && check_cmd spotify spotify || check_cmd spotify-launcher spotify-launcher ;;
             *) check_cmd "$id" "$(choice_bin music "$id")" ;;
         esac

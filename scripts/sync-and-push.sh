@@ -1,21 +1,29 @@
 #!/usr/bin/env bash
 # sync-and-push.sh - find every Halcyon checkout on this machine, pick one, sync it with
-# its remote and push your changes.
+# its remote and push your changes. Also supports ai-firewall, ai-antivirus and LUNA-AI.
 #
 # The friendly entry point is the fish function `push`:
 #
 #     push halcyon
+#     push firewall
+#     push antivirus
+#     push luna
+#     push all
 #
-# which runs this script. It scans the usual places, lists every Halcyon git checkout it
+# which runs this script. It scans the usual places, lists every git checkout it
 # finds (1, 2, 3 ...), asks which one you mean, then commits your work, rebases it onto the
-# remote and pushes.
+# remote and pushes. For unversioned folders, it initializes git on `main`, links to the
+# proper GitHub remote, fetches and aligns with origin/main, and commits your work on top.
 #
 #     sync-and-push.sh                 interactive: list the checkouts, ask which one
 #     sync-and-push.sh --list          only list them and exit
 #     sync-and-push.sh --repo DIR      skip the menu, use DIR
+#     sync-and-push.sh --slug SLUG     remote repository slug (e.g. X-netrunner/LUNA-AI)
+#     sync-and-push.sh --remote URL    remote repository URL
 #     sync-and-push.sh --all           sync & push every checkout it finds
 #     sync-and-push.sh --dry-run       show what would happen, change nothing
 #     sync-and-push.sh --yes           do not ask for confirmation
+#     sync-and-push.sh --force | -f    push with --force-with-lease
 #     sync-and-push.sh -m "message"    use this commit message (skips the prompt)
 #     sync-and-push.sh --no-pull       commit and push, but never pull first
 #     sync-and-push.sh --ask           on a conflict, ask k/a instead of "mine wins"
@@ -24,7 +32,7 @@
 # "sync" = stage everything that is not ignored and commit it FIRST, then `git pull --rebase`
 # so your commit lands on top of the remote. Where the same file changed on both sides YOUR
 # version wins automatically (what you push is final) - pass --ask to be asked k/a instead.
-# "push" = push the branch (setting the upstream the first time).
+# "push" = push the branch to main (setting the upstream the first time).
 
 set -uo pipefail
 
@@ -46,7 +54,7 @@ die()  { printf '   %s✗%s %s\n' "$E" "$R" "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 # options
 # ---------------------------------------------------------------------------
-LIST=0; DRY=0; YES=0; ALL=0; NOPULL=0; ASK=0; PICK="" ; MSG="" ; REPO=""
+LIST=0; DRY=0; YES=0; ALL=0; NOPULL=0; ASK=0; FORCE=0; PICK="" ; MSG="" ; REPO="" ; SLUG="" ; REMOTE_URL=""
 usage() { sed -n '2,/^# "sync" =/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
@@ -57,6 +65,11 @@ while [ $# -gt 0 ]; do
         --all|-a)      ALL=1 ;;
         --no-pull)     NOPULL=1 ;;
         --ask)         ASK=1 ;;              # ask k/a on a conflict instead of "mine wins"
+        --force|-f)    FORCE=1 ;;
+        --slug)        [ $# -ge 2 ] || die "--slug needs a slug"; SLUG="$2"; shift ;;
+        --slug=*)      SLUG="${1#*=}" ;;
+        --remote)      [ $# -ge 2 ] || die "--remote needs a URL"; REMOTE_URL="$2"; shift ;;
+        --remote=*)    REMOTE_URL="${1#*=}" ;;
         --repo)        [ $# -ge 2 ] || die "--repo needs a directory"; REPO="$2"; shift ;;
         --repo=*)      REPO="${1#*=}" ;;
         -m|--message)  [ $# -ge 2 ] || die "$1 needs a message"; MSG="$2"; shift ;;
@@ -69,6 +82,49 @@ while [ $# -gt 0 ]; do
 done
 
 command -v git >/dev/null 2>&1 || die "git is required."
+
+# ---------------------------------------------------------------------------
+# helper: detect appropriate remote URL for a project
+# ---------------------------------------------------------------------------
+detect_default_remote() {
+    local d="$1"
+    if [ -n "${REMOTE_URL:-}" ]; then
+        printf '%s' "$REMOTE_URL"
+        return
+    fi
+    if [ -n "${SLUG:-}" ]; then
+        case "$SLUG" in
+            http*|git@*) printf '%s' "$SLUG" ;;
+            *) printf 'https://github.com/%s.git' "$SLUG" ;;
+        esac
+        return
+    fi
+
+    local base; base="$(basename "$d" | tr '[:upper:]' '[:lower:]')"
+    # 1. Check LUNA-AI
+    if [[ "$base" == *luna* ]] || [ -f "$d/luna.toml.example" ] || [ -d "$d/whapp" ] || grep -q 'name = "luna' "$d/Cargo.toml" 2>/dev/null; then
+        printf 'https://github.com/X-netrunner/LUNA-AI.git'
+        return
+    fi
+    # 2. Check ai-firewall
+    if [[ "$base" == *firewall* ]] || [ -d "$d/ai-firewall-ebpf" ] || grep -q 'ai-firewall' "$d/Cargo.toml" 2>/dev/null; then
+        printf 'https://github.com/X-netrunner/ai-firewall.git'
+        return
+    fi
+    # 3. Check ai-antivirus
+    if [[ "$base" == *antivirus* ]] || ([ -d "$d/xtask" ] && [ -d "$d/rules" ]) || grep -q 'ai-antivirus' "$d/Cargo.toml" 2>/dev/null; then
+        printf 'https://github.com/X-netrunner/ai-antivirus.git'
+        return
+    fi
+    # 4. Check Halcyon
+    if [[ "$base" == *halcyon* ]] || [ -f "$d/install.sh" ] || [ -f "$d/hyprland.lua" ]; then
+        printf 'https://github.com/X-netrunner/Halcyon.git'
+        return
+    fi
+
+    # Fallback to Halcyon
+    printf 'https://github.com/X-netrunner/Halcyon.git'
+}
 
 # ---------------------------------------------------------------------------
 # find the Halcyon checkouts
@@ -104,10 +160,13 @@ scan_root() {
         \( -name node_modules -o -name target -o -name .gradle -o -name .venv \
            -o -name venv -o -name dist -o -name build \) -prune -o \
         -type d -name .git -print 2>/dev/null
-    # Also discover unversioned Halcyon folders in ~/Downloads
-    if [ "$root" = "$HOME" ] && [ -d "$HOME/Downloads" ]; then
-        find "$HOME/Downloads" -maxdepth 2 -type d -name "[Hh]alcyon*" 2>/dev/null | while read -r d; do
-            [ ! -d "$d/.git" ] && printf '%s/.git\n' "$d"
+    # Also discover unversioned Halcyon folders in ~/Downloads, ~/Projects, and ~
+    if [ "$root" = "$HOME" ]; then
+        for parent in "$HOME/Downloads" "$HOME/Projects" "$HOME"; do
+            [ -d "$parent" ] || continue
+            find "$parent" -maxdepth 2 -type d -name "[Hh]alcyon*" 2>/dev/null | while read -r d; do
+                [ ! -d "$d/.git" ] && printf '%s/.git\n' "$d"
+            done
         done
     fi
 }
@@ -198,7 +257,7 @@ if [ "$LIST" = 1 ]; then exit 0; fi
 
 # --repo skips the menu; a leading number (push halcyon 3) selects directly
 if [ -n "$REPO" ]; then
-    [ -d "$REPO/.git" ] || die "$REPO is not a git checkout."
+    [ -d "$REPO" ] || die "$REPO is not a directory."
     TARGETS=("$REPO")
 elif [ "$ALL" = 1 ]; then
     TARGETS=("${CANDIDATES[@]}")
@@ -236,32 +295,52 @@ sync_push() {
     echo
 
     if [ ! -d "$d/.git" ]; then
-        step "$label is not a git repository yet - initializing git and linking to remote..."
-        local default_remote="https://github.com/X-netrunner/Halcyon.git"
-        git -C "$d" init -b main --quiet
+        local default_remote; default_remote="$(detect_default_remote "$d")"
+        step "$label is not a git repository yet - initializing git and linking to remote ($default_remote)..."
+        git -C "$d" init -b main --quiet 2>/dev/null || { git -C "$d" init --quiet && git -C "$d" branch -M main --quiet 2>/dev/null || true; }
         git -C "$d" remote add origin "$default_remote" 2>/dev/null || git -C "$d" remote set-url origin "$default_remote"
-        step "fetching origin/main..."
+        step "fetching origin/main from $default_remote..."
         git -C "$d" fetch --quiet origin main 2>/dev/null || true
         git -C "$d" reset origin/main --quiet 2>/dev/null || true
+        git -C "$d" branch -M main 2>/dev/null || true
+        git -C "$d" branch -u origin/main main 2>/dev/null || true
         ok "git initialized tracking origin/main"
     fi
 
+    # Force to main branch
     branch="$(git -C "$d" symbolic-ref --short -q HEAD 2>/dev/null || true)"
     if [ -z "$branch" ]; then
-        warn "detached HEAD - check a branch out first (git -C $d switch main). skipped."
-        return 1
+        step "detached HEAD detected in $d - forcing to main branch..."
+        git -C "$d" checkout -B main 2>/dev/null || git -C "$d" switch -C main 2>/dev/null || true
+        branch="$(git -C "$d" symbolic-ref --short -q HEAD 2>/dev/null || echo "main")"
     fi
+    if [ "$branch" != "main" ]; then
+        step "current branch is '$branch' - forcing to main branch..."
+        git -C "$d" branch -M main 2>/dev/null || true
+        branch="main"
+    fi
+
     for f in rebase-merge rebase-apply MERGE_HEAD; do
-        if [ -e "$(git -C "$d" rev-parse --git-path "$f")" ]; then
+        if [ -e "$(git -C "$d" rev-parse --git-path "$f" 2>/dev/null)" ]; then
             warn "a git $f is unfinished in $d - finish or abort it first (git -C $d status). skipped."
             return 1
         fi
     done
 
     remote="$(git_remote_name "$d")"
-    [ -n "$remote" ] || { warn "no git remote configured in $d. skipped."; return 1; }
+    if [ -z "$remote" ]; then
+        local def_rem; def_rem="$(detect_default_remote "$d")"
+        git -C "$d" remote add origin "$def_rem" 2>/dev/null || true
+        remote="origin"
+    fi
     ref="$remote/$branch"
     step "remote: $remote  ($(git -C "$d" remote get-url "$remote" 2>/dev/null))"
+
+    # Ensure tracking origin/main if upstream is not set or points to master
+    local cur_up; cur_up="$(git -C "$d" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)"
+    if [ -z "$cur_up" ] || [ "$cur_up" = "$remote/master" ]; then
+        git -C "$d" branch -u "$remote/main" main 2>/dev/null || true
+    fi
 
     # ---- what would break the island at login never leaves this machine: shell / Python syntax, the QML lint, unknown QML types and
     #      double bindings (scripts/halcyon-selftest.sh --quick, a few seconds). HALCYON_PUSH_SKIP_CHECKS=1 skips it.
@@ -282,7 +361,7 @@ sync_push() {
     # ---- stage and commit your work FIRST: a pull can then never clobber it or leave
     #      half-applied changes, and any clash with the remote is a normal rebase conflict.
     local f choice cf
-    dirty="$(git -C "$d" status --porcelain | wc -l | tr -d ' ')"
+    dirty="$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
     if [ "$dirty" = 0 ]; then
         ok "no local changes to commit"
     else
@@ -371,7 +450,7 @@ sync_push() {
 
     # ---- push
     read -r behind ahead < <(ahead_behind "$d")
-    if [ "$ahead" = 0 ] 2>/dev/null; then
+    if [ "$ahead" = 0 ] 2>/dev/null && [ "$FORCE" = 0 ]; then
         ok "nothing to push - already up to date with $remote/$branch"
         return 0
     fi
@@ -380,10 +459,27 @@ sync_push() {
         return 0
     fi
     step "pushing $ahead commit(s) to $remote/$branch..."
+    local push_opts=()
+    [ "$FORCE" = 1 ] && push_opts+=(--force-with-lease)
+
     if git -C "$d" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
-        if ! git -C "$d" push 2>&1 | sed 's/^/      /'; then return 1; fi
+        if ! git -C "$d" push "${push_opts[@]}" 2>&1 | sed 's/^/      /'; then
+            if [ "$FORCE" = 1 ]; then
+                step "retrying with force push..."
+                git -C "$d" push --force -u "$remote" "$branch" 2>&1 | sed 's/^/      /' || return 1
+            else
+                if ! git -C "$d" push "${push_opts[@]}" -u "$remote" "$branch" 2>&1 | sed 's/^/      /'; then return 1; fi
+            fi
+        fi
     else
-        if ! git -C "$d" push -u "$remote" "$branch" 2>&1 | sed 's/^/      /'; then return 1; fi
+        if ! git -C "$d" push "${push_opts[@]}" -u "$remote" "$branch" 2>&1 | sed 's/^/      /'; then
+            if [ "$FORCE" = 1 ]; then
+                step "retrying with force push..."
+                git -C "$d" push --force -u "$remote" "$branch" 2>&1 | sed 's/^/      /' || return 1
+            else
+                return 1
+            fi
+        fi
     fi
     ok "pushed"
 }

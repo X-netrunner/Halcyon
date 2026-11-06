@@ -46,6 +46,7 @@ editors=(
 )
 # music players
 musics=(
+  "halcyon-music|Halcyon Music|halcyon-music|halcyon-music.desktop|0"
   "spotify|Spotify|spotify|spotify.desktop|0" "spotify-launcher|Spotify (launcher)|spotify-launcher||0" "spotify-player|Spotify Player (terminal)|spotify_player||1" "ncspot|ncspot (terminal)|ncspot||1" "strawberry|Strawberry|strawberry|org.strawberrymusicplayer.strawberry.desktop|0"
   "rhythmbox|Rhythmbox|rhythmbox|org.gnome.Rhythmbox3.desktop|0" "lollypop|Lollypop|lollypop|org.gnome.Lollypop.desktop|0" "amberol|Amberol|amberol|io.bassi.Amberol.desktop|0"
   "elisa|Elisa|elisa|org.kde.elisa.desktop|0" "clementine|Clementine|clementine|org.clementine_player.Clementine.desktop|0" "deadbeef|DeaDBeeF|deadbeef|deadbeef.desktop|0"
@@ -133,7 +134,9 @@ case "$1" in
       [ "$k" = files ] && xdg-mime default "$desk" inode/directory 2>/dev/null
       # a code editor opens plain text and source files (a GUI editor only: a terminal editor has no desktop file here)
       [ "$k" = editor ] && xdg-mime default "$desk" text/plain text/markdown text/x-shellscript text/x-python text/x-csrc text/x-c++src text/x-rust application/json application/x-yaml application/toml 2>/dev/null
+      [ "$k" = music ] && xdg-mime default "$desk" audio/mpeg audio/ogg audio/flac audio/x-vorbis+ogg audio/x-wav audio/aac audio/mp4 2>/dev/null
     fi
+    exit 0
     ;;
   run)
     k=$2; shift 2
