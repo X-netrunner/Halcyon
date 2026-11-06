@@ -6,7 +6,7 @@
 //! new GUI (or vice versa) degrades instead of erroring out.
 
 use crate::models::{AuthStatus, EndpointProbe, Playlist};
-use crate::state::{PlayerState, Track};
+use crate::state::{Bitrate, PlayerState, RepeatMode, Track};
 use serde::{Deserialize, Serialize};
 
 /// Bump when a change would confuse an older peer. Peers warn, never refuse,
@@ -84,6 +84,18 @@ pub enum CommandBody {
     Search { query: String, limit: Option<u32>, offset: Option<u32> },
     /// Probe optional Spotify endpoints.
     ProbeEndpoints,
+    /// Play a track directly.
+    PlayTrack { track: Track },
+    /// Play a list of tracks starting at a given index.
+    PlayContext { tracks: Vec<Track>, start_index: usize },
+    /// Move a queue item from `from` index to `to` index.
+    ReorderQueue { from: usize, to: usize },
+    /// Set repeat mode directly.
+    SetRepeat { repeat: RepeatMode },
+    /// Set audio bitrate.
+    SetBitrate { bitrate: Bitrate },
+    /// Set volume normalisation.
+    SetNormalisation { enabled: bool },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -146,6 +158,18 @@ pub enum EventBody {
     },
     /// Probed endpoints status.
     ProbeResult { probes: Vec<EndpointProbe> },
+    /// Playback failed (for toasts and watchdog reporting).
+    PlaybackFailed {
+        reason: String,
+        consecutive_failures: u32,
+        will_retry: bool,
+    },
+    /// Track unavailable in region or licensing.
+    TrackUnavailable {
+        track_id: String,
+        title: String,
+        reason: String,
+    },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,

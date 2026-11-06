@@ -10,10 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 halcyon-music-core = { version = "=0.1.0", path = "../halcyon-music-core" }
-# iced with the tiny-skia software renderer: no GPU/wgpu dependency, which
-# keeps the daemon's machine requirements minimal and lets it run under
-# wlroots/X11 without Vulkan. Part 4 evaluates wgpu for smoother scrolling.
-iced = { version = "=0.13.1", features = ["tiny-skia", "tokio"] }
+# iced with tiny-skia and wgpu renderers, image/svg support, and tokio runtime
+iced = { version = "=0.13.1", features = ["tiny-skia", "wgpu", "tokio", "image", "svg", "canvas", "advanced"] }
 tokio = { version = "=1.44.2", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "process", "fs"] }
 serde_json = "=1.0.140"
 tracing = "=0.1.41"

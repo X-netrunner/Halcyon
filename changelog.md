@@ -1,3 +1,26 @@
+- **Halcyon Music, Part 3: Playback engine, queue model, watchdog, self-healing, and MPRIS** (2026-11-06) (`src/halcyon-music/`, `scripts/halcyon-music.py`).
+  **Asked for:** Part 3 of the Halcyon Music build plan:
+  1. librespot playback engine inside the daemon: play, pause, seek, next, previous, volume, shuffle, repeat (off/all/one), queue add/remove/reorder, play-next, gapless, volume normalisation option, bitrate option (96/160/320).
+  2. Queue model: play from album/playlist/search, "Add to queue", "Play next", reorder, queue persisted across restarts.
+  3. Self-healing: network dropouts/reconnects, access-point changes, audio device removed / PipeWire restarted (reopen sink, never exit), track unavailable in region, token expiry mid-track, system suspend/resume (wake resume), free account detection.
+  4. Watchdog: if player reports "playing" but position hasn't advanced for 5s, restart task & resume; trip after 3 consecutive failures.
+  5. MPRIS (`org.mpris.MediaPlayer2.halcyon`): D-Bus interface with metadata, `mpris:artUrl` (local cached cover file), position, seek, volume, `CanControl*`. Keep `halcyon-music.py` working for the Queue tab.
+  6. Play log: local SQLite logging per play (track, artist, album, started_at, ms_played, completed) in `cache.db` to feed Capsule and suggestions in Part 5.
+  **Now:**
+  - Audio Engine & librespot (`audio.rs`): Integrated `librespot-core 0.8.0` and `librespot-playback 0.8.0` with `rodio` / PipeWire output and `rustls-tls-webpki-roots`. Connects directly using PKCE OAuth access tokens (`Credentials::with_access_token`). Configurable bitrate (96/160/320 kbps), gapless preloading (`player.preload`), EBU R128 volume normalisation, and volume attenuation.
+  - Full Queue Operations (`state.rs`, `protocol.rs`): Implemented `PlayContext` (album/playlist start at index), `PlayNext`, `Enqueue`, `Dequeue`, and `ReorderQueue`. Implemented repeat modes (`RepeatMode::Off`, `RepeatMode::All`, `RepeatMode::One`).
+  - Watchdog Subsystem (`audio.rs`): Checks playback position progress every tick while playing. If playback stalls for >= 5s without advancing, triggers automatic player task restart and recovery. If 3 consecutive failures occur, watchdog trips, safely stops retrying, and broadcasts `PlaybackFailed` with plain-language explanation until the user taps play.
+  - Self-Healing (`audio.rs`): Handles audio sink disconnection and PipeWire restarts by dynamically reopening the sink without exiting; handles session disconnects with exponential backoff while preserving current position and queue; detects Free accounts and explains limitation while keeping library browsing functional; handles region-locked tracks by emitting `TrackUnavailable` and advancing without stalling; auto-refreshes tokens mid-stream.
+  - MPRIS 2 D-Bus Interface (`mpris.rs`): Fully compliant FreeDesktop MPRIS 2 server on user session bus (`org.mpris.MediaPlayer2.halcyon`). Implements `org.mpris.MediaPlayer2` and `org.mpris.MediaPlayer2.Player` via `zbus 4.4.0`. Exposes `PlaybackStatus`, `Metadata` (including instantaneous local cover `file://` URLs from cache, length, title, album, artist, uri), `Position` (microseconds), `Volume` (0.0 ..= 1.0), `LoopStatus`, `Shuffle`, `CanControl`, `CanGoNext`, `CanGoPrevious`, `CanPlay`, `CanPause`, and `CanSeek`. Supports methods `Play`, `Pause`, `PlayPause`, `Stop`, `Next`, `Previous`, `Seek`, `SetPosition`, and `OpenUri`. Verified with `playerctl -p halcyon`.
+  - Halcyon Island & Queue Integration (`scripts/halcyon-music.py`): Enhanced `get_queue()` to query `$XDG_RUNTIME_DIR/halcyon-music/ctl.sock` first. When Halcyon Music is active, the Queue tab in the island and launcher commands (`>queue`) read the live queue directly from the daemon socket, seamlessly falling back to `ncspot` or `spotify_player` when Halcyon Music is idle.
+  - Local Play Log (`cache.rs`): Created SQLite table `play_log` in `cache.db` with WAL mode. Records `track_id`, `title`, `artist`, `album`, `started_at`, `ms_played`, and `completed`. Records completed plays and partial plays (>= 30s) locally to feed Capsule and suggestions in Part 5.
+  **Tested:**
+  - `cargo test --workspace`: 50/50 tests passed (core, daemon, GUI, socket tests, mock HTTP tests, and playback engine tests).
+  - `cargo clippy --workspace --all-targets -- -D warnings`: 100% clean, 0 warnings.
+  - `playerctl -p halcyon status`, `volume`, `play`, `pause`, `metadata` verified live on D-Bus.
+  - `halcyon-music.py queue json` tested live with populated daemon queue.
+  - `systemctl --user status halcyon-musicd.service` active and running with MPRIS D-Bus name acquired.
+
 - **First push & sync-and-push for companion projects (Luna, Firewall, Antivirus) with forced main branch** (2026-11-06) (`config/fish/functions/push.fish`, `scripts/sync-and-push.sh`, `scripts/user-setup.sh`).
   **Asked for:** First push command is doing well for Halcyon; make it do that well for luna, firewall and antivirus, and force it to main branch.
   **Now:**
