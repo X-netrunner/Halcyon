@@ -1493,7 +1493,10 @@ def keep_alive():
     on (the default in Low / Medium resource use) it is let go after 10 s; otherwise it stays 2 minutes so a few notes in a row are quick."""
     try:
         with open(os.path.join(STATE_DIR, "settings.json"), "r", encoding="utf-8") as f:
-            lazy = (json.load(f).get("opt") or {}).get("lazyLoad", True)
+            o = json.load(f).get("opt") or {}
+            lazy = o.get("lazyLoad", True)
+            if o.get("memRuthless", False) is True:      # Settings > Performance > No-mercy memory freeing
+                return "3s"
     except (OSError, ValueError, AttributeError):
         lazy = True
     return "10s" if lazy is not False else "2m"

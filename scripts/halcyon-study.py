@@ -144,6 +144,8 @@ def need_ai():
 
 def keep_alive():
     # Settings > Performance > Aggressive Memory Freeing: the model (2-3 GB) is let go 3 minutes after the last answer, else 30
+    if ai().opt("memRuthless", False) is True:      # Settings > Performance > No-mercy memory freeing
+        return "10s"
     return "3m" if ai().opt("lazyLoad", True) is not False else "30m"
 
 

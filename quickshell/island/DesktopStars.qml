@@ -28,24 +28,28 @@ Item {
     readonly property bool live: on && visible && width > 0 && height > 0 && (pal ? pal.motion > 0.3 : true) && !covered
     property real t: 0                      // seconds of drifting so far (kept while hidden, so the stars carry on)
 
-    // Precompute invariant static star calculations to eliminate hot-loop JS math and GC churn
+    // Precompute invariant static star calculations to eliminate hot-loop JS math and GC churn.
+    // Every number of a star comes from its own hash, so nothing lines up: the old golden-ratio grid plus "i % 3" for depth, speed,
+    // size and colour made three identical groups on a visible lattice. Still deterministic (the same sky each time, no jumps on a rebuild).
+    function rnd(i, k) { var x = Math.sin(i * 127.1 + k * 311.7 + 17.3) * 43758.5453; return x - Math.floor(x) }
     property var cachedStars: []
     function rebuildStars() {
         var arr = []
         var n = root.count
         var sp = root.speed, szK = root.sizeK
         for (var i = 0; i < n; i++) {
-            var fx = (i * 0.6180339 + 0.11) % 1
-            var fy = (i * 0.4142135 + 0.23) % 1
-            var depth = i % 3
-            var rate = 0.012 * sp * (0.5 + 0.55 * depth)
-            var size = (1.1 + depth * 0.7 + (i % 4) * 0.25) * szK
-            var base = 0.35 + 0.22 * depth
-            var twFreq = 6.2832 * (0.12 + (i % 5) * 0.06)
-            var twPhase = 6.2832 * (fx * 7)
-            var isCross = (depth === 2 && i % 2 === 0)
-            var colorType = i % 3
-            arr.push({ fx: fx, fy: fy, depth: depth, rate: rate, size: size, base: base,
+            var fx = rnd(i, 1)
+            var fy = rnd(i, 2)
+            var d = Math.pow(rnd(i, 3), 1.4)              // 0 = far (slow, small, dim) .. 1 = near; most stars are far
+            var rate = 0.012 * sp * (0.3 + 1.3 * d) * (0.85 + 0.3 * rnd(i, 4))
+            var drift = (rnd(i, 5) - 0.5) * 0.36          // a little sideways drift: not every star runs on the same line
+            var size = (0.9 + 1.7 * d + 0.5 * rnd(i, 6)) * szK
+            var base = 0.28 + 0.5 * d + 0.12 * rnd(i, 7)
+            var twFreq = 6.2832 * (0.08 + 0.34 * rnd(i, 8))
+            var twPhase = 6.2832 * rnd(i, 9)
+            var isCross = d > 0.72 && rnd(i, 10) > 0.35
+            var colorType = Math.floor(rnd(i, 11) * 3)
+            arr.push({ fx: fx, fy: fy, depth: d, rate: rate, drift: drift, size: size, base: base,
                        twFreq: twFreq, twPhase: twPhase, isCross: isCross, colorType: colorType })
         }
         cachedStars = arr
@@ -83,8 +87,8 @@ Item {
                 id: st
                 required property var modelData
                 readonly property var s: modelData
-                readonly property real px: (((s.fx + root.vx * s.rate * root.t) % 1) + 1) % 1
-                readonly property real py: (((s.fy + root.vy * s.rate * root.t) % 1) + 1) % 1
+                readonly property real px: (((s.fx + (root.vx - root.vy * s.drift) * s.rate * root.t) % 1) + 1) % 1
+                readonly property real py: (((s.fy + (root.vy + root.vx * s.drift) * s.rate * root.t) % 1) + 1) % 1
                 readonly property real tw: root.twinkle ? (0.5 + 0.5 * Math.sin(root.t * s.twFreq + s.twPhase)) : 1
                 x: px * sky.width
                 y: py * sky.height

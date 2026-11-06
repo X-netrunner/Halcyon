@@ -229,11 +229,18 @@ def need_ai():
         raise AiOff("AI features are switched off (Settings > AI > AI features).")
 
 
+def keep_alive_for_ai():
+    """How long Ollama keeps the model after an answer: 10 s with No-mercy memory freeing, 1 minute with Aggressive Memory Freeing, else 5."""
+    if opt("memRuthless", False) is True:
+        return "10s"
+    return "1m" if opt("lazyLoad", True) is not False else "5m"
+
+
 def generate(prompt, system="", fmt=None, num_predict=300, temperature=0.2, timeout=90):
     """One answer from the local model. Raises AiOff when it is switched off / not running, Fail on anything else."""
     need_ai()
     body = {"model": model_name(), "prompt": prompt, "stream": False, "think": False,
-            "keep_alive": "1m" if opt("lazyLoad", True) is not False else "5m", "options": {"temperature": temperature, "num_predict": num_predict, "num_ctx": NUM_CTX}}
+            "keep_alive": keep_alive_for_ai(), "options": {"temperature": temperature, "num_predict": num_predict, "num_ctx": NUM_CTX}}
     if system:
         body["system"] = system
     if fmt:

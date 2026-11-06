@@ -58,9 +58,8 @@ Every part has a builder with a live preview, so you can see a change before you
 | | |
 |---|---|
 | ![Bar builder](docs/screenshots/builder-bar.webp) | **Bar builder.** Choose what the island shows and in what order, its size and its style. You can also turn the bar off. |
-| ![Desktop builder](docs/screenshots/builder-desktop.webp) | **Desktop builder.** The wallpaper (a picture, the live sky or a video), the blur and the moving stars. |
+| ![Desktop builder](docs/screenshots/builder-desktop.webp) | **Desktop builder.** The wallpaper (a picture, the live sky or a video), the blur and the moving stars. Its Desktop / Lock screen switch does the same for the lock screen. |
 | ![Widget builder](docs/screenshots/builder-widget.webp) | **Widget builder.** Clock, agenda, system stats, now playing, notes and more. Each one has several layouts, and you can save looks of your own. |
-| ![Lock screen builder](docs/screenshots/builder-lock.webp) | **Lock screen builder.** The same idea for the lock screen. |
 | ![Notification builder](docs/screenshots/builder-notif.webp) | **Notification builder.** How notifications look and where they go. |
 
 Here's the same desktop after some changes: widgets on the desktop, and the bar turned off.

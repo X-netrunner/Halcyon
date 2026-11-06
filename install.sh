@@ -3216,7 +3216,12 @@ install_antivirus() {
     run_cmd "ai-antivirus: starting (alert-only)" as_root systemctl enable --now "${AV_UNITS[@]:0:3}" || return 1
     # the Security center reads `ai-antivirus status` (group ai-antivirus: the database and the event log); desktop
     # notifications need group ai-antivirus-notify. Both apply from the next login.
-    try run_cmd "ai-antivirus: adding $TARGET_USER to its groups" as_root usermod -aG ai-antivirus,ai-antivirus-notify "$TARGET_USER"
+    # AV_FULL_ACCESS="no" (Security center > Antivirus > Full access off): only the notification group, not the one that opens the database
+    if [[ "$(saved_choice AV_FULL_ACCESS)" == "no" ]]; then
+        try run_cmd "ai-antivirus: adding $TARGET_USER to its notification group (full access is off)" as_root usermod -aG ai-antivirus-notify "$TARGET_USER"
+    else
+        try run_cmd "ai-antivirus: adding $TARGET_USER to its groups" as_root usermod -aG ai-antivirus,ai-antivirus-notify "$TARGET_USER"
+    fi
     try run_as_user_cmd "ai-antivirus: desktop notifications" systemctl --user enable --now ai-antivirus-notify.service
     save_stamp "$stamp" "$now"
     log_success "ai-antivirus installed (alert-only): Security center (>security), or ai-antivirus status"
@@ -3229,14 +3234,20 @@ install_antivirus() {
 # The shell reads through `sg ai-antivirus` until the next login, so no logout is needed for it to work.
 av_grant_access() {
     command -v ai-antivirus >/dev/null 2>&1 || [[ "$DRY_RUN" == "true" ]] || return 0
-    local g need=()
-    for g in ai-antivirus ai-antivirus-notify; do
+    local g need=() groups=(ai-antivirus ai-antivirus-notify)
+    if [[ "$(saved_choice AV_FULL_ACCESS)" == "no" ]]; then      # you turned full access off in the Security center: kept off
+        groups=(ai-antivirus-notify)
+        log_info "ai-antivirus: full access is off (your choice): $TARGET_USER is not added to group ai-antivirus. Turn it on in the Security center > Antivirus > Full access."
+    fi
+    for g in "${groups[@]}"; do
         getent group "$g" >/dev/null 2>&1 || continue
         id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" || need+=("$g")
     done
     if [[ ${#need[@]} -gt 0 ]]; then
         try run_cmd "ai-antivirus: giving $TARGET_USER full access to the Security center (groups: ${need[*]})" \
             as_root usermod -aG "$(IFS=,; echo "${need[*]}")" "$TARGET_USER"
+    elif [[ "$(saved_choice AV_FULL_ACCESS)" == "no" ]]; then
+        :
     elif getent group ai-antivirus >/dev/null 2>&1; then
         log_success "ai-antivirus: $TARGET_USER already has full access to the Security center"
     else
@@ -3413,7 +3424,7 @@ echo -e "  ${MAGENTA}Super + Q${RESET}         Close window      ${MAGENTA}Super
 echo -e "  ${MAGENTA}Super + /${RESET}         All shortcuts     ${MAGENTA}Super + L${RESET}         Lock screen"
 echo -e "  ${MAGENTA}Super + Ctrl + ←/→${RESET}  Previous / next workspace (a new one after the last)"
 [[ "$SAFETY" == "true" ]] && echo -e "  ${MAGENTA}Settings > Security${RESET} Safety check (update, malware / rootkit scan, firewall, backup)"
-command -v ai-firewall >/dev/null 2>&1 && [[ "${PICK_FIREWALL:-ai}" == "ai" ]] && echo -e "  ${MAGENTA}>firewall${RESET}           ai-firewall: the Firewall Center (launcher), or in a terminal:  sudo ai-firewall top"
+command -v ai-firewall >/dev/null 2>&1 && [[ "${PICK_FIREWALL:-ai}" == "ai" ]] && echo -e "  ${MAGENTA}>firewall${RESET}           ai-firewall: the Security center's Firewall page (launcher), or in a terminal:  sudo ai-firewall top"
 echo
 echo -e "${DIM}Update later: ~/.config/Halcyon/update.sh     ·     Settings: from the island     ·     Log of this run: ${LOG_FILE}${RESET}"
 echo

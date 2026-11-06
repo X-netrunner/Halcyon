@@ -133,7 +133,7 @@ Item {
                 pal: root.pal
                 glyph: root.lockT ? 0xF033E : 0xF0379
                 title: root.lockT ? "Lock screen builder" : "Desktop builder"
-                sub: (root.lockT ? "lock screen" : "desktop") + "  ·  " + root.wlayout.items.length + " widgets"
+                leading: [ CalmIconBtn { pal: root.pal; glyph: 0xF0450; tip: root.lockT ? "Reset the lock screen" : "Reset the desktop"; onClicked: root.lockT ? root.resetLock() : root.resetAll() } ]
                 onClosed: root.closed()
             }
 
@@ -404,7 +404,7 @@ Item {
                         anchors.topMargin: 12
                         anchors.leftMargin: 20; anchors.rightMargin: 20
                         // the new style says only what to do next while you are moving a box
-                        text: root.pal.zen && root.pal.hideHints && root.pick === "" ? "" : root.lockT ? "Your lock screen widgets are drawn as boxes where they sit. \"Place them on the lock screen\" (right) moves and resizes the real ones. The boxes of the desktop (notifications, utilities ...) do not open on a locked screen."
+                        text: root.pal.zen && root.pal.hideHints && root.pick === "" ? "" : root.lockT ? "Your lock screen widgets are drawn as boxes where they sit. The boxes of the desktop (notifications, utilities ...) do not open on a locked screen."
                               : (root.pick !== "" ? ("Now click the corner for " + DS.names[root.pick] + ". Esc cancels.") : "Click a box, then click the corner you want it to open from (a box dropped on a taken corner swaps places). Or drag a small tag along any edge: that box wakes there and opens from there (the faint box shows where). Double-click a tag to put the box back in its corner.")
                         color: root.pick !== "" && !root.lockT ? root.pal.accent : root.pal.muted
                         font.family: root.pal.uiFont
@@ -416,10 +416,11 @@ Item {
                     // ---- under the picture: which screen you are building, its main switches, and what to do next
                     Column {
                         id: dock
-                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 }
+                        x: scr.x; width: scr.width
+                        anchors { bottom: parent.bottom; bottomMargin: 16 }
                         spacing: 14
                         Row {
-                            width: parent.width
+                            anchors.horizontalCenter: parent.horizontalCenter
                             spacing: 8
                             Text { text: root.pal.cap("LIVE PREVIEW"); color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.calm ? 12 : 10; font.letterSpacing: root.pal.calm ? 0.1 : 0.8 }
                             Text { text: Math.round(root.width) + " \u00d7 " + Math.round(root.height); color: Qt.alpha(root.pal.muted, 0.75); font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap }
@@ -459,48 +460,21 @@ Item {
                                 }
                             }
                         }
-                        // the switches you reach for most, for the screen picked above (the rest is on the right)
-                        Flow {
-                            width: parent.width
-                            spacing: 8
-                            Repeater {
-                                model: root.lockT
-                                    ? [{ t: "Wallpaper behind it", on: root.lockWall, k: "lockBg", v: root.lockWall ? "solid" : "wallpaper" },
-                                       { t: "Its own widgets", on: root.lockOwnOn, k: "lockDeskWidgetsOn", v: !root.lockOwnOn },
-                                       { t: "Stars", on: root.flag("starsLock", true), k: "starsLock", v: !root.flag("starsLock", true) },
-                                       { t: "Unlock splash", on: root.flag("splashUnlock", true), k: "splashUnlock", v: !root.flag("splashUnlock", true) }]
-                                    : [{ t: "Wallpaper", on: root.wallOn, k: "deskWall", v: !root.wallOn },
-                                       { t: "Moving stars", on: root.starsOn, k: "deskStars", v: !root.starsOn },
-                                       { t: "Widgets", on: root.flag("deskWidgetsOn", true), k: "deskWidgetsOn", v: !root.flag("deskWidgetsOn", true) },
-                                       { t: "Pause widgets under windows", on: root.flag("deskCoverPause", false), k: "deskCoverPause", v: !root.flag("deskCoverPause", false) },
-                                       { t: "Top bar", on: root.barStyle !== "off", k: "barStyle", v: root.barStyle === "off" ? "island" : "off" }]
-                                delegate: Chip {
-                                    required property var modelData
-                                    pal: root.pal
-                                    implicitHeight: 32
-                                    glyph: String.fromCodePoint(modelData.on ? 0xF012C : 0xF0156)
-                                    label: modelData.t
-                                    on: modelData.on
-                                    onClicked: root.put(modelData.k, modelData.v)
-                                }
-                            }
-                        }
-                        Flow {
-                            width: parent.width
-                            spacing: 8
-                            CalmIconBtn { pal: root.pal; glyph: 0xF072C; label: "Widget builder"; tip: "Open the widget builder"; onClicked: root.openWidgets(root.lockT ? "lock" : "desktop") }
-                            CalmIconBtn { pal: root.pal; glyph: 0xF03CC; label: "Place"; tip: root.lockT ? "Place them on the lock screen" : "Place them on the desktop"; onClicked: root.editDesktop(root.lockT ? "lock" : "desktop") }
-                            CalmIconBtn { pal: root.pal; glyph: 0xF0450; tip: root.lockT ? "Reset the lock screen" : "Reset the desktop"; onClicked: root.lockT ? root.resetLock() : root.resetAll() }
-                        }
                     }
                 }
 
                 // ================================================ the controls
-                Flickable {
-                    id: ctl
+                Rectangle {
                     Layout.minimumWidth: 340
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    radius: root.pal.rLg
+                    color: Qt.alpha(root.pal.text, 0.055)
+                    border.width: 1
+                    border.color: Qt.alpha(root.pal.text, 0.07)
+                Flickable {
+                    id: ctl
+                    anchors { fill: parent; margins: 16 }
                     contentWidth: width
                     contentHeight: cc.implicitHeight + 8
                     clip: true
@@ -511,6 +485,32 @@ Item {
                         width: ctl.width - 12
                         spacing: 12
 
+                        SecCard {
+                            pal: root.pal
+                            line: false
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("SWITCHES") }
+                            SDrop {
+                                id: quick
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: 360
+                                pal: root.pal
+                                multi: true
+                                readonly property var rows: root.lockT
+                                    ? [{ t: "Wallpaper behind it", on: root.lockWall, k: "lockBg", v: root.lockWall ? "solid" : "wallpaper" },
+                                       { t: "Its own widgets", on: root.lockOwnOn, k: "lockDeskWidgetsOn", v: !root.lockOwnOn },
+                                       { t: "Stars", on: root.flag("starsLock", true), k: "starsLock", v: !root.flag("starsLock", true) },
+                                       { t: "Unlock splash", on: root.flag("splashUnlock", true), k: "splashUnlock", v: !root.flag("splashUnlock", true) }]
+                                    : [{ t: "Wallpaper", on: root.wallOn, k: "deskWall", v: !root.wallOn },
+                                       { t: "Moving stars", on: root.starsOn, k: "deskStars", v: !root.starsOn },
+                                       { t: "Widgets", on: root.flag("deskWidgetsOn", true), k: "deskWidgetsOn", v: !root.flag("deskWidgetsOn", true) },
+                                       { t: "Pause widgets under windows", on: root.flag("deskCoverPause", false), k: "deskCoverPause", v: !root.flag("deskCoverPause", false) },
+                                       { t: "Top bar", on: root.barStyle !== "off", k: "barStyle", v: root.barStyle === "off" ? "island" : "off" }]
+                                items: rows.map(function (q) { return { t: q.t, on: q.on } })
+                                summary: { var n = 0; for (var i = 0; i < rows.length; i++) if (rows[i].on) n++; return "Shown on the " + (root.lockT ? "lock screen" : "desktop") + ": " + n + " of " + rows.length }
+                                onPicked: i => root.put(rows[i].k, rows[i].v)
+                            }
+                        }
+
                         // ================ the desktop
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -518,7 +518,9 @@ Item {
                             spacing: 12
 
                             // ---- wallpaper
-                            NbCap { pal: root.pal; text: root.pal.cap("WALLPAPER") }
+                            SecCard {
+                                pal: root.pal
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("WALLPAPER") }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
@@ -545,6 +547,7 @@ Item {
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             ChipRow {
+ drop: true
                                 Layout.fillWidth: true
                                 visible: root.wallOn
                                 pal: root.pal; label: "Dim it"
@@ -566,6 +569,7 @@ Item {
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
                             ChipRow {
+ drop: true
                                 Layout.fillWidth: true
                                 visible: !root.wallOn
                                 pal: root.pal; label: "Background"
@@ -574,10 +578,12 @@ Item {
                                 onPicked: id => root.put("deskBg", id)
                             }
 
-                            Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
+                            }
 
                             // ---- stars
-                            NbCap { pal: root.pal; text: root.pal.cap("MOVING STARS") }
+                            SecCard {
+                                pal: root.pal
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("MOVING STARS") }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
@@ -598,6 +604,7 @@ Item {
                                 NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Speed"; from: 10; to: 400; unit: " %"; value: Math.round(root.num("deskStarSpeed", 1) * 100); onPicked: v => root.putLive("deskStarSpeed", v / 100) }
                                 NbSlider { Layout.fillWidth: true; pal: root.pal; label: "Size"; from: 50; to: 300; unit: " %"; value: Math.round(root.num("deskStarSize", 1) * 100); onPicked: v => root.putLive("deskStarSize", v / 100) }
                                 ChipRow {
+ drop: true
                                     Layout.fillWidth: true
                                     pal: root.pal; label: "Direction"
                                     options: [["right", "Right"], ["left", "Left"], ["up", "Up"], ["down", "Down"], ["diag", "Diagonal"]]
@@ -605,6 +612,7 @@ Item {
                                     onPicked: id => root.put("deskStarDir", id)
                                 }
                                 ChipRow {
+ drop: true
                                     Layout.fillWidth: true
                                     pal: root.pal; label: "Colour"
                                     options: [["mix", "Mixed"], ["accent", "Accent"], ["white", "White"]]
@@ -625,11 +633,14 @@ Item {
                                 }
                             }
 
-                            Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
+                            }
 
                             // ---- the top bar and the widgets
-                            NbCap { pal: root.pal; text: root.pal.cap("TOP BAR") }
+                            SecCard {
+                                pal: root.pal
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("TOP BAR") }
                             ChipRow {
+ drop: true
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Bar"
                                 options: [["island", "Island"], ["notch", "Notch"], ["rail", "Rail"], ["custom", "Custom"], ["off", "Off"]]
@@ -643,26 +654,13 @@ Item {
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
 
-                            Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
-
-                            NbCap { pal: root.pal; text: root.pal.cap("WIDGETS  ·  " + root.wlayout.items.length) }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "\"Place them on the desktop\" lets you drag the real widgets right on the screen (the wheel resizes them). The Widget builder changes how each one looks and links widgets together, for example the visualizer to the song title."
-                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
-                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
-                            }
-                            Flow {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                CalmIconBtn { pal: root.pal; glyph: 0xF072C; label: "Widget builder"; tip: "Open the widget builder"; onClicked: root.openWidgets("desktop") }
-                                CalmIconBtn { pal: root.pal; glyph: 0xF03CC; label: "Place"; tip: "Place them on the desktop"; onClicked: root.editDesktop("desktop") }
                             }
 
-                            Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
 
                             // ---- where the boxes open
-                            NbCap { pal: root.pal; text: root.pal.cap("ACTIVATION ZONES  ·  WHERE THE BOXES OPEN") }
+                            SecCard {
+                                pal: root.pal
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("ACTIVATION ZONES  ·  WHERE THE BOXES OPEN") }
                             Text {
                                 Layout.fillWidth: true
                                 text: "Pick the corner each box opens from. Taking a used corner swaps the two. A box you gave a tag (drag it along an edge in the picture) wakes and opens from its tag instead."
@@ -672,6 +670,7 @@ Item {
                             Repeater {
                                 model: DS.order
                                 delegate: ChipRow {
+ drop: true
                                     id: boxRow
                                     required property string modelData
                                     Layout.fillWidth: true
@@ -684,6 +683,7 @@ Item {
                                 }
                             }
                             ChipRow {
+ drop: true
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Boxes come out of"
                                 options: [["corner", "The corner (top / bottom and side)"], ["side", "The side only"]]
@@ -698,7 +698,7 @@ Item {
                                 color: root.pal.muted; fontFamily: root.pal.uiFont; pixelSize: 10
                             }
                             // ---- how each box opens: its own hover / click, or like the rest (Settings > Edge boxes)
-                            NbCap { pal: root.pal; text: root.pal.cap("OPENS ON") }
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("OPENS ON") }
                             Hint {
                                 pal: root.pal
                                 Layout.fillWidth: true
@@ -708,6 +708,7 @@ Item {
                             Repeater {
                                 model: DS.order
                                 delegate: ChipRow {
+ drop: true
                                     id: trigRow
                                     required property string modelData
                                     readonly property var own: root.opt && root.opt.boxTrig ? root.opt.boxTrig[modelData] : undefined
@@ -721,6 +722,7 @@ Item {
                                 }
                             }
                             ChipRow {
+ drop: true
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Console shows"
                                 options: [["terminal", "Terminal"], ["chat", "AI Chatbox only"]]
@@ -737,11 +739,13 @@ Item {
                                 color: root.pal.muted; fontFamily: root.pal.uiFont; pixelSize: 10
                             }
                             ChipRow {
+ drop: true
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Notif trigger"
                                 options: [["edge", "Screen edge strip"], ["corner", "Corner trigger"]]
                                 current: (root.opt && root.opt.notifSpot === "corner") ? "corner" : "edge"
                                 onPicked: id => root.put("notifSpot", id)
+                            }
                             }
                         }
 
@@ -752,8 +756,11 @@ Item {
                             spacing: 12
 
                             // ---- background
-                            NbCap { pal: root.pal; text: root.pal.cap("BACKGROUND") }
+                            SecCard {
+                                pal: root.pal
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("BACKGROUND") }
                             ChipRow {
+ drop: true
                                 Layout.fillWidth: true
                                 pal: root.pal; label: "Background"
                                 options: [["solid", "Theme colour"], ["wallpaper", "Blurred wallpaper"]]
@@ -781,10 +788,12 @@ Item {
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
 
-                            Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
+                            }
 
                             // ---- constellations and splash
-                            NbCap { pal: root.pal; text: root.pal.cap("STARS AND SPLASH") }
+                            SecCard {
+                                pal: root.pal
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("STARS AND SPLASH") }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
@@ -811,27 +820,17 @@ Item {
                                 color: root.pal.warn; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
 
-                            Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
+                            }
 
                             // ---- widgets: the built-in row and your own
-                            NbCap { pal: root.pal; text: root.pal.cap("WIDGETS  ·  " + root.lockLayout.items.length) }
+                            SecCard {
+                                pal: root.pal
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("ON THE LOCK SCREEN") }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
                                 Text { Layout.fillWidth: true; text: "Your own widgets on the lock screen"; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
                                 Toggle { pal: root.pal; on: root.lockOwnOn; onToggled: root.put("lockDeskWidgetsOn", !root.lockOwnOn) }
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Built and placed the same way as the desktop ones: \"Place them on the lock screen\" lets you drag them right on the screen (the wheel resizes them), the Widget builder changes how each one looks. Every desktop widget is offered there; nothing on them can be clicked or run while it is locked (the music buttons stay), and the ones that show private things are marked."
-                                visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
-                                color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
-                            }
-                            Flow {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                CalmIconBtn { pal: root.pal; glyph: 0xF072C; label: "Widget builder"; tip: "Open the widget builder"; onClicked: root.openWidgets("lock") }
-                                CalmIconBtn { pal: root.pal; glyph: 0xF03CC; label: "Place"; tip: "Place them on the lock screen"; onClicked: root.editDesktop("lock") }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
@@ -846,9 +845,11 @@ Item {
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
 
-                            Rectangle { Layout.fillWidth: true; height: 1; color: root.pal.lineSoft }
+                            }
 
-                            NbCap { pal: root.pal; text: root.pal.cap("OTHER USERS") }
+                            SecCard {
+                                pal: root.pal
+                            NbCap { pal: root.pal; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: root.pal.accent; font.weight: Font.DemiBold; text: root.pal.cap("OTHER USERS") }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
@@ -861,8 +862,10 @@ Item {
                                 visible: !(root.pal.zen && root.pal.hideHints)      // an explanation: the new style leaves it to ask >
                                 color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; lineHeight: 1.25; wrapMode: Text.WordWrap
                             }
+                            }
                         }
                     }
+                }
                 }
             }
         }

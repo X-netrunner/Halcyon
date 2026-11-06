@@ -509,7 +509,7 @@ def health_report(items, procs, ncpu, meminfo, ram_lim, cpu_lim):
 ADAPT_LOG = STATE + "/adaptive.tsv"
 ADAPT_DAYS, ADAPT_MIN, ADAPT_KEEP_DAYS = 3, 150, 14
 ADAPT_RAM_RANGE, ADAPT_CPU_RANGE = (300, 1500), (3, 30)       # the manual sliders' ranges
-ADAPT_RAM_HEADROOM, ADAPT_CPU_HEADROOM = 1.25, 1.5
+ADAPT_RAM_HEADROOM, ADAPT_CPU_HEADROOM = 1.10, 1.5            # RAM 10 % above normal (a steady 500 MB gives 550), CPU 1.5x + 1
 
 
 def adapt_read():

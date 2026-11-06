@@ -43,8 +43,15 @@ def _lazy_mem():
             return (json.load(f).get("opt") or {}).get("lazyLoad", True) is not False
     except (OSError, ValueError, AttributeError):
         return True
-# how long Ollama keeps the model (2-3 GB) in memory after an answer: 3 minutes with Aggressive Memory Freeing, else 30
-KEEP_ALIVE = "3m" if _lazy_mem() else "30m"            # halcyon-chat.py sets 0 for a question asked while Gaming mode is on
+def _ruthless():
+    """Settings > Performance > No-mercy memory freeing: the model is let go 10 s after the last answer (same model, same quality)."""
+    try:
+        with open(os.path.expanduser("~/.local/state/island/settings.json"), encoding="utf-8") as f:
+            return (json.load(f).get("opt") or {}).get("memRuthless", False) is True
+    except (OSError, ValueError, AttributeError):
+        return False
+# how long Ollama keeps the model (2-3 GB) in memory after an answer: 10 s with No-mercy memory freeing, 3 minutes with Aggressive Memory Freeing, else 30
+KEEP_ALIVE = "10s" if _ruthless() else ("3m" if _lazy_mem() else "30m")            # halcyon-chat.py sets 0 for a question asked while Gaming mode is on
 MAX_STEPS = 8
 MAX_RESULT_CHARS = 3000
 

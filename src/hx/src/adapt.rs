@@ -10,7 +10,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const ADAPT_DAYS: f64 = 3.0;
 const ADAPT_MIN_SAMPLES: usize = 150;
 const ADAPT_KEEP_DAYS: f64 = 14.0;
-const ADAPT_RAM_HEADROOM: f64 = 1.25;
+const ADAPT_RAM_HEADROOM: f64 = 1.10;       // 10 % above what is normal: a steady 500 MB gives a 550 MB limit
 const ADAPT_CPU_HEADROOM: f64 = 1.5;
 const ADAPT_RAM_RANGE: (i32, i32) = (300, 1500);
 const ADAPT_CPU_RANGE: (i32, i32) = (3, 30);
