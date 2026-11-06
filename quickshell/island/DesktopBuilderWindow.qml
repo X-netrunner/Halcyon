@@ -472,6 +472,7 @@ Item {
                                     : [{ t: "Wallpaper", on: root.wallOn, k: "deskWall", v: !root.wallOn },
                                        { t: "Moving stars", on: root.starsOn, k: "deskStars", v: !root.starsOn },
                                        { t: "Widgets", on: root.flag("deskWidgetsOn", true), k: "deskWidgetsOn", v: !root.flag("deskWidgetsOn", true) },
+                                       { t: "Pause widgets under windows", on: root.flag("deskCoverPause", false), k: "deskCoverPause", v: !root.flag("deskCoverPause", false) },
                                        { t: "Top bar", on: root.barStyle !== "off", k: "barStyle", v: root.barStyle === "off" ? "island" : "off" }]
                                 delegate: Chip {
                                     required property var modelData

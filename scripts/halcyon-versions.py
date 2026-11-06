@@ -388,6 +388,22 @@ def component_status(c, tmap=None):
             inst["dirty"] = True
             st["dirty"] = True
             st["edited_files"] = n
+            # The recorded commit is only what install.sh stamped, so a build you copied over the install (or edited while
+            # developing) still says "125e2c9" however new its files are, and "behind" counted from that old stamp. Look at the
+            # files instead: when they are exactly what main has, you ARE on main; when they differ from it, say how many.
+            lat = st["latest"]["sha"] if st["latest"] else None
+            if lat and lat != inst["sha"] and inst["source"] == "copy":
+                m = local_edits(lat)
+                st["edits_vs_latest"] = m
+                if m == 0:
+                    st["installed"] = st["latest"]
+                    st["behind"] = 0
+                    st["ahead"] = 0
+                    st["dirty"] = False
+                    st["matches_main"] = True
+                    st.pop("edited_files", None)
+                    inst["sha"] = lat
+    st["dev"] = os.path.exists(os.path.join(HSTATE, "dev-mode"))
     prev = previous_version(c)
     st["previous"] = dict(sha=prev, short=short(prev)) if prev and prev != inst["sha"] else None
     if inst["sha"] and not st["installed"]:
@@ -406,6 +422,9 @@ def component_status(c, tmap=None):
         state = "unknown"
     else:
         state = "behind" if st["behind"] > 0 else ("ahead" if st["ahead"] else "up-to-date")
+        # developing it: ~/.local/state/halcyon/dev-mode exists and the files carry your own edits. You are not "behind" your own work.
+        if state == "behind" and st["dev"] and st.get("dirty"):
+            state = "dev"
     st["state"] = state
     return st
 

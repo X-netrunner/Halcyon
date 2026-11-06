@@ -77,13 +77,15 @@ Scope {
         if (c.state === "local") return "built from a local folder"
         if (c.state === "behind") return c.behind + (c.behind === 1 ? " commit to catch up" : " commits to catch up")
         if (c.state === "ahead") return "ahead of main"
-        if (c.state === "up-to-date") return "up to date"
+        if (c.state === "dev") return c.edits_vs_latest ? "dev build: " + c.edits_vs_latest + (c.edits_vs_latest === 1 ? " file differs from main" : " files differ from main") : "dev build"
+        if (c.state === "up-to-date") return c.matches_main ? "same as main" : "up to date"
         if (c.state === "unreg") return "not registered yet"
         return "not checked yet"
     }
     function stateColor(c) {
         if (c.state === "up-to-date") return pal.good
         if (c.state === "behind") return pal.accent
+        if (c.state === "dev") return pal.accent
         if (c.state === "unreg") return pal.warn
         return pal.muted
     }
@@ -109,6 +111,7 @@ Scope {
         if (c.state === "behind") return c.behind + (c.behind === 1 ? " commit" : " commits")
         if (c.state === "up-to-date") return "0 commits"
         if (c.state === "ahead") return "ahead of main"
+        if (c.state === "dev") return "dev build"
         return "unknown"
     }
     function behindSub(c) {

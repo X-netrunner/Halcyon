@@ -167,6 +167,7 @@ ShellRoot {
         notchBat: true, notchBatPct: false, notchCaffeine: true, notchBg: true,
         deskWidgets: null,         // the desktop widgets { items: [...] } (WidgetData.js; Widget builder + Desktop builder)
         deskStyles: [],            // looks you saved in the Widget builder [{ name, look }]
+        deskCoverPause: false,     // true = widgets stop drawing while windows cover the desktop (saves power, but widgets vanish behind transparent windows)
         deskWidgetsOn: true,       // master switch: false = no desktop widgets are drawn and none of their readers run (each widget also has its own Switch off)
         lockDeskWidgets: null,     // the widgets on the LOCK screen { items: [...] }, same format as deskWidgets (Widget builder > Lock screen; placed with the desktop editor; Lock.qml draws them)
         lockDeskWidgetsOn: true,   // false = none of them are drawn on the lock screen
@@ -2898,7 +2899,7 @@ ShellRoot {
     property bool deskCovered: false
     property string coverFocus: ""          // the focused window's address at the last activewindowv2
     property bool coverDirty: false         // an event came in after the running check started
-    readonly property bool deskCoverWatch: (opt.deskStars === true || opt.deskLive === "on" || opt.deskLive === "sky" || opt.deskWidgetsOn !== false) && !gaming && !lockScreen.locked
+    readonly property bool deskCoverWatch: (opt.deskStars === true || opt.deskLive === "on" || opt.deskLive === "sky" || (opt.deskWidgetsOn !== false && opt.deskCoverPause === true)) && !gaming && !lockScreen.locked
     Connections {
         target: Hyprland
         enabled: root.deskCoverWatch
