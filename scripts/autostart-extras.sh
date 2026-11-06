@@ -7,14 +7,16 @@
 #   CLIPBOARD=1      0 = no clipboard history (the two wl-paste watchers + cliphist are not started)
 #   GESTURES=1       0 = touchpad edge gestures are not started
 #   AUDIO_FOCUS=1    0 = no "one thing plays at a time" (scripts/audio-focus.sh pauses the other player and brings it back after)
+#   KEYRING=1        0 = do not start gnome-keyring's secret service at login (Zed, git and other apps keep their GitHub / account
+#                    sign-ins in it: without it they ask again every start)
 #   PORTAL=login     demand = the screen-sharing helper (xdg-desktop-portal-hyprland) is not started at login; the first app that
 #                    asks for screen sharing starts it through D-Bus
 conf="$HOME/.config/Halcyon/autostart.conf"
 if [ ! -f "$conf" ]; then
   mkdir -p "$(dirname "$conf")"
-  printf 'NM_APPLET=0\nBLUEMAN=0\nPOLKIT=auto\nCLIPBOARD=1\nGESTURES=1\nAUDIO_FOCUS=1\nPORTAL=login\n' > "$conf"
+  printf 'NM_APPLET=0\nBLUEMAN=0\nPOLKIT=auto\nCLIPBOARD=1\nGESTURES=1\nAUDIO_FOCUS=1\nKEYRING=1\nPORTAL=login\n' > "$conf"
 fi
-NM_APPLET=0; BLUEMAN=0; POLKIT=auto; CLIPBOARD=1; GESTURES=1; AUDIO_FOCUS=1; PORTAL=login
+NM_APPLET=0; BLUEMAN=0; POLKIT=auto; CLIPBOARD=1; GESTURES=1; AUDIO_FOCUS=1; KEYRING=1; PORTAL=login
 . "$conf" 2>/dev/null
 
 first_exec() { for p in "$@"; do [ -x "$p" ] && { echo "$p"; return 0; }; done; return 1; }
@@ -37,6 +39,11 @@ if [ "$CLIPBOARD" = 1 ] && command -v wl-paste >/dev/null 2>&1 && command -v cli
 fi
 [ "$GESTURES" = 1 ] && systemctl --user start touchpad-gestures.service >/dev/null 2>&1
 [ "$AUDIO_FOCUS" = 1 ] && command -v playerctl >/dev/null 2>&1 && setsid -f bash "$HOME/.config/Halcyon/scripts/audio-focus.sh" run >/dev/null 2>&1 </dev/null
+# the secret service: apps (Zed, git credential helpers) keep their sign-ins in it. Only started when installed and not already running
+# (a login manager's PAM may have started it already, with the keyring unlocked by your password)
+if [ "$KEYRING" = 1 ] && command -v gnome-keyring-daemon >/dev/null 2>&1 && ! pgrep -u "$USER" -x gnome-keyring-d >/dev/null 2>&1; then
+  setsid -f gnome-keyring-daemon --start --foreground --components=secrets >/dev/null 2>&1 </dev/null
+fi
 if [ "$PORTAL" != demand ]; then
   for p in /usr/lib/hyprland/xdg-desktop-portal-hyprland /usr/lib/xdg-desktop-portal-hyprland /usr/libexec/xdg-desktop-portal-hyprland /usr/lib/x86_64-linux-gnu/xdg-desktop-portal-hyprland; do
     [ -x "$p" ] && { setsid -f "$p" >/dev/null 2>&1 </dev/null; break; }

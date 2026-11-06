@@ -366,7 +366,7 @@ fish_commands() {
   command -v fish >/dev/null 2>&1 || { ok "fish is not installed: the halcyon / bar-builder / notification-builder commands were skipped"; return 0; }
   local f n=0
   mkdir -p "$HOME/.config/fish/functions" "$HOME/.config/fish/completions" "$HOME/.local/bin"
-  for f in halcyon bar-builder desktop-builder widget-builder desktop-edit notification-builder wallpaper-gallery startup-view hotspot-on hotspot-off ai advisor notes; do
+  for f in halcyon bar-builder desktop-builder widget-builder desktop-edit notification-builder wallpaper-gallery startup-view hotspot-on hotspot-off ai advisor notes github-login push; do
     [ -f "$RICE/config/fish/functions/$f.fish" ] || continue
     cmp -s "$RICE/config/fish/functions/$f.fish" "$HOME/.config/fish/functions/$f.fish" 2>/dev/null || cp "$RICE/config/fish/functions/$f.fish" "$HOME/.config/fish/functions/$f.fish"
     n=$((n + 1))
@@ -401,7 +401,7 @@ default_apps() {
     else warn "default $kind: $id is not installed (pick one in Settings > Default apps)"; fi
   done
   # kind:preferred ids in order. Only when you have not picked one for that kind yet; an app that is not installed is skipped.
-  for pair in "terminal:foot" "files:thunar" "music:spotify spotify-launcher" "chat:vesktop discord"; do
+  for pair in "terminal:foot" "files:thunar" "music:halcyon-music spotify spotify-launcher" "chat:vesktop discord"; do
     kind=${pair%%:*}
     grep -q "^$kind=" "$env" 2>/dev/null && continue
     for id in ${pair#*:}; do

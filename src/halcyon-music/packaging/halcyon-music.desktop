@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Halcyon Music
+GenericName=Music Player
+Comment=Native Spotify-integrated music player for Halcyon
+Exec=halcyon-music
+Icon=multimedia-audio-player
+Terminal=false
+Type=Application
+Categories=Audio;Music;Player;AudioVideo;
+StartupWMClass=halcyon-music

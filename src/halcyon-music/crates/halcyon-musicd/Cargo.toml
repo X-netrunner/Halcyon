@@ -1,0 +1,41 @@
+[package]
+name = "halcyon-musicd"
+version = "0.1.0"
+edition = "2021"
+description = "Halcyon Music daemon: owns playback, session, cache, play log"
+
+[[bin]]
+name = "halcyon-musicd"
+path = "src/main.rs"
+
+[dependencies]
+halcyon-music-core = { version = "=0.1.0", path = "../halcyon-music-core" }
+tokio = { version = "=1.44.2", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "fs", "signal", "process"] }
+serde = { version = "=1.0.219", features = ["derive"] }
+serde_json = "=1.0.140"
+tracing = "=0.1.41"
+tracing-subscriber = { version = "=0.3.19", features = ["env-filter", "fmt"] }
+tracing-appender = "=0.2.3"
+anyhow = "=1.0.97"
+thiserror = "=2.0.12"
+libc = "=0.2.171"
+# Part 2 pinned dependencies:
+# - rusqlite: bundled SQLite avoids host libsqlite3 version discrepancies
+rusqlite = { version = "=0.32.1", features = ["bundled"] }
+# - reqwest: thin rustls client avoiding OpenSSL linkage
+reqwest = { version = "=0.12.12", default-features = false, features = ["rustls-tls", "json"] }
+# - url: standard URL parser with serde support
+url = { version = "=2.5.4", features = ["serde"] }
+# - sha2 & base64: PKCE S256 challenge generation and URL image hashing
+sha2 = "=0.10.8"
+base64 = "=0.22.1"
+# - rand: cryptographic entropy for PKCE verifiers and retry jitter
+rand = "=0.8.8"
+# - keyring: FreeDesktop Secret Service credential store with pure-Rust crypto
+keyring = { version = "=3.6.2", features = ["sync-secret-service", "crypto-rust"] }
+
+[dev-dependencies]
+# used by the corrupt-state / socket integration tests only
+tempfile = "=3.19.1"
+# start_paused / advance for the supervisor backoff tests
+tokio = { version = "=1.44.2", features = ["test-util"] }
