@@ -24,6 +24,18 @@ jsonc_set() {   # jsonc_set FILE KEY STRING-VALUE
     awk -v k="$k" -v v="$v" 'd==0 && /\{[[:space:]]*$/ { print; printf "    \"%s\": \"%s\",\n", k, v; d=1; next } { print }' "$f" > "$f.new" && mv "$f.new" "$f"
   fi
 }
+# a raw JSON value (boolean, number, table) for a top-level key of a JSONC settings file: only when the key is not there yet, so
+# a value of your own always wins. Inserted right after the opening brace; the file is backed up once.
+jsonc_add_raw() {   # jsonc_add_raw FILE KEY RAW-JSON-VALUE
+  local f=$1 k=$2 v=$3
+  mkdir -p "$(dirname "$f")"
+  if [ ! -s "$f" ] || [ "$(tr -d '[:space:]' < "$f")" = "{}" ]; then
+    printf '{\n    "%s": %s\n}\n' "$k" "$v" > "$f"; return 0
+  fi
+  grep -qE "^[[:space:]]*\"$k\"[[:space:]]*:" "$f" && return 0
+  [ -e "$f.before-halcyon" ] || cp -p "$f" "$f.before-halcyon"
+  awk -v k="$k" -v v="$v" 'd==0 && /\{[[:space:]]*$/ { print; printf "    \"%s\": %s,\n", k, v; d=1; next } { print }' "$f" > "$f.new" && mv "$f.new" "$f"
+}
 json_ok() { if have jq; then jq -e . "$1" >/dev/null 2>&1; else python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$1" >/dev/null 2>&1; fi; }
 
 # ================================================================== VS Code family
@@ -300,10 +312,16 @@ zed_theme() {
   mixv "$bg" "$acc" 20; local sel=$MIX
   mixv "$bg" "$surf" 60; local panel=$MIX
   mixv "$bg" "#000000" 22; local deep=$MIX
-  # Zed with a see-through window: touch ~/.local/state/island/zed-blur and the editor lets the compositor's blur show through
-  # (Hyprland blurs it like the rest of the rice). Off by default: Zed stays fully solid.
+  # Zed is see-through by default: the editor, tabs, panels and terminal let the compositor's blur show through (Hyprland blurs it like
+  # the rest of the rice); menus and popups stay solid so they read well. How much: put a number 30-100 (percent opaque) in
+  # ~/.local/state/island/zed-blur (default 72). Fully solid again: touch ~/.local/state/island/zed-opaque
   local ba="" appearance="opaque"
-  if [ -e "$state/zed-blur" ]; then ba="d9"; appearance="blurred"; fi
+  if [ ! -e "$state/zed-opaque" ]; then
+    local pct; pct=$(tr -dc '0-9' < "$state/zed-blur" 2>/dev/null | head -c 3); [ -n "$pct" ] || pct=72
+    [ "$pct" -lt 30 ] && pct=30; [ "$pct" -gt 100 ] && pct=100
+    ba=$(printf '%02x' $(( pct * 255 / 100 ))); appearance="blurred"
+    [ "$pct" -ge 100 ] && { ba=""; appearance="opaque"; }
+  fi
   cat > "$d/halcyon.json.tmp" <<JSON
 {
   "\$schema": "https://zed.dev/schema/themes/v0.2.0.json",
@@ -315,7 +333,7 @@ zed_theme() {
       "appearance": "dark",
       "style": {
         "background.appearance": "$appearance",
-        "border": "$hi", "border.variant": "$surf", "border.focused": "$acc", "border.selected": "$acc",
+        "border": "${hi}55", "border.variant": "${surf}88", "border.focused": "$acc", "border.selected": "$acc",
         "border.transparent": "#00000000", "border.disabled": "$hi",
         "elevated_surface.background": "$surf", "surface.background": "$panel$ba", "background": "$bg$ba",
         "element.background": "$surf", "element.hover": "$hi", "element.active": "$sel", "element.selected": "$sel", "element.disabled": "$surf",
@@ -325,7 +343,7 @@ zed_theme() {
         "text": "$fg", "text.muted": "$mut", "text.placeholder": "$mut", "text.disabled": "$hi", "text.accent": "$acc",
         "icon": "$fg", "icon.muted": "$mut", "icon.disabled": "$hi", "icon.placeholder": "$mut", "icon.accent": "$acc",
         "status_bar.background": "$deep$ba", "title_bar.background": "$deep$ba", "title_bar.inactive_background": "$deep$ba",
-        "toolbar.background": "$bg$ba", "tab_bar.background": "$deep$ba", "tab.inactive_background": "$deep$ba", "tab.active_background": "$bg$ba",
+        "toolbar.background": "$bg$ba", "tab_bar.background": "$deep$ba", "tab.inactive_background": "#00000000", "tab.active_background": "$sel$ba",
         "search.match_background": "${yellow}55", "panel.background": "$panel$ba", "panel.focused_border": "$acc", "panel.overlay_background": "$panel",
         "element.selection_background": "${acc}33", "search.active_match_background": "${acc}66",
         "pane.focused_border": "$acc",
@@ -394,7 +412,27 @@ zed_theme() {
 JSON
   if json_ok "$d/halcyon.json.tmp"; then mv "$d/halcyon.json.tmp" "$d/halcyon.json"; log "zed: theme written (accent $acc)"
   else rm -f "$d/halcyon.json.tmp"; log "zed: theme json invalid, kept the old one"; return 0; fi
-  [ "$mode" = "--setup" ] && { jsonc_set "$HOME/.config/zed/settings.json" "theme" "Halcyon"; echo "   zed: theme Halcyon (reloads live when the wallpaper changes)"; }
+  if [ "$mode" = "--setup" ]; then
+    jsonc_set "$HOME/.config/zed/settings.json" "theme" "Halcyon"; echo "   zed: theme Halcyon (reloads live when the wallpaper changes)"
+    # smooth corners: Zed draws its own small corners and shadow by default; "server" lets Hyprland round the window like every other
+    # one (variables.lua windowRounding / windowRoundingPower, the soft squircle), so there is no second, sharper corner under it
+    jsonc_set "$HOME/.config/zed/settings.json" "client_decorations" "server"; echo "   zed: window corners follow Hyprland's rounding"
+    # Ctrl+S tidies the file: the language's formatter (language server / Prettier) re-indents it, then trailing spaces go and a final
+    # newline is added. Only keys that are not in your settings.json yet are written, so your own values stay.
+    local zs="$HOME/.config/zed/settings.json"
+    jsonc_add_raw "$zs" "format_on_save" '"on"'
+    jsonc_add_raw "$zs" "formatter" '"auto"'
+    jsonc_add_raw "$zs" "remove_trailing_whitespace_on_save" 'true'
+    jsonc_add_raw "$zs" "ensure_final_newline_on_save" 'true'
+    jsonc_add_raw "$zs" "auto_indent_on_paste" 'true'
+    # languages whose editor support has no formatter of its own: an external one, when it is installed
+    local langs="" sep=""
+    have shfmt && { langs="$langs$sep\"Shell Script\": { \"formatter\": { \"external\": { \"command\": \"shfmt\", \"arguments\": [\"-i\", \"2\"] } } }"; sep=", "; }
+    have ruff  && { langs="$langs$sep\"Python\": { \"formatter\": { \"external\": { \"command\": \"ruff\", \"arguments\": [\"format\", \"--stdin-filename\", \"{buffer_path}\", \"-\"] } } }"; sep=", "; }
+    [ -n "$langs" ] && jsonc_add_raw "$zs" "languages" "{ $langs }"
+    json_ok "$zs" 2>/dev/null || true
+    echo "   zed: Ctrl+S formats and indents the file"
+  fi
   return 0
 }
 

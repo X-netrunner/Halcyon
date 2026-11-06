@@ -2408,6 +2408,8 @@ ShellRoot {
         case "capture": clipMenu.hide(); musicMenu.hide(); shotMenu.hide(); captureMenu.toggle(); break
         case "lyrics": clipMenu.hide(); shotMenu.hide(); musicMenu.toggleTab("lyrics"); break
         case "queue": clipMenu.hide(); shotMenu.hide(); musicMenu.toggleTab("queue"); break
+        case "music": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "run", "music"]); break
+        case "music-doctor": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", "export PATH=\"$HOME/.config/Halcyon/bin:$HOME/.local/bin:$PATH\"; halcyon-musicd --doctor; echo; read -n1 -r -p 'Press any key to close...'"]); break
         case "record": toggleRecording(); break
         case "extradim": toggleExtraDim(); break
         case "airplane": toggleAirplane(); break

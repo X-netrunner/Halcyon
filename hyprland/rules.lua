@@ -27,6 +27,7 @@ hl.window_rule({ match = { class = "zenity" }, float = true })
 hl.window_rule({ match = { class = "yad" }, float = true })
 hl.window_rule({ match = { class = "pinentry.*" }, float = true })
 hl.window_rule({ match = { class = "polkit-gnome-authentication-agent-1" }, float = true })
+hl.window_rule({ match = { class = "halcyon-music" }, float = true, size = "960 640", center = true })
 
 hl.layer_rule({ match = { namespace = "notification" }, blur = true })
 

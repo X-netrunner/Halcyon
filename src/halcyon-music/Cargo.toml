@@ -1,0 +1,10 @@
+[workspace]
+members = ["crates/halcyon-music-core", "crates/halcyon-musicd", "crates/halcyon-music"]
+resolver = "2"
+
+# Part 0 rule 6: panics must unwind so the supervisor can catch and restart.
+[profile.release]
+panic = "unwind"
+
+[profile.dev]
+panic = "unwind"
