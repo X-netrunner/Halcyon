@@ -72,6 +72,34 @@ Scope {
     readonly property color fwColor: !hasFw ? pal.muted : (fw === null || !fwAlive ? pal.bad : (fw.mode === "enforce" ? pal.good : pal.warn))
     readonly property string posture: fw && fw.posture ? fw.posture : ""
     readonly property int bansCount: fw ? (fw.bans || []).length : 0
+    // ---- the rest of what the Firewall Center showed, now sub-pages of the Firewall page: Rules, Feeds, History, Doctor
+    property string fwSub: "live"            // live | rules | feeds | history | doctor
+    property var fwLog: []                   // what ai-firewall did (bans, lifts, profile switches, feed updates), newest first
+    property var fwFindings: []              // the doctor's findings
+    property bool fwDoctorRan: false
+    function fwSubGo(k) {
+        fwSub = k
+        if (k === "history" && !fwHistProc.running) fwHistProc.running = true
+        if (k === "doctor" && !fwDoctorRan && !fwDoctorProc.running) fwDoctorProc.running = true
+    }
+    // `sudo ai-firewall <args>` in the console. Only plain words reach the shell: everything here is built from the daemon's own status,
+    // the doctor's fixed fix ids or validated input, but the console runs bash, so it is checked once more.
+    function sudoThen(args) {
+        args = String(args).trim()
+        if (!/^[A-Za-z0-9 ._:\/-]+$/.test(args)) return
+        consoleRequested("sudo " + fwBin + " " + args)
+    }
+    Process {
+        id: fwHistProc
+        command: [root.fwBin, "history", "--json", "-n", "200"]
+        stdout: StdioCollector { onStreamFinished: { try { root.fwLog = JSON.parse(text).reverse() } catch (e) { root.fwLog = [] } } }
+    }
+    Process {
+        id: fwDoctorProc
+        command: [root.fwBin, "doctor", "--json"]
+        stdout: StdioCollector { onStreamFinished: { try { root.fwFindings = JSON.parse(text).findings || [] } catch (e) { root.fwFindings = [] } root.fwDoctorRan = true } }
+    }
+    Timer { interval: 5000; repeat: true; running: root.open && root.hasFw && root.tab === "firewall" && root.fwSub === "history"; triggeredOnStart: true; onTriggered: if (!fwHistProc.running) fwHistProc.running = true }
     Process {
         id: fwProc
         command: ["cat", "/run/ai-firewall/status.json"]
@@ -409,7 +437,7 @@ Scope {
                     var why = r === "nopkexec" ? "pkexec (the polkit package) is not installed." : "No password window (polkit agent) is installed or allowed here (Settings > Startup > Password prompt helper)."
                     if (forExc) {
                         root.flash(why + " Opening the console: it asks for your password there.", true)
-                        root.consoleRequested("sudo " + root.shq(root.avBin) + " exceptions " + excEdit.args.map(root.shq).join(" "))
+                        root.admAsk({ steps: [["exceptions"].concat(excEdit.args)], title: "Exceptions", button: "Do it", ackIds: [], detail: "Changes the antivirus exceptions." })
                     } else {
                         root.avUnlockErr = why + " Use the console button: it asks for your password there."
                         root.flash(root.avUnlockErr, true)
@@ -578,16 +606,36 @@ Scope {
     readonly property bool admBusy: admProc.running
     signal admFocusRequested()
     function admAsk(job) {
-        if (admBusy || !hasAv) return
+        if (admBusy || (!hasAv && !(job && job.script))) return
         admErr = ""; admJob = job
         if (pwKnown) { admSubmit(pwCache); return }          // no password bar: the remembered one is used
         Qt.callLater(function () { root.admFocusRequested() })
+    }
+    // A root command done HERE, in the background: no console. With a remembered password it runs the moment you press the button;
+    // otherwise the password bar asks once. `cmd` is a shell line without "sudo" (it runs as root); the first line it prints is shown.
+    function rootRun(cmd, title, detail, button) {
+        admAsk({ steps: [], script: cmd, title: title, button: button || "Do it", detail: detail || cmd, ackIds: [] })
     }
     // full access in one password: put this user into group ai-antivirus (alerts, acknowledging, the action log, the AI's clearing)
     function avGrantAccess() {
         admAsk({ steps: [], script: "usermod -aG ai-antivirus \"${SUDO_USER:-$USER}\" && echo \"Full access given.\"",
                  title: "Full access", button: "Give full access", ackIds: [], joinGroup: true,
                  detail: "Adds your user to the ai-antivirus group, so alerts, acknowledging them and the AI's clearing work without a password. No logout needed." })
+    }
+    // Full access is a choice: ON = this user is in group ai-antivirus (alerts, acknowledging and the AI's clearing need no password),
+    // OFF = every root action asks for the password, and nothing is stored. The choice is also written to install-choices.env
+    // (AV_FULL_ACCESS) so install.sh and update.sh keep it: they only add you to the group when it is not "no".
+    readonly property bool avFullAccess: avPerm === "ok" || avPerm === "stale"
+    function avSaveAccessChoice(on) {
+        Quickshell.execDetached(["sh", "-c", "f=\"$HOME/.local/state/island/install-choices.env\"; mkdir -p \"$(dirname \"$f\")\"; [ -f \"$f\" ] || : > \"$f\"; grep -v '^AV_FULL_ACCESS=' \"$f\" > \"$f.new\" 2>/dev/null; printf 'AV_FULL_ACCESS=\"%s\"\\n' \"$1\" >> \"$f.new\"; mv \"$f.new\" \"$f\"", "sh", on ? "yes" : "no"])
+    }
+    function avSetFullAccess(on) {
+        if (on === avFullAccess) return
+        avSaveAccessChoice(on)
+        if (on) { avGrantAccess(); return }
+        admAsk({ steps: [], script: "gpasswd -d \"${SUDO_USER:-$USER}\" ai-antivirus >/dev/null && echo \"Full access is off: the password is asked again.\"",
+                 title: "Turn full access off", button: "Turn it off", ackIds: [], leaveGroup: true,
+                 detail: "Takes your user out of the ai-antivirus group. Alerts and actions then ask for your password. Fully in effect after your next login." })
     }
     function admCancel() {
         if (admProc.running) { admCancelled = true; admProc.running = false }
@@ -620,7 +668,7 @@ Scope {
             admJob = null; admErr = ""
             var first = admOutT.trim().split("\n")[0]
             flash(first !== "" ? first : job.title + ": done", false)
-            if (job.joinGroup) { avPerm = ""; permProc.running = true; avSoon.restart() }      // in the group now: the live read takes over at once
+            if (job.joinGroup || job.leaveGroup) { avPerm = ""; permProc.running = true; avSoon.restart() }      // in the group now: the live read takes over at once
             if (job.ackIds && job.ackIds.length > 0 && !avSnap) ack(job.ackIds)
             else if (avSnap) {
                 if (job.dropIds) { avSnapDrop(job.dropIds); if (job.reviewAck) reviewAckState = 2 }
@@ -663,7 +711,11 @@ Scope {
         if (avAckProc.running) return
         var args = ids === "all" ? ["ack", "--all"] : ["ack"].concat(ids.map(String))
         // the snapshot is root's: the acknowledge needs root too. The console asks for the password (sudo), then Reload shows the result
-        if (avSnap) { consoleRequested("sudo " + shq(avBin) + " " + args.map(shq).join(" ")); return }
+        if (avSnap) {
+            admAsk({ steps: [args], title: "Acknowledge", button: "Acknowledge", ackIds: [], dropIds: ids,
+                     detail: ids === "all" ? "Marks every alert as seen." : "Marks " + ids.length + (ids.length === 1 ? " alert" : " alerts") + " as seen." })
+            return
+        }
         avAckProc.ackIds = ids
         avAckProc.command = avCmd(args)
         avAckProc.running = true
@@ -814,7 +866,7 @@ Scope {
         var code = excCode, err = excErrT.trim()
         // pkexec itself refused (no agent / not found): the same command with sudo in the console
         if (code === 127 && (err === "" || /authentication agent|not found|No such file/i.test(err))) {
-            consoleRequested("sudo " + shq(avBin) + " exceptions " + excEdit.args.map(shq).join(" "))
+            admAsk({ steps: [["exceptions"].concat(excEdit.args)], title: "Exceptions", button: "Do it", ackIds: [], detail: "Changes the antivirus exceptions." })
             return
         }
         if (wasHidden) show("exceptions")
@@ -858,13 +910,16 @@ Scope {
     readonly property string overall: !detected ? "" : (!hasFw && !hasAv ? "Not installed" : (down > 0 ? "Needs attention" : (avLocked ? "Alerts are locked" : (avPending > 0 ? "Waiting for your OK" : (avUnacked > 0 ? "Review alerts" : "Protected")))))
     readonly property color overallColor: !hasFw && !hasAv ? pal.muted : (down > 0 ? pal.bad : (avUnacked > 0 || avPending > 0 || avLocked ? pal.warn : pal.good))
     readonly property string overallTone: !hasFw && !hasAv ? "muted" : (down > 0 ? "bad" : (avUnacked > 0 || avPending > 0 || avLocked ? "warn" : "good"))
-    // the pages as icons in the middle of the head: only what is installed (a module you don't have is not a page)
+    // the pages as icons in the middle of the head. The firewall and the antivirus are always there: the one that is not installed is
+    // greyed out and can not be opened (its hover says so), and what only works with it (Exceptions) goes grey with it. ClamAV is an
+    // extra, so it only shows when it is installed.
     readonly property var navItems: {
+        var noFw = detected && !hasFw, noAv = detected && !hasAv
         var a = [{ key: "overview", glyph: 0xF0570, label: "Overview", dot: avUnacked + avPending > 0, tone: overallColor }]
-        if (hasFw || !detected) a.push({ key: "firewall", glyph: 0xF1A11, label: "Firewall", dot: hasFw && !fwAlive, tone: pal.bad })
-        if (hasAv || !detected) a.push({ key: "antivirus", glyph: 0xF13B6, label: "Antivirus", dot: avUnacked > 0 || avPending > 0, tone: pal.warn })
-        if (hasAv || !detected) a.push({ key: "exceptions", glyph: 0xF0780, label: "Exceptions" })
-        if (hasFw || hasAv || !detected) a.push({ key: "ask", glyph: 0xF0B79, label: "Ask" })
+        a.push({ key: "firewall", glyph: 0xF1A11, label: noFw ? "Firewall · not installed" : "Firewall", dot: hasFw && !fwAlive, tone: pal.bad, disabled: noFw })
+        a.push({ key: "antivirus", glyph: 0xF13B6, label: noAv ? "Antivirus · not installed" : "Antivirus", dot: avUnacked > 0 || avPending > 0, tone: pal.warn, disabled: noAv })
+        a.push({ key: "exceptions", glyph: 0xF0780, label: noAv ? "Exceptions · needs the antivirus" : "Exceptions", disabled: noAv })
+        a.push({ key: "ask", glyph: 0xF0B79, label: noFw && noAv ? "Ask · needs the firewall or the antivirus" : "Ask", disabled: noFw && noAv })
         if (hasClam || !detected) a.push({ key: "clamav", glyph: 0xF0668, label: "ClamAV", dot: clam !== null && !clam.good, tone: pal.bad })
         return a
     }
@@ -908,6 +963,53 @@ Scope {
     //      stays on the list and is shown to you. It never approves a held action (that needs sudo) and never adds an exception.
     //   2. the pick: of what still needs you, which to deal with first and why (`halcyon-ai.py decide`). Nothing is done until you
     //      approve; approving only takes you to that page (or starts the unlock), the same as pressing its row.
+    // ---- the antivirus log: a card that pops out beside the window (like the AI's card), the live `ai-antivirus tail -f`
+    property bool logOpen: false
+    property bool logPaused: false
+    // The newest 200 lines live in a ListModel and arrive in batches. Before, every line copied the whole 300-line array and
+    // assigned it again, which made the list throw away and rebuild every row (each with a regex) for every single line: opening the
+    // log, which first dumps the recent history, rebuilt it hundreds of times in a row. Now a line is only queued; one timer adds
+    // everything that arrived in the last 200 ms in one go, the tone is worked out once per line, and nothing else is touched.
+    readonly property int logMax: 200
+    property var logBuf: []
+    ListModel { id: logModel }
+    Timer { id: logFlushT; interval: 200; onTriggered: root.logFlush() }
+    function logPush(line) {
+        if (logPaused) return
+        var t = String(line)
+        if (t.length > 400) t = t.slice(0, 400) + "…"
+        logBuf.push({ t: t, c: logTone(t) })
+        if (!logFlushT.running) logFlushT.start()
+    }
+    function logFlush() {
+        var n = logBuf.length
+        if (n === 0) return
+        var b = n > logMax ? logBuf.slice(n - logMax) : logBuf
+        logBuf = []
+        logModel.append(b)
+        var over = logModel.count - logMax
+        if (over > 0) logModel.remove(0, over)
+    }
+    function logClear() { logFlushT.stop(); logBuf = []; logModel.clear() }
+    function logToggle() {
+        if (logOpen) { logOpen = false; return }
+        if (decideOpen) decideClose()
+        logOpen = true
+    }
+    function logTone(l) {      // "bad" | "warn" | "" (the delegate maps it to a colour)
+        if (/malware|malicious|quarantin|ransom|trojan|critical|infected|killed|blocked|denied/i.test(l)) return "bad"
+        if (/warn|alert|suspicious|held|pending|error|fail/i.test(l)) return "warn"
+        return ""
+    }
+    onLogOpenChanged: { logClear(); if (logOpen) logPaused = false }
+    Process {
+        id: logProc
+        // a stale session reads through sg (the group is not in this session yet); a tail has no time limit, unlike the 8 s reads
+        command: root.avViaSg ? ["sg", "ai-antivirus", "-c", "ai-antivirus tail -f"] : ["ai-antivirus", "tail", "-f"]
+        running: root.logOpen && root.open && root.hasAv
+        stdout: SplitParser { onRead: line => root.logPush(line) }
+        stderr: SplitParser { onRead: line => root.logPush("! " + line) }
+    }
     property bool decideOpen: false
     property var decideRes: null
     property string decideErr: ""
@@ -1185,7 +1287,7 @@ Scope {
     function act(a) {
         if (a.test) { runTest(a.args[1] || "all"); return }
         // changes to the firewall need root: shown in the console with the exact command
-        consoleRequested("sudo " + fwBin + " " + a.args.join(" "))
+        rootRun(shq(fwBin) + " " + a.args.map(shq).join(" "), "Firewall", "ai-firewall " + a.args.join(" "), "Do it")
     }
     Process {
         id: askProc
@@ -1243,6 +1345,7 @@ Scope {
     function cap(s) { s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1) }
 
     function show(t) {
+        if (tabOff(t)) t = "overview"
         if (t === "overview" || t === "firewall" || t === "antivirus" || t === "exceptions" || t === "ask" || t === "clamav") tab = t
         open = true
         detectProc.running = true
@@ -1260,14 +1363,19 @@ Scope {
     function stag(i) { return Math.max(0, Math.min(1, pageIn * 1.7 - i * 0.22)) }      // 0..1 for the i-th block of a page (0 first)
     NumberAnimation { target: root; property: "beat"; from: 0; to: 1; duration: root.ovTodo.length === 0 ? 4200 : 2800; loops: Animation.Infinite; running: root.live && root.tab === "overview" }
     NumberAnimation { id: pageAnim; target: root; property: "pageIn"; from: 0; to: 1; duration: root.pal ? root.pal.dSlow : 600; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal ? root.pal.curveDecel : [0.05, 0.7, 0.1, 1, 1, 1] }
+    function tabOff(t) {
+        return detected && ((t === "firewall" && !hasFw) || ((t === "antivirus" || t === "exceptions") && !hasAv) || (t === "ask" && !hasFw && !hasAv) || (t === "clamav" && !hasClam))
+    }
     function setTab(t) {
+        if (tabOff(t)) return
         if (t !== tab) pageAnim.restart()
         tab = t
         refresh()
         Qt.callLater(function () { root.focusRequested(t === "ask" ? "ask" : "panel") })
     }
     property bool linger: false
-    onOpenChanged: if (!open) { decideClose(); linger = true; lingerT.restart() } else { refresh(); pageAnim.restart() }
+    onDecideOpenChanged: if (decideOpen && logOpen) logOpen = false
+    onOpenChanged: if (!open) { logOpen = false; decideClose(); linger = true; lingerT.restart() } else { refresh(); pageAnim.restart() }
     // closed for good: let go of what the pages held (alert lists, scan results, the ClamAV report, which rows were open) and free the JS heap.
     // A one-time password snapshot is kept: dropping it would ask for the password again.
     Timer {
@@ -1280,6 +1388,7 @@ Scope {
             if (!root.avSnap) { root.avAlerts = []; root.avActions = []; root.avAlertsRaw = ""; root.avActionsRaw = "" }
             root.scanFound = []; root.scanSum = null
             root.clam = null; root.exc = null
+            root.fwLog = []; root.fwFindings = []; root.fwDoctorRan = false; root.fwSub = "live"
             root.decideRes = null; root.decideErr = ""; root.decideSteps = []; root.decideSkipped = false
             root.reviewItems = []; root.reviewRes = null; root.reviewErr = ""; root.reviewNote = ""; root.reviewStep = ""; root.reviewAckState = 0; root.reviewTotal = 0
             root.avOpenKeys = ({})
@@ -1735,7 +1844,7 @@ Scope {
                 Behavior on reveal { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 Component.onCompleted: { ready = true; Qt.callLater(function () { if (root.tab === "ask") askIn.forceActiveFocus(); else qp.forceActiveFocus() }) }
                 Keys.onPressed: e => {
-                    if (e.key === Qt.Key_Escape) { if (root.decideOpen) root.decideClose(); else root.hide(); e.accepted = true; return }
+                    if (e.key === Qt.Key_Escape) { if (root.logOpen) root.logOpen = false; else if (root.decideOpen) root.decideClose(); else root.hide(); e.accepted = true; return }
                     // 1-5 switch pages
                     var pages = ["overview", "firewall", "antivirus", "exceptions", "ask", "clamav"], i = e.key - Qt.Key_1
                     if (i >= 0 && i < pages.length) { root.setTab(pages[i]); e.accepted = true }
@@ -1751,14 +1860,14 @@ Scope {
                     id: panel
                     pal: root.pal
                     // while the AI's card is out beside it, the window gives up a little width on a smaller screen so both fit (never below 820)
-                    width: win.desktop ? qp.width : Math.min(1140, qp.width - 80, (root.decideOpen && decSide.beside) ? Math.max(820, qp.width - decSide.cardW - decSide.gap - 48) : 100000)
+                    width: win.desktop ? qp.width : Math.min(1140, qp.width - 80, (root.decideOpen && decSide.beside) ? Math.max(820, qp.width - decSide.cardW - decSide.gap - 48) : 100000, (root.logOpen && logSide.beside) ? Math.max(820, qp.width - logSide.cardW - logSide.gap - 48) : 100000)
                     Behavior on width { enabled: !win.desktop; NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                     height: win.desktop ? qp.height : Math.min(780, qp.height - 80)
                     radius: win.desktop ? 0 : root.pal.rXl
                     opacityBody: 0.97
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.30)
                     anchors.centerIn: parent
-                    anchors.horizontalCenterOffset: -decSide.shiftBy * decSide.prog        // the window and the AI's card sit centred together
+                    anchors.horizontalCenterOffset: -decSide.shiftBy * decSide.prog - logSide.shiftBy * logSide.prog        // the window and the AI's / log card sit centred together
                     opacity: win.desktop ? 1 : qp.reveal
                     scale: win.desktop ? 1 : 0.97 + 0.03 * qp.reveal
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
@@ -2176,7 +2285,59 @@ Scope {
                                     CalmIconBtn { pal: root.pal; glyph: 0xF0A07; primary: true; tip: "Open the live dashboard"; onClicked: root.terminalRequested("sudo " + root.shq(root.fwBin) + " top") }
                                 }
 
+                                // the config file is broken: say so, the last config that worked is what applies
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    visible: root.fw !== null && !!root.fw.config_error
+                                    implicitHeight: fwCfgErr.implicitHeight + 22
+                                    radius: root.pal.rMd
+                                    color: Qt.alpha(root.pal.bad, 0.12)
+                                    RowLayout {
+                                        anchors { fill: parent; leftMargin: 16; rightMargin: 10 }
+                                        spacing: 12
+                                        Text {
+                                            id: fwCfgErr
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.WordWrap
+                                            text: "The config file has an error, so the last config that worked is in force.\n" + (root.fw && root.fw.config_error ? root.fw.config_error : "")
+                                            color: root.pal.text
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tCap
+                                        }
+                                        Btn { label: "Edit config"; glyph: 0xF03EB; onClicked: root.terminalRequested("sudoedit /etc/ai-firewall/config.toml") }
+                                    }
+                                }
+
+                                // Live | Rules | Feeds | History | Doctor: what the separate Firewall Center used to be
+                                Row {
+                                    spacing: 6
+                                    Repeater {
+                                        model: [{ k: "live", l: "Live" }, { k: "rules", l: "Rules" }, { k: "feeds", l: "Feeds" }, { k: "history", l: "History" }, { k: "doctor", l: "Doctor" }]
+                                        delegate: Rectangle {
+                                            id: fsb
+                                            required property var modelData
+                                            readonly property bool on: root.fwSub === modelData.k
+                                            implicitWidth: fsbT.implicitWidth + 26
+                                            implicitHeight: 30
+                                            radius: 15
+                                            color: on ? Qt.alpha(root.pal.accent, 0.16) : (fsbMa.containsMouse ? root.pal.fillHover : root.pal.fill)
+                                            Behavior on color { ColorAnimation { duration: root.pal.dFast } }
+                                            Text {
+                                                id: fsbT
+                                                anchors.centerIn: parent
+                                                text: fsb.modelData.l + (fsb.modelData.k === "doctor" && root.fwFindings.some(function (f) { return f.severity === "warn" || f.severity === "fail" }) ? "  •" : "")
+                                                color: fsb.on ? root.pal.accent : root.pal.muted
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tBody - 1
+                                                font.weight: Font.Medium
+                                            }
+                                            MouseArea { id: fsbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.fwSubGo(fsb.modelData.k) }
+                                        }
+                                    }
+                                }
+
                                 Strip {
+                                    visible: root.fwSub === "live"
                                     Stat { divider: false; label: "Passed"; value: root.count(root.fw ? root.fw.passed : 0); sub: root.fwRate.passed + "/s"; tone: root.pal.good }
                                     Stat { label: "Closed ports"; value: root.count(root.fw ? root.fw.dropped_policy : 0); tone: root.pal.warn }
                                     Stat { label: "From banned"; value: root.count(root.fw ? root.fw.dropped_blocklist : 0); sub: root.bansCount + " banned"; tone: root.pal.bad }
@@ -2186,7 +2347,7 @@ Scope {
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: 6
-                                    visible: root.fwHist.length > 1
+                                    visible: root.fwSub === "live" && root.fwHist.length > 1
                                     RowLayout {
                                         Layout.leftMargin: 4
                                         spacing: 14
@@ -2201,6 +2362,7 @@ Scope {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     spacing: 24
+                                    visible: root.fwSub === "live"
                                     Section {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
@@ -2221,7 +2383,7 @@ Scope {
                                                 mark: modelData.source === "auto" ? root.pal.bad : (modelData.source === "config" ? root.pal.muted : root.pal.warn)
                                                 actGlyph: modelData.source !== "config" ? 0xF0156 : 0
                                                 actTone: root.pal.bad
-                                                onAct: root.consoleRequested("sudo " + root.fwBin + " unban " + modelData.ip)
+                                                onAct: root.rootRun(root.shq(root.fwBin) + " unban " + root.shq(modelData.ip), "Unban " + modelData.ip, "Lets " + modelData.ip + " connect again.", "Unban")
                                             }
                                         }
                                         Empty { visible: root.bansCount === 0; text: "No bans" }
@@ -2248,6 +2410,211 @@ Scope {
                                         Empty { visible: !root.fw || (root.fw.recent || []).length === 0; text: "Nothing detected" }
                                     }
                                 }
+
+                                // ---- Rules: the network profile, open ports, narrower rules; ports can be opened from here
+                                Flickable {
+                                    id: fwRulesFl
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    visible: root.fwSub === "rules"
+                                    clip: true
+                                    contentWidth: width
+                                    contentHeight: fwRulesCol.implicitHeight
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ColumnLayout {
+                                        id: fwRulesCol
+                                        width: fwRulesFl.width
+                                        spacing: 10
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 12
+                                            Small { Layout.fillWidth: true; wrapMode: Text.WordWrap; elide: Text.ElideNone; text: "Nothing gets in unless a port is open below; everything you start yourself can always go out. Changes to the config apply within 3 seconds." }
+                                            Btn { label: "Edit config"; glyph: 0xF03EB; onClicked: root.terminalRequested("sudoedit /etc/ai-firewall/config.toml") }
+                                        }
+                                        FwCard {
+                                            pal: root.pal
+                                            title: "Network profile"
+                                            value: root.fw ? (root.fw.profile || "default") + ((root.fw.profiles || []).length > 0 ? "   (profiles: " + root.fw.profiles.join(", ") + ")" : "   (no profiles set up)") : "–"
+                                            note: "A profile can open different ports per network (home wifi vs public), picked by the connection's name."
+                                        }
+                                        FwCard { pal: root.pal; title: "Open to everyone · TCP"; mono: true; value: root.fw && (root.fw.allow_tcp || []).length ? root.fw.allow_tcp.join("  ") : "none" }
+                                        FwCard {
+                                            pal: root.pal
+                                            title: "Open to everyone · UDP"
+                                            mono: true
+                                            value: root.fw && (root.fw.allow_udp || []).length ? root.fw.allow_udp.join("  ") : "none"
+                                            note: root.fw && root.fw.udp_strict ? "Other UDP only gets in as a reply to something this machine sent." : "UDP to high ports is let in as replies (udp_strict is off)."
+                                        }
+                                        FwCard {
+                                            pal: root.pal
+                                            title: "Narrower rules"
+                                            mono: root.fw !== null && (root.fw.rules || []).length > 0
+                                            value: root.fw && (root.fw.rules || []).length ? root.fw.rules.join("\n") : "none (e.g. ssh only from your LAN, or a limit against password guessing)"
+                                        }
+                                        FwCard { pal: root.pal; title: "Ping"; value: root.fw && root.fw.ping === false ? "ignored" : "answered" }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 10
+                                            Rectangle {
+                                                Layout.fillWidth: true
+                                                implicitHeight: 40
+                                                radius: 20
+                                                color: root.pal.fill
+                                                border.width: fwPort.activeFocus ? 1 : 0
+                                                border.color: root.pal.lineFocus
+                                                TextInput {
+                                                    id: fwPort
+                                                    anchors { fill: parent; leftMargin: 20; rightMargin: 20 }
+                                                    verticalAlignment: TextInput.AlignVCenter
+                                                    color: root.pal.text
+                                                    font.family: root.pal.uiFont
+                                                    font.pixelSize: root.pal.tBody
+                                                    selectByMouse: true
+                                                    clip: true
+                                                    function go() {
+                                                        var m = text.trim().match(/^(tcp|udp)\s+(\d{1,5}(-\d{1,5})?)$/i)
+                                                        if (m) { root.sudoThen("open " + m[1].toLowerCase() + " " + m[2]); text = "" }
+                                                    }
+                                                    onAccepted: go()
+                                                    Text { anchors.verticalCenter: parent.verticalCenter; visible: fwPort.text === ""; text: "tcp 22  or  udp 51820  or  tcp 1714-1764"; color: root.pal.muted; font: fwPort.font }
+                                                }
+                                            }
+                                            Btn { label: "Open port"; onClicked: fwPort.go() }
+                                        }
+                                    }
+                                }
+
+                                // ---- Feeds: the lists of known-bad networks it loads
+                                Flickable {
+                                    id: fwFeedsFl
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    visible: root.fwSub === "feeds"
+                                    clip: true
+                                    contentWidth: width
+                                    contentHeight: fwFeedsCol.implicitHeight
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ColumnLayout {
+                                        id: fwFeedsCol
+                                        width: fwFeedsFl.width
+                                        spacing: 8
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 12
+                                            Small { Layout.fillWidth: true; wrapMode: Text.WordWrap; elide: Text.ElideNone; text: "Public lists of networks known for attacks, spam and hijacking. Everything from them is dropped before it reaches anything else. Private and LAN ranges are always taken out of the lists. Pick lists in the config ([feeds])." }
+                                            Btn { label: "Refresh now"; glyph: 0xF0450; onClicked: root.sudoThen("feeds --refresh") }
+                                        }
+                                        Repeater {
+                                            model: root.fw ? (root.fw.feeds || []) : []
+                                            delegate: Rectangle {
+                                                id: fdRow
+                                                required property var modelData
+                                                Layout.fillWidth: true
+                                                implicitHeight: 56
+                                                radius: root.pal.rMd
+                                                color: root.pal.fill
+                                                RowLayout {
+                                                    anchors { fill: parent; leftMargin: 18; rightMargin: 18 }
+                                                    spacing: 14
+                                                    Column {
+                                                        Layout.fillWidth: true
+                                                        spacing: 2
+                                                        Text { text: fdRow.modelData.name; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium }
+                                                        Text {
+                                                            text: fdRow.modelData.updated_unix ? "updated " + root.ago(fdRow.modelData.updated_unix) + " ago" : "not downloaded yet"
+                                                            color: fdRow.modelData.error ? root.pal.warn : root.pal.muted
+                                                            font.family: root.pal.uiFont
+                                                            font.pixelSize: root.pal.tCap
+                                                        }
+                                                    }
+                                                    Text { text: root.count(fdRow.modelData.entries) + " networks"; color: root.pal.accent2; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody }
+                                                }
+                                            }
+                                        }
+                                        Small { visible: !root.fw || (root.fw.feeds || []).length === 0; text: "No lists turned on." }
+                                    }
+                                }
+
+                                // ---- History: what the firewall did
+                                ListView {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    visible: root.fwSub === "history"
+                                    clip: true
+                                    spacing: 4
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    model: root.fwSub === "history" ? root.fwLog : []
+                                    delegate: RowLayout {
+                                        id: fhRow
+                                        required property var modelData
+                                        width: ListView.view.width
+                                        spacing: 12
+                                        Text { text: root.ago(fhRow.modelData.at_unix) + " ago"; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; Layout.preferredWidth: 80 }
+                                        Rectangle {
+                                            implicitWidth: fhKind.implicitWidth + 16; implicitHeight: 20; radius: 10
+                                            readonly property color kc: fhRow.modelData.kind === "ban" ? root.pal.bad : fhRow.modelData.kind === "profile" ? root.pal.accent : fhRow.modelData.kind === "feeds" ? root.pal.accent2 : root.pal.good
+                                            color: Qt.alpha(kc, 0.15)
+                                            Text { id: fhKind; anchors.centerIn: parent; text: fhRow.modelData.kind; color: parent.kc; font.family: root.pal.uiFont; font.pixelSize: 10 }
+                                        }
+                                        Text { text: fhRow.modelData.ip || ""; color: root.pal.text; font.family: root.pal.mono; font.pixelSize: root.pal.tCap; Layout.preferredWidth: 180; elide: Text.ElideRight }
+                                        Text { text: fhRow.modelData.detail || ""; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; Layout.fillWidth: true; elide: Text.ElideRight }
+                                    }
+                                }
+                                Small { visible: root.fwSub === "history" && root.fwLog.length === 0; text: "Nothing yet." }
+
+                                // ---- Doctor: what is wrong with the setup, each with a fix button
+                                Flickable {
+                                    id: fwDocFl
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    visible: root.fwSub === "doctor"
+                                    clip: true
+                                    contentWidth: width
+                                    contentHeight: fwDocCol.implicitHeight
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ColumnLayout {
+                                        id: fwDocCol
+                                        width: fwDocFl.width
+                                        spacing: 8
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 8
+                                            Small { Layout.fillWidth: true; text: fwDoctorProc.running ? "Checking…" : "Checks the daemon, the interface, the config and your network setup." }
+                                            Btn { label: "Check again"; glyph: 0xF0450; disabled: fwDoctorProc.running; onClicked: if (!fwDoctorProc.running) fwDoctorProc.running = true }
+                                            Btn { label: "Full check (admin)"; glyph: 0xF04D9; onClicked: root.sudoThen("doctor --fix") }
+                                        }
+                                        Repeater {
+                                            model: root.fwFindings.filter(function (f) { return f.severity === "warn" || f.severity === "fail" })
+                                            delegate: Rectangle {
+                                                id: fdf
+                                                required property var modelData
+                                                Layout.fillWidth: true
+                                                implicitHeight: fdfCol.implicitHeight + 20
+                                                radius: root.pal.rMd
+                                                color: Qt.alpha(fdf.modelData.severity === "fail" ? root.pal.bad : root.pal.warn, 0.10)
+                                                RowLayout {
+                                                    anchors { fill: parent; leftMargin: 16; rightMargin: 10 }
+                                                    spacing: 12
+                                                    Column {
+                                                        id: fdfCol
+                                                        Layout.fillWidth: true
+                                                        spacing: 2
+                                                        Text { text: fdf.modelData.title; color: root.pal.text; font.family: root.pal.uiFont; font.pixelSize: root.pal.tBody; font.weight: Font.Medium; width: parent.width; elide: Text.ElideRight }
+                                                        Text { text: fdf.modelData.detail || ""; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap; width: parent.width; wrapMode: Text.WordWrap }
+                                                    }
+                                                    Btn { visible: !!fdf.modelData.fix; label: "Fix"; onClicked: root.sudoThen("fix " + fdf.modelData.fix) }
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            visible: root.fwDoctorRan && root.fwFindings.filter(function (f) { return f.severity === "warn" || f.severity === "fail" }).length === 0
+                                            text: "The doctor found nothing wrong" + (root.fwFindings.some(function (f) { return f.title === "Partial check" }) ? " (the admin check also looks at firewall rules and bans)." : ".")
+                                            color: root.pal.good
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tBody
+                                        }
+                                    }
+                                }
                             }
 
                             // ---- antivirus
@@ -2265,7 +2632,7 @@ Scope {
                                     tone: root.avColor
                                     detail: root.av === null ? "" : [root.av.mode || "-", "v" + root.av.version,
                                         root.av.last_event_unix ? "last event " + root.ago(root.av.last_event_unix) + " ago" : ""].filter(function (x) { return x !== "" }).join("  ·  ")
-                                    CalmIconBtn { pal: root.pal; glyph: 0xF018D; tip: "Open the log"; onClicked: root.consoleRequested("ai-antivirus tail -f") }
+                                    CalmIconBtn { pal: root.pal; glyph: 0xF018D; primary: root.logOpen; tip: root.logOpen ? "Close the log" : "Open the log"; onClicked: root.logToggle() }
                                     CalmIconBtn {
                                         pal: root.pal
                                         readonly property bool aiOn: !!(root.av && root.av.services && root.av.services.analyzer === "active")
@@ -2276,6 +2643,7 @@ Scope {
                                     }
                                     CalmIconBtn { pal: root.pal; glyph: 0xF02DC; tip: "Scan home"; enabledBtn: !root.scanning; onClicked: root.scan(".") }
                                     CalmIconBtn { pal: root.pal; glyph: 0xF1276; primary: true; tip: "Scan downloads"; enabledBtn: !root.scanning; onClicked: root.scan("Downloads") }
+                                    CalmIconBtn { visible: root.avPerm !== "" && root.avPerm !== "nogroup"; pal: root.pal; glyph: root.avFullAccess ? 0xF033F : 0xF033E; primary: root.avFullAccess; tip: root.avFullAccess ? "Full access is on: no password for alerts (click to turn off)" : "Full access is off: asks for the password (click to turn on)"; onClicked: root.avSetFullAccess(!root.avFullAccess) }
                                     CalmIconBtn { visible: root.pwKnown; pal: root.pal; glyph: 0xF033E; tip: "Forget the remembered password"; onClicked: { root.pwForget(); root.flash("Password forgotten. It is asked again next time.", false) } }
                                 }
 
@@ -2853,7 +3221,7 @@ Scope {
                                             mark: root.pal.warn
                                             actGlyph: root.runnable(modelData.cmd) ? 0xF018D : 0
                                             actTone: root.pal.accent
-                                            onAct: root.consoleRequested(modelData.cmd)
+                                            onAct: { if (/^sudo\s+[^-\s]/.test(modelData.cmd)) root.rootRun(modelData.cmd.replace(/^sudo\s+/, ""), modelData.title, modelData.cmd, "Run it"); else root.consoleRequested(modelData.cmd) }
                                         }
                                     }
                                     Empty {
@@ -3705,6 +4073,91 @@ Scope {
                                 onClicked: { root.decideClose(); root.ovGo("alerts") }
                             }
                             Btn { label: root.decidePickItem !== null ? "Not now" : "Done"; onClicked: root.decideClose() }
+                        }
+                    }
+                }
+
+                // ---- the antivirus log: pops out beside the window like the AI's card (the two never show together), or lies over its
+                // right side when there is no room beside it. Live: it follows `ai-antivirus tail -f` while it is open.
+                Item {
+                    id: logSide
+                    visible: false
+                    width: 0; height: 0
+                    readonly property real cardW: 420
+                    readonly property real gap: 8
+                    readonly property bool beside: !win.desktop && qp.width >= 820 + cardW + gap + 48
+                    readonly property real shiftBy: beside ? (cardW + gap) / 2 : 0
+                    property real prog: (root.logOpen && beside) ? 1 : 0
+                    Behavior on prog { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                }
+                ClippingRectangle {
+                    id: logCard
+                    z: 5
+                    property real shown: root.logOpen ? 1 : 0
+                    Behavior on shown { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                    visible: shown > 0.01
+                    opacity: shown * qp.reveal
+                    x: logSide.beside ? panel.x + panel.width + logSide.gap : panel.x + panel.width - width - 18
+                    y: logSide.beside ? panel.y : panel.y + 96
+                    width: logSide.cardW
+                    height: logSide.beside ? panel.height : Math.max(240, panel.height - 96 - 18)
+                    radius: root.pal.rLg
+                    color: Qt.alpha(root.pal.surface, 1)
+                    border.width: root.pal.bw
+                    border.color: root.pal.line
+                    transform: Translate { x: (logSide.beside ? -1 : 1) * (1 - logCard.shown) * 36 }
+                    MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
+
+                    RowLayout {
+                        id: logHead
+                        anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 18; rightMargin: 12; topMargin: 14 }
+                        height: 40
+                        spacing: 8
+                        Glyph { code: 0xF018D; font.pixelSize: 18; color: root.pal.accent }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Antivirus log" + (root.logPaused ? "  ·  paused" : "")
+                            color: root.pal.text
+                            font.family: root.pal.uiFont
+                            font.pixelSize: root.pal.tBody + 1
+                            font.weight: Font.Medium
+                            elide: Text.ElideRight
+                        }
+                        CalmIconBtn { pal: root.pal; glyph: root.logPaused ? 0xF040A : 0xF03E4; tip: root.logPaused ? "Resume" : "Pause"; onClicked: root.logPaused = !root.logPaused }
+                        CalmIconBtn { pal: root.pal; glyph: 0xF01B4; tip: "Clear"; onClicked: root.logClear() }
+                        CalmIconBtn { pal: root.pal; glyph: 0xF0156; tip: "Close the log"; onClicked: root.logOpen = false }
+                    }
+                    Rectangle { anchors { left: parent.left; right: parent.right; top: logHead.bottom; topMargin: 8; leftMargin: 18; rightMargin: 18 } height: 1; color: root.pal.line; opacity: 0.6 }
+                    ListView {
+                        id: logList
+                        anchors { left: parent.left; right: parent.right; top: logHead.bottom; bottom: parent.bottom; topMargin: 14; leftMargin: 18; rightMargin: 14; bottomMargin: 14 }
+                        clip: true
+                        spacing: 4
+                        model: logModel
+                        cacheBuffer: 240
+                        reuseItems: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        property bool follow: true
+                        onMovementEnded: follow = atYEnd
+                        onCountChanged: if (follow) Qt.callLater(function () { logList.positionViewAtEnd() })
+                        delegate: Text {
+                            required property string t
+                            required property string c
+                            width: ListView.view.width
+                            text: t
+                            wrapMode: Text.WrapAnywhere
+                            textFormat: Text.PlainText
+                            color: c === "bad" ? root.pal.bad : (c === "warn" ? root.pal.warn : root.pal.text)
+                            font.family: root.pal.mono
+                            font.pixelSize: root.pal.tBody - 1
+                        }
+                        Text {
+                            anchors.centerIn: parent
+                            visible: logList.count === 0
+                            text: root.logPaused ? "Paused" : "Waiting for events…"
+                            color: root.pal.muted
+                            font.family: root.pal.uiFont
+                            font.pixelSize: root.pal.tBody
                         }
                     }
                 }

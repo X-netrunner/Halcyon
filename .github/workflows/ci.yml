@@ -91,6 +91,10 @@ jobs:
         run: python3 tests/test_ai_eval.py
       - name: master AI switch covers the chatbox (every provider), Study Center, antivirus analyzer and Ask boxes
         run: python3 tests/test_ai_master.py
+      - name: no-mercy memory freeing (keep-alive of every AI script), the Security center log and the merged Firewall page
+        run: python3 tests/test_mem_ruthless.py
+      - name: AI Antivirus analyzer watcher (stops an analyzer it did not start, unloads its model, an alert starts it; all stubbed)
+        run: bash tests/av-ai-watch.test.sh
       - name: Luna window sessions (fake `luna --stdio`; sessions saved, resumed, deleted; gaming mode and a missing Luna stop it)
         run: python3 tests/test_luna_bridge.py
       - name: Luna's Halcyon tools (tiers enforced, arguments validated, the admin password never on a command line; every program stubbed)

@@ -18,13 +18,23 @@ case "$AV_AI_IDLE" in ''|*[!0-9]*) AV_AI_IDLE=99 ;; esac
 alert_mode() { [ "$AV_AI_IDLE" -eq 99 ]; }
 tune=/usr/local/bin/halcyon-tune
 unit=ai-antivirus-analyzer.service
-ai_off() { [ -e "$state/ai-off" ]; }      # the master AI switch is off: no model is asked anything, the antivirus analyzer included
+ai_off() { [ -e "$state/ai-off" ]; }
+# The analyzer's model (Settings > Security > AI Antivirus comments uses the one in ai-antivirus.toml [ai]) stays in Ollama's memory for
+# Ollama's own keep-alive after the unit stops (5 minutes by default, 2 to 3 GB). Stopping the unit now also lets the model go at once.
+unload_model() {
+  local m h
+  m=$(awk '/^\[/{s=$0} s=="[ai]" && $1=="model" {sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]*#.*$/, ""); gsub(/[\x27"]/, ""); print; exit}' /etc/ai-antivirus/ai-antivirus.toml 2>/dev/null | tr -cd 'A-Za-z0-9._:/-')
+  [ -n "$m" ] || return 0
+  h="${OLLAMA_HOST:-127.0.0.1:11434}"; case "$h" in http*) ;; *) h="http://$h" ;; esac
+  command -v curl >/dev/null 2>&1 || return 0
+  ( timeout 6 curl -fsS "$h/api/generate" -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null 2>&1 & ) 2>/dev/null
+}      # the master AI switch is off: no model is asked anything, the antivirus analyzer included
 
 case "${1:-status}" in
   idle)   if ai_off; then sudo -n "$tune" av-ai pause >/dev/null 2>&1; else sudo -n "$tune" av-ai resume >/dev/null 2>&1; fi ;;
   run)    ai_off || sudo -n "$tune" av-ai resume >/dev/null 2>&1 ;;
-  stop)   sudo -n "$tune" av-ai pause >/dev/null 2>&1 ;;
-  master) if [ "${2:-}" = off ]; then sudo -n "$tune" av-ai pause >/dev/null 2>&1
+  stop)   sudo -n "$tune" av-ai pause >/dev/null 2>&1; unload_model ;;
+  master) if [ "${2:-}" = off ]; then sudo -n "$tune" av-ai pause >/dev/null 2>&1; unload_model
           elif [ "$AV_AI_IDLE" -gt 0 ]; then :                       # back on: it waits for the next idle period like before
           else sudo -n "$tune" av-ai resume >/dev/null 2>&1; fi ;;
   active) if ai_off; then sudo -n "$tune" av-ai pause >/dev/null 2>&1; elif alert_mode; then :      # a run started by an alert is not cut short by a key press

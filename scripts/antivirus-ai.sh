@@ -43,7 +43,13 @@ if [ "$want" = on ]; then
   echo "AI review of alerts: on (model $m). Your admin password is needed."
   sudo -v || { echo "Not changed." >&2; exit 1; }
   set_enabled true
-  if av_runs; then sudo systemctl enable --now "$UNIT" || { echo "The analyzer did not start: journalctl -u ai-antivirus-analyzer" >&2; exit 1; }
+  if av_runs; then
+    sudo systemctl enable "$UNIT" || { echo "The analyzer could not be enabled: journalctl -u ai-antivirus-analyzer" >&2; exit 1; }
+    # "On alert" (the default) and the idle modes start the analyzer only when there is something to comment on (scripts/av-ai-watch.sh,
+    # scripts/av-ai-idle.sh); only "Always" starts it now and leaves it running, the model in memory.
+    idle=99; [ -f "$HOME/.local/state/island/idle.env" ] && idle=$(sed -n 's/^AV_AI_IDLE=\([0-9]*\)$/\1/p' "$HOME/.local/state/island/idle.env" | tail -1)
+    if [ "${idle:-99}" = 0 ]; then sudo systemctl start "$UNIT" || { echo "The analyzer did not start: journalctl -u ai-antivirus-analyzer" >&2; exit 1; }
+    else sudo systemctl stop "$UNIT" 2>/dev/null || true; echo "The analyzer wakes up when an alert arrives and sleeps again afterwards (Settings > Security > AI Antivirus comments)."; fi
   else echo "ai-antivirus is not the running antivirus right now; the analyzer starts with it."; fi
 else
   echo "AI review of alerts: off. Your admin password is needed."

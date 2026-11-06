@@ -234,7 +234,7 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0565); label: "Firewall Center"; onClicked: Quickshell.execDetached(["quickshell", "-p", Quickshell.shellDir, "ipc", "call", "island", "firewallcenter"]) }
+            ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0565); label: "Security center"; onClicked: Quickshell.execDetached(["quickshell", "-p", Quickshell.shellDir, "ipc", "call", "island", "firewallcenter"]) }
             ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0128); label: "Dashboard"; onClicked: root.inTerminal("sudo ai-firewall top") }
             ActionChip { pal: root.pal; glyph: String.fromCodePoint(0xF0B79); label: "Ask"; onClicked: root.inTerminal("sudo ai-firewall top --ask") }
             ActionChip {

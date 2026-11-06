@@ -11,6 +11,7 @@ Rectangle {
     property bool hasPower: false
     property bool powered: true
     property bool scanning: false
+    property bool loading: false            // the first answer has not come yet: show "Checking" instead of a guessed Off
     property string emptyText: "Nothing found"
     property string footer: ""              // last row, e.g. "Open network settings"
     property int maxHeight: 200
@@ -55,7 +56,7 @@ Rectangle {
             spacing: 8
             BoxTitle { pal: root.pal; size: root.pal.tBody; title: root.title }
             Row {
-                visible: root.scanning
+                visible: root.scanning || root.loading
                 spacing: 4
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -65,20 +66,20 @@ Rectangle {
                     font.pixelSize: 13
                     rotation: 0
                     NumberAnimation on rotation {
-                        running: root.scanning
+                        running: root.scanning || root.loading
                         from: 0; to: 360; duration: 1200; loops: Animation.Infinite
                     }
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Scanning"
+                    text: root.loading ? "Checking" : "Scanning"
                     color: root.pal.muted
                     font.family: root.pal.uiFont
                     font.pixelSize: 11
                 }
             }
             RoundBtn {
-                visible: root.hasPower && root.powered
+                visible: root.hasPower && root.powered && !root.loading
                 pal: root.pal
                 size: 26
                 glyph: String.fromCodePoint(0xF0450)
@@ -88,9 +89,10 @@ Rectangle {
                 visible: root.hasPower
                 pal: root.pal
                 implicitHeight: 26
-                label: root.powered ? "On" : "Off"
-                on: root.powered
-                onClicked: root.powerToggled()
+                label: root.loading ? "..." : (root.powered ? "On" : "Off")
+                on: root.powered && !root.loading
+                opacity: root.loading ? 0.5 : 1
+                onClicked: if (!root.loading) root.powerToggled()
             }
         }
 
@@ -216,12 +218,12 @@ Rectangle {
         }
 
         Text {
-            visible: root.realCount === 0
+            visible: root.realCount === 0 || root.loading
             Layout.fillWidth: true
             Layout.topMargin: 4
             Layout.bottomMargin: 4
             horizontalAlignment: Text.AlignHCenter
-            text: root.powered || !root.hasPower ? root.emptyText : "Turned off"
+            text: root.loading ? "Checking..." : (root.powered || !root.hasPower ? root.emptyText : "Turned off")
             color: root.pal.muted
             font.family: root.pal.uiFont
             font.pixelSize: 12

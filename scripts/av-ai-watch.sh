@@ -10,6 +10,8 @@ set -u
 state="$HOME/.local/state/island"; envf="$state/idle.env"
 here="$(dirname "$(readlink -f "$0")")"
 POLL=20; HOLD=240; MAXLOAD=70; MINBAT=25
+unit=ai-antivirus-analyzer.service
+ruthless() { grep -q '"memRuthless" *: *true' "$state/settings.json" 2>/dev/null; }   # Settings > Performance > No-mercy memory freeing
 mkdir -p "$state"
 exec 9>"$state/av-ai-watch.lock"; flock -n 9 || exit 0
 
@@ -38,6 +40,8 @@ low_battery() {
 
 last_a=-1; last_u=-1; pending=0; last_alert=0; running=0
 while :; do
+  # HALCYON_AV_POLL / HALCYON_AV_HOLD only exist so the test does not have to wait minutes
+  if ruthless; then POLL=${HALCYON_AV_POLL:-10}; HOLD=${HALCYON_AV_HOLD:-30}; else POLL=${HALCYON_AV_POLL:-20}; HOLD=${HALCYON_AV_HOLD:-240}; fi
   if [ "$(mode)" != 99 ] || [ -e "$state/ai-off" ] || ! command -v ai-antivirus >/dev/null 2>&1; then
     sleep 60; last_a=-1; last_u=-1; pending=0; continue
   fi
@@ -50,6 +54,11 @@ while :; do
       pending=1; last_alert=$now
     fi
     last_a=$a; last_u=$u
+  fi
+  # An analyzer this script did not start (it is enabled and came up with the system, or "Turn on" in Settings just started it) is
+  # adopted: with no alert waiting it is stopped within a poll instead of running, and holding the model in memory, for good.
+  if [ "$running" = 0 ] && [ "$pending" = 0 ] && systemctl is-active --quiet "$unit" 2>/dev/null; then
+    running=1; last_alert=$((now - HOLD + POLL))
   fi
   if [ "$pending" = 1 ]; then
     if busy || low_battery; then :                     # not now: still pending, tried again at the next poll

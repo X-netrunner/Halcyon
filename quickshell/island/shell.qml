@@ -144,6 +144,8 @@ ShellRoot {
         resMode: "high",           // low | medium | high : the preset picked in Settings > Performance > Resource use (applyResMode below)
         autoLowBat: false,         // true = switch to the Low resource preset when the charger is unplugged, and back when it is plugged in again (batCheck below)
         preBatMode: "",            // the preset to go back to when the charger returns (set by batCheck; empty = nothing to restore)
+        batStrict: false,          // true = Strict battery mode: on battery Low preset + Battery saver profile + No-mercy memory + slow Update speed + music bars off + video wallpaper paused (batStrictCheck below)
+        batSaved: ({}),            // what Strict battery mode changed and the values to put back (empty = nothing applied)
         focusQuiet: true,          // true = while a Focus work phase runs, the music bars (cava) stop and a video wallpaper (gslapper) is frozen
         perf: "high",              // low | medium | high : how much the tree view and constellations animate (and how many stars the picture gets)
         fps: 0,                    // frame rate of the tree view and constellations: 0 = every frame of the screen, or 60 / 30 / 20 / 15
@@ -182,6 +184,7 @@ ShellRoot {
         starsSettings: true, starsNotifs: true, starsCheatsheet: true, starsCalendar: true, starsPower: true, starsLock: true, starsTerm: true, starsBar: false,   // starsBar = the moving stars (bar, island, bar builder, wallpaper picker); not tied to `stars`
         dialogStarStyle: "none",   // moving | constellations | both | none : dialog star style (none by default: quiet, clean boxes)
         lazyLoad: true,            // unload closed heavy dialog trees when hidden
+        memRuthless: false,        // No-mercy memory freeing: the local model goes 10 s after its last answer, the antivirus analyzer 30 s after its last alert, a closed dialog is freed at once and the idle trim runs every 20 s (Settings > Performance)
         boxShadow: true,           // the soft shadow around every Glass box (Settings > Look; Glass.qml)
         consoleMode: "terminal",   // terminal | chat : what the console corner opens (Desktop builder > Console). Old "luna" / consoleLuna settings count as chat: Luna is a provider in the chatbox now
         windowMode: "overlay",     // overlay | desktop : centres float above everything, or open as ordinary windows on the workspace (Host.qml)
@@ -256,6 +259,7 @@ ShellRoot {
         case "wsSwipe4": writeFlag("ws-swipe4", v); break
         case "connErrOnly": writeFlag("conn-errors-only", v ? "1" : "0"); break
         case "bgRefresh": syncRefresh(); break
+        case "batStrict": batCheck(); break
         case "viz": vizHold = true; vizHoldT.restart(); break
         case "termMode": writeFlag("term-mode", v); termRun.restart(); break
         case "termDrift": termRun.restart(); break
@@ -333,8 +337,36 @@ ShellRoot {
     // it in puts the preset you had back, but only if you did not pick another one in between. preBatMode is saved, so a restart
     // while on battery still knows where to return to.
     readonly property bool onBattery: stats.hasBat === true && stats.ac !== true && stats.charging !== true
+    // Settings > Battery & memory > "Strict battery mode": on battery (charger unplugged) a fixed set of rules is enforced, and the values
+    // you had are put back when the charger returns. Each one only if you did not change it yourself meanwhile. batSaved is saved, so a
+    // restart while on battery still knows what to put back. While it is on it replaces "Low preset on battery".
+    readonly property bool batQuiet: opt.batStrict === true && onBattery && statsSeen
+    function batStrictCheck() {
+        var s = opt.batSaved || {}
+        var want = opt.batStrict === true && onBattery
+        if (want && s.on !== true) {
+            var saved = { on: true, resMode: opt.resMode || "high", memRuthless: opt.memRuthless === true, bgRefresh: opt.bgRefresh || "normal",
+                          viz: opt.viz || "full", power: false, autoPower: autoPower, profile: profile }
+            if (opt.resMode !== "low") applyResMode("low")
+            if (opt.memRuthless !== true) setOpt("memRuthless", true)
+            if ((opt.bgRefresh || "normal") !== "slow") setOpt("bgRefresh", "slow")
+            if (opt.viz !== "off") setOpt("viz", "off")
+            if (autoPower || profile !== "power-saver") { saved.power = true; setProfile("power-saver") }
+            setOpt("batSaved", saved)
+        } else if (!want && s.on === true) {
+            var vizNow = opt.viz
+            if (opt.resMode === "low" && s.resMode && s.resMode !== "low") applyResMode(s.resMode)      // the preset also rewrites viz, so it is set again below
+            if (opt.memRuthless === true && s.memRuthless !== true) setOpt("memRuthless", false)
+            if (opt.bgRefresh === "slow" && s.bgRefresh !== "slow") setOpt("bgRefresh", s.bgRefresh || "normal")
+            setOpt("viz", vizNow === "off" ? (s.viz || "full") : vizNow)
+            if (s.power === true && !autoPower && profile === "power-saver") { if (s.autoPower) setAuto(); else setProfile(s.profile || "balanced") }
+            setOpt("batSaved", ({}))
+        }
+    }
     function batCheck() {
-        if (!opt.autoLowBat || !statsSeen) return
+        if (!statsSeen) return
+        if (opt.batStrict === true || (opt.batSaved && opt.batSaved.on === true)) { batStrictCheck(); return }
+        if (!opt.autoLowBat) return
         if (onBattery) {
             if (opt.resMode !== "low") { var prev = opt.resMode; applyResMode("low"); setOpt("preBatMode", prev) }
         } else if (opt.preBatMode) {
@@ -903,7 +935,7 @@ ShellRoot {
     Lock {
         id: lockScreen
         pal: pal
-        // one switch for the lock screen AND the login screen (Settings > Lock screen, or the Lock screen builder): not tied to the
+        // one switch for the lock screen AND the login screen (Settings > Lock screen, or the Desktop builder's Lock screen side): not tied to the
         // "Constellations in the boxes" master switch, so turning it on here always shows them on both screens
         stars: root.opt.starsLock !== false
         flyCount: root.boxStarCount
@@ -1354,15 +1386,6 @@ ShellRoot {
 
     // >study: your PDFs, slides and notes, with questions answered from them, summaries, quizzes and flashcards (StudyCenter.qml,
     // scripts/halcyon-study.py)
-    // Firewall Center (>firewall): ai-firewall's status, bans, rules, feeds, history and its assistant (FwCenter.qml)
-    FwCenter {
-        id: fwCenter
-        pal: pal
-        aiOn: !root.aiOff
-        consoleOpen: quickTerm.open && (quickTerm.focused || quickTerm.pinned)
-        onConsoleRequested: cmd => quickTerm.run(cmd)
-    }
-
     StudyCenter {
         id: studyCenter
         pal: pal
@@ -1463,12 +1486,12 @@ ShellRoot {
     onAnyOverlayChanged: {
         if (anyOverlay) {
             notifRaiseT.restart()
-        } else if (root.opt && root.opt.lazyLoad !== false) {
+        } else if (root.opt && (root.opt.lazyLoad !== false || root.opt.memRuthless === true)) {
             trimGc.restart()
         }
     }
-    Timer { id: trimGc; interval: 1000; onTriggered: gc() }
-    Timer { interval: 90000; repeat: true; running: !root.anyOverlay; onTriggered: gc() }
+    Timer { id: trimGc; interval: (root.opt && root.opt.memRuthless === true) ? 200 : 1000; onTriggered: gc() }
+    Timer { interval: (root.opt && root.opt.memRuthless === true) ? 20000 : 90000; repeat: true; running: !root.anyOverlay; onTriggered: gc() }
     Connections {
         target: notifs
         function onToastsChanged() {
@@ -2137,7 +2160,8 @@ ShellRoot {
     // Focus work phase (not a Pomodoro break, not paused) with "Quiet visuals during Focus" on: the visualizer feeds and a video wallpaper rest
     readonly property bool focusQuiet: opt.focusQuiet === true && focusState.on === true && focusState.paused !== true && focusState.phase !== "break"
     Process { id: fxPause; property string sig: "-CONT"; command: ["pkill", sig, "-x", "gslapper"] }
-    onFocusQuietChanged: { fxPause.sig = focusQuiet ? "-STOP" : "-CONT"; fxPause.running = true }
+    readonly property bool fxQuiet: focusQuiet || batQuiet          // Focus work phase, or Strict battery mode on battery: a video wallpaper rests
+    onFxQuietChanged: { fxPause.sig = fxQuiet ? "-STOP" : "-CONT"; fxPause.running = true }
     readonly property string focusText: {
         var s = focusLeft, m = Math.floor(s / 60), r = s % 60
         return (m < 10 ? "0" : "") + m + ":" + (r < 10 ? "0" : "") + r
@@ -2316,7 +2340,7 @@ ShellRoot {
             return
         }
         switch (id) {
-        case "firewall": if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); fwCenter.toggle(); break
+        case "firewall": if (studyCenter.open && !studyCenter.asWindow) studyCenter.hide(); if (gameCenter.open && !gameCenter.asWindow) gameCenter.hide(); securityCenter.toggleTo("firewall"); break      // the Firewall Center is the Security center's Firewall page now
         case "firewall-page": Qt.callLater(() => { root.page = "fw" }); return      // after the launcher's own close (which sets home)
         case "firewall-dashboard": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/apps.sh", "term-exec", "bash", "-c", "sudo ai-firewall top"]); break
         case "wallpaper": randomWallpaper(); break
@@ -2326,7 +2350,6 @@ ShellRoot {
         case "barbuilder": settingsWin.toggleBuilder(); break
         case "notifbuilder": settingsWin.toggleNotifBuilder(); break
         case "desktopbuilder": settingsWin.toggleDesktopBuilder("desktop"); break
-        case "lockdesktopbuilder": settingsWin.toggleDesktopBuilder("lock"); break
         case "widgetbuilder": settingsWin.openWidgetBuilder("", "desktop"); break
         case "lockwidgetbuilder": settingsWin.openWidgetBuilder("", "lock"); break
         case "desktopedit": deskEditTarget = "desktop"; deskEditing = !deskEditing; break
@@ -2878,7 +2901,12 @@ ShellRoot {
             if (n === "fullscreen" || n === "workspacev2" || (n === "closewindow" && root.fsQuiet)) fsT.restart()
         }
     }
-    Timer { id: fsT; interval: 250; onTriggered: if (!fsProc.running) fsProc.running = true }
+    // An event that arrives while a check is already running used to be dropped, so a "left fullscreen" that came in mid-check left fsQuiet
+    // stuck on and the desktop widgets (and the edge boxes) stayed hidden until the next window event. Now it is remembered (fsDirty) and
+    // the check runs again when the running one ends; while fsQuiet is on it also re-checks every 10 s, so it can never stay stuck.
+    property bool fsDirty: false
+    Timer { id: fsT; interval: 250; onTriggered: { if (fsProc.running) root.fsDirty = true; else fsProc.running = true } }
+    Timer { interval: 10000; repeat: true; running: root.fsQuiet; onTriggered: fsT.restart() }
     Process {
         id: fsProc
         command: ["hyprctl", "-j", "activewindow"]
@@ -2887,6 +2915,7 @@ ShellRoot {
                 var q = false
                 try { var d = JSON.parse(text); q = (d.fullscreen === true || d.fullscreen === 2 || d.fullscreen === 3) } catch (e) {}
                 root.fsQuiet = q
+                if (root.fsDirty) { root.fsDirty = false; fsT.restart() }
             }
         }
     }
@@ -3060,7 +3089,7 @@ ShellRoot {
         function media(): void { root.page = "media" }
         function perf(): void { root.page = "perf" }
         function firewall(): void { root.page = root.page === "fw" ? "home" : "fw" }      // ai-firewall status page (FwPage.qml)
-        function firewallcenter(): void { root.runCommand("firewall") }                   // the Firewall Center window (FwCenter.qml)
+        function firewallcenter(): void { root.runCommand("firewall") }                   // the Security center, on its Firewall page (the separate Firewall Center is gone)
         function panel(): void { if (!root.dropShow("util")) corner.pinFor(6000) }
         function autohide(): void { root.setAutoHide(!root.autoHide) }
         function barstyle(): void { root.runCommand("barstyle") }
@@ -3098,7 +3127,6 @@ ShellRoot {
         function barbuilder(): void { settingsWin.toggleBuilder() }
         function notifbuilder(): void { settingsWin.toggleNotifBuilder() }
         function desktopbuilder(): void { settingsWin.toggleDesktopBuilder("desktop") }
-        function lockdesktopbuilder(): void { settingsWin.toggleDesktopBuilder("lock") }
         function widgetbuilder(): void { settingsWin.openWidgetBuilder("", "desktop") }
         function lockwidgetbuilder(): void { settingsWin.openWidgetBuilder("", "lock") }
         function desktopedit(): void { root.deskEditTarget = "desktop"; root.deskEditing = !root.deskEditing }
