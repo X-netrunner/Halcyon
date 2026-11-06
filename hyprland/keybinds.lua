@@ -136,8 +136,8 @@ hl.bind("XF86AudioStop", hl.dsp.exec_cmd("playerctl stop"))
 bind("shot", "Print", hl.dsp.exec_cmd("mkdir -p ~/Pictures/Screenshots && grim ~/Pictures/Screenshots/$(date +%s).png"))
 bind("shotplain", "SUPER + SHIFT + Print", hl.dsp.exec_cmd("mkdir -p ~/Pictures/Screenshots && g=$(slurp) && [ -n \"$g\" ] && grim -g \"$g\" ~/Pictures/Screenshots/$(date +%s).png"))
 
-bind("shotarea", "SUPER + SHIFT + S", hl.dsp.exec_cmd(ipc .. "capture"))     -- the four-icon capture menu (screenshot a region / window / screen, or record a region); the old instant region drag is `halcyon screenshot-area`. Super + S alone is the scratch workspace and nothing else
-bind("shotpanel", "SUPER + CTRL + S", hl.dsp.exec_cmd(ipc .. "screenshot"))   -- the screenshot panel: Region / Window / Full screen, then Copy / Save / Both
+bind("shotpanel", "SUPER + SHIFT + S", hl.dsp.exec_cmd("python3 " .. home .. "/.config/Halcyon/scripts/halcyon-shot.py panel"))   -- the screenshot menu: Region / Window / Full screen, then Copy / Save / Both / Text. The screen FREEZES first (wayfreeze), so a menu or tooltip that closes when the pointer moves is still in the picture; Esc lets it go
+bind("recmenu", "SUPER + SHIFT + R", hl.dsp.exec_cmd(ipc .. "capture"))        -- the recording menu: Region / Window / Screen / Audio only, and the sound (Super + Alt + R still starts / stops at once)
 
 -- Clipboard
 -- the island's clipboard panel (search, pins, pictures, AI); if the island is not running, the plain fuzzel list as before

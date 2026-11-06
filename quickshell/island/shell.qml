@@ -44,7 +44,7 @@ ShellRoot {
     // idle: lock the screen after N minutes, sleep after N minutes (0 = never). Settings > Sleep & lock, applied by scripts/idle.sh
     property int idleLock: 5
     property int idleSleep: 30
-    property int avIdle: 5                 // minutes the computer must sit idle before the AI Antivirus analyzer (local model) works; 0 = it always runs
+    property int avIdle: 99                 // minutes the computer must sit idle before the AI Antivirus analyzer (local model) works; 0 = it always runs
     property int idleDim: 3                // minutes until the screen dims to its minimum and the keyboard light goes off (0 = never)
     property bool idleTouched: false
     property bool osdOn: true              // the volume / brightness bar that slides in on every change
@@ -1404,7 +1404,7 @@ ShellRoot {
         pal: pal
     }
 
-    // SUPER + CTRL + S, >screenshot: Region / Window / Full screen, then Copy, Save or Both (ShotMenu.qml, scripts/halcyon-shot.py)
+    // SUPER + SHIFT + S, >screenshot: Region / Window / Full screen, then Copy, Save or Both (ShotMenu.qml, scripts/halcyon-shot.py)
     ShotMenu {
         id: shotMenu
         pal: pal
@@ -1416,10 +1416,12 @@ ShellRoot {
         profileStars: root.profileStars
     }
 
-    // SUPER + SHIFT + S, >capture: four icons (region / window / screen / record a region), the quick door next to the panel above (CaptureMenu.qml)
+    // SUPER + SHIFT + R, >capture: the recording menu: Region / Window / Screen / Audio only, and the sound (CaptureMenu.qml). The screenshot menu above is SUPER + SHIFT + S
     CaptureMenu {
         id: captureMenu
         pal: pal
+        audio: root.opt.recAudio || "system"
+        onSetRec: (k, v) => root.setOpt(k, v)
     }
 
     // the red line and the REC pill while a recording runs (RecIndicator.qml)
@@ -2895,6 +2897,7 @@ ShellRoot {
     // the check: a closed window never leaves an empty desktop for a moment.
     property bool deskCovered: false
     property string coverFocus: ""          // the focused window's address at the last activewindowv2
+    property bool coverDirty: false         // an event came in after the running check started
     readonly property bool deskCoverWatch: (opt.deskStars === true || opt.deskLive === "on" || opt.deskLive === "sky" || opt.deskWidgetsOn !== false) && !gaming && !lockScreen.locked
     Connections {
         target: Hyprland
@@ -2907,11 +2910,12 @@ ShellRoot {
             if (n === "openwindow" || n === "closewindow" || n === "movewindowv2" || n === "changefloatingmode" || n === "fullscreen"
                 || n === "workspacev2" || n === "activespecial" || n === "activespecialv2" || n === "focusedmonv2" || n === "activewindowv2") {
                 if (n !== "openwindow" && n !== "activewindowv2") root.deskCovered = false
+                root.coverDirty = true          // a check that is running right now read the state from before this event: its answer is dropped
                 coverT.restart()
             }
         }
     }
-    Timer { id: coverT; interval: 300; onTriggered: if (!coverProc.running) coverProc.running = true }
+    Timer { id: coverT; interval: 300; onTriggered: { if (!coverProc.running) { root.coverDirty = false; coverProc.running = true } } }
     // the 5 s re-check is only for floating windows (dragging or resizing one sends no event); with none on screen it stops
     property bool coverFloating: true        // true until the first check: that check is what starts the watch
     Timer { interval: 5000; repeat: true; running: root.deskCoverWatch && root.coverFloating; triggeredOnStart: true; onTriggered: coverT.restart() }
@@ -2953,6 +2957,9 @@ ShellRoot {
                         cov = hit / tot >= 0.92
                     }
                 } catch (e) {}
+                // an event (workspace switch ...) arrived while this check ran: it describes the old workspace, so it must not hide the
+                // widgets of the new one (they showed for a moment and then vanished); check again instead
+                if (root.coverDirty) { coverT.restart(); return }
                 root.deskCovered = cov && root.deskCoverWatch
             }
         }
@@ -4304,7 +4311,7 @@ ShellRoot {
         running: !root.isRecording
         onTriggered: if (!recStatusProc.running) recStatusProc.running = true
     }
-    // A recording can start or stop anywhere: Super + Alt + R, the panel, Super + Shift + S, `halcyon record`. Watching the two pid files
+    // A recording can start or stop anywhere: Super + Alt + R, Super + Shift + R (the menu), the panel, `halcyon record`. Watching the two pid files
     // means the red line appears at once instead of on the next tick, and goes away when the recorder is gone.
     Timer { id: recFileT; interval: 150; onTriggered: if (!recStatusProc.running) recStatusProc.running = true }
     FileView {

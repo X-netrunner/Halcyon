@@ -37,7 +37,7 @@ write_conf() {
       echo "    on-resume = $HOME/.config/Halcyon/scripts/idle-dim.sh undim"; echo "}"
     fi
     # AI Antivirus analyzer (local model): paused while you work, runs once the computer has been idle this long (0 = always runs)
-    if [ "$avi" -gt 0 ]; then
+    if [ "$avi" -gt 0 ] && [ "$avi" -ne 99 ]; then
       echo; echo "listener {"; echo "    timeout = $((avi * 60))"
       echo "    on-timeout = $HOME/.config/Halcyon/scripts/av-ai-idle.sh idle"
       echo "    on-resume = $HOME/.config/Halcyon/scripts/av-ai-idle.sh active"; echo "}"

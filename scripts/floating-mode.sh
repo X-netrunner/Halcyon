@@ -3,7 +3,15 @@
 # Controlled via native helper `hal floating-mode` (src/hal).
 hal="$(dirname "$(readlink -f "$0")")/../bin/hal"; [ -x "$hal" ] || hal="$HOME/.config/Halcyon/bin/hal"
 if [ -x "$hal" ]; then
-  exec "$hal" floating-mode "$@"
+  "$hal" floating-mode "$@"; rc=$?
+  # No tiling counts as "not niri" for the 4-finger gestures (scripts/gesture-profile.sh): turn them over if that changed
+  # (toggle_layout.sh sets HALCYON_SKIP_PROFILE_SYNC: it syncs once itself, after general.lua is written)
+  if [ -z "${HALCYON_SKIP_PROFILE_SYNC:-}" ]; then
+    case "${1:-status}" in
+      on|off|toggle) "$(dirname "$(readlink -f "$0")")/gesture-profile.sh" sync >/dev/null 2>&1 ;;
+    esac
+  fi
+  exit $rc
 fi
 
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/island"

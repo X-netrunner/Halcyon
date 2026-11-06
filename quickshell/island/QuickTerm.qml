@@ -339,7 +339,7 @@ Scope {
             return
         }
         // setsid: its own process group, so Ctrl+C can stop everything it starts (the group id is written to pidFile)
-        runner.command = ["setsid", "-w", "bash", "-c", "echo $$ > \"$HALCYON_CONSOLE_PID\"; export PATH=\"$HOME/.config/Halcyon/scripts/console-bin:$HOME/.local/bin:$HOME/.config/Halcyon/bin:$PATH\"; exec 2>&1; " + p.cmd]
+        runner.command = ["setsid", "-w", "bash", "-c", "echo $$ > \"$HALCYON_CONSOLE_PID\"; cb=\"$HOME/.config/Halcyon/scripts/console-bin\"; [ -f \"$cb/sudo\" ] && [ ! -x \"$cb/sudo\" ] && chmod +x \"$cb/sudo\" 2>/dev/null; export PATH=\"$cb:$HOME/.local/bin:$HOME/.config/Halcyon/bin:$PATH\"; exec 2>&1; " + p.cmd]
         runner.environment = { HALCYON_SUDO_PROMPT: pwMarker, HALCYON_CONSOLE_PID: pidFile }
         runner.running = true
     }
