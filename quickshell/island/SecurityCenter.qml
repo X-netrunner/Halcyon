@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Widgets
 import "SecAsk.js" as SecAsk
 
 // Security center.   >security in the launcher (also >firewall, >antivirus, the IPC call `security`).
@@ -121,6 +122,13 @@ Scope {
         if (!avViaSg) return ["ai-antivirus"].concat(args)
         return ["timeout", "8", "sg", "ai-antivirus", "-c", ["ai-antivirus"].concat(args).map(shq).join(" ")]
     }
+
+    // the three reads the 6 s poll repeats (status, unacknowledged alerts, action log): cut off after 8 s. A read that hung (the engine
+    // holding the database, a stuck sg) kept its Process "running" for ever, the poll skips a running one, and so the lists stopped
+    // updating until the shell was restarted. sg already has its own timeout; the plain call had none.
+    function avRead(args) {
+        return avViaSg ? avCmd(args) : ["timeout", "8", "ai-antivirus"].concat(args)
+    }
     readonly property string permScript: [
         "g=ai-antivirus; u=$(id -un)",
         "if getent group $g >/dev/null 2>&1; then echo group=yes; else echo group=no; fi",
@@ -193,13 +201,13 @@ Scope {
 
     Process {
         id: avProc
-        command: root.avCmd(["status", "--json"])
+        command: root.avRead(["status", "--json"])
         stdout: StdioCollector { onStreamFinished: root.avGotStatus(text) }
         stderr: StdioCollector { onStreamFinished: root.avErr = text.trim().replace(/^error: /i, "").split("\n")[0] }
     }
     Process {
         id: avAlertsProc
-        command: root.avCmd(["alerts", "--unacked", "--json", "-n", "40"])
+        command: root.avRead(["alerts", "--unacked", "--json", "-n", "40"])
         stdout: StdioCollector { onStreamFinished: { if (!root.avSnap && text !== root.avAlertsRaw) { root.avAlertsRaw = text; root.avAlerts = root.parseAlerts(text) } } }
     }
     Process {
@@ -208,6 +216,7 @@ Scope {
         stdout: StdioCollector { onStreamFinished: if (text.trim() !== "") root.flash(text.trim(), false) }
         stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") root.flash(text.trim().replace(/^error: /, ""), true) }
         onExited: code => {
+            if (root.reviewAckState === 1) root.reviewAckState = code === 0 ? 2 : 3     // the AI's clearing, from Let AI decide
             if (root.avSnap) {                   // it ran with pkexec: the password window hid this one
                 Qt.callLater(function () { root.show("antivirus") })
                 if (code === 0) root.avSnapDrop(avAckProc.ackIds)
@@ -301,7 +310,7 @@ Scope {
     }
     Process {
         id: avActProc
-        command: root.avCmd(["actions", "--json", "-n", "60"])
+        command: root.avRead(["actions", "--json", "-n", "60"])
         stdout: StdioCollector { onStreamFinished: { if (!root.avSnap && text !== root.avActionsRaw) { root.avActionsRaw = text; root.avActions = root.parseActs(text) } } }
         stderr: StdioCollector { onStreamFinished: { if (!root.avSnap) root.avActErr = text.trim().replace(/^error: /, "").split("\n")[0] } }
     }
@@ -556,8 +565,15 @@ Scope {
         admErr = ""; admJob = job
         Qt.callLater(function () { root.admFocusRequested() })
     }
+    // full access in one password: put this user into group ai-antivirus (alerts, acknowledging, the action log, the AI's clearing)
+    function avGrantAccess() {
+        admAsk({ steps: [], script: "usermod -aG ai-antivirus \"${SUDO_USER:-$USER}\" && echo \"Full access given.\"",
+                 title: "Full access", button: "Give full access", ackIds: [], joinGroup: true,
+                 detail: "Adds your user to the ai-antivirus group, so alerts, acknowledging them and the AI's clearing work without a password. No logout needed." })
+    }
     function admCancel() {
         if (admProc.running) { admCancelled = true; admProc.running = false }
+        if (admJob && admJob.reviewAck && reviewAckState === 1) reviewAckState = 3
         admJob = null; admErr = ""
     }
     function admSubmit(pw) {
@@ -566,7 +582,8 @@ Scope {
         admOutT = ""; admErrT = ""; admCode = -1
         admExited = false; admOutDone = false; admErrDone = false
         // one sudo for every step of the job (one password); a wrong password fails once instead of retrying three times
-        var script = admJob.steps.map(function (st) { return "\"$1\" " + st.map(shq).join(" ") }).join(" && ")
+        // a job with its own `script` runs it as root as it is (it gets the ai-antivirus binary as $1); the others run the binary
+        var script = admJob.script ? admJob.script : admJob.steps.map(function (st) { return "\"$1\" " + st.map(shq).join(" ") }).join(" && ")
         admProc.command = ["timeout", "-k", "3", "40", "sh", "-c",
             "IFS= read -r pw; printf '%s\\n' \"$pw\" | sudo -S -p '' -- /bin/sh -c \"$1\" sh \"$2\"",
             "sh", script, avBin]
@@ -583,8 +600,12 @@ Scope {
             admJob = null; admErr = ""
             var first = admOutT.trim().split("\n")[0]
             flash(first !== "" ? first : job.title + ": done", false)
+            if (job.joinGroup) { avPerm = ""; permProc.running = true; avSoon.restart() }      // in the group now: the live read takes over at once
             if (job.ackIds && job.ackIds.length > 0 && !avSnap) ack(job.ackIds)
-            else if (avSnap) flash((first !== "" ? first + " " : "") + "Done. Press Reload to see it.", false)
+            else if (avSnap) {
+                if (job.dropIds) { avSnapDrop(job.dropIds); if (job.reviewAck) reviewAckState = 2 }
+                else flash((first !== "" ? first + " " : "") + "Done. Press Reload to see it.", false)
+            }
             refresh()
             return
         }
@@ -649,7 +670,7 @@ Scope {
                 else { var c = root.scanFound.slice(); c.push(o); root.scanFound = c }
             }
         }
-        onExited: if (root.scanSum === null) root.scanSum = { files: 0, found: root.scanFound.length, seconds: 0, failed: true }
+        onExited: { if (root.scanSum === null) root.scanSum = { files: 0, found: root.scanFound.length, seconds: 0, failed: true }; root.askScanDone() }
     }
 
     // ---- ClamAV: `halcyon-ai.py clamav test|scan`. The fixes are commands from a fixed list (the local model, when it is on, only
@@ -844,31 +865,116 @@ Scope {
         else if (key === "held") { avView = "held"; setTab("antivirus") }
         else if (key === "alerts") { avView = "alerts"; setTab("antivirus") }
     }
-    // ---- Let AI decide: the local model reads the things that need you next to the facts of this PC (memory, cores, graphics, laptop or
-    // not) and says which one to deal with first and why (`halcyon-ai.py decide`). The answer shows in a card beside the window. Nothing
-    // is done until you approve; approving only takes you to that page (or starts the unlock), the same as pressing its row.
+    // ---- Let AI decide. Two parts, both shown in the card while they happen:
+    //   1. the alert review: the local model reads every group of unacknowledged antivirus alerts (`halcyon-ai.py review`) and says
+    //      safe / not sure / dangerous for each, with the reason, one row at a time. What it calls safe AND the fixed gates in
+    //      halcyon-ai.py allow (behaviour rules only, low severity, or medium from Halcyon's own files; never high or critical, never a
+    //      hash or YARA match) is acknowledged here at once, the same as pressing Acknowledge, no password needed. Everything else
+    //      stays on the list and is shown to you. It never approves a held action (that needs sudo) and never adds an exception.
+    //   2. the pick: of what still needs you, which to deal with first and why (`halcyon-ai.py decide`). Nothing is done until you
+    //      approve; approving only takes you to that page (or starts the unlock), the same as pressing its row.
     property bool decideOpen: false
     property var decideRes: null
     property string decideErr: ""
     property var decideSteps: []
+    property bool decideSkipped: false        // nothing was left to pick from after the review
     property int decideGen: 0                 // an answer that arrives after the card was closed or restarted is dropped
+    property var reviewItems: []              // one per group of alerts, added as the model judges it
+    property var reviewRes: null
+    property string reviewErr: ""
+    property string reviewNote: ""            // why no review ran (alerts locked, a snapshot)
+    property string reviewStep: ""
+    property int reviewAckState: 0            // 0 nothing to acknowledge | 1 acknowledging | 2 done | 3 did not work
+    property int reviewTotal: 0               // groups handed to the review (the progress bar's end)
+    property bool rvOpenCleared: true         // the "Judged safe" list is open
+    readonly property bool reviewBusy: reviewProc.running
     readonly property bool decideBusy: decideProc.running
+    readonly property bool cardBusy: reviewProc.running || decideProc.running
+    readonly property bool rvShown: reviewBusy || reviewItems.length > 0 || reviewNote !== "" || reviewErr !== ""
+    readonly property var rvNeeds: reviewItems.filter(function (i) { return i.status !== "clear" })
+    readonly property var rvCleared: reviewItems.filter(function (i) { return i.status === "clear" })
+    readonly property string rvSummary: {
+        if (!reviewRes) return ""
+        var c = reviewRes.clear_ids ? reviewRes.clear_ids.length : 0, n = reviewRes.needs || 0
+        var s = c === 0 ? "Nothing was cleared. "
+              : (reviewAckState === 3 ? "The AI judged " + c + (c === 1 ? " alert" : " alerts") + " safe but could not acknowledge " + (c === 1 ? "it" : "them") + ". "
+                                      : "Cleared " + c + " safe " + (c === 1 ? "alert" : "alerts") + ". ")
+        return s + (n === 0 ? "Nothing needs you." : (n === 1 ? "One group needs you." : n + " groups need you."))
+    }
+    readonly property int rvClearedN: rvCleared.reduce(function (n, i) { return n + (i.count || 1) }, 0)
+    readonly property int rvNeedsN: rvNeeds.reduce(function (n, i) { return n + (i.count || 1) }, 0)
+    // the card's colour: accent while it works, then green (all clear), amber (something to look at) or red (something may be dangerous)
+    readonly property string cardState: cardBusy || (!rvShown && decideRes === null) ? "busy"
+        : (rvNeeds.some(function (i) { return i.verdict === "suspicious" || i.severity === "critical" }) ? "bad"
+        : (rvNeeds.length > 0 || (decideRes !== null && !rvShown) ? "warn" : "good"))
+    readonly property color cardTone: cardState === "bad" ? pal.bad : (cardState === "warn" ? pal.warn : (cardState === "good" ? pal.good : pal.accent))
+    function rvLabel(it) {
+        if (it.status === "clear") return "Safe"
+        if (it.verdict === "suspicious") return "Might be dangerous"
+        if (it.severity === "high" || it.severity === "critical") return "Yours to decide"
+        if (it.verdict === "safe") return "Looks safe, kept for you"
+        return "Not sure"
+    }
+    function rvColor(it) {
+        if (it.status === "clear") return pal.good
+        return it.verdict === "suspicious" || it.severity === "critical" ? pal.bad : pal.warn
+    }
     readonly property var decidePickItem: {
         if (!decideRes) return null
         for (var i = 0; i < ovTodo.length; i++) if (ovTodo[i].key === decideRes.pick) return ovTodo[i]
         return null
     }
+    // the unacknowledged alerts as groups (the same alert in many places is one group), what the review is given; at most 40 alerts
+    function reviewGroups() {
+        var map = {}, order = []
+        avAlerts.forEach(function (a) {
+            var k = (a.rule_id || "") + "|" + (a.title || "")
+            var g = map[k]
+            if (!g) { g = map[k] = { key: k, title: a.title || "", rule_id: a.rule_id || "", severity: a.severity || "", count: 0, ids: [], where: [], raw: [], sample: "" }; order.push(g) }
+            g.count++; g.ids.push(a.id)
+            if (sevRank(a.severity) > sevRank(g.severity)) g.severity = a.severity
+            var w = whereOf(a)
+            if (w !== "" && g.where.length < 4 && g.where.indexOf(w) < 0) g.where.push(w)
+            var r = rawOf(a)
+            if (r.charAt(0) === "/" && g.raw.length < 4 && g.raw.indexOf(r) < 0) g.raw.push(r)
+            if (g.sample === "") { try { g.sample = JSON.stringify(a.detail || {}).slice(0, 300) } catch (e) { g.sample = "" } }
+        })
+        return order
+    }
     function decideStart() {
-        if (decideProc.running || ovTodo.length === 0) return
-        var items = ovTodo.map(function (t) { return { key: t.key, tone: t.tone, title: t.title, sub: t.sub } })
+        if (cardBusy || (ovTodo.length === 0 && avAlerts.length === 0)) return
         decideGen++
-        decideRes = null; decideErr = ""; decideSteps = []; decideOpen = true
+        decideRes = null; decideErr = ""; decideSteps = []; decideSkipped = false; decideOpen = true
+        reviewItems = []; reviewRes = null; reviewErr = ""; reviewNote = ""; reviewStep = ""; reviewAckState = 0; reviewTotal = 0
+        if (hasAv && avLocked) reviewNote = "The alerts are locked, so the AI cannot read them yet. Unlock them first, then ask again."
+        else if (hasAv && avAlerts.length > 0) {
+            var rg = reviewGroups()
+            reviewTotal = rg.length
+            reviewProc.command = ["python3", aiScript, "review", "--json", "--items", JSON.stringify(rg)]
+            reviewProc.running = true
+            return
+        }
+        decideRun()
+    }
+    // part 2: what still needs you after the review (the alerts it cleared are taken off the list it is given)
+    function decideRun() {
+        var gone = reviewRes && reviewRes.clear_ids && reviewAckState !== 3 ? reviewRes.clear_ids.length : 0
+        var left = Math.max(0, avUnacked - gone)
+        var items = []
+        ovTodo.forEach(function (t) {
+            if (t.key === "alerts") {
+                if (left === 0) return
+                items.push({ key: t.key, tone: t.tone, title: left + (left === 1 ? " alert" : " alerts") + " to review", sub: t.sub })
+            } else items.push({ key: t.key, tone: t.tone, title: t.title, sub: t.sub })
+        })
+        if (items.length === 0) { decideSkipped = true; return }
         decideProc.command = ["python3", aiScript, "decide", "--json", "--items", JSON.stringify(items)]
         decideProc.running = true
     }
     function decideClose() {
         decideGen++
         decideOpen = false
+        if (reviewProc.running) reviewProc.running = false
         if (decideProc.running) decideProc.running = false
     }
     function decideApprove() {
@@ -879,6 +985,51 @@ Scope {
     function decideTitle(k) {
         for (var i = 0; i < ovTodo.length; i++) if (ovTodo[i].key === k) return ovTodo[i].title
         return k
+    }
+    // the alerts the model called safe and the gates allowed: acknowledged like a press on Acknowledge (avAckProc, no root)
+    function reviewClear(ids) {
+        if (avSnap) {            // the alerts were read as root: the acknowledge needs root too. One password, asked in the window
+            if (admBusy || admJob !== null) { reviewAckState = 3; return }
+            reviewAckState = 1
+            admAsk({ steps: [["ack"].concat(ids.map(String))], title: "Acknowledge what the AI cleared", button: "Acknowledge",
+                     detail: "The AI read " + ids.length + (ids.length === 1 ? " alert" : " alerts") + " and judged " + (ids.length === 1 ? "it" : "them") +
+                             " safe. Acknowledging needs your password once, because the alerts were read with it.",
+                     ackIds: [], dropIds: ids, reviewAck: true })
+            show("antivirus")
+            return
+        }
+        if (avAckProc.running) { reviewAckState = 3; return }
+        reviewAckState = 1
+        ack(ids)
+    }
+    Process {
+        id: reviewProc
+        property int gen: 0
+        onRunningChanged: if (running) gen = root.decideGen
+        stderr: SplitParser {
+            onRead: d => {
+                if (reviewProc.gen !== root.decideGen) return
+                var line = String(d), m = line.match(/^STEP (.+)$/)
+                if (m) { root.reviewStep = m[1]; return }
+                m = line.match(/^ITEM (.+)$/)
+                if (m) { try { root.reviewItems = root.reviewItems.concat([JSON.parse(m[1])]) } catch (e) {} }
+            }
+        }
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (reviewProc.gen !== root.decideGen || !root.decideOpen) return
+                var d = null
+                try { d = JSON.parse(text) } catch (e) { d = null }
+                if (!d) root.reviewErr = "No answer from halcyon-ai.py (is python3 there?)"
+                else if (!d.ok) root.reviewErr = d.error || "The review did not work."
+                else {
+                    root.reviewRes = d
+                    root.reviewItems = d.items || []
+                    if (d.clear_ids && d.clear_ids.length > 0) root.reviewClear(d.clear_ids)
+                }
+                root.decideRun()
+            }
+        }
     }
     Process {
         id: decideProc
@@ -930,6 +1081,15 @@ Scope {
         if (q === "" || asking) return
         var target = askTarget
         if (q.indexOf("/test") === 0) target = "firewall"
+        // "scan my Downloads", "can you run a scan on ~/projects": it is DONE here, with the antivirus's own scanner (no model needed),
+        // and the result is told in the chat. A question about scans still goes to the assistant.
+        var sr = hasAv ? SecAsk.scanRequest(q) : null
+        if (sr) {
+            pushMsg({ role: "you", text: q, who: target })
+            askScan(sr, target)
+            Qt.callLater(function () { root.focusRequested("ask") })
+            return
+        }
         if (target === "firewall" && !hasFw) return
         if (target === "antivirus" && !hasAv) return
         pushMsg({ role: "you", text: q, who: target })
@@ -948,6 +1108,37 @@ Scope {
         askProc.command = target === "firewall" ? [fwBin, "ask", "--json", q] : ["ai-antivirus", "ask", "--json", q]
         askProc.running = true
         Qt.callLater(function () { root.focusRequested("ask") })
+    }
+    property bool askScanPending: false       // a scan the Ask tab started: its result is told in the chat when it ends
+    property string askScanLabel: ""
+    function askScan(sr, target) {
+        function say(text, bad) { root.pushMsg({ role: "ai", text: text, bad: bad === true, live: false, actions: [], who: target }) }
+        if (sr.path === "") { say("Which folder should I scan? Say it with its name, for example \"scan my Downloads\" or \"scan ~/projects\"."); return }
+        if (scanning) { say("A scan of " + (scanWhat.charAt(0) === "/" ? scanWhat : "~/" + (scanWhat === "." ? "" : scanWhat)) + " is still running. Ask again when it is done.", true); return }
+        var home = Quickshell.env("HOME")
+        var p = sr.path
+        var abs = p === "~" ? home : (p.indexOf("~/") === 0 ? home + p.slice(1) : p)
+        var rel = abs === home ? "." : (abs.indexOf(home + "/") === 0 ? abs.slice(home.length + 1) : abs)
+        askScanLabel = p
+        askScanPending = true
+        say("Scanning " + p + (sr.whole ? " (your home folder: system files are watched all the time by the sensor)" : "") + "…")
+        scan(rel)
+        if (!scanning) { askScanPending = false; say("The scan did not start.", true) }
+    }
+    function askScanDone() {
+        if (!askScanPending) return
+        askScanPending = false
+        var s = scanSum, n = scanFound.length, lab = askScanLabel, txt, bad = false
+        function nice(pth) { return pth.charAt(0) === "/" ? pth.replace(/^\/home\/[^/]+\//, "~/") : "~/" + pth }
+        if (!s || s.failed) { txt = "I could not scan " + lab + ". Does it exist, and may the antivirus read it?"; bad = true }
+        else if (n === 0) txt = "Scanned " + count(s.files) + " files in " + lab + " in " + s.seconds + " s: nothing found."
+        else {
+            bad = true
+            txt = "Scanned " + count(s.files) + " files in " + lab + " in " + s.seconds + " s and found " + n + (n === 1 ? " file" : " files") + " with findings:\n" +
+                  scanFound.slice(0, 5).map(function (o) { return "• " + nice(o.path) + (o.findings && o.findings.length ? "  (" + o.findings.map(function (f) { return f.detail || f.kind }).join(", ") + ")" : "") }).join("\n") +
+                  (n > 5 ? "\nand " + (n - 5) + " more" : "") + "\nThe same list is on the Antivirus page."
+        }
+        pushMsg({ role: "ai", text: txt, bad: bad, live: false, actions: [], who: askTarget })
     }
     function runTest(name) { tab = "ask"; ask("/test" + (name && name !== "all" ? " " + name : "")) }
     function act(a) {
@@ -1048,7 +1239,8 @@ Scope {
             if (!root.avSnap) { root.avAlerts = []; root.avActions = []; root.avAlertsRaw = ""; root.avActionsRaw = "" }
             root.scanFound = []; root.scanSum = null
             root.clam = null; root.exc = null
-            root.decideRes = null; root.decideErr = ""; root.decideSteps = []
+            root.decideRes = null; root.decideErr = ""; root.decideSteps = []; root.decideSkipped = false
+            root.reviewItems = []; root.reviewRes = null; root.reviewErr = ""; root.reviewNote = ""; root.reviewStep = ""; root.reviewAckState = 0; root.reviewTotal = 0
             root.avOpenKeys = ({})
             gc()
         }
@@ -1110,6 +1302,7 @@ Scope {
         MouseArea { id: bMa; anchors.fill: parent; hoverEnabled: true; cursorShape: b.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: if (!b.disabled) b.clicked() }
     }
     component Dot: Rectangle { width: 8; height: 8; radius: 4 }
+    // the AI card's pieces: a tinted pill (verdict, count) and a figure tile (alerts read / cleared / waiting)
     // the three soft dots while something works
     component Working: Row {
         id: wk
@@ -1516,7 +1709,9 @@ Scope {
                 Glass {
                     id: panel
                     pal: root.pal
-                    width: win.desktop ? qp.width : Math.min(1140, qp.width - 80)
+                    // while the AI's card is out beside it, the window gives up a little width on a smaller screen so both fit (never below 820)
+                    width: win.desktop ? qp.width : Math.min(1140, qp.width - 80, (root.decideOpen && decSide.beside) ? Math.max(820, qp.width - decSide.cardW - decSide.gap - 48) : 100000)
+                    Behavior on width { enabled: !win.desktop; NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                     height: win.desktop ? qp.height : Math.min(780, qp.height - 80)
                     radius: win.desktop ? 0 : root.pal.rXl
                     opacityBody: 0.97
@@ -1839,8 +2034,8 @@ Scope {
                                         Layout.alignment: Qt.AlignHCenter
                                         visible: root.aiOn
                                         glyph: 0xF0B79
-                                        label: root.decideBusy ? "Thinking…" : "Let AI decide for this PC"
-                                        disabled: root.decideBusy
+                                        label: root.cardBusy ? "Thinking…" : "Let AI decide for this PC"
+                                        disabled: root.cardBusy
                                         onClicked: root.decideStart()
                                     }
                                 }
@@ -1880,11 +2075,18 @@ Scope {
 
                                 // the latest events of both, on one soft surface
                                 Rectangle {
+                                    id: latBox
                                     Layout.fillWidth: true
-                                    visible: root.feed.length > 0
+                                    Layout.fillHeight: true
+                                    Layout.minimumHeight: 0
+                                    Layout.preferredHeight: 0
+                                    Layout.maximumHeight: 24 + 24 + Math.min(3, root.feed.length) * 50
+                                    // as many rows as the window has room for: the box takes what is left and never runs out of the window
+                                    readonly property int rows: Math.max(0, Math.min(3, Math.floor((height - 24 - 24 + 2) / 50)))
+                                    visible: root.feed.length > 0 && rows > 0
+                                    clip: true
                                     opacity: root.stag(3)
                                     transform: Translate { y: (1 - root.stag(3)) * 14 }
-                                    implicitHeight: latCol.implicitHeight + 24
                                     radius: root.pal.rLg
                                     color: root.pal.fill
                                     ColumnLayout {
@@ -1893,7 +2095,7 @@ Scope {
                                         spacing: 2
                                         Label { Layout.leftMargin: 8; Layout.bottomMargin: 2; text: "Latest" }
                                         Repeater {
-                                            model: root.feed.slice(0, 3)
+                                            model: root.feed.slice(0, latBox.rows)
                                             delegate: ListRow {
                                                 required property var modelData
                                                 Layout.fillWidth: true
@@ -1905,7 +2107,7 @@ Scope {
                                         }
                                     }
                                 }
-                                Item { Layout.fillHeight: true }
+                                Item { Layout.fillHeight: latBox.rows === 0; Layout.preferredHeight: 0 }
                             }
 
                             // ---- firewall
@@ -2179,6 +2381,13 @@ Scope {
                                                 onClicked: root.avUnlock()
                                             }
                                             Btn {
+                                                visible: !root.avAskPw && root.avUnlockStep === "" && root.avPerm === "notmember" && root.hasSg
+                                                primary: true
+                                                label: "Give full access"
+                                                glyph: 0xF033F
+                                                onClicked: root.avGrantAccess()
+                                            }
+                                            Btn {
                                                 visible: !root.avAskPw && root.avUnlockStep === "" && root.avSchemaStuck
                                                 label: "Repair history"
                                                 glyph: 0xF04D9
@@ -2271,7 +2480,7 @@ Scope {
                                                 font.family: root.pal.uiFont
                                                 font.pixelSize: root.pal.tBody - 1
                                                 font.weight: Font.Medium
-                                                text: root.scanning ? "Scanning ~/" + (root.scanWhat === "." ? "" : root.scanWhat)
+                                                text: root.scanning ? "Scanning " + (root.scanWhat.charAt(0) === "/" ? root.scanWhat : "~/" + (root.scanWhat === "." ? "" : root.scanWhat))
                                                     : (root.scanSum === null ? "" : root.scanSum.failed ? "Scan failed"
                                                     : (root.scanFound.length > 0 ? root.scanFound.length + " found" : "Clean") + "  ·  " + root.count(root.scanSum.files) + " files in " + root.scanSum.seconds + " s")
                                             }
@@ -2994,24 +3203,31 @@ Scope {
                         }
                     }
 
+                }
+
                 // ---- the AI's card (Let AI decide): pops out beside the window like the utilities box's side card and the pair stays
                 // centred. With no room beside it (a pop-out window, a narrow screen) it lies over the window's right side instead.
                 Item {
                     id: decSide
                     visible: false
                     width: 0; height: 0
-                    readonly property real cardW: 360
+                    readonly property real cardW: 344
                     readonly property real gap: 8
                     readonly property real room: Math.max(0, (qp.width - panel.width) / 2)
-                    readonly property bool beside: !win.desktop && qp.width - panel.width >= cardW + 32
-                    readonly property real shiftBy: beside ? Math.max(Math.max(0, cardW + 20 - room), Math.min((cardW + gap) / 2, room - 12)) : 0
+                    // the Security window is 1140 px wide: on a 1920 px screen 390 px are left on each side, which the old "card + 32"
+                    // test (392) missed by 2 px, so the card lay over the window instead of beside it. Now "card + 16" (360).
+                    // not from panel.width (that one shrinks while the card is out): the window's full size plus the card, or the smallest
+                    // window (820) plus the card, whichever the screen can hold
+                    readonly property bool beside: !win.desktop && qp.width >= 820 + cardW + gap + 48
+                    // window + gap + card, centred as one block: the window sits half of (card + gap) left of the middle, whatever its width
+                    readonly property real shiftBy: beside ? (cardW + gap) / 2 : 0
                     property real prog: (root.decideOpen && beside) ? 1 : 0
                     Behavior on prog { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                 }
                 ClippingRectangle {
                     id: decCard
                     z: 5
-                    readonly property real shown: root.decideOpen ? 1 : 0
+                    property real shown: root.decideOpen ? 1 : 0
                     Behavior on shown { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                     visible: shown > 0.01
                     opacity: shown * qp.reveal
@@ -3027,33 +3243,58 @@ Scope {
                     transform: Translate { x: (decSide.beside ? -1 : 1) * (1 - decCard.shown) * 36 }
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
 
-                    Item {
+                    // ---- the head: an accent wash fading into the card, the status icon, the title, and a thin progress line while it reads
+                    Rectangle {
                         id: dHead
                         anchors { left: parent.left; right: parent.right; top: parent.top }
-                        height: 64
+                        height: 92
+                        gradient: Gradient {
+                            GradientStop { position: 0; color: Qt.alpha(root.cardTone, 0.20) }
+                            GradientStop { position: 1; color: Qt.alpha(root.cardTone, 0.0) }
+                        }
                         Rectangle {
                             id: dIc
                             x: 20
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 34; height: 34; radius: 12
-                            color: Qt.alpha(root.pal.accent, 0.16)
-                            Glyph { anchors.centerIn: parent; code: 0xF0B79; font.pixelSize: 17; color: root.pal.accent }
+                            width: 46; height: 46; radius: 16
+                            color: Qt.alpha(root.cardTone, 0.20)
+                            border.width: 1
+                            border.color: Qt.alpha(root.cardTone, 0.35)
+                            Behavior on color { ColorAnimation { duration: root.pal.dMed } }
+                            Glyph {
+                                id: dGl
+                                anchors.centerIn: parent
+                                code: root.cardState === "busy" ? 0xF0B79 : (root.cardState === "good" ? 0xF05E0 : 0xF0026)
+                                font.pixelSize: 23
+                                color: root.cardTone
+                                SequentialAnimation on opacity {
+                                    running: root.cardState === "busy" && root.decideOpen
+                                    loops: Animation.Infinite
+                                    NumberAnimation { to: 0.45; duration: 700; easing.type: Easing.InOutSine }
+                                    NumberAnimation { to: 1; duration: 700; easing.type: Easing.InOutSine }
+                                    onRunningChanged: if (!running) dGl.opacity = 1
+                                }
+                            }
                         }
                         Column {
-                            anchors { left: dIc.right; leftMargin: 12; right: dClose.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                            spacing: 1
+                            anchors { left: dIc.right; leftMargin: 14; right: dClose.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                            spacing: 2
                             Text {
                                 width: parent.width
-                                text: "AI's pick for this PC"
+                                text: root.rvShown ? "AI review" : "AI's pick for this PC"
                                 color: root.pal.text
                                 font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tBody + 1
+                                font.pixelSize: root.pal.tTitle
                                 font.weight: Font.Medium
                                 elide: Text.ElideRight
                             }
                             Small {
                                 width: parent.width
-                                text: root.decideRes ? (root.decideRes.by === "ai" ? "Your local model" : "Plain order, no model") : (root.decideErr !== "" ? "No answer" : "Working it out")
+                                text: root.reviewBusy ? "Reading " + Math.min(root.reviewItems.length + 1, Math.max(1, root.reviewTotal)) + " of " + root.reviewTotal + " groups of alerts"
+                                    : (root.decideBusy ? "Working out what to do first"
+                                    : (root.decideRes ? (root.decideRes.by === "ai" ? "Your local model" : "Plain order, no model")
+                                    : (root.decideErr !== "" || root.reviewErr !== "" ? "No answer"
+                                    : (root.reviewRes ? (root.reviewRes.by === "ai" ? "Your local model" : "No model") : "Done"))))
                             }
                         }
                         Rectangle {
@@ -3064,114 +3305,188 @@ Scope {
                             Glyph { anchors.centerIn: parent; code: 0xF0156; font.pixelSize: 15; color: dcMa.containsMouse ? root.pal.text : root.pal.muted }
                             MouseArea { id: dcMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.decideClose() }
                         }
-                    }
-                    Rectangle { anchors { left: parent.left; right: parent.right; top: dHead.bottom; leftMargin: 20; rightMargin: 20 } height: 1; color: root.pal.line; opacity: 0.6 }
-
-                    // while it works: what it is doing, step by step
-                    Column {
-                        visible: root.decideRes === null && root.decideErr === ""
-                        anchors { left: parent.left; right: parent.right; top: dHead.bottom; margins: 22; topMargin: 26 }
-                        spacing: 12
-                        Working {}
-                        Repeater {
-                            model: root.decideSteps
-                            delegate: Small {
-                                required property string modelData
-                                required property int index
-                                width: parent.width
-                                text: modelData + (index === root.decideSteps.length - 1 ? "…" : "")
-                                color: index === root.decideSteps.length - 1 ? root.pal.text : root.pal.muted
+                        Rectangle {
+                            visible: root.reviewBusy && root.reviewTotal > 0
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 20; rightMargin: 20 }
+                            height: 3; radius: 2
+                            color: Qt.alpha(root.pal.text, 0.08)
+                            Rectangle {
+                                width: parent.width * Math.min(1, root.reviewItems.length / Math.max(1, root.reviewTotal))
+                                height: parent.height; radius: 2
+                                color: root.cardTone
+                                Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
                             }
                         }
                     }
 
-                    // it did not work
-                    Column {
-                        visible: root.decideErr !== ""
-                        anchors { left: parent.left; right: parent.right; top: dHead.bottom; margins: 22; topMargin: 26 }
-                        spacing: 14
-                        Text {
-                            width: parent.width
-                            wrapMode: Text.WordWrap
-                            text: root.decideErr
-                            color: root.pal.bad
-                            font.family: root.pal.uiFont
-                            font.pixelSize: root.pal.tBody - 1
-                        }
-                        Btn { label: "Try again"; onClicked: root.decideStart() }
-                    }
-
-                    // the answer: what it looked at, what it thought, the order, and your OK at the end
+                    // everything the AI does shows here while it happens: a row for each group of alerts the moment it is judged (what it is,
+                    // safe or not, and why), then the pick. What it cleared, what it kept for you and what it could not read are all listed.
                     Flickable {
                         id: dFlick
-                        visible: root.decideRes !== null
-                        anchors { left: parent.left; right: parent.right; top: dHead.bottom; bottom: dFoot.top; topMargin: 8 }
+                        anchors { left: parent.left; right: parent.right; top: dHead.bottom; bottom: dFoot.top; topMargin: 4 }
                         clip: true
                         contentWidth: width
-                        contentHeight: dCol.implicitHeight + 24
+                        contentHeight: dCol.implicitHeight + 28
                         boundsBehavior: Flickable.StopAtBounds
                         Column {
                             id: dCol
-                            x: 22; y: 14
-                            width: dFlick.width - 44
-                            spacing: 8
-                            Label { text: "What it looked at" }
-                            Text {
+                            x: 20; y: 10
+                            width: dFlick.width - 40
+                            spacing: 10
+
+                            // ---- three figures: read, cleared, waiting
+                            Row {
+                                visible: root.reviewItems.length > 0
                                 width: parent.width
-                                wrapMode: Text.WordWrap
-                                text: root.decideRes && root.decideRes.facts_line !== "" ? root.decideRes.facts_line : "This computer"
-                                color: root.pal.text
-                                font.family: root.pal.uiFont
-                                font.pixelSize: root.pal.tBody - 1
+                                spacing: 8
+                                RvTile { pal: root.pal; width: (dCol.width - 16) / 3; value: String(root.reviewItems.length); caption: "groups read"; tone: root.pal.text }
+                                RvTile { pal: root.pal; width: (dCol.width - 16) / 3; value: String(root.rvClearedN); caption: "cleared"; tone: root.pal.good }
+                                RvTile { pal: root.pal; width: (dCol.width - 16) / 3; value: String(root.rvNeedsN); caption: "need you"; tone: root.rvNeedsN > 0 ? root.cardTone : root.pal.muted }
                             }
-                            Item { width: 1; height: 6 }
-                            Label { text: "What it thought" }
                             Text {
+                                visible: root.reviewRes !== null
                                 width: parent.width
                                 wrapMode: Text.WordWrap
-                                text: root.decideRes ? root.decideRes.why : ""
+                                text: root.rvSummary
                                 color: root.pal.text
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tBody - 1
                                 lineHeight: 1.15
                             }
+                            Row {
+                                visible: root.reviewBusy
+                                spacing: 10
+                                Working { anchors.verticalCenter: parent.verticalCenter }
+                                Small {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: dCol.width - 40
+                                    text: root.reviewStep !== "" ? root.reviewStep : "Starting"
+                                    color: root.pal.text
+                                }
+                            }
+                            Text {
+                                visible: root.reviewNote !== ""
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: root.reviewNote
+                                color: root.pal.warn
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody - 1
+                            }
+                            Text {
+                                visible: root.reviewErr !== ""
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: root.reviewErr
+                                color: root.pal.bad
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody - 1
+                            }
                             Small {
                                 width: parent.width
                                 wrapMode: Text.WordWrap
                                 elide: Text.ElideNone
-                                visible: root.decideRes !== null && root.decideRes.ai_note !== ""
-                                text: root.decideRes ? root.decideRes.ai_note : ""
+                                visible: root.reviewRes !== null && root.reviewRes.ai_note !== ""
+                                text: root.reviewRes ? root.reviewRes.ai_note : ""
                             }
-                            Item { width: 1; height: 6 }
-                            Label { text: "Order" }
+                            Small {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                elide: Text.ElideNone
+                                visible: root.avUnacked > root.avAlerts.length && root.reviewItems.length > 0
+                                text: "It read the newest " + root.avAlerts.length + " of " + root.avUnacked + " alerts. Ask again for the rest."
+                            }
+
+                            // ---- what needs you: not sure, called dangerous, or not allowed to be cleared by the AI
+                            Label { visible: root.rvNeeds.length > 0; text: "Needs you" }
                             Repeater {
-                                model: root.decideRes ? root.decideRes.order : []
+                                model: root.rvNeeds
                                 delegate: Rectangle {
-                                    id: dr
-                                    required property string modelData
-                                    required property int index
+                                    id: nr
+                                    required property var modelData
                                     width: dCol.width
-                                    height: drCol.implicitHeight + 18
-                                    radius: 12
-                                    color: Qt.alpha(index === 0 ? root.pal.accent : root.pal.text, index === 0 ? 0.12 : 0.05)
-                                    Text {
-                                        id: drN
-                                        x: 12
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: String(dr.index + 1)
-                                        color: dr.index === 0 ? root.pal.accent : root.pal.muted
-                                        font.family: root.pal.uiFont
-                                        font.pixelSize: root.pal.tBody
-                                        font.weight: Font.Medium
-                                    }
+                                    height: nrCol.implicitHeight + 22
+                                    radius: 14
+                                    color: Qt.alpha(root.rvColor(nr.modelData), 0.08)
+                                    transform: Translate { y: (1 - nr.opacity) * 8 }
+                                    NumberAnimation on opacity { from: 0; to: 1; duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve }
+                                    Rectangle { x: 0; y: 12; width: 3; height: parent.height - 24; radius: 2; color: root.rvColor(nr.modelData) }
                                     Column {
-                                        id: drCol
-                                        anchors { left: drN.right; leftMargin: 12; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-                                        spacing: 1
+                                        id: nrCol
+                                        anchors { left: parent.left; leftMargin: 16; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                        spacing: 6
+                                        Item {
+                                            width: parent.width
+                                            height: Math.max(nrT.implicitHeight, 20)
+                                            Text {
+                                                id: nrT
+                                                anchors { left: parent.left; right: nrC.visible ? nrC.left : parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                                                elide: Text.ElideRight
+                                                text: nr.modelData.title
+                                                color: root.pal.text
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tBody - 1
+                                                font.weight: Font.Medium
+                                            }
+                                            RvPill { pal: root.pal; id: nrC; visible: nr.modelData.count > 1; text: "×" + nr.modelData.count; tone: root.pal.muted; anchors { right: parent.right; verticalCenter: parent.verticalCenter } }
+                                        }
+                                        Row {
+                                            spacing: 8
+                                            RvPill { pal: root.pal; text: root.rvLabel(nr.modelData); tone: root.rvColor(nr.modelData) }
+                                            Small { anchors.verticalCenter: parent.verticalCenter; text: root.cap(nr.modelData.severity) + " severity" }
+                                        }
+                                        Small {
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            elide: Text.ElideNone
+                                            visible: text !== ""
+                                            text: nr.modelData.reason
+                                        }
+                                    }
+                                }
+                            }
+                            Small {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                elide: Text.ElideNone
+                                visible: root.rvShown && root.avPending > 0
+                                text: root.avPending + (root.avPending === 1 ? " action waits" : " actions wait") + " for your OK. Those need your password, so the AI never approves them."
+                            }
+
+                            // ---- what it cleared by itself, and why (tap the title to fold it)
+                            Item {
+                                visible: root.rvCleared.length > 0
+                                width: parent.width
+                                height: 22
+                                Label { anchors.verticalCenter: parent.verticalCenter; text: "Judged safe" }
+                                Glyph {
+                                    anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                    code: root.rvOpenCleared ? 0xF0140 : 0xF0142
+                                    font.pixelSize: 16
+                                    color: root.pal.muted
+                                }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.rvOpenCleared = !root.rvOpenCleared }
+                            }
+                            Repeater {
+                                model: root.rvOpenCleared ? root.rvCleared : []
+                                delegate: Rectangle {
+                                    id: cr
+                                    required property var modelData
+                                    width: dCol.width
+                                    height: crCol.implicitHeight + 20
+                                    radius: 14
+                                    color: Qt.alpha(root.pal.good, 0.07)
+                                    transform: Translate { y: (1 - cr.opacity) * 8 }
+                                    NumberAnimation on opacity { from: 0; to: 1; duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve }
+                                    Glyph { id: crG; x: 12; y: 12; code: 0xF05E0; font.pixelSize: 17; color: root.pal.good }
+                                    Column {
+                                        id: crCol
+                                        anchors { left: crG.right; leftMargin: 10; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                        spacing: 2
                                         Text {
                                             width: parent.width
                                             elide: Text.ElideRight
-                                            text: root.decideTitle(dr.modelData)
+                                            text: cr.modelData.title + (cr.modelData.count > 1 ? "   ×" + cr.modelData.count : "")
                                             color: root.pal.text
                                             font.family: root.pal.uiFont
                                             font.pixelSize: root.pal.tBody - 1
@@ -3179,8 +3494,140 @@ Scope {
                                         }
                                         Small {
                                             width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            elide: Text.ElideNone
                                             visible: text !== ""
-                                            text: root.decideRes && root.decideRes.notes && root.decideRes.notes[dr.modelData] ? root.decideRes.notes[dr.modelData] : ""
+                                            text: cr.modelData.reason
+                                        }
+                                    }
+                                }
+                            }
+                            Small {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                elide: Text.ElideNone
+                                visible: root.rvCleared.length > 0 && !root.reviewBusy
+                                text: root.reviewAckState === 3 ? "They are still on the Antivirus page: the acknowledge did not go through."
+                                                                : "Cleared means acknowledged, the same as pressing Acknowledge yourself. Each one is also logged in ~/.local/state/island/av-ai-review.jsonl."
+                            }
+
+                            // ---- the pick
+                            Item { visible: root.rvShown && (root.decideBusy || root.decideRes !== null || root.decideErr !== "" || root.decideSkipped); width: 1; height: 2 }
+                            Label { visible: root.rvShown && (root.decideBusy || root.decideRes !== null || root.decideErr !== "" || root.decideSkipped); text: "What to do first" }
+                            Column {
+                                visible: root.decideBusy
+                                width: parent.width
+                                spacing: 8
+                                Working {}
+                                Repeater {
+                                    model: root.decideSteps.slice(-3)
+                                    delegate: Small {
+                                        required property string modelData
+                                        required property int index
+                                        width: dCol.width
+                                        text: modelData
+                                        color: root.pal.muted
+                                    }
+                                }
+                            }
+                            Text {
+                                visible: root.decideSkipped
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: "Nothing else needs you."
+                                color: root.pal.text
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tBody - 1
+                            }
+                            Column {
+                                visible: root.decideErr !== ""
+                                width: parent.width
+                                spacing: 12
+                                Text {
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    text: root.decideErr
+                                    color: root.pal.bad
+                                    font.family: root.pal.uiFont
+                                    font.pixelSize: root.pal.tBody - 1
+                                }
+                                Btn { label: "Try again"; onClicked: root.decideStart() }
+                            }
+                            Column {
+                                visible: root.decideRes !== null
+                                width: parent.width
+                                spacing: 8
+                                Rectangle {
+                                    width: parent.width
+                                    height: dwCol.implicitHeight + 24
+                                    radius: 14
+                                    color: Qt.alpha(root.pal.accent, 0.10)
+                                    Column {
+                                        id: dwCol
+                                        anchors { left: parent.left; leftMargin: 14; right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+                                        spacing: 6
+                                        Text {
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            text: root.decideRes ? root.decideRes.why : ""
+                                            color: root.pal.text
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tBody - 1
+                                            lineHeight: 1.15
+                                        }
+                                        Small {
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            elide: Text.ElideNone
+                                            text: "Looked at: " + (root.decideRes && root.decideRes.facts_line !== "" ? root.decideRes.facts_line : "this computer")
+                                        }
+                                        Small {
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            elide: Text.ElideNone
+                                            visible: root.decideRes !== null && root.decideRes.ai_note !== ""
+                                            text: root.decideRes ? root.decideRes.ai_note : ""
+                                        }
+                                    }
+                                }
+                                Repeater {
+                                    model: root.decideRes ? root.decideRes.order : []
+                                    delegate: Rectangle {
+                                        id: dr
+                                        required property string modelData
+                                        required property int index
+                                        width: dCol.width
+                                        height: drCol.implicitHeight + 18
+                                        radius: 14
+                                        color: Qt.alpha(index === 0 ? root.pal.accent : root.pal.text, index === 0 ? 0.12 : 0.05)
+                                        Text {
+                                            id: drN
+                                            x: 14
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: String(dr.index + 1)
+                                            color: dr.index === 0 ? root.pal.accent : root.pal.muted
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: root.pal.tBody
+                                            font.weight: Font.Medium
+                                        }
+                                        Column {
+                                            id: drCol
+                                            anchors { left: drN.right; leftMargin: 12; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                            spacing: 1
+                                            Text {
+                                                width: parent.width
+                                                elide: Text.ElideRight
+                                                text: root.decideTitle(dr.modelData)
+                                                color: root.pal.text
+                                                font.family: root.pal.uiFont
+                                                font.pixelSize: root.pal.tBody - 1
+                                                font.weight: Font.Medium
+                                            }
+                                            Small {
+                                                width: parent.width
+                                                visible: text !== ""
+                                                text: root.decideRes && root.decideRes.notes && root.decideRes.notes[dr.modelData] ? root.decideRes.notes[dr.modelData] : ""
+                                            }
                                         }
                                     }
                                 }
@@ -3188,10 +3635,10 @@ Scope {
                         }
                     }
 
-                    // your OK: nothing happens before it
+                    // your OK: nothing is acted on beyond what the review cleared, and nothing else happens before you press a button
                     Item {
                         id: dFoot
-                        visible: root.decideRes !== null
+                        visible: !root.cardBusy
                         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                         height: 76
                         Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 20; rightMargin: 20 } height: 1; color: root.pal.line; opacity: 0.6 }
@@ -3199,16 +3646,21 @@ Scope {
                             anchors { left: parent.left; leftMargin: 20; verticalCenter: parent.verticalCenter; verticalCenterOffset: 3 }
                             spacing: 10
                             Btn {
+                                visible: root.decidePickItem !== null
                                 primary: true
                                 glyph: 0xF012C
                                 label: root.decidePickItem ? "Approve and " + root.decidePickItem.btn.toLowerCase() : "Approve"
-                                disabled: root.decidePickItem === null
                                 onClicked: root.decideApprove()
                             }
-                            Btn { label: "Not now"; onClicked: root.decideClose() }
+                            Btn {
+                                visible: root.decidePickItem === null && root.rvNeeds.length > 0
+                                primary: true
+                                label: "Open the alerts"
+                                onClicked: { root.decideClose(); root.ovGo("alerts") }
+                            }
+                            Btn { label: root.decidePickItem !== null ? "Not now" : "Done"; onClicked: root.decideClose() }
                         }
                     }
-                }
                 }
             }
         }

@@ -1088,6 +1088,42 @@ def del_note(arg):
             return
     print(f"[!] Note not found: {arg}")
 
+def edit_note(arg, text):
+    """Change the words of a note that is already saved (`notes edit <number or id> <new text>`). Everything else about it stays:
+    its place in the list, pin, done, task and reminder. What the AI said about the OLD words (Overview line, summary) is dropped,
+    and the AI looks at the new words in the background like it does for a new note."""
+    text = (text or "").strip()
+    if not text:
+        print("[!] A note cannot be empty. Use delete to remove it.")
+        return False
+    notes = load_notes()
+    target = find_note(notes, arg)
+    if target is None:
+        print(f"[!] Note not found: {arg}")
+        return False
+    if (target.get("text") or "") == text:
+        print("(no change)")
+        return True
+    target["text"] = text
+    target["edited"] = time.time()
+    for k in ("think", "summary", "suggest"):
+        target.pop(k, None)              # these described the old words
+    save_notes(notes)
+    print(f"\033[1;32m✓\033[0m Note changed: \033[1m{text}\033[0m")
+    refresh_ui()
+    nid = target.get("id")
+    cf = read_conf()
+    if nid and ai_enabled():
+        if cf["NOTES_SUMMARY"] == "1" and _word_count(text) >= 150:
+            with contextlib.suppress(Exception):
+                subprocess.Popen([sys.executable, os.path.abspath(__file__), "summary", nid], start_new_session=True,
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if (cf["NOTES_AI"] == "1" or cf["NOTES_OVERVIEW"] == "1") and len(text) <= 6000:
+            with contextlib.suppress(Exception):
+                subprocess.Popen([sys.executable, os.path.abspath(__file__), "sort", nid], start_new_session=True,
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return True
+
 def pin_note(arg):
     notes = load_notes()
     target = None
@@ -2436,6 +2472,11 @@ def run(cmd, args):
             del_note(args[1])
         else:
             print("usage: notes del <number>")
+    elif cmd in ("edit", "rename"):
+        if len(args) > 2:
+            edit_note(args[1], " ".join(args[2:]))
+        else:
+            print("usage: notes edit <number or id> <new text>")
     elif cmd == "pin":
         if len(args) > 1:
             pin_note(args[1])
