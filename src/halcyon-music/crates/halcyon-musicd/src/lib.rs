@@ -13,10 +13,12 @@
 )]
 
 pub mod api;
+pub mod audio;
 pub mod auth;
 pub mod cache;
 pub mod daemon;
 pub mod doctor;
+pub mod mpris;
 pub mod panic_hook;
 pub mod probes;
 pub mod sd_notify;
