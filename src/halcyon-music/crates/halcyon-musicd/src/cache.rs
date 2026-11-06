@@ -195,6 +195,17 @@ impl Cache {
                 status_code INTEGER,
                 detail TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS play_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                track_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                artist TEXT NOT NULL,
+                album TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                ms_played INTEGER NOT NULL,
+                completed INTEGER NOT NULL
+            );
             "#,
         ).map_err(|e| format!("schema init failed: {e}"))?;
 
@@ -684,6 +695,96 @@ impl Cache {
 
         Ok(list)
     }
+
+    /// Record a track play in local play log.
+    #[allow(clippy::too_many_arguments)]
+    pub fn log_play(
+        &self,
+        track_id: &str,
+        title: &str,
+        artist: &str,
+        album: &str,
+        started_at: u64,
+        ms_played: u64,
+        completed: bool,
+    ) -> Result<i64, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            r#"
+            INSERT INTO play_log (track_id, title, artist, album, started_at, ms_played, completed)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+            params![
+                track_id,
+                title,
+                artist,
+                album,
+                started_at as i64,
+                ms_played as i64,
+                if completed { 1 } else { 0 }
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// Get recent plays from the play log (newest first).
+    pub fn get_recent_plays(&self, limit: usize) -> Result<Vec<PlayLogEntry>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT id, track_id, title, artist, album, started_at, ms_played, completed
+                FROM play_log
+                ORDER BY id DESC
+                LIMIT ?1
+                "#,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                let id: i64 = row.get(0)?;
+                let track_id: String = row.get(1)?;
+                let title: String = row.get(2)?;
+                let artist: String = row.get(3)?;
+                let album: String = row.get(4)?;
+                let started_at: i64 = row.get(5)?;
+                let ms_played: i64 = row.get(6)?;
+                let completed: i64 = row.get(7)?;
+
+                Ok(PlayLogEntry {
+                    id,
+                    track_id,
+                    title,
+                    artist,
+                    album,
+                    started_at: started_at.max(0) as u64,
+                    ms_played: ms_played.max(0) as u64,
+                    completed: completed != 0,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut res = Vec::new();
+        for item in rows.flatten() {
+            res.push(item);
+        }
+        Ok(res)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct PlayLogEntry {
+    pub id: i64,
+    pub track_id: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub started_at: u64,
+    pub ms_played: u64,
+    pub completed: bool,
 }
 
 #[cfg(test)]
@@ -745,6 +846,33 @@ mod tests {
         let old = cache.kv_get("old").expect("kv_get").expect("exists");
         assert_eq!(old.item, "legacy");
         assert!(old.is_stale);
+    }
+
+    #[test]
+    fn play_log_recording_and_retrieval() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("cache.db");
+        let img_dir = dir.path().join("images");
+
+        let cache = Cache::open(&db_path, &img_dir, 10 * 1024 * 1024).expect("cache open");
+
+        let row1 = cache
+            .log_play("t1", "Track 1", "Artist 1", "Album 1", 1000, 30_000, false)
+            .expect("log_play");
+        assert!(row1 > 0);
+
+        let row2 = cache
+            .log_play("t2", "Track 2", "Artist 2", "Album 2", 2000, 180_000, true)
+            .expect("log_play");
+        assert!(row2 > row1);
+
+        let plays = cache.get_recent_plays(10).expect("get_recent_plays");
+        assert_eq!(plays.len(), 2);
+        // Newest first
+        assert_eq!(plays[0].track_id, "t2");
+        assert!(plays[0].completed);
+        assert_eq!(plays[1].track_id, "t1");
+        assert!(!plays[1].completed);
     }
 
     #[test]

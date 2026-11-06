@@ -668,9 +668,93 @@ def ncspot_queue(limit):
             "now": now and {"title": now["title"], "artist": now["artist"]}, "total": len(nxt), "items": nxt[:limit]}
 
 
+def halcyon_sock():
+    d = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()
+    sock = os.path.join(d, "halcyon-music", "ctl.sock")
+    return sock if os.path.exists(sock) else ""
+
+
+def halcyon_musicd_queue(limit):
+    sock_path = halcyon_sock()
+    if not sock_path:
+        return None
+    import socket
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(1.5)
+        s.connect(sock_path)
+        buf = ""
+        while "\n" not in buf:
+            chunk = s.recv(4096).decode("utf-8", "replace")
+            if not chunk:
+                break
+            buf += chunk
+        lines = buf.splitlines()
+        state = None
+        for line in lines:
+            try:
+                msg = json.loads(line)
+                if msg.get("type") == "state" and "state" in msg:
+                    state = msg["state"]
+                    break
+            except ValueError:
+                continue
+        if state is None:
+            s.sendall(b'{"version":1,"type":"get_state"}\n')
+            data = s.recv(8192).decode("utf-8", "replace")
+            for line in data.splitlines():
+                try:
+                    msg = json.loads(line)
+                    if msg.get("type") == "state" and "state" in msg:
+                        state = msg["state"]
+                        break
+                except ValueError:
+                    continue
+        s.close()
+
+        if not state:
+            return None
+
+        track = state.get("track")
+        queue = state.get("queue") or []
+        pos = state.get("queue_pos", 0)
+
+        if not track and not queue:
+            return None
+
+        now = None
+        if track:
+            now = {"title": str(track.get("title") or ""), "artist": str(track.get("artist") or "")}
+
+        nxt = queue[pos + 1:] if pos < len(queue) else []
+        items = []
+        for t in nxt:
+            items.append({
+                "title": str(t.get("title") or "")[:200],
+                "artist": str(t.get("artist") or "")[:200],
+                "ms": int(t.get("duration_ms") or 0),
+                "kind": "track",
+            })
+
+        return {
+            "ok": True,
+            "state": "ok",
+            "message": "",
+            "source": "halcyon-music",
+            "now": now,
+            "total": len(items),
+            "items": items[:limit],
+        }
+    except (OSError, socket.error, ValueError):
+        return None
+
+
 def get_queue(limit=QUEUE_DEFAULT):
-    """ncspot when it runs (or when spotify_player is not installed and ncspot has a saved queue), else spotify_player."""
+    """Halcyon Music daemon if running, else ncspot or spotify_player."""
     limit = max(1, min(QUEUE_MAX, limit))
+    hq = halcyon_musicd_queue(limit)
+    if hq is not None:
+        return hq
     if ncspot_sock() or ncspot_running() or (binary() is None and which("ncspot")):
         d = ncspot_queue(limit)
         if d is not None:

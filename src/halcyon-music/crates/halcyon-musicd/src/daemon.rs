@@ -22,8 +22,6 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{broadcast, watch, Mutex, RwLock};
 use tracing::{error, info, warn};
 
-/// How often the (simulated) player ticks; also the progress broadcast rate.
-const TICK: std::time::Duration = std::time::Duration::from_millis(250);
 /// Save state to disk every 5 s and on every change (Part 1 rule 4).
 const SAVE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 /// Watchdog heartbeat interval; systemd WatchdogSec must be > 2x this.
@@ -149,14 +147,39 @@ async fn async_main(restored: PlayerState) -> anyhow::Result<()> {
         login_cancel: Arc::new(Mutex::new(None)),
     });
 
-    // Supervised player task
+    // Supervised player task with watchdog & play log
     {
         let player = player.clone();
+        let cache = cache.clone();
         let events = events_tx.clone();
         supervisor::supervise("player", None, move || {
-            let player = player.clone();
-            let mut events = events.clone();
-            async move { player_loop(player, &mut events).await }
+            let engine = Arc::new(crate::audio::AudioEngine::new(
+                player.clone(),
+                cache.clone(),
+                events.clone(),
+            ));
+            async move {
+                engine.run_loop().await;
+                Ok(())
+            }
+        });
+    }
+
+    // MPRIS 2 D-Bus server on user session bus
+    {
+        let player = player.clone();
+        let cache = cache.clone();
+        let events = events_tx.clone();
+        tokio::spawn(async move {
+            match crate::mpris::start_mpris_server(player, cache, events).await {
+                Ok(_conn) => {
+                    info!("MPRIS 2 server running");
+                    std::future::pending::<()>().await;
+                }
+                Err(e) => {
+                    warn!("failed to start MPRIS 2 server: {e}");
+                }
+            }
         });
     }
 
@@ -331,27 +354,31 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 state: ctx.player.snapshot().await,
             }));
         }
-        PlayNext { track } => {
-            ctx.player
-                .mutate(|s| {
-                    let pos = (s.queue_pos + 1).min(s.queue.len());
-                    s.queue.insert(pos, track);
-                })
-                .await;
-        }
-        Enqueue { track } => ctx.player.mutate(|s| s.queue.push(track)).await,
+        PlayNext { track } => ctx.player.mutate(|s| s.play_next(track)).await,
+        Enqueue { track } => ctx.player.mutate(|s| s.enqueue(track)).await,
         Dequeue { index } => {
             ctx.player
                 .mutate(|s| {
-                    if index < s.queue.len() {
-                        s.queue.remove(index);
-                        if s.queue_pos >= s.queue.len() {
-                            s.queue_pos = s.queue.len().saturating_sub(1);
-                        }
-                    }
+                    let _ = s.dequeue(index);
                 })
                 .await;
         }
+        PlayTrack { track } => ctx.player.mutate(|s| s.play_track(track)).await,
+        PlayContext { tracks, start_index } => {
+            ctx.player
+                .mutate(|s| s.play_context(tracks, start_index))
+                .await;
+        }
+        ReorderQueue { from, to } => {
+            ctx.player
+                .mutate(|s| {
+                    let _ = s.reorder(from, to);
+                })
+                .await;
+        }
+        SetRepeat { repeat } => ctx.player.mutate(|s| s.repeat = repeat).await,
+        SetBitrate { bitrate } => ctx.player.mutate(|s| s.bitrate = bitrate).await,
+        SetNormalisation { enabled } => ctx.player.mutate(|s| s.normalisation = enabled).await,
 
         // --- Part 2 Auth & Spotify API Commands ---
 
@@ -673,15 +700,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
 async fn next_track(player: &Arc<Player>) {
     player
         .mutate(|s| {
-            if s.queue.is_empty() {
-                s.playing = false;
-                s.position_ms = 0;
-                return;
-            }
-            let next = (s.queue_pos + 1) % s.queue.len();
-            s.queue_pos = next;
-            s.track = s.queue.get(next).cloned();
-            s.position_ms = 0;
+            let _ = s.advance_next();
         })
         .await;
 }
@@ -689,60 +708,9 @@ async fn next_track(player: &Arc<Player>) {
 async fn previous_track(player: &Arc<Player>) {
     player
         .mutate(|s| {
-            if s.queue.is_empty() {
-                return;
-            }
-            let prev = if s.queue_pos == 0 {
-                s.queue.len() - 1
-            } else {
-                s.queue_pos - 1
-            };
-            s.queue_pos = prev;
-            s.track = s.queue.get(prev).cloned();
-            s.position_ms = 0;
+            let _ = s.advance_prev();
         })
         .await;
-}
-
-async fn player_loop(
-    player: Arc<Player>,
-    events: &mut broadcast::Sender<protocol::Event>,
-) -> anyhow::Result<()> {
-    let mut interval = tokio::time::interval(TICK);
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut tick_count: u32 = 0;
-    loop {
-        interval.tick().await;
-        let mut reached_end = false;
-        player
-            .mutate(|s| {
-                if !s.playing {
-                    return;
-                }
-                s.position_ms = s.position_ms.saturating_add(TICK.as_millis() as u64);
-                if let Some(t) = s.track.as_ref() {
-                    if s.position_ms >= t.duration_ms {
-                        reached_end = true;
-                    }
-                }
-            })
-            .await;
-        if reached_end {
-            next_track(&player).await;
-            let ev = protocol::event(EventBody::State {
-                state: player.snapshot().await,
-            });
-            let _ = events.send(ev);
-        }
-        tick_count = tick_count.wrapping_add(1);
-        if tick_count.is_multiple_of(4) {
-            let snap = player.snapshot().await;
-            let _ = events.send(protocol::event(EventBody::Progress {
-                position_ms: snap.position_ms,
-                playing: snap.playing,
-            }));
-        }
-    }
 }
 
 async fn persistence_loop(
@@ -822,6 +790,13 @@ mod tests {
         assert_eq!(s.track.as_ref().map(|t| t.id.as_str()), Some("2"));
 
         apply_command(&ctx, CommandBody::Next).await;
+        let s = p.snapshot().await;
+        // With RepeatMode::Off (default), Next at end of queue stays at end and stops
+        assert_eq!(s.queue_pos, 2);
+        assert!(!s.playing);
+
+        // With RepeatMode::All, Next at end wraps to 0
+        p.mutate(|s| s.repeat = RepeatMode::All).await;
         apply_command(&ctx, CommandBody::Next).await;
         let s = p.snapshot().await;
         assert_eq!(s.queue_pos, 0);

@@ -134,6 +134,7 @@ mod tests {
             shuffle: true,
             repeat: RepeatMode::All,
             playing: true,
+            ..Default::default()
         }
     }
 

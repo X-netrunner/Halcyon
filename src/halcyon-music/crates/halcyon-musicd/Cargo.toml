@@ -18,12 +18,12 @@ tracing-subscriber = { version = "=0.3.19", features = ["env-filter", "fmt"] }
 tracing-appender = "=0.2.3"
 anyhow = "=1.0.97"
 thiserror = "=2.0.12"
-libc = "=0.2.171"
+libc = "=0.2.173"
 # Part 2 pinned dependencies:
 # - rusqlite: bundled SQLite avoids host libsqlite3 version discrepancies
 rusqlite = { version = "=0.32.1", features = ["bundled"] }
 # - reqwest: thin rustls client avoiding OpenSSL linkage
-reqwest = { version = "=0.12.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls", "json"] }
 # - url: standard URL parser with serde support
 url = { version = "=2.5.4", features = ["serde"] }
 # - sha2 & base64: PKCE S256 challenge generation and URL image hashing
@@ -33,6 +33,12 @@ base64 = "=0.22.1"
 rand = "=0.8.8"
 # - keyring: FreeDesktop Secret Service credential store with pure-Rust crypto
 keyring = { version = "=3.6.2", features = ["sync-secret-service", "crypto-rust"] }
+# Part 3 pinned dependencies:
+# - zbus: D-Bus MPRIS 2 MediaPlayer2 server
+zbus = "=4.4.0"
+# - librespot: Spotify playback and audio pipeline with Rodio output and rustls
+librespot-core = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+librespot-playback = { version = "=0.8.0", default-features = false, features = ["rodio-backend", "rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
 # used by the corrupt-state / socket integration tests only
