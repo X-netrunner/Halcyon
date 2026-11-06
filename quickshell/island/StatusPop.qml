@@ -35,6 +35,7 @@ Scope {
         var same = open && kind === k
         if (same) { hide(); return }
         kind = k; side = s || "top"; along = a || 0; edge = e || 0
+        wifiLoaded = false; btLoaded = false
         open = true
         refresh()
     }
@@ -44,7 +45,7 @@ Scope {
         else if (kind === "bt") { btProc.running = true; Quickshell.execDetached(["bash", Quickshell.shellPath("scripts/bt-set.sh"), "scan"]) }
         else batProc.running = true
     }
-    function pick(k) { if (kind === k) return; kind = k; askFor = ""; refresh() }
+    function pick(k) { if (kind === k) return; kind = k; askFor = ""; wifiLoaded = false; btLoaded = false; refresh() }
     onOpenChanged: {
         if (open) { linger = true; lingerT.stop() }
         else { linger = false; wifiLog = []; askFor = "" }
@@ -54,16 +55,20 @@ Scope {
     // ---- data
     property var wifi: ({ on: false, nets: [] })
     property var bt: ({ on: false, devs: [] })
+    property bool wifiLoaded: false         // false from the moment the popup opens until the first answer of `hx wifi` / `hx bt`
+    property bool btLoaded: false
     property int btBattery: -1
     property string askFor: ""
     readonly property string hx: Quickshell.env("HOME") + "/.config/Halcyon/bin/hx"
-    Process { id: wifiProc; command: [root.hx, "wifi"]; stdout: StdioCollector { onStreamFinished: { try { root.wifi = JSON.parse(text) } catch (e) {} } } }
-    Process { id: btProc; command: [root.hx, "bt"]; stdout: StdioCollector { onStreamFinished: { try { root.bt = JSON.parse(text) } catch (e) {} } } }
+    Process { id: wifiProc; command: [root.hx, "wifi"]; stdout: StdioCollector { onStreamFinished: { try { root.wifi = JSON.parse(text); root.wifiLoaded = true } catch (e) {} } } }
+    Process { id: btProc; command: [root.hx, "bt"]; stdout: StdioCollector { onStreamFinished: { try { root.bt = JSON.parse(text); root.btLoaded = true } catch (e) {} } } }
     Process {
         id: batProc
         command: ["bash", Quickshell.shellPath("scripts/bt-battery.sh")]
         stdout: StdioCollector { onStreamFinished: { var n = parseInt(text); root.btBattery = (isNaN(n) || n < 0 || n > 100) ? -1 : n } }
     }
+    // if a read never answers (no hx, no adapter) the popup stops saying "Checking" and shows what it has
+    Timer { interval: 8000; running: root.open && (!root.wifiLoaded || !root.btLoaded); onTriggered: { root.wifiLoaded = true; root.btLoaded = true } }
     Timer { id: wifiAgain; interval: 3500; onTriggered: if (root.open && root.kind === "wifi") wifiProc.running = true }
     Timer { interval: 6000; repeat: true; running: root.open && root.kind === "wifi"; onTriggered: wifiProc.running = true }
     Timer { interval: 2500; repeat: true; running: root.open && root.kind === "bt"; onTriggered: btProc.running = true }
@@ -203,7 +208,8 @@ Scope {
                             pal: root.pal
                             title: "Wi-Fi"
                             hasPower: true
-                            powered: root.wifi.on === true
+                            loading: !root.wifiLoaded
+                            powered: root.wifiLoaded ? root.wifi.on === true : (root.net && root.net.wifi === "on")
                             scanning: root.wifi.scanning === true
                             items: root.wifiItems
                             maxHeight: 260
@@ -233,7 +239,8 @@ Scope {
                             pal: root.pal
                             title: "Bluetooth"
                             hasPower: true
-                            powered: root.bt.on === true
+                            loading: !root.btLoaded
+                            powered: root.btLoaded ? root.bt.on === true : (root.net && root.net.bt === "on")
                             scanning: root.bt.scanning === true
                             items: root.btItems
                             maxHeight: 260

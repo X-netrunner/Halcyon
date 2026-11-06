@@ -6,6 +6,8 @@ import Quickshell
 //
 //   CalmNav { pal: ...; items: [{ key: "library", glyph: 0x... , label: "Library" }, ...]; current: root.tab; onPicked: ... }
 //
+// An item with `disabled: true` stays in the row but is greyed out and does nothing when pressed (a module that is not installed);
+// its hover still shows the label, so it can say why.
 // 40 px targets, 2 px between them, the open one is a soft accent wash (no outline, no underline). `accent` is for a centre whose
 // nav is the window's only colour; otherwise the calm grey is used.
 Item {
@@ -49,14 +51,16 @@ Item {
                 id: seg
                 required property var modelData
                 readonly property bool on: modelData.key === nav.current
+                readonly property bool off: !!modelData.disabled
                 width: 40
                 height: 40
+                opacity: off ? 0.32 : 1
 
                 Rectangle {
                     anchors.fill: parent
                     radius: 20
                     color: seg.on ? Qt.alpha(nav.pal.accent, nav.accent ? 0.20 : 0.14)
-                                  : (sMa.containsMouse ? nav.pal.fillHover : "transparent")
+                                  : (sMa.containsMouse && !seg.off ? nav.pal.fillHover : "transparent")
                     Behavior on color { ColorAnimation { duration: nav.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: nav.pal.curveCalm } }
                 }
                 Text {
@@ -81,8 +85,8 @@ Item {
                     id: sMa
                     anchors.fill: parent
                     hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: nav.picked(seg.modelData.key)
+                    cursorShape: seg.off ? Qt.ArrowCursor : Qt.PointingHandCursor
+                    onClicked: if (!seg.off) nav.picked(seg.modelData.key)
                 }
                 LazyLoader {
                     active: sMa.containsMouse && seg.modelData.label !== ""

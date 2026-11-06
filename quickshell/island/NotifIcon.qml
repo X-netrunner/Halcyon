@@ -38,7 +38,10 @@ Item {
         // Halcyon's own senders
         if (has(app, ["calendar", "remind"])) return 0xF00ED                         // calendar
         if (has(app, ["focus"])) return 0xF13AB                                       // timer
-        if (has(app, ["security", "antivirus", "firewall", "clamav"])) return 0xF0498 // shield
+        // the same icons as the Version Center (VersionCenter.qml iconFor): ai-antivirus, ai-firewall, Luna, Halcyon
+        if (has(app, ["firewall"])) return 0xF0238                                    // fire (ai-firewall)
+        if (has(app, ["security", "antivirus", "clamav"])) return 0xF0565             // shield with a check (ai-antivirus)
+        if (has(app, ["luna"])) return 0xF0594                                        // moon (Luna)
         if (has(app, ["notes"])) return 0xF039E                                       // note
         if (has(app, ["study"])) return 0xF0474                                       // school
         var own = has(app, ["luna", "halcyon", "hal"])
@@ -71,7 +74,7 @@ Item {
         if (has(txt, ["error", "failed", "could not", "warning"])) return 0xF0028
         if (has(txt, ["done", "finished", "complete", "saved"])) return 0xF05E0
         if (has(txt, ["message", "mentioned", "replied"])) return 0xF0369
-        return own ? 0xF0AE2 : 0xF009A                                                // Halcyon's sparkle, or a bell
+        return own ? 0xF06B0 : 0xF009A                                                // Halcyon's sparkle, or a bell
     }
     readonly property int glyph: symbolOn ? pickGlyph(notif) : 0
 
