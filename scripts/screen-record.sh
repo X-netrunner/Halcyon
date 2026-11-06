@@ -3,6 +3,7 @@
 #
 #   screen-record.sh toggle | start | stop | status
 #   screen-record.sh region    drag a rectangle, record only that part (the same command again stops it)
+#   screen-record.sh window    click a window, record the rectangle it fills now (the same command again stops it)
 #   screen-record.sh open      open the recordings folder
 #   screen-record.sh last      play the newest recording
 #   screen-record.sh list      print the recordings (newest first)
@@ -107,6 +108,7 @@ stop_recording() {
 }
 
 REC_GEOM=""
+REC_TAG="region"          # what a rectangle recording is called: region | window (file name and notice)
 # ---- sound sources (PipeWire / PulseAudio names)
 sys_source() { local s; s=$(pactl get-default-sink 2>/dev/null); [ -n "$s" ] && echo "$s.monitor"; }
 mic_source() { pactl get-default-source 2>/dev/null; }
@@ -152,7 +154,7 @@ select_region() {
 start_recording() {
     mkdir -p "$REC_DIR"
     local ts out base="" tag="recording"
-    if [ -n "$REC_GEOM" ]; then tag="region"; else rm -f "$REGION_INFO"; fi
+    if [ -n "$REC_GEOM" ]; then tag="$REC_TAG"; else rm -f "$REGION_INFO"; fi
     ts=$(date +%Y-%m-%d_%H-%M-%S)
 
     # ---------------- sound only
@@ -203,9 +205,10 @@ start_recording() {
 
     sleep 0.3
     if alive "$PID_FILE"; then
-        local what="Screen is recording"
-        [ -n "$REC_GEOM" ] && what="Region is recording"
-        [ "$withsound" = 1 ] && [ -n "$REC_GEOM" ] && what="Region and sound ($AUDIO) are recording"
+        local what="Screen is recording" part="Region"
+        [ "$REC_TAG" = window ] && part="Window"
+        [ -n "$REC_GEOM" ] && what="$part is recording"
+        [ "$withsound" = 1 ] && [ -n "$REC_GEOM" ] && what="$part and sound ($AUDIO) are recording"
         [ "$withsound" = 1 ] && [ -z "$REC_GEOM" ] && what="Screen and sound ($AUDIO) are recording"
         note -i media-record -t 3500 "Recording started" "$what. Click Record again or press Super+Alt+R to finish."
         [ -n "$problem" ] && note -u normal "Recording without sound" "$problem"
@@ -218,7 +221,7 @@ start_recording() {
     fi
 }
 
-newest() { ls -1t "$REC_DIR"/recording_* "$REC_DIR"/region_* "$REC_DIR"/audio_* 2>/dev/null | head -n1; }
+newest() { ls -1t "$REC_DIR"/recording_* "$REC_DIR"/region_* "$REC_DIR"/window_* "$REC_DIR"/audio_* 2>/dev/null | head -n1; }
 
 cmd="${1:-toggle}"
 case "$cmd" in
@@ -235,7 +238,16 @@ case "$cmd" in
             KIND=screen
             echo "$REC_GEOM" > "$REGION_INFO"
             start_recording ;;
+    window) if is_recording; then stop_recording; exit 0; fi
+            command -v slurp >/dev/null 2>&1 || { note -u critical "Window recording" "slurp is not installed: sudo pacman -S slurp"; echo missing_tool; exit 1; }
+            command -v wf-recorder >/dev/null 2>&1 || command -v wl-screenrec >/dev/null 2>&1 || command -v gpu-screen-recorder >/dev/null 2>&1 || { note -u critical "Window recording" "Please install wf-recorder: sudo pacman -S wf-recorder"; echo missing_tool; exit 1; }
+            command -v python3 >/dev/null 2>&1 || { note -u critical "Window recording" "python3 is not installed"; echo missing_tool; exit 1; }
+            REC_GEOM=$(python3 "$(dirname "$(readlink -f "$0")")/halcyon-shot.py" window-geom 2>/dev/null)
+            if [ -z "$REC_GEOM" ]; then echo cancelled; exit 0; fi
+            KIND=screen; REC_TAG=window
+            echo "$REC_GEOM" > "$REGION_INFO"
+            start_recording ;;
     last)   f=$(newest); if [ -n "$f" ]; then xdg-open "$f" >/dev/null 2>&1 & else note -t 3000 "Recordings" "No recordings yet in $REC_DIR"; fi ;;
-    list)   ls -1t "$REC_DIR"/recording_* "$REC_DIR"/region_* "$REC_DIR"/audio_* 2>/dev/null ;;
-    *)      echo "usage: screen-record.sh toggle | start | stop | status | region | open | last | list" >&2; exit 1 ;;
+    list)   ls -1t "$REC_DIR"/recording_* "$REC_DIR"/region_* "$REC_DIR"/window_* "$REC_DIR"/audio_* 2>/dev/null ;;
+    *)      echo "usage: screen-record.sh toggle | start | stop | status | region | window | open | last | list" >&2; exit 1 ;;
 esac

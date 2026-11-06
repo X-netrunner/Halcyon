@@ -5,7 +5,8 @@ import Quickshell.Services.Notifications
 import "NotifOpen.js" as NO
 
 // One app's notifications in the "Grouped by app" look (Settings > Panels & notifications > Notification style):
-// a card with the app's icon, its name and a count, and its notifications listed inside.
+// a card with the app's icon, its name and three count dots (one lit for 1, two for 2, all three for 3 or more), and its
+// notifications listed inside.
 //   click on a notification   run its default action (if any) and remove it
 //   ✕ in the header           remove all of this app's notifications
 Rectangle {
@@ -69,10 +70,21 @@ Rectangle {
                 font.weight: Font.Medium
                 elide: Text.ElideRight
             }
-            Rectangle {
-                implicitWidth: cnt.implicitWidth + 16; implicitHeight: 20; radius: 10
-                color: Qt.alpha(g.tone, 0.18)
-                Text { id: cnt; anchors.centerIn: parent; text: g.items.length; color: g.tone; font.family: g.pal.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold }
+            // how many there are, as three dots instead of a number: 1 lights one, 2 lights two, 3 or more light all three
+            // (the rest stay dim). The exact number is the list below and the "3 notifications" line at the top of the centre.
+            Row {
+                spacing: 4
+                Layout.alignment: Qt.AlignVCenter
+                Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                        required property int index
+                        width: 6; height: 6; radius: 3
+                        color: g.tone
+                        opacity: index < g.items.length ? 1 : 0.2
+                        Behavior on opacity { NumberAnimation { duration: g.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    }
+                }
             }
             Rectangle {
                 implicitWidth: 20; implicitHeight: 20; radius: 10

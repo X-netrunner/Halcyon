@@ -3,6 +3,11 @@
 # general.lua is the source of truth for tiling, and floating-mode.sh manages off/floating mode.
 GENERAL="$HOME/.config/Halcyon/hyprland/general.lua"
 FLOAT_SCRIPT="$HOME/.config/Halcyon/scripts/floating-mode.sh"
+PROFILE_SCRIPT="$HOME/.config/Halcyon/scripts/gesture-profile.sh"
+# floating-mode.sh syncs the gesture profile itself, but "No tiling" leaves layout = "scrolling" in general.lua underneath, so
+# turning it off in the middle of a switch would look like niri for a moment (a pointless reload). This script syncs once, at the end.
+export HALCYON_SKIP_PROFILE_SYNC=1
+resync() { [ -x "$PROFILE_SCRIPT" ] && "$PROFILE_SCRIPT" sync; }
 
 is_float() {
     [ -x "$FLOAT_SCRIPT" ] && [ "$("$FLOAT_SCRIPT" status 2>/dev/null)" = "on" ]
@@ -29,6 +34,7 @@ fi
 case "$target" in
     off|floating|float)
         [ -x "$FLOAT_SCRIPT" ] && "$FLOAT_SCRIPT" on
+        resync
         notify-send -a Halcyon "Hyprland Layout" "Switched to Off (Floating - No tiling)" -i preferences-desktop-theme -h string:x-canonical-private-synchronous:hypr_layout
         exit 0
         ;;
@@ -53,6 +59,11 @@ hyprctl eval "hl.animation({ leaf = \"workspaces\", enabled = true, speed = 6, b
 if [ -w "$GENERAL" ]; then
     sed -i --follow-symlinks -E "s/^([[:space:]]*layout[[:space:]]*=[[:space:]]*)\"[a-z]+\"/\1\"$NEW\"/" "$GENERAL"
 fi
+
+# the 4-finger gestures point up / down in the scrolling layout and left / right everywhere else: when the saved layout moved to the
+# other kind, Hyprland reads the config again (general.lua is written just above, which is what that reload reads). Skipped when
+# general.lua could not be written, because a reload would then put the old layout back.
+[ -w "$GENERAL" ] && resync
 
 if [ "$live" = ok ]; then
     notify-send -a Halcyon "Hyprland Layout" "Switched to $NAME layout" -i preferences-desktop-theme -h string:x-canonical-private-synchronous:hypr_layout

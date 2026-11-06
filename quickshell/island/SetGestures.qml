@@ -58,7 +58,7 @@ ColumnLayout {
     }
     Text {
         Layout.fillWidth: true
-        text: "Out of the box: 4 fingers left / right = next / previous workspace (a new one after the last), 3 fingers up / down = scratch workspace, 4 fingers down = sleep, 3-finger pinch = workspace tree."
+        text: "Out of the box: 4 fingers left / right = next / previous workspace (a new one after the last), 3 fingers up / down = scratch workspace, 4 fingers down = sleep, 3-finger pinch = workspace tree. In the scrolling (niri) layout the workspaces run up / down, so the 4-finger swipes turn a quarter turn: up / down = next / previous workspace, left = sleep (left to up, right to down, down to left, up to right). What you pick here for 4 fingers is the dwindle / no tiling layout; niri turns it."
         color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: 10; wrapMode: Text.WordWrap
     }
     component SChip: Chip { maxLabel: 1000 }

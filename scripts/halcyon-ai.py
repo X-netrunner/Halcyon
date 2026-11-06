@@ -53,6 +53,10 @@ off (Settings > AI > AI features). Nothing leaves this machine (`updates` only d
                                                 its command. Halcyon's own packages and the core system are never listed.
                                                 Cached for a day (--refresh scans again). --remind: the monthly
                                                 notification (at most every 30 days; Settings toggle "Monthly unused-apps reminder").
+  halcyon-ai.py decide --items JSON            Security center > Overview > Let AI decide: of the things that need you (a JSON list of
+                                                {key, tone, title, sub}) the model picks the one to deal with first on THIS computer
+                                                (memory, cores, graphics, laptop or not) and says why. A protection that is off always
+                                                goes first. It only answers; the window acts after you approve. Works with the AI off (plain order).
   halcyon-ai.py commit [--all] [--commit]       a commit message for the staged changes, in the repository's style (--commit opens
                                                 git commit -e with it, so you edit it before it is made)
 
@@ -2928,10 +2932,132 @@ def cmd_unused(args):
     return res
 
 
+# ------------------------------------------------------------------------------------------------ decide: which one first, for THIS pc
+# Security center > Overview > "Let AI decide". The things that need you (each with a key the window knows) come in as JSON; the model
+# reads them next to the facts of this computer and picks the one to deal with first and says why. It can only pick a key it was
+# given, and a module that is DOWN always goes before anything that merely waits. Nothing is done here: the window shows the
+# answer next to itself and does what it says only after you approve.
+DECIDE_RANK = {"fw": 0, "avdown": 1, "unlock": 2, "held": 3, "alerts": 4}
+
+
+def _read(path):
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def pc_facts():
+    """What the model may know about this computer (no names, no files): memory, processor, graphics, power, load."""
+    f = {}
+    mem = {m.group(1): int(m.group(2)) for m in re.finditer(r"^(\w+):\s+(\d+) kB", _read("/proc/meminfo"), re.M)}
+    if mem.get("MemTotal"):
+        f["ram_gb"] = round(mem["MemTotal"] / 1048576, 1)
+        f["ram_free_gb"] = round(mem.get("MemAvailable", 0) / 1048576, 1)
+    cpu = re.search(r"^model name\s*:\s*(.+)$", _read("/proc/cpuinfo"), re.M)
+    f["cpu"] = (cpu.group(1).strip() if cpu else "unknown")[:60]
+    f["cores"] = os.cpu_count() or 0
+    if have("nvidia-smi"):
+        _, o = sh(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], timeout=5)
+        if o.strip():
+            f["gpu"] = o.strip().splitlines()[0][:60]
+    try:
+        f["load1"] = round(os.getloadavg()[0], 2)
+    except OSError:
+        pass
+    bats = [d for d in (os.listdir("/sys/class/power_supply") if os.path.isdir("/sys/class/power_supply") else []) if d.startswith("BAT")]
+    if bats:
+        f["laptop"] = True
+        f["battery"] = _read(f"/sys/class/power_supply/{bats[0]}/status").strip() or "unknown"
+    f["gaming_mode"] = gaming()
+    return f
+
+
+def facts_line(f):
+    bits = []
+    if f.get("ram_gb"):
+        bits.append(f"{f['ram_gb']:g} GB memory")
+    if f.get("cores"):
+        bits.append(f"{f['cores']} cores")
+    if f.get("gpu"):
+        bits.append(f["gpu"])
+    if f.get("laptop"):
+        bits.append("laptop, " + str(f.get("battery", "")).lower())
+    if f.get("gaming_mode"):
+        bits.append("gaming mode on")
+    return " · ".join(bits)
+
+
+def decide_rules(items):
+    """The plain order, with no model: red before amber, then the fixed rank."""
+    return sorted(items, key=lambda it: (0 if it["tone"] == "bad" else 1, DECIDE_RANK.get(it["key"], 9)))
+
+
+def cmd_decide(args):
+    try:
+        raw = json.loads(argval(args, "--items", "[]"))
+    except ValueError:
+        raw = []
+    items = []
+    for it in raw if isinstance(raw, list) else []:
+        if isinstance(it, dict) and str(it.get("key", "")).strip():
+            items.append({"key": str(it["key"])[:20], "tone": "bad" if it.get("tone") == "bad" else "warn",
+                          "title": str(it.get("title", ""))[:80], "sub": str(it.get("sub", ""))[:80]})
+    items = items[:5]
+    if not items:
+        raise Fail("Nothing needs deciding.")
+    print("STEP Looking at this computer", file=sys.stderr, flush=True)
+    facts = pc_facts()
+    ordered = decide_rules(items)
+    keys = [i["key"] for i in items]
+    res = {"facts": facts, "facts_line": facts_line(facts), "items": items, "pick": ordered[0]["key"], "order": [i["key"] for i in ordered],
+           "why": "", "notes": {}, "by": "rules", "ai_note": "", "adjusted": False}
+    print("STEP Asking the local model", file=sys.stderr, flush=True)
+    try:
+        listing = "\n".join(f"- {i['key']} ({'DOWN' if i['tone'] == 'bad' else 'waiting'}): {i['title']}. {i['sub']}" for i in items)
+        prompt = (f"This computer: {json.dumps(facts)}\n\nThings that need the person, each with its key:\n{listing}\n\n"
+                  "Which ONE should be dealt with first on this computer, and why? Answer only JSON: "
+                  "{\"pick\": \"<one key from the list>\", \"order\": [\"<every key, best first>\"], "
+                  "\"why\": \"<two or three short plain sentences about this computer>\", "
+                  "\"notes\": {\"<key>\": \"<five words on that one>\"}}")
+        d = generate_json(prompt, system="You help a person look after the security of their own Linux computer. Be calm, short and plain. "
+                          "Never invent a key. A protection that is DOWN is more urgent than one that only waits.", num_predict=450)
+        pick = str(d.get("pick", "")).strip()
+        order = [k for k in (d.get("order") or []) if k in keys]
+        order += [k for k in keys if k not in order]
+        why = re.sub(r"\s+", " ", str(d.get("why", ""))).strip()[:600]
+        if pick not in keys or not why:
+            raise Fail("The model did not give a usable answer.")
+        down = [i["key"] for i in items if i["tone"] == "bad"]
+        if down and pick not in down:
+            # a protection that is off goes first, whatever the model said
+            res["adjusted"] = True
+            pick = ordered[0]["key"]
+            why = f"A protection that is switched off comes before anything that only waits for you, so \"{rules_title(items, pick)}\" is first."
+            order = [pick] + [k for k in order if k != pick]
+        notes = d.get("notes") if isinstance(d.get("notes"), dict) else {}
+        res.update(pick=pick, order=order, why=why, by="ai", notes={k: str(v)[:60] for k, v in notes.items() if k in keys})
+    except (AiOff, Fail) as e:
+        res["ai_note"] = str(e)
+        res["why"] = ("The local model was not available, so this is the plain order: a protection that is off first, then what waits for you. "
+                      + (f"On this computer: {res['facts_line']}." if res["facts_line"] else ""))
+    res["text"] = res["why"]
+    return res
+
+
+def rules_title(items, key):
+    for i in items:
+        if i["key"] == key:
+            return i["title"]
+    return key
+
+
+
 # ------------------------------------------------------------------------------------------------ main
 COMMANDS = {"ask": cmd_ask, "howto": cmd_howto, "do": cmd_do, "clip": cmd_clip, "brief": cmd_brief, "explain": cmd_explain,
             "safety": cmd_safety, "clamav": cmd_clamav, "organise": cmd_organise, "organize": cmd_organise, "lyrics": cmd_lyrics,
-            "updates": cmd_updates, "study": cmd_study, "commit": cmd_commit, "unused": cmd_unused}
+            "updates": cmd_updates, "study": cmd_study, "commit": cmd_commit, "unused": cmd_unused, "decide": cmd_decide}
 
 
 def main(argv):

@@ -91,7 +91,7 @@
 
     { "id": "clipboardpanel", "rev": 2, "quick": true, "title": "Clipboard history",
       "body": "Type >clipboard in the launcher: what you copied lately, with search. Click a line or press Enter and it is on the clipboard again. Super + V opens it. Pictures show a preview, colours a swatch and links their site; Tab filters text, links or pictures. Copies from password managers are never kept, and Clear history empties it. The history is the one that was already there (Settings > Startup & background), no extra process." },
-    { "id": "screenshotpanel", "try": { "check": "screenshot", "say": "Open the screenshot panel: Super + Ctrl + S." }, "keys": ["SUPER", "CTRL", "S"], "title": "Screenshot panel",
+    { "id": "screenshotpanel", "try": { "check": "screenshot", "say": "Open the screenshot panel: Super + Shift + S." }, "keys": ["SUPER", "SHIFT", "S"], "title": "Screenshot panel",
       "body": "A small panel: Region, Window or Full screen, then Copy, Save or Both. Also >screenshot. SUPER + SHIFT + S still drags a region at once, as before." },
 
     { "id": "musicpanel", "target": "media", "demo": "media", "title": "Lyrics and queue",

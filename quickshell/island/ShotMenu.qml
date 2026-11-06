@@ -4,12 +4,12 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 
-// Screenshot panel.   Super + Ctrl + S, >screenshot in the launcher, `halcyon screenshot`, or the IPC call `screenshot`.
+// Screenshot menu.   Super + Shift + S (the screen freezes first: `halcyon-shot.py panel`), >screenshot in the launcher, `halcyon screenshot`, or the IPC call `screenshot`.
 // A small panel on the side of the screen, in the look of the new-note panel: pick what to capture (Region, Window or Full screen)
 // and what happens to it (Copy, Save, or Both). The panel leaves first so it is not in the picture, then
 // scripts/halcyon-shot.py does the capture. R / W / F pick the target, C / S / B the action, Esc closes.
 //
-// It sits NEXT TO the quick capture menu (Super + Shift + S, CaptureMenu.qml), Print and Super + Shift + Print. It starts no process of its own; the script runs once per capture and exits.
+// The recording menu is the other door (Super + Shift + R, CaptureMenu.qml); Print and Super + Shift + Print are untouched. It starts no process of its own; the script runs once per capture and exits.
 Scope {
     id: root
     property var pal
@@ -35,7 +35,12 @@ Scope {
     function toggle() { if (open) hide(); else show() }
 
     property bool linger: false
-    onOpenChanged: if (!open) { linger = true; lingerT.restart() }
+    onOpenChanged: if (!open) {
+        linger = true; lingerT.restart()
+        // closed without a capture (Esc, a click outside, the keys again): Super + Shift + S froze the screen before the panel
+        // opened, so let it go. A capture (pendingMode) lets it go itself, once the picture is taken.
+        if (pendingMode === "") Quickshell.execDetached(["python3", root.script, "unfreeze"])
+    }
     Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 80; onTriggered: root.linger = false }
 
     Process {
@@ -320,7 +325,7 @@ Scope {
 
                         Hint {
                             pal: root.pal
-                            text: "R  W  F  pick   \u00b7   C  S  B  T  copy / save / both / text   \u00b7   Esc closes   \u00b7   Super + Shift + S opens the quick menu"
+                            text: "R  W  F  pick   \u00b7   C  S  B  T  copy / save / both / text   \u00b7   Esc closes   \u00b7   Super + Shift + R records"
                             Layout.fillWidth: true
                             color: Qt.alpha(root.pal.muted, 0.85)
                             fontFamily: root.pal.uiFont

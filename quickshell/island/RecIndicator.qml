@@ -14,7 +14,12 @@ Scope {
     property bool recording: false
     property double startedAt: 0
     property int tick: 0
-    readonly property int secs: recording && startedAt > 0 ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0
+    // Date.now() is not something QML watches, so this only changed when `recording` or `startedAt` did, and the pill sat at 0:00.
+    // Reading `tick` (the timer below adds one every second) makes it work out the time again each second.
+    readonly property int secs: {
+        var t = tick
+        return recording && startedAt > 0 ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0
+    }
     signal stopRequested()
 
     function fmt(s) {
