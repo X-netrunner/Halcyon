@@ -35,6 +35,26 @@ pub enum ShortcutAction {
     OffsetLyricsPlus,  // ]
 }
 
+/// What the Settings page lists. One place, so the list cannot drift from `match_shortcut`.
+pub const SHORTCUT_HELP: &[(&str, &str)] = &[
+    ("Space", "Play / pause"),
+    ("Left / Right", "Seek 5 seconds back / forward"),
+    ("Shift + Left / Right", "Seek 30 seconds"),
+    ("Up / Down", "Volume up / down"),
+    ("N / P", "Next / previous song"),
+    ("Ctrl + K  or  /", "Focus the search box"),
+    ("Esc", "Clear search; close menus and panels"),
+    ("Ctrl + L", "Lyrics for the current song"),
+    ("Q", "Queue"),
+    ("F", "Full-screen now playing"),
+    ("M", "Mute"),
+    ("S / R", "Shuffle / repeat"),
+    ("L", "Like the current song"),
+    ("Ctrl + R", "Refresh"),
+    ("[ / ]", "Lyrics timing −100 ms / +100 ms"),
+    ("?", "Shortcut cheat sheet"),
+];
+
 /// Match a keyboard key and active modifiers to a shortcut action.
 pub fn match_shortcut(key: &Key, modifiers: Modifiers) -> Option<ShortcutAction> {
     match key {
@@ -135,6 +155,21 @@ mod tests {
             match_shortcut(&Key::Character("1".into()), no_mods),
             Some(ShortcutAction::NavigatePage(0))
         );
+    }
+
+    #[test]
+    fn search_shortcuts_are_slash_and_ctrl_k() {
+        assert_eq!(match_shortcut(&Key::Character("/".into()), Modifiers::empty()), Some(ShortcutAction::OpenSearch));
+        assert_eq!(match_shortcut(&Key::Character("k".into()), Modifiers::CTRL), Some(ShortcutAction::OpenSearch));
+        assert_eq!(match_shortcut(&Key::Character("k".into()), Modifiers::empty()), None);
+    }
+
+    #[test]
+    fn arrows_seek_and_escape_closes() {
+        let none = Modifiers::empty();
+        assert_eq!(match_shortcut(&Key::Named(Named::ArrowRight), none), Some(ShortcutAction::SeekForwardShort));
+        assert_eq!(match_shortcut(&Key::Named(Named::ArrowLeft), none), Some(ShortcutAction::SeekBackShort));
+        assert_eq!(match_shortcut(&Key::Named(Named::Escape), none), Some(ShortcutAction::BackOrClose));
     }
 }
 

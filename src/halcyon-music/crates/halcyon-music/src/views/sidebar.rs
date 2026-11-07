@@ -1,8 +1,9 @@
-//! Collapsible sidebar navigation.
+//! Sidebar navigation. Collapsed (icons only) by default; it expands while the
+//! pointer is over it.
 
 use crate::icons::{icon, Icon};
 use crate::theme::{Density, HalcyonPalette};
-use iced::widget::{button, column, container, row, text, tooltip, Space};
+use iced::widget::{button, column, container, mouse_area, row, text, tooltip, Space};
 use iced::{Alignment, Element, Length};
 
 pub const SIDEBAR_EXPANDED_WIDTH: f32 = 220.0;
@@ -32,8 +33,6 @@ impl NavPage {
             NavPage::Liked,
             NavPage::Recent,
             NavPage::Capsule,
-            NavPage::Lyrics,
-            NavPage::Settings,
         ]
     }
 
@@ -82,7 +81,7 @@ fn item_button<'a, Message: Clone + 'static>(
     msg: Message,
 ) -> Element<'a, Message> {
     let tint = if is_active { palette.accent } else { palette.text };
-    let icon_txt = icon(ic, 18.0, tint);
+    let icon_txt = icon(ic, if collapsed { 22.0 } else { 18.0 }, tint);
 
     let content: Element<'a, Message> = if collapsed {
         container(icon_txt)
@@ -102,7 +101,7 @@ fn item_button<'a, Message: Clone + 'static>(
     let btn = button(content)
         .on_press(msg)
         .width(Length::Fill)
-        .padding([8, 12])
+        .padding(if collapsed { [10, 0] } else { [8, 12] })
         .style(move |_theme, status| {
             let mut bg = iced::Color::TRANSPARENT;
             let text_color = if is_active { palette.accent } else { palette.text };
@@ -160,10 +159,11 @@ pub fn view<'a, Message: Clone + 'static>(
     palette: HalcyonPalette,
     density: Density,
     on_select: impl Fn(NavPage) -> Message + 'a,
-    on_toggle_collapse: Message,
+    on_hover: impl Fn(bool) -> Message + 'a,
     queue_open: bool,
     on_queue: Message,
     on_playlists: Message,
+    header: Element<'a, Message>,
 ) -> Element<'a, Message> {
     let width = if collapsed {
         SIDEBAR_COLLAPSED_WIDTH
@@ -171,7 +171,7 @@ pub fn view<'a, Message: Clone + 'static>(
         SIDEBAR_EXPANDED_WIDTH
     };
 
-    let mut nav_items = column![].spacing(density.row_padding() / 2);
+    let mut nav_items = column![].spacing(crate::theme::space::XS);
 
     for &page in NavPage::all() {
         nav_items = nav_items.push(item_button(
@@ -206,64 +206,18 @@ pub fn view<'a, Message: Clone + 'static>(
         on_queue,
     ));
 
-    let toggle_content: Element<'a, Message> = if collapsed {
-        icon(Icon::ChevronRight, 14.0, palette.text_muted).into()
-    } else {
-        row![
-            icon(Icon::ChevronLeft, 14.0, palette.text_muted),
-            Space::with_width(6),
-            text("Collapse").size(13),
-        ]
-        .align_y(Alignment::Center)
-        .into()
-    };
-    let toggle_btn = button(
-        container(toggle_content)
-            .width(Length::Fill)
-            .center_x(Length::Fill),
-    )
-    .on_press(on_toggle_collapse)
-    .padding(6)
-    .style(move |_theme, status| button::Style {
-        background: Some(
-            if status == button::Status::Hovered {
-                palette.surface_variant
-            } else {
-                iced::Color::TRANSPARENT
-            }
-            .into(),
-        ),
-        text_color: palette.text_muted,
-        border: iced::Border {
-            radius: 6.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    });
-
-    container(
+    let panel = container(
         column![
-            // Header / App Branding
+            // Account circle (top left)
             if collapsed {
-                container(icon(Icon::Music, 22.0, palette.accent))
-                    .width(Length::Fill)
-                    .center_x(Length::Fill)
+                container(header).width(Length::Fill).center_x(Length::Fill)
             } else {
-                container(
-                    row![
-                        icon(Icon::Music, 22.0, palette.accent),
-                        Space::with_width(8),
-                        text("Halcyon").size(17).color(palette.text),
-                    ]
-                    .align_y(Alignment::Center),
-                )
+                container(header)
             },
-            Space::with_height(16),
+            Space::with_height(crate::theme::space::XL),
             nav_items,
-            Space::with_height(Length::Fill),
-            toggle_btn,
         ]
-        .padding(12),
+        .padding(if collapsed { 10.0 } else { crate::theme::space::LG }),
     )
     .width(width)
     .height(Length::Fill)
@@ -274,7 +228,20 @@ pub fn view<'a, Message: Clone + 'static>(
             width: 1.0,
             ..Default::default()
         },
+        shadow: if collapsed {
+            iced::Shadow::default()
+        } else {
+            iced::Shadow {
+                color: iced::Color { a: 0.35, ..iced::Color::BLACK },
+                offset: iced::Vector::new(4.0, 0.0),
+                blur_radius: 16.0,
+            }
+        },
         ..Default::default()
-    })
-    .into()
+    });
+
+    mouse_area(panel)
+        .on_enter(on_hover(true))
+        .on_exit(on_hover(false))
+        .into()
 }

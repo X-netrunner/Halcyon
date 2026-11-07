@@ -3,7 +3,7 @@
 use crate::icons::{icon, Icon};
 use crate::theme::{format_duration, HalcyonPalette};
 use halcyon_music_core::state::{PlayerState, RepeatMode};
-use iced::widget::{button, container, row, slider, text, Space};
+use iced::widget::{button, container, row, slider, text, tooltip, Space};
 use iced::{Alignment, Element, Length};
 
 #[allow(clippy::too_many_arguments)]
@@ -22,6 +22,8 @@ pub fn view<'a, Message: Clone + 'static>(
     on_toggle_lyrics: Message,
     on_toggle_fullscreen: Message,
     on_toggle_like: Message,
+    lyrics_open: bool,
+    queue_open: bool,
 ) -> Element<'a, Message> {
     let track = state.track.as_ref();
     let title = track.map(|t| t.title.as_str()).unwrap_or("No track playing");
@@ -60,19 +62,19 @@ pub fn view<'a, Message: Clone + 'static>(
     });
 
     let meta = iced::widget::column![
-        text(title).size(14).color(palette.text),
-        text(artist).size(12).color(palette.text_muted),
+        text(crate::views::ellipsize(title, 40)).size(14).color(palette.text),
+        text(crate::views::ellipsize(artist, 40)).size(12).color(palette.text_muted),
     ]
     .spacing(2);
 
     let like_btn = button(icon(Icon::Heart, 16.0, palette.text_muted))
         .on_press(on_toggle_like)
         .padding(4)
-        .style(|_t, _s| button::Style::default());
+        .style(crate::views::ghost(palette));
 
     let left = row![cover_btn, Space::with_width(12), meta, Space::with_width(8), like_btn]
         .align_y(Alignment::Center)
-        .width(Length::FillPortion(1));
+        .width(Length::FillPortion(3));
 
     // --- Center Section: Transport + Seek Bar ---
     let play_pause_icon = if state.playing { Icon::Pause } else { Icon::Play };
@@ -85,12 +87,12 @@ pub fn view<'a, Message: Clone + 'static>(
     let shuffle_btn = button(icon(Icon::Shuffle, 16.0, shuffle_color))
         .on_press(on_toggle_shuffle)
         .padding(6)
-        .style(|_t, _s| button::Style::default());
+        .style(crate::views::ghost(palette));
 
     let prev_btn = button(icon(Icon::SkipBack, 18.0, palette.text))
         .on_press(on_prev)
         .padding(6)
-        .style(|_t, _s| button::Style::default());
+        .style(crate::views::ghost(palette));
 
     let play_btn = button(
         container(icon(play_pause_icon, 20.0, palette.background))
@@ -113,7 +115,7 @@ pub fn view<'a, Message: Clone + 'static>(
     let next_btn = button(icon(Icon::SkipForward, 18.0, palette.text))
         .on_press(on_next)
         .padding(6)
-        .style(|_t, _s| button::Style::default());
+        .style(crate::views::ghost(palette));
 
     let repeat_icon = match state.repeat {
         RepeatMode::Off => Icon::Repeat,
@@ -127,7 +129,16 @@ pub fn view<'a, Message: Clone + 'static>(
     let repeat_btn = button(icon(repeat_icon, 16.0, repeat_color))
         .on_press(on_cycle_repeat)
         .padding(6)
-        .style(|_t, _s| button::Style::default());
+        .style(crate::views::ghost(palette));
+
+    let lyrics_btn = tooltip(
+        button(icon(Icon::Lyrics, 16.0, if lyrics_open { palette.accent } else { palette.text_muted }))
+            .on_press(on_toggle_lyrics)
+            .padding(6)
+            .style(crate::views::ghost(palette)),
+        text("Lyrics").size(12),
+        tooltip::Position::Top,
+    );
 
     let transport_row = row![
         shuffle_btn,
@@ -139,6 +150,8 @@ pub fn view<'a, Message: Clone + 'static>(
         next_btn,
         Space::with_width(8),
         repeat_btn,
+        Space::with_width(crate::theme::space::LG),
+        lyrics_btn,
     ]
     .align_y(Alignment::Center);
 
@@ -161,7 +174,7 @@ pub fn view<'a, Message: Clone + 'static>(
 
     let center = iced::widget::column![transport_row, Space::with_height(4), progress_row]
         .align_x(Alignment::Center)
-        .width(Length::FillPortion(2));
+        .width(Length::FillPortion(6));
 
     // --- Right Section: Volume & View Toggles ---
     let vol_icon = if state.volume == 0 {
@@ -174,43 +187,42 @@ pub fn view<'a, Message: Clone + 'static>(
     let mute_btn = button(icon(vol_icon, 16.0, palette.text_muted))
         .on_press(on_toggle_mute)
         .padding(4)
-        .style(|_t, _s| button::Style::default());
+        .style(crate::views::ghost(palette));
 
-    let vol_slider = slider(0..=100, state.volume, on_volume).width(80);
+    let vol_slider = slider(0..=100, state.volume, on_volume).width(120);
 
-    let lyrics_btn = button(icon(Icon::Lyrics, 16.0, palette.text_muted))
-        .on_press(on_toggle_lyrics)
-        .padding(6)
-        .style(|_t, _s| button::Style::default());
-
-    let queue_btn = button(icon(Icon::Queue, 16.0, palette.text_muted))
-        .on_press(on_toggle_queue)
-        .padding(6)
-        .style(|_t, _s| button::Style::default());
+    let queue_btn = tooltip(
+        button(icon(Icon::Queue, 16.0, if queue_open { palette.accent } else { palette.text_muted }))
+            .on_press(on_toggle_queue)
+            .padding(6)
+            .style(crate::views::ghost(palette)),
+        text("Queue").size(12),
+        tooltip::Position::Top,
+    );
 
     let fs_btn = button(icon(Icon::Maximize, 16.0, palette.text_muted))
         .on_press(on_toggle_fullscreen)
         .padding(6)
-        .style(|_t, _s| button::Style::default());
+        .style(crate::views::ghost(palette));
 
     let right = row![
+        Space::with_width(Length::Fill),
         mute_btn,
         vol_slider,
         Space::with_width(12),
-        lyrics_btn,
         queue_btn,
         fs_btn,
     ]
     .align_y(Alignment::Center)
-    .width(Length::FillPortion(1));
+    .width(Length::FillPortion(3));
 
     container(
         row![left, center, right]
             .align_y(Alignment::Center)
-            .padding([8, 16]),
+            .padding([crate::theme::space::MD, crate::theme::space::XL]),
     )
     .width(Length::Fill)
-    .height(72)
+    .height(84)
     .style(move |_theme| container::Style {
         background: Some(palette.surface.into()),
         border: iced::Border {

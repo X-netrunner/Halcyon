@@ -67,8 +67,10 @@ pub fn main() -> iced::Result {
             application_id: "halcyon-music".to_string(),
             ..Default::default()
         },
-        size: iced::Size::new(1040.0, 680.0),
-        min_size: Some(iced::Size::new(800.0, 520.0)),
+        size: WINDOW_DEFAULT,
+        min_size: Some(WINDOW_MIN),
+        // Our own slim title bar replaces the system one.
+        decorations: false,
         ..Default::default()
     };
 
@@ -100,7 +102,10 @@ struct HalcyonApp {
     is_offline: bool,
     // Part 4 UI Shell State
     active_nav: NavPage,
-    sidebar_collapsed: bool,
+    /// The sidebar is collapsed (icons only) until the pointer is over it.
+    sidebar_hovered: bool,
+    /// Playlist id whose first page of tracks should start playing as soon as it arrives.
+    pending_play_playlist: Option<String>,
     density: Density,
     show_fullscreen: bool,
     show_queue: bool,
@@ -138,15 +143,60 @@ struct HalcyonApp {
     show_load_lrc_input: bool,
     lrc_input: String,
     last_fetched_lyrics_track_id: Option<String>,
+    // Shell
+    window_id: Option<iced::window::Id>,
+    window_size: iced::Size,
+    cursor: iced::Point,
+    scroll: ScrollInfo,
+    last_click: Option<(String, Instant)>,
+    last_title_press: Option<Instant>,
+    account_menu_open: bool,
+    profile_name: Option<String>,
+    profile_image: Option<String>,
+    track_menu: Option<TrackMenu>,
+    playlist_page: PlaylistPage,
+    /// Where Lyrics was opened from, so closing it goes back there.
+    page_before_lyrics: NavPage,
+    /// Bumped whenever a fresh (non-cached) answer arrives; see `OfflineCheck`.
+    fresh_counter: u64,
 }
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 enum Message {
+    // Window / shell
+    WindowId(Option<iced::window::Id>),
+    WindowResized(iced::Size),
+    CursorMoved(iced::Point),
+    TitleBarPress,
+    WindowMinimize,
+    WindowToggleMaximize,
+    WindowClose,
+    ToggleAccountMenu,
+    CloseMenus,
+    OpenSettings,
+    OpenSpotifyAccount,
+    ContentScrolled(ScrollInfo),
+    OfflineCheck(u64),
+    // Playlist page
+    PlaylistRowClick(usize),
+    PlaylistRowPlay(usize),
+    PlaylistRowMenu(usize),
+    PlaylistPlayAll,
+    PlaylistShuffle,
+    PlaylistAddToQueue,
+    PlaylistPlayNext,
+    PlaylistRetry,
+    PlaylistTimeout { id: String, generation: u64 },
+    // Track context menu
+    TrackMenuPlay,
+    TrackMenuPlayNext,
+    TrackMenuEnqueue,
+    TrackMenuGoToAlbum,
     UiEvent(Box<UiEvent>),
     Shortcut(ShortcutAction),
     NavSelected(NavPage),
-    ToggleSidebar,
+    SidebarHover(bool),
     ToggleFullscreen,
     ToggleQueue,
     OpenPlaylistsTab,
@@ -187,6 +237,8 @@ enum Message {
     RefreshLibrary,
     PlayTrack(Track),
     PlayContext(Vec<Track>, usize),
+    /// Play a whole playlist we only know the id of (Home tiles): fetch its tracks, then play.
+    PlayPlaylist(String),
     PlayMix(Vec<Track>, String),
     SaveMix(String, Vec<String>),
     // Part 6 Messages
@@ -222,6 +274,83 @@ enum Message {
 }
 
 /// Id of the header search box, so `/` and Ctrl+K can focus it.
+/// Default and minimum window size.
+const WINDOW_DEFAULT: iced::Size = iced::Size::new(1440.0, 900.0);
+const WINDOW_MIN: iced::Size = iced::Size::new(960.0, 600.0);
+/// Two presses closer than this count as a double click.
+const DOUBLE_CLICK: Duration = Duration::from_millis(400);
+/// Seconds a cached answer may stand alone before the "offline" banner appears.
+const OFFLINE_GRACE: Duration = Duration::from_secs(4);
+/// Seconds to wait for a page of playlist songs before calling it failed.
+const PLAYLIST_TIMEOUT: Duration = Duration::from_secs(12);
+/// Songs asked for per page of a playlist.
+const PLAYLIST_PAGE: u32 = 50;
+/// Id of the scroll area around the page, so pages can be reset to the top.
+const CONTENT_SCROLL_ID: &str = "content-scroll";
+
+/// How far the page scroll area is scrolled and how tall it is.
+#[derive(Debug, Clone, Copy, Default)]
+struct ScrollInfo {
+    y: f32,
+    viewport_h: f32,
+    content_h: f32,
+}
+
+/// State of the open playlist page (the songs themselves live in `active_playlist`).
+#[derive(Debug, Clone, Default)]
+struct PlaylistPage {
+    /// Total songs Spotify says the playlist has (0 until known).
+    total: usize,
+    /// First page asked for, nothing back yet.
+    loading: bool,
+    /// A later page is on its way.
+    loading_more: bool,
+    /// The first page never arrived (shows Retry).
+    failed: bool,
+    /// A later page never arrived.
+    more_failed: bool,
+    /// A non-cached answer arrived, so "no songs" really means none.
+    fresh: bool,
+    /// Bumped on every request; a timeout only counts for the request it was started for.
+    generation: u64,
+    selected: Option<usize>,
+}
+
+/// Right-click menu: which song and where on screen.
+#[derive(Debug, Clone)]
+struct TrackMenu {
+    track: Track,
+    at: iced::Point,
+}
+
+/// Opened by "Spotify Settings" in the account menu.
+const SPOTIFY_ACCOUNT_URL: &str = "https://www.spotify.com/account";
+
+/// True when two presses of the title bar are close enough to be a double click.
+fn is_double_press(previous: Option<Instant>, now: Instant) -> bool {
+    previous.is_some_and(|p| now.saturating_duration_since(p) <= DOUBLE_CLICK)
+}
+
+/// True when this press and the previous one hit the same target in time.
+fn is_double_click(previous: &Option<(String, Instant)>, key: &str, now: Instant) -> bool {
+    previous
+        .as_ref()
+        .is_some_and(|(k, t)| k == key && now.saturating_duration_since(*t) <= DOUBLE_CLICK)
+}
+
+/// The songs in a random order (Fisher-Yates with a small xorshift; no dependency needed).
+fn shuffled(tracks: &[Track], seed: u64) -> Vec<Track> {
+    let mut out = tracks.to_vec();
+    let mut x = seed | 1;
+    for i in (1..out.len()).rev() {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        out.swap(i, (x % (i as u64 + 1)) as usize);
+    }
+    out
+}
+
 const TOP_SEARCH_ID: &str = "top-search";
 
 /// A short message at the bottom right. `ok` picks the colour: accent for
@@ -260,6 +389,10 @@ fn header_button<'a>(
 impl HalcyonApp {
     /// True while Home is showing its grey loading blocks (they pulse).
     fn skeleton_visible(&self) -> bool {
+        if self.active_nav == NavPage::PlaylistDetail {
+            return !self.animations.reduce_motion
+                && (self.playlist_page.loading || self.playlist_page.loading_more);
+        }
         !self.animations.reduce_motion
             && self.active_nav == NavPage::Home
             && matches!(self.auth_status, AuthStatus::LoggedIn { .. })
@@ -320,7 +453,8 @@ impl HalcyonApp {
             playlists: Vec::new(),
             is_offline: false,
             active_nav: NavPage::Home,
-            sidebar_collapsed: false,
+            sidebar_hovered: false,
+            pending_play_playlist: None,
             density: Density::Comfortable,
             show_fullscreen: false,
             show_queue: false,
@@ -355,8 +489,22 @@ impl HalcyonApp {
             show_load_lrc_input: false,
             lrc_input: String::new(),
             last_fetched_lyrics_track_id: None,
+            window_id: None,
+            window_size: WINDOW_DEFAULT,
+            cursor: iced::Point::ORIGIN,
+            scroll: ScrollInfo::default(),
+            last_click: None,
+            last_title_press: None,
+            account_menu_open: false,
+            profile_name: None,
+            profile_image: None,
+            track_menu: None,
+            playlist_page: PlaylistPage::default(),
+            page_before_lyrics: NavPage::Home,
+            fresh_counter: 0,
         };
-        (app, task)
+        let window_task = iced::window::get_oldest().map(Message::WindowId);
+        (app, Task::batch([task, window_task]))
     }
 
     fn send(&self, body: CommandBody) {
@@ -364,9 +512,34 @@ impl HalcyonApp {
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
-        let key_sub = iced::keyboard::on_key_press(|key, modifiers| {
-            shortcuts::match_shortcut(&key, modifiers).map(Message::Shortcut)
+        // Esc is seen even when a text box has taken it (that is how Esc clears the search);
+        // every other shortcut only when no widget used the key (typing never triggers them).
+        let key_sub = iced::event::listen_with(|event, status, _window| match event {
+            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+                if key == iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape) {
+                    Some(Message::Shortcut(ShortcutAction::BackOrClose))
+                } else if status == iced::event::Status::Ignored {
+                    shortcuts::match_shortcut(&key, modifiers).map(Message::Shortcut)
+                } else {
+                    None
+                }
+            }
+            _ => None,
         });
+
+        let resize_sub = iced::window::resize_events().map(|(_, size)| Message::WindowResized(size));
+
+        // The cursor position is only followed on pages with right-clickable songs.
+        let cursor_sub = if matches!(self.active_nav, NavPage::PlaylistDetail) {
+            iced::event::listen_with(|event, _status, _window| match event {
+                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                    Some(Message::CursorMoved(position))
+                }
+                _ => None,
+            })
+        } else {
+            iced::Subscription::none()
+        };
 
         let anim_sub = if self.animations.is_animating() || art::is_fading() || self.skeleton_visible() {
             iced::time::every(Duration::from_millis(16)).map(|_| Message::AnimationTick)
@@ -380,7 +553,7 @@ impl HalcyonApp {
             iced::Subscription::none()
         };
 
-        iced::Subscription::batch([key_sub, anim_sub, toast_sub])
+        iced::Subscription::batch([key_sub, resize_sub, cursor_sub, anim_sub, toast_sub])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -392,6 +565,81 @@ impl HalcyonApp {
             }
         }
         task
+    }
+
+    /// Ask for the covers of the playlist rows that are on screen (cheap; skips ones already asked).
+    fn request_playlist_art(&self) {
+        if let Some((_, tracks)) = &self.active_playlist {
+            let (a, b) = views::playlist::visible_range(self.scroll.y, self.scroll.viewport_h.max(700.0), tracks.len());
+            for cmd in art::commands_for(art::track_items(&tracks[a..b])) {
+                self.send(cmd);
+            }
+        }
+    }
+
+    /// Ask for one page of the open playlist and start the clock that decides it failed.
+    fn request_playlist_page(&mut self, offset: usize) -> Task<Message> {
+        let Some((pl, _)) = &self.active_playlist else { return Task::none() };
+        let id = pl.id.clone();
+        self.playlist_page.generation += 1;
+        let generation = self.playlist_page.generation;
+        self.send(CommandBody::GetPlaylistTracks {
+            id: id.clone(),
+            limit: Some(PLAYLIST_PAGE),
+            offset: Some(offset as u32),
+        });
+        Task::perform(
+            async move {
+                tokio::time::sleep(PLAYLIST_TIMEOUT).await;
+                (id, generation)
+            },
+            |(id, generation)| Message::PlaylistTimeout { id, generation },
+        )
+    }
+
+    /// Load the next page when the user is close to the end of what is loaded.
+    fn maybe_load_more_playlist(&mut self) -> Task<Message> {
+        let loaded = match &self.active_playlist {
+            Some((_, tracks)) => tracks.len(),
+            None => return Task::none(),
+        };
+        let pp = &self.playlist_page;
+        if pp.loading || pp.loading_more || pp.failed || pp.more_failed || loaded == 0 || loaded >= pp.total {
+            return Task::none();
+        }
+        if !views::playlist::near_end(self.scroll.y, self.scroll.viewport_h, self.scroll.content_h, 600.0) {
+            return Task::none();
+        }
+        self.playlist_page.loading_more = true;
+        self.request_playlist_page(loaded)
+    }
+
+    /// A cached answer started the "maybe offline" clock; a fresh one stops it.
+    fn note_answer(&mut self, is_cached: bool) -> Task<Message> {
+        if is_cached {
+            let seen = self.fresh_counter;
+            Task::perform(
+                async move {
+                    tokio::time::sleep(OFFLINE_GRACE).await;
+                    seen
+                },
+                Message::OfflineCheck,
+            )
+        } else {
+            self.fresh_counter += 1;
+            self.is_offline = false;
+            Task::none()
+        }
+    }
+
+    fn close_menus(&mut self) {
+        self.account_menu_open = false;
+        self.track_menu = None;
+    }
+
+    /// Ask the daemon who is signed in (name and picture). Sent on connect and after sign-in.
+    fn ask_profile(&self) {
+        self.send(CommandBody::GetProfile);
     }
 
     /// Ask the daemon for every cover the app holds data for and has not
@@ -427,13 +675,18 @@ impl HalcyonApp {
                 v.extend(art::artist_items(std::slice::from_ref(artist)));
                 v.extend(art::album_items(albums));
             }
-            if let Some((playlist, _)) = &app.active_playlist {
+            if let Some((playlist, tracks)) = &app.active_playlist {
                 v.push((playlist.art_url.as_deref(), ArtSize::Medium));
+                let (a, b) = views::playlist::visible_range(app.scroll.y, app.scroll.viewport_h.max(700.0), tracks.len());
+                v.extend(art::track_items(&tracks[a..b]));
             }
             v
         }
 
         let mut cmds = Vec::new();
+        if let Some(url) = self.profile_image.as_deref() {
+            push(&mut cmds, art::avatar_items(url));
+        }
         if let Some(track) = &self.state.track {
             push(&mut cmds, art::now_playing_items(track));
         }
@@ -493,6 +746,7 @@ impl HalcyonApp {
                     if let ConnStatus::Connected { .. } = &self.status {
                         art::connection_reset();
                         self.send(CommandBody::GetAuthStatus);
+                        self.ask_profile();
                         // An older daemon answers this with "not supported by this daemon version".
                         self.send(CommandBody::GetStreamingAuth);
                         self.send(CommandBody::GetHomeFeed);
@@ -551,6 +805,7 @@ impl HalcyonApp {
                         self.auth_status = status;
                         if matches!(self.auth_status, AuthStatus::LoggedIn { .. }) {
                             self.auth_reason = None;
+                            self.ask_profile();
                             self.send(CommandBody::GetPlaylists {
                                 limit: Some(20),
                                 offset: Some(0),
@@ -607,8 +862,7 @@ impl HalcyonApp {
                         ..
                     } => {
                         self.playlists = playlists;
-                        self.is_offline = is_cached;
-                        Task::none()
+                        self.note_answer(is_cached)
                     }
                     EventBody::PlaybackFailed { reason, .. } => {
                         self.notify(reason, false);
@@ -645,8 +899,7 @@ impl HalcyonApp {
                                 }
                             }
                         }
-                        self.is_offline = is_cached;
-                        Task::none()
+                        self.note_answer(is_cached)
                     }
                     EventBody::SavedAlbumsResult { albums } => {
                         self.saved_albums = albums;
@@ -656,21 +909,55 @@ impl HalcyonApp {
                         self.followed_artists = artists;
                         Task::none()
                     }
-                    EventBody::PlaylistTracksResult { playlist_id, tracks, offset, .. } => {
-                        if let Some((pl, list)) = self.active_playlist.as_mut() {
-                            if pl.id == playlist_id {
-                                if offset == 0 {
-                                    *list = tracks;
-                                } else {
-                                    for t in tracks {
-                                        if !list.iter().any(|x| x.id == t.id) {
-                                            list.push(t);
-                                        }
-                                    }
-                                }
-                            }
+                    EventBody::Profile { display_name, image_url } => {
+                        // Never let a late, empty answer wipe a name or picture we already have.
+                        if display_name.is_some() {
+                            self.profile_name = display_name;
+                        }
+                        if image_url.is_some() {
+                            self.profile_image = image_url;
                         }
                         Task::none()
+                    }
+                    EventBody::PlaylistTracksResult { playlist_id, tracks, offset, total, is_cached } => {
+                        let mut task = self.note_answer(is_cached);
+                        if offset == 0 && self.pending_play_playlist.as_deref() == Some(playlist_id.as_str()) {
+                            if !tracks.is_empty() {
+                                self.pending_play_playlist = None;
+                                self.send(CommandBody::PlayContext { tracks: tracks.clone(), start_index: 0 });
+                            } else if !is_cached {
+                                // A fresh answer with nothing in it: the playlist is empty.
+                                self.pending_play_playlist = None;
+                                self.notify("That playlist has no playable tracks".to_string(), false);
+                                self.animations.animate_toast_show();
+                            }
+                        }
+                        let is_open = self.active_playlist.as_ref().is_some_and(|(pl, _)| pl.id == playlist_id);
+                        if is_open {
+                            let got = tracks.len();
+                            let mut gap = false;
+                            if let Some((_, list)) = self.active_playlist.as_mut() {
+                                gap = !views::playlist::merge_page(list, offset, tracks);
+                            }
+                            let loaded = self.active_playlist.as_ref().map_or(0, |(_, l)| l.len());
+                            let pp = &mut self.playlist_page;
+                            pp.total = pp.total.max(total).max(loaded);
+                            if !is_cached {
+                                pp.fresh = true;
+                            }
+                            if got > 0 || !is_cached {
+                                pp.loading = false;
+                                pp.failed = false;
+                                pp.loading_more = false;
+                                pp.more_failed = false;
+                            }
+                            if gap {
+                                // Pages arrived out of order: ask again for the one that is missing.
+                                task = Task::batch([task, self.request_playlist_page(loaded)]);
+                            }
+                            self.request_playlist_art();
+                        }
+                        task
                     }
                     EventBody::PlaylistCreated { name, .. } => {
                         self.notify(format!("Mix saved to Spotify as \"{name}\""), true);
@@ -760,10 +1047,221 @@ impl HalcyonApp {
                 }
                 Task::none()
             }
+            Message::WindowId(id) => {
+                self.window_id = id;
+                // Open big, like Spotify: fill the screen. The default size is what
+                // un-maximising returns to.
+                match id {
+                    Some(id) => iced::window::maximize(id, true),
+                    None => Task::none(),
+                }
+            }
+            Message::WindowResized(size) => {
+                self.window_size = size;
+                Task::none()
+            }
+            Message::CursorMoved(p) => {
+                self.cursor = p;
+                Task::none()
+            }
+            Message::TitleBarPress => {
+                let now = Instant::now();
+                let double = is_double_press(self.last_title_press, now);
+                self.last_title_press = if double { None } else { Some(now) };
+                match self.window_id {
+                    Some(id) if double => iced::window::toggle_maximize(id),
+                    Some(id) => iced::window::drag(id),
+                    None => Task::none(),
+                }
+            }
+            Message::WindowMinimize => match self.window_id {
+                Some(id) => iced::window::minimize(id, true),
+                None => Task::none(),
+            },
+            Message::WindowToggleMaximize => match self.window_id {
+                Some(id) => iced::window::toggle_maximize(id),
+                None => Task::none(),
+            },
+            Message::WindowClose => match self.window_id {
+                Some(id) => iced::window::close(id),
+                None => Task::none(),
+            },
+            Message::ToggleAccountMenu => {
+                self.track_menu = None;
+                self.account_menu_open = !self.account_menu_open;
+                Task::none()
+            }
+            Message::CloseMenus => {
+                self.close_menus();
+                Task::none()
+            }
+            Message::OpenSettings => {
+                self.close_menus();
+                self.update_inner(Message::NavSelected(NavPage::Settings))
+            }
+            Message::OpenSpotifyAccount => {
+                self.close_menus();
+                let _ = tokio::process::Command::new("xdg-open")
+                    .arg(SPOTIFY_ACCOUNT_URL)
+                    .spawn();
+                Task::none()
+            }
+            Message::ContentScrolled(info) => {
+                self.scroll = info;
+                if self.active_nav == NavPage::PlaylistDetail {
+                    self.request_playlist_art();
+                    return self.maybe_load_more_playlist();
+                }
+                Task::none()
+            }
+            Message::OfflineCheck(seen) => {
+                // Still no fresh answer since the cached one: Spotify is not answering.
+                if self.fresh_counter == seen {
+                    self.is_offline = true;
+                }
+                Task::none()
+            }
+            Message::PlaylistRowClick(idx) => {
+                let key = format!("pl:{idx}");
+                let now = Instant::now();
+                let double = is_double_click(&self.last_click, &key, now);
+                self.last_click = if double { None } else { Some((key, now)) };
+                self.playlist_page.selected = Some(idx);
+                if double {
+                    return self.update_inner(Message::PlaylistRowPlay(idx));
+                }
+                Task::none()
+            }
+            Message::PlaylistRowPlay(idx) => {
+                if let Some((_, tracks)) = &self.active_playlist {
+                    if idx < tracks.len() {
+                        self.send(CommandBody::PlayContext { tracks: tracks.clone(), start_index: idx });
+                    }
+                }
+                Task::none()
+            }
+            Message::PlaylistRowMenu(idx) => {
+                let track = self.active_playlist.as_ref().and_then(|(_, t)| t.get(idx).cloned());
+                if let Some(track) = track {
+                    self.account_menu_open = false;
+                    self.playlist_page.selected = Some(idx);
+                    self.track_menu = Some(TrackMenu { track, at: self.cursor });
+                }
+                Task::none()
+            }
+            Message::PlaylistPlayAll => {
+                if let Some((_, tracks)) = &self.active_playlist {
+                    if !tracks.is_empty() {
+                        self.send(CommandBody::PlayContext { tracks: tracks.clone(), start_index: 0 });
+                    }
+                }
+                Task::none()
+            }
+            Message::PlaylistShuffle => {
+                if let Some((_, tracks)) = &self.active_playlist {
+                    if !tracks.is_empty() {
+                        let seed = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_nanos() as u64)
+                            .unwrap_or(1);
+                        self.send(CommandBody::PlayContext { tracks: shuffled(tracks, seed), start_index: 0 });
+                    }
+                }
+                Task::none()
+            }
+            Message::PlaylistAddToQueue => {
+                if let Some((_, tracks)) = &self.active_playlist {
+                    let n = tracks.len();
+                    let list = tracks.clone();
+                    for track in list {
+                        self.send(CommandBody::Enqueue { track });
+                    }
+                    if n > 0 {
+                        self.notify(format!("Added {n} songs to the queue"), true);
+                        self.animations.animate_toast_show();
+                    }
+                }
+                Task::none()
+            }
+            Message::PlaylistPlayNext => {
+                if let Some((_, tracks)) = &self.active_playlist {
+                    let n = tracks.len();
+                    let list = tracks.clone();
+                    // Last first, so the playlist ends up in its own order right after the current song.
+                    for track in list.into_iter().rev() {
+                        self.send(CommandBody::PlayNext { track });
+                    }
+                    if n > 0 {
+                        self.notify(format!("{n} songs play next"), true);
+                        self.animations.animate_toast_show();
+                    }
+                }
+                Task::none()
+            }
+            Message::PlaylistRetry => {
+                let loaded = self.active_playlist.as_ref().map_or(0, |(_, l)| l.len());
+                if loaded == 0 {
+                    self.playlist_page.failed = false;
+                    self.playlist_page.loading = true;
+                    self.request_playlist_page(0)
+                } else {
+                    self.playlist_page.more_failed = false;
+                    self.playlist_page.loading_more = true;
+                    self.request_playlist_page(loaded)
+                }
+            }
+            Message::PlaylistTimeout { id, generation } => {
+                let current = self.active_playlist.as_ref().is_some_and(|(pl, _)| pl.id == id)
+                    && self.playlist_page.generation == generation;
+                if current {
+                    let loaded = self.active_playlist.as_ref().map_or(0, |(_, l)| l.len());
+                    let pp = &mut self.playlist_page;
+                    if loaded == 0 && pp.loading {
+                        pp.loading = false;
+                        pp.failed = true;
+                    } else if pp.loading_more {
+                        pp.loading_more = false;
+                        pp.more_failed = true;
+                    }
+                }
+                Task::none()
+            }
+            Message::TrackMenuPlay => {
+                if let Some(m) = self.track_menu.take() {
+                    self.send(CommandBody::PlayTrack { track: m.track });
+                }
+                Task::none()
+            }
+            Message::TrackMenuPlayNext => {
+                if let Some(m) = self.track_menu.take() {
+                    self.notify(format!("\"{}\" plays next", views::ellipsize(&m.track.title, 40)), true);
+                    self.send(CommandBody::PlayNext { track: m.track });
+                }
+                Task::none()
+            }
+            Message::TrackMenuEnqueue => {
+                if let Some(m) = self.track_menu.take() {
+                    self.notify(format!("Added \"{}\" to the queue", views::ellipsize(&m.track.title, 40)), true);
+                    self.send(CommandBody::Enqueue { track: m.track });
+                }
+                Task::none()
+            }
+            Message::TrackMenuGoToAlbum => {
+                let album = self.track_menu.take().and_then(|m| m.track.album_id);
+                match album {
+                    Some(id) => self.update_inner(Message::OpenAlbum(id)),
+                    None => Task::none(),
+                }
+            }
             Message::Shortcut(action) => self.handle_shortcut(action),
             Message::NavSelected(page) => {
                 let current_idx = self.active_nav as usize as f32;
                 let target_idx = page as usize as f32;
+                self.close_menus();
+                if page == NavPage::Lyrics && self.active_nav != NavPage::Lyrics {
+                    self.page_before_lyrics = self.active_nav;
+                }
+                self.scroll = ScrollInfo::default();
                 self.active_nav = page;
                 if page == NavPage::Home || page == NavPage::Recent {
                     self.send(CommandBody::GetHomeFeed);
@@ -800,10 +1298,10 @@ impl HalcyonApp {
                 }
                 self.animations.animate_page_switch();
                 self.animations.animate_sidebar_pill(current_idx, target_idx);
-                Task::none()
+                scrollable::snap_to(scrollable::Id::new(CONTENT_SCROLL_ID), scrollable::RelativeOffset::START)
             }
-            Message::ToggleSidebar => {
-                self.sidebar_collapsed = !self.sidebar_collapsed;
+            Message::SidebarHover(hovered) => {
+                self.sidebar_hovered = hovered;
                 Task::none()
             }
             Message::ToggleFullscreen => {
@@ -815,9 +1313,11 @@ impl HalcyonApp {
                 Task::none()
             }
             Message::ToggleLyrics => {
+                self.close_menus();
                 if self.active_nav == NavPage::Lyrics {
-                    self.active_nav = NavPage::Home;
+                    self.active_nav = self.page_before_lyrics;
                 } else {
+                    self.page_before_lyrics = self.active_nav;
                     self.active_nav = NavPage::Lyrics;
                     if let Some(track) = &self.state.track {
                         if self.last_fetched_lyrics_track_id.as_deref() != Some(&track.id) {
@@ -1076,16 +1576,25 @@ impl HalcyonApp {
                 Task::none()
             }
             Message::OpenPlaylist(id) => {
-                if let Some(pl) = self.playlists.iter().find(|p| p.id == id).cloned() {
-                    self.active_playlist = Some((pl, vec![]));
-                    self.active_nav = NavPage::PlaylistDetail;
-                    self.send(CommandBody::GetPlaylistTracks {
-                        id: id.clone(),
-                        limit: Some(100),
-                        offset: Some(0),
-                    });
-                }
-                Task::none()
+                let found = self
+                    .playlists
+                    .iter()
+                    .find(|p| p.id == id)
+                    .or_else(|| self.home_feed.playlists.iter().find(|p| p.id == id))
+                    .or_else(|| self.search_results.as_ref().and_then(|r| r.playlists.iter().find(|p| p.id == id)))
+                    .cloned();
+                let Some(pl) = found else { return Task::none() };
+                self.close_menus();
+                self.active_playlist = Some((pl, vec![]));
+                self.playlist_page = PlaylistPage { loading: true, ..Default::default() };
+                self.scroll = ScrollInfo::default();
+                self.active_nav = NavPage::PlaylistDetail;
+                self.animations.animate_page_switch();
+                let first_page = self.request_playlist_page(0);
+                Task::batch([
+                    first_page,
+                    scrollable::snap_to(scrollable::Id::new(CONTENT_SCROLL_ID), scrollable::RelativeOffset::START),
+                ])
             }
             Message::BackFromDetail => {
                 self.active_nav = NavPage::Library;
@@ -1124,6 +1633,9 @@ impl HalcyonApp {
                 self.send(CommandBody::Logout);
                 self.auth_status = AuthStatus::LoggedOut;
                 self.playlists.clear();
+                self.profile_name = None;
+                self.profile_image = None;
+                self.close_menus();
                 Task::none()
             }
             Message::OpenBrowserAuth(url) if url.is_empty() => Task::none(),
@@ -1147,6 +1659,15 @@ impl HalcyonApp {
             }
             Message::PlayContext(tracks, start_index) => {
                 self.send(CommandBody::PlayContext { tracks, start_index });
+                Task::none()
+            }
+            Message::PlayPlaylist(id) => {
+                self.pending_play_playlist = Some(id.clone());
+                self.send(CommandBody::GetPlaylistTracks {
+                    id,
+                    limit: Some(PLAYLIST_PAGE),
+                    offset: Some(0),
+                });
                 Task::none()
             }
             Message::PlayMix(tracks, name) => {
@@ -1250,7 +1771,10 @@ impl HalcyonApp {
                 }
             }
             ShortcutAction::BackOrClose => {
-                if self.show_diagnostics {
+                // One layer per press, the topmost first.
+                if self.track_menu.is_some() || self.account_menu_open {
+                    self.close_menus();
+                } else if self.show_diagnostics {
                     self.show_diagnostics = false;
                 } else if self.show_help {
                     self.show_help = false;
@@ -1258,8 +1782,12 @@ impl HalcyonApp {
                     self.show_fullscreen = false;
                 } else if self.show_queue {
                     self.show_queue = false;
-                } else if self.show_lyrics {
-                    self.show_lyrics = false;
+                } else if self.active_nav == NavPage::Lyrics {
+                    self.active_nav = self.page_before_lyrics;
+                } else if !self.search_query.is_empty() {
+                    self.search_query.clear();
+                    self.search_results = None;
+                    self.search_offset = 0;
                 }
                 Task::none()
             }
@@ -1269,60 +1797,109 @@ impl HalcyonApp {
         }
     }
 
+    /// The name shown in the account menu: Spotify's, else what the daemon said at sign-in.
+    fn account_name(&self) -> String {
+        if let Some(n) = self.profile_name.as_deref().filter(|n| !n.trim().is_empty()) {
+            return n.to_string();
+        }
+        match &self.auth_status {
+            AuthStatus::LoggedIn { display_name: Some(n), .. } if !n.trim().is_empty() => n.clone(),
+            _ => "Spotify user".to_string(),
+        }
+    }
+
     fn view(&self) -> Element<'_, Message> {
-        // 1. Fullscreen Now Playing overlay
+        let pal = self.palette;
+        let connected = matches!(self.status, ConnStatus::Connected { .. });
+        let logged_in = matches!(self.auth_status, AuthStatus::LoggedIn { .. });
+        let titlebar = views::titlebar::view(
+            connected,
+            pal,
+            Message::TitleBarPress,
+            Message::WindowMinimize,
+            Message::WindowToggleMaximize,
+            Message::WindowClose,
+        );
+
+        // 1. Fullscreen Now Playing overlay (keeps the title bar so the window can still be moved)
         if self.show_fullscreen {
-            return views::fullscreen::view(
-                &self.state,
-                &self.palette,
-                self.lyrics.as_ref(),
-                Message::TogglePlay,
-                Message::Next,
-                Message::Previous,
-                Message::Seek,
-                Message::ToggleFullscreen,
-            );
+            return column![
+                titlebar,
+                views::fullscreen::view(
+                    &self.state,
+                    &self.palette,
+                    self.lyrics.as_ref(),
+                    Message::TogglePlay,
+                    Message::Next,
+                    Message::Previous,
+                    Message::Seek,
+                    Message::ToggleFullscreen,
+                )
+            ]
+            .into();
         }
 
-        // 2. Sidebar Navigation
+        // 2. Sidebar Navigation, with the account circle at its top
+        let account_name = self.account_name();
+        let account_header: Element<Message> = if logged_in {
+            views::account::avatar_button(
+                &account_name,
+                self.profile_image.as_deref(),
+                self.account_menu_open,
+                pal,
+                Message::ToggleAccountMenu,
+            )
+        } else {
+            Space::with_height(views::account::AVATAR_SIZE + 4.0).into()
+        };
         let sidebar = views::sidebar::view(
             self.active_nav,
-            self.sidebar_collapsed,
+            !self.sidebar_hovered,
             self.palette,
             self.density,
             Message::NavSelected,
-            Message::ToggleSidebar,
+            Message::SidebarHover,
             self.show_queue,
             Message::ToggleQueue,
             Message::OpenPlaylistsTab,
+            account_header,
         );
 
         // 3. Center Content Page
         let content_area: Element<Message> = match self.auth_status {
             AuthStatus::LoggedOut | AuthStatus::Error { .. } => {
-                container(self.view_first_run()).padding(24).into()
+                container(self.view_first_run()).padding(theme::space::XL).into()
             }
             AuthStatus::LoggingIn { ref auth_url } => {
-                container(self.view_logging_in(auth_url)).padding(24).into()
+                container(self.view_logging_in(auth_url)).padding(theme::space::XL).into()
             }
             AuthStatus::LoggedIn { ref user_id, .. } => {
                 column![
                     self.view_playback_prompt(),
                     self.view_page_content(user_id.as_deref())
                 ]
-                .spacing(10)
+                .spacing(theme::space::MD)
                 .into()
             }
         };
 
-        let center_with_header = column![
-            self.view_top_header(),
-            scrollable(container(content_area).width(Length::Fill).padding(16))
-                .height(Length::Fill)
-                .width(Length::Fill),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill);
+        let page = scrollable(container(content_area).width(Length::Fill).padding([0.0, theme::space::XL]))
+            .id(scrollable::Id::new(CONTENT_SCROLL_ID))
+            .on_scroll(|v| {
+                Message::ContentScrolled(ScrollInfo {
+                    y: v.absolute_offset().y,
+                    viewport_h: v.bounds().height,
+                    content_h: v.content_bounds().height,
+                })
+            })
+            .height(Length::Fill)
+            .width(Length::Fill);
+
+        let mut center = column![self.view_top_header()].width(Length::Fill).height(Length::Fill);
+        if let Some(banner) = self.view_banner() {
+            center = center.push(banner);
+        }
+        let center_with_header = center.push(page);
 
         // 4. Right Queue Drawer (if toggled)
         let main_row = if self.show_queue {
@@ -1332,10 +1909,14 @@ impl HalcyonApp {
                 Message::ToggleQueue,
                 Message::Dequeue,
             );
-            row![sidebar, center_with_header, queue_drawer]
+            row![Space::with_width(views::sidebar::SIDEBAR_COLLAPSED_WIDTH), center_with_header, queue_drawer]
         } else {
-            row![sidebar, center_with_header]
+            row![Space::with_width(views::sidebar::SIDEBAR_COLLAPSED_WIDTH), center_with_header]
         };
+        // The sidebar floats over the page when it expands, so nothing jumps.
+        let main_row = iced::widget::stack![main_row, sidebar]
+            .width(Length::Fill)
+            .height(Length::Fill);
 
         // 5. Bottom Transport Bar
         let bottom_bar = views::now_playing_bar::view(
@@ -1353,37 +1934,13 @@ impl HalcyonApp {
             Message::ToggleLyrics,
             Message::ToggleFullscreen,
             Message::ToggleLike,
+            self.active_nav == NavPage::Lyrics,
+            self.show_queue,
         );
 
-        let layout = column![main_row, bottom_bar]
+        let layout = column![titlebar, main_row, bottom_bar]
             .width(Length::Fill)
             .height(Length::Fill);
-
-        // 6. Floating Modals (Diagnostics, Help `?` or Toast)
-        if self.show_diagnostics {
-            return container(
-                iced::widget::stack![
-                    layout,
-                    views::diagnostics::view(
-                        &self.status,
-                        &self.auth_status,
-                        &self.state,
-                        self.last_error.as_deref(),
-                        self.palette,
-                        Message::CopyDiagnostics,
-                        Message::ToggleDiagnostics,
-                    )
-                ],
-            )
-            .into();
-        }
-
-        if self.show_help {
-            return container(
-                iced::widget::stack![layout, views::help_modal::view(self.palette, Message::ToggleHelp)],
-            )
-            .into();
-        }
 
         let base = container(layout)
             .width(Length::Fill)
@@ -1393,8 +1950,48 @@ impl HalcyonApp {
                 ..Default::default()
             });
 
+        // 6. Layers on top, lowest first
+        let mut layers: Vec<Element<Message>> = vec![base.into()];
+
+        if self.show_diagnostics {
+            layers.push(views::diagnostics::view(
+                &self.status,
+                &self.auth_status,
+                &self.state,
+                self.last_error.as_deref(),
+                self.palette,
+                Message::CopyDiagnostics,
+                Message::ToggleDiagnostics,
+            ));
+        }
+        if self.show_help {
+            layers.push(views::help_modal::view(self.palette, Message::ToggleHelp));
+        }
+        if self.account_menu_open && logged_in {
+            let card = views::account::menu_card(
+                account_name.clone(),
+                self.profile_image.as_deref(),
+                pal,
+                Message::OpenSettings,
+                Message::OpenSpotifyAccount,
+                Message::Logout,
+            );
+            let top = views::titlebar::HEIGHT + theme::space::LG + views::account::AVATAR_SIZE + theme::space::LG;
+            layers.push(views::account::overlay(card, theme::space::LG, top, Message::CloseMenus));
+        }
+        if let Some(menu) = &self.track_menu {
+            let (x, y) = views::track_menu::place(menu.at, self.window_size);
+            let card = views::track_menu::card(
+                pal,
+                Message::TrackMenuPlay,
+                Message::TrackMenuPlayNext,
+                Message::TrackMenuEnqueue,
+                menu.track.album_id.is_some().then_some(Message::TrackMenuGoToAlbum),
+            );
+            layers.push(views::account::overlay(card, x, y, Message::CloseMenus));
+        }
+
         if let Some(toast) = &self.toast {
-            let pal = self.palette;
             let tint = if toast.ok { pal.accent } else { pal.danger };
             let card = container(
                 row![
@@ -1407,149 +2004,121 @@ impl HalcyonApp {
             .padding([10, 16])
             .style(move |_t| container::Style {
                 background: Some(pal.surface_variant.into()),
-                border: iced::Border {
-                    color: tint,
-                    width: 1.0,
-                    radius: 10.0.into(),
-                },
+                border: iced::Border { color: tint, width: 1.0, radius: 10.0.into() },
                 ..Default::default()
             });
-            let placed = container(card)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(iced::alignment::Horizontal::Right)
-                .align_y(iced::alignment::Vertical::Bottom)
-                .padding([88, 20]);
-            return iced::widget::stack![base, placed].into();
+            layers.push(
+                container(card)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .align_y(iced::alignment::Vertical::Bottom)
+                    .padding([96, 24])
+                    .into(),
+            );
         }
 
-        base.into()
+        iced::widget::stack(layers).into()
     }
 
-    fn view_top_header(&self) -> Element<'_, Message> {
-        let title_str = match self.active_nav {
-            NavPage::Home => "Home",
-            NavPage::Search => "Search",
-            NavPage::Library => "Your Library",
-            NavPage::Liked => "Liked Songs",
-            NavPage::Capsule => "Capsule",
-            NavPage::Settings => "Settings",
-            NavPage::AlbumDetail => "Album",
-            NavPage::ArtistDetail => "Artist",
-            NavPage::PlaylistDetail => "Playlist",
-            NavPage::Lyrics => "Lyrics",
-            NavPage::Recent => "Recently played",
-        };
-
+    /// A gentle one-line notice when the daemon is away or Spotify is not answering.
+    fn view_banner(&self) -> Option<Element<'_, Message>> {
         let connected = matches!(self.status, ConnStatus::Connected { .. });
-        let badge_txt = if !connected { "Reconnecting" } else if self.is_offline { "Cached library" } else { "Connected" };
-        let badge_color = if !connected || self.is_offline {
-            self.palette.accent_secondary
+        let (msg, tint) = if !connected {
+            ("Can't reach the Halcyon daemon. Trying again…", self.palette.accent_secondary)
+        } else if self.is_offline {
+            (
+                "Spotify isn't answering right now (it may be rate limiting). Showing saved data; Ctrl+R tries again.",
+                self.palette.accent_secondary,
+            )
         } else {
-            self.palette.accent
-        };
-
-        let badge = container(text(badge_txt).size(11).color(badge_color))
-            .padding([3, 8])
-            .style(move |_t| container::Style {
-                background: Some(iced::Color { a: 0.1, ..badge_color }.into()),
-                border: iced::Border {
-                    radius: 10.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
-
-        let density_icon = match self.density {
-            Density::Comfortable => Icon::RowsComfortable,
-            Density::Compact => Icon::RowsCompact,
+            return None;
         };
         let pal = self.palette;
-        let density_btn = header_button(
-            pal,
-            icon(density_icon, 15.0, pal.text_muted).into(),
-            "Row density",
-            Message::ToggleDensity,
-        );
+        Some(
+            container(text(msg).size(theme::type_size::SMALL + 1.0).color(pal.text))
+                .padding([theme::space::SM, theme::space::LG])
+                .width(Length::Fill)
+                .style(move |_t| container::Style {
+                    background: Some(iced::Color { a: 0.12, ..tint }.into()),
+                    border: iced::Border { color: iced::Color { a: 0.4, ..tint }, width: 1.0, radius: theme::radius::MD.into() },
+                    ..Default::default()
+                })
+                .into(),
+        )
+        .map(|b: Element<'_, Message>| container(b).padding([0.0, theme::space::XL]).width(Length::Fill).into())
+    }
+
+    /// The top strip: centred search box, with the small utility buttons on the right.
+    fn view_top_header(&self) -> Element<'_, Message> {
+        let pal = self.palette;
+        let logged_in = matches!(self.auth_status, AuthStatus::LoggedIn { .. });
+
         let help_btn = header_button(
             pal,
             text("?").size(15).color(pal.text_muted).into(),
             "Keyboard shortcuts",
             Message::ToggleHelp,
         );
-        let diag_color = if self.last_error.is_some() {
-            pal.danger
-        } else {
-            pal.text_muted
-        };
+        let diag_color = if self.last_error.is_some() { pal.danger } else { pal.text_muted };
         let diag_btn = header_button(
             pal,
             icon(Icon::Activity, 15.0, diag_color).into(),
             "Diagnostics",
             Message::ToggleDiagnostics,
         );
-
         let perf_element: Element<Message> = if self.perf_overlay {
             let ms = self.animations.last_frame_time.as_secs_f32() * 1000.0;
             let fps = if ms > 0.0 { 1000.0 / ms } else { 60.0 };
-            text(format!("{ms:.1}ms | {fps:.0} FPS"))
-                .size(11)
-                .color(self.palette.accent)
-                .into()
+            text(format!("{ms:.1}ms | {fps:.0} FPS")).size(11).color(pal.accent).into()
         } else {
             Space::with_width(0).into()
         };
 
-        let palette = self.palette;
-        let top_search = text_input("Search  (/ or Ctrl+K)", &self.search_query)
-            .id(text_input::Id::new(TOP_SEARCH_ID))
-            .on_input(Message::TopSearchChanged)
-            .size(13)
-            .padding([6, 12])
-            .width(280)
-            .style(move |_t, status| text_input::Style {
-                background: palette.surface_variant.into(),
-                border: iced::Border {
-                    radius: 16.0.into(),
-                    width: 1.0,
-                    color: if matches!(status, text_input::Status::Focused) {
-                        palette.accent
-                    } else {
-                        palette.border
+        let search: Element<Message> = if logged_in {
+            let input = text_input("What do you want to play?", &self.search_query)
+                .id(text_input::Id::new(TOP_SEARCH_ID))
+                .on_input(Message::TopSearchChanged)
+                .size(theme::type_size::BODY + 1.0)
+                .padding(iced::Padding { top: 11.0, bottom: 11.0, left: 46.0, right: theme::space::LG })
+                .width(Length::Fill)
+                .style(move |_t, status| text_input::Style {
+                    background: pal.surface_variant.into(),
+                    border: iced::Border {
+                        radius: 999.0.into(),
+                        width: 1.0,
+                        color: if matches!(status, text_input::Status::Focused) { pal.accent } else { pal.border },
                     },
-                },
-                icon: palette.text_muted,
-                placeholder: palette.text_muted,
-                value: palette.text,
-                selection: iced::Color { a: 0.3, ..palette.accent },
-            });
+                    icon: pal.text_muted,
+                    placeholder: pal.text_muted,
+                    value: pal.text,
+                    selection: iced::Color { a: 0.3, ..pal.accent },
+                });
+            container(iced::widget::stack![
+                input,
+                container(icon(Icon::Search, 16.0, pal.text_muted))
+                    .height(Length::Fill)
+                    .padding([0.0, theme::space::LG])
+                    .align_y(iced::alignment::Vertical::Center),
+            ])
+            .width(560)
+            .into()
+        } else {
+            Space::with_width(0).into()
+        };
 
-        container(
-            row![
-                text(title_str).size(self.density.heading_size()).color(self.palette.text),
-                Space::with_width(12),
-                badge,
-                Space::with_width(Length::Fill),
-                top_search,
-                Space::with_width(12),
-                perf_element,
-                Space::with_width(8),
-                density_btn,
-                help_btn,
-                diag_btn,
-            ]
-            .align_y(Alignment::Center)
-            .padding([12, 20]),
-        )
-        .width(Length::Fill)
-        .style(move |_t| container::Style {
-            border: iced::Border {
-                color: self.palette.border,
-                width: 0.5,
-                ..Default::default()
-            },
-            ..Default::default()
-        })
+        row![
+            Space::with_width(Length::Fill),
+            search,
+            container(
+                row![perf_element, Space::with_width(theme::space::SM), help_btn, diag_btn]
+                    .align_y(Alignment::Center)
+            )
+            .width(Length::Fill)
+            .align_x(iced::alignment::Horizontal::Right),
+        ]
+        .align_y(Alignment::Center)
+        .padding([theme::space::LG, theme::space::XL])
         .into()
     }
 
@@ -1567,6 +2136,8 @@ impl HalcyonApp {
                 self.density,
                 Message::PlayTrack,
                 Message::PlayContext,
+                Message::PlayPlaylist,
+                Message::OpenPlaylist,
                 Message::PlayMix,
                 Message::SaveMix,
                 Message::NavSelected,
@@ -1696,16 +2267,42 @@ impl HalcyonApp {
             }
             NavPage::PlaylistDetail => {
                 if let Some((ref pl, ref tracks)) = self.active_playlist {
-                    let del_id = pl.id.clone();
-                    views::detail::view_playlist(
-                        pl,
-                        tracks,
-                        self.palette,
-                        self.density,
-                        Message::BackFromDetail,
-                        Message::PlayTrack,
-                        Message::PlayContext,
-                        Message::DeletePlaylist(del_id),
+                    let pp = &self.playlist_page;
+                    let phase = if pp.failed {
+                        views::playlist::Phase::Failed
+                    } else if !tracks.is_empty() {
+                        views::playlist::Phase::Ready
+                    } else if pp.fresh && !pp.loading {
+                        views::playlist::Phase::Empty
+                    } else {
+                        views::playlist::Phase::Loading
+                    };
+                    views::playlist::view(
+                        views::playlist::Page {
+                            playlist: pl,
+                            tracks,
+                            total: pp.total,
+                            phase,
+                            loading_more: pp.loading_more,
+                            more_failed: pp.more_failed,
+                            selected: pp.selected,
+                            scroll_y: self.scroll.y,
+                            viewport_h: self.scroll.viewport_h.max(700.0),
+                            shimmer: self.animations.shimmer_phase,
+                            palette: self.palette,
+                        },
+                        views::playlist::Actions {
+                            back: Message::BackFromDetail,
+                            play_all: Message::PlaylistPlayAll,
+                            shuffle: Message::PlaylistShuffle,
+                            add_to_queue: Message::PlaylistAddToQueue,
+                            play_next: Message::PlaylistPlayNext,
+                            retry: Message::PlaylistRetry,
+                            delete: Message::DeletePlaylist(pl.id.clone()),
+                            row_click: Message::PlaylistRowClick,
+                            row_play: Message::PlaylistRowPlay,
+                            row_menu: Message::PlaylistRowMenu,
+                        },
                     )
                 } else {
                     column![
@@ -1723,30 +2320,14 @@ impl HalcyonApp {
                 Message::PlayTrack,
                 Message::PlayContext,
             ),
-            NavPage::Settings => column![
-                text("Settings").size(18).color(self.palette.text),
-                Space::with_height(16),
-                row![
-                    text("Connected Account:").size(14).color(self.palette.text),
-                    Space::with_width(8),
-                    text(account_label).size(14).color(self.palette.accent),
-                    Space::with_width(16),
-                    button(text("Log out").size(13)).padding([8, 16]).style(views::solid(self.palette)).on_press(Message::Logout),
-                ]
-                .align_y(Alignment::Center),
-                Space::with_height(16),
-                row![
-                    text("Display Density:").size(14).color(self.palette.text),
-                    Space::with_width(8),
-                    button(match self.density {
-                        Density::Comfortable => "Comfortable",
-                        Density::Compact => "Compact",
-                    })
-                    .on_press(Message::ToggleDensity),
-                ]
-                .align_y(Alignment::Center),
-            ]
-            .into(),
+            NavPage::Settings => views::settings::view(
+                account_label.clone(),
+                self.density,
+                self.palette,
+                Message::ToggleDensity,
+                Message::Logout,
+                Message::OpenSpotifyAccount,
+            ),
             NavPage::Lyrics => views::lyrics::view(
                 self.state.track.as_ref(),
                 self.lyrics.as_ref(),
@@ -2025,5 +2606,65 @@ fn needs_art_sync(message: &Message) -> bool {
         | Message::OpenPlaylist(_)
         | Message::BackFromDetail => true,
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn two_quick_title_presses_are_a_double_click() {
+        let t0 = Instant::now();
+        assert!(is_double_press(Some(t0), t0 + Duration::from_millis(250)));
+        assert!(!is_double_press(Some(t0), t0 + Duration::from_millis(900)));
+        assert!(!is_double_press(None, t0));
+    }
+
+    #[test]
+    fn a_double_click_needs_the_same_row() {
+        let t0 = Instant::now();
+        let prev = Some(("pl:3".to_string(), t0));
+        assert!(is_double_click(&prev, "pl:3", t0 + Duration::from_millis(200)));
+        assert!(!is_double_click(&prev, "pl:4", t0 + Duration::from_millis(200)));
+        assert!(!is_double_click(&prev, "pl:3", t0 + Duration::from_secs(2)));
+        assert!(!is_double_click(&None, "pl:3", t0));
+    }
+
+    fn track(i: usize) -> Track {
+        Track::simple(format!("id{i}"), format!("t{i}"), "a".into(), "b".into(), 1000)
+    }
+
+    #[test]
+    fn shuffle_keeps_every_song_and_depends_on_the_seed() {
+        let list: Vec<Track> = (0..50).map(track).collect();
+        let a = shuffled(&list, 7);
+        let b = shuffled(&list, 7);
+        let c = shuffled(&list, 8);
+        assert_eq!(a, b, "same seed, same order");
+        assert_ne!(a, c, "another seed gives another order");
+        let mut ids: Vec<_> = a.iter().map(|t| t.id.clone()).collect();
+        ids.sort();
+        let mut want: Vec<_> = list.iter().map(|t| t.id.clone()).collect();
+        want.sort();
+        assert_eq!(ids, want);
+        assert!(shuffled(&[], 1).is_empty());
+    }
+
+    #[test]
+    fn window_sizes_match_the_spec() {
+        assert_eq!((WINDOW_DEFAULT.width, WINDOW_DEFAULT.height), (1440.0, 900.0));
+        assert_eq!((WINDOW_MIN.width, WINDOW_MIN.height), (960.0, 600.0));
+    }
+
+    #[test]
+    fn animations_stay_under_200_ms() {
+        assert!(theme::MAX_ANIMATION_MS < 200);
+        assert!(art::FADE.as_millis() as u64 <= theme::MAX_ANIMATION_MS);
+    }
+
+    #[test]
+    fn lyrics_is_not_in_the_sidebar() {
+        assert!(!NavPage::all().contains(&NavPage::Lyrics));
     }
 }

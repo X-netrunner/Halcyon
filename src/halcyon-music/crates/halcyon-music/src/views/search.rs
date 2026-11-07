@@ -68,35 +68,10 @@ pub fn view<'a, Message: Clone + 'static>(
     on_open_album: impl Fn(String) -> Message + 'a + Copy,
     on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
 ) -> Element<'a, Message> {
-    let mut page = column![].spacing(16).padding(20).width(Length::Fill);
+    let mut page = column![].spacing(crate::theme::space::LG).padding([0.0, 0.0]).width(Length::Fill);
 
-    // 1. Search Bar
-    let input = text_input("Search songs, artists, albums, or playlists... (/ to focus)", query)
-        .on_input(on_search_input)
-        .padding(12)
-        .size(15)
-        .width(Length::Fill);
-
-    let search_bar = container(
-        row![
-            icon(Icon::Search, 18.0, palette.accent),
-            Space::with_width(10),
-            input,
-        ]
-        .align_y(Alignment::Center),
-    )
-    .padding([4, 12])
-    .style(move |_t| container::Style {
-        background: Some(palette.surface.into()),
-        border: iced::Border {
-            color: palette.border,
-            width: 1.0,
-            radius: 10.0.into(),
-        },
-        ..Default::default()
-    });
-
-    page = page.push(search_bar);
+    // The search box lives in the top strip of the window; this page shows what it finds.
+    let _ = on_search_input;
 
     // 2. Recent searches chips (if present)
     if !recent_searches.is_empty() {

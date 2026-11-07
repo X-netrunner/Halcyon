@@ -87,6 +87,8 @@ pub enum CommandBody {
     Logout,
     /// Query current authentication status.
     GetAuthStatus,
+    /// Ask for the account's display name and profile picture URL (answered with `Profile`).
+    GetProfile,
     /// Request user's playlists (stale-while-revalidate).
     GetPlaylists { limit: Option<u32>, offset: Option<u32> },
     /// Request tracks of a specific playlist (stale-while-revalidate).
@@ -188,6 +190,8 @@ pub enum EventBody {
     Pong,
     /// Authentication status changed or requested.
     AuthStatus(AuthStatus),
+    /// The account's name and picture URL. Either may be missing; the GUI then shows an initial.
+    Profile { display_name: Option<String>, image_url: Option<String> },
     /// Re-login required (token expired / revoked).
     AuthRequired { reason: String },
     /// The token browsing uses changed (also sent when a client connects).
@@ -320,6 +324,27 @@ mod tests {
         let line = encode_line(&ev).expect("encode");
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
+    }
+
+    #[test]
+    fn profile_command_and_event_round_trip() {
+        let cmd = command(CommandBody::GetProfile);
+        let back: Command = decode_line(&encode_line(&cmd).unwrap()).unwrap();
+        assert_eq!(cmd, back);
+        let ev = event(EventBody::Profile {
+            display_name: Some("Ada".into()),
+            image_url: Some("https://i.scdn.co/image/x".into()),
+        });
+        let back: Event = decode_line(&encode_line(&ev).unwrap()).unwrap();
+        assert_eq!(ev, back);
+    }
+
+    #[test]
+    fn profile_event_decodes_without_the_picture() {
+        let line = br#"{"version":1,"type":"profile","display_name":"Ada"}
+"#;
+        let ev: Event = decode_line(line).expect("decode");
+        assert!(matches!(ev.body, EventBody::Profile { image_url: None, .. }));
     }
 
     #[test]

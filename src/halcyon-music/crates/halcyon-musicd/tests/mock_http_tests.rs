@@ -296,3 +296,36 @@ fn test_corrupt_database_recovers_without_crashing() {
     let loaded = cache.get_track("t1").expect("get_track").expect("exists");
     assert_eq!(loaded.title, "Phoenix");
 }
+
+#[tokio::test]
+async fn test_fetch_account_reads_profile_picture() {
+    let server = MockServer::start(|req, _idx| async move {
+        assert!(req.contains("/v1/me"), "unexpected path: {req}");
+        (
+            200,
+            vec![("Content-Type".into(), "application/json".into())],
+            r#"{"id":"u1","display_name":"Ada","images":[{"url":"https://i.scdn.co/image/small","width":64,"height":64},{"url":"https://i.scdn.co/image/big","width":300,"height":300}]}"#.into(),
+        )
+    })
+    .await;
+    let client = SpotifyClient::new(Some(server.url("/v1")), None);
+    client.set_token(sample_token()).await;
+
+    let account = client.fetch_account().await.expect("account");
+    assert_eq!(account.display_name.as_deref(), Some("Ada"));
+    assert_eq!(account.image_url.as_deref(), Some("https://i.scdn.co/image/big"));
+    assert!(account.images_read);
+    assert_eq!(client.cached_account().await, Some(account));
+}
+
+#[tokio::test]
+async fn test_fetch_account_without_images_still_works() {
+    let server = MockServer::start(|_req, _idx| async move {
+        (200, vec![("Content-Type".into(), "application/json".into())], r#"{"id":"u1","display_name":"Ada"}"#.into())
+    })
+    .await;
+    let client = SpotifyClient::new(Some(server.url("/v1")), None);
+    client.set_token(sample_token()).await;
+    let account = client.fetch_account().await.expect("account");
+    assert_eq!(account.image_url, None);
+}

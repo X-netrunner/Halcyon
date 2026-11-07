@@ -49,6 +49,13 @@ pub enum Icon {
     Clock,
     Playlist,
     Library,
+    Minus,
+    Square,
+    Star,
+    StarFilled,
+    ExternalLink,
+    LogOut,
+    Refresh,
 }
 
 impl Icon {
@@ -92,6 +99,13 @@ impl Icon {
         Icon::Clock,
         Icon::Playlist,
         Icon::Library,
+        Icon::Minus,
+        Icon::Square,
+        Icon::Star,
+        Icon::StarFilled,
+        Icon::ExternalLink,
+        Icon::LogOut,
+        Icon::Refresh,
     ];
 
     fn bytes(self) -> &'static [u8] {
@@ -135,6 +149,13 @@ impl Icon {
             Icon::Clock => include_bytes!("../assets/icons/clock.svg"),
             Icon::Playlist => include_bytes!("../assets/icons/list-music.svg"),
             Icon::Library => include_bytes!("../assets/icons/library.svg"),
+            Icon::Minus => include_bytes!("../assets/icons/minus.svg"),
+            Icon::Square => include_bytes!("../assets/icons/square.svg"),
+            Icon::Star => include_bytes!("../assets/icons/star.svg"),
+            Icon::StarFilled => include_bytes!("../assets/icons/star-filled.svg"),
+            Icon::ExternalLink => include_bytes!("../assets/icons/external-link.svg"),
+            Icon::LogOut => include_bytes!("../assets/icons/log-out.svg"),
+            Icon::Refresh => include_bytes!("../assets/icons/refresh-cw.svg"),
         }
     }
 }
