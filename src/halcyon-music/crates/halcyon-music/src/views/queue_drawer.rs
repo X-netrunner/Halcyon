@@ -60,7 +60,7 @@ pub fn view<'a, Message: Clone + 'static>(
         .style(move |_t| container::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: 12.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -113,7 +113,7 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(move |_t| container::Style {
                 background: Some(iced::Color::TRANSPARENT.into()),
                 border: iced::Border {
-                    radius: 6.0.into(),
+                    radius: 10.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -134,9 +134,9 @@ pub fn view<'a, Message: Clone + 'static>(
     .width(QUEUE_DRAWER_WIDTH)
     .height(Length::Fill)
     .style(move |_t| container::Style {
-        background: Some(palette.surface.into()),
+        background: Some(palette.card_background()),
         border: iced::Border {
-            color: palette.border,
+            color: palette.soft_border(),
             width: 1.0,
             ..Default::default()
         },

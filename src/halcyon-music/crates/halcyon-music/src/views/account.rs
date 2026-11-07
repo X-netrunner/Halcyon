@@ -37,7 +37,7 @@ pub fn avatar<'a, M: 'a>(
         .center_x(size)
         .center_y(size)
         .style(move |_t| container::Style {
-            background: Some(palette.accent.into()),
+            background: Some(palette.accent_background()),
             border: iced::Border { radius: (size / 2.0).into(), ..Default::default() },
             ..Default::default()
         })
@@ -149,8 +149,8 @@ pub fn menu_card<'a, M: Clone + 'a>(
     .width(MENU_WIDTH)
     .padding(space::SM)
     .style(move |_t| container::Style {
-        background: Some(palette.surface.into()),
-        border: iced::Border { color: palette.border, width: 1.0, radius: radius::MD.into() },
+        background: Some(palette.card_background()),
+        border: iced::Border { color: palette.soft_border(), width: 1.0, radius: radius::MD.into() },
         shadow: iced::Shadow {
             color: iced::Color { a: 0.35, ..iced::Color::BLACK },
             offset: iced::Vector::new(0.0, 6.0),

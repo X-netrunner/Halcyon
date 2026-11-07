@@ -2,7 +2,7 @@
 
 use crate::icons::{icon, Icon};
 use crate::shortcuts::SHORTCUT_HELP;
-use crate::theme::{radius, space, type_size, Density, HalcyonPalette};
+use crate::theme::{radius, space, type_size, Density, HalcyonPalette, Mood};
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{Alignment, Element, Length};
 
@@ -16,11 +16,7 @@ fn card<'a, M: 'a>(title: &'static str, body: Element<'a, M>, palette: HalcyonPa
     )
     .width(Length::Fill)
     .padding(space::XL)
-    .style(move |_t| container::Style {
-        background: Some(palette.surface.into()),
-        border: iced::Border { color: palette.border, width: 1.0, radius: radius::LG.into() },
-        ..Default::default()
-    })
+    .style(crate::views::card(palette))
     .into()
 }
 
@@ -36,14 +32,18 @@ fn action<'a, M: Clone + 'a>(label: &'static str, trailing: Option<Icon>, palett
         .style(move |_t, status| button::Style {
             background: Some(
                 if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-                    palette.surface_variant
+                    crate::theme::alpha(palette.accent, 0.20)
                 } else {
-                    palette.background
+                    crate::theme::alpha(palette.accent, 0.08)
                 }
                 .into(),
             ),
             text_color: palette.text,
-            border: iced::Border { color: palette.border, width: 1.0, radius: radius::MD.into() },
+            border: iced::Border {
+                color: crate::theme::alpha(palette.accent, 0.30),
+                width: 1.0,
+                radius: radius::PILL.into(),
+            },
             ..Default::default()
         })
         .into()
@@ -53,8 +53,10 @@ fn action<'a, M: Clone + 'a>(label: &'static str, trailing: Option<Icon>, palett
 pub fn view<'a, M: Clone + 'a>(
     account_label: String,
     density: Density,
+    mood: Mood,
     palette: HalcyonPalette,
     on_toggle_density: M,
+    on_cycle_mood: M,
     on_sign_out: M,
     on_spotify_settings: M,
 ) -> Element<'a, M> {
@@ -75,20 +77,35 @@ pub fn view<'a, M: Clone + 'a>(
 
     let appearance = card(
         "Appearance",
-        row![
-            text("Row density").size(type_size::BODY).color(palette.text),
-            Space::with_width(Length::Fill),
-            action(
-                match density {
-                    Density::Comfortable => "Comfortable",
-                    Density::Compact => "Compact",
-                },
-                None,
-                palette,
-                on_toggle_density,
-            ),
+        column![
+            row![
+                column![
+                    text("Mood").size(type_size::BODY).color(palette.text),
+                    text("Dusk, Dawn, Forest or Ocean. Each one is a different quiet room.")
+                        .size(type_size::SMALL)
+                        .color(palette.text_muted),
+                ]
+                .spacing(2),
+                Space::with_width(Length::Fill),
+                action(mood.label(), None, palette, on_cycle_mood),
+            ]
+            .align_y(Alignment::Center),
+            Space::with_height(space::LG),
+            row![
+                text("Row density").size(type_size::BODY).color(palette.text),
+                Space::with_width(Length::Fill),
+                action(
+                    match density {
+                        Density::Comfortable => "Comfortable",
+                        Density::Compact => "Compact",
+                    },
+                    None,
+                    palette,
+                    on_toggle_density,
+                ),
+            ]
+            .align_y(Alignment::Center),
         ]
-        .align_y(Alignment::Center)
         .into(),
         palette,
     );
@@ -101,7 +118,7 @@ pub fn view<'a, M: Clone + 'a>(
                     .padding([space::XS, space::SM])
                     .width(190)
                     .style(move |_t| container::Style {
-                        background: Some(palette.surface_variant.into()),
+                        background: Some(crate::theme::alpha(palette.accent, 0.10).into()),
                         border: iced::Border { radius: radius::SM.into(), ..Default::default() },
                         ..Default::default()
                     }),
@@ -114,7 +131,7 @@ pub fn view<'a, M: Clone + 'a>(
     let shortcuts = card("Keyboard shortcuts", keys.into(), palette);
 
     column![
-        text("Settings").size(type_size::HEADING).color(palette.text),
+        text("Settings").size(type_size::HEADING + 6.0).color(palette.text),
         account,
         appearance,
         shortcuts,

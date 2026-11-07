@@ -87,3 +87,9 @@ the GUI decodes it off the UI thread (`art.rs` in both crates).
 
 Playback is librespot's: the position, play/pause state and errors shown in the app come from
 the engine's own events.
+
+## Look and feel
+
+Four moods (Dusk, Dawn, Forest, Ocean) under Settings, Appearance, Mood; the page gradient and
+glow follow the album cover. Motion is slow and soft; set `GTK_ENABLE_ANIMATIONS=0` to turn it off.
+`~/.local/state/halcyon-music/palette.toml` only applies if it contains the line `override = true`.

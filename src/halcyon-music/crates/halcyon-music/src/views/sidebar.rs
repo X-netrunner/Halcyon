@@ -6,8 +6,10 @@ use crate::theme::{Density, HalcyonPalette};
 use iced::widget::{button, column, container, mouse_area, row, text, tooltip, Space};
 use iced::{Alignment, Element, Length};
 
-pub const SIDEBAR_EXPANDED_WIDTH: f32 = 220.0;
-pub const SIDEBAR_COLLAPSED_WIDTH: f32 = 64.0;
+/// Widths include the 8 px margin the floating panel keeps from the window edge.
+pub const SIDEBAR_EXPANDED_WIDTH: f32 = 236.0;
+pub const SIDEBAR_COLLAPSED_WIDTH: f32 = 76.0;
+const PANEL_MARGIN: f32 = 8.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavPage {
@@ -28,7 +30,6 @@ impl NavPage {
     pub fn all() -> &'static [NavPage] {
         &[
             NavPage::Home,
-            NavPage::Search,
             NavPage::Library,
             NavPage::Liked,
             NavPage::Recent,
@@ -103,29 +104,30 @@ fn item_button<'a, Message: Clone + 'static>(
         .width(Length::Fill)
         .padding(if collapsed { [10, 0] } else { [8, 12] })
         .style(move |_theme, status| {
-            let mut bg = iced::Color::TRANSPARENT;
-            let text_color = if is_active { palette.accent } else { palette.text };
-
-            if is_active {
-                bg = palette.surface_variant;
-            } else if status == button::Status::Hovered {
-                bg = iced::Color {
-                    a: 0.08,
-                    ..palette.accent
-                };
-            }
-
+            let hovered = status == button::Status::Hovered;
+            let background = if is_active {
+                Some(iced::Background::from(crate::theme::alpha(palette.accent, 0.18)))
+            } else if hovered {
+                Some(iced::Background::from(crate::theme::alpha(palette.accent, 0.09)))
+            } else {
+                None
+            };
             button::Style {
-                background: Some(bg.into()),
-                text_color,
+                background,
+                text_color: if is_active { palette.accent } else { palette.text },
                 border: iced::Border {
-                    radius: 8.0.into(),
-                    width: if is_active { 1.5 } else { 0.0 },
+                    radius: crate::theme::radius::MD.into(),
+                    width: if is_active { 1.0 } else { 0.0 },
                     color: if is_active {
-                        palette.accent
+                        crate::theme::alpha(palette.accent, 0.35)
                     } else {
                         iced::Color::TRANSPARENT
                     },
+                },
+                shadow: if is_active {
+                    palette.glow_shadow(0.18, 14.0)
+                } else {
+                    iced::Shadow::default()
                 },
                 ..Default::default()
             }
@@ -139,10 +141,11 @@ fn item_button<'a, Message: Clone + 'static>(
                 .style(move |_theme| container::Style {
                     background: Some(palette.surface_variant.into()),
                     border: iced::Border {
-                        color: palette.border,
+                        color: palette.soft_border(),
                         width: 1.0,
-                        radius: 6.0.into(),
+                        radius: crate::theme::radius::SM.into(),
                     },
+                    shadow: palette.glow_shadow(0.12, 12.0),
                     ..Default::default()
                 }),
             tooltip::Position::Right,
@@ -219,28 +222,40 @@ pub fn view<'a, Message: Clone + 'static>(
         ]
         .padding(if collapsed { 10.0 } else { crate::theme::space::LG }),
     )
-    .width(width)
+    .width(width - PANEL_MARGIN)
     .height(Length::Fill)
     .style(move |_theme| container::Style {
-        background: Some(palette.surface.into()),
+        // Frosted glass: the page shows faintly through the panel.
+        background: Some(crate::theme::gradient2(
+            crate::theme::alpha(crate::theme::mix(palette.surface, palette.glow, 0.08), 0.94),
+            crate::theme::alpha(palette.surface, 0.90),
+            true,
+        )),
         border: iced::Border {
-            color: palette.border,
+            color: palette.soft_border(),
             width: 1.0,
-            ..Default::default()
+            radius: crate::theme::radius::XL.into(),
         },
         shadow: if collapsed {
-            iced::Shadow::default()
+            palette.glow_shadow(0.08, 18.0)
         } else {
             iced::Shadow {
-                color: iced::Color { a: 0.35, ..iced::Color::BLACK },
-                offset: iced::Vector::new(4.0, 0.0),
-                blur_radius: 16.0,
+                color: iced::Color { a: 0.40, ..iced::Color::BLACK },
+                offset: iced::Vector::new(6.0, 0.0),
+                blur_radius: 28.0,
             }
         },
         ..Default::default()
     });
 
-    mouse_area(panel)
+    let floating = container(panel).padding(iced::Padding {
+        top: PANEL_MARGIN,
+        right: 0.0,
+        bottom: PANEL_MARGIN,
+        left: PANEL_MARGIN,
+    });
+
+    mouse_area(floating)
         .on_enter(on_hover(true))
         .on_exit(on_hover(false))
         .into()
