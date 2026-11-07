@@ -49,9 +49,9 @@ pub fn view_album<'a, Message: Clone + 'static>(
     .on_press(on_play_context(play_all_tracks, 0))
     .padding([8, 18])
     .style(move |_t, _s| button::Style {
-        background: Some(palette.accent.into()),
+        background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: 12.0.into(),
             ..Default::default()
         },
         ..Default::default()
@@ -119,15 +119,11 @@ pub fn view_album<'a, Message: Clone + 'static>(
         .on_press(on_play_context(tracks_clone, idx))
         .style(move |_t, s| button::Style {
             background: Some(
-                if s == button::Status::Hovered {
-                    palette.surface_variant
-                } else {
-                    palette.surface
-                }
+                if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                 .into(),
             ),
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: 12.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -183,9 +179,9 @@ pub fn view_artist<'a, Message: Clone + 'static>(
     .on_press(on_play_context(play_top_tracks, 0))
     .padding([8, 18])
     .style(move |_t, _s| button::Style {
-        background: Some(palette.accent.into()),
+        background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: 12.0.into(),
             ..Default::default()
         },
         ..Default::default()
@@ -245,15 +241,11 @@ pub fn view_artist<'a, Message: Clone + 'static>(
             .on_press(on_play_context(tracks_clone, idx))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 12.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -293,15 +285,11 @@ pub fn view_artist<'a, Message: Clone + 'static>(
                 .on_press(on_open_album(alb_id))
                 .style(move |_t, s| button::Style {
                     background: Some(
-                        if s == button::Status::Hovered {
-                            palette.surface_variant
-                        } else {
-                            palette.surface
-                        }
+                        if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                         .into(),
                     ),
                     border: iced::Border {
-                        radius: 10.0.into(),
+                        radius: 14.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -360,9 +348,9 @@ pub fn view_playlist<'a, Message: Clone + 'static>(
     .on_press(on_play_context(play_all_tracks, 0))
     .padding([8, 18])
     .style(move |_t, _s| button::Style {
-        background: Some(palette.accent.into()),
+        background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: 12.0.into(),
             ..Default::default()
         },
         ..Default::default()
@@ -440,15 +428,11 @@ pub fn view_playlist<'a, Message: Clone + 'static>(
             .on_press(on_play_context(tracks_clone, idx))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 12.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()

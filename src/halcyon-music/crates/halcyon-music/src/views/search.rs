@@ -89,17 +89,13 @@ pub fn view<'a, Message: Clone + 'static>(
                 .padding([4, 10])
                 .style(move |_t, status| button::Style {
                     background: Some(
-                        if status == button::Status::Hovered {
-                            palette.surface_variant
-                        } else {
-                            palette.surface
-                        }
+                        if status == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                         .into(),
                     ),
                     border: iced::Border {
-                        color: palette.border,
+                        color: palette.soft_border(),
                         width: 0.5,
-                        radius: 12.0.into(),
+                        radius: 18.0.into(),
                     },
                     ..Default::default()
                 });
@@ -144,7 +140,7 @@ pub fn view<'a, Message: Clone + 'static>(
                     palette.border
                 },
                 width: 0.5,
-                radius: 16.0.into(),
+                radius: 20.0.into(),
             },
             ..Default::default()
         });
@@ -304,15 +300,11 @@ fn view_top_results<'a, Message: Clone + 'static>(
             .on_press(on_play_context(all_tracks, i))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 12.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -347,15 +339,11 @@ fn view_top_results<'a, Message: Clone + 'static>(
             .on_press(on_open_artist(id))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 10.0.into(),
+                    radius: 14.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -391,15 +379,11 @@ fn view_top_results<'a, Message: Clone + 'static>(
             .on_press(on_open_album(id))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 10.0.into(),
+                    radius: 14.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -435,15 +419,11 @@ fn view_top_results<'a, Message: Clone + 'static>(
             .on_press(on_open_playlist(id))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 10.0.into(),
+                    radius: 14.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -496,15 +476,11 @@ fn view_songs_results<'a, Message: Clone + 'static>(
         .on_press(on_play_context(all_tracks, i))
         .style(move |_t, s| button::Style {
             background: Some(
-                if s == button::Status::Hovered {
-                    palette.surface_variant
-                } else {
-                    palette.surface
-                }
+                if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                 .into(),
             ),
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: 12.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -527,7 +503,7 @@ fn view_songs_results<'a, Message: Clone + 'static>(
         .style(move |_t, _s| button::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: 12.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -578,15 +554,11 @@ fn view_artists_results<'a, Message: Clone + 'static>(
             .on_press(on_open_artist(id))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -611,7 +583,7 @@ fn view_artists_results<'a, Message: Clone + 'static>(
         .style(move |_t, _s| button::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: 12.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -656,15 +628,11 @@ fn view_albums_results<'a, Message: Clone + 'static>(
             .on_press(on_open_album(id))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -689,7 +657,7 @@ fn view_albums_results<'a, Message: Clone + 'static>(
         .style(move |_t, _s| button::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: 12.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -734,15 +702,11 @@ fn view_playlists_results<'a, Message: Clone + 'static>(
             .on_press(on_open_playlist(id))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -767,7 +731,7 @@ fn view_playlists_results<'a, Message: Clone + 'static>(
         .style(move |_t, _s| button::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: 12.0.into(),
                 ..Default::default()
             },
             ..Default::default()

@@ -28,10 +28,11 @@ fn tip<'a, M: 'a>(label: &'static str, palette: HalcyonPalette) -> Element<'a, M
         .style(move |_t| container::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                color: palette.border,
+                color: palette.soft_border(),
                 width: 1.0,
                 radius: crate::theme::radius::SM.into(),
             },
+            shadow: palette.glow_shadow(0.12, 12.0),
             ..Default::default()
         })
         .into()
@@ -59,16 +60,19 @@ fn window_button<'a, M: Clone + 'a>(
         button::Style {
             background: Some(
                 if hovered && danger {
-                    palette.danger
+                    crate::theme::alpha(palette.danger, 0.85)
                 } else if hovered {
-                    palette.surface_variant
+                    crate::theme::alpha(palette.accent, 0.16)
                 } else {
                     iced::Color::TRANSPARENT
                 }
                 .into(),
             ),
             text_color: palette.text,
-            border: iced::Border::default(),
+            border: iced::Border {
+                radius: crate::theme::radius::SM.into(),
+                ..Default::default()
+            },
             ..Default::default()
         }
     })
@@ -98,18 +102,23 @@ pub fn view<'a, M: Clone + 'a>(
     );
 
     let brand = row![
-        text("Halcyon").size(type_size::BODY).color(palette.text),
+        text("Halcyon").size(type_size::BODY).color(palette.text_muted),
         Space::with_width(space::SM),
         star,
     ]
     .align_y(Alignment::Center);
 
+    // The name sits in the middle of the bar. An empty block as wide as the three window
+    // buttons on the left keeps it centred on the window rather than on the free space.
     let drag_area = mouse_area(
-        container(brand)
-            .width(Length::Fill)
-            .height(HEIGHT)
-            .padding([0.0, space::LG])
-            .align_y(iced::alignment::Vertical::Center),
+        row![
+            Space::with_width(BUTTON_WIDTH * 3.0),
+            container(brand)
+                .width(Length::Fill)
+                .height(HEIGHT)
+                .center_x(Length::Fill)
+                .align_y(iced::alignment::Vertical::Center),
+        ],
     )
     .on_press(on_press_bar);
 
@@ -122,15 +131,8 @@ pub fn view<'a, M: Clone + 'a>(
     container(row![drag_area, controls].align_y(Alignment::Center))
         .width(Length::Fill)
         .height(HEIGHT)
-        .style(move |_t| container::Style {
-            background: Some(palette.background.into()),
-            border: iced::Border {
-                color: palette.border,
-                width: 0.5,
-                ..Default::default()
-            },
-            ..Default::default()
-        })
+        // No fill and no line: the page gradient flows straight up under the title.
+        .style(move |_t| container::Style::default())
         .into()
 }
 

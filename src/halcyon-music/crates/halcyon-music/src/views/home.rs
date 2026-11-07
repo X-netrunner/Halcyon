@@ -34,21 +34,20 @@ pub fn view<'a, Message: Clone + 'static>(
 
     page = page.push(
         row![
-            text(greeting_text)
-                .size(density.heading_size() + 8.0)
-                .color(palette.text),
+            column![
+                text(greeting_text)
+                    .size(density.heading_size() + 10.0)
+                    .color(palette.text),
+                text("Slow down. Let the music do the rest.")
+                    .size(13)
+                    .color(palette.text_muted),
+            ]
+            .spacing(4),
             Space::with_width(Length::Fill),
             // Quick Refresh / Status
             container(row![icon(Icon::Sparkles, 12.0, palette.accent), Space::with_width(6), text("Live Suggestions").size(12).color(palette.accent)].align_y(Alignment::Center))
-                .padding([4, 10])
-                .style(move |_t| container::Style {
-                    background: Some(palette.surface_variant.into()),
-                    border: iced::Border {
-                        radius: 12.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }),
+                .padding([6, 14])
+                .style(crate::views::chip(palette)),
         ]
         .align_y(Alignment::Center),
     );
@@ -268,14 +267,7 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
             .padding(0)
             .on_press(play_msg)
             .style(move |_t, s| button::Style {
-                background: Some(
-                    if s == button::Status::Hovered {
-                        iced::Color { a: 0.85, ..palette.accent }
-                    } else {
-                        palette.accent
-                    }
-                    .into(),
-                ),
+                background: Some(palette.accent_background()),
                 border: iced::Border { radius: 17.0.into(), ..Default::default() },
                 ..Default::default()
             });
@@ -285,8 +277,8 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
             )
             .width(Length::FillPortion(1))
             .style(move |_t| container::Style {
-                background: Some(palette.surface.into()),
-                border: iced::Border { radius: 8.0.into(), ..Default::default() },
+                background: Some(palette.card_background()),
+                border: iced::Border { radius: 12.0.into(), ..Default::default() },
                 ..Default::default()
             });
 
@@ -345,19 +337,15 @@ fn view_shelf<'a, Message: Clone + 'static>(
         } else if let Some(first) = tracks.first() {
             on_play_track(first.clone())
         } else {
-            on_play_playlist(item.id.clone())
+            on_play_context(tracks, 0)
         })
         .style(move |_t, s| button::Style {
             background: Some(
-                if s == button::Status::Hovered {
-                    palette.surface_variant
-                } else {
-                    palette.surface
-                }
+                if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                 .into(),
             ),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -375,7 +363,7 @@ fn view_shelf<'a, Message: Clone + 'static>(
             .padding(0)
             .on_press(on_play_playlist(item.id.clone()))
             .style(move |_t, _s| button::Style {
-                background: Some(palette.accent.into()),
+                background: Some(palette.accent_background()),
                 border: iced::Border { radius: 17.0.into(), ..Default::default() },
                 ..Default::default()
             });
@@ -448,7 +436,7 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
                         .style(move |_t| container::Style {
                             background: Some(badge_bg.into()),
                             border: iced::Border {
-                                radius: 10.0.into(),
+                                radius: 14.0.into(),
                                 ..Default::default()
                             },
                             ..Default::default()
@@ -477,9 +465,9 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
                     .on_press(on_play_mix(tracks, title_clone))
                     .padding([6, 14])
                     .style(move |_t, _s| button::Style {
-                        background: Some(palette.accent.into()),
+                        background: Some(palette.accent_background()),
                         border: iced::Border {
-                            radius: 16.0.into(),
+                            radius: 20.0.into(),
                             ..Default::default()
                         },
                         ..Default::default()
@@ -505,7 +493,7 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
                             .into(),
                         ),
                         border: iced::Border {
-                            radius: 16.0.into(),
+                            radius: 20.0.into(),
                             ..Default::default()
                         },
                         ..Default::default()
@@ -517,11 +505,11 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
             .padding(14),
         )
         .style(move |_t| container::Style {
-            background: Some(palette.surface.into()),
+            background: Some(palette.card_background()),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 width: 1.0,
-                color: palette.border,
+                color: palette.soft_border(),
             },
             ..Default::default()
         });
@@ -565,7 +553,7 @@ fn view_capsule_card<'a, Message: Clone + 'static>(
                 .style(move |_t| container::Style {
                     background: Some(palette.surface_variant.into()),
                     border: iced::Border {
-                        radius: 12.0.into(),
+                        radius: 18.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -597,11 +585,7 @@ fn view_capsule_card<'a, Message: Clone + 'static>(
                 .padding([8, 16])
                 .style(move |_t, s| button::Style {
                     background: Some(
-                        if s == button::Status::Hovered {
-                            palette.surface_variant
-                        } else {
-                            palette.surface
-                        }
+                        if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                         .into(),
                     ),
                     border: iced::Border {
@@ -616,11 +600,11 @@ fn view_capsule_card<'a, Message: Clone + 'static>(
     )
     .width(Length::Fill)
     .style(move |_t| container::Style {
-        background: Some(palette.surface.into()),
+        background: Some(palette.card_background()),
         border: iced::Border {
-            radius: 14.0.into(),
+            radius: 20.0.into(),
             width: 1.0,
-            color: palette.border,
+            color: palette.soft_border(),
         },
         ..Default::default()
     })

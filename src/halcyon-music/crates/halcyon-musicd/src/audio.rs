@@ -246,6 +246,8 @@ impl AudioEngine {
     /// Record a finished or skipped track in the SQLite play log.
     pub fn record_play_log(&self, track: &Track, started_at: u64, ms_played: u64, completed: bool) {
         if completed || ms_played >= MIN_PLAY_LOG_MS {
+            // Keep the full track (with its cover) so Home can show art for recent plays.
+            let _ = self.cache.put_tracks(std::slice::from_ref(track));
             if let Err(e) = self.cache.log_play(
                 &track.id,
                 &track.title,

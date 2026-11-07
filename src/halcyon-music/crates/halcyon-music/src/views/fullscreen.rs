@@ -11,6 +11,7 @@ use iced::{Alignment, Element, Length};
 pub fn view<'a, Message: Clone + 'static>(
     state: &'a PlayerState,
     palette: &'a HalcyonPalette,
+    breath: f32,
     lyrics: Option<&'a Lyrics>,
     on_toggle_play: Message,
     on_next: Message,
@@ -32,15 +33,17 @@ pub fn view<'a, Message: Clone + 'static>(
         .style(move |_t, s| button::Style {
             background: Some(
                 if s == button::Status::Hovered {
-                    palette.surface_variant
+                    crate::theme::alpha(palette.accent, 0.22)
                 } else {
-                    palette.surface
+                    crate::theme::alpha(palette.surface, 0.55)
                 }
                 .into(),
             ),
+            text_color: palette.text,
             border: iced::Border {
+                color: crate::theme::alpha(palette.accent, 0.25),
+                width: 1.0,
                 radius: 20.0.into(),
-                ..Default::default()
             },
             ..Default::default()
         });
@@ -54,14 +57,25 @@ pub fn view<'a, Message: Clone + 'static>(
         track.and_then(|t| t.art_url.as_deref()),
         halcyon_music_core::art::ArtSize::Large,
         320.0,
-        20.0,
+        28.0,
         Icon::Music,
         title,
         *palette,
     );
 
+    // The cover sits in a halo of the cover's own colour that slowly breathes in and out.
+    let halo = container(big_art).style(move |_t| container::Style {
+        border: iced::Border { radius: 28.0.into(), ..Default::default() },
+        shadow: iced::Shadow {
+            color: crate::theme::alpha(palette.glow, 0.22 + 0.22 * breath),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 50.0 + 40.0 * breath,
+        },
+        ..Default::default()
+    });
+
     let left_info = column![
-        big_art,
+        halo,
         Space::with_height(24),
         text(title).size(26).color(palette.text),
         text(artist).size(18).color(palette.accent),
@@ -93,9 +107,9 @@ pub fn view<'a, Message: Clone + 'static>(
                 let is_active = idx == active_idx;
                 let distance = (idx as i64 - active_idx as i64).abs();
                 let (font_size, color) = if is_active {
-                    (22, palette.accent)
+                    (26, palette.accent)
                 } else if distance == 1 {
-                    (17, palette.text)
+                    (18, palette.text)
                 } else if distance == 2 {
                     (15, palette.text_muted)
                 } else {
@@ -138,10 +152,11 @@ pub fn view<'a, Message: Clone + 'static>(
     .width(Length::FillPortion(1))
     .height(360)
     .style(move |_t| container::Style {
-        background: Some(iced::Color { a: 0.4, ..palette.surface }.into()),
+        background: Some(crate::theme::alpha(palette.surface, 0.45).into()),
         border: iced::Border {
-            radius: 12.0.into(),
-            ..Default::default()
+            color: palette.soft_border(),
+            width: 1.0,
+            radius: 24.0.into(),
         },
         ..Default::default()
     });
@@ -156,37 +171,40 @@ pub fn view<'a, Message: Clone + 'static>(
     let prev_btn = button(icon(Icon::SkipBack, 24.0, palette.text))
         .on_press(on_prev)
         .padding(8)
-        .style(|_t, _s| button::Style::default());
+        .style(crate::views::ghost(*palette));
 
     let play_btn = button(
-        container(icon(play_pause_icon, 28.0, palette.background))
-            .width(52)
-            .height(52)
-            .center_x(52)
-            .center_y(52),
+        container(icon(play_pause_icon, 28.0, palette.on_accent()))
+            .width(60)
+            .height(60)
+            .center_x(60)
+            .center_y(60),
     )
     .on_press(on_toggle_play)
     .padding(0)
     .style(move |_t, _s| button::Style {
-        background: Some(palette.accent.into()),
+        background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 26.0.into(),
+            radius: 30.0.into(),
             ..Default::default()
         },
+        shadow: palette.glow_shadow(0.30 + 0.25 * breath, 24.0 + 12.0 * breath),
         ..Default::default()
     });
 
     let next_btn = button(icon(Icon::SkipForward, 24.0, palette.text))
         .on_press(on_next)
         .padding(8)
-        .style(|_t, _s| button::Style::default());
+        .style(crate::views::ghost(*palette));
 
     let transport_row = row![prev_btn, Space::with_width(16), play_btn, Space::with_width(16), next_btn]
         .align_y(Alignment::Center);
 
     let dur_u32 = (duration_ms as u32).max(1);
     let pos_u32 = (position_ms as u32).min(dur_u32);
-    let seek_slider = slider(0..=dur_u32, pos_u32, move |v| on_seek(v as u64)).width(500);
+    let seek_slider = slider(0..=dur_u32, pos_u32, move |v| on_seek(v as u64))
+        .width(500)
+        .style(crate::views::slider_style(*palette));
     let times = row![
         text(format_duration(position_ms)).size(13).color(palette.text_muted),
         Space::with_width(Length::Fill),
@@ -216,16 +234,12 @@ pub fn view<'a, Message: Clone + 'static>(
     .width(Length::Fill)
     .height(Length::Fill)
     .style(move |_t| container::Style {
-        background: Some(
-            // Tinted from cover art dominant color
-            iced::Color {
-                r: palette.background.r * 0.7 + palette.accent.r * 0.08,
-                g: palette.background.g * 0.7 + palette.accent.g * 0.08,
-                b: palette.background.b * 0.7 + palette.accent.b * 0.08,
-                a: 1.0,
-            }
-            .into(),
-        ),
+        // A deeper, cover-tinted gradient than the normal pages, with the glow near the top.
+        background: Some(crate::theme::gradient3(
+            crate::theme::mix(palette.bg_top, palette.glow, 0.10 + 0.05 * breath),
+            crate::theme::mix(palette.background, palette.glow, 0.04),
+            palette.bg_bottom,
+        )),
         ..Default::default()
     })
     .into()

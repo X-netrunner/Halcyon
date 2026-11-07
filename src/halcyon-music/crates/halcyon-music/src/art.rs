@@ -29,7 +29,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// How long a cover takes to fade in.
-pub const FADE: Duration = Duration::from_millis(160);
+pub const FADE: Duration = Duration::from_millis(360);
 /// A failed cover is retried at most this often.
 const RETRY_AFTER: Duration = Duration::from_secs(30);
 /// Decoded pixels kept in memory (least recently drawn are dropped first).
@@ -397,7 +397,18 @@ pub fn cover<'a, M: 'a>(
                 .width(Length::Fixed(px))
                 .height(Length::Fixed(px))
                 .content_fit(ContentFit::Cover);
-            let base = container(pic).width(Length::Fixed(px)).height(Length::Fixed(px));
+            let base = container(pic)
+                .width(Length::Fixed(px))
+                .height(Length::Fixed(px))
+                .style(move |_t| container::Style {
+                    border: iced::Border { radius: radius.into(), ..Default::default() },
+                    shadow: iced::Shadow {
+                        color: Color { a: if px >= 120.0 { 0.35 } else { 0.18 }, ..Color::BLACK },
+                        offset: iced::Vector::new(0.0, if px >= 120.0 { 10.0 } else { 3.0 }),
+                        blur_radius: if px >= 120.0 { 28.0 } else { 10.0 },
+                    },
+                    ..Default::default()
+                });
             if fade_left <= 0.0 {
                 return base.into();
             }
@@ -457,7 +468,7 @@ pub fn tile_colors(label: &str) -> (Color, Color) {
         h = h.wrapping_mul(16777619);
     }
     let hue = (h % 360) as f32;
-    (hsl(hue, 0.32, 0.26), hsl(hue, 0.55, 0.78))
+    (hsl(hue, 0.26, 0.30), hsl(hue, 0.50, 0.82))
 }
 
 fn hsl(h: f32, s: f32, l: f32) -> Color {

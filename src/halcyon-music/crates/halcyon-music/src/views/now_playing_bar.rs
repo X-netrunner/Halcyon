@@ -36,8 +36,8 @@ pub fn view<'a, Message: Clone + 'static>(
         crate::art::cover(
             track.and_then(|t| t.art_url.as_deref()),
             halcyon_music_core::art::ArtSize::Small,
-            48.0,
-            6.0,
+            52.0,
+            12.0,
             Icon::Music,
             title,
             palette,
@@ -46,23 +46,22 @@ pub fn view<'a, Message: Clone + 'static>(
     .on_press(on_toggle_fullscreen.clone())
     .padding(0)
     .style(move |_theme, status| button::Style {
-        background: Some(
-            if status == button::Status::Hovered {
-                palette.surface_variant
-            } else {
-                palette.border
-            }
-            .into(),
-        ),
+        background: None,
         border: iced::Border {
-            radius: 8.0.into(),
-            ..Default::default()
+            radius: 12.0.into(),
+            width: if status == button::Status::Hovered { 1.5 } else { 0.0 },
+            color: crate::theme::alpha(palette.accent, 0.6),
+        },
+        shadow: if status == button::Status::Hovered {
+            palette.glow_shadow(0.35, 18.0)
+        } else {
+            iced::Shadow::default()
         },
         ..Default::default()
     });
 
     let meta = iced::widget::column![
-        text(crate::views::ellipsize(title, 40)).size(14).color(palette.text),
+        text(crate::views::ellipsize(title, 40)).size(15).color(palette.text),
         text(crate::views::ellipsize(artist, 40)).size(12).color(palette.text_muted),
     ]
     .spacing(2);
@@ -78,6 +77,7 @@ pub fn view<'a, Message: Clone + 'static>(
 
     // --- Center Section: Transport + Seek Bar ---
     let play_pause_icon = if state.playing { Icon::Pause } else { Icon::Play };
+    let state_playing = state.playing;
 
     let shuffle_color = if state.shuffle {
         palette.accent
@@ -95,19 +95,27 @@ pub fn view<'a, Message: Clone + 'static>(
         .style(crate::views::ghost(palette));
 
     let play_btn = button(
-        container(icon(play_pause_icon, 20.0, palette.background))
-            .width(36)
-            .height(36)
-            .center_x(36)
-            .center_y(36),
+        container(icon(play_pause_icon, 20.0, palette.on_accent()))
+            .width(40)
+            .height(40)
+            .center_x(40)
+            .center_y(40),
     )
     .on_press(on_toggle_play)
     .padding(0)
-    .style(move |_t, _s| button::Style {
-        background: Some(palette.accent.into()),
+    .style(move |_t, s| button::Style {
+        background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 18.0.into(),
+            radius: 20.0.into(),
             ..Default::default()
+        },
+        // Glows a little more while music plays and when hovered.
+        shadow: if s == button::Status::Hovered {
+            palette.glow_shadow(0.55, 26.0)
+        } else if state_playing {
+            palette.glow_shadow(0.38, 20.0)
+        } else {
+            palette.glow_shadow(0.20, 12.0)
         },
         ..Default::default()
     });
@@ -166,7 +174,8 @@ pub fn view<'a, Message: Clone + 'static>(
     let pos_u32 = (position_ms as u32).min(dur_u32);
     let seek_slider = slider(0..=dur_u32, pos_u32, move |v| on_seek(v as u64))
         .width(Length::Fill)
-        .step(1000u32);
+        .step(1000u32)
+        .style(crate::views::slider_style(palette));
 
     let progress_row = row![elapsed_txt, Space::with_width(8), seek_slider, Space::with_width(8), total_txt]
         .align_y(Alignment::Center)
@@ -189,7 +198,9 @@ pub fn view<'a, Message: Clone + 'static>(
         .padding(4)
         .style(crate::views::ghost(palette));
 
-    let vol_slider = slider(0..=100, state.volume, on_volume).width(120);
+    let vol_slider = slider(0..=100, state.volume, on_volume)
+        .width(120)
+        .style(crate::views::slider_style(palette));
 
     let queue_btn = tooltip(
         button(icon(Icon::Queue, 16.0, if queue_open { palette.accent } else { palette.text_muted }))
@@ -216,21 +227,35 @@ pub fn view<'a, Message: Clone + 'static>(
     .align_y(Alignment::Center)
     .width(Length::FillPortion(3));
 
-    container(
+    let bar = container(
         row![left, center, right]
             .align_y(Alignment::Center)
             .padding([crate::theme::space::MD, crate::theme::space::XL]),
     )
     .width(Length::Fill)
-    .height(84)
+    .height(88)
     .style(move |_theme| container::Style {
-        background: Some(palette.surface.into()),
+        background: Some(crate::theme::gradient2(
+            crate::theme::alpha(crate::theme::mix(palette.surface, palette.glow, 0.10), 0.96),
+            crate::theme::alpha(palette.surface, 0.94),
+            true,
+        )),
         border: iced::Border {
-            color: palette.border,
+            color: palette.soft_border(),
             width: 1.0,
-            ..Default::default()
+            radius: crate::theme::radius::XL.into(),
+        },
+        shadow: iced::Shadow {
+            color: crate::theme::alpha(iced::Color::BLACK, if palette.is_light() { 0.10 } else { 0.40 }),
+            offset: iced::Vector::new(0.0, 10.0),
+            blur_radius: 32.0,
         },
         ..Default::default()
-    })
-    .into()
+    });
+
+    // The bar floats: a margin of page all around it.
+    container(bar)
+        .width(Length::Fill)
+        .padding(iced::Padding { top: 4.0, right: 12.0, bottom: 12.0, left: 12.0 })
+        .into()
 }

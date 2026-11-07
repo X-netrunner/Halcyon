@@ -68,8 +68,8 @@ pub fn view<'a, Message: Clone + 'static>(
     .style(move |_t| container::Style {
         background: Some(palette.surface_variant.into()),
         border: iced::Border {
-            radius: 8.0.into(),
-            color: palette.border,
+            radius: 12.0.into(),
+            color: palette.soft_border(),
             width: 0.5,
         },
         ..Default::default()
@@ -213,7 +213,7 @@ fn view_synced_lines<'a, Message: Clone + 'static>(
                 .into(),
             ),
             border: iced::Border {
-                radius: 8.0.into(),
+                radius: 12.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -247,7 +247,7 @@ fn view_plain_lines<'a, Message: 'static>(
         .style(move |_t| container::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 6.0.into(),
+                radius: 10.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -300,9 +300,9 @@ fn view_empty_state<'a, Message: Clone + 'static>(
             .on_press(on_search_again)
             .padding([8, 14])
             .style(move |_t, _s| button::Style {
-                background: Some(palette.accent.into()),
+                background: Some(palette.accent_background()),
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 12.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -319,10 +319,10 @@ fn view_empty_state<'a, Message: Clone + 'static>(
             .on_press(on_toggle_load)
             .padding([8, 14])
             .style(move |_t, _s| button::Style {
-                background: Some(palette.surface.into()),
+                background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 8.0.into(),
-                    color: palette.border,
+                    radius: 12.0.into(),
+                    color: palette.soft_border(),
                     width: 0.5,
                 },
                 ..Default::default()
@@ -344,9 +344,9 @@ fn view_empty_state<'a, Message: Clone + 'static>(
             .on_press(on_submit_lrc)
             .padding([8, 16])
             .style(move |_t, _s| button::Style {
-                background: Some(palette.accent.into()),
+                background: Some(palette.accent_background()),
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 12.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
