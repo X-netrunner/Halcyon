@@ -54,6 +54,16 @@ pub const PROBE_TARGETS: &[ProbeTarget] = &[
 
 /// Run all endpoint probes, reusing results from SQLite cache if fresher than 24h.
 pub async fn evaluate_probes(client: &SpotifyClient, cache: &Cache) -> Vec<EndpointProbe> {
+    evaluate_probes_inner(client, cache, false).await
+}
+
+/// Probe every endpoint again, ignoring the 24 h cache (used when the sign-in mode changes:
+/// the other token may be allowed or refused differently).
+pub async fn reprobe(client: &SpotifyClient, cache: &Cache) -> Vec<EndpointProbe> {
+    evaluate_probes_inner(client, cache, true).await
+}
+
+async fn evaluate_probes_inner(client: &SpotifyClient, cache: &Cache, force: bool) -> Vec<EndpointProbe> {
     let now = now_secs();
     let existing_probes = cache.get_probes().unwrap_or_default();
     let probe_map: std::collections::HashMap<String, EndpointProbe> = existing_probes
@@ -67,7 +77,7 @@ pub async fn evaluate_probes(client: &SpotifyClient, cache: &Cache) -> Vec<Endpo
         let name = target.name.to_string();
 
         // Check if cached probe is fresh (< 24h)
-        if let Some(cached) = probe_map.get(&name) {
+        if let Some(cached) = probe_map.get(&name).filter(|_| !force) {
             if now < cached.checked_at.saturating_add(PROBE_TTL_SECS) {
                 results.push(cached.clone());
                 continue;

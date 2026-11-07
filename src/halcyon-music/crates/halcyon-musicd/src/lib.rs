@@ -13,16 +13,23 @@
 )]
 
 pub mod api;
+pub mod art;
 pub mod audio;
 pub mod auth;
+pub mod auth_mode;
 pub mod cache;
 pub mod daemon;
 pub mod doctor;
+pub mod faults;
+pub mod lyrics;
 pub mod mpris;
 pub mod panic_hook;
+pub mod probe_cli;
 pub mod probes;
 pub mod sd_notify;
 pub mod state_store;
+pub mod stream_auth;
+pub mod suggestions;
 pub mod supervisor;
 pub mod token_store;
 

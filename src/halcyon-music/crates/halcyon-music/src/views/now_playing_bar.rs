@@ -1,13 +1,15 @@
 //! Bottom Now-Playing transport bar.
 
+use crate::icons::{icon, Icon};
 use crate::theme::{format_duration, HalcyonPalette};
 use halcyon_music_core::state::{PlayerState, RepeatMode};
 use iced::widget::{button, container, row, slider, text, Space};
 use iced::{Alignment, Element, Length};
 
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
-    state: &PlayerState,
-    palette: &HalcyonPalette,
+    state: &'a PlayerState,
+    palette: HalcyonPalette,
     on_toggle_play: Message,
     on_next: Message,
     on_prev: Message,
@@ -29,11 +31,15 @@ pub fn view<'a, Message: Clone + 'static>(
 
     // --- Left Section: Cover, Title, Artist, Like ---
     let cover_btn = button(
-        container(text("󰝚").size(24).color(palette.accent))
-            .width(48)
-            .height(48)
-            .center_x(48)
-            .center_y(48),
+        crate::art::cover(
+            track.and_then(|t| t.art_url.as_deref()),
+            halcyon_music_core::art::ArtSize::Small,
+            48.0,
+            6.0,
+            Icon::Music,
+            title,
+            palette,
+        ),
     )
     .on_press(on_toggle_fullscreen.clone())
     .padding(0)
@@ -59,7 +65,7 @@ pub fn view<'a, Message: Clone + 'static>(
     ]
     .spacing(2);
 
-    let like_btn = button(text("󰋑").size(16).color(palette.text_muted))
+    let like_btn = button(icon(Icon::Heart, 16.0, palette.text_muted))
         .on_press(on_toggle_like)
         .padding(4)
         .style(|_t, _s| button::Style::default());
@@ -69,25 +75,25 @@ pub fn view<'a, Message: Clone + 'static>(
         .width(Length::FillPortion(1));
 
     // --- Center Section: Transport + Seek Bar ---
-    let play_pause_icon = if state.playing { "󰏤" } else { "󰐊" };
+    let play_pause_icon = if state.playing { Icon::Pause } else { Icon::Play };
 
     let shuffle_color = if state.shuffle {
         palette.accent
     } else {
         palette.text_muted
     };
-    let shuffle_btn = button(text("󰒝").size(16).color(shuffle_color))
+    let shuffle_btn = button(icon(Icon::Shuffle, 16.0, shuffle_color))
         .on_press(on_toggle_shuffle)
         .padding(6)
         .style(|_t, _s| button::Style::default());
 
-    let prev_btn = button(text("󰒮").size(18).color(palette.text))
+    let prev_btn = button(icon(Icon::SkipBack, 18.0, palette.text))
         .on_press(on_prev)
         .padding(6)
         .style(|_t, _s| button::Style::default());
 
     let play_btn = button(
-        container(text(play_pause_icon).size(20).color(palette.background))
+        container(icon(play_pause_icon, 20.0, palette.background))
             .width(36)
             .height(36)
             .center_x(36)
@@ -104,21 +110,21 @@ pub fn view<'a, Message: Clone + 'static>(
         ..Default::default()
     });
 
-    let next_btn = button(text("󰒭").size(18).color(palette.text))
+    let next_btn = button(icon(Icon::SkipForward, 18.0, palette.text))
         .on_press(on_next)
         .padding(6)
         .style(|_t, _s| button::Style::default());
 
     let repeat_icon = match state.repeat {
-        RepeatMode::Off => "󰑗",
-        RepeatMode::All => "󰑖",
-        RepeatMode::One => "󰑘",
+        RepeatMode::Off => Icon::Repeat,
+        RepeatMode::All => Icon::Repeat,
+        RepeatMode::One => Icon::Repeat1,
     };
     let repeat_color = match state.repeat {
         RepeatMode::Off => palette.text_muted,
         _ => palette.accent,
     };
-    let repeat_btn = button(text(repeat_icon).size(16).color(repeat_color))
+    let repeat_btn = button(icon(repeat_icon, 16.0, repeat_color))
         .on_press(on_cycle_repeat)
         .padding(6)
         .style(|_t, _s| button::Style::default());
@@ -143,9 +149,11 @@ pub fn view<'a, Message: Clone + 'static>(
         .size(11)
         .color(palette.text_muted);
 
-    let seek_slider = slider(0..=duration_ms.max(1), position_ms, on_seek)
+    let dur_u32 = (duration_ms as u32).max(1);
+    let pos_u32 = (position_ms as u32).min(dur_u32);
+    let seek_slider = slider(0..=dur_u32, pos_u32, move |v| on_seek(v as u64))
         .width(Length::Fill)
-        .step(1000);
+        .step(1000u32);
 
     let progress_row = row![elapsed_txt, Space::with_width(8), seek_slider, Space::with_width(8), total_txt]
         .align_y(Alignment::Center)
@@ -157,30 +165,30 @@ pub fn view<'a, Message: Clone + 'static>(
 
     // --- Right Section: Volume & View Toggles ---
     let vol_icon = if state.volume == 0 {
-        "󰝟"
+        Icon::VolumeX
     } else if state.volume < 50 {
-        "󰕿"
+        Icon::Volume1
     } else {
-        "󰕾"
+        Icon::Volume2
     };
-    let mute_btn = button(text(vol_icon).size(16).color(palette.text_muted))
+    let mute_btn = button(icon(vol_icon, 16.0, palette.text_muted))
         .on_press(on_toggle_mute)
         .padding(4)
         .style(|_t, _s| button::Style::default());
 
     let vol_slider = slider(0..=100, state.volume, on_volume).width(80);
 
-    let lyrics_btn = button(text("󰎆").size(16).color(palette.text_muted))
+    let lyrics_btn = button(icon(Icon::Lyrics, 16.0, palette.text_muted))
         .on_press(on_toggle_lyrics)
         .padding(6)
         .style(|_t, _s| button::Style::default());
 
-    let queue_btn = button(text("󰒯").size(16).color(palette.text_muted))
+    let queue_btn = button(icon(Icon::Queue, 16.0, palette.text_muted))
         .on_press(on_toggle_queue)
         .padding(6)
         .style(|_t, _s| button::Style::default());
 
-    let fs_btn = button(text("󰊓").size(16).color(palette.text_muted))
+    let fs_btn = button(icon(Icon::Maximize, 16.0, palette.text_muted))
         .on_press(on_toggle_fullscreen)
         .padding(6)
         .style(|_t, _s| button::Style::default());

@@ -24,6 +24,11 @@ if [ "${HALCYON_FROM_GREETER:-}" = 1 ]; then rm -f "$HOME/.cache/island/lock-on-
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 if [ ! -d "$XDG_RUNTIME_DIR" ]; then mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null && chmod 700 "$XDG_RUNTIME_DIR"; fi
 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_DESKTOP=Hyprland
+# Everything Hyprland starts (keybinds, Quickshell, apps.sh) inherits this PATH: the installer puts halcyon-music, halcyon-musicd and
+# the other Rust helpers in ~/.local/bin and ~/.config/Halcyon/bin, which a login-manager session does not have on PATH.
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac
+case ":$PATH:" in *":$HOME/.config/Halcyon/bin:"*) ;; *) PATH="$HOME/.config/Halcyon/bin:$PATH" ;; esac
+export PATH
 
 mkdir -p "$HOME/.cache/island" 2>/dev/null
 log="$HOME/.cache/island/launch.log"

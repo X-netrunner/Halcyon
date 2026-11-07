@@ -1867,6 +1867,7 @@ dependencies = [
  "keyring",
  "libc",
  "librespot-core",
+ "librespot-oauth",
  "librespot-playback",
  "rand 0.8.8",
  "reqwest",

@@ -2422,7 +2422,7 @@ setup_halcyon_music() {
 
             # Post-install --doctor run
             log_info "Running halcyon-musicd --doctor check..."
-            run_as_user "$BIN_DIR/halcyon-musicd" --doctor || true
+            run_as_user timeout 15 "$BIN_DIR/halcyon-musicd" --doctor || true
         fi
     else
         BUILD_FAILED+=("halcyon-music")

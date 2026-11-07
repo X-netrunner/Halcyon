@@ -5,7 +5,11 @@
 //! to [`Command::Unknown`] / [`Event::Unknown`] so an old daemon paired with a
 //! new GUI (or vice versa) degrades instead of erroring out.
 
-use crate::models::{AuthStatus, EndpointProbe, Playlist};
+use crate::art::ArtSize;
+use crate::models::{
+    Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, EndpointProbe, FullCapsule, HomeFeed,
+    Lyrics, MusicMix, Playlist,
+};
 use crate::state::{Bitrate, PlayerState, RepeatMode, Track};
 use serde::{Deserialize, Serialize};
 
@@ -68,6 +72,15 @@ pub enum CommandBody {
     Dequeue { index: usize },
     /// Start PKCE authorization flow with given Spotify Client ID.
     LoginStart { client_id: String },
+    /// Start librespot's own browser sign-in (the default sign-in: one token for streaming
+    /// and, from rework Part 4, browsing). Progress arrives as [`EventBody::AuthStatus`] and
+    /// [`EventBody::StreamingAuth`]. An older daemon answers with an "unsupported" error.
+    LoginStartLibrespot,
+    /// Choose which token browsing uses (`librespot` default, `own-client-id` advanced).
+    /// Answered with [`EventBody::AuthModeChanged`] and an [`EventBody::AuthStatus`].
+    SetAuthMode { mode: AuthMode },
+    /// Ask whether a streaming sign-in exists; answered with [`EventBody::StreamingAuth`].
+    GetStreamingAuth,
     /// Cancel in-flight login flow.
     LoginCancel,
     /// Clear credentials and log out.
@@ -80,6 +93,10 @@ pub enum CommandBody {
     GetPlaylistTracks { id: String, limit: Option<u32>, offset: Option<u32> },
     /// Request user's saved/liked tracks (stale-while-revalidate).
     GetLikedTracks { limit: Option<u32>, offset: Option<u32> },
+    /// Request the user's saved albums (first 50).
+    GetSavedAlbums,
+    /// Request the artists the user follows (first 50).
+    GetFollowedArtists,
     /// Search tracks (Spotify search capped at 10 results per request).
     Search { query: String, limit: Option<u32>, offset: Option<u32> },
     /// Probe optional Spotify endpoints.
@@ -96,6 +113,54 @@ pub enum CommandBody {
     SetBitrate { bitrate: Bitrate },
     /// Set volume normalisation.
     SetNormalisation { enabled: bool },
+    /// Request the aggregated Home page feed.
+    GetHomeFeed,
+    /// Request generated mixes from the suggestion engine.
+    GetSuggestions,
+    /// Play a generated mix immediately.
+    PlayMix { tracks: Vec<Track>, name: String },
+    /// Save a generated mix as a real Spotify playlist.
+    SaveMixAsPlaylist { name: String, track_uris: Vec<String> },
+    /// Create a new playlist.
+    CreatePlaylist { name: String, description: Option<String> },
+    /// Rename a playlist.
+    RenamePlaylist { id: String, new_name: String },
+    /// Delete/Unfollow a playlist.
+    DeletePlaylist { id: String },
+    /// Add a track to a playlist.
+    AddTrackToPlaylist { playlist_id: String, track_uri: String },
+    /// Remove a track from a playlist.
+    RemoveTrackFromPlaylist { playlist_id: String, track_uri: String },
+    /// Request monthly Sound Capsule.
+    GetCapsule { month_offset: u32 },
+    /// Request album detail and full tracklist.
+    GetAlbumDetail { id: String },
+    /// Request artist detail, top tracks, and discography.
+    GetArtistDetail { id: String },
+    /// Multi-category search with pagination.
+    DetailedSearch { query: String, search_type: String, limit: u32, offset: u32 },
+    /// Request recent searches.
+    GetRecentSearches,
+    /// Clear recent searches history.
+    ClearRecentSearches,
+    /// Request synced lyrics for track.
+    GetLyrics {
+        track_id: String,
+        artist: String,
+        title: String,
+        album: String,
+        duration_ms: u64,
+    },
+    /// Adjust manual lyric offset in milliseconds (+/- 100ms).
+    SetLyricOffset { track_id: String, offset_ms: i64 },
+    /// Load custom local .lrc file text.
+    LoadLocalLrc { track_id: String, lrc_content: String },
+    /// Force fresh search on LRCLIB.
+    SearchLyricsAgain { track_id: String, artist: String, title: String },
+    /// Download (or find in the disk cache) a cover. The answer arrives as
+    /// [`EventBody::ArtReady`] or [`EventBody::ArtFailed`]; repeating a request
+    /// is cheap, the daemon de-duplicates in-flight downloads.
+    GetArt { url: String, size: ArtSize },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -125,6 +190,11 @@ pub enum EventBody {
     AuthStatus(AuthStatus),
     /// Re-login required (token expired / revoked).
     AuthRequired { reason: String },
+    /// The token browsing uses changed (also sent when a client connects).
+    AuthModeChanged { mode: AuthMode },
+    /// State of the streaming sign-in (librespot's own token). Never carries a token.
+    /// `seconds_left` is the lifetime of the current access token (it is renewed on its own).
+    StreamingAuth { signed_in: bool, seconds_left: Option<u64> },
     /// Successfully authenticated.
     AuthSuccess { user_id: Option<String> },
     /// Playlists response (stale-while-revalidate).
@@ -149,6 +219,10 @@ pub enum EventBody {
         offset: usize,
         is_cached: bool,
     },
+    /// Saved albums for the Library tab.
+    SavedAlbumsResult { albums: Vec<Album> },
+    /// Followed artists for the Library tab.
+    FollowedArtistsResult { artists: Vec<Artist> },
     /// Search results.
     SearchResults {
         query: String,
@@ -170,6 +244,43 @@ pub enum EventBody {
         title: String,
         reason: String,
     },
+    /// Home feed response (stale-while-revalidate).
+    HomeFeedResult(Box<HomeFeed>),
+    /// Suggestions response.
+    SuggestionsResult { mixes: Vec<MusicMix> },
+    /// Confirmation that a mix was saved as a real playlist.
+    PlaylistCreated { playlist_id: String, name: String },
+    /// Monthly Sound Capsule results.
+    CapsuleResult(Box<FullCapsule>),
+    /// Multi-category search results.
+    DetailedSearchResults(Box<DetailedSearchResults>),
+    /// Album detail response.
+    AlbumDetailResult { album: Album, tracks: Vec<Track> },
+    /// Artist detail response.
+    ArtistDetailResult {
+        artist: Artist,
+        top_tracks: Vec<Track>,
+        albums: Vec<Album>,
+    },
+    /// Recent searches response.
+    RecentSearchesResult { searches: Vec<String> },
+    /// Playlist updated.
+    PlaylistUpdated { id: String },
+    /// Synced or plain lyrics response.
+    LyricsResult {
+        track_id: String,
+        lyrics: Option<Box<Lyrics>>,
+    },
+    /// Live current lyric line progress for island and status indicators.
+    CurrentLyric {
+        track_id: String,
+        line_idx: usize,
+        line: Option<String>,
+    },
+    /// A cover is on disk. `url` and `size` echo the request.
+    ArtReady { url: String, size: ArtSize, path: String },
+    /// A cover could not be fetched (offline, 404, too big, not an image).
+    ArtFailed { url: String, size: ArtSize, reason: String },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -239,6 +350,40 @@ mod tests {
     }
 
     #[test]
+    fn streaming_login_messages_round_trip_and_old_peers_ignore_them() {
+        let cmd = command(CommandBody::LoginStartLibrespot);
+        let line = encode_line(&cmd).expect("encode");
+        let back: Command = decode_line(&line).expect("decode");
+        assert_eq!(cmd, back);
+
+        let ev = event(EventBody::StreamingAuth { signed_in: true, seconds_left: Some(1200) });
+        let line = encode_line(&ev).expect("encode");
+        let back: Event = decode_line(&line).expect("decode");
+        assert_eq!(ev, back);
+
+        // An older peer sees the same bytes as an unknown kind, not an error.
+        let wire = br#"{"version":1,"type":"login_start_librespot"}
+"#;
+        let cmd: Command = decode_line(wire).expect("decode");
+        assert!(matches!(cmd.body, CommandBody::LoginStartLibrespot));
+    }
+
+    #[test]
+    fn auth_mode_wire_names_and_round_trip() {
+        let cmd = command(CommandBody::SetAuthMode { mode: AuthMode::OwnClientId });
+        let line = encode_line(&cmd).expect("encode");
+        assert!(String::from_utf8_lossy(&line).contains("\"own-client-id\""));
+        let back: Command = decode_line(&line).expect("decode");
+        assert_eq!(cmd, back);
+
+        let ev = event(EventBody::AuthModeChanged { mode: AuthMode::Librespot });
+        let line = encode_line(&ev).expect("encode");
+        assert!(String::from_utf8_lossy(&line).contains("\"librespot\""));
+        let back: Event = decode_line(&line).expect("decode");
+        assert_eq!(ev, back);
+    }
+
+    #[test]
     fn unknown_message_kind_is_kept() {
         let line = br#"{"version":1,"type":"teleport"}
 "#;
@@ -252,5 +397,106 @@ mod tests {
 "#;
         let ev: Event = decode_line(line).expect("decode");
         assert!(ev.version > PROTOCOL_VERSION); // caller decides to warn
+    }
+
+    #[test]
+    fn part6_protocol_round_trip() {
+        let cmd = command(CommandBody::DetailedSearch {
+            query: "Daft Punk".into(),
+            search_type: "artist".into(),
+            limit: 10,
+            offset: 0,
+        });
+        let line = encode_line(&cmd).expect("encode");
+        let back: Command = decode_line(&line).expect("decode");
+        assert_eq!(cmd, back);
+
+        let capsule_ev = event(EventBody::CapsuleResult(Box::default()));
+        let line_cap = encode_line(&capsule_ev).expect("encode");
+        let back_cap: Event = decode_line(&line_cap).expect("decode");
+        assert_eq!(capsule_ev, back_cap);
+
+        let recents_ev = event(EventBody::RecentSearchesResult {
+            searches: vec!["Radiohead".into(), "Kavinsky".into()],
+        });
+        let line_rec = encode_line(&recents_ev).expect("encode");
+        let back_rec: Event = decode_line(&line_rec).expect("decode");
+        assert_eq!(recents_ev, back_rec);
+    }
+
+    #[test]
+    fn art_protocol_round_trip() {
+        let cmd = command(CommandBody::GetArt { url: "https://x/y".into(), size: ArtSize::Medium });
+        let line = encode_line(&cmd).expect("encode");
+        assert!(std::str::from_utf8(&line).expect("utf8").contains("\"size\":\"medium\""));
+        let back: Command = decode_line(&line).expect("decode");
+        assert_eq!(cmd, back);
+
+        for ev in [
+            event(EventBody::ArtReady { url: "u".into(), size: ArtSize::Small, path: "/tmp/a.img".into() }),
+            event(EventBody::ArtFailed { url: "u".into(), size: ArtSize::Large, reason: "offline".into() }),
+        ] {
+            let line = encode_line(&ev).expect("encode");
+            let back: Event = decode_line(&line).expect("decode");
+            assert_eq!(ev, back);
+        }
+    }
+
+    #[test]
+    fn part7_protocol_round_trip() {
+        use crate::models::{LyricLine, LyricWord, Lyrics};
+
+        let get_cmd = command(CommandBody::GetLyrics {
+            track_id: "t1".into(),
+            artist: "Daft Punk".into(),
+            title: "Get Lucky".into(),
+            album: "RAM".into(),
+            duration_ms: 248_000,
+        });
+        let line = encode_line(&get_cmd).expect("encode");
+        let back_cmd: Command = decode_line(&line).expect("decode");
+        assert_eq!(get_cmd, back_cmd);
+
+        let offset_cmd = command(CommandBody::SetLyricOffset {
+            track_id: "t1".into(),
+            offset_ms: -300,
+        });
+        let line_off = encode_line(&offset_cmd).expect("encode");
+        let back_off: Command = decode_line(&line_off).expect("decode");
+        assert_eq!(offset_cmd, back_off);
+
+        let lrc = Lyrics {
+            track_id: "t1".into(),
+            synced: true,
+            lines: vec![LyricLine {
+                start_ms: 12_500,
+                end_ms: Some(15_000),
+                text: "Like the legend of the phoenix".into(),
+                translation: None,
+                words: vec![LyricWord {
+                    start_ms: 12_500,
+                    end_ms: 13_000,
+                    text: "Like".into(),
+                }],
+            }],
+            offset_ms: 0,
+        };
+
+        let lrc_ev = event(EventBody::LyricsResult {
+            track_id: "t1".into(),
+            lyrics: Some(Box::new(lrc)),
+        });
+        let line_lrc = encode_line(&lrc_ev).expect("encode");
+        let back_lrc: Event = decode_line(&line_lrc).expect("decode");
+        assert_eq!(lrc_ev, back_lrc);
+
+        let cur_ev = event(EventBody::CurrentLyric {
+            track_id: "t1".into(),
+            line_idx: 0,
+            line: Some("Like the legend of the phoenix".into()),
+        });
+        let line_cur = encode_line(&cur_ev).expect("encode");
+        let back_cur: Event = decode_line(&line_cur).expect("decode");
+        assert_eq!(cur_ev, back_cur);
     }
 }

@@ -4,6 +4,8 @@
 //! dynamically tinted by the current track's album cover art (via median-cut
 //! extraction and WCAG 4.5:1 contrast checking).
 
+#![allow(dead_code)]
+
 use iced::Color;
 use std::path::Path;
 
@@ -197,9 +199,9 @@ pub fn extract_dominant_color(rgba_bytes: &[u8]) -> Color {
 
     let mut i = 0;
     while i + 3 < rgba_bytes.len() {
-        let r = rgba_bytes[i] as u64;
-        let g = rgba_bytes[i + 1] as u64;
-        let b = rgba_bytes[i + 2] as u64;
+        let r = *rgba_bytes.get(i).unwrap_or(&0) as u64;
+        let g = *rgba_bytes.get(i + 1).unwrap_or(&0) as u64;
+        let b = *rgba_bytes.get(i + 2).unwrap_or(&0) as u64;
 
         // Skip near-black and near-white pixels for better vibrance
         let max_val = r.max(g).max(b);

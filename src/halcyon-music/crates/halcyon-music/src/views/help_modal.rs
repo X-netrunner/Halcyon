@@ -1,11 +1,12 @@
 //! Keyboard shortcuts modal overlay (`?`).
 
+use crate::icons::{icon, Icon};
 use crate::theme::HalcyonPalette;
 use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length};
 
 pub fn view<'a, Message: Clone + 'static>(
-    palette: &HalcyonPalette,
+    palette: HalcyonPalette,
     on_close: Message,
 ) -> Element<'a, Message> {
     let row_item = |key: &'static str, desc: &'static str| {
@@ -30,7 +31,7 @@ pub fn view<'a, Message: Clone + 'static>(
         row![
             text("Keyboard Shortcuts").size(18).color(palette.text),
             Space::with_width(Length::Fill),
-            button(text("󰅖").size(16).color(palette.text_muted))
+            button(icon(Icon::Close, 16.0, palette.text_muted))
                 .on_press(on_close)
                 .padding(4)
                 .style(|_t, _s| button::Style::default()),

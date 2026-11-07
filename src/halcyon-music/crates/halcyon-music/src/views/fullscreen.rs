@@ -1,18 +1,21 @@
 //! Full-screen Now Playing view with large cover, tinted background, and lyrics column.
 
+use crate::icons::{icon, Icon};
 use crate::theme::{format_duration, HalcyonPalette};
+use halcyon_music_core::models::Lyrics;
 use halcyon_music_core::state::PlayerState;
 use iced::widget::{button, column, container, row, scrollable, slider, text, Space};
 use iced::{Alignment, Element, Length};
 
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
-    state: &PlayerState,
-    palette: &HalcyonPalette,
-    lyrics: &[String],
+    state: &'a PlayerState,
+    palette: &'a HalcyonPalette,
+    lyrics: Option<&'a Lyrics>,
     on_toggle_play: Message,
     on_next: Message,
     on_prev: Message,
-    on_seek: impl Fn(u64) -> Message + 'a,
+    on_seek: impl Fn(u64) -> Message + 'a + Copy,
     on_exit_fullscreen: Message,
 ) -> Element<'a, Message> {
     let track = state.track.as_ref();
@@ -23,7 +26,7 @@ pub fn view<'a, Message: Clone + 'static>(
     let position_ms = state.position_ms.min(duration_ms);
 
     // Close / Exit button
-    let close_btn = button(text("󰅖 Close (Esc)").size(14).color(palette.text))
+    let close_btn = button(row![icon(Icon::Close, 14.0, palette.text), Space::with_width(6), text("Close (Esc)").size(14).color(palette.text)].align_y(Alignment::Center))
         .on_press(on_exit_fullscreen)
         .padding([8, 16])
         .style(move |_t, s| button::Style {
@@ -47,20 +50,15 @@ pub fn view<'a, Message: Clone + 'static>(
         .padding(20);
 
     // Left Column: Big Cover + Title + Album
-    let big_art = container(text("󰝚").size(96).color(palette.accent))
-        .width(320)
-        .height(320)
-        .center_x(320)
-        .center_y(320)
-        .style(move |_t| container::Style {
-            background: Some(palette.surface_variant.into()),
-            border: iced::Border {
-                radius: 16.0.into(),
-                color: palette.border,
-                width: 2.0,
-            },
-            ..Default::default()
-        });
+    let big_art = crate::art::cover(
+        track.and_then(|t| t.art_url.as_deref()),
+        halcyon_music_core::art::ArtSize::Large,
+        320.0,
+        20.0,
+        Icon::Music,
+        title,
+        *palette,
+    );
 
     let left_info = column![
         big_art,
@@ -73,20 +71,63 @@ pub fn view<'a, Message: Clone + 'static>(
     .width(Length::FillPortion(1));
 
     // Right Column: Lyrics
-    let mut lyrics_col = column![].spacing(16);
-    if lyrics.is_empty() {
+    let mut lyrics_col = column![].spacing(14);
+    if let Some(lrc) = lyrics {
+        if lrc.lines.is_empty() {
+            lyrics_col = lyrics_col.push(
+                container(text("No lyrics available for this track").size(15).color(palette.text_muted))
+                    .padding(40),
+            );
+        } else if lrc.synced {
+            let effective_pos = (position_ms as i64).saturating_add(lrc.offset_ms).max(0) as u64;
+            let mut active_idx = 0;
+            for (i, line) in lrc.lines.iter().enumerate() {
+                if line.start_ms <= effective_pos {
+                    active_idx = i;
+                } else {
+                    break;
+                }
+            }
+
+            for (idx, line) in lrc.lines.iter().enumerate() {
+                let is_active = idx == active_idx;
+                let distance = (idx as i64 - active_idx as i64).abs();
+                let (font_size, color) = if is_active {
+                    (22, palette.accent)
+                } else if distance == 1 {
+                    (17, palette.text)
+                } else if distance == 2 {
+                    (15, palette.text_muted)
+                } else {
+                    (14, iced::Color { a: 0.35, ..palette.text_muted })
+                };
+
+                let line_btn = button(
+                    text(&line.text)
+                        .size(font_size)
+                        .color(color)
+                        .width(Length::Fill),
+                )
+                .on_press(on_seek(line.start_ms))
+                .padding([4, 8])
+                .style(|_t, _s| button::Style::default());
+
+                lyrics_col = lyrics_col.push(line_btn);
+            }
+        } else {
+            for line in &lrc.lines {
+                lyrics_col = lyrics_col.push(
+                    text(&line.text)
+                        .size(16)
+                        .color(palette.text),
+                );
+            }
+        }
+    } else {
         lyrics_col = lyrics_col.push(
             container(text("No lyrics available for this track").size(15).color(palette.text_muted))
                 .padding(40),
         );
-    } else {
-        for line in lyrics {
-            lyrics_col = lyrics_col.push(
-                text(line.as_str())
-                    .size(17)
-                    .color(palette.text),
-            );
-        }
     }
 
     let right_lyrics = container(
@@ -110,15 +151,15 @@ pub fn view<'a, Message: Clone + 'static>(
         .padding([0, 40]);
 
     // Bottom transport controls
-    let play_pause_icon = if state.playing { "󰏤" } else { "󰐊" };
+    let play_pause_icon = if state.playing { Icon::Pause } else { Icon::Play };
 
-    let prev_btn = button(text("󰒮").size(24).color(palette.text))
+    let prev_btn = button(icon(Icon::SkipBack, 24.0, palette.text))
         .on_press(on_prev)
         .padding(8)
         .style(|_t, _s| button::Style::default());
 
     let play_btn = button(
-        container(text(play_pause_icon).size(28).color(palette.background))
+        container(icon(play_pause_icon, 28.0, palette.background))
             .width(52)
             .height(52)
             .center_x(52)
@@ -135,7 +176,7 @@ pub fn view<'a, Message: Clone + 'static>(
         ..Default::default()
     });
 
-    let next_btn = button(text("󰒭").size(24).color(palette.text))
+    let next_btn = button(icon(Icon::SkipForward, 24.0, palette.text))
         .on_press(on_next)
         .padding(8)
         .style(|_t, _s| button::Style::default());
@@ -143,7 +184,9 @@ pub fn view<'a, Message: Clone + 'static>(
     let transport_row = row![prev_btn, Space::with_width(16), play_btn, Space::with_width(16), next_btn]
         .align_y(Alignment::Center);
 
-    let seek_slider = slider(0..=duration_ms.max(1), position_ms, on_seek).width(500);
+    let dur_u32 = (duration_ms as u32).max(1);
+    let pos_u32 = (position_ms as u32).min(dur_u32);
+    let seek_slider = slider(0..=dur_u32, pos_u32, move |v| on_seek(v as u64)).width(500);
     let times = row![
         text(format_duration(position_ms)).size(13).color(palette.text_muted),
         Space::with_width(Length::Fill),

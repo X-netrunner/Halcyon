@@ -2,7 +2,7 @@
 //! Exit code: 0 if no FAIL, 1 if any FAIL, 2 if doctor itself broke.
 
 use halcyon_music_core::paths;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::net::TcpStream;
 use std::path::Path;
 use std::process::{Command as ProcCommand, ExitCode, Stdio};
@@ -106,24 +106,23 @@ fn check_socket() -> Vec<Check> {
     // The socket file exists — see if something answers on it.
     match std::os::unix::net::UnixStream::connect(&sock) {
         Ok(mut stream) => {
-            let mut payload = halcyon_music_core::protocol::encode_line(
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+
+            let payload = halcyon_music_core::protocol::encode_line(
                 &halcyon_music_core::protocol::command(
                     halcyon_music_core::protocol::CommandBody::Hello,
                 ),
             )
             .unwrap_or_default();
-            payload.extend_from_slice(
-                &halcyon_music_core::protocol::encode_line(
-                    &halcyon_music_core::protocol::command(
-                        halcyon_music_core::protocol::CommandBody::GetState,
-                    ),
-                )
-                .unwrap_or_default(),
-            );
+
             let write_ok = stream.write_all(&payload).is_ok();
-            let mut buf = Vec::new();
-            let read_ok = stream.take(64 * 1024).read_to_end(&mut buf).is_ok();
-            if write_ok && read_ok && !buf.is_empty() {
+            let mut reader = std::io::BufReader::new(stream);
+            let mut line = String::new();
+            use std::io::BufRead;
+            let read_ok = reader.read_line(&mut line).is_ok();
+
+            if write_ok && read_ok && !line.trim().is_empty() {
                 out.push(check("daemon socket", Status::Pass, "daemon answers on ctl.sock"));
             } else {
                 out.push(check_hint(
@@ -136,9 +135,9 @@ fn check_socket() -> Vec<Check> {
         }
         Err(e) => out.push(check_hint(
             "daemon socket",
-            Status::Fail,
+            Status::Warn,
             format!("cannot connect to {}: {e}", sock.display()),
-            "remove the stale socket file and restart: rm '{}' && systemctl --user restart halcyon-musicd",
+            format!("start or restart daemon: systemctl --user restart halcyon-musicd"),
         )),
     }
     out
