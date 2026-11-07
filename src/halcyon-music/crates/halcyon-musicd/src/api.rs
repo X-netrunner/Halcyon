@@ -10,6 +10,7 @@
 
 use crate::auth::refresh_access_token;
 use crate::auth_mode;
+use crate::session_browse::SessionBrowse;
 use crate::stream_auth::{self, StreamAuthError};
 use crate::token_store::{load_token, TokenData};
 use halcyon_music_core::models::AuthMode;
@@ -143,6 +144,8 @@ struct RateLimiter {
 
 #[derive(Clone)]
 pub struct SpotifyClient {
+    /// Browsing over the librespot session (default sign-in; no Client ID, no Web API quota).
+    browse: SessionBrowse,
     http: reqwest::Client,
     base_url: String,
     token_url: Option<String>,
@@ -165,6 +168,24 @@ pub struct SpotifyClient {
 pub struct AccountInfo {
     pub id: String,
     pub display_name: Option<String>,
+    /// Profile picture URL, when the account has one.
+    #[serde(default)]
+    pub image_url: Option<String>,
+    /// True once `/me` was read by a version that knows about pictures. Older cache entries
+    /// have this false, so the picture is looked up once for them.
+    #[serde(default)]
+    pub images_read: bool,
+}
+
+/// Choose the profile picture: the smallest one that is at least 96 px, else the biggest.
+pub fn pick_avatar(images: &[SpotifyImage]) -> Option<String> {
+    let side = |i: &SpotifyImage| i.width.or(i.height);
+    let usable = || images.iter().filter(|i| i.url.starts_with("https://"));
+    usable()
+        .filter(|i| side(i).is_some_and(|s| s >= 96))
+        .min_by_key(|i| side(i).unwrap_or(u32::MAX))
+        .or_else(|| usable().max_by_key(|i| side(i).unwrap_or(0)))
+        .map(|i| i.url.clone())
 }
 
 impl SpotifyClient {
@@ -186,6 +207,7 @@ impl SpotifyClient {
             token_url,
             token: Arc::new(Mutex::new(token)),
             own_client: Arc::new(AtomicBool::new(auth_mode::initial() == AuthMode::OwnClientId)),
+            browse: SessionBrowse::new(),
             circuits: Arc::new(Mutex::new(HashMap::new())),
             cooldowns: Arc::new(Mutex::new(HashMap::new())),
             account: Arc::new(Mutex::new(None)),
@@ -266,13 +288,20 @@ impl SpotifyClient {
         struct Me {
             id: String,
             display_name: Option<String>,
+            #[serde(default)]
+            images: Vec<SpotifyImage>,
         }
         let body = self
             .request(EndpointFamily::Other, reqwest::Method::GET, "/me", &[])
             .await?;
         let me: Me = serde_json::from_str(&body)
             .map_err(|e| ApiError::Serialization(format!("parse /me: {e}")))?;
-        let account = AccountInfo { id: me.id, display_name: me.display_name.filter(|n| !n.trim().is_empty()) };
+        let account = AccountInfo {
+            id: me.id,
+            display_name: me.display_name.filter(|n| !n.trim().is_empty()),
+            image_url: pick_avatar(&me.images),
+            images_read: true,
+        };
         self.set_cached_account(Some(account.clone())).await;
         Ok(account)
     }
@@ -672,6 +701,9 @@ impl SpotifyClient {
 
     /// Get user's playlists.
     pub async fn get_playlists(&self, limit: u32, offset: u32) -> Result<Page<Playlist>, ApiError> {
+        if self.auth_mode() == AuthMode::Librespot {
+            return self.browse.get_playlists(limit, offset).await;
+        }
         let limit_str = limit.to_string();
         let offset_str = offset.to_string();
 
@@ -710,6 +742,9 @@ impl SpotifyClient {
         limit: u32,
         offset: u32,
     ) -> Result<Page<Track>, ApiError> {
+        if self.auth_mode() == AuthMode::Librespot {
+            return self.browse.get_playlist_tracks(playlist_id, limit, offset).await;
+        }
         let limit_str = limit.to_string();
         let offset_str = offset.to_string();
         let endpoint = format!("/playlists/{playlist_id}/tracks");
@@ -745,6 +780,9 @@ impl SpotifyClient {
 
     /// Get user's saved/liked tracks.
     pub async fn get_saved_tracks(&self, limit: u32, offset: u32) -> Result<Page<Track>, ApiError> {
+        if self.auth_mode() == AuthMode::Librespot {
+            return self.browse.get_saved_tracks(limit, offset).await;
+        }
         let limit_str = limit.to_string();
         let offset_str = offset.to_string();
 
@@ -1123,6 +1161,9 @@ impl SpotifyClient {
         limit: u32,
         offset: u32,
     ) -> Result<DetailedSearchResults, ApiError> {
+        if self.auth_mode() == AuthMode::Librespot {
+            return self.browse.search_detailed(query, search_type, limit, offset).await;
+        }
         let safe_limit = limit.min(10);
         let limit_str = safe_limit.to_string();
         let offset_str = offset.to_string();
@@ -1234,6 +1275,9 @@ impl SpotifyClient {
 
     /// Get album detail and tracks.
     pub async fn get_album_detail(&self, album_id: &str) -> Result<(Album, Vec<Track>), ApiError> {
+        if self.auth_mode() == AuthMode::Librespot {
+            return self.browse.get_album_detail(album_id).await;
+        }
         let endpoint = format!("/albums/{album_id}");
         let json = self
             .request(EndpointFamily::Albums, reqwest::Method::GET, &endpoint, &[])
@@ -1625,11 +1669,36 @@ mod log_safety_tests {
         let client = SpotifyClient::new(Some("http://127.0.0.1:9".into()), None);
         assert_eq!(client.cached_account().await, None);
         client
-            .set_cached_account(Some(AccountInfo { id: "u1".into(), display_name: Some("Ada".into()) }))
+            .set_cached_account(Some(AccountInfo { id: "u1".into(), display_name: Some("Ada".into()), image_url: None, images_read: false }))
             .await;
         assert_eq!(client.current_user_id().await.as_deref(), Some("u1"));
         client.set_cached_account(None).await;
         assert_eq!(client.cached_account().await, None);
+    }
+
+    fn img(url: &str, w: Option<u32>) -> SpotifyImage {
+        SpotifyImage { url: url.into(), width: w, height: w }
+    }
+
+    #[test]
+    fn avatar_prefers_the_smallest_big_enough_picture() {
+        let imgs = [img("https://a/640", Some(640)), img("https://a/300", Some(300)), img("https://a/64", Some(64))];
+        assert_eq!(pick_avatar(&imgs).as_deref(), Some("https://a/300"));
+    }
+
+    #[test]
+    fn avatar_falls_back_to_the_biggest_and_ignores_non_https() {
+        assert_eq!(pick_avatar(&[img("https://a/64", Some(64)), img("https://a/32", Some(32))]).as_deref(), Some("https://a/64"));
+        assert_eq!(pick_avatar(&[img("https://a/unknown", None)]).as_deref(), Some("https://a/unknown"));
+        assert_eq!(pick_avatar(&[img("http://insecure/x", Some(300))]), None);
+        assert_eq!(pick_avatar(&[]), None);
+    }
+
+    #[test]
+    fn old_cached_account_without_picture_fields_still_loads() {
+        let a: AccountInfo = serde_json::from_str(r#"{"id":"u1","display_name":"Ada"}"#).unwrap();
+        assert_eq!(a.image_url, None);
+        assert!(!a.images_read);
     }
 
     #[test]

@@ -52,6 +52,14 @@ async fn logged_in_status(ctx: &DaemonContext) -> AuthStatus {
     AuthStatus::LoggedIn { user_id, display_name }
 }
 
+/// The profile event for an account (name and picture URL).
+fn profile_event(account: &crate::api::AccountInfo) -> protocol::Event {
+    protocol::event(EventBody::Profile {
+        display_name: account.display_name.clone(),
+        image_url: account.image_url.clone(),
+    })
+}
+
 /// Forget the remembered account (sign-in, sign-out): the next one is read again.
 async fn forget_account(ctx: &DaemonContext) {
     ctx.spotify.set_cached_account(None).await;
@@ -66,6 +74,7 @@ async fn refresh_account(ctx: Arc<DaemonContext>) {
             kv_store(&ctx.cache, KV_ACCOUNT, &account);
             let status = logged_in_status(&ctx).await;
             let _ = ctx.events_tx.send(protocol::event(EventBody::AuthStatus(status)));
+            let _ = ctx.events_tx.send(profile_event(&account));
         }
         Err(e) => warn!("could not read the account name ({e}); the app shows \"Signed in\""),
     }
@@ -673,6 +682,19 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 seconds_left: None,
             }));
             return Some(protocol::event(EventBody::AuthStatus(AuthStatus::LoggedOut)));
+        }
+
+        GetProfile => {
+            // Answer from what is remembered; read `/me` in the background only when it was
+            // never read (or read by a version that did not know about pictures).
+            let account = ctx.spotify.cached_account().await;
+            if account.as_ref().map_or(true, |a| !a.images_read) && ctx.spotify.is_authenticated().await {
+                tokio::spawn(refresh_account(ctx.clone()));
+            }
+            return Some(match account {
+                Some(a) => profile_event(&a),
+                None => protocol::event(EventBody::Profile { display_name: None, image_url: None }),
+            });
         }
 
         GetAuthStatus => {

@@ -144,7 +144,7 @@ impl AnimationManager {
         if self.reduce_motion {
             self.page_transition = Animation::instant(1.0);
         } else {
-            self.page_transition = Animation::new(0.0, 1.0, 200, Easing::EaseOutCubic);
+            self.page_transition = Animation::new(0.0, 1.0, 160, Easing::EaseOutCubic);
         }
     }
 
@@ -153,7 +153,7 @@ impl AnimationManager {
         if self.reduce_motion {
             self.sidebar_pill = Animation::instant(target_pos);
         } else {
-            self.sidebar_pill = Animation::new(current_pos, target_pos, 250, Easing::Spring);
+            self.sidebar_pill = Animation::new(current_pos, target_pos, 180, Easing::Spring);
         }
     }
 
@@ -162,7 +162,7 @@ impl AnimationManager {
         if self.reduce_motion {
             self.toast_slide = Animation::instant(1.0);
         } else {
-            self.toast_slide = Animation::new(0.0, 1.0, 250, Easing::EaseOutCubic);
+            self.toast_slide = Animation::new(0.0, 1.0, 160, Easing::EaseOutCubic);
         }
     }
 

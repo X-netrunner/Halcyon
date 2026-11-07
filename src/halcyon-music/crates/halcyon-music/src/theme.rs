@@ -9,6 +9,35 @@
 use iced::Color;
 use std::path::Path;
 
+/// Spacing scale (logical pixels). Use these instead of ad-hoc numbers.
+pub mod space {
+    pub const XS: f32 = 4.0;
+    pub const SM: f32 = 8.0;
+    pub const MD: f32 = 12.0;
+    pub const LG: f32 = 16.0;
+    pub const XL: f32 = 24.0;
+    pub const XXL: f32 = 32.0;
+}
+
+/// Corner radii.
+pub mod radius {
+    pub const SM: f32 = 6.0;
+    pub const MD: f32 = 10.0;
+    pub const LG: f32 = 14.0;
+}
+
+/// Type scale (font sizes): caption, small, body, title, heading.
+pub mod type_size {
+    pub const CAPTION: f32 = 11.0;
+    pub const SMALL: f32 = 12.0;
+    pub const BODY: f32 = 14.0;
+    pub const TITLE: f32 = 18.0;
+    pub const HEADING: f32 = 24.0;
+}
+
+/// Longest animation in the app, in milliseconds. Everything is at or under this.
+pub const MAX_ANIMATION_MS: u64 = 180;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Density {
     Comfortable,

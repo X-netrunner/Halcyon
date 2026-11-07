@@ -41,6 +41,9 @@ librespot-core = { version = "=0.8.0", default-features = false, features = ["ru
 librespot-playback = { version = "=0.8.0", default-features = false, features = ["rodio-backend", "rustls-tls-webpki-roots"] }
 # Rework Part 2: librespot's own OAuth client (token refresh now, browser sign-in in Part 3).
 # Same version and the same TLS backend as librespot-core, which already depends on it.
+librespot-metadata = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+librespot-protocol = { version = "=0.8.0", default-features = false }
+protobuf = "3.7"
 librespot-oauth = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]

@@ -1,5 +1,6 @@
 pub mod capsule;
 pub mod detail;
+pub mod account;
 pub mod diagnostics;
 pub mod fullscreen;
 pub mod help_modal;
@@ -7,10 +8,14 @@ pub mod home;
 pub mod library;
 pub mod lyrics;
 pub mod now_playing_bar;
+pub mod playlist;
 pub mod queue_drawer;
 pub mod recent;
 pub mod search;
+pub mod settings;
 pub mod sidebar;
+pub mod track_menu;
+pub mod titlebar;
 
 use crate::theme::HalcyonPalette;
 use iced::widget::button;
