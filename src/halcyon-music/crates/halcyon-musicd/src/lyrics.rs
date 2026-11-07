@@ -13,7 +13,7 @@ use std::time::Duration;
 use tracing::{debug, info};
 
 pub const LRCLIB_BASE_URL: &str = "https://lrclib.net/api";
-pub const USER_AGENT: &str = "Halcyon-Music/0.1.0 (https://github.com/halcyon-suite/halcyon-music)";
+pub const USER_AGENT: &str = "Halcyon-Music/0.2.0 (https://github.com/halcyon-suite/halcyon-music)";
 
 #[derive(Debug, Deserialize)]
 pub struct LrclibResponse {

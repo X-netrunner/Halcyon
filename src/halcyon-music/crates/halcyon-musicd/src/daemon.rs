@@ -43,6 +43,34 @@ fn kv_load<T: serde::de::DeserializeOwned>(cache: &crate::cache::Cache, key: &st
     serde_json::from_str(&item.item).ok()
 }
 
+const KV_ACCOUNT: &str = "account.me";
+
+/// The "signed in" status for the GUI, with the account name when it is known.
+async fn logged_in_status(ctx: &DaemonContext) -> AuthStatus {
+    let user_id = ctx.spotify.current_user_id().await;
+    let display_name = ctx.spotify.cached_account().await.and_then(|a| a.display_name);
+    AuthStatus::LoggedIn { user_id, display_name }
+}
+
+/// Forget the remembered account (sign-in, sign-out): the next one is read again.
+async fn forget_account(ctx: &DaemonContext) {
+    ctx.spotify.set_cached_account(None).await;
+    kv_store(&ctx.cache, KV_ACCOUNT, &Option::<crate::api::AccountInfo>::None);
+}
+
+/// Read the account name once, keep it, and tell the GUI. If Spotify refuses `/v1/me` (or is
+/// rate limiting), nothing is lost: the GUI keeps showing "Signed in".
+async fn refresh_account(ctx: Arc<DaemonContext>) {
+    match ctx.spotify.fetch_account().await {
+        Ok(account) => {
+            kv_store(&ctx.cache, KV_ACCOUNT, &account);
+            let status = logged_in_status(&ctx).await;
+            let _ = ctx.events_tx.send(protocol::event(EventBody::AuthStatus(status)));
+        }
+        Err(e) => warn!("could not read the account name ({e}); the app shows \"Signed in\""),
+    }
+}
+
 /// Save a JSON value in the cache. Failing to cache is only worth a log line.
 fn kv_store<T: serde::Serialize>(cache: &crate::cache::Cache, key: &str, value: &T) {
     match serde_json::to_string(value) {
@@ -117,6 +145,8 @@ pub fn run() -> anyhow::Result<()> {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(file_appender)
+        // Plain text: colour codes would split every `key=value` pair and break `grep status=403`.
+        .with_ansi(false)
         .try_init();
 
     panic_hook::install(&state_dir);
@@ -314,11 +344,16 @@ async fn handle_client(
 
     // Send initial AuthStatus
     let auth_status = if ctx.spotify.is_authenticated().await {
-        let user_id = ctx.spotify.current_user_id().await;
-        EventBody::AuthStatus(AuthStatus::LoggedIn {
-            user_id,
-            display_name: None,
-        })
+        // Restore the remembered account name; read it once if there is none yet.
+        if ctx.spotify.cached_account().await.is_none() {
+            match kv_load::<crate::api::AccountInfo>(&ctx.cache, KV_ACCOUNT) {
+                Some(account) => ctx.spotify.set_cached_account(Some(account)).await,
+                None => {
+                    tokio::spawn(refresh_account(ctx.clone()));
+                }
+            }
+        }
+        EventBody::AuthStatus(logged_in_status(&ctx).await)
     } else {
         EventBody::AuthStatus(AuthStatus::LoggedOut)
     };
@@ -477,6 +512,8 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                                             Ok(token) => {
                                                 ctx_clone.spotify.set_token(token.clone()).await;
                                                 ctx_clone.spotify.switch_mode(AuthMode::OwnClientId).await;
+                                                ctx_clone.spotify.reset_circuits().await;
+                                                forget_account(&ctx_clone).await;
                                                 let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthModeChanged {
                                                     mode: AuthMode::OwnClientId,
                                                 }));
@@ -490,6 +527,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                                                         display_name: None,
                                                     },
                                                 )));
+                                                tokio::spawn(refresh_account(ctx_clone.clone()));
                                                 // Trigger background probes
                                                 let _ = probes::reprobe(&ctx_clone.spotify, &ctx_clone.cache).await;
                                             }
@@ -554,6 +592,9 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                         }
                         let mode = ctx_clone.spotify.auth_mode();
                         let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthModeChanged { mode }));
+                        // Earlier failures were seen with another token: start with a clean slate.
+                        ctx_clone.spotify.reset_circuits().await;
+                        forget_account(&ctx_clone).await;
                         let user_id = ctx_clone.spotify.current_user_id().await;
                         let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthSuccess {
                             user_id: user_id.clone(),
@@ -561,6 +602,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                         let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthStatus(
                             AuthStatus::LoggedIn { user_id, display_name: None },
                         )));
+                        tokio::spawn(refresh_account(ctx_clone.clone()));
                         let _ = probes::reprobe(&ctx_clone.spotify, &ctx_clone.cache).await;
                     }
                     // The GUI already got `LoggedOut` from LoginCancel.
@@ -592,8 +634,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 let _ = probes::reprobe(&ctx_c.spotify, &ctx_c.cache).await;
             });
             let status = if ctx.spotify.is_authenticated().await {
-                let user_id = ctx.spotify.current_user_id().await;
-                AuthStatus::LoggedIn { user_id, display_name: None }
+                logged_in_status(&ctx).await
             } else {
                 AuthStatus::LoggedOut
             };
@@ -622,6 +663,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 warn!("could not remove the streaming sign-in: {e}");
             }
             ctx.spotify.clear_token().await;
+            forget_account(&ctx).await;
             ctx.spotify.switch_mode(AuthMode::Librespot).await;
             let _ = ctx.events_tx.send(protocol::event(EventBody::AuthModeChanged {
                 mode: AuthMode::Librespot,
@@ -635,11 +677,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
 
         GetAuthStatus => {
             let status = if ctx.spotify.is_authenticated().await {
-                let user_id = ctx.spotify.current_user_id().await;
-                AuthStatus::LoggedIn {
-                    user_id,
-                    display_name: None,
-                }
+                logged_in_status(&ctx).await
             } else {
                 AuthStatus::LoggedOut
             };

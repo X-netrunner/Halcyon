@@ -34,19 +34,13 @@ pub struct PkceSession {
     pub auth_url: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
     token_type: String,
     expires_in: u64,
     refresh_token: Option<String>,
     scope: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TokenErrorResponse {
-    error: String,
-    error_description: Option<String>,
 }
 
 /// Generate PKCE session with verifier, challenge and loopback listener.
@@ -132,19 +126,6 @@ pub async fn wait_for_callback(
         let query_str = path_and_query.split('?').nth(1).unwrap_or("");
         let params = parse_query(query_str);
 
-        let error = params.get("error");
-        if let Some(err) = error {
-            let desc = params.get("error_description").cloned().unwrap_or_default();
-            let body = format!("<html><body><h2>Spotify Authorization Failed</h2><p>{err}: {desc}</p></body></html>");
-            let resp = format!(
-                "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                body.len(),
-                body
-            );
-            let _ = socket.write_all(resp.as_bytes()).await;
-            return Err(format!("authorization error: {err} ({desc})"));
-        }
-
         let state = params.get("state").cloned().unwrap_or_default();
         if state != expected_state {
             let body = "<html><body><h2>State mismatch</h2><p>Possible CSRF attack prevented.</p></body></html>";
@@ -155,6 +136,16 @@ pub async fn wait_for_callback(
             );
             let _ = socket.write_all(resp.as_bytes()).await;
             return Err("state mismatch in OAuth callback".to_string());
+        }
+
+        if params.contains_key("error") {
+            let body = "<html><body><h2>Spotify authorization failed</h2><p>Return to Halcyon Music and try again.</p></body></html>";
+            let resp = format!(
+                "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(), body
+            );
+            let _ = socket.write_all(resp.as_bytes()).await;
+            return Err("Spotify authorization was declined or failed; try signing in again".to_string());
         }
 
         let code = match params.get("code") {
@@ -238,15 +229,11 @@ pub async fn exchange_code(
         .map_err(|e| format!("failed to read token exchange response: {e}"))?;
 
     if !status.is_success() {
-        if let Ok(err) = serde_json::from_str::<TokenErrorResponse>(&text) {
-            let desc = err.error_description.unwrap_or_default();
-            return Err(format!("token exchange error: {} ({desc})", err.error));
-        }
-        return Err(format!("token exchange HTTP error {status}: {text}"));
+        return Err(format!("Spotify token exchange failed (HTTP {status}); try signing in again"));
     }
 
     let token_resp = serde_json::from_str::<TokenResponse>(&text)
-        .map_err(|e| format!("failed to parse token response: {e} (body: {text})"))?;
+        .map_err(|_| "Spotify returned an invalid token response".to_string())?;
 
     let refresh_token = match token_resp.refresh_token {
         Some(rt) => rt,
@@ -302,15 +289,11 @@ pub async fn refresh_access_token(
         .map_err(|e| format!("refresh response read error: {e}"))?;
 
     if !status.is_success() {
-        if let Ok(err) = serde_json::from_str::<TokenErrorResponse>(&text) {
-            let desc = err.error_description.unwrap_or_default();
-            return Err(format!("token refresh rejected: {} ({desc})", err.error));
-        }
-        return Err(format!("token refresh failed HTTP {status}: {text}"));
+        return Err(format!("Spotify token refresh failed (HTTP {status}); sign in again"));
     }
 
     let token_resp = serde_json::from_str::<TokenResponse>(&text)
-        .map_err(|e| format!("failed to parse token refresh response: {e}"))?;
+        .map_err(|_| "Spotify returned an invalid token refresh response".to_string())?;
 
     // Spotify might return a new refresh_token or keep the old one
     let refresh_token = token_resp

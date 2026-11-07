@@ -26,11 +26,15 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        "--version" | "-V" => {
+            println!("halcyon-musicd {}", halcyon_music_core::CORE_VERSION);
+            ExitCode::SUCCESS
+        }
         "--login" => login_cli(),
         "--probe" => probe_cli_main(),
         "--help" | "-h" => {
             println!(
-                "halcyon-musicd — Halcyon Music daemon\n\nUSAGE:\n    halcyon-musicd            run the daemon\n    halcyon-musicd --doctor   check the install and print PASS/WARN/FAIL\n    halcyon-musicd --login    sign in with Spotify in the browser\n    halcyon-musicd --probe    check which Spotify endpoints work with the current sign-in"
+                "halcyon-musicd — Halcyon Music daemon\n\nUSAGE:\n    halcyon-musicd            run the daemon\n    halcyon-musicd --doctor   check the install and print PASS/WARN/FAIL (exit 1 on any FAIL)\n    halcyon-musicd --version  print the version\n    halcyon-musicd --login    sign in with Spotify in the browser\n    halcyon-musicd --probe    check which Spotify endpoints work with the current sign-in"
             );
             ExitCode::SUCCESS
         }

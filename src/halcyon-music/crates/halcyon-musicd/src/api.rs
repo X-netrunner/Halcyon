@@ -28,6 +28,17 @@ pub const SPOTIFY_API_BASE: &str = "https://api.spotify.com/v1";
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 pub const CIRCUIT_FAILURE_THRESHOLD: u32 = 3;
 pub const CIRCUIT_COOLDOWN: Duration = Duration::from_secs(30);
+/// A 429 asking for at most this long is waited out inside the request (one retry). A longer
+/// wait is not: the call fails at once and the endpoint family is left alone until it is over.
+pub const MAX_INLINE_RATE_WAIT_SECS: u64 = 5;
+/// Upper bound for a remembered rate-limit wait (Spotify has asked for 24 h).
+const MAX_COOLDOWN_SECS: u64 = 48 * 3600;
+
+/// A 429 pauses every endpoint family for at most this long (Spotify's limit is a rolling
+/// window over the whole app, so a short app-wide pause is right). The full `Retry-After`
+/// only ever blocks the one family that received it: a 24 h wait on `recently-played` must
+/// not take playlists, search and the library down with it.
+const MAX_GLOBAL_PAUSE_SECS: u64 = 30;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -37,7 +48,9 @@ pub enum ApiError {
     #[error("Request timed out (8s limit)")]
     Timeout,
 
-    #[error("Spotify HTTP error {status}: {message}")]
+    // The body is kept in `message` for callers that need it, but it is deliberately not part
+    // of Display: errors are logged with `{e}`, and a response body must never reach a log.
+    #[error("Spotify HTTP error {status}")]
     Http { status: u16, message: String },
 
     #[error("Rate limited by Spotify (retry after {0}s)")]
@@ -66,6 +79,39 @@ fn stream_auth_to_api_error(e: StreamAuthError) -> ApiError {
         ),
         StreamAuthError::Network | StreamAuthError::Other => ApiError::Network(e.to_string()),
     }
+}
+
+/// The path of a request for log lines: no host, no query string (a query can hold the user's
+/// search text), never a token.
+fn endpoint_for_log(endpoint_or_url: &str) -> String {
+    match url::Url::parse(endpoint_or_url) {
+        Ok(u) => u.path().to_string(),
+        Err(_) => endpoint_or_url
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string(),
+    }
+}
+
+/// Seconds Spotify asks us to wait (`Retry-After`); 1 when the header is missing or unreadable.
+fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> u64 {
+    headers
+        .get("Retry-After")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(1)
+}
+
+/// One `warn!` for a Web API call that ended in an HTTP error: which endpoint, which status.
+/// The response body is not logged.
+fn log_http_failure(family: EndpointFamily, endpoint_or_url: &str, status: u16) {
+    warn!(
+        family = ?family,
+        endpoint = %endpoint_for_log(endpoint_or_url),
+        status,
+        "Web API request failed"
+    );
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -105,8 +151,20 @@ pub struct SpotifyClient {
     /// librespot's own token (`stream_auth`). Shared by all clones.
     own_client: Arc<AtomicBool>,
     circuits: Arc<Mutex<HashMap<EndpointFamily, CircuitState>>>,
+    /// Per endpoint family: no request until this moment (Spotify answered 429 with a long
+    /// `Retry-After`). Spotify limits endpoints separately, so one family does not block the rest.
+    cooldowns: Arc<Mutex<HashMap<EndpointFamily, Instant>>>,
+    /// Who is signed in, from `/v1/me`; filled once per sign-in by the daemon.
+    account: Arc<Mutex<Option<AccountInfo>>>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
     timeout: Duration,
+}
+
+/// The signed-in Spotify account (not secret).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize)]
+pub struct AccountInfo {
+    pub id: String,
+    pub display_name: Option<String>,
 }
 
 impl SpotifyClient {
@@ -129,10 +187,12 @@ impl SpotifyClient {
             token: Arc::new(Mutex::new(token)),
             own_client: Arc::new(AtomicBool::new(auth_mode::initial() == AuthMode::OwnClientId)),
             circuits: Arc::new(Mutex::new(HashMap::new())),
+            cooldowns: Arc::new(Mutex::new(HashMap::new())),
+            account: Arc::new(Mutex::new(None)),
             rate_limiter: Arc::new(Mutex::new(RateLimiter {
                 retry_after_until: None,
                 last_request_time: Instant::now() - Duration::from_secs(1),
-                min_spacing: Duration::from_millis(30),
+                min_spacing: Duration::from_millis(250),
             })),
             timeout,
         }
@@ -180,11 +240,101 @@ impl SpotifyClient {
     }
 
     pub async fn current_user_id(&self) -> Option<String> {
+        if let Some(account) = self.account.lock().await.as_ref() {
+            return Some(account.id.clone());
+        }
         if self.auth_mode() == AuthMode::Librespot {
             return None;
         }
         let guard = self.token.lock().await;
         guard.as_ref().map(|t| t.client_id.clone())
+    }
+
+    /// The account last read from Spotify (or restored from the cache), if any.
+    pub async fn cached_account(&self) -> Option<AccountInfo> {
+        self.account.lock().await.clone()
+    }
+
+    pub async fn set_cached_account(&self, account: Option<AccountInfo>) {
+        *self.account.lock().await = account;
+    }
+
+    /// Ask Spotify who is signed in (`GET /v1/me`), remember it and return it. The answer holds
+    /// no token; only the id and the display name are kept.
+    pub async fn fetch_account(&self) -> Result<AccountInfo, ApiError> {
+        #[derive(Deserialize)]
+        struct Me {
+            id: String,
+            display_name: Option<String>,
+        }
+        let body = self
+            .request(EndpointFamily::Other, reqwest::Method::GET, "/me", &[])
+            .await?;
+        let me: Me = serde_json::from_str(&body)
+            .map_err(|e| ApiError::Serialization(format!("parse /me: {e}")))?;
+        let account = AccountInfo { id: me.id, display_name: me.display_name.filter(|n| !n.trim().is_empty()) };
+        self.set_cached_account(Some(account.clone())).await;
+        Ok(account)
+    }
+
+    /// Forget circuit-breaker history (used after a fresh sign-in: earlier failures were seen
+    /// with another token). A remembered Spotify rate-limit wait is kept on purpose.
+    pub async fn reset_circuits(&self) {
+        self.circuits.lock().await.clear();
+    }
+
+    /// Seconds left of a Spotify-imposed wait for this endpoint family, if one is running.
+    pub async fn rate_limit_remaining(&self, family: EndpointFamily) -> Option<u64> {
+        let now = Instant::now();
+        // Short app-wide pause after any 429 (capped, see MAX_GLOBAL_PAUSE_SECS).
+        let global = self
+            .rate_limiter
+            .lock()
+            .await
+            .retry_after_until
+            .map(|u| u.saturating_duration_since(now))
+            .filter(|d| !d.is_zero());
+        // The family's own (possibly very long) wait.
+        let own = {
+            let mut cooldowns = self.cooldowns.lock().await;
+            match cooldowns.get(&family).copied() {
+                Some(u) => {
+                    let d = u.saturating_duration_since(now);
+                    if d.is_zero() {
+                        cooldowns.remove(&family);
+                        None
+                    } else {
+                        Some(d)
+                    }
+                }
+                None => None,
+            }
+        };
+        global.into_iter().chain(own).max().map(|d| d.as_secs().max(1))
+    }
+
+    async fn fail_fast_if_rate_limited(&self, family: EndpointFamily) -> Result<(), ApiError> {
+        match self.rate_limit_remaining(family).await {
+            Some(secs) => Err(ApiError::RateLimited(secs)),
+            None => Ok(()),
+        }
+    }
+
+    async fn start_cooldown(&self, family: EndpointFamily, secs: u64) {
+        let secs = secs.min(MAX_COOLDOWN_SECS);
+        let until = Instant::now() + Duration::from_secs(secs);
+        let global_until = Instant::now() + Duration::from_secs(secs.min(MAX_GLOBAL_PAUSE_SECS));
+        let mut limiter = self.rate_limiter.lock().await;
+        limiter.retry_after_until = Some(
+            limiter
+                .retry_after_until
+                .map_or(global_until, |old| old.max(global_until)),
+        );
+        drop(limiter);
+        self.cooldowns
+            .lock()
+            .await
+            .insert(family, until);
     }
 
     /// Check circuit breaker for endpoint family.
@@ -260,12 +410,6 @@ impl SpotifyClient {
         if let Some(delay) = delay_needed {
             tokio::time::sleep(delay).await;
         }
-    }
-
-    /// Set global 429 Retry-After delay.
-    async fn set_retry_after(&self, seconds: u64) {
-        let mut rl = self.rate_limiter.lock().await;
-        rl.retry_after_until = Some(Instant::now() + Duration::from_secs(seconds));
     }
 
     /// Ensure valid access token; refreshes before expiry (at 80% of lifetime).
@@ -349,6 +493,7 @@ impl SpotifyClient {
         query: &[(&str, &str)],
     ) -> Result<String, ApiError> {
         self.check_circuit(family).await?;
+        self.fail_fast_if_rate_limited(family).await?;
 
         let url = if endpoint_or_url.starts_with("http://") || endpoint_or_url.starts_with("https://") {
             endpoint_or_url.to_string()
@@ -411,22 +556,24 @@ impl SpotifyClient {
 
                     // 429 Too Many Requests -> Rate limiter with Retry-After
                     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                        let retry_after_secs = resp
-                            .headers()
-                            .get("Retry-After")
-                            .and_then(|h| h.to_str().ok())
-                            .and_then(|s| s.parse::<u64>().ok())
-                            .unwrap_or(1);
+                        let retry_after_secs = parse_retry_after(resp.headers());
 
-                        warn!("received 429 rate limit: Retry-After {retry_after_secs}s");
-                        self.set_retry_after(retry_after_secs).await;
+                        warn!(
+                            family = ?family,
+                            endpoint = %endpoint_for_log(endpoint_or_url),
+                            retry_after_secs,
+                            "Web API answered HTTP 429 (rate limited)"
+                        );
 
-                        if attempts < 3 {
+                        // A short wait is served once; a long one (Spotify has asked for 24 h)
+                        // is remembered and every call fails at once until it is over, so the
+                        // app neither blocks nor keeps hitting a limited endpoint.
+                        if retry_after_secs <= MAX_INLINE_RATE_WAIT_SECS && attempts < 2 {
                             tokio::time::sleep(Duration::from_secs(retry_after_secs)).await;
                             continue;
-                        } else {
-                            return Err(ApiError::RateLimited(retry_after_secs));
                         }
+                        self.start_cooldown(family, retry_after_secs).await;
+                        return Err(ApiError::RateLimited(retry_after_secs));
                     }
 
                     // 5xx Server Errors -> Exponential backoff with jitter (3 retries)
@@ -438,6 +585,7 @@ impl SpotifyClient {
                             tokio::time::sleep(backoff).await;
                             continue;
                         } else {
+                            log_http_failure(family, endpoint_or_url, status.as_u16());
                             let text = resp.text().await.unwrap_or_default();
                             return Err(ApiError::Http {
                                 status: status.as_u16(),
@@ -447,6 +595,7 @@ impl SpotifyClient {
                     }
 
                     // 4xx client errors
+                    log_http_failure(family, endpoint_or_url, status.as_u16());
                     let text = resp.text().await.unwrap_or_default();
                     return Err(ApiError::Http {
                         status: status.as_u16(),
@@ -462,9 +611,16 @@ impl SpotifyClient {
                         warn!("network/timeout error: {err}; retrying in {backoff:?}");
                         tokio::time::sleep(backoff).await;
                         continue;
-                    } else if is_timeout {
-                        return Err(ApiError::Timeout);
                     } else {
+                        warn!(
+                            family = ?family,
+                            endpoint = %endpoint_for_log(endpoint_or_url),
+                            timed_out = is_timeout,
+                            "Web API request failed: no response"
+                        );
+                        if is_timeout {
+                            return Err(ApiError::Timeout);
+                        }
                         return Err(ApiError::Network(err.to_string()));
                     }
                 }
@@ -621,7 +777,8 @@ impl SpotifyClient {
     }
 
     /// Probe an endpoint and return the HTTP status code.
-    pub async fn probe(&self, endpoint: &str, _family: EndpointFamily) -> Result<u16, ApiError> {
+    pub async fn probe(&self, endpoint: &str, family: EndpointFamily) -> Result<u16, ApiError> {
+        self.fail_fast_if_rate_limited(family).await?;
         let url = format!("{}{}", self.base_url, endpoint);
         let token = self.ensure_valid_token().await?;
 
@@ -634,6 +791,17 @@ impl SpotifyClient {
             .await
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
+        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let secs = parse_retry_after(resp.headers());
+            warn!(
+                family = ?family,
+                endpoint = %endpoint_for_log(endpoint),
+                retry_after_secs = secs,
+                "Web API answered HTTP 429 (rate limited)"
+            );
+            self.start_cooldown(family, secs).await;
+            return Err(ApiError::RateLimited(secs));
+        }
         Ok(resp.status().as_u16())
     }
 
@@ -646,6 +814,7 @@ impl SpotifyClient {
         body: &B,
     ) -> Result<String, ApiError> {
         self.check_circuit(family).await?;
+        self.fail_fast_if_rate_limited(family).await?;
 
         let url = if endpoint_or_url.starts_with("http://") || endpoint_or_url.starts_with("https://") {
             endpoint_or_url.to_string()
@@ -691,19 +860,19 @@ impl SpotifyClient {
                     }
 
                     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                        let retry_after_secs = resp
-                            .headers()
-                            .get("Retry-After")
-                            .and_then(|h| h.to_str().ok())
-                            .and_then(|s| s.parse::<u64>().ok())
-                            .unwrap_or(1);
-                        self.set_retry_after(retry_after_secs).await;
-                        if attempts < 3 {
+                        let retry_after_secs = parse_retry_after(resp.headers());
+                        warn!(
+                            family = ?family,
+                            endpoint = %endpoint_for_log(endpoint_or_url),
+                            retry_after_secs,
+                            "Web API answered HTTP 429 (rate limited)"
+                        );
+                        if retry_after_secs <= MAX_INLINE_RATE_WAIT_SECS && attempts < 2 {
                             tokio::time::sleep(Duration::from_secs(retry_after_secs)).await;
                             continue;
-                        } else {
-                            return Err(ApiError::RateLimited(retry_after_secs));
                         }
+                        self.start_cooldown(family, retry_after_secs).await;
+                        return Err(ApiError::RateLimited(retry_after_secs));
                     }
 
                     if status.is_server_error() {
@@ -715,6 +884,7 @@ impl SpotifyClient {
                         }
                     }
 
+                    log_http_failure(family, endpoint_or_url, status.as_u16());
                     let text = resp.text().await.unwrap_or_default();
                     return Err(ApiError::Http {
                         status: status.as_u16(),
@@ -1005,6 +1175,8 @@ impl SpotifyClient {
             .unwrap_or_default();
 
         Ok(DetailedSearchResults {
+            search_type: search_type.to_string(),
+            offset,
             query: query.to_string(),
             tracks,
             artists,
@@ -1397,5 +1569,76 @@ mod tests {
         assert_eq!(t.album_id.as_deref(), Some("alb1"));
         assert_eq!(t.art_url.as_deref(), Some("http://art.com/1.jpg"));
         assert_eq!(t.uri, "spotify:track:123");
+    }
+}
+
+#[cfg(test)]
+mod log_safety_tests {
+    use super::*;
+
+    #[test]
+    fn log_endpoint_has_no_host_and_no_query() {
+        assert_eq!(endpoint_for_log("/me/playlists?limit=1&offset=0"), "/me/playlists");
+        assert_eq!(endpoint_for_log("/search"), "/search");
+        assert_eq!(
+            endpoint_for_log("https://api.spotify.com/v1/me/tracks?offset=50&limit=50"),
+            "/v1/me/tracks"
+        );
+        assert_eq!(endpoint_for_log(""), "");
+    }
+
+    #[test]
+    fn retry_after_header_is_read_or_defaults_to_one() {
+        let mut h = reqwest::header::HeaderMap::new();
+        assert_eq!(parse_retry_after(&h), 1);
+        h.insert("Retry-After", reqwest::header::HeaderValue::from_static("86400"));
+        assert_eq!(parse_retry_after(&h), 86400);
+        h.insert("Retry-After", reqwest::header::HeaderValue::from_static("soon"));
+        assert_eq!(parse_retry_after(&h), 1);
+    }
+
+    #[tokio::test]
+    async fn a_long_rate_limit_blocks_only_its_own_family_beyond_a_short_pause() {
+        let client = SpotifyClient::new(Some("http://127.0.0.1:9".into()), None);
+        assert_eq!(client.rate_limit_remaining(EndpointFamily::Player).await, None);
+        client.start_cooldown(EndpointFamily::Player, 86_400).await;
+        let left = client.rate_limit_remaining(EndpointFamily::Player).await;
+        assert!(matches!(left, Some(s) if s > 86_000));
+        // Other families only feel the short app-wide pause, never the 24 h.
+        let other = client.rate_limit_remaining(EndpointFamily::Playlists).await;
+        assert!(matches!(other, Some(s) if s <= MAX_GLOBAL_PAUSE_SECS));
+        // The limited family answers at once, without any network call or token.
+        let started = Instant::now();
+        let res = client
+            .request(EndpointFamily::Player, reqwest::Method::GET, "/me/player/recently-played", &[])
+            .await;
+        assert!(matches!(res, Err(ApiError::RateLimited(_))));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        // An absurd value is capped instead of overflowing.
+        client.start_cooldown(EndpointFamily::Search, u64::MAX).await;
+        assert!(client.rate_limit_remaining(EndpointFamily::Search).await.is_some());
+    }
+
+
+    #[tokio::test]
+    async fn account_is_cached_and_forgotten() {
+        let client = SpotifyClient::new(Some("http://127.0.0.1:9".into()), None);
+        assert_eq!(client.cached_account().await, None);
+        client
+            .set_cached_account(Some(AccountInfo { id: "u1".into(), display_name: Some("Ada".into()) }))
+            .await;
+        assert_eq!(client.current_user_id().await.as_deref(), Some("u1"));
+        client.set_cached_account(None).await;
+        assert_eq!(client.cached_account().await, None);
+    }
+
+    #[test]
+    fn http_error_text_never_carries_the_response_body() {
+        let e = ApiError::Http {
+            status: 403,
+            message: "Bearer abc.def.ghi and other body text".into(),
+        };
+        // Errors are logged with `{e}` (Display), which must not include the body.
+        assert_eq!(format!("{e}"), "Spotify HTTP error 403");
     }
 }

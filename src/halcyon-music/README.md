@@ -14,11 +14,12 @@ at the repo root for what each part delivered and what was tested.
 - `crates/halcyon-musicd` — the daemon. Supervised tasks (panic → crash report
   → restart with backoff), atomic state saves, corrupt-state recovery,
   sd_notify watchdog, SQLite cache (stale-while-revalidate, LRU image store),
-  Spotify PKCE authentication & token store (Secret Service keyring + 0600 file),
-  resilient Web API client (rate limiting, circuit breaker, 8s timeout, 401 refresh),
-  endpoint probes table (24h TTL), and `--doctor`.
-- `crates/halcyon-music` — the iced GUI client. Pure view with first-run Client ID
-  paste flow, PKCE browser sign-in, cached library viewing offline, and auto-reconnect.
+  librespot playback (real position and errors from the engine), the Spotify sign-in and its
+  token store (Secret Service keyring + 0600 file), resilient Web API client (rate limiting,
+  circuit breaker, 8s timeout, 401 refresh), endpoint probes table (24h TTL), `--doctor`,
+  `--login` and `--probe`.
+- `crates/halcyon-music` — the iced GUI client. Pure view with a one-button Sign in with
+  Spotify screen, cached library viewing offline, and auto-reconnect.
 - `packaging/halcyon-musicd.service` — systemd user unit
   (`Restart=always`, `WatchdogSec=30`).
 
@@ -31,9 +32,58 @@ cargo build --workspace
 ./target/debug/halcyon-musicd --doctor # checks with PASS/WARN/FAIL + fix hints
 ```
 
+## Signing in
+
+Press **Sign in with Spotify** on first launch (or run `halcyon-musicd --login` from a terminal).
+One browser sign-in through librespot's own OAuth flow serves both browsing and playback; there
+is no Client ID to paste. The token renews itself in the background.
+
+- **Premium is required to play music.** Free accounts can still browse; the app says so.
+- **Advanced: use my own Client ID.** Browsing only (the owner of the Client ID needs Premium,
+  Spotify allows one Development Mode Client ID per developer and five users, and search is
+  capped at 10 results). Playback always uses the Spotify sign-in above.
+
+## Install and update
+
+`./install.sh` (also run by `update.sh`) builds both binaries, installs them atomically and then
+**restarts `halcyon-musicd`**, including a daemon that systemd does not manage (one the app
+started itself). A daemon keeps running the old build after its file is replaced until it is
+restarted, so playback stops for a moment during an update. Without a systemd user session the
+daemon starts the next time you open the app.
+
+Both binaries answer `--version`. The app also shows a toast if it meets a daemon of another
+version: restart it with `systemctl --user restart halcyon-musicd`.
+
+## `halcyon-musicd --doctor`
+
+One line per check, PASS / WARN / FAIL (or INFO for facts that are not about the install, such
+as an endpoint Spotify refuses for your account), each FAIL with a fix. Exit code 0 when there is
+no FAIL, 1 when there is one. It checks:
+
+| Check | What it looks at | FAIL means |
+| --- | --- | --- |
+| daemon socket / process | the daemon answers; exactly one runs and its file was not replaced after it started | not running, an old build still runs, or two daemons run |
+| daemon version / app version | the running daemon, the installed daemon and the installed app report the same version | restart the daemon or reinstall both |
+| streaming token | a sign-in with the streaming permission exists and has not expired | sign in again |
+| spotify session | connects a Spotify session with the saved token and asks for a token, as a track load does | Spotify rejects the sign-in (`INVALID_CREDENTIALS`), Free account, or no connection |
+| audio output | opens the default audio output once | no PipeWire / PulseAudio device |
+| browsing sign-in | the token browsing uses, by sign-in mode | Client ID mode without a saved sign-in |
+
+The doctor never renews the token (the running daemon does), and never prints it. The session
+check opens a second, short Spotify session with its own device id; whether that can interrupt
+a track playing at that moment has not been tested, so run `--doctor` while idle if in doubt.
+
+## Soak test
+
+`scripts/soak_test.sh [minutes]` sends random commands to the running daemon and writes
+`docs/soak_report.md` from what it measured: commands that could not be sent, daemon restarts,
+peak memory against the 150 MB budget, and whether the daemon still answers. It exits 1 on any
+problem. It does not inject faults (start the daemon with `HALCYON_MUSIC_FAULTS` for that).
+
 State lives in `~/.local/state/halcyon-music/`, the cache in
 `~/.cache/halcyon-music/`, and the socket in `$XDG_RUNTIME_DIR/halcyon-music/`.
 Covers: the GUI asks the daemon for art (`GetArt`), the daemon downloads and caches it, and
 the GUI decodes it off the UI thread (`art.rs` in both crates).
 
-Part 3 replaces the simulated player with librespot playback.
+Playback is librespot's: the position, play/pause state and errors shown in the app come from
+the engine's own events.

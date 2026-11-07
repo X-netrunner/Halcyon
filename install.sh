@@ -2364,6 +2364,51 @@ else
     done
 fi
 
+# Halcyon Music: make the freshly installed daemon the one that runs.
+# The binary on disk is replaced by an atomic rename, so a daemon that was already running keeps
+# running the OLD build until it is restarted. That includes a daemon systemd does not manage
+# (started by the app or from a shell), which `systemctl restart` would not touch: so stop the
+# systemd one, stop any other one, then start a single new one.
+restart_halcyon_musicd() {
+    local unit_known=false n sock="/run/user/${TARGET_UID}/halcyon-music/ctl.sock"
+    if user_bus_ready && user_systemctl cat halcyon-musicd.service >/dev/null 2>&1; then
+        unit_known=true
+        user_systemctl stop halcyon-musicd.service >/dev/null 2>&1 || true
+    fi
+
+    if run_as_user pgrep -u "$TARGET_UID" -x halcyon-musicd >/dev/null 2>&1; then
+        log_info "Stopping a halcyon-musicd that systemd does not manage (it still runs the old build)"
+        run_as_user pkill -TERM -u "$TARGET_UID" -x halcyon-musicd >/dev/null 2>&1 || true
+        for n in 1 2 3 4 5 6 7 8 9 10; do
+            run_as_user pgrep -u "$TARGET_UID" -x halcyon-musicd >/dev/null 2>&1 || break
+            sleep 0.5
+        done
+        if run_as_user pgrep -u "$TARGET_UID" -x halcyon-musicd >/dev/null 2>&1; then
+            run_as_user pkill -KILL -u "$TARGET_UID" -x halcyon-musicd >/dev/null 2>&1 || true
+            sleep 0.5
+        fi
+    fi
+
+    if [[ "$unit_known" != "true" ]]; then
+        # No systemd user session (SSH, container, install from a TTY): Halcyon Music starts the
+        # daemon itself the next time it is opened, and by then no old daemon is left running.
+        log_info "No systemd user session: halcyon-musicd starts the next time you open Halcyon Music"
+        return 0
+    fi
+
+    # The unit is Type=notify, so `start` returns once the daemon says it is ready.
+    if user_systemctl start halcyon-musicd.service >> "$LOG_FILE" 2>&1; then
+        for n in $(seq 1 20); do
+            [[ -S "$sock" ]] && break
+            sleep 0.5
+        done
+        log_success "Restarted halcyon-musicd: the new build is running"
+    else
+        warn_later "halcyon-musicd.service did not start. See: journalctl --user -u halcyon-musicd -n 30"
+        return 1
+    fi
+}
+
 # Halcyon Music: native Rust client & daemon
 setup_halcyon_music() {
     local src="$TARGET_RICE/src/halcyon-music"
@@ -2420,9 +2465,20 @@ setup_halcyon_music() {
             fi
             [[ -x /usr/bin/update-desktop-database ]] && update-desktop-database "$app_dir" >/dev/null 2>&1 || true
 
-            # Post-install --doctor run
+            # Replace the daemon that was running before the update (see restart_halcyon_musicd)
+            restart_halcyon_musicd || true
+
+            # Post-install --doctor run: checks the token, the Spotify session, the audio output and
+            # that the running daemon and the installed app are the build that was just installed.
             log_info "Running halcyon-musicd --doctor check..."
-            run_as_user timeout 15 "$BIN_DIR/halcyon-musicd" --doctor || true
+            local doctor_rc=0
+            run_as_user timeout 60 "$BIN_DIR/halcyon-musicd" --doctor || doctor_rc=$?
+            case "$doctor_rc" in
+                0)   log_success "halcyon-musicd --doctor found no problems" ;;
+                1)   warn_later "halcyon-musicd --doctor reported FAIL lines (see above, each has a fix). Right after a first install the usual one is: open Halcyon Music, press Sign in with Spotify, then run halcyon-musicd --doctor again." ;;
+                124) warn_later "halcyon-musicd --doctor did not finish within 60 s. Run it by hand: halcyon-musicd --doctor" ;;
+                *)   warn_later "halcyon-musicd --doctor could not run (exit code $doctor_rc). Run it by hand: halcyon-musicd --doctor" ;;
+            esac
         fi
     else
         BUILD_FAILED+=("halcyon-music")

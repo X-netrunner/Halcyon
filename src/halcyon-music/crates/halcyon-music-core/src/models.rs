@@ -255,6 +255,10 @@ impl Default for FullCapsule {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct DetailedSearchResults {
     pub query: String,
+    #[serde(default)]
+    pub search_type: String,
+    #[serde(default)]
+    pub offset: u32,
     pub tracks: Vec<Track>,
     pub artists: Vec<Artist>,
     pub albums: Vec<Album>,
