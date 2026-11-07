@@ -69,15 +69,11 @@ pub fn view<'a, Message: Clone + 'static>(
             })
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()

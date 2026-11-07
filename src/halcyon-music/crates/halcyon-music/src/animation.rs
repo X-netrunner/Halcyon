@@ -89,6 +89,19 @@ impl Animation {
     pub fn is_active(&self) -> bool {
         !self.completed && self.started_at.elapsed() < self.duration
     }
+
+    /// The current value without advancing any state (usable from `view`).
+    pub fn peek(&self) -> f32 {
+        if self.completed {
+            return self.target_value;
+        }
+        let elapsed = self.started_at.elapsed();
+        if elapsed >= self.duration || self.duration.is_zero() {
+            return self.target_value;
+        }
+        let t = elapsed.as_secs_f32() / self.duration.as_secs_f32();
+        self.start_value + (self.target_value - self.start_value) * self.easing.apply(t)
+    }
 }
 
 /// Central animation manager for the GUI shell.
@@ -98,6 +111,8 @@ pub struct AnimationManager {
     pub perf_overlay: bool,
     pub last_frame_time: Duration,
     last_tick: Instant,
+    /// When the app started; the slow "breathing" glow is a pure function of time since then.
+    epoch: Instant,
     // Page entrance animation
     pub page_transition: Animation,
     // Sidebar active pill position (index 0..=5)
@@ -119,6 +134,7 @@ impl Default for AnimationManager {
             perf_overlay: false,
             last_frame_time: Duration::ZERO,
             last_tick: Instant::now(),
+            epoch: Instant::now(),
             page_transition: Animation::instant(1.0),
             sidebar_pill: Animation::instant(0.0),
             shimmer_phase: 0.0,
@@ -139,13 +155,32 @@ impl AnimationManager {
             || self.toast_slide.is_active()
     }
 
-    /// Trigger a page switch transition (fade + 8px slide).
+    /// Trigger a page switch transition: the new page floats up into place.
     pub fn animate_page_switch(&mut self) {
         if self.reduce_motion {
             self.page_transition = Animation::instant(1.0);
         } else {
-            self.page_transition = Animation::new(0.0, 1.0, 160, Easing::EaseOutCubic);
+            self.page_transition = Animation::new(0.0, 1.0, 420, Easing::EaseOutCubic);
         }
+    }
+
+    /// 0.0 (just switched) to 1.0 (settled). Drives the page's rise-into-place offset.
+    pub fn page_progress(&self) -> f32 {
+        if self.reduce_motion {
+            1.0
+        } else {
+            self.page_transition.peek().clamp(0.0, 1.0)
+        }
+    }
+
+    /// A slow breathing value from 0.0 to 1.0 and back (about one breath every 9 seconds).
+    /// Constant 0.5 when motion is reduced.
+    pub fn breath(&self) -> f32 {
+        if self.reduce_motion {
+            return 0.5;
+        }
+        let secs = self.epoch.elapsed().as_secs_f32();
+        0.5 + 0.5 * (secs * std::f32::consts::TAU / 9.0).sin()
     }
 
     /// Trigger sidebar pill sliding to target tab index.
@@ -153,7 +188,7 @@ impl AnimationManager {
         if self.reduce_motion {
             self.sidebar_pill = Animation::instant(target_pos);
         } else {
-            self.sidebar_pill = Animation::new(current_pos, target_pos, 180, Easing::Spring);
+            self.sidebar_pill = Animation::new(current_pos, target_pos, 360, Easing::EaseOutCubic);
         }
     }
 
@@ -162,7 +197,7 @@ impl AnimationManager {
         if self.reduce_motion {
             self.toast_slide = Animation::instant(1.0);
         } else {
-            self.toast_slide = Animation::new(0.0, 1.0, 160, Easing::EaseOutCubic);
+            self.toast_slide = Animation::new(0.0, 1.0, 320, Easing::EaseOutCubic);
         }
     }
 
@@ -173,7 +208,7 @@ impl AnimationManager {
         self.last_tick = now;
 
         // Advance shimmer phase
-        self.shimmer_phase = (self.shimmer_phase + 0.012) % 1.0;
+        self.shimmer_phase = (self.shimmer_phase + 0.007) % 1.0;
     }
 }
 
@@ -188,6 +223,19 @@ mod tests {
 
         assert_eq!(Easing::EaseInOut.apply(0.0), 0.0);
         assert_eq!(Easing::EaseInOut.apply(1.0), 1.0);
+    }
+
+    #[test]
+    fn page_progress_is_settled_when_idle() {
+        let m = AnimationManager::default();
+        assert_eq!(m.page_progress(), 1.0);
+    }
+
+    #[test]
+    fn breath_stays_between_zero_and_one() {
+        let m = AnimationManager::default();
+        let b = m.breath();
+        assert!((0.0..=1.0).contains(&b));
     }
 
     #[test]

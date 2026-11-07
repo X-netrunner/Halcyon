@@ -63,10 +63,10 @@ pub fn view<'a, Message: Clone + 'static>(
             .height(480)
             .padding(24)
             .style(move |_t| container::Style {
-                background: Some(palette.surface.into()),
+                background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 12.0.into(),
-                    color: palette.border,
+                    radius: 18.0.into(),
+                    color: palette.soft_border(),
                     width: 1.5,
                 },
                 shadow: iced::Shadow {

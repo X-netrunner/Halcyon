@@ -32,10 +32,10 @@ pub fn view<'a, Message: Clone + 'static>(
     .on_press(on_next_month)
     .padding([6, 12])
     .style(move |_t, _s| button::Style {
-        background: Some(palette.surface.into()),
+        background: Some(palette.card_background()),
         border: iced::Border {
-            radius: 8.0.into(),
-            color: palette.border,
+            radius: 12.0.into(),
+            color: palette.soft_border(),
             width: 0.5,
         },
         ..Default::default()
@@ -45,10 +45,10 @@ pub fn view<'a, Message: Clone + 'static>(
         .on_press(on_prev_month)
         .padding([6, 12])
         .style(move |_t, _s| button::Style {
-            background: Some(palette.surface.into()),
+            background: Some(palette.card_background()),
             border: iced::Border {
-                radius: 8.0.into(),
-                color: palette.border,
+                radius: 12.0.into(),
+                color: palette.soft_border(),
                 width: 0.5,
             },
             ..Default::default()
@@ -73,7 +73,7 @@ pub fn view<'a, Message: Clone + 'static>(
                 .style(move |_t| container::Style {
                     background: Some(palette.surface_variant.into()),
                     border: iced::Border {
-                        radius: 8.0.into(),
+                        radius: 12.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -104,11 +104,11 @@ pub fn view<'a, Message: Clone + 'static>(
     .padding([10, 16])
     .width(Length::Fill)
     .style(move |_t| container::Style {
-        background: Some(palette.surface.into()),
+        background: Some(palette.card_background()),
         border: iced::Border {
             color: palette.accent,
             width: 1.0,
-            radius: 8.0.into(),
+            radius: 12.0.into(),
         },
         ..Default::default()
     });
@@ -232,15 +232,11 @@ pub fn view<'a, Message: Clone + 'static>(
             .on_press(on_play_track(tr_clone))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 12.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -279,7 +275,7 @@ pub fn view<'a, Message: Clone + 'static>(
                         .style(move |_t| container::Style {
                             background: Some(palette.surface_variant.into()),
                             border: iced::Border {
-                                radius: 16.0.into(),
+                                radius: 20.0.into(),
                                 ..Default::default()
                             },
                             ..Default::default()
@@ -293,9 +289,9 @@ pub fn view<'a, Message: Clone + 'static>(
             )
             .width(Length::Fill)
             .style(move |_t| container::Style {
-                background: Some(palette.surface.into()),
+                background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 12.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -310,10 +306,10 @@ pub fn view<'a, Message: Clone + 'static>(
             .padding(16)
             .width(Length::FillPortion(1))
             .style(move |_t| container::Style {
-                background: Some(palette.surface.into()),
+                background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 10.0.into(),
-                    color: palette.border,
+                    radius: 14.0.into(),
+                    color: palette.soft_border(),
                     width: 0.5,
                 },
                 ..Default::default()
@@ -323,10 +319,10 @@ pub fn view<'a, Message: Clone + 'static>(
             .padding(16)
             .width(Length::FillPortion(1))
             .style(move |_t| container::Style {
-                background: Some(palette.surface.into()),
+                background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 10.0.into(),
-                    color: palette.border,
+                    radius: 14.0.into(),
+                    color: palette.soft_border(),
                     width: 0.5,
                 },
                 ..Default::default()
@@ -360,8 +356,8 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(move |_t| container::Style {
                 background: Some(palette.surface_variant.into()),
                 border: iced::Border {
-                    radius: 14.0.into(),
-                    color: palette.border,
+                    radius: 20.0.into(),
+                    color: palette.soft_border(),
                     width: 0.5,
                 },
                 ..Default::default()
@@ -401,10 +397,10 @@ fn view_metric_card<'a, Message: 'static>(
     )
     .width(Length::FillPortion(1))
     .style(move |_t| container::Style {
-        background: Some(palette.surface.into()),
+        background: Some(palette.card_background()),
         border: iced::Border {
-            radius: 10.0.into(),
-            color: palette.border,
+            radius: 14.0.into(),
+            color: palette.soft_border(),
             width: 0.5,
         },
         ..Default::default()
@@ -486,10 +482,10 @@ fn view_hourly_chart<'a, Message: 'static>(
     )
     .width(Length::Fill)
     .style(move |_t| container::Style {
-        background: Some(palette.surface.into()),
+        background: Some(palette.card_background()),
         border: iced::Border {
-            radius: 10.0.into(),
-            color: palette.border,
+            radius: 14.0.into(),
+            color: palette.soft_border(),
             width: 0.5,
         },
         ..Default::default()

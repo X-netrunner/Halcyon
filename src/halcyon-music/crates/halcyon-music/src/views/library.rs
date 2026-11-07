@@ -121,7 +121,7 @@ pub fn view<'a, Message: Clone + 'static>(
                     palette.border
                 },
                 width: 0.5,
-                radius: 16.0.into(),
+                radius: 20.0.into(),
             },
             ..Default::default()
         });
@@ -243,9 +243,9 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
     .on_press(on_play_context(play_all_tracks, 0))
     .padding([6, 14])
     .style(move |_t, _s| button::Style {
-        background: Some(palette.accent.into()),
+        background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: 12.0.into(),
             ..Default::default()
         },
         ..Default::default()
@@ -354,15 +354,11 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
             .on_press(on_play_context(context_clone, i))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 12.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -402,9 +398,9 @@ fn view_playlists_tab<'a, Message: Clone + 'static>(
     .on_press(on_toggle_new)
     .padding([6, 14])
     .style(move |_t, _s| button::Style {
-        background: Some(palette.accent.into()),
+        background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 8.0.into(),
+            radius: 12.0.into(),
             ..Default::default()
         },
         ..Default::default()
@@ -432,9 +428,9 @@ fn view_playlists_tab<'a, Message: Clone + 'static>(
                 .on_press(on_create)
                 .padding([6, 12])
                 .style(move |_t, _s| button::Style {
-                    background: Some(palette.accent.into()),
+                    background: Some(palette.accent_background()),
                     border: iced::Border {
-                        radius: 6.0.into(),
+                        radius: 10.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -479,15 +475,11 @@ fn view_playlists_tab<'a, Message: Clone + 'static>(
             .on_press(on_open_playlist(id))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 8.0.into(),
+                    radius: 12.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -542,15 +534,11 @@ fn view_albums_tab<'a, Message: Clone + 'static>(
             .on_press(on_open_album(id))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 10.0.into(),
+                    radius: 14.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -606,15 +594,11 @@ fn view_artists_tab<'a, Message: Clone + 'static>(
             .on_press(on_open_artist(id))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered {
-                        palette.surface_variant
-                    } else {
-                        palette.surface
-                    }
+                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 10.0.into(),
+                    radius: 14.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()

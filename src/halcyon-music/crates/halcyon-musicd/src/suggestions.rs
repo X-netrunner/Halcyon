@@ -358,7 +358,15 @@ pub async fn build_home_feed(
         .collect();
 
     // 2. User Shelves: Playlists & Saved Albums
-    let (playlists, _) = cache.get_playlists(20, 0).unwrap_or_default();
+    let (mut playlists, _) = cache.get_playlists(20, 0).unwrap_or_default();
+    // A playlist with no cover of its own borrows the cover of its first cached song.
+    for pl in playlists.iter_mut() {
+        if pl.art_url.is_none() {
+            if let Ok((first, _)) = cache.get_playlist_tracks(&pl.id, 1, 0) {
+                pl.art_url = first.into_iter().next().and_then(|t| t.art_url);
+            }
+        }
+    }
     let saved_albums = spotify
         .get_saved_albums(20, 0)
         .await
@@ -393,14 +401,16 @@ pub async fn build_home_feed(
         for p in cache.get_recent_plays(50).unwrap_or_default() {
             if !seen_contexts.contains(&p.album) {
                 seen_contexts.insert(p.album.clone());
+                // The cached track carries the cover and lets the card play the song.
+                let cached = cache.get_track(&p.track_id).ok().flatten();
                 jump_back_in.push(ShelfItem {
                     id: p.track_id.clone(),
                     title: p.album.clone(),
                     subtitle: format!("Recently Played • {}", p.artist),
-                    art_url: None,
+                    art_url: cached.as_ref().and_then(|t| t.art_url.clone()),
                     uri: format!("spotify:track:{}", p.track_id),
                     context_type: "track".to_string(),
-                    tracks: vec![],
+                    tracks: cached.into_iter().collect(),
                 });
                 if jump_back_in.len() >= 8 {
                     break;

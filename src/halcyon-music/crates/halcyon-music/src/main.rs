@@ -39,12 +39,12 @@ use halcyon_music_core::models::{
 use halcyon_music_core::protocol::{CommandBody, EventBody};
 use halcyon_music_core::state::PlayerState;
 use shortcuts::ShortcutAction;
-use theme::{Density, HalcyonPalette};
+use theme::{Density, HalcyonPalette, Mood};
 use views::library::{LibraryTab, LikedSort};
 use views::search::SearchCategory;
 use views::sidebar::NavPage;
 
-use iced::widget::{button, column, container, row, scrollable, text, text_input, tooltip, Space};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, text, text_input, tooltip, Space};
 use iced::{Alignment, Element, Length, Task, Theme};
 use std::time::{Duration, Instant};
 
@@ -107,6 +107,8 @@ struct HalcyonApp {
     /// Playlist id whose first page of tracks should start playing as soon as it arrives.
     pending_play_playlist: Option<String>,
     density: Density,
+    /// The colour mood (Dusk, Dawn, Forest, Ocean); remembered between launches.
+    mood: Mood,
     show_fullscreen: bool,
     show_queue: bool,
     show_lyrics: bool,
@@ -125,6 +127,10 @@ struct HalcyonApp {
     search_results: Option<DetailedSearchResults>,
     recent_searches: Vec<String>,
     search_offset: u32,
+    /// Bumped on every keystroke in the top search box; a delayed search only runs if it is still the latest.
+    search_gen: u64,
+    /// The "best results" list under the top search box.
+    search_dropdown_open: bool,
     library_tab: LibraryTab,
     library_filter: String,
     liked_sort: LikedSort,
@@ -205,6 +211,7 @@ enum Message {
     ToggleDiagnostics,
     CopyDiagnostics,
     ToggleDensity,
+    CycleMood,
     AnimationTick,
     ToastExpire,
     // Playback Controls
@@ -224,6 +231,12 @@ enum Message {
     ClientIdChanged(String),
     SearchInputChanged(String),
     TopSearchChanged(String),
+    /// The pause after typing is over: run the search for generation `.0` if it is still the latest.
+    SearchDebounced(u64),
+    /// Enter in the top search box: open the full Search page.
+    TopSearchSubmit,
+    SearchPick(views::search_dropdown::Pick),
+    CloseSearchDropdown,
     StartLogin,
     /// Default sign-in: librespot's own browser flow.
     SignInSpotify,
@@ -436,7 +449,8 @@ impl HalcyonApp {
         let mut animations = AnimationManager::default();
         animations.perf_overlay = perf_flag;
 
-        let base_palette = HalcyonPalette::load_from_rice();
+        let mood = Mood::load();
+        let base_palette = HalcyonPalette::load_for_mood(mood);
         let app = Self {
             status: ConnStatus::Connecting,
             state: PlayerState::default(),
@@ -456,6 +470,7 @@ impl HalcyonApp {
             sidebar_hovered: false,
             pending_play_playlist: None,
             density: Density::Comfortable,
+            mood,
             show_fullscreen: false,
             show_queue: false,
             show_lyrics: false,
@@ -472,6 +487,8 @@ impl HalcyonApp {
             search_results: None,
             recent_searches: Vec::new(),
             search_offset: 0,
+            search_gen: 0,
+            search_dropdown_open: false,
             library_tab: LibraryTab::Liked,
             library_filter: String::new(),
             liked_sort: LikedSort::Title,
@@ -541,8 +558,13 @@ impl HalcyonApp {
             iced::Subscription::none()
         };
 
+        // The full-screen glow breathes slowly: 30 frames a second, only while it is visible,
+        // music plays and motion is allowed. Everywhere else the app still idles at ~0% CPU.
+        let ambient = self.show_fullscreen && self.state.playing && !self.animations.reduce_motion;
         let anim_sub = if self.animations.is_animating() || art::is_fading() || self.skeleton_visible() {
             iced::time::every(Duration::from_millis(16)).map(|_| Message::AnimationTick)
+        } else if ambient {
+            iced::time::every(Duration::from_millis(33)).map(|_| Message::AnimationTick)
         } else {
             iced::Subscription::none()
         };
@@ -633,6 +655,7 @@ impl HalcyonApp {
     }
 
     fn close_menus(&mut self) {
+        self.search_dropdown_open = false;
         self.account_menu_open = false;
         self.track_menu = None;
     }
@@ -1364,6 +1387,13 @@ impl HalcyonApp {
                 };
                 Task::none()
             }
+            Message::CycleMood => {
+                self.mood = self.mood.next();
+                self.mood.save();
+                self.base_palette = HalcyonPalette::load_for_mood(self.mood);
+                self.retint();
+                Task::none()
+            }
             Message::ToastExpire => {
                 if self.toast.as_ref().is_some_and(|t| Instant::now() >= t.until) {
                     self.toast = None;
@@ -1445,11 +1475,60 @@ impl HalcyonApp {
                 Task::none()
             }
             Message::TopSearchChanged(val) => {
-                if self.active_nav != NavPage::Search {
-                    self.active_nav = NavPage::Search;
-                    self.send(CommandBody::GetRecentSearches);
+                self.search_query = val.clone();
+                self.search_offset = 0;
+                self.search_category = SearchCategory::Top;
+                self.search_gen = self.search_gen.wrapping_add(1);
+                if val.trim().is_empty() {
+                    self.search_results = None;
+                    self.search_dropdown_open = false;
+                    return Task::none();
                 }
-                self.update_inner(Message::SearchInputChanged(val))
+                // Show the best results under the box instead of jumping to the Search page.
+                self.search_dropdown_open = self.active_nav != NavPage::Search;
+                // Wait for a short pause in typing, so one request is made per word, not per key.
+                let generation = self.search_gen;
+                Task::perform(
+                    async move {
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                        generation
+                    },
+                    Message::SearchDebounced,
+                )
+            }
+            Message::SearchDebounced(generation) => {
+                if generation == self.search_gen && !self.search_query.trim().is_empty() {
+                    self.send(CommandBody::DetailedSearch {
+                        query: self.search_query.clone(),
+                        search_type: SearchCategory::Top.api_type().to_string(),
+                        limit: 10,
+                        offset: 0,
+                    });
+                }
+                Task::none()
+            }
+            Message::TopSearchSubmit => {
+                if self.search_query.trim().is_empty() {
+                    return Task::none();
+                }
+                self.search_dropdown_open = false;
+                if self.active_nav != NavPage::Search {
+                    return self.update_inner(Message::NavSelected(NavPage::Search));
+                }
+                Task::none()
+            }
+            Message::SearchPick(pick) => {
+                self.search_dropdown_open = false;
+                match pick {
+                    views::search_dropdown::Pick::Track(track) => self.update_inner(Message::PlayTrack(track)),
+                    views::search_dropdown::Pick::Artist(id) => self.update_inner(Message::OpenArtist(id)),
+                    views::search_dropdown::Pick::Album(id) => self.update_inner(Message::OpenAlbum(id)),
+                    views::search_dropdown::Pick::Playlist(id) => self.update_inner(Message::OpenPlaylist(id)),
+                }
+            }
+            Message::CloseSearchDropdown => {
+                self.search_dropdown_open = false;
+                Task::none()
             }
             Message::SearchInputChanged(val) => {
                 self.search_query = val.clone();
@@ -1772,7 +1851,9 @@ impl HalcyonApp {
             }
             ShortcutAction::BackOrClose => {
                 // One layer per press, the topmost first.
-                if self.track_menu.is_some() || self.account_menu_open {
+                if self.search_dropdown_open {
+                    self.search_dropdown_open = false;
+                } else if self.track_menu.is_some() || self.account_menu_open {
                     self.close_menus();
                 } else if self.show_diagnostics {
                     self.show_diagnostics = false;
@@ -1828,6 +1909,7 @@ impl HalcyonApp {
                 views::fullscreen::view(
                     &self.state,
                     &self.palette,
+                    self.animations.breath(),
                     self.lyrics.as_ref(),
                     Message::TogglePlay,
                     Message::Next,
@@ -1883,7 +1965,18 @@ impl HalcyonApp {
             }
         };
 
-        let page = scrollable(container(content_area).width(Length::Fill).padding([0.0, theme::space::XL]))
+        // A new page floats up 18 px into place as it appears.
+        let rise = (1.0 - self.animations.page_progress()) * 18.0;
+        let page = scrollable(
+            container(content_area)
+                .width(Length::Fill)
+                .padding(iced::Padding {
+                    top: rise,
+                    right: theme::space::XL,
+                    bottom: 0.0,
+                    left: theme::space::XL,
+                }),
+        )
             .id(scrollable::Id::new(CONTENT_SCROLL_ID))
             .on_scroll(|v| {
                 Message::ContentScrolled(ScrollInfo {
@@ -1946,7 +2039,8 @@ impl HalcyonApp {
             .width(Length::Fill)
             .height(Length::Fill)
             .style(move |_t| container::Style {
-                background: Some(self.palette.background.into()),
+                // A slow wash of colour that follows the album cover.
+                background: Some(self.palette.page_background()),
                 ..Default::default()
             });
 
@@ -1979,6 +2073,39 @@ impl HalcyonApp {
             let top = views::titlebar::HEIGHT + theme::space::LG + views::account::AVATAR_SIZE + theme::space::LG;
             layers.push(views::account::overlay(card, theme::space::LG, top, Message::CloseMenus));
         }
+        if self.search_dropdown_open && logged_in && !self.search_query.trim().is_empty() {
+            let side = views::sidebar::SIDEBAR_COLLAPSED_WIDTH;
+            let right = if self.show_queue { views::queue_drawer::QUEUE_DRAWER_WIDTH } else { 0.0 };
+            let centre_w = (self.window_size.width - side - right).max(0.0);
+            let left = side + ((centre_w - views::search_dropdown::WIDTH) / 2.0).max(0.0);
+            // Title bar + header padding + the search box itself.
+            let top = views::titlebar::HEIGHT + theme::space::LG + 44.0;
+            let card = views::search_dropdown::view(
+                &self.search_query,
+                self.search_results.as_ref(),
+                pal,
+                Message::SearchPick,
+                Message::TopSearchSubmit,
+            );
+            layers.push(
+                iced::widget::stack![
+                    // Clicking anywhere below the box (but not on the sidebar) closes the list.
+                    container(
+                        mouse_area(Space::new(Length::Fill, Length::Fill))
+                            .on_press(Message::CloseSearchDropdown)
+                            .on_right_press(Message::CloseSearchDropdown)
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding(iced::Padding { top: top - 4.0, left: side, right: 0.0, bottom: 0.0 }),
+                    container(card)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .padding(iced::Padding { top, left, right: 0.0, bottom: 0.0 }),
+                ]
+                .into(),
+            );
+        }
         if let Some(menu) = &self.track_menu {
             let (x, y) = views::track_menu::place(menu.at, self.window_size);
             let card = views::track_menu::card(
@@ -2001,10 +2128,11 @@ impl HalcyonApp {
                 ]
                 .align_y(Alignment::Center),
             )
-            .padding([10, 16])
+            .padding([12, 20])
             .style(move |_t| container::Style {
                 background: Some(pal.surface_variant.into()),
-                border: iced::Border { color: tint, width: 1.0, radius: 10.0.into() },
+                border: iced::Border { color: theme::alpha(tint, 0.6), width: 1.0, radius: theme::radius::PILL.into() },
+                shadow: pal.glow_shadow(0.25, 24.0),
                 ..Default::default()
             });
             layers.push(
@@ -2079,6 +2207,7 @@ impl HalcyonApp {
             let input = text_input("What do you want to play?", &self.search_query)
                 .id(text_input::Id::new(TOP_SEARCH_ID))
                 .on_input(Message::TopSearchChanged)
+                .on_submit(Message::TopSearchSubmit)
                 .size(theme::type_size::BODY + 1.0)
                 .padding(iced::Padding { top: 11.0, bottom: 11.0, left: 46.0, right: theme::space::LG })
                 .width(Length::Fill)
@@ -2323,8 +2452,10 @@ impl HalcyonApp {
             NavPage::Settings => views::settings::view(
                 account_label.clone(),
                 self.density,
+                self.mood,
                 self.palette,
                 Message::ToggleDensity,
+                Message::CycleMood,
                 Message::Logout,
                 Message::OpenSpotifyAccount,
             ),
@@ -2658,8 +2789,9 @@ mod tests {
     }
 
     #[test]
-    fn animations_stay_under_200_ms() {
-        assert!(theme::MAX_ANIMATION_MS < 200);
+    fn animations_stay_under_half_a_second() {
+        // The calm redesign trades the old 180 ms snap for slow, soft motion (still under half a second).
+        assert!(theme::MAX_ANIMATION_MS < 500);
         assert!(art::FADE.as_millis() as u64 <= theme::MAX_ANIMATION_MS);
     }
 
