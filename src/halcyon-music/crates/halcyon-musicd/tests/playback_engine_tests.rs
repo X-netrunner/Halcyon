@@ -37,6 +37,8 @@ fn test_context() -> (Arc<DaemonContext>, Arc<Player>, Cache, broadcast::Receive
         player: player.clone(),
         cache: cache.clone(),
         spotify: halcyon_musicd::api::SpotifyClient::new(None, None),
+        http: reqwest::Client::new(),
+        art: halcyon_musicd::art::ArtFetcher::new(cache.clone()),
         events_tx,
         login_cancel: Arc::new(Mutex::new(None)),
     });

@@ -3,15 +3,17 @@
 //! Both binaries (`halcyon-musicd` and `halcyon-music`) depend only on this
 //! crate for everything that crosses the process boundary.
 
+pub mod art;
 pub mod error;
 pub mod models;
 pub mod paths;
 pub mod protocol;
 pub mod state;
 
+pub use art::ArtSize;
 pub use error::CoreError;
 pub use models::{
-    Album, Artist, AuthStatus, Device, EndpointProbe, Page, Playlist, ProbeStatus, Track,
+    Album, Artist, AuthMode, AuthStatus, Device, EndpointProbe, Page, Playlist, ProbeStatus, Track,
 };
 pub use protocol::{Command, Envelope, Event, Message, PROTOCOL_VERSION};
 pub use state::{PlayerState, RepeatMode};
