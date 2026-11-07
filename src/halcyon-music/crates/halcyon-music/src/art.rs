@@ -29,7 +29,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// How long a cover takes to fade in.
-pub const FADE: Duration = Duration::from_millis(220);
+pub const FADE: Duration = Duration::from_millis(160);
 /// A failed cover is retried at most this often.
 const RETRY_AFTER: Duration = Duration::from_secs(30);
 /// Decoded pixels kept in memory (least recently drawn are dropped first).
@@ -278,6 +278,20 @@ pub fn decode_task(url: String, size: ArtSize, path: String) -> iced::Task<crate
 
 pub fn store_decoded(url: &str, size: ArtSize, d: Decoded) {
     with_store(|s| s.finish(url, size, d.handle, d.bytes, d.dominant));
+}
+
+/// Register `url` as a circular picture (corners baked in at decode) and give back the
+/// request item for it. Used for the account picture.
+pub fn avatar_items(url: &str) -> Vec<(Option<&str>, ArtSize)> {
+    with_store(|s| {
+        s.circles.insert(url.to_string());
+    });
+    vec![(Some(url), ArtSize::Small)]
+}
+
+/// True when the cover is decoded and can be drawn right now.
+pub fn is_ready(url: &str, size: ArtSize) -> bool {
+    with_store(|s| matches!(s.entries.get(&(url.to_string(), size)), Some(Entry { slot: Slot::Ready { .. }, .. })))
 }
 
 /// Dominant colour of a cover that is already decoded (for the palette tint).

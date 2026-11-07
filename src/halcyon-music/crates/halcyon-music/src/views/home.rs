@@ -16,6 +16,8 @@ pub fn view<'a, Message: Clone + 'static>(
     density: Density,
     on_play_track: impl Fn(Track) -> Message + 'a + Copy,
     on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
+    on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
     on_play_mix: impl Fn(Vec<Track>, String) -> Message + 'a + Copy,
     on_save_mix: impl Fn(String, Vec<String>) -> Message + 'a + Copy,
     on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
@@ -63,6 +65,8 @@ pub fn view<'a, Message: Clone + 'static>(
             palette,
             density,
             on_play_context,
+            on_play_playlist,
+            on_open_playlist,
             on_play_mix,
             on_navigate,
         ));
@@ -77,6 +81,8 @@ pub fn view<'a, Message: Clone + 'static>(
             palette,
             on_play_track,
             on_play_context,
+            on_play_playlist,
+            on_open_playlist,
         ));
     }
 
@@ -100,6 +106,8 @@ pub fn view<'a, Message: Clone + 'static>(
             palette,
             on_play_track,
             on_play_context,
+            on_play_playlist,
+            on_open_playlist,
         ));
     }
 
@@ -112,6 +120,8 @@ pub fn view<'a, Message: Clone + 'static>(
             palette,
             on_play_track,
             on_play_context,
+            on_play_playlist,
+            on_open_playlist,
         ));
     }
 
@@ -124,6 +134,8 @@ pub fn view<'a, Message: Clone + 'static>(
             palette,
             on_play_track,
             on_play_context,
+            on_play_playlist,
+            on_open_playlist,
         ));
     }
 
@@ -187,6 +199,8 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
     palette: HalcyonPalette,
     _density: Density,
     on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
+    on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
     on_play_mix: impl Fn(Vec<Track>, String) -> Message + 'a + Copy,
     on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
 ) -> Element<'a, Message> {
@@ -199,12 +213,34 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
             let tracks = item.tracks.clone();
             let title = item.title.clone();
 
-            let tile_btn = button(
+            let is_liked = item.id == "liked-songs";
+            let is_mix = !is_liked && !tracks.is_empty();
+
+            // Clicking the tile opens it (a playlist's song list, the Liked page); a mix has no
+            // page, so it plays. The round play button always plays straight away.
+            let open_msg = if is_liked {
+                on_navigate(NavPage::Liked)
+            } else if is_mix {
+                on_play_mix(tracks.clone(), title.clone())
+            } else {
+                on_open_playlist(item.id.clone())
+            };
+            let play_msg = if is_liked {
+                if tracks.is_empty() {
+                    on_navigate(NavPage::Liked)
+                } else {
+                    on_play_context(tracks.clone(), 0)
+                }
+            } else if is_mix {
+                on_play_mix(tracks, title)
+            } else {
+                on_play_playlist(item.id.clone())
+            };
+
+            let body_btn = button(
                 row![
-                    // Thumbnail container
                     crate::art::cover(item.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 52.0, 8.0, Icon::Music, &item.title, palette),
                     Space::with_width(12),
-                    // Titles
                     column![
                         text(super::ellipsize(&item.title, 30))
                             .size(13)
@@ -214,34 +250,43 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
                             .color(palette.text_muted),
                     ]
                     .width(Length::Fill),
-                    // Play icon badge
-                    icon(Icon::Play, 18.0, palette.accent),
-                    Space::with_width(8),
                 ]
                 .align_y(Alignment::Center)
                 .padding([6, 8]),
             )
-            .width(Length::FillPortion(1))
-            .on_press(if item.id == "liked-songs" {
-                on_navigate(NavPage::Liked)
-            } else if !tracks.is_empty() {
-                on_play_mix(tracks, title)
-            } else {
-                on_play_context(vec![], 0)
-            })
+            .width(Length::Fill)
+            .on_press(open_msg)
+            .style(move |_t, _s| button::Style::default());
+
+            let play_btn = button(
+                container(icon(Icon::Play, 16.0, palette.background))
+                    .width(34)
+                    .height(34)
+                    .center_x(34)
+                    .center_y(34),
+            )
+            .padding(0)
+            .on_press(play_msg)
             .style(move |_t, s| button::Style {
                 background: Some(
                     if s == button::Status::Hovered {
-                        palette.surface_variant
+                        iced::Color { a: 0.85, ..palette.accent }
                     } else {
-                        palette.surface
+                        palette.accent
                     }
                     .into(),
                 ),
-                border: iced::Border {
-                    radius: 8.0.into(),
-                    ..Default::default()
-                },
+                border: iced::Border { radius: 17.0.into(), ..Default::default() },
+                ..Default::default()
+            });
+
+            let tile_btn = container(
+                row![body_btn, play_btn, Space::with_width(12)].align_y(Alignment::Center),
+            )
+            .width(Length::FillPortion(1))
+            .style(move |_t| container::Style {
+                background: Some(palette.surface.into()),
+                border: iced::Border { radius: 8.0.into(), ..Default::default() },
                 ..Default::default()
             });
 
@@ -265,6 +310,8 @@ fn view_shelf<'a, Message: Clone + 'static>(
     palette: HalcyonPalette,
     on_play_track: impl Fn(Track) -> Message + 'a + Copy,
     on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
+    on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
 ) -> Element<'a, Message> {
     let header = column![
         text(header_title).size(18).color(palette.text),
@@ -291,10 +338,14 @@ fn view_shelf<'a, Message: Clone + 'static>(
             .width(140),
         )
         .padding(8)
-        .on_press(if let Some(first) = tracks.first() {
+        .on_press(if item.context_type == "playlist" {
+            on_open_playlist(item.id.clone())
+        } else if tracks.len() > 1 {
+            on_play_context(tracks, 0)
+        } else if let Some(first) = tracks.first() {
             on_play_track(first.clone())
         } else {
-            on_play_context(tracks, 0)
+            on_play_playlist(item.id.clone())
         })
         .style(move |_t, s| button::Style {
             background: Some(
@@ -312,7 +363,33 @@ fn view_shelf<'a, Message: Clone + 'static>(
             ..Default::default()
         });
 
-        cards_row = cards_row.push(card_btn);
+        if item.context_type == "playlist" {
+            // A round play button over the cover starts the whole playlist.
+            let play_btn = button(
+                container(icon(Icon::Play, 16.0, palette.background))
+                    .width(34)
+                    .height(34)
+                    .center_x(34)
+                    .center_y(34),
+            )
+            .padding(0)
+            .on_press(on_play_playlist(item.id.clone()))
+            .style(move |_t, _s| button::Style {
+                background: Some(palette.accent.into()),
+                border: iced::Border { radius: 17.0.into(), ..Default::default() },
+                ..Default::default()
+            });
+            cards_row = cards_row.push(iced::widget::stack![
+                card_btn,
+                container(play_btn)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .padding(iced::Padding { top: 104.0, right: 16.0, bottom: 0.0, left: 0.0 }),
+            ]);
+        } else {
+            cards_row = cards_row.push(card_btn);
+        }
     }
 
     let shelf_scroll = scrollable(cards_row).direction(scrollable::Direction::Horizontal(
