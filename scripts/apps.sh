@@ -15,6 +15,10 @@
 # An app that is not in the tables below?  Add a line to ~/.config/Halcyon/apps.custom (same format as the tables,
 # with the kind in front):   kind|id|Name|binary|desktop-file (optional)|tui (1 = needs a terminal)
 #   editor|lapce|Lapce|lapce||0
+# The session Quickshell/Hyprland start from does not read the shell rc files, so ~/.local/bin and ~/.config/Halcyon/bin (where
+# the installer puts halcyon-music, halcyon-musicd, ...) are not on PATH here: without them `command -v halcyon-music` fails and
+# the app is missing from Settings > Default apps (and SUPER+M finds no music player).
+PATH="$HOME/.local/bin:$HOME/.config/Halcyon/bin:$PATH"; export PATH
 state="$HOME/.local/state/island"; envf="$state/apps.env"
 mkdir -p "$state"
 

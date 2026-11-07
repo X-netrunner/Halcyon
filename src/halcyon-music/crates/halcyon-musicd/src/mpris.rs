@@ -7,6 +7,7 @@
 //! Provides metadata, local cached cover URL (`file://`), position, seek,
 //! volume, transport controls, and integrates with Quickshell island & media keys.
 
+use halcyon_music_core::art::{cache_key, ArtSize};
 use crate::cache::Cache;
 use crate::daemon::Player;
 use halcyon_music_core::protocol;
@@ -14,7 +15,7 @@ use halcyon_music_core::RepeatMode;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::info;
+use tracing::{info, warn};
 use zbus::zvariant::{ObjectPath, Value};
 use zbus::{connection::Builder, interface};
 
@@ -82,6 +83,22 @@ impl MprisPlayer {
             cache,
             events_tx,
         }
+    }
+
+    /// What MPRIS clients can see: current track, whether its cover is in the
+    /// cache yet, and play/pause. A change in any of them needs a signal.
+    async fn change_key(&self) -> (Option<String>, bool, bool) {
+        let s = self.player.snapshot().await;
+        let has_cover = s
+            .track
+            .as_ref()
+            .and_then(|t| t.art_url.as_ref())
+            .is_some_and(|url| {
+                [ArtSize::Large, ArtSize::Medium, ArtSize::Small]
+                    .into_iter()
+                    .any(|size| matches!(self.cache.get_image(&cache_key(url, size)), Ok(Some(_))))
+            });
+        (s.track.as_ref().map(|t| t.id.clone()), has_cover, s.playing)
     }
 
     async fn broadcast_state(&self) {
@@ -282,7 +299,12 @@ impl MprisPlayer {
 
             // Art URL: check cached local image file first (for instantaneous offline display)
             if let Some(url) = t.art_url.as_ref() {
-                if let Ok(Some(cached_path)) = self.cache.get_image(url) {
+                // Largest cached size first; the art pipeline keeps the current
+                // track's covers warm (see art::prefetch_current_track).
+                let cached = [ArtSize::Large, ArtSize::Medium, ArtSize::Small]
+                    .into_iter()
+                    .find_map(|size| self.cache.get_image(&cache_key(url, size)).ok().flatten());
+                if let Some(cached_path) = cached {
                     let local_file_url = format!("file://{}", cached_path.display());
                     map.insert("mpris:artUrl".into(), Value::from(local_file_url));
                 } else {
@@ -345,6 +367,41 @@ impl MprisPlayer {
     #[zbus(property)]
     fn can_control(&self) -> bool {
         true
+    }
+}
+
+/// Tell MPRIS clients (the island, media keys, notification daemons) when the
+/// track, its cover or play/pause changes. Without the `PropertiesChanged`
+/// signal they only see new metadata the next time they happen to ask.
+pub async fn announce_changes(conn: zbus::Connection) {
+    let mut last: Option<(Option<String>, bool, bool)> = None;
+    let mut tick = tokio::time::interval(std::time::Duration::from_millis(750));
+    loop {
+        tick.tick().await;
+        let Ok(iface_ref) = conn
+            .object_server()
+            .interface::<_, MprisPlayer>(MPRIS_OBJECT_PATH)
+            .await
+        else {
+            continue;
+        };
+        let iface = iface_ref.get().await;
+        let key = iface.change_key().await;
+        if last.as_ref() == Some(&key) {
+            continue;
+        }
+        let first = last.is_none();
+        last = Some(key);
+        if first {
+            continue;
+        }
+        let ctxt = iface_ref.signal_context();
+        if let Err(e) = iface.metadata_changed(ctxt).await {
+            warn!("MPRIS metadata signal failed: {e}");
+        }
+        if let Err(e) = iface.playback_status_changed(ctxt).await {
+            warn!("MPRIS playback status signal failed: {e}");
+        }
     }
 }
 

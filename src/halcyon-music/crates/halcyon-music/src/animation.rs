@@ -6,6 +6,8 @@
 //! - `reduce_motion` setting and `GTK_ENABLE_ANIMATIONS=0` check
 //! - Performance frame budget tracking (`--perf`)
 
+#![allow(dead_code)]
+
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,7 +173,7 @@ impl AnimationManager {
         self.last_tick = now;
 
         // Advance shimmer phase
-        self.shimmer_phase = (self.shimmer_phase + 0.04) % 1.0;
+        self.shimmer_phase = (self.shimmer_phase + 0.012) % 1.0;
     }
 }
 

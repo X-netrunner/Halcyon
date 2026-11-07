@@ -33,4 +33,7 @@ cargo build --workspace
 
 State lives in `~/.local/state/halcyon-music/`, the cache in
 `~/.cache/halcyon-music/`, and the socket in `$XDG_RUNTIME_DIR/halcyon-music/`.
+Covers: the GUI asks the daemon for art (`GetArt`), the daemon downloads and caches it, and
+the GUI decodes it off the UI thread (`art.rs` in both crates).
+
 Part 3 replaces the simulated player with librespot playback.

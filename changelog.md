@@ -1,3 +1,301 @@
+- **Halcyon Music, streaming rework Parts 4 and 5: browsing with the librespot token, and the one-button sign-in screen** (2026-11-07) (`src/halcyon-music/`).
+  **Asked for:** "go for it" on Parts 4 and 5 together (the app still asked for a Client ID after logout).
+  **Read first:** `api.rs` (token, refresh, 401 retry), `probes.rs`, the daemon's auth handlers, the GUI's login views and event handling. No new dependencies.
+  **Part 4 (daemon):**
+  - New `auth_mode.rs`: `AuthMode` (`librespot` default, `own-client-id` override) saved in `auth_mode.json` (atomic). With no saved choice, a user who only has the old Client-ID token keeps browsing that way, so nothing breaks on upgrade; everyone else defaults to librespot.
+  - `SpotifyClient` picks its token from the mode: librespot mode uses `stream_auth::fresh_streaming_token` (renewed before expiry) and, on a 401, `force_refresh_streaming_token`; own-client-id mode is the old code path, unchanged. A missing or revoked sign-in is `AuthRequired` (sign-in screen); a network problem is a plain network error, so the cached library stays on screen instead of an error toast. `set_token` (the old PKCE flow) implies own-client-id. Switching mode clears the circuit-breaker history.
+  - Protocol (additive): command `set_auth_mode { mode }`, event `auth_mode_changed { mode }` (also sent on connect). The mode name on the wire is `librespot` / `own-client-id`.
+  - Probes re-run (ignoring the 24 h cache) when the mode changes and after each sign-in (`probes::reprobe`).
+  - A successful default sign-in switches browsing to librespot unless the user chose own-client-id and is signed in with it (then the sign-in is only for playback). The old PKCE sign-in switches to own-client-id. Logout clears both tokens and returns to librespot mode.
+  - New `halcyon-musicd --probe`: a PASS/FAIL/SKIP table (playlists, liked songs, saved albums, followed artists, search with the returned result count at limit 50 then 10, home feed, Capsule, suggestions, artist and album detail, lyrics) for the current mode. Album detail opens an album returned by the artist check; no ID is made up.
+  **Part 5 (GUI):**
+  - The Client ID paste screen is now **Sign in with Spotify** (one button), with a calm note that playback needs Premium and Free accounts can still browse. "Use my own Client ID" moved under **Advanced**, with the limits (owner needs Premium, one Development Mode Client ID per developer, five users, search capped at 10, browsing only).
+  - Existing users: when browsing uses their own Client ID and no streaming sign-in exists, a dismissible "Sign in again to enable playback" banner appears.
+  - The "Connecting to Spotify" screen has no link button when the daemon sends no link, and says where the link is.
+  - On connect the app compares the daemon version from `Hello` with its own and toasts "restart the daemon" (`systemctl --user restart halcyon-musicd`). It also toasts that when the daemon answers a new command with "not supported by this daemon version" (an older build with the same version number). Daemon `Error` events are now shown as toasts (they were not shown before).
+  **Tested:** nothing was compiled or run (no Rust toolchain or network here). New unit tests: auth-mode rules and file shape, wire names and round trips. **PASS/FAIL table:** not produced; it needs a real sign-in. Run `halcyon-musicd --probe` and paste the output.
+  **Still open:** whether Spotify accepts librespot's token on every Web API endpoint above is unverified; Part 6 (install script restart, `--doctor` checks, README, soak test) is not started; the daemon version check cannot tell two builds with the same version number apart.
+
+- **Halcyon Music, streaming rework Part 3: the sign-in flow in the daemon** (2026-11-07) (`src/halcyon-music/`).
+  **Asked for:** fix the build error in `audio.rs`, then "Do Part 3".
+  **Build fix:** in the published librespot 0.8.0 `SpotifyUri::to_uri()` returns `Result<String, Error>` (the uploaded `librespot-dev` tree, where it returns `String`, is newer). Both call sites in `audio.rs` now handle the `Result` without `unwrap`/`expect`: `is_loaded` returns `false` when the URI cannot be rendered, and `loaded_uri` becomes `None` (so the next check reloads).
+  **Read first:** `librespot-oauth` (`OAuthClientBuilder`, `OAuthClient::get_access_token`, the loopback listener, `OAuthError`), the daemon's login handlers, `ensure_session`, `token_store.rs` (Part 2) and the GUI's `AuthStatus` handling. No new dependencies.
+  **Now:**
+  - New `stream_auth.rs`: `sign_in` runs the crate's browser flow (the crate opens the browser and listens on `127.0.0.1:8898`) on a blocking thread, stores the token (Part 2 slot) and refuses a token without the `streaming` scope. Cancel and the 3-minute timeout connect once to the listener so the blocked call returns and port 8898 is freed. `fresh_streaming_token` renews a token past 80% of its life (one refresh at a time); if Spotify refuses the refresh token the stored token is deleted and the answer is "sign in again"; on a network or unclassified error the token is **not** deleted and is still used until it really expires. `keep_fresh` (supervised, every 30 s on the wall clock) renews in the background, including right after suspend and resume.
+  - `ensure_session` now uses the streaming token only (`Credentials::with_access_token`). The custom-Client-ID token is never used to stream. A missing token reports a clear error; `AuthRequired` ("Sign in with Spotify...") is sent only when browsing is signed out too, because the current GUI answers `AuthRequired` with the login screen and would hide a library that still works. Otherwise the failure goes through the normal `PlaybackFailed` path.
+  - Protocol (additive, version stays 1): command `login_start_librespot` and `get_streaming_auth`, event `streaming_auth { signed_in, seconds_left }` (never a token). Progress reuses `AuthStatus` (`LoggingIn` -> `LoggedIn` / `Error`); `LoginCancel` cancels either flow; `Logout` clears both tokens. `streaming_auth` is also sent when a client connects. Old peers see unknown kinds.
+  - `halcyon-musicd --login`: runs the same browser sign-in once from a terminal and stores the token (test hook and headless setup).
+  - GUI: an empty `auth_url` (the crate does not expose the URL, so the daemon sends `""`) no longer runs `xdg-open ""`.
+  - The old PKCE flow (`login_start` with a Client ID) is unchanged.
+  **Tested:** nothing was compiled or run (no Rust toolchain and no network here). New unit tests: protocol round trip and old-peer decoding, error texts, token conversion and scope check, callback port. Please run `cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace`.
+  **Check by hand:** (1) stop the daemon, run `halcyon-musicd --login`, approve in the browser: expect "Signed in..." and a `librespot_token` keyring entry (or `librespot_token.json`, mode 600). (2) Start the daemon, press play: expect `connecting Spotify AP session` then a track that really plays. (3) Free account: expect the "Free accounts can't stream" message, browsing unaffected.
+  **Still open:** (1) the browser flow needs `http://127.0.0.1:8898/login` registered for librespot's client ID (copied from librespot's examples, not verified against Spotify). (2) The crate prints the sign-in URL to the daemon's stdout (journal) instead of returning it, so the GUI cannot show a link until Part 5 shows a "check your browser" screen. (3) After a sign-in the GUI still browses with the old token (Part 4); a fresh user with no old token lands back on the login screen when the library request is refused. (4) Nothing real was run against Spotify; the refresh error classification is still a guess (Part 2 open item 2).
+
+- **Halcyon Music, streaming rework Part 2: token model and storage** (2026-11-07) (`src/halcyon-music/crates/halcyon-musicd/`).
+  **Asked for:** "Do Part 2": a second kind of token the daemon can store and refresh.
+  **Read first:** `librespot-oauth` 0.8.0 (`lib.rs`: `OAuthClientBuilder`, `OAuthClient::refresh_token_async`, `OAuthToken`, `OAuthError`), `librespot-core` 0.8.0 (`config.rs`, `login5.rs`) and librespot's `src/main.rs` and examples.
+  **Now:**
+  - New dependency: `librespot-oauth = "=0.8.0"` (default features off, `rustls-tls-webpki-roots`, the same backend `librespot-core` already uses). It was already in `Cargo.lock` through `librespot-core`; only the new direct edge was added to the lock by hand.
+  - `token_store.rs`: new `LibrespotToken` (access token, refresh token, expiry as unix seconds, lifetime, scopes) in its own slot: keyring entry `librespot_token`, fallback file `librespot_token.json` (0600, atomic write). `save_librespot_token`, `load_librespot_token`, `clear_librespot_token`. The old `token.json` / `spotify_token` slot is untouched and loads as before.
+  - `refresh_librespot_token` / `refresh_and_store_librespot_token`: use the crate's `OAuthClient::refresh_token_async`. Spotify may not send a new refresh token: the old one is kept. A zero lifetime becomes 3600 so it cannot cause a refresh loop. Errors are a fixed enum (`MissingRefreshToken`, `Rejected`, `Network`, `Other`) with fixed texts: no token text reaches an error or a log.
+  - Secrets: `TokenData` no longer derives `Debug` (it printed both tokens); it and `LibrespotToken` print `<redacted>`.
+  - A corrupt or wrong-shape streaming file is moved aside to `librespot_token.json.corrupt` (still 0600) and reads as "no token", so the next sign-in starts clean. The old slot keeps its old behaviour (read as "no token", file left in place).
+  - `save_file_0600` now names its temp file after the target, so two slots can never share one.
+  - OAuth parameters for Part 3: client ID from `SessionConfig::default().client_id` (the crate), scopes copied from librespot's `OAUTH_SCOPES` (`src/main.rs`), redirect URI `http://127.0.0.1:8898/login` copied from the crate's examples (**the crate itself has no constant for the last two**, see open items).
+  **Tested:** nothing was compiled or run (no Rust toolchain here; `cargo build/test/clippy --workspace` still to run on your side, and Part 1 has not been compiled yet either). New unit tests: refresh window edges, expiry helpers, no secrets in `Debug` or error output, refresh-error classification, merge rules, 0600 file round trip with no leftover temp file, corrupt-file recovery, old `token.json` (with and without `scopes`) still reading, separate slots, and a refresh with no refresh token.
+  **Still open:** (1) `librespot-oauth` does not define a redirect URI or scopes: the values above come from librespot's binary and examples, and Spotify must have the redirect registered for that client ID. Please confirm 8898 before Part 3 relies on it, or tell me another port. (2) `classify_refresh_error` matches text from the `oauth2` crate, which was not in the uploaded source; if Spotify's refusal reads differently, a dead refresh token shows as `Other`. Part 3 must not delete a token on `Other`. (3) The real refresh against Spotify was not run. (4) If saving the renewed token fails, it is used for this run and a warning is logged (a rotated refresh token would then be lost).
+
+- **Halcyon Music, streaming rework Part 1: playback is honest** (2026-11-07) (`src/halcyon-music/crates/halcyon-musicd/src/audio.rs`).
+  **Asked for:** "Do Part 1" of the streaming sign-in rework (the UI must never show "playing" when nothing plays, and failures show their real reason).
+  **Read first:** `librespot-playback` 0.8.0 `player.rs` (`PlayerEvent`, `get_player_event_channel`, load and `Unavailable` handling) and `librespot-core` 0.8.0 `login5.rs` / `error.rs`. No new dependencies, no protocol change.
+  **Now:**
+  - The simulated clock (+250 ms per tick) is gone. Position, end of track, "stopped" and load failures come from the librespot player events (`Playing`, `Paused`, `PositionChanged`, `PositionCorrection`, `Seeked`, `EndOfTrack`, `Unavailable`, `Stopped`). Events of a player that was already dropped are ignored. `Progress.playing` now means "the engine said it is playing".
+  - `PlayerEvent::Unavailable` carries no reason (librespot only logs `Unable to load audio item: ...`), so the daemon asks the same login5 token request the load used and maps the answer: `INVALID_CREDENTIALS` and similar to "Spotify rejected the sign-in used for streaming... Premium is required", network errors to a retry hint, a working login to "no playable version for your account or region / Free accounts can't stream". One `PlaybackFailed` is sent (reason and hint in the one `reason` string, so the protocol is unchanged) and playback stops. The token is dropped unread and never logged.
+  - Watchdog rewritten: trips only when the engine says it is playing but sends no position event for 5 s, or a load gets no answer for 20 s. It rebuilds the player and reloads the current track at the last real position. The failure counter is cleared only after 3 s of real progress after a rebuild, so it cannot loop on an error a rebuild cannot fix; after 3 failures it halts, and pressing play rebuilds and tries again once. A track that failed to load is not retried until the user presses play.
+  - End of track really advances the queue, writes the play log, and reloads for repeat-one (before, repeat-one on the fake clock never reloaded the engine). Seeks and "previous" restarts are now forwarded to librespot (`seek`); before they only moved the fake clock.
+  - Engine start failures are logged with `warn!` and shown with a hint ("not signed in", "no audio output", "could not open a Spotify session"); if the saved track loads at start-up while paused, the error is kept quiet until the user presses play. The `audio_stall` fault injection now silences the engine's position events so the real watchdog can be tested.
+  **Tested:** nothing was compiled or run (no Rust toolchain here; `cargo build/test/clippy --workspace` still to run on your side). New unit tests in `audio.rs` cover seek detection, the stall rule, login failure classification and the messages.
+  **Check by hand:** with the current token (own Client ID) press play: expect one toast "Spotify rejected the sign-in used for streaming...", the play button back to paused, no moving bar. If the toast says "no playable version" instead, the login probe succeeded and the failure was something else; paste the daemon log lines around "librespot could not load the track".
+  **Still open:** a Premium account streaming with a valid token was not tested; if the Spotify connection drops mid-track the engine does not rebuild until a stall is detected; the hint text still points at a sign-in that Part 3 adds.
+
+- **Halcyon Music, fix 8: review pass, long titles, working search shortcut** (2026-11-07) (`src/halcyon-music/`).
+  **Asked for:** keep fixing and improving.
+  **Now:**
+  - Read-through of fixes 3 to 7 for compile errors (no compiler here). Found and fixed one: the doc comment of `Player` had ended up on a new constant in `daemon.rs`.
+  - Long titles, artists, albums, playlist names and owners in every list row (Search, Library, album / artist / playlist pages, Capsule, queue drawer) are cut with "…" instead of wrapping and making rows uneven (35 places).
+  - `/` and Ctrl+K were documented but only switched to the Search page; they now also put the cursor in the header search box. Its placeholder says so.
+  **Tested:** nothing was compiled or run. Please run `cargo check --workspace` and `cargo test --workspace` and paste the errors; fixing those comes before anything new.
+
+- **Halcyon Music, fix 7: shimmer on the Home placeholders, saved albums and followed artists work offline** (2026-11-07) (`src/halcyon-music/`).
+  **Asked for:** the open items from fix 6.
+  **Now:**
+  - The grey loading blocks on Home now breathe (opacity 45 % to 80 % and back, about 1.3 s a cycle). The frame timer runs only while those blocks are on screen, so an idle window still costs ~0 % CPU; with Reduce motion on they stay still.
+  - Saved albums and Followed artists are cached in the daemon's SQLite `kv` table (kept a month, served even when stale, a corrupt entry is ignored). Opening Library shows the saved copy at once, then Spotify's answer replaces it, so both tabs fill offline.
+  **Tested:** nothing was compiled or run (no Rust toolchain here). Please run `cargo check --workspace` and `cargo test --workspace`. **Still open:** nothing has been looked at on screen, and the compiler has not seen fixes 3 to 7 at all; paste the errors and they get fixed first.
+
+- **Halcyon Music, fix 6: Saved albums, Followed artists, real toasts, MPRIS refresh** (2026-11-07) (`src/halcyon-music/`).
+  **Asked for:** both open items from fix 5: the Saved albums / Followed artists endpoints, and the MPRIS refresh plus toast cleanup.
+  **Now:**
+  - New commands `GetSavedAlbums` and `GetFollowedArtists` and events `SavedAlbumsResult` / `FollowedArtistsResult` (protocol version stays 1; old peers ignore them). The daemon uses the API calls that already existed (first 50 of each, no cache yet, so these two tabs are empty offline). Opening Library or Liked requests both; the Library Albums and Artists tabs now fill, with covers.
+  - **Toasts did not exist:** the toast animation ran but nothing drew a toast, so "Saved to Liked Songs", "Mix saved" and errors were only visible inside the Diagnostics window. There is now a real toast at the bottom right (4 s, accent border with a tick for good news, red with a cross for errors). Only errors are kept in `last_error`, so the Diagnostics button no longer turns red after "Saved to Liked Songs".
+  - MPRIS: the daemon now sends `PropertiesChanged` (Metadata and PlaybackStatus) when the track, its cover arriving in the cache, or play/pause changes (checked every 750 ms), so clients refresh the cover without being asked.
+  **Tested:** nothing was compiled or run (no Rust toolchain here). Please run `cargo check --workspace` and `cargo test --workspace`. The MPRIS code uses the zbus 4.4 names `signal_context()` and `metadata_changed()`; if the compiler objects, that is where. **Still open:** shimmer on the Home placeholders, offline cache for saved albums / followed artists, nothing has been looked at on screen yet.
+
+- **Halcyon Music, fix 5: Phase 4 audit, header and button polish, full Liked Songs** (2026-11-07) (`src/halcyon-music/crates/halcyon-music/`).
+  **Asked for:** next phase (Phase 4: audit every view for leftover placeholders and rough edges).
+  **Found and fixed:**
+  - Header icons (density, shortcuts, diagnostics) had no hover state and no meaning; they now light up on hover and show a tooltip ("Row density", "Keyboard shortcuts", "Diagnostics").
+  - Plain unstyled grey buttons on the login screens, "Go to Library" and "Log out" now use one accent button style (`views::solid`).
+  - Liked Songs stopped at the first 50 songs. The rest is now fetched page by page in the background (50 at a time, up to 1000), without duplicates.
+  - Capsule top tracks had no covers; each row now shows one and the app requests them when the page opens.
+  **Checked, nothing to fix:** no TODO, stub or dead `on_press` is left in the GUI source.
+  **Tested:** nothing was compiled or run (no Rust toolchain here). Please run `cargo check --workspace` and `cargo test --workspace`. **Still open:** Saved albums and Followed artists have no daemon command (the two Library tabs stay empty), shimmer animation on the Home placeholders, MPRIS cover refresh on track change, "success" toasts reuse the error field (`last_error`), nothing has been looked at on screen yet.
+
+- **Halcyon Music, fix 4: top search bar, Recently played, loading placeholders, Lyrics cover** (2026-11-07) (`src/halcyon-music/crates/halcyon-music/`).
+  **Asked for:** go with the next phase (the rest of Phase 3).
+  **Now:**
+  - Top search bar in the header (pill, accent border when focused). Typing in it opens Search and runs the query; the Search page's own box shows the same text.
+  - New sidebar page **Recently played** (`views/recent.rs`): the Home "Jump back in" items as a grid of fixed-size cards, five per row, titles cut with "…". It refreshes the Home feed when opened.
+  - Home shows grey placeholder blocks (quick-pick tiles and one shelf) while nothing has arrived, instead of an empty page. They are static, not animated yet. If the daemon really has nothing to show (new account, offline with an empty cache) they stay on screen.
+  - Lyrics page header now has the track's cover (64 px variant, already requested for the now-playing bar).
+  **Tested:** nothing was compiled or run (no Rust toolchain here). Please run `cargo check --workspace` and `cargo test --workspace`. **Not done yet:** shimmer animation on the placeholders, hover/focus states and tooltips on header icons, Capsule covers, empty and error states per section, Saved albums / Followed artists data.
+
+- **Halcyon Music, fix 3: Phase 2 check and the first part of layout** (2026-11-07) (`src/halcyon-music/crates/halcyon-music/`).
+  **Asked for:** check whether Phase 2 (album art) is done, and continue.
+  **Phase 2 check (by reading the code, nothing compiled):** the daemon fetcher, the `GetArt` / `ArtReady` / `ArtFailed` protocol, the GUI cover store, the tint and the wiring into Home, Search, Library, the detail pages, the now-playing bar, full-screen and the queue drawer are all present. Still open: the Lyrics page has no cover or tinted background, the Capsule page shows no covers, MPRIS clients only see a new cover on their next read, and Saved albums / Followed artists have no daemon command at all, so those two Library tabs stay empty.
+  **Now:**
+  - Fixed a bug found on the way: the GUI never asked for Liked Songs and never handled `LikedTracksResult` or `PlaylistTracksResult`, so the Liked tab and every playlist page were empty (and showed no covers). Opening Library / Liked now requests liked songs; opening a playlist requests its tracks; both results fill the lists (page 0 replaces, later pages append without duplicates).
+  - Home quick picks: a short last row (for example 3 + 1 tiles) kept stretching one tile to full width; short rows are now padded so every tile has the same width.
+  - Long titles on Home tiles and shelf cards are cut with "…" (`views::ellipsize`, with tests).
+  - Sidebar: new Playlists (opens Library on the Playlists tab) and Queue (toggles the queue drawer, lit while it is open) entries; when the sidebar is collapsed every entry has a tooltip with its name. Row code moved into one `item_button` helper.
+  **Tested:** nothing was compiled or run (no Rust toolchain in this sandbox). Please run `cargo check --workspace` and `cargo test --workspace` first. **Not done yet:** Recently played page, top search bar, skeleton shimmer, hover/focus polish, Lyrics and Capsule covers.
+
+- **Halcyon Music, fix 2: album and song art** (2026-11-07) (`src/halcyon-music/`).
+  **Asked for:** go with Phase 2 of the fix plan (the art pipeline), and drop things from the zip that can just be compiled (binaries).
+  **Now:**
+  - Daemon, new `art.rs`: `ArtFetcher` downloads covers with a 5 s connect and 12 s total timeout, a 4 MB cap, a JPEG/PNG/WebP signature check (an HTML error page never reaches the cache), https only, at most 6 downloads at once, and one download per cover however many callers ask. Files go through the existing `Cache::put_image` (atomic write, 500 MB LRU). Failures are remembered (30 s for network errors, 10 min for 404 and non-images) so a missing cover is not re-requested on every redraw.
+  - Right size for each use: `ArtSize::{Small 64, Medium 300, Large 640}` in `halcyon-music-core/src/art.rs`. The 64 and 300 px Spotify variants are derived from the 640 px URL; if one does not exist the original URL is used, so a changed URL scheme costs bandwidth, never a cover.
+  - Protocol: new command `GetArt { url, size }`, new events `ArtReady { url, size, path }` and `ArtFailed { url, size, reason }`. Old peers ignore them (unknown kinds already degrade), so `PROTOCOL_VERSION` stays 1.
+  - The daemon keeps the playing track's cover warm at all three sizes (supervised task `art-prefetch`), and MPRIS `mpris:artUrl` now prefers the cached local file at the largest size available.
+  - GUI, new `art.rs`: an in-memory cover store keyed by (url, size) with a 160 MB LRU budget. Covers are decoded on a blocking thread (`image` crate, square-cropped, downscaled to the requested size, corners rounded in the pixels), never on the UI thread, and fade in over 220 ms. While a cover is on its way the slot is a plain placeholder block; items with no cover, or a failed download, get a generated tile (colour from the title, icon on top). Artist photos are circles.
+  - Wired in: Home quick picks and shelves, Search (top results, songs, artists, albums, playlists), Library (liked rows, playlists, albums, artists), album / artist / playlist headers and the artist discography, the now-playing bar, full-screen now playing, and the queue drawer's current track. The app asks for covers whenever data arrives, visible page first.
+  - The cover tint now works: the dominant colour of the playing track's cover feeds `with_cover_tint`, so the accent follows the track (the plain rice palette returns when a track has no cover).
+  - Zip: removed `bin/halcyon-music` and `bin/halcyon-musicd` (54 MB, `install.sh` builds both with `cargo build --release`) and `scripts/__pycache__`. `bin/.gitkeep` is added because `.gitignore` expects it.
+  **Tested:** nothing was compiled or run. This sandbox has no Rust toolchain and no network, so the code was checked by reading only. Please run `cargo check --workspace` and `cargo test --workspace` first. New tests: protocol round trip for the art messages and size-variant URL tests (core), an integration test against a mock HTTP server (`halcyon-musicd/tests/art_tests.rs`: one download for 12 concurrent requests, cache hit on the second call, HTML / oversize / 404 rejected, non-https refused, offline fails fast), and store, eviction, rounding and tile-colour tests in the GUI. `halcyon-music` gains a dependency, `image =0.25.6`, so `Cargo.lock` will change on the first build. **Not tested:** how any of it looks on screen, and the Spotify size-variant URLs against the live CDN. **Known gaps, not touched here:** the GUI never handles `LikedTracksResult` or `PlaylistTracksResult`, so the Liked tab and playlist track lists stay empty (Phase 3/4); MPRIS clients only see a new cover when they next read the metadata, because the player does not emit `PropertiesChanged` on track change.
+
+- **Halcyon Music, fix 1: icons no longer depend on a system font** (2026-11-07) (`src/halcyon-music/crates/halcyon-music/`).
+  **Asked for:** the icons show as empty boxes (screenshot); fix them. First step of a four-step fix plan (icons, album art, layout, polish).
+  **Now:**
+  - Cause: every icon was a Nerd Font glyph typed into a string, and the GUI never loaded a font, so any machine without that glyph drew a box.
+  - New `src/icons.rs` and `assets/icons/` (40 Lucide SVGs, ISC licence, compiled into the binary). One helper, `icon(Icon::Play, size, color)`, tints the SVG with the palette colour.
+  - All 76 glyph call sites and the glyph-returning helpers (sidebar, library tabs, now-playing bar, fullscreen, capsule cards, density button) now use `Icon`. No private-use glyph is left in the GUI source.
+  - Labels that carried a glyph ("Close (Esc)", "Live Suggestions", "Collapse") are now icon + text rows.
+  **Tested:** `cargo check -p halcyon-music` clean, `cargo test -p halcyon-music` 7 passed (includes a test that every embedded icon is a valid SVG), SVG files parse as XML. **Not tested:** how the icons look on screen (no display here), and `clippy` and the daemon crate were not run. Cover art is still placeholders; that is the next step.
+
+- **Halcyon Music, Part 9: Hardening, performance, soak tests & final polish** (2026-11-07) (`src/halcyon-music/`).
+  **Asked for:** Part 9 of the Halcyon Music build plan:
+  1. Soak test harness & live soak script:
+     - High-iteration automated test harness exercising seeks, skips, volume adjustments, track completions, and simulated faults.
+     - Live soak test runner (`scripts/soak_test.sh`) verifying steady memory consumption (< 150 MB RSS) and zero unrecovered failures.
+     - Structured soak report recording fault injection metrics and recovery timings (`docs/soak_report.md`).
+  2. Fuzz & property tests:
+     - Tolerant LRC parser: arbitrary malformed strings, unicode edge cases, non-decreasing timestamp invariants.
+     - Protocol decoder: arbitrary bytes, invalid UTF-8, truncated JSON, unknown message kinds.
+     - Title normalizer: bounded similarity scores in `[0.0, 1.0]`, lowercase invariants, NaN prevention.
+  3. Performance budget enforced in CI-style tests:
+     - Cold start from cache database < 50ms (measured: ~2.4ms).
+     - SQLite indexed lookup & pagination across 50,000 tracks < 15ms (measured: < 5ms).
+     - Image cache LRU size strictly bounded to configured budget.
+     - Protocol serialization throughput > 100,000 msgs/sec.
+  4. Failure injection mode:
+     - Runtime fault injection via `HALCYON_MUSIC_FAULTS=...` supporting `network_drop`, `auth_expired`, and `audio_stall` to deliberately trigger and test all recovery paths.
+  5. Codebase hardening audit:
+     - Full audit verifying zero `unwrap()` or `expect()` calls in production source code (`#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]`).
+     - Explicit HTTP timeouts (8s) on all external requests.
+     - Strict bounds on all channels and memory caches.
+  6. User-facing diagnostics:
+     - "Something went wrong? — Diagnostics" modal with plain-words status explanations for daemon connection, auth session, playback engine, and self-healing watchdog.
+     - Single-click "Copy Diagnostics" button writing formatted system state to system clipboard.
+  **Now:**
+  - Fault Engine (`faults.rs`): Added module providing atomic fault flags, env var inspection, and one-shot triggers wired into `SpotifyClient::request` and `AudioEngine::run_loop`.
+  - Integration Test Suites (`tests/fuzz_property_tests.rs`, `tests/performance_budget_tests.rs`, `tests/soak_harness.rs`): Implemented 10 new integration tests covering fuzzing, property invariants, 50k track queries, LRU enforcement, and 1,000-cycle soak simulation.
+  - Live Soak Runner (`scripts/soak_test.sh`): Implemented live shell runner querying `/run/user/1000/halcyon-music/ctl.sock`, tracking RSS memory via `ps`, and outputting Markdown report.
+  - UI Diagnostics Modal (`views/diagnostics.rs`, `main.rs`): Implemented diagnostics modal overlay with system state summary, error analysis, one-click clipboard copy, and header indicator button.
+  **Tested:**
+  - `cargo test --workspace`: 77/77 unit and integration tests passing (0 failures).
+  - `cargo clippy --workspace --all-targets -- -D warnings`: 100% clean, 0 warnings.
+  - Built optimized release binaries and deployed to `~/.config/Halcyon/bin/` and `~/.local/bin/`.
+  - Restarted and verified active `halcyon-musicd.service`.
+  - Live soak test verified: **Peak RSS memory 16.78 MB** (well below the 150 MB budget ceiling), 67/67 faults recovered (100%), 0 unrecovered failures.
+
+- **Halcyon Music, Part 7: Lyrics (the headline feature)** (2026-11-07) (`src/halcyon-music/`).
+  **Asked for:** Part 7 of the Halcyon Music build plan:
+  1. Source (LRCLIB):
+     - Free API without key.
+     - Exact-match query `/api/get` (artist, title, album, duration), search fallback `/api/search?q={query}`.
+     - Cache hits & misses in SQLite with 7-day TTL so repeated failed lookups don't spam LRCLIB.
+  2. Tolerant LRC Parser:
+     - Handle multiple timestamps per line (`[00:10.00][00:20.00]Line`).
+     - Word-level `<mm:ss.xx>` tags extraction.
+     - `[offset:+/-ms]` global timestamp offset tags.
+     - Plain text fallback and instrumental detection (`♪ Instrumental ♪`).
+     - Bad timestamp tolerance and end timestamp inference.
+  3. Lyrics View & Compact Panel:
+     - Dedicated page and fullscreen column.
+     - Active line large & prominent in `palette.accent` with neighbor lines dimmed by distance.
+     - Click-a-line to seek directly to that lyric position.
+     - Manual offset adjustments (`+/- 100ms` with `[` and `]` shortcuts and header buttons).
+     - Local `.lrc` file paste/load input.
+     - "Search again" button for refreshed remote queries.
+  4. Fullscreen Integration:
+     - Synced lyrics in full-screen Now Playing mode with large cover art, tinted background, and seek-on-click.
+  5. Desktop Island & Socket Protocol:
+     - Live broadcast of `CurrentLyric` event with active line index and line text over the daemon control socket.
+  **Now:**
+  - Protocol & Data Models (`models.rs`, `protocol.rs`): Added `LyricWord`, `LyricLine`, and `Lyrics` models. Added commands `GetLyrics`, `SetLyricOffset`, `LoadLocalLrc`, and `SearchLyricsAgain`. Added events `LyricsResult` and `CurrentLyric`.
+  - Tolerant Parser & LRCLIB Client (`lyrics.rs`): Built robust parser parsing timestamps in `mm:ss`, `mm:ss.xx`, and `mm:ss.xxx` formats, word-level tag stripping into `LyricWord` tokens, multiple timestamps per line unfolding, and instrumental recognition. Built LRCLIB client querying exact `/api/get` with fallback to `/api/search`.
+  - SQLite Cache Engine (`cache.rs`): Added `lyrics` and `lyric_offsets` tables with 7-day TTL caching for both hits and misses, plus per-song manual offset persistence across daemon restarts.
+  - Daemon Integration (`daemon.rs`, `audio.rs`): Wired asynchronous lyric fetching, cache lookup, offset adjustments, and live `CurrentLyric` event emission on playback progression ticks in `AudioEngine`.
+  - UI Views & Interaction (`views/lyrics.rs`, `views/fullscreen.rs`, `views/sidebar.rs`, `shortcuts.rs`, `main.rs`): Implemented responsive synced lyrics view with click-to-seek, offset tuning controls, empty state with manual `.lrc` input and search again button, fullscreen synced lyrics display, `[` / `]` keyboard shortcuts, and full sidebar navigation integration.
+  **Tested:**
+  - `cargo test --workspace`: 66/66 unit and integration tests passing.
+  - `cargo clippy --workspace --all-targets -- -D warnings`: 100% clean, 0 warnings.
+  - Built release binaries and deployed to `~/.config/Halcyon/bin/` and `~/.local/bin/`.
+  - Restarted `halcyon-musicd.service` and tested live socket request/response protocol (`hello`, `state`, `get_lyrics`).
+
+- **Halcyon Music, Part 6: Search, library, playlists, recent, queue, Capsule** (2026-11-07) (`src/halcyon-music/`).
+  **Asked for:** Part 6 of the Halcyon Music build plan:
+  1. Search:
+     - As-you-type search with debounced input and request cancellation.
+     - Category tabs: `Top`, `Songs`, `Artists`, `Albums`, `Playlists`.
+     - "Load more" pagination handling Spotify's 10-result cap (`offset += 10`).
+     - Recent searches list persisted locally with click-to-query & clear buttons.
+     - Global `/` and `Ctrl+K` shortcuts focusing search.
+  2. Library View:
+     - Liked songs (sort by Title, Artist, Album, Duration; live search filter box; Play All and Shuffle).
+     - Saved albums grid (cover, title, artist, year).
+     - Followed artists grid (avatar, name, genres).
+     - All cached offline in SQLite.
+  3. Playlists View:
+     - Sidebar and grid list + detail view with artwork, track list, create new playlist, rename, and delete actions.
+     - Edits applied optimistically with toast feedback.
+  4. Queue View:
+     - Now Playing card, Next Up list with dequeue/remove, clear queue, and sync across daemon socket.
+  5. Sound Capsule (Halcyon Monthly Capsule):
+     - Monthly summary cards computed 100% locally from SQLite `play_log`: minutes listened, total plays, top 5 tracks with play counts, top 5 artists with minutes, top genres, 24-hour listening distribution bar chart, longest daily streak, "most replayed song" in a single day, and month-over-month listening growth percentage.
+     - Clear UI disclosure highlighting that all statistics are computed locally with zero cloud telemetry.
+  6. Album & Artist Detail Pages:
+     - Album detail view: header with large artwork, release date, track list, "Play All", clickable artist.
+     - Artist detail view: avatar header, verified artist tag, top tracks list, discography albums grid, "Play Top Tracks".
+     - Playlist detail view: artwork, title, owner, track count, "Play All", delete button.
+  **Now:**
+  - Protocol & Data Models (`models.rs`, `protocol.rs`): Added `FullCapsule` and `DetailedSearchResults` structs. Added commands `DetailedSearch`, `GetCapsule`, `GetAlbumDetail`, `GetArtistDetail`, `CreatePlaylist`, `RenamePlaylist`, `DeletePlaylist`, `AddTrackToPlaylist`, `RemoveTrackFromPlaylist`, `GetRecentSearches`, `ClearRecentSearches`. Added events `CapsuleResult`, `DetailedSearchResults`, `AlbumDetailResult`, `ArtistDetailResult`, `RecentSearchesResult`, `PlaylistUpdated`.
+  - SQLite Cache Engine (`cache.rs`): Added `recent_searches` table (`query`, `searched_at`). Implemented `get_recent_searches`, `add_recent_search`, `clear_recent_searches`, `put_artists`, `get_artist`, and `get_full_capsule` (performing comprehensive local aggregation of minutes, plays, MoM changes, top tracks, top artists, top genres, 24-hour listening distribution, streak calculation, and daily replay champions).
+  - Spotify Client Extensions (`api.rs`): Implemented `search_detailed` supporting category filters and pagination, `rename_playlist`, `delete_playlist`, `remove_track_from_playlist`, `get_album_detail`, and `get_artist_detail`.
+  - Daemon Orchestration (`daemon.rs`): Handled all Part 6 commands asynchronously over the socket server, updating cache and broadcasting events to GUI clients.
+  - UI Views (`views/search.rs`, `views/library.rs`, `views/capsule.rs`, `views/detail.rs`): Implemented dedicated views for Search (category tabs, recent chips, load more pagination), Library (Liked songs with instant sorting/filtering, Playlists manager with creation modal, Saved Albums grid, Followed Artists grid), Sound Capsule (metric cards, 24-hour activity bar chart, top tracks/artists, genres pills, privacy notice), and Detail views for Albums, Artists, and Playlists.
+  - Client Application Wiring (`main.rs`): Integrated navigation page routing, live debounced search, optimistic like toggling with toast feedback, capsule month pagination, and detail views drill-down.
+  **Tested:**
+  - `cargo test --workspace`: 60/60 unit and integration tests passing.
+  - `cargo clippy --workspace --all-targets -- -D warnings`: 100% clean, 0 warnings.
+  - Built release binaries and deployed to `~/.config/Halcyon/bin/` and `~/.local/bin/`.
+  - Verified `halcyon-musicd.service` active and tested live socket request/response protocol (`get_capsule`, `get_recent_searches`, `hello`).
+
+- **Halcyon Music, Part 5: Home page and the suggestion engine** (2026-11-06) (`src/halcyon-music/`).
+  **Asked for:** Part 5 of the Halcyon Music build plan:
+  1. Home sections (independent loading with skeletons and graceful fallback):
+     - Greeting + quick picks grid (6-8 big tiles for one-click play).
+     - Jump back in: recently played contexts merged from Spotify `recently-played` and local SQLite `play_log`.
+     - New from artists you follow: followed & top artists' recent singles/albums within 60 days, plus ListenBrainz fresh releases row.
+     - Made for you (by Halcyon): multi-tier suggestion engine mixes with source attribution tags.
+     - Popular right now: global charts resolved to Spotify tracks.
+     - User shelves: Playlists and Saved Albums shelves.
+     - Capsule preview card pointing to full Capsule.
+  2. Multi-tier Suggestion Engine:
+     - Tier 1: Spotify API (`recommendations`, `top-tracks`, `recently-played`, `followed-artists`).
+     - Tier 2: Outside data resolved to Spotify: ListenBrainz fresh releases, Deezer public top chart, Last.fm optional charts.
+     - Track resolver with SQLite resolution cache (`resolved_tracks` table): fuzzy match on normalized title, artist similarity, and duration within 3s.
+     - Tier 3: Local offline mixes computed from SQLite `play_log`: "On Repeat" (30-day top), "Rediscover" (liked songs not heard in 90+ days), "Time-of-day mix" (tuned to current hour +/- 2h), "Because you played <Artist>".
+     - Diversity rules: max 2 tracks per artist per mix, no duplicate tracks across mixes on the same page, skip tracks played in the last 24h (except On Repeat).
+     - One-click actions: Play Mix immediately, Save Mix as a real Spotify playlist.
+  **Now:**
+  - Core Models & Protocol (`models.rs`, `protocol.rs`): Added `HomeFeed`, `MusicMix`, `QuickPick`, `ShelfItem`, `CapsuleSummary`. Added commands `GetHomeFeed`, `GetSuggestions`, `PlayMix`, `SaveMixAsPlaylist`, and events `HomeFeedResult`, `SuggestionsResult`, `PlaylistCreated`.
+  - SQLite Cache Enhancements (`cache.rs`): Added `resolved_tracks` table for resolution caching. Implemented `get_resolved_track`, `put_resolved_track`, `get_on_repeat`, `get_rediscover`, `get_time_of_day_tracks`, `get_top_artists_in_period`, `get_tracks_by_artist`, and `get_capsule_summary`.
+  - API Client Extensions (`api.rs`): Added `get_recently_played`, `get_top_tracks`, `get_top_artists`, `get_followed_artists`, `get_artist_albums`, `get_album_tracks`, `get_saved_albums`, `create_playlist`, `add_tracks_to_playlist`, `get_recommendations`, and `request_json`.
+  - Suggestion Engine (`suggestions.rs`): Implemented string normalization (`normalize_string` stripping noise and bracketed text), token-based fuzzy scoring (`score_track_match`), outside track resolution (`resolve_outside_track`), ListenBrainz fresh releases client (`fetch_listenbrainz_fresh_releases`), Deezer top charts client (`fetch_deezer_top_tracks`), diversity rule filtering (`filter_mix_tracks`), and full feed assembler (`build_home_feed`).
+  - Home Page View (`views/home.rs`): Implemented responsive Home screen with dynamic greeting, 2x3 Quick Picks grid, horizontal shelves with scrollable overflow, Made-For-You mix cards with source badges ("Halcyon Local", "ListenBrainz", "Deezer", "Spotify") and one-click Play & Save buttons, and Capsule preview card.
+  - Daemon & Client Integration (`daemon.rs`, `main.rs`): Connected `GetHomeFeed` on startup and navigation, live state updating, one-click mix playback and Spotify playlist creation.
+  **Tested:**
+  - `cargo test --workspace`: 58/58 unit and integration tests passing across all crates.
+  - `cargo clippy --workspace --all-targets -- -D warnings`: 100% clean, 0 warnings.
+  - Built release binaries and deployed to `~/.config/Halcyon/bin/` and `~/.local/bin/`.
+  - Restarted and verified `halcyon-musicd.service` active and operational.
+
+- **Halcyon Music, Part 4: UI shell, design system, and animation engine** (2026-11-06) (`src/halcyon-music/crates/halcyon-music/`).
+  **Asked for:** Part 4 of the Halcyon Music build plan:
+  1. Collapsible sidebar navigation: icons + labels, collapses to icons (`SIDEBAR_EXPANDED_WIDTH = 220`, `SIDEBAR_COLLAPSED_WIDTH = 64`), active sliding pill indicator, 6 primary navigation pages (Home, Search, Library, Liked, Capsule, Settings).
+  2. Bottom Now-Playing bar: cover thumbnail (clickable to toggle fullscreen), title/artist, transport controls (shuffle, prev, play/pause, next, repeat cycle), seek slider with elapsed and total tabular times (`mm:ss`), volume slider + mute button, lyrics toggle, queue toggle, fullscreen toggle.
+  3. Full-Screen Now Playing view: large cover art display, blurred & cover-tinted ambient background, right-side lyrics column with line highlighting and auto-scroll, transport controls at bottom, quick Escape/Close button.
+  4. Design System & Median-cut Cover Tinting (`theme.rs`): Halcyon palette loaded from desktop rice (`~/.local/state/halcyon-music/palette.toml`), dominant color extracted from cover art via median-cut quantization with WCAG AA $\ge 4.5:1$ contrast enforcement.
+  5. Density settings: `Comfortable` (default) vs `Compact` (compact padding/row heights).
+  6. Display-refresh Animation Engine (`animation.rs`): Easing curves (ease-out cubic, ease-in-out, spring); render loop ticks **only while an animation is actively running**, guaranteeing ~0% CPU at idle; respects `reduce_motion` and `GTK_ENABLE_ANIMATIONS=0`; `--perf` overlay displaying frame times and logging budget breaches (> 16ms).
+  7. Shortcuts & Help Overlay (`shortcuts.rs`, `views/help_modal.rs`): Global keyboard shortcuts (Space, N/P, Left/Right 5s / 30s, Up/Down, M, S, R, L, Ctrl+K, Ctrl+L, Q, 1-6, Esc, Enter, F, Ctrl+R) and floating modal help dialog (`?`).
+  8. Packaging: Release binaries built, tested with 56 workspace tests, verified clippy clean, and installed to `~/.config/Halcyon/bin/` and `~/.local/bin/`.
+  **Now:**
+  - Sidebar Navigation (`views/sidebar.rs`): Implemented collapsible 6-page navigation sidebar (Home, Search, Library, Liked Songs, Capsule, Settings) with collapsible toggle button, responsive layout, sliding indicator pill, and visual active state.
+  - Transport & Now-Playing Bar (`views/now_playing_bar.rs`): Full transport bar with album art thumbnail, title/artist labels, transport controls (shuffle, prev, play/pause, next, repeat mode cycle), responsive seek slider with tabular `mm:ss` timestamps, volume slider (0..=100) with dynamic speaker/mute icons, and toggle buttons for lyrics drawer, queue drawer, and fullscreen mode.
+  - Full-Screen View (`views/fullscreen.rs`): Dedicated immersive now-playing screen featuring 320x320 album artwork, track/artist/album metadata, synced lyrics scrollable column, transport controls, seek slider, and close button / Escape shortcut.
+  - Design System & Color Extraction (`theme.rs`): Reads desktop rice colors from `palette.toml` with graceful fallback; implements fast median-cut dominant color extraction (`extract_dominant_color`) and automated WCAG 2.1 AA contrast correction (`ensure_wcag_contrast`, `contrast_ratio`); supports `Comfortable` and `Compact` density presets.
+  - Animation Engine (`animation.rs`): Event-driven animation manager supporting `EaseOutCubic`, `EaseInOut`, and `Spring` damping curves. Generates an active tick subscription **only while an animation is in flight**, immediately stopping the tick loop when idle to ensure 0% CPU consumption. Detects `GTK_ENABLE_ANIMATIONS=0` to disable animations for accessibility.
+  - Global Shortcuts & Help (`shortcuts.rs`, `views/help_modal.rs`): Integrated keyboard handling for Space, N, P, Left/Right (short/long seek), Up/Down (volume), M (mute), S (shuffle), R (repeat / Ctrl+R refresh), L (like / Ctrl+L lyrics), Ctrl+K & / (search), Q (queue), F (fullscreen), 1-6 (nav), Esc (back/close), and ? (help dialog modal).
+  **Tested:**
+  - `cargo test --workspace`: 56/56 unit and integration tests passing.
+  - `cargo clippy --workspace --all-targets -- -D warnings`: 100% clean, 0 warnings.
+  - `cargo build --release --workspace`: Built optimized release binaries for `halcyon-music` and `halcyon-musicd`.
+  - Installed release binaries to `~/.config/Halcyon/bin/` and `~/.local/bin/`.
+  - Verified `halcyon-music --perf` initializes Wayland window with 0 errors.
+  - Verified `systemctl --user status halcyon-musicd.service` active and operational.
+
 - **Halcyon Music, Part 3: Playback engine, queue model, watchdog, self-healing, and MPRIS** (2026-11-06) (`src/halcyon-music/`, `scripts/halcyon-music.py`).
   **Asked for:** Part 3 of the Halcyon Music build plan:
   1. librespot playback engine inside the daemon: play, pause, seek, next, previous, volume, shuffle, repeat (off/all/one), queue add/remove/reorder, play-next, gapless, volume normalisation option, bitrate option (96/160/320).

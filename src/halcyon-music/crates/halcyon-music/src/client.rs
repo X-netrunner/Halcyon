@@ -106,7 +106,13 @@ pub async fn ensure_daemon_running() -> anyhow::Result<DaemonStart> {
         return Ok(DaemonStart::ViaSystemd);
     }
     warn!("systemd start failed or unavailable; spawning halcyon-musicd directly");
-    tokio::process::Command::new("halcyon-musicd")
+    // Prefer the daemon installed next to this GUI (the session PATH may not contain it), then PATH.
+    let daemon = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("halcyon-musicd")))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| std::path::PathBuf::from("halcyon-musicd"));
+    tokio::process::Command::new(daemon)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

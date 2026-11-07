@@ -3,15 +3,18 @@
 //! systemd watchdog heartbeats, SQLite cache, and Spotify API client.
 
 use crate::api::{self, SpotifyClient};
+use crate::art::{self, ArtFetcher};
 use crate::auth;
 use crate::cache::Cache;
+use crate::lyrics;
 use crate::panic_hook;
 use crate::probes;
 use crate::sd_notify;
 use crate::state_store;
+use crate::stream_auth;
 use crate::supervisor;
 use crate::token_store;
-use halcyon_music_core::models::AuthStatus;
+use halcyon_music_core::models::{AuthMode, AuthStatus, Lyrics};
 use halcyon_music_core::paths;
 use halcyon_music_core::protocol::{self, CommandBody, EventBody};
 use halcyon_music_core::{PlayerState, RepeatMode};
@@ -28,6 +31,29 @@ const SAVE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 const WATCHDOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 /// Cap the event broadcast channel; a slow client must never stall others.
 const EVENT_CHANNEL_CAP: usize = 256;
+
+const KV_SAVED_ALBUMS: &str = "library.saved_albums";
+const KV_FOLLOWED_ARTISTS: &str = "library.followed_artists";
+/// Kept for a month; the copy is served even when stale.
+const LIBRARY_KV_TTL_SECS: u64 = 30 * 24 * 3600;
+
+/// Read a JSON value from the cache, stale or not. A corrupt entry is ignored.
+fn kv_load<T: serde::de::DeserializeOwned>(cache: &crate::cache::Cache, key: &str) -> Option<T> {
+    let item = cache.kv_get(key).ok().flatten()?;
+    serde_json::from_str(&item.item).ok()
+}
+
+/// Save a JSON value in the cache. Failing to cache is only worth a log line.
+fn kv_store<T: serde::Serialize>(cache: &crate::cache::Cache, key: &str, value: &T) {
+    match serde_json::to_string(value) {
+        Ok(json) => {
+            if let Err(e) = cache.kv_set(key, &json, LIBRARY_KV_TTL_SECS) {
+                warn!("could not cache {key}: {e}");
+            }
+        }
+        Err(e) => warn!("could not encode {key}: {e}"),
+    }
+}
 
 /// Shared player handle: state + a dirty flag the persistence loop drains.
 pub struct Player {
@@ -48,6 +74,16 @@ impl Player {
         self.state.read().await.clone()
     }
 
+    /// Cover URL of the current track (cheap: clones one string, not the queue).
+    pub async fn current_art_url(&self) -> Option<String> {
+        self.state
+            .read()
+            .await
+            .track
+            .as_ref()
+            .and_then(|t| t.art_url.clone())
+    }
+
     pub async fn mutate(&self, f: impl FnOnce(&mut PlayerState)) {
         {
             let mut guard = self.state.write().await;
@@ -64,6 +100,9 @@ pub struct DaemonContext {
     pub player: Arc<Player>,
     pub cache: Cache,
     pub spotify: SpotifyClient,
+    pub http: reqwest::Client,
+    /// Cover-art downloader and disk cache front end.
+    pub art: ArtFetcher,
     pub events_tx: broadcast::Sender<protocol::Event>,
     pub login_cancel: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
 }
@@ -143,9 +182,25 @@ async fn async_main(restored: PlayerState) -> anyhow::Result<()> {
         player: player.clone(),
         cache: cache.clone(),
         spotify: spotify.clone(),
+        http: reqwest::Client::new(),
+        art: ArtFetcher::new(cache.clone()),
         events_tx: events_tx.clone(),
         login_cancel: Arc::new(Mutex::new(None)),
     });
+
+    // Keep the streaming token fresh in the background (also right after suspend/resume).
+    supervisor::supervise("stream-token", None, stream_auth::keep_fresh);
+
+    // Supervised cover prefetch for the current track (keeps full-screen,
+    // MPRIS and notifications instant)
+    {
+        let player = player.clone();
+        let fetcher = ctx.art.clone();
+        let events = events_tx.clone();
+        supervisor::supervise("art-prefetch", None, move || {
+            art::prefetch_current_track(player.clone(), fetcher.clone(), events.clone())
+        });
+    }
 
     // Supervised player task with watchdog & play log
     {
@@ -172,8 +227,9 @@ async fn async_main(restored: PlayerState) -> anyhow::Result<()> {
         let events = events_tx.clone();
         tokio::spawn(async move {
             match crate::mpris::start_mpris_server(player, cache, events).await {
-                Ok(_conn) => {
+                Ok(conn) => {
                     info!("MPRIS 2 server running");
+                    tokio::spawn(crate::mpris::announce_changes(conn.clone()));
                     std::future::pending::<()>().await;
                 }
                 Err(e) => {
@@ -267,6 +323,16 @@ async fn handle_client(
         EventBody::AuthStatus(AuthStatus::LoggedOut)
     };
     writer.write_all(&protocol::encode_line(&protocol::event(auth_status))?).await?;
+    let mode_event = protocol::event(EventBody::AuthModeChanged {
+        mode: ctx.spotify.auth_mode(),
+    });
+    writer.write_all(&protocol::encode_line(&mode_event)?).await?;
+    let streaming = stream_auth::stored_seconds_left();
+    let streaming_status = protocol::event(EventBody::StreamingAuth {
+        signed_in: streaming.is_some(),
+        seconds_left: streaming,
+    });
+    writer.write_all(&protocol::encode_line(&streaming_status)?).await?;
 
     loop {
         tokio::select! {
@@ -410,6 +476,10 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                                         match auth::exchange_code(&http, &session_clone, &code).await {
                                             Ok(token) => {
                                                 ctx_clone.spotify.set_token(token.clone()).await;
+                                                ctx_clone.spotify.switch_mode(AuthMode::OwnClientId).await;
+                                                let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthModeChanged {
+                                                    mode: AuthMode::OwnClientId,
+                                                }));
                                                 let user_id = Some(token.client_id);
                                                 let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthSuccess {
                                                     user_id: user_id.clone(),
@@ -421,7 +491,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                                                     },
                                                 )));
                                                 // Trigger background probes
-                                                let _ = probes::evaluate_probes(&ctx_clone.spotify, &ctx_clone.cache).await;
+                                                let _ = probes::reprobe(&ctx_clone.spotify, &ctx_clone.cache).await;
                                             }
                                             Err(e) => {
                                                 error!("token exchange failed: {e}");
@@ -454,6 +524,90 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
             }
         }
 
+        LoginStartLibrespot => {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            {
+                // One sign-in at a time: starting a new one cancels the old one (either kind).
+                let mut guard = ctx.login_cancel.lock().await;
+                if let Some(old_cancel) = guard.take() {
+                    let _ = old_cancel.send(());
+                }
+                *guard = Some(tx);
+            }
+
+            let ctx_clone = ctx.clone();
+            tokio::spawn(async move {
+                match stream_auth::sign_in(rx).await {
+                    Ok(token) => {
+                        info!(seconds_left = token.seconds_left(), "streaming sign-in finished");
+                        let _ = ctx_clone.events_tx.send(protocol::event(EventBody::StreamingAuth {
+                            signed_in: true,
+                            seconds_left: Some(token.seconds_left()),
+                        }));
+                        // A user who chose the advanced own-Client-ID browsing keeps it (this
+                        // sign-in is then only for playback). Everyone else browses with the
+                        // librespot token.
+                        let keep_own = ctx_clone.spotify.auth_mode() == AuthMode::OwnClientId
+                            && ctx_clone.spotify.is_authenticated().await;
+                        if !keep_own {
+                            ctx_clone.spotify.switch_mode(AuthMode::Librespot).await;
+                        }
+                        let mode = ctx_clone.spotify.auth_mode();
+                        let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthModeChanged { mode }));
+                        let user_id = ctx_clone.spotify.current_user_id().await;
+                        let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthSuccess {
+                            user_id: user_id.clone(),
+                        }));
+                        let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthStatus(
+                            AuthStatus::LoggedIn { user_id, display_name: None },
+                        )));
+                        let _ = probes::reprobe(&ctx_clone.spotify, &ctx_clone.cache).await;
+                    }
+                    // The GUI already got `LoggedOut` from LoginCancel.
+                    Err(stream_auth::SignInError::Cancelled) => {
+                        info!("streaming sign-in cancelled");
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "streaming sign-in failed");
+                        let _ = ctx_clone.events_tx.send(protocol::event(EventBody::AuthStatus(
+                            AuthStatus::Error { message: e.to_string() },
+                        )));
+                    }
+                }
+            });
+
+            // The crate opens the browser itself and does not expose the URL, so there is no
+            // link to hand to the GUI (empty `auth_url`; the URL is also in the daemon log).
+            return Some(protocol::event(EventBody::AuthStatus(AuthStatus::LoggingIn {
+                auth_url: String::new(),
+            })));
+        }
+
+        SetAuthMode { mode } => {
+            ctx.spotify.switch_mode(mode).await;
+            let _ = ctx.events_tx.send(protocol::event(EventBody::AuthModeChanged { mode }));
+            // The other token may be allowed or refused differently: probe again in the background.
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                let _ = probes::reprobe(&ctx_c.spotify, &ctx_c.cache).await;
+            });
+            let status = if ctx.spotify.is_authenticated().await {
+                let user_id = ctx.spotify.current_user_id().await;
+                AuthStatus::LoggedIn { user_id, display_name: None }
+            } else {
+                AuthStatus::LoggedOut
+            };
+            return Some(protocol::event(EventBody::AuthStatus(status)));
+        }
+
+        GetStreamingAuth => {
+            let seconds_left = stream_auth::stored_seconds_left();
+            return Some(protocol::event(EventBody::StreamingAuth {
+                signed_in: seconds_left.is_some(),
+                seconds_left,
+            }));
+        }
+
         LoginCancel => {
             let mut guard = ctx.login_cancel.lock().await;
             if let Some(cancel) = guard.take() {
@@ -464,7 +618,18 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
 
         Logout => {
             let _ = token_store::clear_token();
+            if let Err(e) = token_store::clear_librespot_token() {
+                warn!("could not remove the streaming sign-in: {e}");
+            }
             ctx.spotify.clear_token().await;
+            ctx.spotify.switch_mode(AuthMode::Librespot).await;
+            let _ = ctx.events_tx.send(protocol::event(EventBody::AuthModeChanged {
+                mode: AuthMode::Librespot,
+            }));
+            let _ = ctx.events_tx.send(protocol::event(EventBody::StreamingAuth {
+                signed_in: false,
+                seconds_left: None,
+            }));
             return Some(protocol::event(EventBody::AuthStatus(AuthStatus::LoggedOut)));
         }
 
@@ -645,6 +810,56 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
             return None;
         }
 
+        GetSavedAlbums => {
+            // Stale-while-revalidate: the saved copy goes out at once (so the
+            // tab is not empty offline), then Spotify's answer replaces it.
+            if let Some(albums) = kv_load::<Vec<halcyon_music_core::models::Album>>(&ctx.cache, KV_SAVED_ALBUMS) {
+                let _ = ctx.events_tx.send(protocol::event(EventBody::SavedAlbumsResult { albums }));
+            }
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match ctx_c.spotify.get_saved_albums(50, 0).await {
+                    Ok(page) => {
+                        kv_store(&ctx_c.cache, KV_SAVED_ALBUMS, &page.items);
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::SavedAlbumsResult {
+                            albums: page.items,
+                        }));
+                    }
+                    Err(api::ApiError::AuthRequired(reason)) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::AuthRequired { reason }));
+                    }
+                    Err(e) => {
+                        warn!("saved albums refresh failed ({e}); serving cache");
+                    }
+                }
+            });
+            return None;
+        }
+
+        GetFollowedArtists => {
+            if let Some(artists) = kv_load::<Vec<halcyon_music_core::models::Artist>>(&ctx.cache, KV_FOLLOWED_ARTISTS) {
+                let _ = ctx.events_tx.send(protocol::event(EventBody::FollowedArtistsResult { artists }));
+            }
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match ctx_c.spotify.get_followed_artists(50).await {
+                    Ok(artists) => {
+                        kv_store(&ctx_c.cache, KV_FOLLOWED_ARTISTS, &artists);
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::FollowedArtistsResult {
+                            artists,
+                        }));
+                    }
+                    Err(api::ApiError::AuthRequired(reason)) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::AuthRequired { reason }));
+                    }
+                    Err(e) => {
+                        warn!("followed artists refresh failed ({e}); serving cache");
+                    }
+                }
+            });
+            return None;
+        }
+
         Search { query, limit, offset } => {
             let limit_val = limit.unwrap_or(10).min(10);
             let offset_val = offset.unwrap_or(0);
@@ -682,6 +897,375 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 let probes = probes::evaluate_probes(&ctx_c.spotify, &ctx_c.cache).await;
                 let _ = ctx_c.events_tx.send(protocol::event(EventBody::ProbeResult { probes }));
             });
+            return None;
+        }
+
+        GetHomeFeed => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                let feed = crate::suggestions::build_home_feed(&ctx_c.spotify, &ctx_c.cache, &ctx_c.http).await;
+                let _ = ctx_c.events_tx.send(protocol::event(EventBody::HomeFeedResult(Box::new(feed))));
+            });
+            return None;
+        }
+
+        GetSuggestions => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                let feed = crate::suggestions::build_home_feed(&ctx_c.spotify, &ctx_c.cache, &ctx_c.http).await;
+                let _ = ctx_c.events_tx.send(protocol::event(EventBody::SuggestionsResult {
+                    mixes: feed.made_for_you,
+                }));
+            });
+            return None;
+        }
+
+        PlayMix { tracks, name: _ } => {
+            if let Some(first) = tracks.first().cloned() {
+                ctx.player
+                    .mutate(|s| {
+                        s.queue = tracks;
+                        s.queue_pos = 0;
+                        s.track = Some(first);
+                        s.playing = true;
+                        s.position_ms = 0;
+                    })
+                    .await;
+            }
+        }
+
+        SaveMixAsPlaylist { name, track_uris } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                let user_id = ctx_c.spotify.current_user_id().await.unwrap_or_else(|| "me".to_string());
+                match ctx_c.spotify.create_playlist(&user_id, &name, "Generated by Halcyon Music").await {
+                    Ok(playlist) => {
+                        let _ = ctx_c.spotify.add_tracks_to_playlist(&playlist.id, &track_uris).await;
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::PlaylistCreated {
+                            playlist_id: playlist.id,
+                            name: playlist.name,
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::Error {
+                            message: format!("Failed to save playlist: {e}"),
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        CreatePlaylist { name, description } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                let user_id = ctx_c.spotify.current_user_id().await.unwrap_or_else(|| "me".to_string());
+                let desc = description.unwrap_or_else(|| "Created with Halcyon Music".to_string());
+                match ctx_c.spotify.create_playlist(&user_id, &name, &desc).await {
+                    Ok(playlist) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::PlaylistCreated {
+                            playlist_id: playlist.id.clone(),
+                            name: playlist.name,
+                        }));
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::PlaylistUpdated {
+                            id: playlist.id,
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::Error {
+                            message: format!("Failed to create playlist: {e}"),
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        RenamePlaylist { id, new_name } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match ctx_c.spotify.rename_playlist(&id, &new_name).await {
+                    Ok(()) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::PlaylistUpdated {
+                            id,
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::Error {
+                            message: format!("Failed to rename playlist: {e}"),
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        DeletePlaylist { id } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match ctx_c.spotify.delete_playlist(&id).await {
+                    Ok(()) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::PlaylistUpdated {
+                            id,
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::Error {
+                            message: format!("Failed to delete playlist: {e}"),
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        AddTrackToPlaylist { playlist_id, track_uri } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match ctx_c.spotify.add_tracks_to_playlist(&playlist_id, &[track_uri]).await {
+                    Ok(()) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::PlaylistUpdated {
+                            id: playlist_id,
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::Error {
+                            message: format!("Failed to add track to playlist: {e}"),
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        RemoveTrackFromPlaylist { playlist_id, track_uri } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match ctx_c.spotify.remove_track_from_playlist(&playlist_id, &track_uri).await {
+                    Ok(()) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::PlaylistUpdated {
+                            id: playlist_id,
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::Error {
+                            message: format!("Failed to remove track from playlist: {e}"),
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        GetCapsule { month_offset } => {
+            match ctx.cache.get_full_capsule(month_offset) {
+                Ok(capsule) => {
+                    return Some(protocol::event(EventBody::CapsuleResult(Box::new(capsule))));
+                }
+                Err(e) => {
+                    return Some(protocol::event(EventBody::Error {
+                        message: format!("Failed to compute capsule: {e}"),
+                    }));
+                }
+            }
+        }
+
+        GetAlbumDetail { id } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match ctx_c.spotify.get_album_detail(&id).await {
+                    Ok((album, tracks)) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::AlbumDetailResult {
+                            album,
+                            tracks,
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::Error {
+                            message: format!("Failed to get album detail: {e}"),
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        GetArtistDetail { id } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match ctx_c.spotify.get_artist_detail(&id).await {
+                    Ok((artist, top_tracks, albums)) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::ArtistDetailResult {
+                            artist,
+                            top_tracks,
+                            albums,
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::Error {
+                            message: format!("Failed to get artist detail: {e}"),
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        DetailedSearch { query, search_type, limit, offset } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                if !query.trim().is_empty() {
+                    let _ = ctx_c.cache.add_recent_search(&query);
+                }
+                match ctx_c.spotify.search_detailed(&query, &search_type, limit, offset).await {
+                    Ok(results) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::DetailedSearchResults(
+                            Box::new(results),
+                        )));
+                    }
+                    Err(e) => {
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::Error {
+                            message: format!("Search failed: {e}"),
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        GetRecentSearches => {
+            let searches = ctx.cache.get_recent_searches(15).unwrap_or_default();
+            return Some(protocol::event(EventBody::RecentSearchesResult { searches }));
+        }
+
+        ClearRecentSearches => {
+            let _ = ctx.cache.clear_recent_searches();
+            return Some(protocol::event(EventBody::RecentSearchesResult { searches: Vec::new() }));
+        }
+
+        GetLyrics {
+            track_id,
+            artist,
+            title,
+            album,
+            duration_ms,
+        } => {
+            // Check cache first
+            if let Ok(Some(cached_entry)) = ctx.cache.get_lyrics(&track_id) {
+                return Some(protocol::event(EventBody::LyricsResult {
+                    track_id,
+                    lyrics: cached_entry.map(Box::new),
+                }));
+            }
+
+            // Not in cache, fetch in background
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match lyrics::fetch_lrclib(
+                    &ctx_c.http,
+                    &track_id,
+                    &artist,
+                    &title,
+                    &album,
+                    duration_ms,
+                )
+                .await
+                {
+                    Ok(Some(mut lrc)) => {
+                        if let Ok(offset) = ctx_c.cache.get_lyric_offset(&track_id) {
+                            lrc.offset_ms = offset;
+                        }
+                        let _ = ctx_c.cache.put_lyrics(&lrc);
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::LyricsResult {
+                            track_id,
+                            lyrics: Some(Box::new(lrc)),
+                        }));
+                    }
+                    Ok(None) => {
+                        let _ = ctx_c.cache.put_lyrics_miss(&track_id);
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::LyricsResult {
+                            track_id,
+                            lyrics: None,
+                        }));
+                    }
+                    Err(e) => {
+                        warn!("Failed to fetch lyrics for {artist} - {title}: {e}");
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::LyricsResult {
+                            track_id,
+                            lyrics: None,
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        SetLyricOffset { track_id, offset_ms } => {
+            let _ = ctx.cache.set_lyric_offset(&track_id, offset_ms);
+            if let Ok(Some(Some(mut lrc))) = ctx.cache.get_lyrics(&track_id) {
+                lrc.offset_ms = offset_ms;
+                let _ = ctx.events_tx.send(protocol::event(EventBody::LyricsResult {
+                    track_id,
+                    lyrics: Some(Box::new(lrc)),
+                }));
+            }
+            return None;
+        }
+
+        LoadLocalLrc { track_id, lrc_content } => {
+            let (lines, offset_ms) = lyrics::parse_lrc(&lrc_content);
+            let synced = !lines.is_empty();
+            let lyrics = Lyrics {
+                track_id: track_id.clone(),
+                synced,
+                lines,
+                offset_ms,
+            };
+            let _ = ctx.cache.put_lyrics(&lyrics);
+            return Some(protocol::event(EventBody::LyricsResult {
+                track_id,
+                lyrics: Some(Box::new(lyrics)),
+            }));
+        }
+
+        SearchLyricsAgain { track_id, artist, title } => {
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                match lyrics::fetch_lrclib(
+                    &ctx_c.http,
+                    &track_id,
+                    &artist,
+                    &title,
+                    "",
+                    0,
+                )
+                .await
+                {
+                    Ok(Some(mut lrc)) => {
+                        if let Ok(offset) = ctx_c.cache.get_lyric_offset(&track_id) {
+                            lrc.offset_ms = offset;
+                        }
+                        let _ = ctx_c.cache.put_lyrics(&lrc);
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::LyricsResult {
+                            track_id,
+                            lyrics: Some(Box::new(lrc)),
+                        }));
+                    }
+                    _ => {
+                        let _ = ctx_c.cache.put_lyrics_miss(&track_id);
+                        let _ = ctx_c.events_tx.send(protocol::event(EventBody::LyricsResult {
+                            track_id,
+                            lyrics: None,
+                        }));
+                    }
+                }
+            });
+            return None;
+        }
+
+        GetArt { url, size } => {
+            // Answered asynchronously on the event stream (ArtReady / ArtFailed).
+            art::spawn_request(ctx.art.clone(), ctx.events_tx.clone(), url, size);
             return None;
         }
 
@@ -756,8 +1340,10 @@ mod tests {
         let spotify = SpotifyClient::new(None, None);
         Arc::new(DaemonContext {
             player,
-            cache,
+            cache: cache.clone(),
             spotify,
+            http: reqwest::Client::new(),
+            art: ArtFetcher::new(cache),
             events_tx: tx,
             login_cancel: Arc::new(Mutex::new(None)),
         })

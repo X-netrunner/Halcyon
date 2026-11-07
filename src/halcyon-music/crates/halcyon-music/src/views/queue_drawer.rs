@@ -1,5 +1,6 @@
 //! Slide-in Queue drawer showing Now Playing and upcoming queued songs.
 
+use crate::icons::{icon, Icon};
 use crate::theme::{format_duration, HalcyonPalette};
 use halcyon_music_core::state::PlayerState;
 use iced::widget::{button, column, container, row, scrollable, text, Space};
@@ -8,8 +9,8 @@ use iced::{Alignment, Element, Length};
 pub const QUEUE_DRAWER_WIDTH: f32 = 320.0;
 
 pub fn view<'a, Message: Clone + 'static>(
-    state: &PlayerState,
-    palette: &HalcyonPalette,
+    state: &'a PlayerState,
+    palette: HalcyonPalette,
     on_close: Message,
     on_dequeue: impl Fn(usize) -> Message + 'a,
 ) -> Element<'a, Message> {
@@ -21,7 +22,7 @@ pub fn view<'a, Message: Clone + 'static>(
         Space::with_width(8),
         text(format!("({queue_len})")).size(13).color(palette.text_muted),
         Space::with_width(Length::Fill),
-        button(text("󰅖").size(16).color(palette.text_muted))
+        button(icon(Icon::Close, 16.0, palette.text_muted))
             .on_press(on_close)
             .padding(4)
             .style(|_t, _s| button::Style::default()),
@@ -36,11 +37,19 @@ pub fn view<'a, Message: Clone + 'static>(
         list = list.push(text("Now Playing").size(12).color(palette.accent));
         let cur_card = container(
             row![
-                text("󰐊").size(14).color(palette.accent),
-                Space::with_width(8),
+                crate::art::cover(
+                    cur.art_url.as_deref(),
+                    halcyon_music_core::art::ArtSize::Small,
+                    40.0,
+                    6.0,
+                    Icon::Music,
+                    &cur.title,
+                    palette,
+                ),
+                Space::with_width(10),
                 column![
-                    text(&cur.title).size(13).color(palette.text),
-                    text(&cur.artist).size(11).color(palette.text_muted),
+                    text(super::ellipsize(&cur.title, 56)).size(13).color(palette.text),
+                    text(super::ellipsize(&cur.artist, 44)).size(11).color(palette.text_muted),
                 ],
                 Space::with_width(Length::Fill),
                 text(format_duration(cur.duration_ms)).size(11).color(palette.text_muted),
@@ -87,13 +96,13 @@ pub fn view<'a, Message: Clone + 'static>(
                     text(format!("{}", idx + 1)).size(11).color(palette.text_muted),
                     Space::with_width(8),
                     column![
-                        text(&track.title).size(12).color(palette.text),
-                        text(&track.artist).size(11).color(palette.text_muted),
+                        text(super::ellipsize(&track.title, 56)).size(12).color(palette.text),
+                        text(super::ellipsize(&track.artist, 44)).size(11).color(palette.text_muted),
                     ]
                     .width(Length::FillPortion(1)),
                     text(format_duration(track.duration_ms)).size(11).color(palette.text_muted),
                     Space::with_width(6),
-                    button(text("󰅖").size(12).color(palette.text_muted))
+                    button(icon(Icon::Close, 12.0, palette.text_muted))
                         .on_press(on_dequeue(idx))
                         .padding(2)
                         .style(|_t, _s| button::Style::default()),

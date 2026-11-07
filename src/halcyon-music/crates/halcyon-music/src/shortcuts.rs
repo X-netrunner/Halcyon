@@ -31,6 +31,8 @@ pub enum ShortcutAction {
     ToggleFullscreen,  // F
     Refresh,           // Ctrl+R
     ToggleHelp,        // ?
+    OffsetLyricsMinus, // [
+    OffsetLyricsPlus,  // ]
 }
 
 /// Match a keyboard key and active modifiers to a shortcut action.
@@ -87,6 +89,8 @@ pub fn match_shortcut(key: &Key, modifiers: Modifiers) -> Option<ShortcutAction>
             "q" | "Q" => Some(ShortcutAction::ToggleQueue),
             "f" | "F" => Some(ShortcutAction::ToggleFullscreen),
             "?" => Some(ShortcutAction::ToggleHelp),
+            "[" => Some(ShortcutAction::OffsetLyricsMinus),
+            "]" => Some(ShortcutAction::OffsetLyricsPlus),
             "1" => Some(ShortcutAction::NavigatePage(0)),
             "2" => Some(ShortcutAction::NavigatePage(1)),
             "3" => Some(ShortcutAction::NavigatePage(2)),
@@ -98,4 +102,40 @@ pub fn match_shortcut(key: &Key, modifiers: Modifiers) -> Option<ShortcutAction>
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iced::keyboard::key::Named;
+
+    #[test]
+    fn test_shortcuts_match() {
+        let no_mods = Modifiers::empty();
+        assert_eq!(
+            match_shortcut(&Key::Named(Named::Space), no_mods),
+            Some(ShortcutAction::PlayPause)
+        );
+        assert_eq!(
+            match_shortcut(&Key::Character("n".into()), no_mods),
+            Some(ShortcutAction::Next)
+        );
+        assert_eq!(
+            match_shortcut(&Key::Character("p".into()), no_mods),
+            Some(ShortcutAction::Previous)
+        );
+        assert_eq!(
+            match_shortcut(&Key::Character("f".into()), no_mods),
+            Some(ShortcutAction::ToggleFullscreen)
+        );
+        assert_eq!(
+            match_shortcut(&Key::Character("?".into()), no_mods),
+            Some(ShortcutAction::ToggleHelp)
+        );
+        assert_eq!(
+            match_shortcut(&Key::Character("1".into()), no_mods),
+            Some(ShortcutAction::NavigatePage(0))
+        );
+    }
+}
+
 
