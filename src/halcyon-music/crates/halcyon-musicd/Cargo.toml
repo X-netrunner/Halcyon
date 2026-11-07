@@ -1,6 +1,6 @@
 [package]
 name = "halcyon-musicd"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Halcyon Music daemon: owns playback, session, cache, play log"
 
@@ -9,7 +9,7 @@ name = "halcyon-musicd"
 path = "src/main.rs"
 
 [dependencies]
-halcyon-music-core = { version = "=0.1.0", path = "../halcyon-music-core" }
+halcyon-music-core = { version = "=0.2.0", path = "../halcyon-music-core" }
 tokio = { version = "=1.44.2", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "fs", "signal", "process"] }
 serde = { version = "=1.0.219", features = ["derive"] }
 serde_json = "=1.0.140"

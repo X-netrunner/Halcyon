@@ -1,6 +1,6 @@
 [package]
 name = "halcyon-music"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Halcyon Music GUI client (pure view; no Spotify session)"
 
@@ -9,7 +9,7 @@ name = "halcyon-music"
 path = "src/main.rs"
 
 [dependencies]
-halcyon-music-core = { version = "=0.1.0", path = "../halcyon-music-core" }
+halcyon-music-core = { version = "=0.2.0", path = "../halcyon-music-core" }
 # iced with tiny-skia and wgpu renderers, image/svg support, and tokio runtime
 iced = { version = "=0.13.1", features = ["tiny-skia", "wgpu", "tokio", "image", "svg", "canvas", "advanced"] }
 tokio = { version = "=1.44.2", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "process", "fs"] }

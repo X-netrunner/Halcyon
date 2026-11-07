@@ -85,7 +85,10 @@ async fn evaluate_probes_inner(client: &SpotifyClient, cache: &Cache, force: boo
         }
 
         // Run fresh probe
-        let probe = match client.probe(target.endpoint, target.family).await {
+        let outcome = client.probe(target.endpoint, target.family).await;
+        // A rate-limit wait says nothing about the endpoint: do not keep it as a 24 h answer.
+        let rate_limited = matches!(outcome, Err(crate::api::ApiError::RateLimited(_)));
+        let probe = match outcome {
             Ok(code) => {
                 let status = match code {
                     200 => ProbeStatus::Available,
@@ -114,7 +117,9 @@ async fn evaluate_probes_inner(client: &SpotifyClient, cache: &Cache, force: boo
             },
         };
 
-        let _ = cache.put_probe(&probe);
+        if !rate_limited {
+            let _ = cache.put_probe(&probe);
+        }
         results.push(probe);
     }
 

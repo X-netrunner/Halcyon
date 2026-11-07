@@ -50,6 +50,12 @@ use std::time::{Duration, Instant};
 
 pub fn main() -> iced::Result {
     let args: Vec<String> = std::env::args().collect();
+    // `--version` must answer before any window or daemon work: `halcyon-musicd --doctor` and the
+    // installer run it to compare the installed app with the installed daemon.
+    if args.iter().skip(1).any(|a| a == "--version" || a == "-V") {
+        println!("halcyon-music {}", halcyon_music_core::CORE_VERSION);
+        return Ok(());
+    }
     let perf_flag = args.iter().any(|a| a == "--perf");
 
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -489,10 +495,6 @@ impl HalcyonApp {
                         self.send(CommandBody::GetAuthStatus);
                         // An older daemon answers this with "not supported by this daemon version".
                         self.send(CommandBody::GetStreamingAuth);
-                        self.send(CommandBody::GetPlaylists {
-                            limit: Some(20),
-                            offset: Some(0),
-                        });
                         self.send(CommandBody::GetHomeFeed);
                     }
                     Task::none()
@@ -597,10 +599,6 @@ impl HalcyonApp {
                     EventBody::AuthSuccess { .. } => {
                         self.auth_reason = None;
                         self.send(CommandBody::GetAuthStatus);
-                        self.send(CommandBody::GetPlaylists {
-                            limit: Some(20),
-                            offset: Some(0),
-                        });
                         Task::none()
                     }
                     EventBody::PlaylistsResult {
@@ -680,6 +678,13 @@ impl HalcyonApp {
                         Task::none()
                     }
                     EventBody::DetailedSearchResults(results) => {
+                        if results.query != self.search_query
+                            || (!results.search_type.is_empty()
+                                && results.search_type != self.search_category.api_type())
+                            || results.offset != self.search_offset
+                        {
+                            return Task::none();
+                        }
                         if self.search_offset > 0 {
                             if let Some(existing) = self.search_results.as_mut() {
                                 existing.tracks.extend(results.tracks.clone());
@@ -1436,8 +1441,9 @@ impl HalcyonApp {
             NavPage::Recent => "Recently played",
         };
 
-        let badge_txt = if self.is_offline { "Offline (cached)" } else { "Online" };
-        let badge_color = if self.is_offline {
+        let connected = matches!(self.status, ConnStatus::Connected { .. });
+        let badge_txt = if !connected { "Reconnecting" } else if self.is_offline { "Cached library" } else { "Connected" };
+        let badge_color = if !connected || self.is_offline {
             self.palette.accent_secondary
         } else {
             self.palette.accent
@@ -1547,7 +1553,13 @@ impl HalcyonApp {
         .into()
     }
 
-    fn view_page_content(&self, user_id: Option<&str>) -> Element<'_, Message> {
+    fn view_page_content(&self, _user_id: Option<&str>) -> Element<'_, Message> {
+        // The account name when Spotify told us, otherwise a plain "Signed in".
+        let account_label = match &self.auth_status {
+            AuthStatus::LoggedIn { display_name: Some(name), .. } if !name.trim().is_empty() => name.clone(),
+            AuthStatus::LoggedIn { .. } => "Signed in".to_string(),
+            _ => "Not signed in".to_string(),
+        };
         match self.active_nav {
             NavPage::Home => views::home::view(
                 &self.home_feed,
@@ -1717,7 +1729,7 @@ impl HalcyonApp {
                 row![
                     text("Connected Account:").size(14).color(self.palette.text),
                     Space::with_width(8),
-                    text(user_id.unwrap_or("Unknown").to_string()).size(14).color(self.palette.accent),
+                    text(account_label).size(14).color(self.palette.accent),
                     Space::with_width(16),
                     button(text("Log out").size(13)).padding([8, 16]).style(views::solid(self.palette)).on_press(Message::Logout),
                 ]
