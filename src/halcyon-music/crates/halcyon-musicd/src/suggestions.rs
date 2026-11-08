@@ -222,7 +222,10 @@ pub async fn fetch_listenbrainz_fresh_releases(http: &reqwest::Client) -> Vec<(S
 
 #[derive(Debug, Deserialize)]
 struct DeezerChartResponse {
+    /// Shape of `/chart`.
     pub tracks: Option<DeezerTrackList>,
+    /// Shape of `/chart/<genre>/tracks`.
+    pub data: Option<Vec<DeezerTrack>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -254,14 +257,13 @@ pub async fn fetch_deezer_top_tracks(http: &reqwest::Client) -> Vec<(String, Str
     match resp {
         Ok(res) if res.status().is_success() => {
             if let Ok(parsed) = res.json::<DeezerChartResponse>().await {
-                if let Some(tracks) = parsed.tracks {
-                    if let Some(data) = tracks.data {
-                        return data
-                            .into_iter()
-                            .map(|t| (t.artist.name, t.title, t.duration.map(|d| d * 1000)))
-                            .take(20)
-                            .collect();
-                    }
+                let data = parsed.data.or_else(|| parsed.tracks.and_then(|t| t.data));
+                if let Some(data) = data {
+                    return data
+                        .into_iter()
+                        .map(|t| (t.artist.name, t.title, t.duration.map(|d| d * 1000)))
+                        .take(20)
+                        .collect();
                 }
             }
         }
@@ -269,6 +271,122 @@ pub async fn fetch_deezer_top_tracks(http: &reqwest::Client) -> Vec<(String, Str
     }
 
     Vec::new()
+}
+
+/// Genre charts offered as Made-for-you mixes: (Deezer genre id, label, mix id).
+const DEEZER_GENRES: &[(u32, &str, &str)] = &[
+    (132, "Pop", "pop"),
+    (116, "Hip-Hop", "hiphop"),
+    (152, "Rock", "rock"),
+    (113, "Dance", "dance"),
+    (165, "R&B", "rnb"),
+    (197, "Latin", "latin"),
+];
+
+/// Deezer's public chart for one genre (no key): `(artist, title, duration_ms)` rows.
+pub async fn fetch_deezer_genre_chart(
+    http: &reqwest::Client,
+    genre_id: u32,
+) -> Vec<(String, String, Option<u64>)> {
+    let url = format!("https://api.deezer.com/chart/{genre_id}/tracks?limit=20");
+    match http.get(url).timeout(Duration::from_secs(6)).send().await {
+        Ok(res) if res.status().is_success() => match res.json::<DeezerChartResponse>().await {
+            Ok(parsed) => parsed
+                .data
+                .or_else(|| parsed.tracks.and_then(|t| t.data))
+                .unwrap_or_default()
+                .into_iter()
+                .map(|t| (t.artist.name, t.title, t.duration.map(|d| d * 1000)))
+                .take(20)
+                .collect(),
+            Err(_) => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct DeezerAlbumList {
+    pub data: Option<Vec<DeezerAlbum>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeezerAlbum {
+    pub id: u64,
+    pub artist: DeezerArtist,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeezerAlbumTracks {
+    pub data: Option<Vec<DeezerAlbumTrack>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeezerAlbumTrack {
+    pub title: String,
+    pub duration: Option<u64>,
+    pub rank: Option<u64>,
+}
+
+/// Deezer's editorial "new releases": for each of the latest albums, its most popular song.
+/// Returns `(artist, title, duration_ms)` rows ready to be matched on Spotify.
+pub async fn fetch_deezer_new_release_songs(http: &reqwest::Client) -> Vec<(String, String, Option<u64>)> {
+    let albums = match http
+        .get("https://api.deezer.com/editorial/0/releases?limit=20")
+        .timeout(Duration::from_secs(6))
+        .send()
+        .await
+    {
+        Ok(res) if res.status().is_success() => match res.json::<DeezerAlbumList>().await {
+            Ok(list) => list.data.unwrap_or_default(),
+            Err(_) => return Vec::new(),
+        },
+        _ => return Vec::new(),
+    };
+
+    let mut out = Vec::new();
+    for album in albums.into_iter().take(14) {
+        let url = format!("https://api.deezer.com/album/{}/tracks?limit=25", album.id);
+        let Ok(res) = http.get(url).timeout(Duration::from_secs(6)).send().await else {
+            continue;
+        };
+        if !res.status().is_success() {
+            continue;
+        }
+        let Ok(list) = res.json::<DeezerAlbumTracks>().await else {
+            continue;
+        };
+        let best = list
+            .data
+            .unwrap_or_default()
+            .into_iter()
+            .max_by_key(|t| t.rank.unwrap_or(0));
+        if let Some(t) = best {
+            out.push((album.artist.name, t.title, t.duration.map(|d| d * 1000)));
+        }
+    }
+    out
+}
+
+/// Match outside `(artist, title, duration)` rows to Spotify songs, stopping at `want` matches
+/// or after `max_tries` lookups (matches are cached, so later builds are instant).
+async fn resolve_many(
+    spotify: &SpotifyClient,
+    cache: &Cache,
+    entries: Vec<(String, String, Option<u64>)>,
+    want: usize,
+    max_tries: usize,
+) -> Vec<Track> {
+    let mut out = Vec::new();
+    for (artist, title, dur) in entries.into_iter().take(max_tries) {
+        if out.len() >= want {
+            break;
+        }
+        if let Some(t) = resolve_outside_track(spotify, cache, &artist, &title, dur).await {
+            out.push(t);
+        }
+    }
+    out
 }
 
 // --- Diversity Rules Enforcer ---
@@ -554,9 +672,63 @@ pub async fn build_home_feed(
         }
     }
 
+    // (f) Hot new releases: the most popular song of each fresh album (Deezer editorial).
+    {
+        let entries = fetch_deezer_new_release_songs(http).await;
+        let resolved = resolve_many(spotify, cache, entries, 14, 16).await;
+        let tracks = filter_mix_tracks(resolved, 1, &mut global_seen_track_ids, &recent_24h_ids, true, 12);
+        if !tracks.is_empty() {
+            let art = tracks.first().and_then(|t| t.art_url.clone());
+            made_for_you.push(MusicMix {
+                id: "hot-new-releases".to_string(),
+                title: "Hot New Releases".to_string(),
+                description: "The lead song of this week's freshest albums and singles.".to_string(),
+                source: "Deezer".to_string(),
+                tracks,
+                art_url: art,
+            });
+        }
+    }
+
+    // (g) One chart mix per genre, so the shelf is not all one sound.
+    {
+        let mut set = tokio::task::JoinSet::new();
+        for &(gid, _, _) in DEEZER_GENRES {
+            let h = http.clone();
+            set.spawn(async move { (gid, fetch_deezer_genre_chart(&h, gid).await) });
+        }
+        let mut charts: std::collections::HashMap<u32, Vec<(String, String, Option<u64>)>> =
+            std::collections::HashMap::new();
+        while let Some(done) = set.join_next().await {
+            if let Ok((gid, rows)) = done {
+                charts.insert(gid, rows);
+            }
+        }
+        for &(gid, label, mix_id) in DEEZER_GENRES {
+            let rows = charts.remove(&gid).unwrap_or_default();
+            if rows.is_empty() {
+                continue;
+            }
+            let resolved = resolve_many(spotify, cache, rows, 10, 14).await;
+            let tracks = filter_mix_tracks(resolved, 2, &mut global_seen_track_ids, &recent_24h_ids, true, 10);
+            if tracks.is_empty() {
+                continue;
+            }
+            let art = tracks.first().and_then(|t| t.art_url.clone());
+            made_for_you.push(MusicMix {
+                id: format!("top-{mix_id}"),
+                title: format!("Top {label}"),
+                description: format!("What is charting in {label} right now."),
+                source: "Deezer".to_string(),
+                tracks,
+                art_url: art,
+            });
+        }
+    }
+
     // 5. Popular Right Now: Charts shelf
     let mut popular_charts = Vec::new();
-    if let Some(chart_mix) = made_for_you.iter().find(|m| m.source == "Deezer") {
+    if let Some(chart_mix) = made_for_you.iter().find(|m| m.id == "deezer-global-chart") {
         for t in &chart_mix.tracks {
             popular_charts.push(ShelfItem {
                 id: t.id.clone(),

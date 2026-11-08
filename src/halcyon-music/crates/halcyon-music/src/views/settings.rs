@@ -1,4 +1,4 @@
-//! Settings page: account, appearance, keyboard shortcuts.
+//! Settings page: account, appearance, diagnostics, keyboard shortcuts.
 
 use crate::icons::{icon, Icon};
 use crate::shortcuts::SHORTCUT_HELP;
@@ -59,6 +59,9 @@ pub fn view<'a, M: Clone + 'a>(
     on_cycle_mood: M,
     on_sign_out: M,
     on_spotify_settings: M,
+    has_error: bool,
+    on_open_diagnostics: M,
+    on_copy_diagnostics: M,
 ) -> Element<'a, M> {
     let account = card(
         "Account",
@@ -81,7 +84,7 @@ pub fn view<'a, M: Clone + 'a>(
             row![
                 column![
                     text("Mood").size(type_size::BODY).color(palette.text),
-                    text("Dusk, Dawn, Forest or Ocean. Each one is a different quiet room.")
+                    text("Wallpaper follows your desktop colours. Dusk, Dawn, Forest and Ocean are fixed rooms.")
                         .size(type_size::SMALL)
                         .color(palette.text_muted),
                 ]
@@ -105,6 +108,28 @@ pub fn view<'a, M: Clone + 'a>(
                 ),
             ]
             .align_y(Alignment::Center),
+        ]
+        .into(),
+        palette,
+    );
+
+    let status_line = if has_error {
+        "Something went wrong recently. Open the report to see what."
+    } else {
+        "Connection, sign-in and playback status, and the last error if there was one."
+    };
+    let diagnostics = card(
+        "Diagnostics",
+        column![
+            text(status_line)
+                .size(type_size::SMALL)
+                .color(if has_error { palette.danger } else { palette.text_muted }),
+            Space::with_height(space::MD),
+            row![
+                action("Open diagnostics", Some(Icon::Activity), palette, on_open_diagnostics),
+                action("Copy report", Some(Icon::Copy), palette, on_copy_diagnostics),
+            ]
+            .spacing(space::MD),
         ]
         .into(),
         palette,
@@ -134,6 +159,7 @@ pub fn view<'a, M: Clone + 'a>(
         text("Settings").size(type_size::HEADING + 6.0).color(palette.text),
         account,
         appearance,
+        diagnostics,
         shortcuts,
     ]
     .spacing(space::XL)

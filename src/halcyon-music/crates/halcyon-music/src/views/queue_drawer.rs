@@ -1,145 +1,164 @@
-//! Slide-in Queue drawer showing Now Playing and upcoming queued songs.
+//! Queue drawer: an open, borderless panel that dissolves into the page. The song playing now
+//! is a big glowing cover with a live equalizer under it; the songs coming up are airy rows with
+//! no boxes, stripes or outlines.
 
 use crate::icons::{icon, Icon};
-use crate::theme::{format_duration, HalcyonPalette};
+use crate::theme::{self, format_duration, HalcyonPalette};
 use halcyon_music_core::state::PlayerState;
 use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length};
 
-pub const QUEUE_DRAWER_WIDTH: f32 = 320.0;
+pub const QUEUE_DRAWER_WIDTH: f32 = 340.0;
 
+/// `clock` is the animation clock in seconds (drives the equalizer bars).
 pub fn view<'a, Message: Clone + 'static>(
     state: &'a PlayerState,
     palette: HalcyonPalette,
+    clock: f32,
     on_close: Message,
     on_dequeue: impl Fn(usize) -> Message + 'a,
 ) -> Element<'a, Message> {
-    let queue_len = state.queue.len();
-    let current_pos = state.queue_pos;
-
-    let header = row![
-        text("Play Queue").size(16).color(palette.text),
-        Space::with_width(8),
-        text(format!("({queue_len})")).size(13).color(palette.text_muted),
-        Space::with_width(Length::Fill),
-        button(icon(Icon::Close, 16.0, palette.text_muted))
-            .on_press(on_close)
-            .padding(4)
-            .style(|_t, _s| button::Style::default()),
-    ]
-    .align_y(Alignment::Center)
-    .padding([12, 16]);
-
-    let mut list = column![].spacing(6).padding([0, 12]);
-
-    // Now Playing section
-    if let Some(cur) = state.track.as_ref() {
-        list = list.push(text("Now Playing").size(12).color(palette.accent));
-        let cur_card = container(
-            row![
-                crate::art::cover(
-                    cur.art_url.as_deref(),
-                    halcyon_music_core::art::ArtSize::Small,
-                    40.0,
-                    6.0,
-                    Icon::Music,
-                    &cur.title,
-                    palette,
-                ),
-                Space::with_width(10),
-                column![
-                    text(super::ellipsize(&cur.title, 56)).size(13).color(palette.text),
-                    text(super::ellipsize(&cur.artist, 44)).size(11).color(palette.text_muted),
-                ],
-                Space::with_width(Length::Fill),
-                text(format_duration(cur.duration_ms)).size(11).color(palette.text_muted),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .padding(8)
-        .style(move |_t| container::Style {
-            background: Some(palette.surface_variant.into()),
-            border: iced::Border {
-                radius: 12.0.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        });
-
-        list = list.push(cur_card);
-        list = list.push(Space::with_height(12));
-    }
-
-    // Next in Queue
-    list = list.push(text("Next Up").size(12).color(palette.text_muted));
-
-    let upcoming_tracks: Vec<(usize, &halcyon_music_core::Track)> = state
+    let upcoming: Vec<(usize, &halcyon_music_core::Track)> = state
         .queue
         .iter()
         .enumerate()
-        .skip(current_pos + 1)
+        .skip(state.queue_pos + 1)
         .collect();
+    let up_count = upcoming.len();
 
-    if upcoming_tracks.is_empty() {
+    let header = row![
+        text("Queue").size(20).color(palette.text),
+        Space::with_width(Length::Fill),
+        button(icon(Icon::Close, 16.0, palette.text_muted))
+            .on_press(on_close)
+            .padding(8)
+            .style(crate::views::ghost(palette)),
+    ]
+    .align_y(Alignment::Center)
+    .padding(iced::Padding { top: 16.0, right: 14.0, bottom: 4.0, left: 24.0 });
+
+    let mut list = column![]
+        .spacing(2)
+        .width(Length::Fill)
+        .padding(iced::Padding { top: 0.0, right: 12.0, bottom: 28.0, left: 12.0 });
+
+    // Now playing: a large cover in a halo of its own colour, no frame around it.
+    if let Some(cur) = state.track.as_ref() {
+        let seed = cur.id.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32)) as f32 % 97.0;
+        let bass = crate::views::spectrum_level(1, 16, clock, seed, state.playing);
+        let cover = container(crate::art::cover(
+            cur.art_url.as_deref(),
+            halcyon_music_core::art::ArtSize::Large,
+            148.0 + 8.0 * bass,
+            22.0,
+            Icon::Music,
+            &cur.title,
+            palette,
+        ))
+        .style(move |_t| container::Style {
+            border: iced::Border { radius: 22.0.into(), ..Default::default() },
+            shadow: iced::Shadow {
+                color: theme::alpha(palette.glow, 0.30 + 0.20 * bass),
+                offset: iced::Vector::new(0.0, 6.0),
+                blur_radius: 36.0,
+            },
+            ..Default::default()
+        });
+        let eq = crate::views::equalizer(9, 3.0, 3.0, 16.0, clock, seed, state.playing, true, palette);
         list = list.push(
             container(
-                text("Queue is empty. Add songs from your library or search.")
-                    .size(12)
-                    .color(palette.text_muted),
+                column![
+                    container(cover).width(164).height(164).center_x(164).center_y(164),
+                    Space::with_height(12),
+                    text(super::ellipsize(&cur.title, 28)).size(16).color(palette.text),
+                    text(super::ellipsize(&cur.artist, 34)).size(13).color(palette.accent),
+                    Space::with_height(8),
+                    eq,
+                ]
+                .spacing(2)
+                .align_x(Alignment::Center),
             )
-            .padding(16),
+            .width(Length::Fill)
+            .center_x(Length::Fill)
+            .padding(iced::Padding { top: 8.0, right: 0.0, bottom: 18.0, left: 0.0 }),
+        );
+    }
+
+    list = list.push(
+        container(
+            text(if up_count == 1 { "Next up · 1 song".to_string() } else { format!("Next up · {up_count} songs") })
+                .size(12)
+                .color(palette.text_muted),
+        )
+        .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 6.0, left: 12.0 }),
+    );
+
+    if upcoming.is_empty() {
+        list = list.push(
+            container(
+                column![
+                    icon(Icon::Queue, 26.0, theme::alpha(palette.text_muted, 0.6)),
+                    Space::with_height(10),
+                    text("Nothing queued").size(14).color(palette.text),
+                    text("Songs you add will wait here.").size(12).color(palette.text_muted),
+                ]
+                .spacing(2)
+                .align_x(Alignment::Center),
+            )
+            .padding(24)
+            .width(Length::Fill)
+            .center_x(Length::Fill),
         );
     } else {
-        for (idx, track) in upcoming_tracks {
-            let item_row = container(
-                row![
-                    text(format!("{}", idx + 1)).size(11).color(palette.text_muted),
-                    Space::with_width(8),
-                    column![
-                        text(super::ellipsize(&track.title, 56)).size(12).color(palette.text),
-                        text(super::ellipsize(&track.artist, 44)).size(11).color(palette.text_muted),
-                    ]
-                    .width(Length::FillPortion(1)),
-                    text(format_duration(track.duration_ms)).size(11).color(palette.text_muted),
-                    Space::with_width(6),
-                    button(icon(Icon::Close, 12.0, palette.text_muted))
-                        .on_press(on_dequeue(idx))
-                        .padding(2)
-                        .style(|_t, _s| button::Style::default()),
+        for (n, (idx, track)) in upcoming.into_iter().enumerate() {
+            let rm = button(icon(Icon::Close, 12.0, theme::alpha(palette.text_muted, 0.55)))
+                .on_press(on_dequeue(idx))
+                .padding(6)
+                .style(crate::views::ghost(palette));
+            let line = row![
+                container(text(format!("{}", n + 1)).size(11).color(theme::alpha(palette.text_muted, 0.7)))
+                    .width(20)
+                    .center_x(20),
+                crate::art::cover(
+                    track.art_url.as_deref(),
+                    halcyon_music_core::art::ArtSize::Small,
+                    42.0,
+                    12.0,
+                    Icon::Music,
+                    &track.title,
+                    palette,
+                ),
+                Space::with_width(12),
+                column![
+                    text(super::ellipsize(&track.title, 28)).size(13).color(palette.text),
+                    text(super::ellipsize(&track.artist, 32)).size(11).color(palette.text_muted),
                 ]
-                .align_y(Alignment::Center),
-            )
-            .padding(6)
-            .style(move |_t| container::Style {
-                background: Some(iced::Color::TRANSPARENT.into()),
-                border: iced::Border {
-                    radius: 10.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
-
-            list = list.push(item_row);
+                .spacing(2)
+                .width(Length::Fill),
+                text(format_duration(track.duration_ms)).size(11).color(theme::alpha(palette.text_muted, 0.8)),
+                rm,
+            ]
+            .align_y(Alignment::Center)
+            .padding([6, 8]);
+            list = list.push(line);
         }
     }
 
+    // No fill of its own to speak of: a veil that grows from nothing at the left edge, so the
+    // drawer melts into the page instead of sitting on it as a box.
     container(
-        column![
-            header,
-            scrollable(list).height(Length::Fill).width(Length::Fill),
-        ]
-        .width(QUEUE_DRAWER_WIDTH)
-        .height(Length::Fill),
+        column![header, scrollable(list).height(Length::Fill).width(Length::Fill)]
+            .width(QUEUE_DRAWER_WIDTH)
+            .height(Length::Fill),
     )
     .width(QUEUE_DRAWER_WIDTH)
     .height(Length::Fill)
     .style(move |_t| container::Style {
-        background: Some(palette.card_background()),
-        border: iced::Border {
-            color: palette.soft_border(),
-            width: 1.0,
-            ..Default::default()
-        },
+        background: Some(theme::gradient2(
+            theme::alpha(palette.surface, 0.0),
+            theme::alpha(theme::mix(palette.surface, palette.glow, 0.06), 0.62),
+            false,
+        )),
         ..Default::default()
     })
     .into()

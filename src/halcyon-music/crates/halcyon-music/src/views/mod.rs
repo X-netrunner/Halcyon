@@ -18,8 +18,10 @@ pub mod sidebar;
 pub mod track_menu;
 pub mod titlebar;
 
+use crate::icons::{icon, Icon};
 use crate::theme::{self, HalcyonPalette};
-use iced::widget::{button, container, slider};
+use iced::widget::{button, container, row, slider, text, tooltip, Space};
+use iced::{Alignment, Element};
 
 /// Filled accent button for the few plain text actions (log in, go back...).
 /// A soft peach-to-rose gradient pill that glows a little when hovered.
@@ -39,9 +41,11 @@ pub fn solid(
         button::Style {
             background: Some(background),
             text_color: palette.on_accent(),
+            // A softly rounded rectangle, not a capsule: it sits calmer next to the cards.
             border: iced::Border {
-                radius: theme::radius::PILL.into(),
-                ..Default::default()
+                radius: theme::radius::MD.into(),
+                color: theme::alpha(palette.on_accent(), 0.10),
+                width: 1.0,
             },
             shadow,
             ..Default::default()
@@ -104,7 +108,7 @@ pub fn chip(
         border: iced::Border {
             color: theme::alpha(palette.accent, 0.30),
             width: 1.0,
-            radius: theme::radius::PILL.into(),
+            radius: 10.0.into(),
         },
         ..Default::default()
     }
@@ -143,6 +147,33 @@ pub fn tile(
     }
 }
 
+/// The Liked Songs "cover": a soft accent gradient square with a heart.
+pub fn liked_cover<'a, M: 'a>(
+    px: f32,
+    corner: f32,
+    palette: HalcyonPalette,
+) -> iced::Element<'a, M> {
+    container(crate::icons::icon(
+        crate::icons::Icon::Heart,
+        px * 0.42,
+        palette.on_accent(),
+    ))
+    .width(px)
+    .height(px)
+    .center_x(px)
+    .center_y(px)
+    .style(move |_t| container::Style {
+        background: Some(palette.accent_background()),
+        border: iced::Border {
+            radius: corner.into(),
+            ..Default::default()
+        },
+        shadow: palette.glow_shadow(0.25, 14.0),
+        ..Default::default()
+    })
+    .into()
+}
+
 /// Slim glowing slider (seek bar and volume): accent up to the handle, a faint track after,
 /// and a handle that only grows when it is hovered or dragged.
 pub fn slider_style(
@@ -174,6 +205,153 @@ pub fn slider_style(
             },
         }
     }
+}
+
+/// A round, quiet icon button with a label that appears as a tooltip. This replaces rows of
+/// text buttons wrapped in capsules: the icon is the button, the hover glow is its only chrome.
+/// `msg = None` draws it dimmed and inert.
+pub fn icon_action<'a, M: Clone + 'a>(
+    glyph: Icon,
+    label: &'static str,
+    palette: HalcyonPalette,
+    msg: Option<M>,
+) -> Element<'a, M> {
+    let tint = if msg.is_some() { palette.text } else { theme::alpha(palette.text_muted, 0.55) };
+    let mut b = button(
+        container(icon(glyph, 18.0, tint))
+            .width(40)
+            .height(40)
+            .center_x(40)
+            .center_y(40),
+    )
+    .padding(0)
+    .style(move |_t, status| {
+        let hot = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: Some(
+                if hot { theme::alpha(palette.accent, 0.16) } else { iced::Color::TRANSPARENT }.into(),
+            ),
+            text_color: tint,
+            border: iced::Border {
+                radius: 20.0.into(),
+                color: if hot { theme::alpha(palette.accent, 0.35) } else { iced::Color::TRANSPARENT },
+                width: 1.0,
+            },
+            ..Default::default()
+        }
+    });
+    if let Some(m) = msg {
+        b = b.on_press(m);
+    }
+    tooltip(
+        b,
+        container(text(label).size(theme::type_size::SMALL).color(palette.text))
+            .padding([5, 10])
+            .style(move |_t| container::Style {
+                background: Some(palette.surface_variant.into()),
+                border: iced::Border {
+                    color: palette.soft_border(),
+                    width: 1.0,
+                    radius: theme::radius::SM.into(),
+                },
+                ..Default::default()
+            }),
+        tooltip::Position::Bottom,
+    )
+    .gap(6)
+    .into()
+}
+
+/// The one big round play button: accent gradient, a glow that follows the hover, and the
+/// glyph centred. `msg = None` dims it.
+pub fn play_orb<'a, M: Clone + 'a>(
+    glyph: Icon,
+    size: f32,
+    palette: HalcyonPalette,
+    msg: Option<M>,
+) -> Element<'a, M> {
+    let enabled = msg.is_some();
+    let mut b = button(
+        container(icon(glyph, size * 0.42, palette.on_accent()))
+            .width(size)
+            .height(size)
+            .center_x(size)
+            .center_y(size),
+    )
+    .padding(0)
+    .style(move |_t, status| {
+        let shadow = match status {
+            button::Status::Hovered => palette.glow_shadow(0.60, 30.0),
+            button::Status::Pressed => palette.glow_shadow(0.30, 12.0),
+            _ => palette.glow_shadow(0.32, 18.0),
+        };
+        button::Style {
+            background: Some(if enabled {
+                palette.accent_background()
+            } else {
+                iced::Background::Color(theme::alpha(palette.accent, 0.35))
+            }),
+            border: iced::Border { radius: (size / 2.0).into(), ..Default::default() },
+            shadow: if enabled { shadow } else { iced::Shadow::default() },
+            ..Default::default()
+        }
+    });
+    if let Some(m) = msg {
+        b = b.on_press(m);
+    }
+    b.into()
+}
+
+/// A pseudo-spectrum level for bar `i` of `n` (0.06 ..= 1.0). The GUI is a pure view and never
+/// sees the audio, so the bars are layered sine waves driven by `clock` (seconds) and a
+/// per-song `seed`: they dance while music plays and settle flat when it is paused.
+pub fn spectrum_level(i: usize, n: usize, clock: f32, seed: f32, playing: bool) -> f32 {
+    if !playing {
+        return 0.06;
+    }
+    let x = i as f32 / n.max(1) as f32;
+    let a = (clock * 2.1 + x * 9.0 + seed).sin();
+    let b = (clock * 3.7 - x * 5.0 + seed * 1.7).sin();
+    let c = (clock * 1.3 + x * 17.0).sin();
+    let v = 0.5 + 0.5 * (0.55 * a + 0.30 * b + 0.15 * c);
+    // The low end hits harder than the high end, like a real spectrum.
+    let tilt = 1.0 - 0.45 * x;
+    (v * v * tilt).clamp(0.06, 1.0)
+}
+
+/// A row of animated bars. `mirrored` grows them from the middle line (a visualizer);
+/// otherwise they grow from the bottom (a little equalizer icon).
+#[allow(clippy::too_many_arguments)]
+pub fn equalizer<'a, M: 'a>(
+    bars: usize,
+    bar_w: f32,
+    gap: f32,
+    max_h: f32,
+    clock: f32,
+    seed: f32,
+    playing: bool,
+    mirrored: bool,
+    palette: HalcyonPalette,
+) -> Element<'a, M> {
+    let mut r = row![].spacing(gap).align_y(Alignment::Center);
+    for i in 0..bars {
+        let lvl = spectrum_level(i, bars, clock, seed, playing);
+        let h = (max_h * lvl).max(3.0);
+        let t = i as f32 / bars.max(1) as f32;
+        let base = theme::mix(palette.accent, palette.accent_secondary, t);
+        let bar = container(Space::new(bar_w, h)).style(move |_t| container::Style {
+            background: Some(theme::gradient2(base, theme::alpha(base, 0.35), true)),
+            border: iced::Border { radius: (bar_w / 2.0).into(), ..Default::default() },
+            ..Default::default()
+        });
+        let slot = if mirrored {
+            container(bar).height(max_h).center_y(max_h)
+        } else {
+            container(bar).height(max_h).align_y(iced::alignment::Vertical::Bottom)
+        };
+        r = r.push(slot);
+    }
+    r.into()
 }
 
 /// Shorten `s` to at most `max` characters, ending in "…" when it was cut.

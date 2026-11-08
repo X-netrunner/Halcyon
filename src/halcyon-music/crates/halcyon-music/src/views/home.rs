@@ -14,14 +14,17 @@ pub fn view<'a, Message: Clone + 'static>(
     feed: &'a HomeFeed,
     palette: HalcyonPalette,
     density: Density,
+    liked_tracks: &'a [Track],
     on_play_track: impl Fn(Track) -> Message + 'a + Copy,
     on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
     on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
     on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
     on_play_mix: impl Fn(Vec<Track>, String) -> Message + 'a + Copy,
     on_save_mix: impl Fn(String, Vec<String>) -> Message + 'a + Copy,
+    on_open_mix: impl Fn(String) -> Message + 'a + Copy,
     on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
     shimmer: f32,
+    progress: f32,
 ) -> Element<'a, Message> {
     let mut page = column![].spacing(28).padding([16, 24]);
 
@@ -52,6 +55,9 @@ pub fn view<'a, Message: Clone + 'static>(
         .align_y(Alignment::Center),
     );
 
+    // Liked Songs is a playlist that is always pinned to the top of Home.
+    page = page.push(view_liked_pin(liked_tracks, palette, on_play_context, on_navigate));
+
     // Nothing has arrived yet: show grey placeholders instead of a blank page.
     if feed.quick_picks.is_empty() && feed.jump_back_in.is_empty() && feed.made_for_you.is_empty() {
         page = page.push(view_skeleton(palette, shimmer));
@@ -67,6 +73,7 @@ pub fn view<'a, Message: Clone + 'static>(
             on_play_playlist,
             on_open_playlist,
             on_play_mix,
+            on_open_mix,
             on_navigate,
         ));
     }
@@ -93,6 +100,8 @@ pub fn view<'a, Message: Clone + 'static>(
             density,
             on_play_mix,
             on_save_mix,
+            on_open_mix,
+            progress,
         ));
     }
 
@@ -150,6 +159,86 @@ pub fn view<'a, Message: Clone + 'static>(
 }
 
 /// Grey blocks in the shape of the quick picks and one shelf.
+/// The pinned Liked Songs playlist: one wide card, always first on Home.
+fn view_liked_pin<'a, Message: Clone + 'static>(
+    liked: &'a [Track],
+    palette: HalcyonPalette,
+    on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
+    on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
+) -> Element<'a, Message> {
+    let subtitle = if liked.is_empty() {
+        "Your favourite songs".to_string()
+    } else {
+        format!("Playlist · {} songs", liked.len())
+    };
+
+    let body = button(
+        row![
+            crate::views::liked_cover(72.0, 16.0, palette),
+            Space::with_width(16),
+            column![
+                text("Liked Songs").size(22).color(palette.text),
+                text(subtitle).size(13).color(palette.text_muted),
+            ]
+            .spacing(4)
+            .width(Length::Fill),
+            container(text("Pinned").size(11).color(palette.accent))
+                .padding([4, 10])
+                .style(crate::views::chip(palette)),
+        ]
+        .align_y(Alignment::Center)
+        .padding([10, 14]),
+    )
+    .width(Length::Fill)
+    .on_press(on_navigate(NavPage::Liked))
+    .style(move |_t, _s| button::Style::default());
+
+    // Plays the whole playlist; before the songs have loaded it just opens the page.
+    let play_msg = if liked.is_empty() {
+        on_navigate(NavPage::Liked)
+    } else {
+        on_play_context(liked.to_vec(), 0)
+    };
+    let play_btn = button(
+        container(icon(Icon::Play, 20.0, palette.on_accent()))
+            .width(46)
+            .height(46)
+            .center_x(46)
+            .center_y(46),
+    )
+    .padding(0)
+    .on_press(play_msg)
+    .style(move |_t, s| button::Style {
+        background: Some(palette.accent_background()),
+        border: iced::Border { radius: 23.0.into(), ..Default::default() },
+        shadow: if s == button::Status::Hovered {
+            palette.glow_shadow(0.55, 26.0)
+        } else {
+            palette.glow_shadow(0.30, 16.0)
+        },
+        ..Default::default()
+    });
+
+    container(row![body, play_btn, Space::with_width(18)].align_y(Alignment::Center))
+        .width(Length::Fill)
+        .style(move |_t| container::Style {
+            // A little more colour than a normal card, so it reads as the pinned one.
+            background: Some(crate::theme::gradient2(
+                crate::theme::mix(palette.surface, palette.accent, 0.20),
+                crate::theme::mix(palette.surface, palette.accent_secondary, 0.06),
+                false,
+            )),
+            border: iced::Border {
+                color: crate::theme::alpha(palette.accent, 0.30),
+                width: 1.0,
+                radius: 24.0.into(),
+            },
+            shadow: palette.glow_shadow(0.16, 24.0),
+            ..Default::default()
+        })
+        .into()
+}
+
 fn view_skeleton<'a, Message: 'a>(palette: HalcyonPalette, shimmer: f32) -> Element<'a, Message> {
     // One slow breath: 0.45 -> 0.8 -> 0.45 opacity over the phase.
     let pulse = 0.45 + 0.35 * (0.5 + 0.5 * (shimmer * std::f32::consts::TAU).sin());
@@ -201,10 +290,13 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
     on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
     on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
     on_play_mix: impl Fn(Vec<Track>, String) -> Message + 'a + Copy,
+    on_open_mix: impl Fn(String) -> Message + 'a + Copy,
     on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
 ) -> Element<'a, Message> {
     let mut grid = column![].spacing(10);
-    let chunks: Vec<&[QuickPick]> = picks.chunks(3).collect();
+    // Liked Songs has its own pinned card at the top of the page, so it is left out here.
+    let picks: Vec<&QuickPick> = picks.iter().filter(|p| p.id != "liked-songs").collect();
+    let chunks: Vec<&[&QuickPick]> = picks.chunks(3).collect();
 
     for row_picks in chunks.into_iter().take(2) {
         let mut r = row![].spacing(12).width(Length::Fill);
@@ -215,12 +307,12 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
             let is_liked = item.id == "liked-songs";
             let is_mix = !is_liked && !tracks.is_empty();
 
-            // Clicking the tile opens it (a playlist's song list, the Liked page); a mix has no
-            // page, so it plays. The round play button always plays straight away.
+            // Clicking the tile opens it (a playlist's or a mix's song list, the Liked page).
+            // The round play button always plays straight away.
             let open_msg = if is_liked {
                 on_navigate(NavPage::Liked)
             } else if is_mix {
-                on_play_mix(tracks.clone(), title.clone())
+                on_open_mix(item.id.clone())
             } else {
                 on_open_playlist(item.id.clone())
             };
@@ -389,132 +481,176 @@ fn view_shelf<'a, Message: Clone + 'static>(
         .into()
 }
 
-/// Made-For-You Mixes shelf with One-Click Play & Save buttons.
+/// Width of one Made-for-you card, and the padding inside it.
+const MIX_W: f32 = 196.0;
+const MIX_PAD: f32 = 10.0;
+
+/// The picture of a mix: a 2x2 mosaic of its first four different covers, or the mix's own
+/// cover when there are fewer than four.
+fn mix_cover<'a, Message: 'a>(mix: &MusicMix, px: f32, palette: HalcyonPalette) -> Element<'a, Message> {
+    let mut uniq: Vec<&str> = Vec::new();
+    for u in mix.tracks.iter().filter_map(|t| t.art_url.as_deref()) {
+        if !uniq.contains(&u) {
+            uniq.push(u);
+        }
+        if uniq.len() == 4 {
+            break;
+        }
+    }
+    let (a, b, c, d) = match uniq.as_slice() {
+        [a, b, c, d, ..] => (*a, *b, *c, *d),
+        _ => {
+            return crate::art::cover(
+                mix.art_url.as_deref(),
+                halcyon_music_core::art::ArtSize::Small,
+                px,
+                14.0,
+                Icon::Music,
+                &mix.title,
+                palette,
+            );
+        }
+    };
+    let gap = 4.0;
+    let tile = (px - gap) / 2.0;
+    let one = |u: &str| -> Element<'a, Message> {
+        crate::art::cover(
+            Some(u),
+            halcyon_music_core::art::ArtSize::Small,
+            tile,
+            8.0,
+            Icon::Music,
+            &mix.title,
+            palette,
+        )
+    };
+    column![
+        row![one(a), one(b)].spacing(gap),
+        row![one(c), one(d)].spacing(gap),
+    ]
+    .spacing(gap)
+    .into()
+}
+
+/// "Made for you by Halcyon": a shelf of cover cards. Each card has a Play button and a Save
+/// button over its cover; clicking the card itself opens the mix as a playlist page so the songs
+/// can be seen first. `progress` (0..1, the page-entrance clock) makes the cards rise in turn.
+#[allow(clippy::too_many_arguments)]
 fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
     mixes: &'a [MusicMix],
     palette: HalcyonPalette,
     _density: Density,
     on_play_mix: impl Fn(Vec<Track>, String) -> Message + 'a + Copy,
     on_save_mix: impl Fn(String, Vec<String>) -> Message + 'a + Copy,
+    on_open_mix: impl Fn(String) -> Message + 'a + Copy,
+    progress: f32,
 ) -> Element<'a, Message> {
     let header = column![
         row![
+            icon(Icon::Sparkles, 16.0, palette.accent),
+            Space::with_width(8),
             text("Made for you").size(18).color(palette.text),
             Space::with_width(8),
             text("by Halcyon").size(13).color(palette.accent),
         ]
         .align_y(Alignment::Center),
-        text("Mixes generated by local listening history and open recommendations")
+        text("Top songs, hot new releases and mixes across genres, plus what you keep on loop")
             .size(12)
             .color(palette.text_muted),
     ]
     .spacing(2);
 
-    let mut mix_row = row![].spacing(16);
+    let cover_px = MIX_W - MIX_PAD * 2.0;
+    let mut mix_row = row![].spacing(16).padding([4, 0]);
 
-    for mix in mixes {
+    for (i, mix) in mixes.iter().enumerate() {
+        let track_count = mix.tracks.len();
+        let uris: Vec<String> = mix.tracks.iter().map(|t| t.uri.clone()).collect();
         let tracks = mix.tracks.clone();
-        let track_count = tracks.len();
-        let title_clone = mix.title.clone();
-        let title_for_save = mix.title.clone();
-        let uris: Vec<String> = tracks.iter().map(|t| t.uri.clone()).collect();
 
-        // Source badge color
-        let badge_bg = match mix.source.as_str() {
+        // Where the songs came from: a small coloured dot and the name, not a boxed badge.
+        let dot_color = match mix.source.as_str() {
             "ListenBrainz" => Color::from_rgb8(235, 116, 52),
-            "Deezer" => Color::from_rgb8(155, 89, 182),
+            "Deezer" => Color::from_rgb8(176, 110, 214),
             "Spotify" => Color::from_rgb8(30, 215, 96),
             _ => palette.accent,
         };
-
-        let card = container(
-            column![
-                // Card header with source attribution badge
-                row![
-                    container(text(&mix.source).size(10).color(Color::WHITE))
-                        .padding([2, 8])
-                        .style(move |_t| container::Style {
-                            background: Some(badge_bg.into()),
-                            border: iced::Border {
-                                radius: 14.0.into(),
-                                ..Default::default()
-                            },
-                            ..Default::default()
-                        }),
-                    Space::with_width(Length::Fill),
-                    text(format!("{track_count} tracks")).size(11).color(palette.text_muted),
-                ]
-                .align_y(Alignment::Center),
-                Space::with_height(10),
-                text(&mix.title).size(16).color(palette.text),
-                Space::with_height(4),
-                text(&mix.description)
-                    .size(11)
-                    .color(palette.text_muted),
-                Space::with_height(14),
-                // Action Buttons: Play Mix & Save as Playlist
-                row![
-                    button(
-                        row![
-                            icon(Icon::Play, 14.0, palette.background),
-                            Space::with_width(6),
-                            text("Play").size(12).color(palette.background),
-                        ]
-                        .align_y(Alignment::Center),
-                    )
-                    .on_press(on_play_mix(tracks, title_clone))
-                    .padding([6, 14])
-                    .style(move |_t, _s| button::Style {
-                        background: Some(palette.accent_background()),
-                        border: iced::Border {
-                            radius: 20.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }),
-                    Space::with_width(8),
-                    button(
-                        row![
-                            icon(Icon::Settings, 13.0, palette.text),
-                            Space::with_width(6),
-                            text("Save").size(12).color(palette.text),
-                        ]
-                        .align_y(Alignment::Center),
-                    )
-                    .on_press(on_save_mix(title_for_save, uris))
-                    .padding([6, 12])
-                    .style(move |_t, s| button::Style {
-                        background: Some(
-                            if s == button::Status::Hovered {
-                                palette.surface_variant
-                            } else {
-                                palette.border
-                            }
-                            .into(),
-                        ),
-                        border: iced::Border {
-                            radius: 20.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }),
-                ]
-                .align_y(Alignment::Center),
-            ]
-            .width(220)
-            .padding(14),
-        )
-        .style(move |_t| container::Style {
-            background: Some(palette.card_background()),
-            border: iced::Border {
-                radius: 18.0.into(),
-                width: 1.0,
-                color: palette.soft_border(),
-            },
+        let dot = container(Space::new(6, 6)).style(move |_t| container::Style {
+            background: Some(dot_color.into()),
+            border: iced::Border { radius: 3.0.into(), ..Default::default() },
             ..Default::default()
         });
 
-        mix_row = mix_row.push(card);
+        let info = column![
+            Space::with_height(10),
+            text(super::ellipsize(&mix.title, 22)).size(14).color(palette.text),
+            row![
+                dot,
+                Space::with_width(6),
+                text(format!("{} · {} songs", mix.source, track_count))
+                    .size(11)
+                    .color(palette.text_muted),
+            ]
+            .align_y(Alignment::Center),
+            text(super::ellipsize(&mix.description, 54))
+                .size(11)
+                .color(crate::theme::alpha(palette.text_muted, 0.85))
+                .width(Length::Fill),
+        ]
+        .spacing(3)
+        .width(Length::Fixed(cover_px));
+
+        let card_btn = button(column![mix_cover(mix, cover_px, palette), info])
+            .width(MIX_W)
+            .padding(MIX_PAD)
+            .on_press(on_open_mix(mix.id.clone()))
+            .style(crate::views::tile(palette, 18.0));
+
+        // Round Save and Play buttons sit on the corner of the cover.
+        let save_btn = button(
+            container(icon(Icon::Plus, 16.0, Color::WHITE))
+                .width(34)
+                .height(34)
+                .center_x(34)
+                .center_y(34),
+        )
+        .padding(0)
+        .on_press(on_save_mix(mix.title.clone(), uris))
+        .style(move |_t, status| {
+            let hot = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(Color { a: if hot { 0.78 } else { 0.55 }, ..Color::BLACK }.into()),
+                border: iced::Border {
+                    color: Color { a: 0.28, ..Color::WHITE },
+                    width: 1.0,
+                    radius: 17.0.into(),
+                },
+                ..Default::default()
+            }
+        });
+        let play_btn = crate::views::play_orb(Icon::Play, 40.0, palette, Some(on_play_mix(tracks, mix.title.clone())));
+
+        let overlay = container(row![save_btn, play_btn].spacing(8).align_y(Alignment::Center))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .padding(iced::Padding {
+                top: MIX_PAD + cover_px - 40.0 - 8.0,
+                right: MIX_PAD + 8.0,
+                bottom: 0.0,
+                left: 0.0,
+            });
+        let card = iced::widget::stack![card_btn, overlay];
+
+        // Cards rise into place one after another while the page settles.
+        let p = ((progress * 1.6) - i as f32 * 0.12).clamp(0.0, 1.0);
+        let off = (1.0 - crate::animation::Easing::EaseOutCubic.apply(p)) * 16.0;
+        mix_row = mix_row.push(container(card).padding(iced::Padding {
+            top: off,
+            right: 0.0,
+            bottom: 16.0 - off,
+            left: 0.0,
+        }));
     }
 
     let mix_scroll = scrollable(mix_row).direction(scrollable::Direction::Horizontal(
@@ -580,20 +716,12 @@ fn view_capsule_card<'a, Message: Clone + 'static>(
             ]
             .width(Length::Fill),
             // Right button
-            button("Open Capsule")
+            // The label had no colour of its own and fell back to black on the dark card.
+            // The accent pill gives it a fill and a text colour that always contrast.
+            button(text("Open Capsule").size(13))
                 .on_press(on_navigate(NavPage::Capsule))
-                .padding([8, 16])
-                .style(move |_t, s| button::Style {
-                    background: Some(
-                        if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
-                        .into(),
-                    ),
-                    border: iced::Border {
-                        radius: 20.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }),
+                .padding([8, 18])
+                .style(crate::views::solid(palette)),
         ]
         .align_y(Alignment::Center)
         .padding(18),

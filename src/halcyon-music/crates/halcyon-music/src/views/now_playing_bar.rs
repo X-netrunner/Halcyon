@@ -1,4 +1,5 @@
-//! Bottom Now-Playing transport bar.
+//! Bottom Now-Playing transport bar. It has no background of its own: it shares the frame
+//! (see `HalcyonApp::view`) with the sidebar.
 
 use crate::icons::{icon, Icon};
 use crate::theme::{format_duration, HalcyonPalette};
@@ -19,10 +20,10 @@ pub fn view<'a, Message: Clone + 'static>(
     on_toggle_shuffle: Message,
     on_cycle_repeat: Message,
     on_toggle_queue: Message,
-    on_toggle_lyrics: Message,
+    _on_toggle_lyrics: Message,
     on_toggle_fullscreen: Message,
     on_toggle_like: Message,
-    lyrics_open: bool,
+    _lyrics_open: bool,
     queue_open: bool,
 ) -> Element<'a, Message> {
     let track = state.track.as_ref();
@@ -139,15 +140,6 @@ pub fn view<'a, Message: Clone + 'static>(
         .padding(6)
         .style(crate::views::ghost(palette));
 
-    let lyrics_btn = tooltip(
-        button(icon(Icon::Lyrics, 16.0, if lyrics_open { palette.accent } else { palette.text_muted }))
-            .on_press(on_toggle_lyrics)
-            .padding(6)
-            .style(crate::views::ghost(palette)),
-        text("Lyrics").size(12),
-        tooltip::Position::Top,
-    );
-
     let transport_row = row![
         shuffle_btn,
         Space::with_width(8),
@@ -158,8 +150,6 @@ pub fn view<'a, Message: Clone + 'static>(
         next_btn,
         Space::with_width(8),
         repeat_btn,
-        Space::with_width(crate::theme::space::LG),
-        lyrics_btn,
     ]
     .align_y(Alignment::Center);
 
@@ -227,35 +217,19 @@ pub fn view<'a, Message: Clone + 'static>(
     .align_y(Alignment::Center)
     .width(Length::FillPortion(3));
 
-    let bar = container(
+    // No fill, border or shadow of its own: the bar sits on the same frame as the sidebar, so
+    // the two read as one surface. The cover lines up with the sidebar's icon column.
+    container(
         row![left, center, right]
             .align_y(Alignment::Center)
-            .padding([crate::theme::space::MD, crate::theme::space::XL]),
+            .padding(iced::Padding {
+                top: crate::theme::space::SM,
+                right: crate::theme::space::XL,
+                bottom: crate::theme::space::MD,
+                left: 12.0,
+            }),
     )
     .width(Length::Fill)
     .height(88)
-    .style(move |_theme| container::Style {
-        background: Some(crate::theme::gradient2(
-            crate::theme::alpha(crate::theme::mix(palette.surface, palette.glow, 0.10), 0.96),
-            crate::theme::alpha(palette.surface, 0.94),
-            true,
-        )),
-        border: iced::Border {
-            color: palette.soft_border(),
-            width: 1.0,
-            radius: crate::theme::radius::XL.into(),
-        },
-        shadow: iced::Shadow {
-            color: crate::theme::alpha(iced::Color::BLACK, if palette.is_light() { 0.10 } else { 0.40 }),
-            offset: iced::Vector::new(0.0, 10.0),
-            blur_radius: 32.0,
-        },
-        ..Default::default()
-    });
-
-    // The bar floats: a margin of page all around it.
-    container(bar)
-        .width(Length::Fill)
-        .padding(iced::Padding { top: 4.0, right: 12.0, bottom: 12.0, left: 12.0 })
-        .into()
+    .into()
 }
