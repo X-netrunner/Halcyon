@@ -1,9 +1,11 @@
 //! Two same-size pictures laid over each other for a cross-fade.
 //!
-//! `iced::widget::stack` is not used for this: a stacked layer is not clipped by the scroll
-//! area around it, so while a card was changing its cover the new picture was drawn over the
-//! player bar. This widget draws both pictures in one layer that is cut to the visible part of
-//! the card (its own bounds crossed with the viewport the parent passes down).
+//! `iced::widget::stack` is not used for this, and neither is a layer of our own: iced draws
+//! every extra layer after the whole window, and a layer's clip is only as good as the viewport
+//! the parent hands down. If that is ever too wide, the new picture lands on top of the player
+//! bar while a card changes its cover. So both pictures are drawn into the layer the parent is
+//! already drawing in (which the scroll area and the page card have already clipped). Images
+//! in one layer are drawn in the order they are submitted, so `above` stays over `below`.
 
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::renderer;
@@ -60,15 +62,16 @@ where
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        let Some(clip) = layout.bounds().intersection(viewport) else { return };
+        // Nothing of the card is visible: draw nothing at all.
+        if layout.bounds().intersection(viewport).is_none() {
+            return;
+        }
         let mut kids = layout.children();
         let (Some(a_layout), Some(b_layout)) = (kids.next(), kids.next()) else { return };
         let mut trees = tree.children.iter();
         let (Some(a_tree), Some(b_tree)) = (trees.next(), trees.next()) else { return };
-        renderer.with_layer(clip, |renderer| {
-            self.below.as_widget().draw(a_tree, renderer, theme, style, a_layout, cursor, &clip);
-            self.above.as_widget().draw(b_tree, renderer, theme, style, b_layout, cursor, &clip);
-        });
+        self.below.as_widget().draw(a_tree, renderer, theme, style, a_layout, cursor, viewport);
+        self.above.as_widget().draw(b_tree, renderer, theme, style, b_layout, cursor, viewport);
     }
 }
 

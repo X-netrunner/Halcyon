@@ -1,7 +1,7 @@
 //! Account circle (profile picture or initial) and its dropdown menu.
 
 use crate::icons::{icon, Icon};
-use crate::theme::{radius, space, type_size, HalcyonPalette};
+use crate::theme::{alpha, radius, space, type_size, HalcyonPalette};
 use halcyon_music_core::art::ArtSize;
 use iced::widget::{button, column, container, mouse_area, row, stack, text, Space};
 use iced::{Alignment, Element, Length, Padding};
@@ -107,26 +107,45 @@ fn item<'a, M: Clone + 'a>(
         .into()
 }
 
-/// The dropdown card: name, Settings, Spotify Settings, Sign out.
+/// A small pill with the plan ("Premium" / "Free").
+fn plan_chip<'a, M: 'a>(plan: String, palette: HalcyonPalette) -> Element<'a, M> {
+    container(text(plan).size(type_size::CAPTION).color(palette.accent))
+        .padding([1, 7])
+        .style(move |_t| container::Style {
+            background: Some(alpha(palette.accent, 0.14).into()),
+            border: iced::Border { radius: radius::SM.into(), ..Default::default() },
+            ..Default::default()
+        })
+        .into()
+}
+
+/// The dropdown card: avatar, name, `@username` with the plan, where this app is connected, then
+/// Settings, Spotify Settings, Sign out.
+#[allow(clippy::too_many_arguments)]
 pub fn menu_card<'a, M: Clone + 'a>(
     name: String,
+    handle: Option<String>,
+    plan: Option<String>,
+    device_line: String,
     image_url: Option<&str>,
     palette: HalcyonPalette,
     on_settings: M,
     on_spotify_settings: M,
     on_sign_out: M,
 ) -> Element<'a, M> {
-    let header = row![
-        avatar(&name, image_url, 36.0, palette),
-        Space::with_width(space::MD),
-        column![
-            text(name.clone()).size(type_size::BODY).color(palette.text),
-            text("Spotify account").size(type_size::CAPTION).color(palette.text_muted),
-        ]
-        .spacing(2),
-    ]
-    .align_y(Alignment::Center)
-    .padding([space::SM, space::MD]);
+    let mut who = column![text(name.clone()).size(type_size::BODY).color(palette.text)].spacing(2);
+    let mut second = row![].spacing(space::SM).align_y(Alignment::Center);
+    if let Some(h) = handle {
+        second = second.push(text(h).size(type_size::CAPTION).color(palette.text_muted));
+    }
+    if let Some(p) = plan {
+        second = second.push(plan_chip(p, palette));
+    }
+    who = who.push(second);
+    who = who.push(text(device_line).size(type_size::CAPTION).color(palette.text_muted));
+    let header = row![avatar(&name, image_url, 36.0, palette), Space::with_width(space::MD), who]
+        .align_y(Alignment::Center)
+        .padding([space::SM, space::MD]);
 
     let divider = container(Space::with_height(1))
         .width(Length::Fill)

@@ -346,9 +346,10 @@ mod tests {
     #[test]
     fn completion_rate_is_a_share_of_all_plays() {
         let s = summary();
-        // 30 + 11 + 6 completed of 52 plays (the skipped Pulse plays and Drift's partial plays are not).
-        assert_eq!(s.completion_rate, round2(47.0 / 52.0));
-        assert_eq!(s.plays_considered, 52);
+        // 30 + 11 + 6 completed of 58 plays (30 Nova + 11 Echo + 14 Pulse + 3 Drift); the 8 skipped
+        // Pulse plays and Drift's 3 partial plays are not completed.
+        assert_eq!(s.completion_rate, round2(47.0 / 58.0));
+        assert_eq!(s.plays_considered, 58);
     }
 
     #[test]

@@ -1768,7 +1768,7 @@ pub struct Taste {
 /// Learn your taste from listening, not from likes: every play is a vote (see `play_weight`).
 /// A like is only a small extra vote on a song you also played, so a liked song you never
 /// listen to does not make it into `songs`. Likes do add a little to an artist.
-fn learn_taste(plays: &[PlayLogEntry], liked: &[Track], now: u64) -> Taste {
+pub(crate) fn learn_taste(plays: &[PlayLogEntry], liked: &[Track], now: u64) -> Taste {
     let mut song_score: HashMap<String, f32> = HashMap::new();
     let mut artist_score: HashMap<String, (String, f32)> = HashMap::new();
     let mut bump_artist = |name: &str, w: f32| {

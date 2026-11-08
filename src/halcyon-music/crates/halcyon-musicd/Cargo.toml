@@ -46,6 +46,15 @@ librespot-protocol = { version = "=0.8.0", default-features = false }
 protobuf = "3.7"
 librespot-oauth = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
 
+# Part 2 (Spotify Connect), optional: only built with `--features connect`.
+# Same version and TLS backend as the other librespot crates.
+librespot-connect = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"], optional = true }
+
+[features]
+default = []
+# Registers Halcyon as a Spotify Connect device (spike: `halcyon-musicd --connect-spike`).
+connect = ["dep:librespot-connect"]
+
 [dev-dependencies]
 # used by the corrupt-state / socket integration tests only
 tempfile = "=3.19.1"

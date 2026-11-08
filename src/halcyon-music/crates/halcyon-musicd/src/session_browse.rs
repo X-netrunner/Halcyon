@@ -424,6 +424,40 @@ impl SessionBrowse {
         Ok(artists)
     }
 
+    /// Who is signed in, read over the session (no Web API quota): the canonical username and the
+    /// plan from the session itself, then the name and picture from Spotify's profile service.
+    /// A failing profile call is not an error here: the username and plan are still returned, so
+    /// the caller can show `@username` while the name is retried later.
+    pub async fn profile(&self) -> Result<crate::profile::SessionProfile, ApiError> {
+        let session = self.session().await?;
+        let username = session.username();
+        let plan = crate::profile::plan_from_attribute(session.get_user_attribute("type").as_deref());
+        let mut out = crate::profile::SessionProfile {
+            username: Some(username.clone()).filter(|u| !u.trim().is_empty()),
+            plan,
+            ..Default::default()
+        };
+        let endpoint = format!(
+            "/user-profile-view/v3/profile/{username}?playlist_limit=0&artist_limit=0&episode_limit=0"
+        );
+        match session.spclient().request(&Method::GET, &endpoint, None, None).await {
+            Ok(bytes) => {
+                let body = String::from_utf8_lossy(&bytes);
+                let parsed = crate::profile::parse_profile_json(&body);
+                if parsed.display_name.is_none() {
+                    // Spotify can change this internal format; keep the start of the answer in the
+                    // log (the body is a public profile, no token) so the parser can be fixed.
+                    let head: String = body.chars().take(300).collect();
+                    warn!(bytes = bytes.len(), body_head = %head, "profile: no name found in the answer");
+                }
+                out.display_name = parsed.display_name;
+                out.image_url = parsed.image_url;
+            }
+            Err(e) => debug!("profile service did not answer: {e}"),
+        }
+        Ok(out)
+    }
+
     /// An album and its tracks, in disc order.
     pub async fn get_album_detail(&self, album_id: &str) -> Result<(Album, Vec<Track>), ApiError> {
         let session = self.session().await?;

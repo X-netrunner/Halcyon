@@ -89,6 +89,9 @@ pub enum CommandBody {
     GetAuthStatus,
     /// Ask for the account's display name and profile picture URL (answered with `Profile`).
     GetProfile,
+    /// Look up the account's name, username and plan again now (the Refresh button in Settings).
+    /// The answer arrives as `Profile`, and as `AuthStatus` when the name changed.
+    RefreshProfile,
     /// Request user's playlists (stale-while-revalidate).
     GetPlaylists { limit: Option<u32>, offset: Option<u32> },
     /// Request tracks of a specific playlist (stale-while-revalidate).
@@ -178,6 +181,12 @@ pub enum CommandBody {
     /// Check whether the chosen backend answers and has the model; answered with
     /// [`EventBody::LlmStatus`] carrying `reachable` and, when something is wrong, a `hint`.
     TestLlmConnection,
+    /// Turn a mood or request typed by the listener ("rainy night coding, no lyrics") into a
+    /// mix of real songs. Needs the optional LLM layer to be on. Answered on the event stream by
+    /// [`EventBody::PromptPlaylistProgress`] (optional, a few times) and then exactly one of
+    /// [`EventBody::PromptPlaylistResult`] or [`EventBody::PromptPlaylistFailed`]. An older
+    /// daemon answers with an "unsupported" error.
+    PromptPlaylist { text: String },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -206,7 +215,16 @@ pub enum EventBody {
     /// Authentication status changed or requested.
     AuthStatus(AuthStatus),
     /// The account's name and picture URL. Either may be missing; the GUI then shows an initial.
-    Profile { display_name: Option<String>, image_url: Option<String> },
+    /// `username` (Spotify's canonical user id) and `plan` ("Premium" / "Free") were added later:
+    /// both default to `None`, so an older daemon's event still decodes.
+    Profile {
+        display_name: Option<String>,
+        image_url: Option<String>,
+        #[serde(default)]
+        username: Option<String>,
+        #[serde(default)]
+        plan: Option<String>,
+    },
     /// Re-login required (token expired / revoked).
     AuthRequired { reason: String },
     /// The token browsing uses changed (also sent when a client connects).
@@ -214,6 +232,13 @@ pub enum EventBody {
     /// State of the streaming sign-in (librespot's own token). Never carries a token.
     /// `seconds_left` is the lifetime of the current access token (it is renewed on its own).
     StreamingAuth { signed_in: bool, seconds_left: Option<u64> },
+    /// The Spotify Connect device name this daemon is registered under ("Halcyon (host)"), or
+    /// `None` when it is not registered. Sent when a client connects and whenever it changes.
+    /// An older client sees an unknown kind and ignores it.
+    ConnectDevice {
+        #[serde(default)]
+        name: Option<String>,
+    },
     /// Successfully authenticated.
     AuthSuccess { user_id: Option<String> },
     /// Playlists response (stale-while-revalidate).
@@ -323,6 +348,21 @@ pub enum EventBody {
     /// A Home mix got a better title and a short reason. Sent when the answer is ready (or
     /// found in the cache), never before; the mix keeps working as it is until then.
     MixEnriched { mix_id: String, title: String, reason: String },
+    /// The best order (and trim) of a Home mix's own songs, chosen by the optional LLM layer
+    /// from the songs the engine already put in that mix. `track_ids` are ids from that mix only,
+    /// best first; a client ignores ids it does not have and keeps the engine's order when too
+    /// few match. Never carries a song the client does not already hold.
+    MixReranked { mix_id: String, track_ids: Vec<String> },
+    /// Where a [`CommandBody::PromptPlaylist`] request is: `step` is `understanding`,
+    /// `searching` or `choosing`. A client that does not know a step shows a generic
+    /// "working" line. `request` echoes the text that was sent.
+    PromptPlaylistProgress { request: String, step: String },
+    /// The mix made for a [`CommandBody::PromptPlaylist`] request. Every song in it came from
+    /// the catalogue; the model only chose and ordered them and wrote the words.
+    PromptPlaylistResult { request: String, mix: MusicMix },
+    /// A [`CommandBody::PromptPlaylist`] request that could not be answered. `reason` is plain
+    /// language and says what to do.
+    PromptPlaylistFailed { request: String, reason: String },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -392,9 +432,49 @@ mod tests {
         let ev = event(EventBody::Profile {
             display_name: Some("Ada".into()),
             image_url: Some("https://i.scdn.co/image/x".into()),
+            username: Some("ada123".into()),
+            plan: Some("Premium".into()),
         });
         let back: Event = decode_line(&encode_line(&ev).unwrap()).unwrap();
         assert_eq!(ev, back);
+    }
+
+    #[test]
+    fn connect_device_event_round_trips_and_old_peers_ignore_it() {
+        let ev = event(EventBody::ConnectDevice { name: Some("Halcyon (box)".into()) });
+        let line = encode_line(&ev).expect("encode");
+        assert!(String::from_utf8_lossy(&line).contains("\"connect_device\""));
+        let back: Event = decode_line(&line).expect("decode");
+        assert_eq!(ev, back);
+        // The name may be missing (not registered).
+        let bare = br#"{"version":1,"type":"connect_device"}
+"#;
+        let ev: Event = decode_line(bare).expect("decode");
+        assert!(matches!(ev.body, EventBody::ConnectDevice { name: None }));
+    }
+
+    #[test]
+    fn refresh_profile_command_has_a_stable_wire_name() {
+        let cmd = command(CommandBody::RefreshProfile);
+        let line = encode_line(&cmd).expect("encode");
+        assert!(String::from_utf8_lossy(&line).contains("\"refresh_profile\""));
+        let back: Command = decode_line(&line).expect("decode");
+        assert_eq!(cmd, back);
+    }
+
+    #[test]
+    fn profile_event_from_an_older_daemon_has_no_username_or_plan() {
+        let line = br#"{"version":1,"type":"profile","display_name":"Ada","image_url":null}
+"#;
+        let ev: Event = decode_line(line).expect("decode");
+        match ev.body {
+            EventBody::Profile { display_name, username, plan, .. } => {
+                assert_eq!(display_name.as_deref(), Some("Ada"));
+                assert_eq!(username, None);
+                assert_eq!(plan, None);
+            }
+            other => panic!("wrong event: {other:?}"),
+        }
     }
 
     #[test]
@@ -522,6 +602,67 @@ mod tests {
 "#;
         let ev: Event = decode_line(line).expect("decode");
         assert!(matches!(ev.body, EventBody::LlmStatus { hint: None, enabled: false, .. }));
+    }
+
+    #[test]
+    fn mix_reranked_round_trips_and_has_a_stable_wire_name() {
+        let ev = event(EventBody::MixReranked { mix_id: "on-repeat".into(), track_ids: vec!["a".into(), "b".into()] });
+        let line = encode_line(&ev).expect("encode");
+        assert!(String::from_utf8_lossy(&line).contains("\"type\":\"mix_reranked\""));
+        let back: Event = decode_line(&line).expect("decode");
+        assert_eq!(ev, back);
+        // An older client that has no such variant sees Unknown; this build ignores extra fields.
+        let newer = br#"{"version":1,"type":"mix_reranked","mix_id":"m","track_ids":[],"why":"later"}
+"#;
+        let ev: Event = decode_line(newer).expect("decode");
+        assert!(matches!(ev.body, EventBody::MixReranked { .. }));
+    }
+
+    #[test]
+    fn prompt_playlist_messages_round_trip() {
+        let cmd = command(CommandBody::PromptPlaylist { text: "rainy night coding, no lyrics".into() });
+        let back: Command = decode_line(&encode_line(&cmd).expect("encode")).expect("decode");
+        assert_eq!(cmd, back);
+
+        let mix = MusicMix {
+            id: "prompt-abc".into(),
+            title: "Rainy Night Code".into(),
+            description: "Calm, lyric-free tracks.".into(),
+            source: "Halcyon Local".into(),
+            tracks: vec![crate::models::Track::simple("1".into(), "Glow".into(), "Echo".into(), "Dusk".into(), 1000)],
+            art_url: None,
+        };
+        for ev in [
+            event(EventBody::PromptPlaylistProgress { request: "rainy".into(), step: "searching".into() }),
+            event(EventBody::PromptPlaylistResult { request: "rainy".into(), mix }),
+            event(EventBody::PromptPlaylistFailed {
+                request: "rainy".into(),
+                reason: "Smart suggestions are off. Turn them on in Settings.".into(),
+            }),
+        ] {
+            let line = encode_line(&ev).expect("encode");
+            let back: Event = decode_line(&line).expect("decode");
+            assert_eq!(ev, back);
+        }
+    }
+
+    #[test]
+    fn prompt_playlist_wire_names_are_stable() {
+        // These strings are the contract with other builds; changing one breaks older peers.
+        let line = encode_line(&command(CommandBody::PromptPlaylist { text: "x".into() })).expect("encode");
+        assert!(String::from_utf8_lossy(&line).contains("\"type\":\"prompt_playlist\""));
+        let line = encode_line(&event(EventBody::PromptPlaylistFailed { request: "x".into(), reason: "y".into() }))
+            .expect("encode");
+        assert!(String::from_utf8_lossy(&line).contains("\"type\":\"prompt_playlist_failed\""));
+    }
+
+    #[test]
+    fn prompt_playlist_progress_with_an_unknown_step_still_decodes() {
+        // A newer daemon may add steps; the client shows a generic line for ones it does not know.
+        let line = br#"{"version":1,"type":"prompt_playlist_progress","request":"r","step":"polishing","extra":1}
+"#;
+        let ev: Event = decode_line(line).expect("decode");
+        assert!(matches!(ev.body, EventBody::PromptPlaylistProgress { .. }));
     }
 
     #[test]

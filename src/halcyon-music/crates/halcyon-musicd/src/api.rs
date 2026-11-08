@@ -175,6 +175,12 @@ pub struct AccountInfo {
     /// have this false, so the picture is looked up once for them.
     #[serde(default)]
     pub images_read: bool,
+    /// Spotify's canonical user id as the streaming session knows it (no Web API needed).
+    #[serde(default)]
+    pub username: Option<String>,
+    /// "Premium" or "Free", when the session says so.
+    #[serde(default)]
+    pub plan: Option<String>,
 }
 
 /// Choose the profile picture: the smallest one that is at least 96 px, else the biggest.
@@ -277,6 +283,12 @@ impl SpotifyClient {
         self.account.lock().await.clone()
     }
 
+    /// The profile as the streaming session sees it (username, plan, and, when Spotify's profile
+    /// service answers, name and picture). Uses no Web API quota. See `profile.rs`.
+    pub async fn session_profile(&self) -> Result<crate::profile::SessionProfile, ApiError> {
+        self.browse.profile().await
+    }
+
     pub async fn set_cached_account(&self, account: Option<AccountInfo>) {
         *self.account.lock().await = account;
     }
@@ -296,11 +308,15 @@ impl SpotifyClient {
             .await?;
         let me: Me = serde_json::from_str(&body)
             .map_err(|e| ApiError::Serialization(format!("parse /me: {e}")))?;
+        // What the session already told us (username, plan) is not in `/me`'s answer; keep it.
+        let before = self.cached_account().await;
         let account = AccountInfo {
             id: me.id,
             display_name: me.display_name.filter(|n| !n.trim().is_empty()),
             image_url: pick_avatar(&me.images),
             images_read: true,
+            username: before.as_ref().and_then(|a| a.username.clone()),
+            plan: before.as_ref().and_then(|a| a.plan.clone()),
         };
         self.set_cached_account(Some(account.clone())).await;
         Ok(account)
@@ -1694,7 +1710,7 @@ mod log_safety_tests {
         let client = SpotifyClient::new(Some("http://127.0.0.1:9".into()), None);
         assert_eq!(client.cached_account().await, None);
         client
-            .set_cached_account(Some(AccountInfo { id: "u1".into(), display_name: Some("Ada".into()), image_url: None, images_read: false }))
+            .set_cached_account(Some(AccountInfo { id: "u1".into(), display_name: Some("Ada".into()), image_url: None, images_read: false, username: None, plan: None }))
             .await;
         assert_eq!(client.current_user_id().await.as_deref(), Some("u1"));
         client.set_cached_account(None).await;

@@ -2,7 +2,9 @@
 //! tests in `tests/` can use it too. Nothing in the daemon constructs it.
 
 use super::backend::{BoxFuture, LlmError, LlmRequest, TasteLlm};
-use std::collections::VecDeque;
+use super::playlist::Catalogue;
+use halcyon_music_core::models::Track;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -92,5 +94,51 @@ impl TasteLlm for ScriptedLlm {
 
     fn probe<'a>(&'a self) -> BoxFuture<'a, Result<(), LlmError>> {
         Box::pin(async move { self.probe_result.lock().map(|p| p.clone()).unwrap_or(Ok(())) })
+    }
+}
+
+/// A scripted stand-in for the song catalogue, for tests. It answers a text query with the songs
+/// it was given for that query (matched case-insensitively), an empty list for any other query,
+/// or, when built with [`MockCatalogue::down`], nothing at all (as if offline or signed out).
+#[derive(Default)]
+pub struct MockCatalogue {
+    answers: HashMap<String, Vec<Track>>,
+    down: bool,
+    queries: Mutex<Vec<String>>,
+}
+
+impl MockCatalogue {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A catalogue that cannot be reached.
+    pub fn down() -> Self {
+        Self { down: true, ..Self::default() }
+    }
+
+    /// Answer `query` with `tracks`.
+    pub fn with(mut self, query: &str, tracks: Vec<Track>) -> Self {
+        self.answers.insert(query.to_lowercase(), tracks);
+        self
+    }
+
+    /// Every query the layer sent, in order.
+    pub fn queries(&self) -> Vec<String> {
+        self.queries.lock().map(|q| q.clone()).unwrap_or_default()
+    }
+}
+
+impl Catalogue for MockCatalogue {
+    fn search_songs<'a>(&'a self, query: &'a str) -> BoxFuture<'a, Option<Vec<Track>>> {
+        Box::pin(async move {
+            if let Ok(mut q) = self.queries.lock() {
+                q.push(query.to_string());
+            }
+            if self.down {
+                return None;
+            }
+            Some(self.answers.get(&query.to_lowercase()).cloned().unwrap_or_default())
+        })
     }
 }

@@ -207,6 +207,25 @@ impl Cache {
                 completed INTEGER NOT NULL
             );
 
+            -- Tracks the user left before the end. Kept apart from play_log on purpose: every
+            -- Home / stats query counts each play_log row as a listen, a skip is not one.
+            CREATE TABLE IF NOT EXISTS skip_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                track_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                artist TEXT NOT NULL,
+                album TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                ms_played INTEGER NOT NULL
+            );
+
+            -- Artist tags for the taste model (Part 4), fetched elsewhere and kept for a long time.
+            CREATE TABLE IF NOT EXISTS artist_tags (
+                artist_key TEXT PRIMARY KEY,
+                tags_json TEXT NOT NULL,
+                fetched_at INTEGER NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS resolved_tracks (
                 source_query TEXT PRIMARY KEY,
                 spotify_track_id TEXT,
@@ -963,6 +982,94 @@ impl Cache {
         for item in rows.flatten() {
             res.push(item);
         }
+        Ok(res)
+    }
+
+    /// Remember the tags of an artist (`artist_key` as made by `taste::artist_key`).
+    pub fn put_artist_tags(&self, artist_key: &str, tags: &[(String, f64)], now: u64) -> Result<(), String> {
+        let json = serde_json::to_string(tags).map_err(|e| e.to_string())?;
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO artist_tags (artist_key, tags_json, fetched_at) VALUES (?1, ?2, ?3) \
+             ON CONFLICT(artist_key) DO UPDATE SET tags_json = excluded.tags_json, fetched_at = excluded.fetched_at",
+            params![artist_key, json, now as i64],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Every cached artist: (key, tags, fetched_at). A row that cannot be read is skipped.
+    #[allow(clippy::type_complexity)]
+    pub fn all_artist_tags(&self) -> Result<Vec<(String, Vec<(String, f64)>, u64)>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT artist_key, tags_json, fetched_at FROM artist_tags ORDER BY artist_key")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                let key: String = row.get(0)?;
+                let json: String = row.get(1)?;
+                let at: i64 = row.get(2)?;
+                Ok((key, json, at))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for (key, json, at) in rows.flatten() {
+            if let Ok(tags) = serde_json::from_str::<Vec<(String, f64)>>(&json) {
+                out.push((key, tags, at.max(0) as u64));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Record a track the user left before it ended (a skip). Not part of the play log.
+    pub fn log_skip(
+        &self,
+        track_id: &str,
+        title: &str,
+        artist: &str,
+        album: &str,
+        started_at: u64,
+        ms_played: u64,
+    ) -> Result<i64, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO skip_log (track_id, title, artist, album, started_at, ms_played) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![track_id, title, artist, album, started_at as i64, ms_played as i64],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// Skips, oldest first, as play-log-shaped entries with `completed = false`, so the taste
+    /// model and the evaluation harness can read both tables the same way.
+    pub fn get_skips(&self, limit: usize) -> Result<Vec<PlayLogEntry>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, track_id, title, artist, album, started_at, ms_played \
+                 FROM skip_log ORDER BY id DESC LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                let started_at: i64 = row.get(5)?;
+                let ms_played: i64 = row.get(6)?;
+                Ok(PlayLogEntry {
+                    id: row.get(0)?,
+                    track_id: row.get(1)?,
+                    title: row.get(2)?,
+                    artist: row.get(3)?,
+                    album: row.get(4)?,
+                    started_at: started_at.max(0) as u64,
+                    ms_played: ms_played.max(0) as u64,
+                    completed: false,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut res: Vec<PlayLogEntry> = rows.flatten().collect();
+        res.reverse();
         Ok(res)
     }
 
@@ -1788,6 +1895,35 @@ pub struct PlayLogEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn artist_tags_round_trip_and_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(&dir.path().join("c.db"), &dir.path().join("img"), 1024 * 1024).unwrap();
+        cache.put_artist_tags("ash", &[("rock".to_string(), 1.0)], 100).unwrap();
+        cache.put_artist_tags("ash", &[("folk".to_string(), 0.5), ("rock".to_string(), 0.2)], 200).unwrap();
+        cache.put_artist_tags("birch", &[("jazz".to_string(), 1.0)], 150).unwrap();
+        let rows = cache.all_artist_tags().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, "ash");
+        assert_eq!(rows[0].1.len(), 2);
+        assert_eq!(rows[0].2, 200);
+    }
+
+    #[test]
+    fn skips_are_kept_apart_from_plays() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::open(&dir.path().join("c.db"), &dir.path().join("img"), 1024 * 1024).unwrap();
+        cache.log_play("t1", "One", "A", "X", 100, 180_000, true).unwrap();
+        cache.log_skip("t2", "Two", "B", "Y", 200, 4_000).unwrap();
+        cache.log_skip("t3", "Three", "B", "Y", 300, 12_000).unwrap();
+        assert_eq!(cache.get_recent_plays(10).unwrap().len(), 1, "a skip is not a play");
+        let skips = cache.get_skips(10).unwrap();
+        assert_eq!(skips.len(), 2);
+        assert_eq!(skips[0].track_id, "t2", "oldest first");
+        assert!(skips.iter().all(|s| !s.completed));
+        assert_eq!(skips[1].ms_played, 12_000);
+    }
 
     fn test_track(id: &str, title: &str) -> Track {
         Track {

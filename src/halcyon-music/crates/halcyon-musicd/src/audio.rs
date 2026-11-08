@@ -43,6 +43,35 @@ pub const STALL_THRESHOLD: Duration = Duration::from_secs(5);
 pub const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 /// Minimum played time (30s) to record a partial play in the log.
 pub const MIN_PLAY_LOG_MS: u64 = 30_000;
+/// A track left after less than this is not logged as a skip at all: a flick through the queue
+/// or a double click says nothing about taste.
+pub const MIN_SKIP_LOG_MS: u64 = 2_000;
+/// Left this close to the end, it counts as listened to, not as a skip.
+const SKIP_NEAR_END_MS: u64 = 3_000;
+
+/// Should leaving `prev` after `ms_played` be written to the skip log? Pure, so it is tested
+/// without an engine.
+pub fn skip_to_log(
+    prev: &Track,
+    ms_played: u64,
+    completed_logged: Option<&str>,
+    loaded: Option<&str>,
+    failed: Option<&str>,
+) -> bool {
+    if completed_logged == Some(prev.id.as_str()) || failed == Some(prev.id.as_str()) {
+        return false; // it was logged as a finished play, or it never played
+    }
+    if loaded != Some(prev.id.as_str()) {
+        return false; // the engine never loaded it
+    }
+    if ms_played < MIN_SKIP_LOG_MS {
+        return false;
+    }
+    if prev.duration_ms > 0 && ms_played + SKIP_NEAR_END_MS >= prev.duration_ms {
+        return false;
+    }
+    true
+}
 /// A load that produces neither `Playing`/`Paused` nor `Unavailable` within this time is a stall.
 pub const LOAD_TIMEOUT: Duration = Duration::from_secs(20);
 /// A difference this large between the state's position and the last position the engine
@@ -171,6 +200,10 @@ struct Rt {
     /// Track that failed to load or stalled for good: not retried until the user presses play.
     failed_track_id: Option<String>,
     track_started_at: u64,
+    /// The track the state pointed at on the last tick (to log it as a skip when it changes).
+    active_track: Option<Track>,
+    /// Track whose natural end was already written to the play log.
+    completed_logged: Option<String>,
     last_event_at: Instant,
     load_started_at: Instant,
     /// Last position the engine reported (what we wrote into the state).
@@ -196,6 +229,8 @@ impl Rt {
             loaded_uri: None,
             failed_track_id: None,
             track_started_at: now_secs(),
+            active_track: None,
+            completed_logged: None,
             last_event_at: now,
             load_started_at: now,
             last_reported_pos: 0,
@@ -276,6 +311,29 @@ impl AudioEngine {
                     "recorded play in local play log"
                 );
             }
+        }
+    }
+
+    /// The user (or the queue) moved off a track before its end: remember it as a skip. Uses the
+    /// last position the engine reported for that track. Never fatal.
+    fn log_left_track(&self, rt: &Rt) {
+        let Some(prev) = rt.active_track.as_ref() else {
+            return;
+        };
+        let ms = rt.last_reported_pos;
+        if !skip_to_log(
+            prev,
+            ms,
+            rt.completed_logged.as_deref(),
+            rt.loaded_track_id.as_deref(),
+            rt.failed_track_id.as_deref(),
+        ) {
+            return;
+        }
+        let _ = self.cache.put_tracks(std::slice::from_ref(prev));
+        match self.cache.log_skip(&prev.id, &prev.title, &prev.artist, &prev.album, rt.track_started_at, ms) {
+            Ok(_) => info!(track_id = %prev.id, ms, "recorded a skip in the local skip log"),
+            Err(e) => warn!("failed to write skip log: {e}"),
         }
     }
 
@@ -551,7 +609,9 @@ impl AudioEngine {
         let cur_id = state.track.as_ref().map(|t| t.id.clone());
 
         if cur_id != rt.active_track_id {
+            self.log_left_track(rt);
             rt.active_track_id = cur_id.clone();
+            rt.active_track = state.track.clone();
             rt.track_started_at = now_secs();
             rt.last_reported_pos = state.position_ms;
             rt.last_lyric_idx = None;
@@ -824,6 +884,7 @@ impl AudioEngine {
         }
 
         self.record_play_log(track, rt.track_started_at, track.duration_ms, true);
+        rt.completed_logged = Some(track.id.clone());
 
         let mut advanced = false;
         self.player
@@ -885,6 +946,28 @@ impl AudioEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn song(id: &str, dur: u64) -> Track {
+        Track::simple(id.to_string(), "T".to_string(), "A".to_string(), "B".to_string(), dur)
+    }
+
+    #[test]
+    fn a_track_left_early_is_a_skip_but_only_a_real_one() {
+        let t = song("x", 200_000);
+        // Left after 10 s: a skip.
+        assert!(skip_to_log(&t, 10_000, None, Some("x"), None));
+        // A flick through the queue is not.
+        assert!(!skip_to_log(&t, 800, None, Some("x"), None));
+        // Left in the last seconds: it was listened to.
+        assert!(!skip_to_log(&t, 198_000, None, Some("x"), None));
+        // Already logged as a finished play.
+        assert!(!skip_to_log(&t, 199_900, Some("x"), Some("x"), None));
+        // Never loaded, or failed to load: nothing to say about taste.
+        assert!(!skip_to_log(&t, 10_000, None, Some("other"), None));
+        assert!(!skip_to_log(&t, 10_000, None, Some("x"), Some("x")));
+        // Unknown length: a skip is still a skip.
+        assert!(skip_to_log(&song("y", 0), 30_000, None, Some("y"), None));
+    }
 
     #[test]
     fn quality_change_is_detected() {

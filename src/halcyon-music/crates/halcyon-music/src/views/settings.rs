@@ -1,5 +1,6 @@
 //! Settings page: account, appearance, diagnostics, keyboard shortcuts.
 
+use crate::avatar::AvatarSource;
 use crate::icons::{icon, Icon};
 use crate::shortcuts::SHORTCUT_HELP;
 use crate::theme::{radius, space, type_size, Density, HalcyonPalette, Mood};
@@ -95,8 +96,13 @@ fn choice<'a, M: Clone + 'a>(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a, M: Clone + 'a>(
     account_label: String,
+    account_detail: String,
+    avatar_source: AvatarSource,
+    on_set_avatar: impl Fn(AvatarSource) -> M + 'a + Copy,
+    on_refresh_profile: M,
     density: Density,
     mood: Mood,
     bitrate: Bitrate,
@@ -117,8 +123,40 @@ pub fn view<'a, M: Clone + 'a>(
         "Account",
         column![
             text(account_label).size(type_size::BODY).color(palette.accent),
+            text(account_detail).size(type_size::SMALL).color(palette.text_muted),
+            Space::with_height(space::LG),
+            text("Account picture").size(type_size::BODY).color(palette.text),
+            text("Which picture the round account button shows.")
+                .size(type_size::SMALL)
+                .color(palette.text_muted),
             Space::with_height(space::MD),
             row![
+                choice(
+                    AvatarSource::Halcyon.label(),
+                    AvatarSource::Halcyon.detail(),
+                    avatar_source == AvatarSource::Halcyon,
+                    palette,
+                    on_set_avatar(AvatarSource::Halcyon),
+                ),
+                choice(
+                    AvatarSource::Spotify.label(),
+                    AvatarSource::Spotify.detail(),
+                    avatar_source == AvatarSource::Spotify,
+                    palette,
+                    on_set_avatar(AvatarSource::Spotify),
+                ),
+                choice(
+                    AvatarSource::Initial.label(),
+                    AvatarSource::Initial.detail(),
+                    avatar_source == AvatarSource::Initial,
+                    palette,
+                    on_set_avatar(AvatarSource::Initial),
+                ),
+            ]
+            .spacing(space::MD),
+            Space::with_height(space::LG),
+            row![
+                action("Refresh account", None, palette, on_refresh_profile),
                 action("Spotify account settings", Some(Icon::ExternalLink), palette, on_spotify_settings),
                 action("Sign out", None, palette, on_sign_out),
             ]
